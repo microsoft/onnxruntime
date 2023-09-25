@@ -21,7 +21,7 @@ import class Foundation.ProcessInfo
 
 let package = Package(
     name: "onnxruntime",
-    platforms: [.iOS(.v11)],
+    platforms: [.iOS(.v12)],
     products: [
         .library(name: "onnxruntime",
                  type: .static,
@@ -32,7 +32,14 @@ let package = Package(
         .target(name: "OnnxRuntimeBindings",
                 dependencies: ["onnxruntime"],
                 path: "objectivec",
-                exclude: ["test", "docs", "ReadMe.md", "format_objc.sh"],
+                exclude: ["test", "docs", "ReadMe.md", "format_objc.sh",
+                            "ort_checkpoint.mm",
+                            "ort_checkpoint_internal.h",
+                            "ort_training_session_internal.h",
+                            "ort_training_session.mm",
+                            "include/ort_checkpoint.h",
+                            "include/ort_training_session.h",
+                            "include/onnxruntime_training.h"],
                 cxxSettings: [
                     .define("SPM_BUILD"),
                     .unsafeFlags(["-std=c++17",

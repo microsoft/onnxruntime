@@ -25,6 +25,7 @@ class Gemm final : public CudaKernel {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeDefault(OpKernelContext* context, int M, int N, int K) const;
 
  private:
   bool trans_A_;

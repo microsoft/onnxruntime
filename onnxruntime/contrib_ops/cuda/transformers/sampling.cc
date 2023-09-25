@@ -32,8 +32,7 @@ transformers::CudaTensorConsoleDumper g_cuda_dumper_sampling;
 
 Sampling::Sampling(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::Sampling(info) {
-  SetDeviceHelpers(GenerationCudaDeviceHelper::ReorderPastState,
-                   GenerationCudaDeviceHelper::AddToFeeds,
+  SetDeviceHelpers(GenerationCudaDeviceHelper::AddToFeeds,
                    GenerationCudaDeviceHelper::TopK,
                    GenerationCudaDeviceHelper::DeviceCopy<float>,
                    GenerationCudaDeviceHelper::GreedySearchProcessLogits<float>,
@@ -41,15 +40,21 @@ Sampling::Sampling(const OpKernelInfo& info)
                    GenerationCudaDeviceHelper::InitGreedyState<float>,
                    GenerationCudaDeviceHelper::InitGreedyState<MLFloat16>);
 
+#ifndef USE_ROCM
+  SetDeviceHelpers_Cuda(GenerationCudaDeviceHelper::ReorderPastState);
+#endif
+
   SetDeviceHelpers_Gpt(GenerationCudaDeviceHelper::UpdateGptFeeds<float>,
                        GenerationCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper_sampling);
 
+#ifndef USE_ROCM
   gpu_device_prop_ = &reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
 
   gpu_device_arch_ = static_cast<const cudaDeviceProp*>(gpu_device_prop_)->major * 100 +
                      static_cast<const cudaDeviceProp*>(gpu_device_prop_)->minor * 10;
+#endif
 }
 
 Status Sampling::ComputeInternal(OpKernelContext* context) const {

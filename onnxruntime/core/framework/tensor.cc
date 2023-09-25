@@ -5,7 +5,6 @@
 
 #include <utility>
 #include "core/common/safeint.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/utils.h"

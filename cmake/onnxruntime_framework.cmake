@@ -8,12 +8,31 @@ file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
 )
 
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-file(GLOB_RECURSE onnxruntime_training_framework_torch_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
-)
-
+  file(GLOB_RECURSE onnxruntime_training_framework_torch_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
+  )
   list(APPEND onnxruntime_framework_srcs ${onnxruntime_training_framework_torch_srcs})
+  if (onnxruntime_ENABLE_TRITON)
+    file(GLOB_RECURSE onnxruntime_training_framework_triton_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
+    )
+    list(APPEND onnxruntime_framework_srcs ${onnxruntime_training_framework_triton_srcs})
+  endif()
+elseif(onnxruntime_ENABLE_TRITON)
+  # Triton executor shares some code from torch_interop, such as python and dlpack related code files.
+  # When torch_interop is enabled, all these dependencies are already included.
+  # But if not, we need to include them explicitly.
+  file(GLOB_RECURSE onnxruntime_training_framework_triton_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/dlpack_python.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/dlpack_python.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/gil.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/python_common.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
+  )
+  list(APPEND onnxruntime_framework_srcs ${onnxruntime_training_framework_triton_srcs})
 endif()
 
 if (onnxruntime_MINIMAL_BUILD)
@@ -37,26 +56,12 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_framework_srcs})
 
 onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_srcs})
 
-if (onnxruntime_USE_AZURE)
-
-  add_dependencies(onnxruntime_framework triton)
-  target_include_directories(onnxruntime_framework PRIVATE ${TRITON_BIN}/include ${TRITON_THIRD_PARTY}/curl/include)
-  link_directories(${TRITON_BIN}/lib ${TRITON_BIN}/lib64 ${TRITON_THIRD_PARTY}/curl/lib ${TRITON_THIRD_PARTY}/curl/lib64)
-
-  if (WIN32)
-
-    link_directories(${VCPKG_SRC}/installed/${onnxruntime_target_platform}-windows/lib)
-    target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static ws2_32 crypt32 Wldap32)
-
-  else()
-
-    find_package(ZLIB REQUIRED)
-    find_package(OpenSSL REQUIRED)
-    target_link_libraries(onnxruntime_framework PRIVATE httpclient_static curl ZLIB::ZLIB OpenSSL::Crypto OpenSSL::SSL)
-
-  endif() #if (WIN32)
-
-endif() #if (onnxruntime_USE_AZURE)
+if (MSVC)
+  set(ORT_FRAMEWORK_NATVIS_FILE "onnxruntime_framework.natvis")
+  target_sources(
+      onnxruntime_framework
+      INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/${ORT_FRAMEWORK_NATVIS_FILE}>)
+endif()
 
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
@@ -71,7 +76,7 @@ endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
     onnxruntime_add_include_to_target(onnxruntime_framework Python::Module)
     target_include_directories(onnxruntime_framework PRIVATE ${dlpack_SOURCE_DIR}/include)
   endif()
@@ -119,11 +124,10 @@ if (WIN32)
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_framework
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
+  install(TARGETS onnxruntime_framework
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)

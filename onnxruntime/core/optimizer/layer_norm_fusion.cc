@@ -4,7 +4,6 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/transpose_optimizer/optimizer_api.h"
 #include "float.h"
 #include <algorithm>
 #include <deque>
@@ -415,20 +414,20 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
-          graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-        if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-          scale = mul_node.MutableInputDefs()[i];
-        }
+      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+        continue;
+      }
+      if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        scale = mul_node.MutableInputDefs()[i];
       }
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
-      if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
-          graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
-        if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-          bias = last_add_node.MutableInputDefs()[i];
-        }
+      if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr) {
+        continue;
+      }
+      if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        bias = last_add_node.MutableInputDefs()[i];
       }
     }
     if (scale == nullptr || bias == nullptr) {
@@ -668,20 +667,20 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
-          graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING_CORE
-        if (axes_values.empty() ||
-            mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-          scale = mul_node.MutableInputDefs()[i];
-        }
-#else
-        // Scale must be 1d.
-        if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
-          scale = mul_node.MutableInputDefs()[i];
-        }
-#endif
+      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+        continue;
       }
+#ifdef ENABLE_TRAINING_CORE
+      if (axes_values.empty() ||
+          mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        scale = mul_node.MutableInputDefs()[i];
+      }
+#else
+      // Scale must be 1d.
+      if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
+        scale = mul_node.MutableInputDefs()[i];
+      }
+#endif
     }
 
     if (scale == nullptr) {

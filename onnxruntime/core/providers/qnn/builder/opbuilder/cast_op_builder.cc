@@ -6,6 +6,7 @@
 
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 #include "base_op_builder.h"
 
@@ -21,7 +22,6 @@ class CastOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation = false) const override ORT_MUST_USE_RESULT;
 
@@ -29,18 +29,15 @@ class CastOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
 Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
-                                    bool is_quantized_model,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
-  ORT_UNUSED_PARAMETER(is_quantized_model);  // Ignore in all backends. Cast should use same QNN types across backends.
 
   const auto& inputs = node_unit.Inputs();
   ORT_ENFORCE(inputs.size() == 1, "QNN Cast node must have a single input.");
@@ -69,9 +66,9 @@ Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_UNDEFINED;
   const auto* type_proto = input.node_arg.TypeAsProto();
 
-  ORT_RETURN_IF_ERROR(GetQnnDataType(false,  // Do not try to get the quantized type. HTP cast supports normal types.
-                                     type_proto,
-                                     qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(false,  // Do not try to get the quantized type. HTP cast supports normal types.
+                                            type_proto,
+                                            qnn_data_type));
 
   QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, QNN_QUANTIZE_PARAMS_INIT,
                                        std::move(input_shape), std::move(unpacked_tensor));
@@ -86,10 +83,8 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
-                                                  bool is_quantized_model,
                                                   bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(logger);
-  ORT_UNUSED_PARAMETER(is_quantized_model);  // Ignore in all backends. Cast should use same QNN types across backends.
 
   const auto& outputs = node_unit.Outputs();
   ORT_ENFORCE(outputs.size() == 1, "QNN Cast node must have a single output.");
@@ -98,9 +93,9 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
   const auto* type_proto = output.node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_UNDEFINED;
-  ORT_RETURN_IF_ERROR(GetQnnDataType(false,  // Do not try to get the quantized type. HTP cast supports normal types.
-                                     type_proto,
-                                     qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(false,  // Do not try to get the quantized type. HTP cast supports normal types.
+                                            type_proto,
+                                            qnn_data_type));
 
   std::vector<uint32_t> output_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output.node_arg, output_shape),
@@ -117,7 +112,7 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                     "Failed to add output tensor for QNN Cast node.");
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                    qnn_def::package_name,
+                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     GetQnnOpType(node_unit.OpType()),
                                                     std::move(input_names),
                                                     {output_name},

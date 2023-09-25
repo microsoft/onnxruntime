@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {SessionHandler} from './backend';
-import {resolveBackend} from './backend-impl';
-import {InferenceSession as InferenceSessionInterface} from './inference-session';
-import {OnnxValue} from './onnx-value';
-import {Tensor} from './tensor';
+import {resolveBackend} from './backend-impl.js';
+import {SessionHandler} from './backend.js';
+import {InferenceSession as InferenceSessionInterface} from './inference-session.js';
+import {OnnxValue} from './onnx-value.js';
+import {Tensor} from './tensor.js';
 
 type SessionOptions = InferenceSessionInterface.SessionOptions;
 type RunOptions = InferenceSessionInterface.RunOptions;
@@ -109,7 +109,12 @@ export class InferenceSession implements InferenceSessionInterface {
     const returnValue: {[name: string]: OnnxValue} = {};
     for (const key in results) {
       if (Object.hasOwnProperty.call(results, key)) {
-        returnValue[key] = new Tensor(results[key].type, results[key].data, results[key].dims);
+        const result = results[key];
+        if (result instanceof Tensor) {
+          returnValue[key] = result;
+        } else {
+          returnValue[key] = new Tensor(result.type, result.data, result.dims);
+        }
       }
     }
     return returnValue;

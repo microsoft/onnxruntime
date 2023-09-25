@@ -10,7 +10,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_suffix, get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
+from utils import dtype_to_suffix, get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, matmul, transab_to_suffix
 
 
 def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, alpha=1.0, beta=0.0):
@@ -22,7 +22,7 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
     np.random.seed(0)
     a = (np.random.rand(*a_shape) + 0.5).astype(dtype).astype("float64")
     b = (np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64")
-    intermediate_c = (a.T if transa else a) @ (b.T if transb else b)
+    intermediate_c = matmul(a, b, transa, transb)
     if alpha == 1.0 and beta == 0.0:  # fast path
         ref_c = intermediate_c
     else:
@@ -50,7 +50,9 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
     for impl in my_gemm.ListOps():
         if not my_gemm.SelectOp(impl):
             continue
-
+        # Restore C Array
+        my_c.fill(1.0)
+        dev_c.UpdateDeviceArray()
         my_gemm.Run()
         dev_c.UpdateHostNumpyArray()
 
@@ -130,14 +132,14 @@ class GemmMetric(ke.ComputeMetric):
     k: int
 
     def report(self):
-        prefix = (
-            f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} "
+        common = (
+            f"{self.dtype} {transab_to_suffix((self.transa, self.transb))} "
+            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} {self.name}"
         )
         if self.duration <= 0:
-            return prefix + "not supported"
+            return "not supported          " + common
 
-        return prefix + f"{self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
+        return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int):
@@ -177,6 +179,10 @@ def profile_with_args(dtype, transa, transb, m, n, k, sort):
         profile_gemm_func(getattr(ke, "RocBlasGemm" + dtype_suffix), dtype, transa, transb, m, n, k)
         profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
         profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
+        if ke.is_hipblaslt_available():
+            profile_gemm_func(
+                getattr(ke, "GemmHipBlasLt" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k
+            )
     print()
 
 

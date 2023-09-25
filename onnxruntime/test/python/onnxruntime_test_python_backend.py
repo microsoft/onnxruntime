@@ -13,7 +13,7 @@ import onnxruntime.backend as backend
 
 
 class TestBackend(unittest.TestCase):
-    def testRunModel(self):  # noqa: N802
+    def test_run_model(self):
         name = get_name("mul_1.onnx")
         rep = backend.prepare(name)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -21,7 +21,7 @@ class TestBackend(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testAllocationPlanWorksWithOnlyExecutePathToFetchesOption(self):  # noqa: N802
+    def test_allocation_plan_works_with_only_execute_path_to_fetches_option(self):
         """
                (inp0)  (inp1)
                   |  \\/  |

@@ -210,15 +210,16 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
           init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
           device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
           device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
           update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>,
-          cuda_device_prop_,
-          cuda_device_arch_};
+          create_beam_scorer_func_};
+#ifdef USE_CUDA
+      ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, cuda_device_prop_, cuda_device_arch_));
+#endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -232,15 +233,16 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_beam_state_fp16_func_,
           device_copy_func_,
           device_copy_int32_func_,
           update_gpt_feeds_fp16_func_,
-          cuda_device_prop_,
-          cuda_device_arch_};
+          create_beam_scorer_func_};
+#ifdef USE_CUDA
+      ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, cuda_device_prop_, cuda_device_arch_));
+#endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -258,8 +260,6 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
           *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
-          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,      // Only CUDA implementation needs the init cache_indir for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
           init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
@@ -270,8 +270,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
           expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
           expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
-          cuda_device_prop_,
-          cuda_device_arch_};
+          create_beam_scorer_func_};
+#ifdef USE_CUDA
+      ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
+#endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -280,8 +282,6 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
           *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
-          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,      // Only CUDA implementation needs the init cache_indir for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_beam_state_fp16_func_,
@@ -292,9 +292,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           expand_buffer_int32_func_,
           expand_buffer_float_func_,
           expand_buffer_float16_func_,
-          cuda_device_prop_,
-          cuda_device_arch_};
-
+          create_beam_scorer_func_};
+#ifdef USE_CUDA
+      ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
+#endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -309,8 +310,6 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           *ctx_internal, *encoder_session_state, *decoder_session_state, *whisper_encoder_subgraph_,
           *whisper_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
-          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,      // Only CUDA implementation needs the init cache_indir for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::ProcessLogits<float>,
           init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
@@ -320,8 +319,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
           expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
           expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
-          cuda_device_prop_,
-          cuda_device_arch_};
+          create_beam_scorer_func_};
+#ifdef USE_CUDA
+      ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
+#endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -330,8 +331,6 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           *ctx_internal, *encoder_session_state, *decoder_session_state, *whisper_encoder_subgraph_,
           *whisper_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
-          init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,      // Only CUDA implementation needs the init cache_indir for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_beam_state_fp16_func_,
@@ -341,9 +340,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           update_decoder_feeds_fp16_func_ ? update_decoder_feeds_fp16_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<MLFloat16>,
           expand_buffer_float_func_,
           expand_buffer_float16_func_,
-          cuda_device_prop_,
-          cuda_device_arch_};
-
+          create_beam_scorer_func_};
+#ifdef USE_CUDA
+      ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
+#endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/nn/batch_norm_grad.h"
+#include "core/common/narrow.h"
 #include "core/util/math_cpuonly.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
@@ -34,11 +35,11 @@ Status BatchNormalizationGrad<T>::Compute(OpKernelContext* ctx) const {
   auto* dBias_data = ctx->Output(2, channel_shape)->template MutableData<T>();
 
   const auto& dims_vec = X_shape.GetDims();
-  const size_t N = dims_vec[0];
-  const size_t C = dims_vec[1];  // assume NCHW as per the spec
+  const size_t N = narrow<size_t>(dims_vec[0]);
+  const size_t C = narrow<size_t>(dims_vec[1]);  // assume NCHW as per the spec
 
   // calculate sample_size (per individual channel)
-  size_t sample_size = X_shape.SizeFromDimension(2);
+  size_t sample_size = narrow<size_t>(X_shape.SizeFromDimension(2));
   size_t scale_tensor_size = C;
 
   ConstEigenVectorArrayMap<T> scale_arr(scale_data, scale_tensor_size);

@@ -1,17 +1,22 @@
 /*
- * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import java.util.logging.Logger;
 
-/** The logging level for messages from the environment and session. */
+/** The logging severity level. */
 public enum OrtLoggingLevel {
+  /** Print all log messages. */
   ORT_LOGGING_LEVEL_VERBOSE(0),
+  /** Print info and higher level log messages. */
   ORT_LOGGING_LEVEL_INFO(1),
+  /** Print warning and higher level log messages. */
   ORT_LOGGING_LEVEL_WARNING(2),
+  /** Print error log messages. */
   ORT_LOGGING_LEVEL_ERROR(3),
+  /** Print only fatal log messages. */
   ORT_LOGGING_LEVEL_FATAL(4);
   private final int value;
 

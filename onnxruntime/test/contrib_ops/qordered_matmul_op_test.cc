@@ -9,7 +9,7 @@
 
 #include <cuda.h>
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
 namespace onnxruntime {
 namespace test {

@@ -25,9 +25,16 @@ namespace training {
 Status CreateOrtValuesFromTensorProtos(
     const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
     NameMLValMap& name_to_ort_value) {
-  static const CPUExecutionProviderInfo info;
-  static const CPUExecutionProvider cpu_provider(info);
-  static const AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
+  bool create_arena = true;
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+  // JEMalloc/mimalloc already have memory pool, so just use device allocator.
+  create_arena = false;
+#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+  create_arena = false;
+#endif
+  static const AllocatorCreationInfo info{[](int) { return std::make_unique<CPUAllocator>(); }, DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
+  static const AllocatorPtr cpu_allocator = CreateAllocator(info);
 
   for (const auto& tensor_proto : tensor_protos) {
     TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(tensor_proto)};

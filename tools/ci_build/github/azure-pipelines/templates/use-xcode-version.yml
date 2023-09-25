@@ -1,0 +1,14 @@
+# Specify use of a specific Xcode version.
+
+parameters:
+- name: xcodeVersion
+  type: string
+  default: "14.3"
+
+steps:
+- bash: |
+    set -e -x
+    XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ parameters.xcodeVersion }}.app/Contents/Developer"
+    sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+
+  displayName: Use Xcode ${{ parameters.xcodeVersion }}

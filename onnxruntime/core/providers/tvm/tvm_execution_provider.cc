@@ -40,9 +40,6 @@ TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
                                                  return std::make_unique<TVMAllocator>();
                                                },
                                                0, false};
-  allocator_ = CreateAllocator(default_memory_info);
-  InsertAllocator(allocator_);
-
   // Get environment variables
   const Env& env_instance = Env::Default();
 
@@ -50,6 +47,14 @@ TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
   if (!dump_subgraphs_env.empty()) {
     dump_subgraphs_ = std::stoi(dump_subgraphs_env) != 0;
   }
+}
+
+std::vector<AllocatorPtr> TvmExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo default_memory_info = {[](int) {
+                                                 return std::make_unique<TVMAllocator>();
+                                               },
+                                               0, false};
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info)};  // TODO(leca): REVIEW: will CPU EP also use this?
 }
 
 TvmExecutionProvider::~TvmExecutionProvider() {}
@@ -156,10 +161,6 @@ std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
   } else {
     ORT_NOT_IMPLEMENTED("TVM GetDataTransfer is not implemented for target ", options_.target);
   }
-}
-
-AllocatorPtr TvmExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-  return allocator_;
 }
 
 void TvmExecutionProvider::printOptions() {

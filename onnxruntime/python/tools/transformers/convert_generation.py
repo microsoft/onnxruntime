@@ -45,7 +45,6 @@ import argparse
 import logging
 import math
 import os
-import sys
 import time
 from enum import Enum
 from pathlib import Path
@@ -54,9 +53,14 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import onnx
 import torch
-from benchmark_helper import Precision
+from benchmark_helper import Precision, setup_logger
 from fusion_utils import NumpyHelper
+from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx
+from models.gpt2.gpt2_helper import PRETRAINED_GPT2_MODELS
+from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
+from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS
 from onnx import GraphProto, ModelProto, TensorProto
+from onnx_model import OnnxModel
 from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
@@ -69,16 +73,6 @@ from transformers import (
 )
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
-from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E402
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
-from benchmark_helper import setup_logger  # noqa: E402
-from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models  # noqa: E402
-from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -889,6 +883,8 @@ def remove_shared_initializers(
     graph2: GraphProto,
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
+    signature_cache1: Optional[dict] = None,
+    signature_cache2: Optional[dict] = None,
 ):
     """Remove initializers with same value from two graphs.
 
@@ -897,6 +893,8 @@ def remove_shared_initializers(
         graph2 (GraphProto): the second graph to process
         shared_prefix (str): add prefix to the shared initializers among two graphs
         min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
+        signature_cache1 (dict): Optional dictionary to store data signatures of tensors in graph1 in order to speed up comparison
+        signature_cache2 (dict): Optional dictionary to store data signatures of tensors in graph2 in order to speed up comparison
     """
 
     mapping_initializers_1 = {}
@@ -913,7 +911,7 @@ def remove_shared_initializers(
             if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
                 continue
 
-            if OnnxModel.has_same_value(initializer1, initializer2):
+            if OnnxModel.has_same_value(initializer1, initializer2, signature_cache1, signature_cache2):
                 mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
                 shared_initializers_1.append(initializer1)
 
@@ -991,9 +989,16 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
     decoder = OnnxModel(decoder_model)
     encoder.add_prefix_to_names("e_")
     decoder.add_prefix_to_names("d_")
-    encoder.remove_duplicated_initializer()
-    decoder.remove_duplicated_initializer()
-    initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_")
+    signature_cache1, signature_cache2 = {}, {}
+    encoder.remove_duplicated_initializer(signature_cache1)
+    decoder.remove_duplicated_initializer(signature_cache2)
+    initializers = remove_shared_initializers(
+        decoder.model.graph,
+        encoder.model.graph,
+        shared_prefix="s_",
+        signature_cache1=signature_cache1,
+        signature_cache2=signature_cache2,
+    )
     return initializers
 
 

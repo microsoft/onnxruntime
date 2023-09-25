@@ -75,7 +75,7 @@ __global__ void LogitsProcessKernel(
     int padded_vocab_size,
     int total_elements,
     int demote_token_id,
-    int32_t* sequences,
+    const int32_t* sequences,
     int max_sequence_length,
     int current_sequence_length,
     float repetition_penalty,
@@ -91,7 +91,7 @@ __global__ void LogitsProcessKernel(
     } else {
       // RepetitionPenaltyLogitsProcessor
       if (repetition_penalty != 1.0f) {
-        int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
+        const int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
         bool found = false;
         for (int i = 0; i < current_sequence_length; i++) {
           if (current_sequence[i] == word_id) {
@@ -107,7 +107,7 @@ __global__ void LogitsProcessKernel(
 
       // NoRepeatNGramLogitsProcessor
       if (no_repeat_ngram_size > 0 && current_sequence_length >= no_repeat_ngram_size) {
-        int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
+        const int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
         bool found = false;
         for (int i = no_repeat_ngram_size - 1; i < current_sequence_length; i++) {
           if (current_sequence[i] == word_id) {  // last token of n-gram matched
@@ -176,7 +176,7 @@ void LaunchLogitsProcessKernel(
     int vocab_size,
     int padded_vocab_size,
     int demote_token_id,
-    int32_t* sequences,
+    const int32_t* sequences,
     int max_sequence_length,
     int current_sequence_length,
     float repetition_penalty,
@@ -217,7 +217,7 @@ template void LaunchLogitsProcessKernel(
     int vocab_size,
     int padded_vocab_size,
     int demote_token_id,
-    int32_t* sequences,
+    const int32_t* sequences,
     int max_sequence_length,
     int current_sequence_length,
     float repetition_penalty,
@@ -236,12 +236,321 @@ template void LaunchLogitsProcessKernel(
     int vocab_size,
     int padded_vocab_size,
     int demote_token_id,
-    int32_t* sequences,
+    const int32_t* sequences,
     int max_sequence_length,
     int current_sequence_length,
     float repetition_penalty,
     int no_repeat_ngram_size,
     cudaStream_t stream);
+
+__global__ void InitializeBeamHypotheses(BeamHypotheses* beam_hyps, int beam_hyps_count, float length_penalty, HypothesisScore* beams, int num_beams) {
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= beam_hyps_count)
+    return;
+
+  BeamHypotheses& beam_hyp = beam_hyps[index];
+  beam_hyp.beams_ = beams + index * num_beams;
+  beam_hyp.beams_count_ = num_beams;
+  beam_hyp.beams_used_ = 0;
+  beam_hyp.length_penalty_ = length_penalty;
+  beam_hyp.done_ = false;
+}
+
+// For counts that are typically far less than 256, this will round up the count to the next multiple of 32
+// If this winds up being >256 then it uses a block size of 256 and calculates the appropriate grid_size
+struct GridBlock32 {
+  GridBlock32(int count) {
+    block_size_ = (count + 31) & ~31;  // Round up to nearest multiple of 32
+    if (block_size_ > 256) {
+      grid_size_ = (block_size_ + 255) / 256;
+      block_size_ = 256;
+    }
+  }
+
+  int grid_size_{1};
+  int block_size_;
+};
+
+void LaunchInitializeBeamHypotheses(gsl::span<BeamHypotheses> beam_hyps,
+                                    float length_penalty,
+                                    gsl::span<HypothesisScore> beams,
+                                    int num_beams,
+                                    cudaStream_t stream) {
+  GridBlock32 gb32{static_cast<int>(beam_hyps.size())};
+  InitializeBeamHypotheses<<<gb32.grid_size_, gb32.block_size_, 0, stream>>>(beam_hyps.data(),
+                                                                             static_cast<int>(beam_hyps.size()),
+                                                                             length_penalty,
+                                                                             beams.data(),
+                                                                             num_beams);
+}
+
+__device__ void BeamHypotheses::Add(const int32_t* hypothesis, int hypothesis_length, float sum_logprobs) {
+  float score = sum_logprobs / pow(static_cast<float>(hypothesis_length), length_penalty_);
+
+  size_t index = beams_used_;
+  // If the array is full, don't add unless it's better than the worst element
+  if (index == beams_count_) {
+    if (score <= beams_[--index].score)
+      return;
+  } else
+    beams_used_++;
+
+  // Rotate existing elements over while the new element scores higher
+  for (; index > 0 && score > beams_[index - 1].score; index--)
+    beams_[index] = beams_[index - 1];
+
+  beams_[index] = HypothesisScore{hypothesis, hypothesis_length, score};
+}
+
+__device__ bool BeamHypotheses::CanImprove(float best_sum_logprobs, int current_length) const {
+  float current_score = best_sum_logprobs / pow(static_cast<float>(current_length), length_penalty_);
+  return beams_[beams_count_ - 1].score < current_score;
+}
+
+__device__ void BeamHypotheses::Output(
+    int top_k,
+    int max_length,
+    int pad_token_id,
+    int32_t* sequences,       // buffer of shape (num_return_sequences, max_length)
+    float* sequences_scores)  // buffer of shape (num_return_sequences) or empty
+{
+  // Copy the top_k beams into the sequences
+  for (int index = 0; index < top_k; index++) {
+    auto& item = beams_[index];
+    int32_t* target = sequences + index * max_length;
+
+    // Note that word_ids might be less than max_length.
+    for (int i = 0; i < item.hypothesis_length; i++)
+      target[i] = item.hypothesis[i];
+    // Pad remaining values with pad token id
+    for (int i = item.hypothesis_length; i < max_length; i++)
+      target[i] = pad_token_id;
+
+    if (sequences_scores)
+      sequences_scores[index] = item.score;
+  }
+}
+
+__global__ void BeamSearchScorer_Process(BeamScorerState& state_cpu,
+                                         BeamScorerState& state,
+                                         const int32_t* sequences_buffer,
+                                         int sequence_length,
+                                         BeamHypotheses* beam_hyps_,
+                                         float* next_beam_scores_,
+                                         int32_t* next_beam_tokens_,
+                                         int32_t* next_beam_indices_,
+                                         int32_t* hypothesis_buffer_,
+                                         const float* next_scores,
+                                         const int32_t* next_tokens,
+                                         const int32_t* next_indices) {
+  // Sequences shape is (batch_size * num_beams, total_sequence_length)
+  // It contains word ID of whole sequence generated so far.
+  // It is different from subgraph input_ids, which only need one word when past state is not empty.
+
+  int batch = threadIdx.x;
+  int batch_start = batch * state.num_beams_;
+
+  cuda::BeamHypotheses& beam_hyp = beam_hyps_[batch];
+  if (!beam_hyp.done_) {
+    // Next tokens for this sentence.
+    size_t beam_idx = 0;
+    size_t top_k = 2 * state.num_beams_;
+    for (size_t j = 0; j < top_k; j++) {
+      int32_t next_token = next_tokens[batch * top_k + j];
+      float next_score = next_scores[batch * top_k + j];
+      int32_t next_index = next_indices[batch * top_k + j];
+
+      int batch_beam_idx = batch_start + next_index;
+      // Add to generated hypotheses if end of sentence.
+      if ((state.eos_token_id_ >= 0) && (next_token == state.eos_token_id_)) {
+        bool is_beam_token_worse_than_top_num_beams = (j >= state.num_beams_);
+        if (is_beam_token_worse_than_top_num_beams) {
+          continue;
+        }
+
+        // Clone the sequence and append to buffer.
+        const int32_t* src = sequences_buffer + batch_beam_idx * state.max_length_;
+        auto clone = hypothesis_buffer_ + atomicAdd(&state.hypothesis_buffer_used_, sequence_length);
+
+        for (unsigned i = 0; i < sequence_length; i++)
+          clone[i] = src[i];
+        beam_hyp.Add(clone, sequence_length, next_score);
+      } else {
+        // Add next predicted token since it is not eos_token.
+        next_beam_scores_[batch_start + beam_idx] = next_score;
+        next_beam_tokens_[batch_start + beam_idx] = next_token;
+        next_beam_indices_[batch_start + beam_idx] = batch_beam_idx;
+        ++beam_idx;
+      }
+
+      // Once the beam for next step is full, don't add more tokens to it.
+      if (beam_idx == state.num_beams_)
+        break;
+    }
+
+    //  Check if we are done so that we can save a pad step if all(done)
+    if (beam_hyp.beams_used_ == state.num_beams_) {
+      if (state.early_stopping_ || !beam_hyp.CanImprove(*std::max_element(next_scores + batch_start, next_scores + batch_start + top_k), sequence_length)) {
+        beam_hyp.done_ = true;
+        if (atomicAdd(&state.not_done_count_, -1) == 1)
+          state_cpu.not_done_count_ = 0;  // Update the CPU side
+      }
+    }
+  } else {
+    // Pad the batch.
+    for (size_t beam_idx = 0; beam_idx < state.num_beams_; beam_idx++) {
+      next_beam_scores_[batch_start + beam_idx] = 0.0f;
+      next_beam_tokens_[batch_start + beam_idx] = state.pad_token_id_;
+      next_beam_indices_[batch_start + beam_idx] = 0;
+    }
+  }
+}
+
+void LaunchBeamSearchScorer_Process(BeamScorerState& state_cpu,
+                                    BeamScorerState& state,
+                                    gsl::span<const int32_t> sequences,
+                                    int sequence_length,
+                                    gsl::span<BeamHypotheses> beam_hyps,
+                                    gsl::span<float> next_beam_scores,
+                                    gsl::span<int32_t> next_beam_tokens,
+                                    gsl::span<int32_t> next_beam_indices,
+                                    gsl::span<int32_t> hypothesis_buffer,
+                                    gsl::span<const float> next_scores,
+                                    gsl::span<const int32_t> next_tokens,
+                                    gsl::span<const int32_t> next_indices,
+                                    cudaStream_t stream) {
+  BeamSearchScorer_Process<<<1, state_cpu.batch_size_, 0, stream>>>(state_cpu,
+                                                                    state,
+                                                                    sequences.data(),
+                                                                    sequence_length,
+                                                                    beam_hyps.data(),
+                                                                    next_beam_scores.data(),
+                                                                    next_beam_tokens.data(),
+                                                                    next_beam_indices.data(),
+                                                                    hypothesis_buffer.data(),
+                                                                    next_scores.data(),
+                                                                    next_tokens.data(),
+                                                                    next_indices.data());
+}
+
+__global__ void BeamSearchScorer_AppendNextTokenToSequences1(BeamScorerState& state,
+                                                             int batch_beam_size,
+                                                             const int32_t* sequences_buffer,
+                                                             int32_t* next_sequences,
+                                                             int sequence_length,
+                                                             int32_t* next_beam_indices_) {
+  int beam_idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (beam_idx >= batch_beam_size)
+    return;
+  int sequence_index = threadIdx.y + blockIdx.y * blockDim.y;
+  if (sequence_index >= sequence_length)
+    return;
+
+  int beam_index = next_beam_indices_[beam_idx];
+  next_sequences[beam_idx * state.max_length_ + sequence_index] = sequences_buffer[beam_index * state.max_length_ + sequence_index];
+}
+
+__global__ void BeamSearchScorer_AppendNextTokenToSequences2(BeamScorerState& state,
+                                                             int32_t* next_sequences,
+                                                             int sequence_length,
+                                                             const int32_t* next_beam_tokens_) {
+  int beam_idx = threadIdx.x;
+  next_sequences[beam_idx * state.max_length_ + sequence_length] = next_beam_tokens_[beam_idx];
+}
+
+void LaunchBeamSearchScorer_AppendNextTokenToSequences(BeamScorerState& state_cpu,
+                                                       BeamScorerState& state,
+                                                       gsl::span<const int32_t> sequences,
+                                                       gsl::span<int32_t> next_sequences,
+                                                       int sequence_length,
+                                                       gsl::span<int32_t> next_beam_tokens,
+                                                       gsl::span<int32_t> next_beam_indices,
+                                                       cudaStream_t stream) {
+  const int max_threads = 512;
+  int batch_beam_size = state_cpu.batch_size_ * state_cpu.num_beams_;
+  dim3 block_size;
+  dim3 grid_size;
+  if (batch_beam_size * sequence_length <= max_threads) {  // Can fit into a single thread block
+    block_size.x = batch_beam_size;
+    block_size.y = sequence_length;
+  } else {
+    if (sequence_length <= max_threads)  // Sequence length fits into thread block, but batch_beam_size does not, so chunk it
+    {
+      block_size.x = max_threads / sequence_length;
+      block_size.y = sequence_length;
+
+      grid_size.x = (batch_beam_size + block_size.x - 1) / block_size.x;
+    } else {  // Exceed max_threads in every dimension, so divide into max_thread chunks
+      block_size.x = 1;
+      block_size.y = max_threads;
+
+      grid_size.x = batch_beam_size;
+      grid_size.y = (sequence_length + block_size.y - 1) / block_size.y;
+    }
+  }
+  BeamSearchScorer_AppendNextTokenToSequences1<<<grid_size, block_size, 0, stream>>>(state,
+                                                                                     batch_beam_size,
+                                                                                     sequences.data(),
+                                                                                     next_sequences.data(),
+                                                                                     sequence_length,
+                                                                                     next_beam_indices.data());
+
+  BeamSearchScorer_AppendNextTokenToSequences2<<<1, batch_beam_size, 0, stream>>>(state,
+                                                                                  next_sequences.data(),
+                                                                                  sequence_length,
+                                                                                  next_beam_tokens.data());
+}
+
+__global__ void BeamSearchScorer_Finalize(BeamScorerState& state,
+                                          const int32_t* sequences_buffer,
+                                          int sequence_length,
+                                          BeamHypotheses* beam_hyps_,
+                                          const float* final_beam_scores,
+                                          int32_t* output,
+                                          float* sequence_scores) {
+  int batch_index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (batch_index >= state.batch_size_)
+    return;
+
+  // Finalize all open beam hypotheses and add to generated hypotheses.
+  cuda::BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
+  if (!beam_hyp.done_) {
+    for (size_t beam_index = 0; beam_index < state.num_beams_; beam_index++) {
+      size_t batch_beam_index = batch_index * state.num_beams_ + beam_index;
+      float final_score = final_beam_scores[batch_beam_index];
+      auto final_tokens = sequences_buffer + batch_beam_index * state.max_length_;
+      beam_hyp.Add(final_tokens, sequence_length, final_score);
+    }
+  }
+
+  // Select the best hypotheses according to number of sequences to return.
+  auto batch_output = output + batch_index * state.num_return_sequences_ * state.max_length_;
+
+  beam_hyp.Output(
+      state.num_return_sequences_,
+      state.max_length_,
+      state.pad_token_id_,
+      batch_output,
+      sequence_scores ? sequence_scores + batch_index * state.num_return_sequences_ : nullptr);
+}
+
+void LaunchBeamSearchScorer_Finalize(int batch_size,
+                                     BeamScorerState& state,
+                                     gsl::span<const int32_t> sequences,
+                                     int sequence_length,
+                                     gsl::span<BeamHypotheses> beam_hyps,
+                                     gsl::span<const float> final_beam_scores,
+                                     gsl::span<int32_t> output,
+                                     gsl::span<float> sequence_scores,
+                                     cudaStream_t stream) {
+  BeamSearchScorer_Finalize<<<1, batch_size, 0, stream>>>(state,
+                                                          sequences.data(),
+                                                          sequence_length,
+                                                          beam_hyps.data(),
+                                                          final_beam_scores.data(),
+                                                          output.data(),
+                                                          sequence_scores.data());
+}
 
 __global__ void AddProbsKernel(float* log_probs,
                                float* cum_log_probs,
@@ -728,7 +1037,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
 
   int numSM = props.multiProcessorCount;
   int maxThreads = props.maxThreadsPerBlock;
-  int warp_size = 32;  // at::cuda::warp_size();
+  int warp_size = props.warpSize;
   int requiredWarps = (vocab_size + warp_size - 1) / warp_size;
   int requiredThreads = std::min(maxThreads, requiredWarps * warp_size);
   int requiredShared = requiredThreads * sizeof(float);
@@ -863,7 +1172,7 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
   equiv_head_size = (equiv_head_size & 1) == 0 ? (equiv_head_size >> 1) : equiv_head_size;
 
   // Here we know head_size is smaller than max_thread_num_per_block
-  int tpb = std::max(32, equiv_head_size);
+  int tpb = std::max(GPU_WARP_SIZE_HOST, equiv_head_size);
 
   // round up tpb to power of 2
   --tpb;

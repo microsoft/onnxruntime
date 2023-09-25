@@ -24,8 +24,8 @@ class SVMRegressor final : public OpKernel, private SVMCommon {
 
  private:
   bool one_class_;
-  int64_t feature_count_;
-  int64_t vector_count_;
+  ptrdiff_t feature_count_;
+  ptrdiff_t vector_count_;
   std::vector<float> rho_;
   std::vector<float> coefficients_;
   std::vector<float> support_vectors_;

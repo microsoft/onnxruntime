@@ -2,14 +2,7 @@
 # Licensed under the MIT License.
 
 # Minimum CMake required
-if(WIN32)
-  # TODO: actually we need cmake 3.26+ on Windows but QNN EP's build machine doesn't have it
-  cmake_minimum_required(VERSION 3.25)
-elseif(onnxruntime_USE_ROCM)
-  cmake_minimum_required(VERSION 3.24)
-else()
-  cmake_minimum_required(VERSION 3.26)
-endif()
+cmake_minimum_required(VERSION 3.26)
 
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
@@ -21,16 +14,21 @@ cmake_policy(SET CMP0117 NEW)
 cmake_policy(SET CMP0104 OLD)
 
 # Enable Hot Reload for MSVC compilers if supported.
-if (POLICY CMP0141)
-  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.26.0")
-    cmake_policy(SET CMP0141 NEW)
-  else()
-    cmake_policy(SET CMP0141 OLD)
-  endif()
-endif()
+cmake_policy(SET CMP0141 NEW)
 
 # Project
 project(onnxruntime C CXX ASM)
+
+# Disable fast-math for Intel oneAPI compiler
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")
+    # Using icx-cl compiler driver with MSVC-like arguments
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fp:precise")
+  else()
+    # Using icpx compiler driver
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-fast-math")
+  endif()
+endif()
 
 # Needed for Java
 set(CMAKE_C_STANDARD 99)
@@ -61,8 +59,8 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
-  message(FATAL_ERROR  "GCC version must be greater than or equal to 9")
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 8)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 8")
 endif()
 
 # Options
@@ -91,7 +89,8 @@ option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to prov
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
-option(onnxruntime_USE_FLASH_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
+cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "NOT WIN32; onnxruntime_USE_CUDA" OFF)
+option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -224,6 +223,9 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+# Triton support
+option(onnxruntime_ENABLE_TRITON "Enable Triton" OFF)
+
 # composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
 option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
@@ -250,14 +252,21 @@ option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for thre
 # Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
 # when using python env
 if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
   set(onnxruntime_ENABLE_TRAINING_APIS ON)
-  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
   set(onnxruntime_ENABLE_ATEN ON)
+  set(onnxruntime_ENABLE_TRITON ON)
+  if (NOT APPLE)
+    set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
   set(onnxruntime_ENABLE_TRAINING_OPS ON)
+  if (onnxruntime_ENABLE_PYTHON AND NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "Standalone On-Device Training build is not supported with Python bindings! "
+    "Please use the --enable_training flag instead of the --enable_training_apis flag.")
+  endif()
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -277,7 +286,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   if (NOT CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
+    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030;gfx1100;gfx1101")
   endif()
 
   file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
@@ -298,7 +307,15 @@ if (onnxruntime_USE_ROCM)
   add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
 
   if (NOT onnxruntime_HIPIFY_PERL)
-    set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
+    find_path(HIPIFY_PERL_PATH
+      NAMES hipify-perl
+      HINTS
+      ${onnxruntime_ROCM_HOME}/bin
+      ${onnxruntime_ROCM_HOME}/hip/bin)
+    if (HIPIFY_PERL_PATH-NOTFOUND)
+      MESSAGE(FATAL_ERROR "hipify-perl not found")
+    endif()
+    set(onnxruntime_HIPIFY_PERL ${HIPIFY_PERL_PATH}/hipify-perl)
   endif()
 
   # replicate strategy used by pytorch to get ROCM_VERSION
@@ -416,9 +433,27 @@ if (NOT (UNIX AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND 
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
 endif()
 
+if (NOT (UNIX AND onnxruntime_USE_CUDA AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
+  if (onnxruntime_ENABLE_TRITON)
+    message(WARNING "onnxruntime_ENABLE_TRITON is turned OFF because it's designed to support CUDA training on Linux only currently.")
+  endif()
+  set(onnxruntime_ENABLE_TRITON OFF)
+endif()
+
 set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
+
+  # Python::Python is required for building unit test executables.
+  if (onnxruntime_BUILD_UNIT_TESTS)
+    set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
+  endif()
+endif()
+
+if (onnxruntime_ENABLE_TRITON)
+  # Need SetOutputMLValue.
+  set(onnxruntime_ENABLE_ATEN ON)
+  add_compile_definitions(ENABLE_TRITON)
 
   # Python::Python is required for building unit test executables.
   if (onnxruntime_BUILD_UNIT_TESTS)
@@ -524,6 +559,8 @@ if (WIN32)
     list(APPEND ORT_WARNING_FLAGS "/wd4251")
     # issued by thrust nonstandard extension used: nameless struct/union
     list(APPEND ORT_WARNING_FLAGS "/wd4201")
+    # structure was padded due to __declspec(align())
+    list(APPEND ORT_WARNING_FLAGS "/wd4324")
     # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
     if (onnxruntime_USE_OPENVINO)
        list(APPEND ORT_WARNING_FLAGS "/wd4800")
@@ -557,30 +594,31 @@ if (WIN32)
     endif()
 
 else()
+  check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
+  check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
+  check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
+  check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
+  check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
+  check_cxx_compiler_flag(-Wdeprecated-anon-enum-enum-conversion HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
+  check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
+  check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
+  check_cxx_compiler_flag(-Wdeprecated-declarations HAS_DEPRECATED_DECLARATIONS)
+  check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
+  check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
+  check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
+  check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
+  check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
+  check_cxx_compiler_flag(-Wnonnull-compare HAS_NONNULL_COMPARE)
+  check_cxx_compiler_flag(-Wparentheses HAS_PARENTHESES)
+  check_cxx_compiler_flag(-Wshorten-64-to-32 HAS_SHORTEN_64_TO_32)
+  check_cxx_compiler_flag(-Wstrict-aliasing HAS_STRICT_ALIASING)
+  check_nvcc_compiler_flag(-Wstrict-aliasing NVCC_HAS_STRICT_ALIASING)
+  check_cxx_compiler_flag(-Wtautological-pointer-compare HAS_TAUTOLOGICAL_POINTER_COMPARE)
+  check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
   check_cxx_compiler_flag(-Wunused-but-set-parameter HAS_UNUSED_BUT_SET_PARAMETER)
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
-  check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
-  check_cxx_compiler_flag(-Wparentheses HAS_PARENTHESES)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
-  check_cxx_compiler_flag(-Wnonnull-compare HAS_NONNULL_COMPARE)
-  check_cxx_compiler_flag(-Wtautological-pointer-compare HAS_TAUTOLOGICAL_POINTER_COMPARE)
-  check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
-  check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
-  check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
-  check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
-  check_cxx_compiler_flag(-Wdeprecated-declarations HAS_DEPRECATED_DECLARATIONS)
-  check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
-  check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
-  check_cxx_compiler_flag(-Wstrict-aliasing HAS_STRICT_ALIASING)
-  check_nvcc_compiler_flag(-Wstrict-aliasing NVCC_HAS_STRICT_ALIASING)
-  check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
-  check_cxx_compiler_flag(-Wdeprecated-anon-enum-enum-conversion HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
-  check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
-  check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
-  check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
-  check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
-  check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
   check_function_exists(reallocarray HAS_REALLOCARRAY)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
@@ -614,6 +652,11 @@ else()
       target_compile_options(libprotobuf-lite PRIVATE "-Wno-enum-constexpr-conversion")
     endif()
   endif()
+
+  # enable warning(s) that may not be on by default
+  if (HAS_SHORTEN_64_TO_32)
+    list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)
+  endif()
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
@@ -631,13 +674,16 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_DISABLE_CONTRIB_OPS)
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
+    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
   endif()
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.6)
     message( STATUS "Turn off flash attention since CUDA compiler version < 11.6")
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
+    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
   endif()
 else()
   set(onnxruntime_USE_FLASH_ATTENTION OFF)
+  set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -649,6 +695,11 @@ if (onnxruntime_USE_CUDA)
       message( STATUS "Enable flash attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
+    endif()
+    if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
+      message( STATUS "Enable memory efficient attention for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
+      list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=1)
     endif()
 
 endif()
@@ -791,7 +842,7 @@ function(onnxruntime_set_compile_flags target_name)
     if(UNIX)
       target_compile_definitions(${target_name} PRIVATE PLATFORM_POSIX)
     endif()
-    target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
+    target_compile_definitions(${target_name} PRIVATE EIGEN_USE_THREADS)
     if (onnxruntime_DISABLE_CONTRIB_OPS)
       target_compile_definitions(${target_name} PRIVATE DISABLE_CONTRIB_OPS)
     endif()
@@ -801,17 +852,14 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
 
     if (onnxruntime_DISABLE_SPARSE_TENSORS)
-      message(STATUS "DISABLE_SPARSE_TENSORS=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_SPARSE_TENSORS)
     endif()
 
     if (onnxruntime_DISABLE_OPTIONAL_TYPE)
-      message(STATUS "DISABLE_OPTIONAL_TYPE=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_OPTIONAL_TYPE)
     endif()
 
     if (onnxruntime_DISABLE_FLOAT8_TYPES)
-      message(STATUS "DISABLE_FLOAT8_TYPES=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT8_TYPES)
     endif()
 
@@ -822,6 +870,7 @@ function(onnxruntime_set_compile_flags target_name)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")
+      target_compile_definitions(${target_name} PRIVATE -DDISABLE_CUSPARSE_DEPRECATED)
     endif()
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
@@ -846,9 +895,9 @@ function(onnxruntime_set_compile_flags target_name)
           endforeach()
         endif()
       endforeach()
-      target_compile_definitions(${target_name} PUBLIC -DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES -D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
+      target_compile_definitions(${target_name} PRIVATE -DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES -D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
       if (onnxruntime_ENABLE_MEMLEAK_CHECKER)
-        target_compile_definitions(${target_name} PUBLIC -DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+        target_compile_definitions(${target_name} PRIVATE -DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
       endif()
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<COMPILE_LANGUAGE:CXX,C>:/utf-8>")
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<COMPILE_LANGUAGE:CXX,C>:/sdl>")
@@ -908,6 +957,7 @@ function(onnxruntime_set_compile_flags target_name)
 
       # float16.h:90:12: error: ‘tmp’ is used uninitialized
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
+      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-deprecated-copy)
 
       # some #pragma unroll will fail, do not treat them as error
       # #warning must not be treated as error
@@ -941,7 +991,7 @@ function(onnxruntime_configure_target target_name)
     set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
   endif()
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${abseil_cpp_SOURCE_DIR})
-  if (onnxruntime_ENABLE_TRAINING_APIS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(${target_name} PRIVATE ${ORTTRAINING_ROOT})
   endif()
   if (onnxruntime_ENABLE_LTO)
@@ -983,6 +1033,15 @@ function(onnxruntime_add_shared_library_module target_name)
     #On Windows, this target shouldn't generate an import lib, but I don't know how to disable it.
     add_library(${target_name} MODULE ${ARGN})
   endif()
+
+  onnxruntime_configure_target(${target_name})
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
+    target_link_options(${target_name} PRIVATE /SAFESEH)
+  endif()
+endfunction()
+
+function(onnxruntime_add_object_library target_name)
+  add_library(${target_name} OBJECT ${ARGN})
 
   onnxruntime_configure_target(${target_name})
   if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
@@ -1191,9 +1250,12 @@ if (onnxruntime_USE_OPENVINO)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2023.0")
     set(OPENVINO_VERSION "2023.0")
     add_definitions(-DOPENVINO_2023_0=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2023.1")
+    set(OPENVINO_VERSION "2023.1")
+    add_definitions(-DOPENVINO_2023_1=1)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
-    set(OPENVINO_VERSION "2023.0")
-    add_definitions(-DOPENVINO_2023_0=1)
+    set(OPENVINO_VERSION "2023.1")
+    add_definitions(-DOPENVINO_2023_1=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1281,9 +1343,11 @@ set(ORT_BUILD_INFO "ORT Build Info: ")
 find_package(Git)
 if (Git_FOUND)
   execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%h
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       OUTPUT_VARIABLE ORT_GIT_COMMIT)
   string(STRIP "${ORT_GIT_COMMIT}" ORT_GIT_COMMIT)
   execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       OUTPUT_VARIABLE ORT_GIT_BRANCH)
   string(STRIP "${ORT_GIT_BRANCH}" ORT_GIT_BRANCH)
   string(APPEND ORT_BUILD_INFO "git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}, ")
@@ -1291,7 +1355,8 @@ endif()
 string(APPEND ORT_BUILD_INFO "build type=${CMAKE_BUILD_TYPE}")
 string(APPEND ORT_BUILD_INFO ", cmake cxx flags: ${CMAKE_CXX_FLAGS}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
-if (WIN32)
+get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if (onnxruntime_GENERATOR_IS_MULTI_CONFIG)
   configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/Debug/requirements.txt)
   configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/Release/requirements.txt)
   configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/requirements.txt)
@@ -1440,6 +1505,7 @@ if (UNIX AND onnxruntime_USE_MPI)
     find_path(NCCL_INCLUDE_DIR
       NAMES ${NCCL_LIBNAME}.h
       HINTS
+      ${onnxruntime_NCCL_HOME}/include/rccl
       ${onnxruntime_NCCL_HOME}/include
       $ENV{CUDA_ROOT}/include)
 
@@ -1676,4 +1742,32 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/protobuf/cmake
     COMMENT "Installing protobuf"
   )
+endif()
+
+if(TARGET onnxruntime)
+# Install
+  include(GNUInstallDirs)
+  include(CMakePackageConfigHelpers)
+  set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
+  string(APPEND PROJECT_CONFIG_CONTENT
+        "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")")
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_CONFIG_CONTENT})
+  install(EXPORT ${PROJECT_NAME}Targets
+    NAMESPACE ${PROJECT_NAME}::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+# Create config for find_package()
+  configure_package_config_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_NAME}Config.cmake
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+
+  write_basic_package_version_file(
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    VERSION ${ORT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+
+  install(
+    FILES
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 endif()

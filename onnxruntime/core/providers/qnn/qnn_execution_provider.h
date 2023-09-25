@@ -54,9 +54,6 @@ class QNNExecutionProvider : public IExecutionProvider {
                              std::vector<NodeComputeInfo>& node_compute_funcs,
                              const logging::Logger& logger);
 
-  bool IsContextCacheFileExists(const onnxruntime::PathString& model_pathstring,
-                                onnxruntime::PathString& context_cache_pathstring) const;
-
   void ParseHtpPerformanceMode(std::string htp_performance_mode_string);
 
  private:

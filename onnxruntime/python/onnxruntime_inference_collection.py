@@ -20,8 +20,12 @@ if typing.TYPE_CHECKING:
 def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
     if device_type == "cuda":
         return C.OrtDevice.cuda()
+    elif device_type == "cann":
+        return C.OrtDevice.cann()
     elif device_type == "cpu":
         return C.OrtDevice.cpu()
+    elif device_type == "dml":
+        return C.OrtDevice.dml()
     elif device_type == "ort":
         return C.get_ort_device(device_index).device_type()
     else:
@@ -29,7 +33,7 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
 
 
 def check_and_normalize_provider_args(
-    providers: Sequence[str, tuple[str, dict[Any, Any]]] | None,
+    providers: Sequence[str | tuple[str, dict[Any, Any]]] | None,
     provider_options: Sequence[dict[Any, Any]] | None,
     available_provider_names: Sequence[str],
 ):
@@ -186,7 +190,6 @@ class Session:
         self._enable_fallback = True
 
     def _validate_input(self, feed_input_names):
-        # import pdb; pdb.set_trace()
         missing_input_names = []
         for input in self._inputs_meta:
             if input.name not in feed_input_names and not input.type.startswith("optional"):
@@ -217,13 +220,43 @@ class Session:
             return self._sess.run(output_names, input_feed, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"EP Error: {err!s} using {self._providers}")
                 print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
                 return self._sess.run(output_names, input_feed, run_options)
             raise
+
+    def run_async(self, output_names, input_feed, callback, user_data, run_options=None):
+        """
+        Compute the predictions asynchronously in a separate cxx thread from ort intra-op threadpool.
+
+        :param output_names: name of the outputs
+        :param input_feed: dictionary ``{ input_name: input_value }``
+        :param callback: python function that accept array of results, and a status string on error.
+            The callback will be invoked by a cxx thread from ort intra-op threadpool.
+        :param run_options: See :class:`onnxruntime.RunOptions`.
+
+        ::
+            class MyData:
+                def __init__(self):
+                    # ...
+                def save_results(self, results):
+                    # ...
+
+            def callback(results: np.ndarray, user_data: MyData, err: str) -> None:
+              if err:
+                 print (err)
+              else:
+                # save results to user_data
+
+            sess.run_async([output_name], {input_name: x}, callback)
+        """
+        self._validate_input(list(input_feed.keys()))
+        if not output_names:
+            output_names = [output.name for output in self._outputs_meta]
+        return self._sess.run_async(output_names, input_feed, callback, user_data, run_options)
 
     def run_with_ort_values(self, output_names, input_dict_ort_values, run_options=None):
         """
@@ -258,7 +291,7 @@ class Session:
             return invoke(self._sess, output_names, input_dict_ort_values, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"EP Error: {err!s} using {self._providers}")
                 print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
@@ -326,7 +359,7 @@ class InferenceSession(Session):
         self,
         path_or_bytes: str | bytes | os.PathLike,
         sess_options: Sequence[onnxruntime.SessionOptions] | None = None,
-        providers: Sequence[str, tuple[str, dict[Any, Any]]] | None = None,
+        providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
         **kwargs,
     ) -> None:
@@ -387,8 +420,10 @@ class InferenceSession(Session):
         except (ValueError, RuntimeError) as e:
             if self._enable_fallback:
                 try:
+                    print("*************** EP Error ***************")
                     print(f"EP Error {e} when using {providers}")
                     print(f"Falling back to {self._fallback_providers} and retrying.")
+                    print("****************************************")
                     self._create_inference_session(self._fallback_providers, None)
                     # Fallback only once.
                     self.disable_fallback()
@@ -401,11 +436,26 @@ class InferenceSession(Session):
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
-        # Tensorrt can fall back to CUDA. All others fall back to CPU.
+        # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
         if "TensorrtExecutionProvider" in available_providers:
-            self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            if any(
+                provider == "CUDAExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
+                for provider in providers
+            ):
+                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
+        # MIGraphX can fall back to ROCM if it's explicitly assigned. All others fall back to CPU.
         elif "MIGraphXExecutionProvider" in available_providers:
-            self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+            if any(
+                provider == "ROCMExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "ROCMExecutionProvider")
+                for provider in providers
+            ):
+                self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
         else:
             self._fallback_providers = ["CPUExecutionProvider"]
 
@@ -490,7 +540,7 @@ class IOBinding:
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
         """
         :param name: input name
-        :param device_type: e.g. cpu, cuda
+        :param device_type: e.g. cpu, cuda, cann
         :param device_id: device id, e.g. 0
         :param element_type: input element type
         :param shape: input shape
@@ -529,7 +579,7 @@ class IOBinding:
     ):
         """
         :param name: output name
-        :param device_type: e.g. cpu, cuda, cpu by default
+        :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         :param element_type: output element type
         :param shape: output shape
@@ -629,7 +679,7 @@ class OrtValue:
         A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
 
         :param numpy_obj: The Numpy object to construct the OrtValue from
-        :param device_type: e.g. cpu, cuda, cpu by default
+        :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         """
         # Hold a reference to the numpy object (if device_type is 'cpu') as the OrtValue
@@ -654,7 +704,7 @@ class OrtValue:
 
         :param shape: List of integers indicating the shape of the OrtValue
         :param element_type: The data type of the elements in the OrtValue (numpy type)
-        :param device_type: e.g. cpu, cuda, cpu by default
+        :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         """
         if shape is None or element_type is None:
@@ -694,7 +744,7 @@ class OrtValue:
 
     def device_name(self):
         """
-        Returns the name of the device where the OrtValue's data buffer resides e.g. cpu, cuda
+        Returns the name of the device where the OrtValue's data buffer resides e.g. cpu, cuda, cann
         """
         return self._ortvalue.device_name().lower()
 

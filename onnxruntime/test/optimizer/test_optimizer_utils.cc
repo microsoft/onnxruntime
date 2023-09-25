@@ -31,7 +31,7 @@ void RandomFillHalfVector(const TensorShapeVector& shape, std::vector<MLFloat16>
   std::vector<float> data_float(TensorShape(shape).Size());
   RandomFillFloatVector(shape, data_float);
   std::transform(data_float.begin(), data_float.end(), data.begin(),
-                 [](float value) { return MLFloat16(math::floatToHalf(value)); });
+                 [](float value) { return MLFloat16(value); });
 }
 
 void RandomMasks(int64_t batch, int64_t sequence_length, std::vector<int64_t>& data) {

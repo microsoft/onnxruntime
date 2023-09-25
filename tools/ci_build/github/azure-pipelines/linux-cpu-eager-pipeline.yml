@@ -1,10 +1,39 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 resources:
   repositories:
   - repository: manylinux
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 jobs:
 # This pipeline builds the latest PyTorch commit from source
@@ -69,7 +98,8 @@ jobs:
             bash -c "
               export PYTHONPATH=/build/Release && \
               /opt/python/cp39-cp39/bin/python3.9 -m pip install /build/Release/dist/*.whl && \
-              /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort.py"
+              /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort.py && \
+              cd /build/Release && /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort_custom_ops.py"
       workingDirectory: $(Build.SourcesDirectory)
       condition: succeededOrFailed()
 

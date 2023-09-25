@@ -58,10 +58,10 @@ class AttentionCPUBase : public AttentionBase {
     auto attention_probs = allocator->Alloc(bytes);
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
-    bool has_unidirectional = (is_unidirectional_ && sequence_length > 1);
+    bool causal = (is_unidirectional_ && sequence_length > 1);
 
     void* mask_data = nullptr;
-    if (mask_index != nullptr || has_unidirectional) {
+    if (mask_index != nullptr || causal) {
       size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * total_sequence_length * sizeof(T);
       mask_data = allocator->Alloc(mask_data_bytes);
       memset(mask_data, 0, mask_data_bytes);
@@ -85,7 +85,7 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
-                             mask_index_data, mask_index_dims, static_cast<T*>(mask_data), has_unidirectional,
+                             mask_index_data, mask_index_dims, static_cast<T*>(mask_data), causal,
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data,
                              present_data, present_key_data, tp, relative_position_bias_data);
@@ -116,7 +116,7 @@ class AttentionCPUBase : public AttentionBase {
                              const int32_t* mask_index,                 // mask index. nullptr if no mask.
                              gsl::span<const int64_t> mask_index_dims,  // mask index shape
                              T* mask_data,                              // buffer for mask data.
-                             bool has_unidirectional,                   // has unidirectional mask
+                             bool causal,                               // has causal (unidirectional) mask
                              int batch_size,                            // batch size of self-attention
                              int sequence_length,                       // sequence length of self-attention (S)
                              int kv_sequence_length,                    // sequence length of cross-attention (L)
@@ -139,7 +139,7 @@ class AttentionCPUBase : public AttentionBase {
       // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
       if (mask_data != nullptr) {
         PrepareMask(mask_index, mask_index_dims, mask_data,
-                    has_unidirectional, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
+                    causal, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
       } else {  // no any mask
         const int memset_loop_len = batch_size * num_heads_;
         const double memset_cost = static_cast<double>(sequence_length) * total_sequence_length;
@@ -190,16 +190,6 @@ class AttentionCPUBase : public AttentionBase {
           math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
                                     Q + q_input_chunk_length * i, k, 1.0,
                                     output, nullptr);
-
-          // Fix unidirectional mask to be parity with huggingface implementation.
-          if (has_unidirectional && mask_data != nullptr) {
-            for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
-              for (int m_i = past_sequence_length + s_i + 1; m_i < total_sequence_length; m_i++) {
-                int j = s_i * total_sequence_length + m_i;
-                output[j] = mask_data[mask_offset + j];
-              }
-            }
-          }
 
           if (relative_position_bias_data != nullptr) {
             for (int j = 0; j < sequence_length * total_sequence_length; j++) {

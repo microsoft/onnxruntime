@@ -233,7 +233,7 @@ COMPUTE_INTERNAL_FL16_32(MLFloat16)
 
 // TODO: enable BFLOAT16 in another PR.
 /*
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA)
 COMPUTE_INTERNAL_FL16_32(BFloat16)
 #endif
 */

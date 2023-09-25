@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include "nccl_kernels.h"
 #include "mpi_include.h"
 #include "core/providers/cuda/tensor/transpose.h"
+#include "core/providers/cuda/cuda_check_memory.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -12,6 +14,9 @@ namespace cuda {
 
 static ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   if (type == DataTypeImpl::GetType<uint8_t>()) {
+    return ncclUint8;
+  } else if (type == DataTypeImpl::GetType<bool>()) {
+    // CUDA bool is 8-bit large.
     return ncclUint8;
   } else if (type == DataTypeImpl::GetType<int8_t>()) {
     return ncclInt8;
@@ -195,6 +200,9 @@ Status AllToAll::ComputeInternal(OpKernelContext* context) const {
 
   char* output_data = static_cast<char*>(context->Output(0, out_shape)->MutableDataRaw());
 
+  CheckIfMemoryOnCurrentGpuDevice(input_data);
+  CheckIfMemoryOnCurrentGpuDevice(output_data);
+
   NCCL_RETURN_IF_ERROR(ncclGroupStart());
   for (int32_t r = 0; r < group_size_; r++) {
     NCCL_RETURN_IF_ERROR(ncclSend(input_data, rank_stride, dtype, r, comm, Stream(context)));
@@ -225,7 +233,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .AllocateInputsContiguously()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     AllGather);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -234,9 +242,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     AllToAll);
 
 }  // namespace cuda

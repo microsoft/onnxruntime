@@ -23,7 +23,6 @@ function(AddTest)
   else()
     onnxruntime_add_executable(${_UT_TARGET} ${_UT_SOURCES})
   endif()
-
   if (_UT_DEPENDS)
     list(REMOVE_DUPLICATES _UT_DEPENDS)
   endif(_UT_DEPENDS)
@@ -40,6 +39,9 @@ function(AddTest)
   endif()
   if (MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "/wd6330")
+    #Abseil has a lot of C4127/C4324 warnings. 
+    target_compile_options(${_UT_TARGET} PRIVATE "/wd4127")
+    target_compile_options(${_UT_TARGET} PRIVATE "/wd4324")
   endif()
 
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -61,7 +63,7 @@ function(AddTest)
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
 
-  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface flatbuffers::flatbuffers)
+  onnxruntime_add_include_to_target(${_UT_TARGET} date::date flatbuffers::flatbuffers)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
     target_include_directories(${_UT_TARGET} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDNN_HOME}/include)
@@ -147,7 +149,7 @@ function(AddTest)
     else()
       target_link_libraries(${_UT_TARGET}_xc PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
     endif()
-    onnxruntime_add_include_to_target(${_UT_TARGET}_xc date_interface flatbuffers::flatbuffers)
+    onnxruntime_add_include_to_target(${_UT_TARGET}_xc date::date flatbuffers::flatbuffers)
     target_include_directories(${_UT_TARGET}_xc PRIVATE ${TEST_INC_DIR})
     get_target_property(${_UT_TARGET}_DEFS ${_UT_TARGET} COMPILE_DEFINITIONS)
     target_compile_definitions(${_UT_TARGET}_xc PRIVATE ${_UT_TARGET}_DEFS)
@@ -202,11 +204,15 @@ function(AddTest)
           WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
         )
       endif()
+      # Set test timeout to 3 hours.
+      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
     else()
       add_test(NAME ${_UT_TARGET}
         COMMAND ${_UT_TARGET} ${TEST_ARGS}
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
       )
+      # Set test timeout to 3 hours.
+      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
     endif()
   endif()
 endfunction(AddTest)
@@ -280,22 +286,33 @@ if((NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
 endif()
 
 file(GLOB onnxruntime_test_training_src
+  "${ORTTRAINING_SOURCE_DIR}/test/model/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/model/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/graph/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/graph/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/session/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/session/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/framework/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  file(GLOB onnxruntime_test_training_api_src
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.h"
-    )
+# TODO (baijumeswani): Remove the minimal build check here.
+#                      The training api tests should be runnable even on a minimal build.
+#                      This requires converting all the *.onnx files to ort format.
+if (NOT onnxruntime_MINIMAL_BUILD)
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    file(GLOB onnxruntime_test_training_api_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.h"
+      )
+  endif()
 endif()
 
 if(WIN32)
@@ -351,7 +368,7 @@ endif()
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
 if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
-  file(GLOB_RECURSE onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
+  file(GLOB onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cuda/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
@@ -364,26 +381,29 @@ if (onnxruntime_USE_CANN)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cann_src})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
-    )
-
-  if (NOT onnxruntime_ENABLE_TRAINING)
-    list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
-      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+# Disable training ops test for minimal build as a lot of these depend on loading an onnx model.
+if (NOT onnxruntime_MINIMAL_BUILD)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
+    file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
       )
-  endif()
 
-  list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
+    if (NOT onnxruntime_ENABLE_TRAINING)
+      list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
+        "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+        )
+    endif()
 
-  if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
-    file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
-      )
-    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
+    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
+
+    if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
+      file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
+        "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
+        )
+      list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
+    endif()
   endif()
 endif()
 
@@ -417,7 +437,6 @@ endif()
 
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${TEST_SRC_DIR}/global_thread_pools")
-set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${TEST_SRC_DIR}/api_tests_without_env")
 set (ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR "${TEST_SRC_DIR}/custom_op_registration")
 set (ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR "${TEST_SRC_DIR}/logging_apis")
 
@@ -446,9 +465,6 @@ set (onnxruntime_global_thread_pools_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_main.cc
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_inference.cc)
-
-set (onnxruntime_api_tests_without_env_SRC
-          ${ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR}/test_apis_without_env.cc)
 
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
@@ -706,6 +722,7 @@ add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE
         ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
+source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
 set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
 file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
@@ -745,6 +762,15 @@ endif()
 if (onnxruntime_USE_CUDA)
   onnxruntime_add_static_library(onnxruntime_test_cuda_ops_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
   list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_ops_lib)
+  file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/*"
+  )
+  # onnxruntime_providers_cuda_ut is only for unittests.
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
+  onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
+  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
@@ -815,7 +841,15 @@ else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
 
+# TODO fix shorten-64-to-32 warnings
+# there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
+if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  target_compile_options(onnxruntime_test_all PRIVATE -Wno-error=shorten-64-to-32)
+endif()
+
 if (UNIX AND onnxruntime_USE_TENSORRT)
+    # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+    # simply ignore them for TensorRT EP build
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
 endif()
 
@@ -878,12 +912,6 @@ onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.pr
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
-if(WIN32)
-  target_compile_options(onnx_test_data_proto PRIVATE "/wd4100" "/wd4125" "/wd4127" "/wd4267" "/wd4456" "/wd4800" "/wd6011" "/wd6387" "/wd28182")
-else()
-  #Once we upgrade protobuf to 3.17.3+, we can remove this
-  target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
-endif()
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
 target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -1223,6 +1251,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_providers_snpe)
       endif()
     endif()
+    if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      list(APPEND onnxruntime_shared_lib_test_LIBS cpuinfo)
+    endif()
     if (onnxruntime_USE_CUDA)
       list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_test_cuda_ops_lib cudart)
     endif()
@@ -1256,21 +1287,17 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         $<TARGET_FILE_DIR:onnxruntime_shared_lib_test>/testdata)
     endif()
 
+    if (UNIX AND onnxruntime_USE_TENSORRT)
+        # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+        # simply ignore them for TensorRT EP build
+        set_property(TARGET onnxruntime_shared_lib_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+    endif()
+
     # test inference using global threadpools
     if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS" AND NOT onnxruntime_MINIMAL_BUILD)
       AddTest(DYN
               TARGET onnxruntime_global_thread_pools_test
               SOURCES ${onnxruntime_global_thread_pools_test_SRC}
-              LIBS ${onnxruntime_shared_lib_test_LIBS}
-              DEPENDS ${all_dependencies}
-      )
-    endif()
-
-  # A separate test is needed to test the APIs that don't rely on the env being created first.
-    if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS")
-      AddTest(DYN
-              TARGET onnxruntime_api_tests_without_env
-              SOURCES ${onnxruntime_api_tests_without_env_SRC}
               LIBS ${onnxruntime_shared_lib_test_LIBS}
               DEPENDS ${all_dependencies}
       )
@@ -1286,7 +1313,14 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
         "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
         "${TEST_SRC_DIR}/framework/test_utils.cc"
-        "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
+        "${TEST_SRC_DIR}/providers/base_tester.h"
+        "${TEST_SRC_DIR}/providers/base_tester.cc"
+        "${TEST_SRC_DIR}/providers/checkers.h"
+        "${TEST_SRC_DIR}/providers/checkers.cc"
+        "${TEST_SRC_DIR}/providers/op_tester.h"
+        "${TEST_SRC_DIR}/providers/op_tester.cc"
+        "${TEST_SRC_DIR}/providers/provider_test_utils.h"
+        "${TEST_SRC_DIR}/providers/tester_types.h"
         ${onnxruntime_unittest_main_src}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS ${all_dependencies}
@@ -1425,19 +1459,40 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+
+  set(custom_op_src_patterns
+    "${TEST_SRC_DIR}/testdata/custom_op_library/*.h"
+    "${TEST_SRC_DIR}/testdata/custom_op_library/*.cc"
+    "${TEST_SRC_DIR}/testdata/custom_op_library/cpu/cpu_ops.*"
+  )
+
+  set(custom_op_lib_include ${REPO_ROOT}/include)
+  set(custom_op_lib_option)
+  set(custom_op_lib_link ${GSL_TARGET})
+
   if (onnxruntime_USE_CUDA)
-    onnxruntime_add_shared_library(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
-                                                     ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
-    target_include_directories(custom_op_library PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    list(APPEND custom_op_src_patterns
+        "${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu"
+        "${TEST_SRC_DIR}/testdata/custom_op_library/cuda/cuda_ops.*")
+    list(APPEND custom_op_lib_include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDNN_HOME}/include)
     if (HAS_QSPECTRE)
-      target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
+      list(APPEND custom_op_lib_option "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
     endif()
-  else()
-    onnxruntime_add_shared_library(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
   endif()
 
-  target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
-  target_link_libraries(custom_op_library PRIVATE ${GSL_TARGET})
+  if (onnxruntime_USE_ROCM)
+    list(APPEND custom_op_src_patterns
+        "${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/rocm_ops.hip"
+        "${TEST_SRC_DIR}/testdata/custom_op_library/rocm/rocm_ops.*")
+    list(APPEND custom_op_lib_include ${onnxruntime_ROCM_HOME}/include)
+    list(APPEND custom_op_lib_option "-D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1")
+  endif()
+
+  file(GLOB custom_op_src ${custom_op_src_patterns})
+  onnxruntime_add_shared_library(custom_op_library ${custom_op_src})
+  target_compile_options(custom_op_library PRIVATE ${custom_op_lib_option})
+  target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include ${custom_op_lib_include})
+  target_link_libraries(custom_op_library PRIVATE ${GSL_TARGET} ${custom_op_lib_link})
 
   if(UNIX)
     if (APPLE)
@@ -1497,6 +1552,12 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             ${ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR}/test_registercustomops.cc)
 
     set(onnxruntime_customopregistration_test_LIBS custom_op_library onnxruntime_common onnxruntime_test_utils)
+    if (NOT WIN32)
+      list(APPEND onnxruntime_customopregistration_test_LIBS nsync::nsync_cpp)
+    endif()
+    if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      list(APPEND onnxruntime_customopregistration_test_LIBS cpuinfo)
+    endif()
     if (onnxruntime_USE_TENSORRT)
       list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
@@ -1514,6 +1575,13 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         ${TEST_DATA_SRC}
         $<TARGET_FILE_DIR:onnxruntime_customopregistration_test>/testdata)
     endif()
+
+    if (UNIX AND onnxruntime_USE_TENSORRT)
+        # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+        # simply ignore them for TensorRT EP build
+        set_property(TARGET onnxruntime_customopregistration_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+    endif()
+
   endif()
 endif()
 

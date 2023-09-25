@@ -32,7 +32,7 @@ class SVMCommon {
 
   template <typename T>
   void batched_kernel_dot(const gsl::span<const T> a, const gsl::span<const T> b,
-                          int64_t m, int64_t n, int64_t k,
+                          ptrdiff_t m, ptrdiff_t n, ptrdiff_t k,
                           float scalar_C,
                           const gsl::span<T> out,
                           concurrency::ThreadPool* threadpool) const {
@@ -115,9 +115,9 @@ class SVMClassifier final : public OpKernel, private SVMCommon {
   Status ComputeImpl(OpKernelContext& ctx, gsl::span<const float> x_data, const TensorShape& x_shape) const;
 
   bool weights_are_all_positive_;
-  int64_t feature_count_;
-  int64_t class_count_;
-  int64_t vector_count_;
+  ptrdiff_t feature_count_;
+  ptrdiff_t class_count_;
+  ptrdiff_t vector_count_;
   bool using_strings_;
   std::vector<int64_t> vectors_per_class_;
   std::vector<int64_t> starting_vector_;

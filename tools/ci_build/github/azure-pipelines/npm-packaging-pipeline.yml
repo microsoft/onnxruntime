@@ -34,7 +34,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
 - template: templates/web-ci.yml
@@ -49,9 +49,9 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     BuildConfig: 'Release'
-    PoolName: 'aiinfra-Linux-CPU'
+    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
     PackageName: 'onnxruntime-react-native'
-    BuildAndroidAARStageDependsOn: 'Extract_commit'
+    BuildAndroidAARStageDependsOn: 'Precheck_and_extract_commit'
 
 - stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:
@@ -73,7 +73,8 @@ stages:
           project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
           definition: '940'
           specificBuildWithTriggering: true
-          buildVersionToDownload: 'latest'
+          buildVersionToDownload: 'latestFromBranch'
+          branchName: 'refs/heads/main'
           artifactName: 'NPM_packages'
           targetPath: '$(Pipeline.Workspace)'
         displayName: 'Download onnxruntime-node Pipeline Artifact'
