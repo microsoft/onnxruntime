@@ -24,8 +24,8 @@ import {parseSoftmaxAttributes, softmax} from './ops/softmax';
 import {parseSplitAttributes, split} from './ops/split';
 import {tile} from './ops/tile';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
-import {where} from './ops/where';
 import * as unaryOps from './ops/unary-op';
+import {where} from './ops/where';
 import {ComputeContext} from './types';
 
 export type RunFunction = (context: ComputeContext, attribute?: unknown) => void;
