@@ -54,11 +54,11 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 	```
 	Memory Optimizer     :   ON    :   User config: Reshape+Where+BiasSoftmax+:1:-1, probe level: 1, available configs:
 	                                   Config                                                      Freq    Max Saving(B)   Saving Symbolic(Bytes)
-	- Plan 1             :   ON    :   Reshape+Where+BiasSoftmax+:1:-1                             5       671,088,640     640.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
+	- Plan 1             :   OFF   :   Reshape+Where+BiasSoftmax+:1:-1                             5       671,088,640     640.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
 	- Plan 2             :   OFF   :   Cast+:1:-1                                                  6       402,587,648     inputs_input_ids_dim0*inputs_input_ids_dim1*(384.0*inputs_input_ids_dim1 - 64.0)
 	- Plan 3             :   OFF   :   Reshape+Where+:1:-1                                         1       134,217,728     128.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
 	- Plan 4             :   OFF   :   BiasSoftmax+:1:-1                                           1       134,086,656     128.0*inputs_input_ids_dim0*inputs_input_ids_dim1*(inputs_input_ids_dim1 - 1)
-	- Plan 5             :   OFF   :   BiasGelu+:1:-1                                              6       125,808,640     inputs_input_ids_dim0*(122880.0*inputs_input_ids_dim1 - 20480.0)
+	- Plan 5             :   ON    :   BiasGelu+:1:-1                                              6       125,808,640     inputs_input_ids_dim0*(122880.0*inputs_input_ids_dim1 - 20480.0)
 	- Plan 6             :   OFF   :   FusedMatMul+:1:-1                                           6       125,808,640     inputs_input_ids_dim0*(122880.0*inputs_input_ids_dim1 - 20480.0)
 	- Plan 7             :   OFF   :   FusedMatMul+Add+FusedMatMul+Add+Add+Add+:1:-1               5       26,214,400      25600.0*inputs_input_ids_dim0*inputs_input_ids_dim1
 	- Plan 8             :   OFF   :   Add+:1:-1                                                   1       5,237,760       5120.0*inputs_input_ids_dim0*(inputs_input_ids_dim1 - 1)
@@ -67,6 +67,12 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 	```
 8. You may need iterate few times on step 6 and 7 until you find a good config for this model to run a bigger batch size. Or you may fail to find if memory optimization does not apply to the model well.
 
+## Optimization Configuration
+
+The basic optimization unit is represented with a unique `cluster id`, for example `BiasGelu+` is one `cluster id`.
+Following `cluster id` is the `optimization strategy`: 0 - none, 1 - recompute, 2 - recompute with compromised memory saving.
+Following `optimization strategy` is the `request count` to apply the given optimization. Using `-1` to apply all. This would give user a bit more flexibility to avoid unnecessary memory saving.
+
 ## Compromised Recompute
 
 If you check the above logs, there is a config `Cast+:2:-1`, `2` indicates it's a recomputation than can save part of the stashed activation size, not all. Recompute the subgraphs under it usually will save part of the activation (for example half of them), not all of them. Follow the same way to enable it.
@@ -74,7 +80,8 @@ If you check the above logs, there is a config `Cast+:2:-1`, `2` indicates it's 
 ## Memory Optimization Debug Infos
 
 Using following log level
-	> ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.DEVINFO))
+> ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.DEVINFO))
+
 Besides the logs shown in `LogLevel.INFO`, you can also see different node patterns that can apply different optimization options.
 
 The way we get the table:
