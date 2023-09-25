@@ -463,6 +463,8 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(
             providers, provider_options, available_providers
         )
+        if not providers and len(available_providers) > 1:
+            providers = ["CPUExecutionProvider"]
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
