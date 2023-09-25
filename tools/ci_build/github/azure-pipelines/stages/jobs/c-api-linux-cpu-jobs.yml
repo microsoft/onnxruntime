@@ -19,6 +19,9 @@ parameters:
 
 - name: OnnxruntimeNodejsBindingArch
   type: string
+  values:
+  - arm64
+  - x64
 
 - name: PoolName
   type: string
@@ -56,7 +59,7 @@ jobs:
         Dockerfile: tools/ci_build/github/linux/docker/inference/${{parameters.OnnxruntimeArch}}/default/cpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/${{parameters.OnnxruntimeArch}}/default/cpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
-        Repository: onnxruntimecpubuildcentos7${{parameters.OnnxruntimeArch}}
+        Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}
         ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
             UpdateDepsTxt: false
 
@@ -65,7 +68,7 @@ jobs:
         script: |
           mkdir -p $HOME/.onnx
           docker run --rm -e CFLAGS="${{parameters.OnnxruntimeCFlags}}" -e CXXFLAGS="${{parameters.OnnxruntimeCXXFlags}}" --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos7${{parameters.OnnxruntimeArch}} /bin/bash -c "python3 \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}} /bin/bash -c "python3.9 \
           /onnxruntime_src/tools/ci_build/build.py --build_java --build_nodejs --build_dir /build --config Release \
           --skip_submodule_sync  --parallel --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-${{parameters.OnnxruntimeArch}}"
         workingDirectory: $(Build.SourcesDirectory)

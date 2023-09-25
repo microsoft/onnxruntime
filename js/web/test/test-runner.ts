@@ -210,11 +210,12 @@ export class ModelTestContext {
     Logger.verbose('TestRunner.Perf', '***Perf Data End');
   }
 
-  release(): void {
+  async release(): Promise<void> {
     if (this.profile) {
       this.session.endProfiling();
     }
     this.logPerfData();
+    await this.session.release();
   }
 
   /**
@@ -740,6 +741,7 @@ export class ProtoOpTestContext {
 async function runProtoOpTestcase(
     session: ort.InferenceSession, testCase: Test.OperatorTestCase, validator: TensorResultValidator): Promise<void> {
   const feeds: Record<string, ort.Tensor> = {};
+  const fetches: string[] = [];
   testCase.inputs!.forEach((input, i) => {
     if (input.data) {
       let data: number[]|BigUint64Array|BigInt64Array = input.data;
@@ -764,10 +766,11 @@ async function runProtoOpTestcase(
       }
       outputs.push(new ort.Tensor(output.type, data, output.dims));
       expectedOutputNames.push(`output_${i}`);
+      fetches.push(`output_${i}`);
     }
   });
 
-  const results = await session.run(feeds);
+  const results = await session.run(feeds, fetches);
 
   const actualOutputNames = Object.getOwnPropertyNames(results);
   expect(actualOutputNames.length).to.equal(expectedOutputNames.length);

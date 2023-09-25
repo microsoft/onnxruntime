@@ -1537,7 +1537,7 @@ void RegisterTrainingOpSchemas() {
              "This signal indicates if weight updates are skipped, applicable to gradient infinity check"
              " in mixed precision training. ",
              "T_BOOL", OpSchema::Optional)
-      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
+      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T_BOOL")
       .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
       .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)
       .Output(3, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT", OpSchema::Optional)
@@ -4104,7 +4104,8 @@ Return true if all elements are true and false otherwise.
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
                       "PythonOpGrad's ", i, "-th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
-                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1));
+                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1),
+                      ", but inferred to be ", inferred_input_type->tensor_type().elem_type());
         }
 
         // Load expected output types.
@@ -4515,6 +4516,61 @@ Return true if all elements are true and false otherwise.
           updateOutputShape(ctx, 4, {sequence_length, num_directions, batch_size, hidden_size_x4});
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ScaledSum)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Compute scaled sum of multiple tensors in same shape (no broadcasting)."
+          "Formula: output = (input_0 * scale_0) + (input_1 * scale_1) + (input_2 * scale_2)")
+      .Attr("scale_0", "Scale for input_0.", AttributeProto::FLOAT)
+      .Attr("scale_1", "Scale for input_1.", AttributeProto::FLOAT)
+      .Attr("scale_2", "(Optional) Scale for input_2.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "input_0", "input tensor", "T")
+      .Input(1, "input_1", "input tensor", "T")
+      .Input(2, "input_2", "input tensor", "T", OpSchema::Optional)
+      .Output(0, "output", "output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() == 3 && nullptr == ctx.getAttribute("scale_2"))
+          fail_shape_inference("Input count must be equal with scale count.");
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BatchScale)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Compute scaled input into outputs with different scaling factors (no broadcasting)."
+          "Formula:"
+          "    output_0 = input * scale_0"
+          "    output_1 = input * scale_1"
+          "    output_2 = input * scale_2")
+      .Attr("scale_0", "Scale for input_0.", AttributeProto::FLOAT)
+      .Attr("scale_1", "Scale for input_1.", AttributeProto::FLOAT)
+      .Attr("scale_2", "(Optional) Scale for input_2.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "input", "input tensor", "T")
+      .Output(0, "output_0", "output tensor", "T")
+      .Output(1, "output_1", "output tensor", "T")
+      .Output(2, "output_2", "output tensor", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumOutputs() == 3 && nullptr == ctx.getAttribute("scale_2"))
+          fail_shape_inference("Output count must be equal with scale count.");
+
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+          if (hasInputShape(ctx, 0)) {
+            propagateShapeFromInputToOutput(ctx, 0, i);
+          }
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(LSTMGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -4908,6 +4964,21 @@ Return true if all elements are true and false otherwise.
           }
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "Gradient of output Y", "T")
+      .Input(1, "X", "Input tensor", "T")
+      .Input(2, "W", "Weight tensor", "T")
+      .Output(0, "dX", "Gradient of X", "T", OpSchema::Optional)
+      .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
+      .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
 }
 
 }  // namespace training

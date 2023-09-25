@@ -283,7 +283,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   MHARunner* fused_runner = this->GetFusedRunner(device_prop, parameters);
 
   bool use_memory_efficient_attention = false;
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (nullptr == fused_runner) {
     int sm = device_prop.major * 10 + device_prop.minor;
     bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
@@ -324,6 +324,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
                                                    fused_runner,
+                                                   false,
                                                    use_memory_efficient_attention,
                                                    no_qkv_workspace);
   auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());

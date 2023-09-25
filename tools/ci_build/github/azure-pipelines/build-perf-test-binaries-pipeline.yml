@@ -36,7 +36,6 @@ stages:
   - template: stages/py-packaging-stages.yml
     parameters:
       enable_linux_gpu: true
-      enable_ubuntu_cpu: false
       enable_linux_cpu: false
       enable_windows_cpu: false
       enable_windows_gpu: false

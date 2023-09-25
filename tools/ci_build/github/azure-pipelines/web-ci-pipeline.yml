@@ -1,3 +1,28 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+#### end trigger ####
+
 parameters:
 - name: NpmPublish
   displayName: 'NPM packages publish configuration'
@@ -31,10 +56,10 @@ stages:
     PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
     BuildStaticLib: true
     ExtraBuildArgs: $(ExtraBuildArgs)
-    WASMTemplate: jobs/linux-wasm-ci-jobs.yml
-    WebTemplate: jobs/win-web-ci-jobs.yml
+    WASMTemplate: jobs/linux-wasm-ci.yml
     UseWebPoolName: true
-    RunWebGpuTests: true
+    RunWebGpuTestsForDebugBuild: false
+    RunWebGpuTestsForReleaseBuild: true
     WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
     WebCpuPoolName: 'onnxruntime-Win-CPU-2022-web'
     WithCache: true

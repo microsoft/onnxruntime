@@ -15,6 +15,7 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr LoadCheckpoint;
             public IntPtr SaveCheckpoint;
             public IntPtr CreateTrainingSession;
+            public IntPtr CreateTrainingSessionFromBuffer;
             public IntPtr TrainingSessionGetTrainingModelOutputCount;
             public IntPtr TrainingSessionGetEvalModelOutputCount;
             public IntPtr TrainingSessionGetTrainingModelOutputName;
@@ -61,10 +62,10 @@ namespace Microsoft.ML.OnnxRuntime
                 DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(NativeMethods.OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 
                 // TODO: Make this save the pointer, and not copy the whole structure across
-                api_ = (OrtApi)OrtGetApi(16 /*ORT_API_VERSION*/);
+                api_ = (OrtApi)OrtGetApi(17 /*ORT_API_VERSION*/);
 
                 OrtGetTrainingApi = (DOrtGetTrainingApi)Marshal.GetDelegateForFunctionPointer(api_.GetTrainingApi, typeof(DOrtGetTrainingApi));
-                trainingApiPtr = OrtGetTrainingApi(16 /*ORT_API_VERSION*/);
+                trainingApiPtr = OrtGetTrainingApi(17 /*ORT_API_VERSION*/);
                 if (trainingApiPtr != IntPtr.Zero)
                 {
                     trainingApi_ = (OrtTrainingApi)Marshal.PtrToStructure(trainingApiPtr, typeof(OrtTrainingApi));

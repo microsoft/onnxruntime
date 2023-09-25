@@ -74,8 +74,27 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: true
-        RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-GPU-MultiA10
+        OnnxruntimeTestGpuDeviceId: 1
+
+- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
+  # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
+  - stage: trt_multi_gpu
+    dependsOn: []
+    jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_trt.bat
+        buildArch: x64
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: true
+        ORT_EP_NAME: TRT
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-MultiA10
         OnnxruntimeTestGpuDeviceId: 1
@@ -93,7 +112,6 @@ stages:
       isX86: false
       job_name_suffix: x64_mimalloc
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
@@ -113,7 +131,6 @@ stages:
       isX86: false
       job_name_suffix: x64_no_memory_profiling
       RunOnnxRuntimeTests: false
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
@@ -133,7 +150,6 @@ stages:
       isX86: false
       job_name_suffix: x64_minimal_no_exception
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
@@ -153,7 +169,6 @@ stages:
       isX86: false
       job_name_suffix: x64_debug_node_input_output
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false

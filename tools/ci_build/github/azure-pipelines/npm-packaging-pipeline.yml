@@ -73,7 +73,8 @@ stages:
           project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
           definition: '940'
           specificBuildWithTriggering: true
-          buildVersionToDownload: 'latest'
+          buildVersionToDownload: 'latestFromBranch'
+          branchName: 'refs/heads/main'
           artifactName: 'NPM_packages'
           targetPath: '$(Pipeline.Workspace)'
         displayName: 'Download onnxruntime-node Pipeline Artifact'

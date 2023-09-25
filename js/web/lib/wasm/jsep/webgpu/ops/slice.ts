@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata, TensorInfo} from '../types';
@@ -153,8 +153,6 @@ const createSliceProgramInfo =
         const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});
         const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
 
-        ${output.impl('offsetToIndices')}
-        ${input.impl('indicesToOffset', 'get')}
         ${calculateInputIndicesImpl(input, output, inputShape, outputShape)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}

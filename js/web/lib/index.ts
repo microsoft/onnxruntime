@@ -26,4 +26,4 @@ if (!BUILD_DEFS.DISABLE_WASM) {
   registerBackend('webnn', wasmBackend, 9);
 }
 
-env.versions.web = version;
+Object.defineProperty(env.versions, 'web', {value: version, enumerable: true});
