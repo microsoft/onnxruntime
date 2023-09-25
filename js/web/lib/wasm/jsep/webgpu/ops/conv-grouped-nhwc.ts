@@ -30,7 +30,8 @@ const createConvNHWCProgramInfo =
 
       const isChannelLast = attributes.format === 'NHWC';
       const maxComponents = outputShape[3] % 4 === 0 && xShape[3] % 4 === 0 ? 4 : 1;
-      const outputSize = ShapeUtil.size(outputShape) / maxComponents;
+      const maxRowComponents = outputShape[2] % 2 === 0 ? 2 : 1;
+      const outputSize = ShapeUtil.size(outputShape) / maxComponents / maxRowComponents;
       const output = outputVariable(
           'output', inputs[0].dataType,
           [outputShape[0], outputShape[1], outputShape[2], outputShape[3] / maxComponents], maxComponents);
@@ -42,18 +43,32 @@ const createConvNHWCProgramInfo =
       if (hasBias) {
         inputVars.push(inputVariable('b', inputs[2].dataType, [inputs[2].dims[0] / maxComponents], maxComponents));
       }
-
+      const xNumber = (maxRowComponents - 1) * attributes.strides[1] + wShape[1];
+      const calcVecResult = (): string => {
+        let calcStr = '';
+        for (let i = 0; i < maxComponents; i++) {
+          calcStr += `dotProd[i] = fma(${x.type.value}(xVal[${i}]), wVal${i}, dotProd[i]);`;
+        }
+        return calcStr;
+      };
       const calcResult = (): string => {
         let calcStr = '';
         if (maxComponents === 1) {
-          calcStr += `let wVal = ${w.get('wHeight', 'wWidth', 'wInChannel', 'output_channel')};
-                      value = fma(xVal, wVal, value);`;
+          calcStr += `
+          let wVal = ${w.get('wHeight', 'wWidth', 'wInChannel', 'output_channel')};
+          for (var i = 0u; i < ${maxRowComponents}u; i++) {
+            dotProd[i] = fma(xVals[i * strides[1] + wWidth], wVal, dotProd[i]);
+          }`;
         } else {
           for (let i = 0; i < maxComponents; i++) {
-            calcStr += `let wVal${i} = ${
-                w.get('wHeight', 'wWidth', `wInChannel * ${maxComponents} + ${i}`, 'output_channel')};`;
-            calcStr += `value = fma(${x.type.value}(xVal[${i}]), wVal${i}, value);`;
+            calcStr += `
+            let wVal${i} = ${w.get('wHeight', 'wWidth', `wInChannel * ${maxComponents} + ${i}`, 'output_channel')};`;
           }
+          calcStr += `
+          for (var i = 0u; i < ${maxRowComponents}u; i++) {
+            let xVal = xVals[i * strides[1] + wWidth];
+            ${calcVecResult()}
+          }`;
         }
         return calcStr;
       };
@@ -65,17 +80,27 @@ const createConvNHWCProgramInfo =
   ${shaderHelper.declareVariables(...inputVars, output)}
 
   ${activationFunction}
-
+  fn readX(batch : u32, row : u32, col : u32, channel : u32) -> ${x.type.value} {
+    var data = ${x.type.value}(0.0);
+    if (col >=0 && col < ${x.shape[2]}) {
+      data = ${x.get('batch', 'row', 'col', 'channel')};
+    }
+    return data;
+  }
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+    let output_channel = (global_idx % ${output.shape[3]}u);
+    var index1 = global_idx / ${output.shape[3]}u;
+    let width1 = ${output.shape[2] / maxRowComponents}u;
+    let c = (index1 % width1) * ${maxRowComponents}u;
+    index1 = index1 / width1;
+    let r = index1 % ${output.shape[1]}u;
+    let batch = index1 / ${output.shape[1]}u;
 
-    let outputIndices = ${output.offsetToIndices('global_idx')};
-    let batch: u32 = outputIndices[0];
-    let output_channel: u32 = outputIndices[${isChannelLast ? 3 : 1}];
-    let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[${isChannelLast ? 1 : 2}], outputIndices[${
-          isChannelLast ? 2 : 3}]) * strides - pads;
+    let xRCCorner: vec2<u32> = vec2<u32>(r, c) * strides - pads;
 
-    var value: ${output.type.value} = ${output.type.value}(0);
+    var dotProd: array<${output.type.value}, ${maxRowComponents}>;
+    var xVals : array<${x.type.value}, ${xNumber}>;
 
       for (var wHeight: u32 = 0u; wHeight < ${wShape[0]}u; wHeight++) {
         let xHeight = xRCCorner.x + wHeight * ${attributes.dilations[0]}u;
@@ -84,23 +109,21 @@ const createConvNHWCProgramInfo =
           continue;
         }
 
-        for (var wWidth: u32 = 0u; wWidth < ${wShape[1]}u; wWidth++) {
-          let xWidth = xRCCorner.y + wWidth * ${attributes.dilations[1]}u;
-          if (xWidth < 0u || xWidth >= ${xShape[isChannelLast ? 2 : 3]}u) {
-            continue;
+        for (var wInChannel: u32 = 0u; wInChannel < ${x.shape[3]}u; wInChannel++) {
+          for (var i = 0u; i < ${xNumber}u; i++) {
+            xVals[i] = readX(batch, xHeight, xRCCorner.y + i, wInChannel);
           }
-
-          for (var wInChannel: u32 = 0u; wInChannel < ${x.shape[3]}u; wInChannel++) {
-          let xVal = ${
-          isChannelLast ? x.get('batch', 'xHeight', 'xWidth', 'wInChannel') :
-                          x.get('batch', 'wInChannel', 'xHeight', 'xWidth')};
-          ${calcResult()}
+          for (var wWidth: u32 = 0u; wWidth < ${wShape[1]}u; wWidth++) {
+            ${calcResult()}
           }
         }
     }
-    ${processBias}
-    ${applyActivation}
-    ${output.setByOffset('global_idx', 'value')}
+    for (var i = 0u; i < ${maxRowComponents}u; i++) {
+        var value = dotProd[i];
+        ${processBias}
+        ${applyActivation}
+        ${output.set('batch', 'r', 'c + i', 'output_channel', 'value')};
+    };
   }`;
       return {
         ...metadata,
