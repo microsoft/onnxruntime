@@ -44,7 +44,7 @@ void set_params_fprop(Flash_fwd_params& params,
   // All stride are in elements, not bytes.
   params.q_row_stride = num_heads * head_size;
   params.k_row_stride = num_heads_k * head_size;
-  params.v_row_stride = num_heads * head_size;
+  params.v_row_stride = num_heads_k * head_size;
   params.q_head_stride = head_size;
   params.k_head_stride = head_size;
   params.v_head_stride = head_size;
