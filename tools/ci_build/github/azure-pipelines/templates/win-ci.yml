@@ -101,7 +101,7 @@ stages:
       - task: NodeTool@0
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
-          versionSpec: '16.x'
+          versionSpec: '18.x'
 
       - template: jobs/set-winenv.yml
         parameters:

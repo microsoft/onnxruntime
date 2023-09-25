@@ -36,5 +36,3 @@ jobs:
     JobName: 'Linux_CI_Multi_GPU_TensorRT_Dev'
     # The latest TensorRT container only supports ubuntu20.04 and python 3.8
     RunDockerBuildArgs: '-o ubuntu20.04 -d tensorrt -x "--enable_multi_device_test"'
-    DoNugetPack:  'false'
-    ArtifactName: 'drop-linux'

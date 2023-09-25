@@ -56,10 +56,6 @@ stages:
         clean: true
         submodules: none
 
-      - task: NodeTool@0
-        inputs:
-          versionSpec: '16.x'
-
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.8'

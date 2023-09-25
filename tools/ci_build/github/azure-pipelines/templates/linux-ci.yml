@@ -1,23 +1,14 @@
 parameters:
   AgentPool : 'onnxruntime-Ubuntu2004-AMD-CPU'
   StageName : 'Linux_CI_Dev'
-  SubmoduleCheckoutMode: ''
   RunDockerBuildArgs: '-o ubuntu20.04 -d cpu -x "--build_wheel"'
-  DoNodejsPack: 'false'
-  DoNugetPack: 'false'
   NuPackScript: ''
   RunInjectedPipeline: 'false'
   InjectedPipeline: ''
   DockerImageTag: ''
-  BuildConfig: ''
-  ArtifactName: 'drop-linux'
   TimeoutInMinutes: 120
   # Controls whether unreleased onnx opsets are allowed. Default is set to 1
   AllowReleasedOpsetOnly: '1'
-  # to inject strategy, you need to pass in the whole yaml structure -
-  # https://docs.microsoft.com/en-us/azure/devops/pipelines/yaml-schema?view=azure-devops&tabs=schema#strategies
-  # see example in orttraining-linux-gpu-ci-pipeline.yml
-  Strategy: ''
 
 jobs:
 - job: ${{ parameters.StageName }}
@@ -28,16 +19,8 @@ jobs:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     skipComponentGovernanceDetection: true
   pool: ${{ parameters.AgentPool }}
-  ${{ if ne(parameters.Strategy, '') }}:
-    strategy:
-      ${{ parameters.Strategy }}
   steps:
     - checkout: self
-      ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
-        submodules: ${{ parameters.SubmoduleCheckoutMode }}
-    - task: NodeTool@0
-      inputs:
-        versionSpec: '16.x'
     - template: run-docker-build-steps.yml
       parameters:
         RunDockerBuildArgs: '${{ parameters.RunDockerBuildArgs }}'
@@ -48,31 +31,10 @@ jobs:
         searchFolder: '$(Build.BinariesDirectory)'
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
-    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
-      - script: |
-         ${{ parameters.NuPackScript }}
-        displayName: 'Create Artifacts'
-      - task: PublishPipelineArtifact@0
-        displayName: 'Publish Pipeline Artifact'
-        inputs:
-          artifactName: ${{ parameters.ArtifactName }}
-          targetPath: '$(Build.ArtifactStagingDirectory)'
-    - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
-      - script: |
-         npm pack
-         cp $(Build.SourcesDirectory)/js/node/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         cp -R $(Build.SourcesDirectory)/js/node/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
-        workingDirectory: '$(Build.SourcesDirectory)/js/node'
-        displayName: 'Create NPM Package'
-      - task: PublishPipelineArtifact@0
-        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
-        inputs:
-          artifactName: ${{ parameters.ArtifactName }}
-          targetPath: '$(Build.ArtifactStagingDirectory)'
     - ${{ if eq(parameters['RunInjectedPipeline'], 'true') }}:
       - template: |
          ${{ parameters.InjectedPipeline }}
         parameters:
           DockerImageTag: ${{ parameters.DockerImageTag }}
-          BuildConfig: ${{ parameters.BuildConfig }}
+          BuildConfig: Release
     - template: clean-agent-build-directory-step.yml

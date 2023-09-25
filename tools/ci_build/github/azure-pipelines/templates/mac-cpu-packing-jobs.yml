@@ -50,7 +50,7 @@ jobs:
       versionSpec: 3.11
   - task: NodeTool@0
     inputs:
-      versionSpec: '16.x'
+      versionSpec: '18.x'
 
   - template: set-version-number-variables-step.yml
 
