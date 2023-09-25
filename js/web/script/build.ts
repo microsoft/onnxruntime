@@ -176,7 +176,12 @@ npmlog.info('Build', 'Building bundle...');
     webpackArgs.push('--env', `-f=${FILTER}`);
   }
   npmlog.info('Build.Bundle', `CMD: npx ${webpackArgs.join(' ')}`);
-  const webpack = spawnSync('npx', webpackArgs, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER});
+  const webpack = spawnSync('npx', webpackArgs, {
+    shell: true,
+    stdio: 'inherit',
+    cwd: ROOT_FOLDER,
+    env: {...process.env, NODE_OPTIONS: (process.env.NODE_OPTIONS ?? '') + ' --max-old-space-size=5120'}
+  });
   if (webpack.status !== 0) {
     console.error(webpack.error);
     process.exit(webpack.status === null ? undefined : webpack.status);
