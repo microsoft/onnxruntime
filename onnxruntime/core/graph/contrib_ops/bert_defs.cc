@@ -985,6 +985,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Whether every token can only attend to previous tokens. Default value is 1.",
               AttributeProto::INT,
               static_cast<int64_t>(1))
+        .Attr("is_past_bsnh",
+              "Whether past kv uses BSNH, otherwise BNSH. Default value is 1 (BSNH).",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,

@@ -243,6 +243,7 @@ def create_group_query_attention_graph_past(config, causal=False, past_kv_format
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
             unidirectional=1 if causal else 0,
+            is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
             domain="com.microsoft",
         ),
     ]

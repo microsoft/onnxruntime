@@ -44,6 +44,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 1) == 1;
+  is_past_bsnh_ = info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
 #if USE_FLASH_ATTENTION
@@ -77,6 +78,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                         num_heads_,
                                                                         kv_num_heads_,
                                                                         past_seq_len,
+                                                                        is_past_bsnh_,
                                                                         scale_,
                                                                         device_prop.maxThreadsPerBlock));
   parameters.is_unidirectional = is_unidirectional_;
