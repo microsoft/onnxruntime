@@ -132,7 +132,7 @@ const createReduceProgramInfoLoader =
       };
     };
 
-export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceLogSumNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
       [`var value = ${output.type.storage}(0);`,
@@ -143,7 +143,7 @@ export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttribut
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceLogSum', attributes, reduceOp), {inputs: [0]});
 };
 
-export const reduceL1 = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceL1Naive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
       [`var value = ${output.type.storage}(0);`,
@@ -154,7 +154,7 @@ export const reduceL1 = (context: ComputeContext, attributes: ReduceAttributes):
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceL1', attributes, reduceOp), {inputs: [0]});
 };
 
-export const reduceL2 = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceL2Naive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
       [`var t = ${output.type.value}(0); var value = ${output.type.value}(0);`,
@@ -165,7 +165,7 @@ export const reduceL2 = (context: ComputeContext, attributes: ReduceAttributes):
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceL2', attributes, reduceOp), {inputs: [0]});
 };
 
-export const reduceLogSumExp = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceLogSumExpNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
       [`var value = ${output.type.storage}(0);`,
@@ -177,7 +177,7 @@ export const reduceLogSumExp = (context: ComputeContext, attributes: ReduceAttri
       createReduceProgramInfoLoader(context.inputs, 'ReduceLogSumExp', attributes, reduceOp), {inputs: [0]});
 };
 
-export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceMaxNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, _output, axes) => {
     const idxZero = [];
@@ -197,7 +197,7 @@ export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes)
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMax', attributes, reduceOp), {inputs: [0]});
 };
 
-export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceMeanNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output, axes) => {
     let size = 1.0;
@@ -217,7 +217,7 @@ export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMean', attributes, reduceOp), {inputs: [0]});
 };
 
-export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceMinNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, _output, axes) => {
     const idxZero = [];
@@ -237,7 +237,7 @@ export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes)
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMin', attributes, reduceOp), {inputs: [0]});
 };
 
-export const reduceProd = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceProdNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
       [`var value = ${output.type.storage}(1);`,
@@ -248,7 +248,7 @@ export const reduceProd = (context: ComputeContext, attributes: ReduceAttributes
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceProd', attributes, reduceOp), {inputs: [0]});
 };
 
-export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceSumNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
       [`var value = ${output.type.storage}(0);`,
@@ -259,7 +259,7 @@ export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes)
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSum', attributes, reduceOp), {inputs: [0]});
 };
 
-export const reduceSumSquare = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceSumSquareNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
       [`var t = ${output.type.value}(0); var value = ${output.type.value}(0);`,
