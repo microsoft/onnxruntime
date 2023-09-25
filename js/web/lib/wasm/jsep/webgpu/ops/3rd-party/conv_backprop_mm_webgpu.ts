@@ -77,8 +77,9 @@ const conv2dTransposeCommonSnippet =
       const xWidth = isChannelsLast ? 'outBackprop[2]' : 'outBackprop[3]';
       const row = isChannelsLast ? 'row' : 'col';
       const col = isChannelsLast ? 'col' : 'row';
+
       const readASnippet = `
-      let inChannels = wShape[2];
+      let inChannels = ${isChannelsLast ? 'outBackprop[3]' : 'outBackprop[1]'};
       let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
       let outRow = ${row} / outWidth;
       let outCol = ${row} % outWidth;
@@ -99,23 +100,24 @@ const conv2dTransposeCommonSnippet =
       ${coordASnippet}
       return x[getIndexFromCoords4D(coord, xShape)/${innerElementSize}];`;
 
-      const sampleA = isChannelsLast ? `let col = colIn * ${innerElementSize};
+      const sampleA = isChannelsLast ? `
+      let col = colIn * ${innerElementSize};
       if (row < dimAOuter && col < dimInner) {
         ${readASnippet}
       }
       return ${typeSnippet(innerElementSize)}(0.0);` :
-                                       `let col = colIn * ${innerElementSize};
-                                       if (row < dimInner && col < dimBOuter) {
-        let col = colIn * ${innerElementSize};
+                                       `
+      let col = colIn * ${innerElementSize};
+      if (row < dimInner && col < dimBOuter) {
         ${readASnippet}
       }
       return ${typeSnippet(innerElementSize)}(0.0);`;
 
       const sampleW = `
-      let col = colIn;
-      let inChannels = wShape[2];
-      let coordX = filterDims.x - 1 - row / (filterDims[1] * inChannels);
-      let coordY = filterDims.y - 1 - (row / inChannels) % filterDims[1];
+      let col = colIn * ${innerElementSize};
+      let inChannels = ${isChannelsLast ? 'outBackprop[3]' : 'outBackprop[1]'};
+      let coordX = effectiveFilterDims.x - 1 - row / (effectiveFilterDims[1] * inChannels);
+      let coordY = effectiveFilterDims.y - 1 - (row / inChannels) % effectiveFilterDims[1];
       if (${
           isChannelsLast ? 'row < dimInner && col < dimBOuter' :
                            'row < dimInner && col < dimAOuter'}  && coordX >= 0 && coordY >= 0) {
