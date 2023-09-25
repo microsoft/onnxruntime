@@ -76,11 +76,12 @@ ONNX_CPU_OPERATOR_KERNEL(
 // e.g. if input shape is { 2, 2, 2, 2, 2 }, output shape is { 2, 2, 1, 2, 2 },
 // and the 'steps' value for all dims is 1 except dim-2, then the input shape is coalesced to { 4, 2, 4 }
 // and the output shape is coalesced to { 4, 1, 4 }.
-static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
-                              TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
-                              TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
+Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
+                                    TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
+                                    TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
   size_t cur = 0;
   size_t nxt = 0;
+  std::cout << "00\n";
   while (true) {
     // Skip all leading slicing dims.
     while (nxt < starts.size() && (steps[nxt] != 1 || input_dimensions[nxt] != output_dims[nxt])) {
@@ -111,6 +112,7 @@ static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::sp
     }
   }
 
+  std::cout << "01\n";
   // No actual slice dim, and all dims are size 1.
   if (cur == 0) {
     p_flattened_input_dims->emplace_back(1LL);
@@ -121,6 +123,7 @@ static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::sp
     ++cur;
   }
 
+  std::cout << "02\n";
   if (p_flattened_output_dims->size() == output_dims.size()) {
     p_flattened_input_dims->clear();
     p_flattened_output_dims->clear();
@@ -131,6 +134,9 @@ static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::sp
     ends.resize(cur);
     steps.resize(cur);
   }
+
+  std::cout << "03\n";
+  return Status::OK();
 }
 
 // Slice V1-9 & DynamicSlice

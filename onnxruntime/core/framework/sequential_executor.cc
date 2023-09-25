@@ -486,11 +486,13 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
       }
       if (!reuse_cached_value) {
         status = p_kernel->Compute(&kernel_ctx);
+        std::cout << "Compute status: " << status.ErrorMessage() << std::endl;
       } else {
         status = kernel_ctx.SetOutputMLValue(0, cache.get()->at(cached_arg_name));
       }
 #else
       status = p_kernel->Compute(&kernel_ctx);
+      std::cout << "Compute status: " << status.ErrorMessage() << std::endl;
 #endif
     }
     ORT_CATCH(const std::exception& ex) {
