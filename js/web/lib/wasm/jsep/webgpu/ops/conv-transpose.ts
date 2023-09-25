@@ -228,7 +228,7 @@ const createConvTranspose2DProgramInfoLoader =
       };
     };
 
-// for transposing weight tensor from [M, C/group, KH, KW] to [KH, KW, C/group, M]
+// for transposing weight tensor from [C, M/group, KH, KW] to [KH, KW, M/group, C]
 const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: [2, 3, 1, 0]});
 
 const convTranspose2d =
@@ -236,7 +236,7 @@ const convTranspose2d =
       const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
       const isChannelsLast = attributes.format === 'NHWC';
       const hasBias = inputs.length === 3;
-      if (adjustedAttributes.group !== 1) {
+      if (adjustedAttributes.group !== 1 || attributes.strides.reduce((a, b) => a * b, 1) !== 1) {
         context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes));
         return;
       }
