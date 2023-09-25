@@ -10,7 +10,6 @@ sh benchmark_mha.sh
 
 import math
 import random
-import os
 import statistics
 import time
 
@@ -310,7 +309,7 @@ def measure_latency(cuda_session: CudaSession, input_dict):
 
 # TODO(aciddelgado): what is the correct number of flops in this case?
 def flops(batch, kv_sequence_length, head_size, num_heads):
-    return 4 * batch * kv_sequence_length**2 * num_heads * head_size
+    return 4 * batch * kv_sequence_length * num_heads * head_size
 
 
 def tflops_per_second(flop, time):
@@ -335,7 +334,9 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
     print(f"enable_cuda_graph={enable_cuda_graph}")
 
     print("op\tbatch\ts_kv\theads\th_dim\tms\tTFLOPS")
-    causal = False
+    mean_gqa_lat = 0
+    mean_dmmha_lat = 0
+    num_trials = 0
     for b in [1, 3, 8, 16]:
         for s_kv in [128, 256, 512, 1024, 2048]:
             for n in [8, 16, 32, 64, 128]:
@@ -383,6 +384,15 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
                     dmmha_speed = tflops_per_second(flops(b, s_kv, h, n), average_dmmha_latency)
                     print(f"dmmha\t{b}\t{s_kv}\t{n}\t{h}\t{average_dmmha_latency * 1000:.2f}\t{dmmha_speed:.2f}")
                     print("---------")
+                    if average_dmmha_latency > 10 * average_gqa_latency:
+                        continue
+                    num_trials += 1
+                    mean_gqa_lat += average_gqa_latency
+                    mean_dmmha_lat += average_dmmha_latency
+    mean_gqa_lat /= num_trials
+    mean_dmmha_lat /= num_trials
+    print(f"average gqa latency:\t{mean_gqa_lat}")
+    print(f"average dmmha latency:\t{mean_dmmha_lat}")
 
 
 if __name__ == "__main__":

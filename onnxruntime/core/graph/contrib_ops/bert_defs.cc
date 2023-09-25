@@ -236,15 +236,10 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
 void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Output 0 has shape (batch_size, sequence_length, hidden_size)
 
-  // Q, K and V without packing:
+  // Q, K and V:
   //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-  //   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
-  //   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
-
-  // Q, K and V without packing and past (cross attention):
-  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-  //   Input 1 (key) has shape (batch_size, num_head, kv_sequence_length, head_size)
-  //   Input 2 (value) has shape (batch_size, num_head, kv_sequence_length, head_size)
+  //   Input 1 (key) has shape (batch_size, kv_sequence_length, kv_hidden_size)
+  //   Input 2 (value) has shape (batch_size, kv_sequence_length, kv_hidden_size)
 
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -262,7 +257,7 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       auto& value_shape = getInputShape(ctx, 2);
       auto& value_dims = value_shape.dim();
       if (value_dims.size() != 3 && value_dims.size() != 4) {
-        fail_shape_inference("Inputs 2 (value) shall be 3 or 4 dimensions");
+        fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
       }
 
       ONNX_NAMESPACE::TensorShapeProto output_shape;
@@ -975,7 +970,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
-Group Query Self/Cross Attention. Bias from input projection is included.
+Group Query Self/Cross Attention.
 
 Supports different number of heads for q and kv.
 )DOC";

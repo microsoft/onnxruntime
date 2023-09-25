@@ -144,7 +144,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   // only kernel implemented for gqa right now
-  assert(use_flash_attention);
+  ORT_ENFORCE(use_flash_attention);
 
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = reinterpret_cast<const CudaT*>(key->Data<T>());

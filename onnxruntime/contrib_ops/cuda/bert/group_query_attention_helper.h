@@ -79,7 +79,7 @@ Status CheckInputs(const T* query,
 
     if (past_key_dims[1] != past_value_dims[1]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' and 'past_value' should have same dimension 1 (kv sequence length), got ",
+                             "Input 'past_key' and 'past_value' should have same dimension 1 (max sequence length), got ",
                              past_key_dims[1]);
     }
     if (past_key_dims[2] != kv_num_heads) {
@@ -108,14 +108,9 @@ Status CheckInputs(const T* query,
   }
 
   if (key != nullptr) {
-    if (query_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions when key is given, got ",
-                             query_dims.size());
-    }
-
     const auto& key_dims = key->Shape().GetDims();
-    if (key_dims.size() != 3 && key_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 or 4 dimensions, got ",
+    if (key_dims.size() != 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
                              key_dims.size());
     }
     if (query_dims[0] != key_dims[0]) {

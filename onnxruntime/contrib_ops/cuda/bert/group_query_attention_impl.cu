@@ -1,5 +1,6 @@
 /*
- The implementation of this file is based on qkvToContext plugin in TensorRT demo:
+ The implementation of this file is based on our Multi-Head Attention impl.cu file,
+ which is based on qkvToContext plugin in TensorRT demo:
  https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
 
 Copyright 2019 NVIDIA Corporation
@@ -18,11 +19,9 @@ limitations under the License.
 */
 
 // Modifications:
-// (1) support GPT-2 past state, unidirectional mask and 4D attention mask from Megatron
-// (2) support 2D attention mask
-// (3) allow persistent softmax from PyTorch for debugging purpose.
-// (4) support different input hidden size and model hidden size for pruned model
-// (5) support different hidden sizes of Q/K and V
+// (1) support GPT-2 past state, unidirectional mask (causal)
+// (2) use flash attention kernel from (https://github.com/Dao-AILab/flash-attention)
+// (3) support different number of heads for Q and KV
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -35,12 +34,9 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/bert/transformer_common.h"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
-// #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
-// #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
-// #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
