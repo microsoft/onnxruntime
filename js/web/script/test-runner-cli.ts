@@ -493,18 +493,12 @@ async function main() {
         karmaArgs.push('--force-localhost');
       }
       if (webgpu) {
-        if (browser.includes('Canary')) {
-          chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
-        } else {
-          chromiumFlags.push('--enable-dawn-features=use_dxc');
-          chromiumFlags.push('--disable-dawn-features=disallow_unsafe_apis');
-        }
+        // flag 'allow_unsafe_apis' is required to enable experimental features like fp16 and profiling inside pass.
+        // flag 'use_dxc' is required to enable DXC compiler.
+        chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
       }
       if (webnn) {
         chromiumFlags.push('--enable-experimental-web-platform-features');
-      }
-      if (config.options.globalEnvFlags?.webgpu?.profilingMode === 'default') {
-        chromiumFlags.push('--disable-dawn-features=disallow_unsafe_apis');
       }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
       karmaArgs.push(...chromiumFlags.map(flag => `--chromium-flags=${flag}`));
