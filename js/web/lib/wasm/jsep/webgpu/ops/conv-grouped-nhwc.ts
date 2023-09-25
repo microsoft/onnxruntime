@@ -16,6 +16,15 @@ const createConvNHWCProgramMetadata = (hasBias: boolean, cacheHint: string): Pro
   cacheHint
 });
 
+
+const getMaxComponents = (size: number): 1|2|3|4 => {
+  if (size % 4 === 0) {
+    return 4;
+  } else if (size % 2 === 0) {
+    return 2;
+  }
+  return 1;
+};
 const createConvNHWCProgramInfo =
     (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvAttributes,
      outputShape: readonly number[],
@@ -29,14 +38,15 @@ const createConvNHWCProgramInfo =
       const {activationFunction, applyActivation} = getActicationSnippet(attributes);
 
       const isChannelLast = attributes.format === 'NHWC';
-      const maxComponents = outputShape[3] % 4 === 0 && xShape[3] % 4 === 0 ? 4 : 1;
-      const maxRowComponents = outputShape[2] % 2 === 0 ? 2 : 1;
+      const maxComponents = getMaxComponents(outputShape[3]);
+      const maxInComponents = getMaxComponents(xShape[3]);
+      const maxRowComponents = getMaxComponents(outputShape[2]);
       const outputSize = ShapeUtil.size(outputShape) / maxComponents / maxRowComponents;
       const output = outputVariable(
           'output', inputs[0].dataType,
           [outputShape[0], outputShape[1], outputShape[2], outputShape[3] / maxComponents], maxComponents);
       const x = inputVariable(
-          'x', inputs[0].dataType, [xShape[0], xShape[1], xShape[2], xShape[3] / maxComponents], maxComponents);
+          'x', inputs[0].dataType, [xShape[0], xShape[1], xShape[2], xShape[3] / maxInComponents], maxInComponents);
       const w = inputVariable(
           'w', inputs[1].dataType, [wShape[0], wShape[1], wShape[2], wShape[3] / maxComponents], maxComponents);
       const inputVars = [x, w];
@@ -46,30 +56,23 @@ const createConvNHWCProgramInfo =
       const xNumber = (maxRowComponents - 1) * attributes.strides[1] + wShape[1];
       const calcVecResult = (): string => {
         let calcStr = '';
-        for (let i = 0; i < maxComponents; i++) {
-          calcStr += `dotProd[i] = fma(${x.type.value}(xVal[${i}]), wVal${i}, dotProd[i]);`;
+        for (let i = 0; i < maxInComponents; i++) {
+          calcStr += `dotProd[i] = fma(${output.type.value}(${maxInComponents === 1 ? 'xVal' : `xVal[${i}]`}), wVal${
+              i}, dotProd[i]);`;
         }
         return calcStr;
       };
       const calcResult = (): string => {
         let calcStr = '';
-        if (maxComponents === 1) {
+        for (let i = 0; i < maxInComponents; i++) {
           calcStr += `
-          let wVal = ${w.get('wHeight', 'wWidth', 'wInChannel', 'output_channel')};
-          for (var i = 0u; i < ${maxRowComponents}u; i++) {
-            dotProd[i] = fma(xVals[i * strides[1] + wWidth], wVal, dotProd[i]);
-          }`;
-        } else {
-          for (let i = 0; i < maxComponents; i++) {
-            calcStr += `
-            let wVal${i} = ${w.get('wHeight', 'wWidth', `wInChannel * ${maxComponents} + ${i}`, 'output_channel')};`;
-          }
-          calcStr += `
+            let wVal${i} = ${w.get('wHeight', 'wWidth', `wInChannel * ${maxInComponents} + ${i}`, 'output_channel')};`;
+        }
+        calcStr += `
           for (var i = 0u; i < ${maxRowComponents}u; i++) {
             let xVal = xVals[i * strides[1] + wWidth];
             ${calcVecResult()}
           }`;
-        }
         return calcStr;
       };
 
