@@ -1179,7 +1179,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 
   ORT_RETURN_IF(!is_supported,
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
-                "] is not supported in this build ", reinterpret_cast<const char *>(ORT_VERSION), ". ",
+                "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
 #else   // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
   const auto has_saved_runtime_optimizations = [](const fbs::InferenceSession& fbs_session) -> bool {
@@ -1207,7 +1207,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 
   ORT_RETURN_IF_NOT(is_supported || is_supported_with_update,
                     "The ORT format model version [", fbs_ort_model_version->string_view(),
-                    "] is not supported in this build ", reinterpret_cast<const char *>(ORT_VERSION), ".");
+                    "] is not supported in this build ", ORT_VERSION, ".");
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   const auto* fbs_model = fbs_session->model();
