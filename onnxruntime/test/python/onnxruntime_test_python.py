@@ -213,9 +213,7 @@ class TestInferenceSession(unittest.TestCase):
         os.remove(optimized_model_filepath)
         os.remove(external_initializers_file)
 
-        session3 = onnxrt.InferenceSession(
-            optimized_model_filepath_2, sess_options=onnxrt.SessionOptions()
-        )
+        session3 = onnxrt.InferenceSession(optimized_model_filepath_2, sess_options=onnxrt.SessionOptions())
         del session3
 
         os.remove(optimized_model_filepath_2)
