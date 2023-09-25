@@ -271,8 +271,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   // to allocate enough memory in Arena before graph capturing.
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 
-
-  // [Note] We don't use PerThreadContext for now.
+  // [Note] We don't use PerThreadContext for now since it has issue with multithreading
   //
   // TRT or CUDA objects that must be maintained on a per thread basis will be put under this PerThreadContext data structure.
   // For example, TensorRT execution context and CUDA graph are the ones to be put here.
