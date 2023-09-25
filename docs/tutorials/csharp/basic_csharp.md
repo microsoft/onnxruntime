@@ -1,5 +1,5 @@
 ---
-title: C# Tutorial: Basic
+title:  Basic C# Tutorial
 description: Basic usage of C# API
 parent: Inference with C#
 grand_parent: Tutorials
