@@ -36,7 +36,7 @@ Status Round<MLFloat16>::Compute(OpKernelContext* ctx) const {
   auto* output = Y.MutableData<MLFloat16>();
   const auto size = X.Shape().Size();
   for (int64_t i = 0; i < size; ++i, ++output, ++input) {
-    *output = MLFloat16(math::floatToHalf(::rint(math::halfToFloat(input->val))));
+    *output = MLFloat16(static_cast<float>(::rint(input->ToFloat())));
   }
   return Status::OK();
 }

@@ -3,7 +3,6 @@
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
@@ -23,7 +22,6 @@ class TileOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
@@ -31,14 +29,12 @@ class TileOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
 Status TileOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
-                                    bool is_quantized_model,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
@@ -49,7 +45,7 @@ Status TileOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                       "Qnn doesn't support dynamic repeats input");
   }
 
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
   return Status::OK();
 }
@@ -58,7 +54,6 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
-                                                  bool is_quantized_model,
                                                   bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
   // Already confirmed repeats input is initailizer in ProcessInputs()
@@ -66,7 +61,7 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
   std::vector<uint8_t> unpacked_tensor;
   const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(repeats_input_name);
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
   // Onnx repeats are int64, Qnn use uint32
   const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
   size_t tensor_byte_size = unpacked_tensor.size();
@@ -78,7 +73,7 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
   uint32_t multiples_size = static_cast<uint32_t>(multiples.size());
   std::vector<uint32_t> multiples_dim{multiples_size};
-  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), qnn_def::multiples, std::move(multiples_dim),
+  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), QNN_OP_TILE_PARAM_MULTIPLES, std::move(multiples_dim),
                                   std::move(multiples));
   param_tensor_names.push_back(multiples_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(multiples_param));
@@ -86,7 +81,7 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation));
+                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
 }

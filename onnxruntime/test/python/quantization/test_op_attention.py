@@ -75,7 +75,9 @@ class TestOpAttention(unittest.TestCase):
             [output_tensor],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 13), helper.make_opsetid("com.microsoft", 1)]
+        )
         model.ir_version = onnx.IR_VERSION
 
         onnx.save(model, output_model_path)

@@ -1,0 +1,23 @@
+# ignore generated docs
+web/docs/
+
+# this JSON file is too large, so it takes too long to format it.
+node/test/testdata/squeezenet.input0.json
+
+# ignore dist folder
+dist/
+
+# ignore file types that handled by clang-format
+**/*.cc
+**/*.cpp
+**/*.h
+**/*.js
+**/*.mjs
+**/*.cjs
+**/*.jsx
+**/*.ts
+**/*.mts
+**/*.cts
+**/*.tsx
+**/*.java
+**/*.mm

@@ -39,8 +39,7 @@ struct IBeamSearchState {
                                        // in total, it will be:
                                        // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
 
-  // The final chosen indices after BeamScorer has finished processing
-  gsl::span<int32_t> chosen_indices;  // shape (batch_size, num_beams)
+  gsl::span<int32_t> sequences_device;  // shape (2 * batch_size * max_length)
 
   Tensor staging_for_past_state_reorder;  // Tensor of shape (batch_size * num_beams, num_heads, max_length, head_size)
 };
@@ -93,43 +92,48 @@ struct ISamplingState {
   gsl::span<T> cumulative_probs;
 };
 
-class ISequences {
- public:
+struct ISequences {
   virtual ~ISequences() {}
   virtual gsl::span<const int32_t> GetSequence(int beam_index) const = 0;
+  virtual gsl::span<const int32_t> GetCurrentDeviceSequences() const = 0;  // Get all current beam_index sequences in one continuous block (to pass to CUDA)
+  virtual gsl::span<int32_t> GetNextDeviceSequences() = 0;                 // Get all next beam_index sequences in one continuous block (to pass to CUDA)
   virtual int GetSequenceLength() const = 0;
 };
 
-class ILogitsProcessorList {
- public:
+struct ILogitsProcessorList {
   virtual ~ILogitsProcessorList() {}
   virtual void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step) = 0;
 };
 
 // Interface for all scorers for beam search or beam sample.
-class IBeamScorer {
- public:
+struct IBeamScorer {
   virtual ~IBeamScorer() {}
 
-  virtual void Initialize(AllocatorPtr& allocator, int sequence_length) = 0;
-
-  virtual void Process(ISequences* sequences,
+  virtual void Process(ISequences& sequences,
                        gsl::span<const float>& next_scores,
                        gsl::span<const int32_t>& next_tokens,
                        gsl::span<const int32_t>& next_indices) = 0;
 
-  virtual void Finalize(ISequences* sequences,
+  virtual void Finalize(ISequences& sequences,
                         gsl::span<const float>& final_beam_scores,
                         Tensor* output_sequences,
                         Tensor* output_sequence_scores) = 0;
 
-  virtual gsl::span<int32_t>& GetNextIndices() = 0;
+  virtual bool IsDone() const = 0;                    // GPU version will return false here, as it asynchronously queues up the event
+  virtual bool IsDoneLater() const { return false; }  // GPU version waits for the asynchous result to complete here
+
+  virtual gsl::span<float> GetNextScores() = 0;
+  virtual gsl::span<int32_t> GetNextTokens() = 0;
+  virtual gsl::span<int32_t> GetNextIndicesCPU() = 0;
+  virtual gsl::span<int32_t> GetNextIndicesGPU() { return {}; }  // If this is non CPU, returns the device buffer of the indices
 };
 
 struct IGenerationParameters {
   static constexpr int kModelTypeGpt = 0;
   static constexpr int kModelTypeT5 = 1;
   static constexpr int kModelTypeWhisper = 2;
+
+  static constexpr int kLogitsProcessorTypeWhisper = 1;
 
   // Parameters from node attributes
   int model_type;  // 0 for GPT-2; 1 for encoder-decoder like T5; 2 for float inputs like Whisper
@@ -148,6 +152,7 @@ struct IGenerationParameters {
   float repetition_penalty;
   int batch_size;       // deduce from first dimension of input_ids
   int sequence_length;  // deduce from second dimension of input_ids of GPT-2 or decoder_input_ids of T5
+  int logits_processor;
 
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;

@@ -3,7 +3,10 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/util/math_cpuonly.h"
+#include "core/framework/tensor_shape.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 
@@ -14,20 +17,31 @@ class GemmHelper {
     ORT_ENFORCE(left.NumDimensions() == 2 || left.NumDimensions() == 1);
     ORT_ENFORCE(right.NumDimensions() == 2);
 
+    for (size_t i = 0; i != left.NumDimensions(); ++i) {
+      ORT_ENFORCE(left[i] >= 0);
+      ORT_ENFORCE(left[i] <= std::numeric_limits<ptrdiff_t>::max());
+    }
+
+    for (size_t i = 0; i != right.NumDimensions(); ++i) {
+      ORT_ENFORCE(right[i] >= 0);
+      ORT_ENFORCE(right[i] <= std::numeric_limits<ptrdiff_t>::max());
+    }
+
     if (trans_left) {
-      M_ = left.NumDimensions() == 2 ? left[1] : left[0];
-      K_ = left.NumDimensions() == 2 ? left[0] : 1;
+      M_ = left.NumDimensions() == 2 ? static_cast<ptrdiff_t>(left[1]) : static_cast<ptrdiff_t>(left[0]);
+      K_ = left.NumDimensions() == 2 ? static_cast<ptrdiff_t>(left[0]) : 1;
     } else {
-      M_ = left.NumDimensions() == 2 ? left[0] : 1;
-      K_ = left.NumDimensions() == 2 ? left[1] : left[0];
+      M_ = left.NumDimensions() == 2 ? static_cast<ptrdiff_t>(left[0]) : 1;
+      K_ = left.NumDimensions() == 2 ? static_cast<ptrdiff_t>(left[1])
+                                     : static_cast<ptrdiff_t>(left[0]);
     }
 
     int k_dim;
     if (trans_right) {
-      N_ = right[0];
+      N_ = static_cast<ptrdiff_t>(right[0]);
       k_dim = 1;
     } else {
-      N_ = right[1];
+      N_ = static_cast<ptrdiff_t>(right[1]);
       k_dim = 0;
     }
 
@@ -45,13 +59,13 @@ class GemmHelper {
     ORT_ENFORCE(M_ >= 0 && K_ > 0 && N_ >= 0);
   }
 
-  int64_t M() const { return M_; }
-  int64_t N() const { return N_; }
-  int64_t K() const { return K_; }
+  ptrdiff_t M() const { return M_; }
+  ptrdiff_t N() const { return N_; }
+  ptrdiff_t K() const { return K_; }
   Status State() const { return status_; }
 
  private:
-  bool IsValidBroadcast(const TensorShape& bias_shape, int64_t M, int64_t N) {
+  static bool IsValidBroadcast(const TensorShape& bias_shape, ptrdiff_t M, ptrdiff_t N) {
     // valid shapes are (,) , (1, N) , (M, 1) , (M, N)
     if (bias_shape.NumDimensions() > 2)
       return false;
@@ -66,32 +80,33 @@ class GemmHelper {
   }
 
  private:
-  int64_t M_;
-  int64_t K_;
-  int64_t N_;
+  GemmHelper() = default;
+  ptrdiff_t M_;
+  ptrdiff_t K_;
+  ptrdiff_t N_;
   Status status_;
 };
 
 template <typename T>
-void GemmBroadcastBias(int64_t M, int64_t N, float beta,
-                       const T* c_data, const TensorShape* c_shape,
-                       T* y_data) {
+void GemmBroadcastBias(ptrdiff_t M, ptrdiff_t N, T beta,
+                       _In_opt_ const T* c_data, _In_opt_ const TensorShape* c_shape,
+                       _Out_writes_(M* N) T* y_data) {
   // Broadcast the bias as needed if bias is given
   if (beta != 0 && c_data != nullptr) {
     ORT_ENFORCE(c_shape != nullptr, "c_shape is required if c_data is provided");
-    auto output_mat = EigenMatrixMapRowMajor<T>(y_data, onnxruntime::narrow<size_t>(M), onnxruntime::narrow<size_t>(N));
+    auto output_mat = EigenMatrixMapRowMajor<T>(y_data, M, N);
     if (c_shape->Size() == 1) {
       // C is (), (1,) or (1, 1), set the scalar
       output_mat.setConstant(*c_data);
     } else if (c_shape->NumDimensions() == 1 || (*c_shape)[0] == 1) {
       // C is (N,) or (1, N)
-      output_mat.rowwise() = ConstEigenVectorMap<T>(c_data, onnxruntime::narrow<size_t>(N)).transpose();
+      output_mat.rowwise() = ConstEigenVectorMap<T>(c_data, N).transpose();
     } else if ((*c_shape)[1] == 1) {
       // C is (M, 1)
-      output_mat.colwise() = ConstEigenVectorMap<T>(c_data, onnxruntime::narrow<size_t>(M));
+      output_mat.colwise() = ConstEigenVectorMap<T>(c_data, M);
     } else {
       // C is (M, N), no broadcast needed.
-      output_mat = ConstEigenMatrixMapRowMajor<T>(c_data, onnxruntime::narrow<size_t>(M), onnxruntime::narrow<size_t>(N));
+      output_mat = ConstEigenMatrixMapRowMajor<T>(c_data, M, N);
     }
   }
 }

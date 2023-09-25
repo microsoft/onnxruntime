@@ -10,7 +10,11 @@
 
 namespace WINML_EXPERIMENTALP {
 
-LearningModelBuilder::LearningModelBuilder(int64_t opset) : inert_session_(nullptr), inputs_(nullptr), outputs_(nullptr), operators_(nullptr) {
+LearningModelBuilder::LearningModelBuilder(int64_t opset)
+  : inert_session_(nullptr),
+    inputs_(nullptr),
+    outputs_(nullptr),
+    operators_(nullptr) {
   telemetry_helper.LogApiUsage("LearningModelBuilder::LearningModelBuilder");
 
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
@@ -26,11 +30,11 @@ LearningModelBuilder::LearningModelBuilder(int64_t opset) : inert_session_(nullp
   inert_session_ = winmlp::LearningModelSession::CreateInertSession(engine.get());
 }
 
-LearningModelBuilder::LearningModelBuilder(LearningModelBuilder& builder) : inert_session_(nullptr),
-                                                                            inputs_(builder.inputs_),
-                                                                            outputs_(builder.outputs_),
-                                                                            operators_(builder.operators_)
-{
+LearningModelBuilder::LearningModelBuilder(LearningModelBuilder& builder)
+  : inert_session_(nullptr),
+    inputs_(builder.inputs_),
+    outputs_(builder.outputs_),
+    operators_(builder.operators_) {
 }
 
 winml_experimental::LearningModelInputs LearningModelBuilder::Inputs() {
@@ -64,17 +68,14 @@ winml_experimental::LearningModelBuilder LearningModelBuilder::Create(int32_t op
 }
 
 winml::TensorFeatureDescriptor LearningModelBuilder::CreateTensorFeatureDescriptor(
-    hstring const& name,
-    winml::TensorKind const& kind,
-    array_view<int64_t const> shape) {
+  hstring const& name, winml::TensorKind const& kind, array_view<int64_t const> shape
+) {
   return winrt::make<winmlp::TensorFeatureDescriptor>(name, L"", kind, shape);
 }
 
 winml::TensorFeatureDescriptor LearningModelBuilder::CreateTensorFeatureDescriptor(
-    hstring const& name,
-    hstring const& description,
-    winml::TensorKind const& kind,
-    array_view<int64_t const> shape) {
+  hstring const& name, hstring const& description, winml::TensorKind const& kind, array_view<int64_t const> shape
+) {
   return winrt::make<winmlp::TensorFeatureDescriptor>(name, description, kind, shape);
 }
 

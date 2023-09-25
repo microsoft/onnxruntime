@@ -31,7 +31,7 @@ class SessionScope;
 struct AllocPlanPerValue {
   AllocKind alloc_kind{AllocKind::kNotSet};
   MLDataType value_type{nullptr};
-  OrtMemoryInfo location;
+  OrtDevice location;
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
   // which OrtValue's buffer must be reused for this OrtValue.
   OrtValueIndex reused_buffer{0};
@@ -79,7 +79,7 @@ struct AllocPlanPerValue {
   ProgramCounter program_counter;
 
  public:
-  AllocPlanPerValue() : location(CPU, OrtInvalidAllocator) {}
+  AllocPlanPerValue() : location() {}
 };
 
 using NotificationIndex = size_t;
@@ -126,10 +126,10 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // The steps within a sequence are executed in order, and happened on the same device.
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
-    const OrtDevice& device_;
+    const OrtDevice device_;
 
    public:
-    LogicStream(const OrtDevice& device) : device_(device) {}
+    LogicStream(const OrtDevice device) : device_(device) {}
   };
   // a execution plan is composed by multiple logic stream.
   // by default all the nodes with the same device will be group in to the same stream.
@@ -178,16 +178,16 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     return value_to_stream_map;
   }
 
-  const OrtMemoryInfo& GetLocation(size_t ort_value_index) const override {
+  const OrtDevice& GetLocation(size_t ort_value_index) const override {
     return allocation_plan[ort_value_index].location;
   }
 
-  void SetLocation(size_t ort_value_index, const struct OrtMemoryInfo& info) override {
+  void SetLocation(size_t ort_value_index, const struct OrtDevice& info) override {
     allocation_plan[ort_value_index].location = info;
   }
 
-  InlinedHashSet<OrtMemoryInfo> GetAllLocations() const override {
-    InlinedHashSet<OrtMemoryInfo> locations;
+  InlinedHashSet<OrtDevice> GetAllLocations() const override {
+    InlinedHashSet<OrtDevice> locations;
     locations.reserve(allocation_plan.size());
     for (auto& alloc_plan : allocation_plan) {
       locations.insert(alloc_plan.location);

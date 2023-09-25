@@ -276,8 +276,12 @@ struct FuncAtomicAdd {
 };
 
 template <typename T, typename TIndex>
-Status GatherElementsGradImpl(cudaStream_t stream, const TIndex* indices_data, const T* updates_data, T* output_data,
-                              const GatherScatterElementsArgs& args) {
+Status GatherElementsGradNonDeterministicImpl(cudaStream_t stream, const TIndex* indices_data, const T* updates_data,
+                                              T* output_data,
+                                              const GatherScatterElementsArgs& args) {
+  // Be noted: usage of AtomicAdd is not deterministic if there are duplicated indices to update.
+  // That's the reason we name this function as non-deterministic.
+
   // Give output_data as the input_data parameter by intention,
   // to skip input_data copy, which is not applicable for GatherElementsGrad.
   // output_data's numel is same as input_data's numel.
@@ -285,10 +289,10 @@ Status GatherElementsGradImpl(cudaStream_t stream, const TIndex* indices_data, c
                                      FuncAtomicAdd<T>(static_cast<size_t>(args.input_size)));
 }
 
-#define GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                      \
-  template Status GatherElementsGradImpl<T, TIndex>(cudaStream_t stream, const TIndex* indices_data, \
-                                                    const T* updates_data, T* output_data,           \
-                                                    const GatherScatterElementsArgs& args);
+#define GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                                      \
+  template Status GatherElementsGradNonDeterministicImpl<T, TIndex>(cudaStream_t stream, const TIndex* indices_data, \
+                                                                    const T* updates_data, T* output_data,           \
+                                                                    const GatherScatterElementsArgs& args);
 
 #define GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(T) \
   GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, int32_t)   \

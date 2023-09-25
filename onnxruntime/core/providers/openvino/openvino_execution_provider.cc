@@ -19,12 +19,16 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
   openvino_ep::BackendManager::GetGlobalContext().cache_dir = info.cache_dir_;
+  openvino_ep::BackendManager::GetGlobalContext().num_streams = info.num_streams_;
   openvino_ep::BackendManager::GetGlobalContext().context = info.context_;
   openvino_ep::BackendManager::GetGlobalContext().enable_opencl_throttling = info.enable_opencl_throttling_;
   openvino_ep::BackendManager::GetGlobalContext().enable_dynamic_shapes = info.enable_dynamic_shapes_;
 
   if ((int)info.num_of_threads_ <= 0) {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
+  } else if ((int)info.num_of_threads_ > 8) {
+    std::string err_msg = std::string("\n [ERROR] num_of_threads configured during runtime is: ") + std::to_string(info.num_of_threads_) + "\nnum_of_threads configured should be >0 and <=8.\n";
+    ORT_THROW(err_msg);
   } else {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
   }
@@ -40,8 +44,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
           info.device_type_.find("MULTI") != std::string::npos ||
           info.device_type_.find("AUTO") != std::string::npos) {
         device_found = true;
-      } else if (info.device_type_ == "CPU" || info.device_type_.find("GPU") != std::string::npos ||
-                 info.device_type_ == "MYRIAD") {
+      } else if (info.device_type_ == "CPU" || info.device_type_.find("GPU") != std::string::npos) {
         for (auto device : available_devices) {
           if (device.rfind(info.device_type_, 0) == 0) {
             if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
@@ -53,7 +56,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
               device_found = true;
               break;
             }
-            if (info.device_type_ == "MYRIAD" && info.precision_ == "FP16") {
+            if (info.device_type_.find("VPUX") != std::string::npos && (info.precision_ == "FP16" || info.precision_ == "U8")) {
               device_found = true;
               break;
             }
@@ -75,7 +78,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
     if (info.device_id_ != "") {
       for (auto device : available_devices) {
         if (device.rfind(info.device_id_, 0) == 0) {
-          if (info.device_id_ == "MYRIAD" || info.device_id_ == "CPU" || info.device_id_ == "GPU") {
+          if (info.device_id_ == "CPU" || info.device_id_ == "GPU") {
             LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                                << "Switching to Device ID: " << info.device_id_;
             device_id_found = true;
@@ -93,13 +96,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
     }
   }
   openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
-
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return CreateCPUAllocator(OrtMemoryInfo(OpenVINO_CPU, OrtDeviceAllocator));
-      });
-
-  InsertAllocator(CreateAllocator(device_info));
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -130,6 +126,14 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 #elif defined(OPENVINO_2022_3)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_3");
+  result = obj.Execute();
+#elif defined(OPENVINO_2023_0)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_0");
+  result = obj.Execute();
+#elif defined(OPENVINO_2023_1)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_1");
   result = obj.Execute();
 #endif
 

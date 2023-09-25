@@ -38,22 +38,6 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       excluded_providers.insert(kTensorrtExecutionProvider);
     }
 
-// Disabled because of accuracy issues for MYRIAD FP16 and VAD_M
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    int relu = strcmp(szOp, "Relu");
-    int leaky = strcmp(szOp, "LeakyRelu");
-    int elu = strcmp(szOp, "Elu");
-    int sigmoid = strcmp(szOp, "Sigmoid");
-    int tanh = strcmp(szOp, "Tanh");
-    if (relu == 0 || leaky == 0) {
-      excluded_providers.insert(kOpenVINOExecutionProvider);
-    }
-    if (elu == 0)
-      excluded_providers.insert(kOpenVINOExecutionProvider);
-    if (sigmoid == 0 || tanh == 0)
-      excluded_providers.insert(kOpenVINOExecutionProvider);
-#endif
-
 // Disabled because of accuracy issues for GPU
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
     int leaky = strcmp(szOp, "LeakyRelu");

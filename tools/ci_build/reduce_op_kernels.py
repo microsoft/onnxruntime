@@ -39,7 +39,7 @@ def _adapt_filters_for_extended_minimal_build(
     # graph transformations in an extended minimal build require certain ops to be available
     extended_minimal_build_required_op_ids = set()  # set of (domain, optype, opset)
     with open(
-        ORT_ROOT / "onnxruntime/core/optimizer/transpose_optimizer/layout_transformation_potentially_added_ops.h",
+        ORT_ROOT / "onnxruntime/core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h",
     ) as f:
         region_boundary_pattern = re.compile(r"@@region_(begin|end)\(extended_minimal_build_required_kernels\)@@")
         op_id_pattern = re.compile(

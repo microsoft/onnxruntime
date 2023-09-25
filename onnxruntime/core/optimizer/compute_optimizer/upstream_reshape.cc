@@ -29,7 +29,7 @@ UpStreamReshapeGraphTransformer::UpStreamReshapeGraphTransformer(
            std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_1)},
       {GetFullQualifiedOpName("Cast", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
-           std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_9_6_1)},
+           std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_19_13_9_6_1)},
       {GetFullQualifiedOpName("Dropout", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
            std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_12_10_7_6_1)},
@@ -246,21 +246,26 @@ std::optional<ReshapeInfo> UpStreamReshapeGraphTransformer::IsSupportedForUpstre
     return std::nullopt;
   }
 
-  bool are_first_two_dims_concrete = utils::HasDimValue(data_shape->dim(0)) && utils::HasDimValue(data_shape->dim(1));
-  int64_t merged_dims_value = are_first_two_dims_concrete
-                                  ? data_shape->dim(0).dim_value() * data_shape->dim(1).dim_value()
-                                  : -1;
-
-  InlinedVector<int64_t> new_shape_const_values;
-  optimizer_utils::AppendTensorFromInitializer(graph, *node.InputDefs()[1], new_shape_const_values, true);
-  if (new_shape_const_values.size() != 2 ||
-      !(new_shape_const_values[0] == -1 || new_shape_const_values[0] == merged_dims_value)) {
-    LOG_DEBUG_INFO(logger, "Skip Reshape node " + node.Name() + " due to target shape is not merging first two dims.");
+  if (!utils::HasDimValue(data_shape->dim(2))) {
+    LOG_DEBUG_INFO(logger, "Skip Reshape node " + node.Name() + " due to data shape's last dim is not concrete.");
     return std::nullopt;
   }
 
-  if (!utils::HasDimValue(data_shape->dim(2))) {
-    LOG_DEBUG_INFO(logger, "Skip Reshape node " + node.Name() + " due to the last dim size is not concrete value.");
+  InlinedVector<int64_t> new_shape_const_values;
+  optimizer_utils::AppendTensorFromInitializer(graph, *node.InputDefs()[1], new_shape_const_values, true);
+  if (new_shape_const_values.size() != 2) {
+    LOG_DEBUG_INFO(logger, "Skip Reshape node " + node.Name() + " due to target shape is rank 2.");
+    return std::nullopt;
+  }
+
+  if (new_shape_const_values[1] != data_shape->dim(2).dim_value()) {
+    LOG_DEBUG_INFO(logger, "Skip Reshape node " + node.Name() +
+                               " due to target shape's last dim is not equal to data shape's last dim.");
+    return std::nullopt;
+  }
+
+  // If the first dim of Reshape output don't have dim_value or dim_param, we can't do the optimization.
+  if (!(reshape_out_shape->dim(0).has_dim_value() || reshape_out_shape->dim(0).has_dim_param())) {
     return std::nullopt;
   }
 

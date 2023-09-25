@@ -4,7 +4,6 @@
 #pragma once
 // Lotus framework headers for onnxruntime::IExecutionProvider (not part of the operator ABI).
 #include "core/common/logging/logging.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/optimizer/graph_transformer.h"

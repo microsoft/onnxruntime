@@ -32,10 +32,19 @@ PYBIND11_PLUGIN_IMPL(_kernel_explorer) {
 KE_REGISTER(m) {
   py::class_<DeviceArray>(m, "DeviceArray")
       .def(py::init<py::array>())
-      .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray);
+      .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray)
+      .def("UpdateDeviceArray", &DeviceArray::UpdateDeviceArray);
 
   m.def("is_composable_kernel_available", []() {
 #ifdef USE_COMPOSABLE_KERNEL
+    return true;
+#else
+        return false;
+#endif
+  });
+
+  m.def("is_hipblaslt_available", []() {
+#ifdef USE_HIPBLASLT
     return true;
 #else
         return false;

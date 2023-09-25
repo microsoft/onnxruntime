@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -21,6 +22,7 @@ class MatMul final : public CudaKernel {
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;
 
  private:
   const float alpha_;

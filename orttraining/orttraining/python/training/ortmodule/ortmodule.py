@@ -3,14 +3,16 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 # isort: skip_file
-# Import ordering is important in this module to aviod circular dependencies
+# Import ordering is important in this module to avoid circular dependencies
+
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
-from .debug_options import DebugOptions
+from .options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
+from ._logger import configure_ortmodule_logger
 from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
@@ -33,7 +35,7 @@ class ORTModule(torch.nn.Module):
         debug_options (:obj:`DebugOptions`, optional): debugging options for ORTModule.
     """
 
-    def __init__(self, module, debug_options=None):
+    def __init__(self, module: torch.nn.Module, debug_options: Optional[DebugOptions] = None):
         # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
         #       (for example PyTorch Lightning), will trigger regular re-exports. This is
         #       because ORTModule auto detects such setattrs on the original module and
@@ -51,9 +53,14 @@ class ORTModule(torch.nn.Module):
         if not debug_options:
             debug_options = DebugOptions()
 
+        self._logger = configure_ortmodule_logger(debug_options.logging.log_level)
+
         # Fallback settings
         self._fallback_manager = _FallbackManager(
-            pytorch_module=module, policy=ortmodule.ORTMODULE_FALLBACK_POLICY, retry=ortmodule.ORTMODULE_FALLBACK_RETRY
+            pytorch_module=module,
+            policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
+            retry=ortmodule.ORTMODULE_FALLBACK_RETRY,
+            logger=self._logger,
         )
 
         try:
@@ -63,19 +70,21 @@ class ORTModule(torch.nn.Module):
 
             super().__init__()
 
-            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
+            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager, self._logger)
 
             _utils.patch_ortmodule_forward_method(self)
 
             # Support contrib OPs
             pytorch_export_contrib_ops.register()
-            CustomOpSymbolicRegistry.register_all()
+            CustomOpSymbolicRegistry.register_all(
+                self._torch_module._execution_manager(module.training)._runtime_options.onnx_opset_version
+            )
             CustomGradientRegistry.register_all()
 
             # Warn user if there are name collisions between user model's and ORTModule attributes
             # And if there are custom methods defined on the user's model, copy and bind them to
             # ORTModule.
-            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module)
+            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module, self._logger)
 
         except ORTModuleFallbackException as e:
             # Although backend is switched to PyTorch here,
@@ -110,8 +119,7 @@ class ORTModule(torch.nn.Module):
     # This declaration is for automatic document generation purposes only
     # The actual forward implementation is bound during ORTModule initialization
     def forward(self, *inputs, **kwargs):
-        """Delegate the :meth:`~torch.nn.Module.forward` pass of PyTorch training to
-        ONNX Runtime.
+        """Delegate the :meth:`~torch.nn.Module.forward` pass of PyTorch training to ONNX Runtime.
 
         The first call to forward performs setup and checking steps. During this call,
         ORTModule determines whether the module can be trained with ONNX Runtime. For
@@ -119,9 +127,8 @@ class ORTModule(torch.nn.Module):
         Execution is interupted if ONNX Runtime cannot process the model for training.
 
         Args:
-            *inputs and **kwargs represent the positional, variable positional, keyword
-            and variable keyword arguments defined in the user's PyTorch module's forward
-            method. Values can be torch tensors and primitive types.
+            inputs:  positional, variable positional inputs to the PyTorch module's forward method.
+            kwargs: keyword and variable keyword arguments to the PyTorch module's forward method.
 
         Returns:
             The output as expected from the forward method defined by the user's
@@ -312,4 +319,15 @@ class ORTModule(torch.nn.Module):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-        _utils.reinitialize_ortmodule(self)
+        # Re-register contrib OPs
+        pytorch_export_contrib_ops.register()
+        CustomOpSymbolicRegistry.register_all(
+            self._torch_module._execution_manager(self.module.training)._runtime_options.onnx_opset_version
+        )
+        CustomGradientRegistry.register_all()
+
+        # Re-initialize the ORTModule forward method
+        _utils.patch_ortmodule_forward_method(self)
+
+        # Re-bind users custom methods to ORTModule
+        _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, self.module, self._logger)

@@ -138,7 +138,7 @@ def create_ort_trainer(
     return model, model_desc, device
 
 
-def runBertTrainingTest(  # noqa: N802
+def run_bert_training_test(
     gradient_accumulation_steps,
     use_mixed_precision,
     allreduce_post_accumulation,
@@ -516,10 +516,10 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="test accuracy mismatch",
         )
 
-    def testMNISTTrainingAndTestingOpset12(self):  # noqa: N802
+    def test_mnist_training_and_testing_opset12(self):
         TestOrtTrainer.run_mnist_training_and_testing(onnx_opset_ver=12)
 
-    def testMNISTResumeTrainingAndTesting(self):  # noqa: N802
+    def test_mnist_resume_training_and_testing(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -588,7 +588,7 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="test accuracy mismatch",
         )
 
-    def testMNISTStateDict(self):  # noqa: N802
+    def test_mnist_state_dict(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -617,7 +617,7 @@ class TestOrtTrainer(unittest.TestCase):
             "bias_buffer",
         }
 
-    def testMNISTSaveAsONNX(self):  # noqa: N802
+    def test_mnist_save_as_onnx(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
         onnx_file_name = "mnist.onnx"
@@ -643,7 +643,7 @@ class TestOrtTrainer(unittest.TestCase):
         trainer.save_as_onnx(onnx_file_name)
         assert os.path.exists(onnx_file_name)
 
-    def testMNISTDevice(self):  # noqa: N802
+    def test_mnist_device(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -662,7 +662,7 @@ class TestOrtTrainer(unittest.TestCase):
 
             loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
-    def testMNISTInitializerNames(self):  # noqa: N802
+    def test_mnist_initializer_names(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -683,7 +683,7 @@ class TestOrtTrainer(unittest.TestCase):
             n for n, t in model.named_parameters()
         }
 
-    def testMNISTInitializerNamesWithInternalLoss(self):  # noqa: N802
+    def test_mnist_initializer_names_with_internal_loss(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -711,7 +711,7 @@ class TestOrtTrainer(unittest.TestCase):
 
         assert {n.name for n in trainer.onnx_model_.graph.initializer} == {n for n, t in model.named_parameters()}
 
-    def testMNISTFrozenWeight(self):  # noqa: N802
+    def test_mnist_frozen_weight(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -738,7 +738,7 @@ class TestOrtTrainer(unittest.TestCase):
         fc2_trainstep_2 = trainer.state_dict()["fc2.weight"]
         assert np.array_equal(fc1_trainstep_1, fc1_trainstep_2) and not np.array_equal(fc2_trainstep_1, fc2_trainstep_2)
 
-    def testMNISTTorchBuffer(self):  # noqa: N802
+    def test_mnist_torch_buffer(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -767,7 +767,7 @@ class TestOrtTrainer(unittest.TestCase):
             bias_buffer_trainstep_1, bias_buffer_trainstep_2
         )
 
-    def testMNISTFrozenWeightCheckpoint(self):  # noqa: N802
+    def test_mnist_frozen_weight_checkpoint(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -806,7 +806,7 @@ class TestOrtTrainer(unittest.TestCase):
         loaded_state_dict = trainer.state_dict()
         assert state_dict.keys() == loaded_state_dict.keys()
 
-    def testMNISTTrainingCheckpoint(self):  # noqa: N802
+    def test_mnist_training_checkpoint(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
@@ -860,7 +860,7 @@ class TestOrtTrainer(unittest.TestCase):
         for key in state_dict:
             assert np.array_equal(state_dict[key], loaded_state_dict[key])
 
-    def testBertTrainingBasic(self):  # noqa: N802
+    def test_bert_training_basic(self):
         expected_losses = [
             11.027887,
             11.108191,
@@ -872,7 +872,7 @@ class TestOrtTrainer(unittest.TestCase):
             10.920979,
         ]
         expected_eval_loss = [10.958977]
-        actual_losses, actual_eval_loss = runBertTrainingTest(
+        actual_losses, actual_eval_loss = run_bert_training_test(
             gradient_accumulation_steps=1,
             use_mixed_precision=False,
             allreduce_post_accumulation=False,
@@ -894,7 +894,7 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="evaluation loss mismatch",
         )
 
-    def testBertTrainingGradientAccumulation(self):  # noqa: N802
+    def test_bert_training_gradient_accumulation(self):
         expected_losses = [
             11.027887,
             11.108191,
@@ -907,7 +907,7 @@ class TestOrtTrainer(unittest.TestCase):
         ]
         expected_eval_loss = [10.958998]
 
-        actual_losses, actual_eval_loss = runBertTrainingTest(
+        actual_losses, actual_eval_loss = run_bert_training_test(
             gradient_accumulation_steps=4,
             use_mixed_precision=False,
             allreduce_post_accumulation=False,
@@ -929,7 +929,7 @@ class TestOrtTrainer(unittest.TestCase):
             err_msg="evaluation loss mismatch",
         )
 
-    def testBertCheckpointingBasic(self):  # noqa: N802
+    def test_bert_checkpointing_basic(self):
         model, _, _ = create_ort_trainer(
             gradient_accumulation_steps=1,
             use_mixed_precision=False,
@@ -963,7 +963,7 @@ class TestOrtTrainer(unittest.TestCase):
         for k, v in loaded_sd.items():
             assert torch.all(torch.eq(v, sd[k]))
 
-    def testWrapModelLossFnStateDict(self):  # noqa: N802
+    def test_wrap_model_loss_fn_state_dict(self):
         torch.manual_seed(1)
         device = torch.device("cuda")
 

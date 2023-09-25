@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {OrtWasmModule} from '../binding/ort-wasm';
-import {getTensorElementSize} from '../wasm-common';
+import {Env} from 'onnxruntime-common';
+
+import {JSEP, OrtWasmModule} from '../binding/ort-wasm';
+import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
-import {TensorView} from './tensor';
+import {TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
 import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
@@ -18,7 +20,29 @@ class TensorViewImpl implements TensorView {
       public readonly dims: readonly number[]) {}
 
   getFloat32Array(): Float32Array {
-    return new Float32Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
+    if (this.dataType !== DataType.float) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Float32Array() :
+                                new Float32Array(this.module.HEAP8.buffer, this.data, elementCount);
+  }
+
+  getBigInt64Array(): BigInt64Array {
+    if (this.dataType !== DataType.int64) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new BigInt64Array() :
+                                new BigInt64Array(this.module.HEAP8.buffer, this.data, elementCount);
+  }
+
+  getInt32Array(): Int32Array {
+    if (this.dataType !== DataType.int32) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Int32Array() : new Int32Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   reshape(newDims: readonly number[]): TensorView {
@@ -29,12 +53,18 @@ class TensorViewImpl implements TensorView {
   }
 }
 
-class OpKernelContext implements ComputeContext {
+class ComputeContextImpl implements ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
-  get customData(): {[key: string]: unknown} {
+  readonly outputCount: number;
+  get kernelCustomData(): {[key: string]: unknown} {
     return this.backend.currentKernelCustomData;
   }
+  get customDataBuffer(): Uint8Array {
+    return this.module.HEAPU8.subarray(this.customDataOffset, this.customDataOffset + this.customDataSize);
+  }
+  private customDataOffset = 0;
+  private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
     const heapU32 = module.HEAPU32;
 
@@ -42,6 +72,9 @@ class OpKernelContext implements ComputeContext {
     let dataIndex = (contextDataOffset >> 2);
     this.opKernelContext = heapU32[dataIndex++];
     const inputCount = heapU32[dataIndex++];
+    this.outputCount = heapU32[dataIndex++];
+    this.customDataOffset = heapU32[dataIndex++];
+    this.customDataSize = heapU32[dataIndex++];
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
@@ -93,11 +126,15 @@ class OpKernelContext implements ComputeContext {
   }
 }
 
-export const init = async(module: OrtWasmModule): Promise<void> => {
+export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
   const init = module.jsepInit;
   if (init && navigator.gpu) {
+    if (!env.wasm.simd) {
+      throw new Error(
+          'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using WebGPU EP');
+    }
     const backend = new WebGpuBackend();
-    await backend.initialize();
+    await backend.initialize(env);
 
     init(
         // backend
@@ -124,26 +161,30 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         // jsepCopyAsync(src, dst, size)
         async(gpuDataId: number, dataOffset: number, size: number):
             Promise<void> => {
-              const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
-
               LOG_DEBUG(
                   'verbose',
                   () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
-              await backend.download(gpuDataId, data);
+              await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
             },
 
         // jsepCreateKernel
-        (name: string, kernel: number, attribute: unknown) => backend.createKernel(name, kernel, attribute),
+        (name: string, kernel: number, attribute: unknown) => backend.createKernel(
+            name, kernel, attribute,
+            env.debug || env.webgpu.profilingMode === 'default' ? module.UTF8ToString(module._JsepGetNodeName(kernel)) :
+                                                                  `${kernel}`),
 
         // jsepReleaseKernel
         (kernel: number) => backend.releaseKernel(kernel),
 
         // jsepRun
-        (kernel: number, contextDataOffset: number) => {
-          LOG_DEBUG('verbose', () => `[WebGPU] jsepRun: kernel=${kernel}, contextDataOffset=${contextDataOffset}`);
-          const context = new OpKernelContext(module, backend, contextDataOffset);
-          return backend.computeKernel(kernel, context);
+        (kernel: number, contextDataOffset: number, sessionState: JSEP.SessionState) => {
+          LOG_DEBUG(
+              'verbose',
+              () => `[WebGPU] jsepRun: sessionId=${sessionState.sessionId}, kernel=${kernel}, contextDataOffset=${
+                  contextDataOffset}`);
+          const context = new ComputeContextImpl(module, backend, contextDataOffset);
+          return backend.computeKernel(kernel, context, sessionState.errors);
         });
   }
 };

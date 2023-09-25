@@ -99,6 +99,29 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreatePadOpBuilder("Pad", op_registrations);
   }
 
+  {  // Unary
+    CreateUnaryOpBuilder("Sqrt", op_registrations);
+    CreateUnaryOpBuilder("Reciprocal", op_registrations);
+  }
+
+  {  // Reduction
+     // ReduceMean is used in layer normalization which seems to be problematic in Python tests.
+    CreateReductionOpBuilder("ReduceMean", op_registrations);
+    CreateReductionOpBuilder("ReduceSum", op_registrations);
+  }
+
+  {  // Shape
+    CreateShapeOpBuilder("Shape", op_registrations);
+  }
+
+  {  // Gather
+    CreateGatherOpBuilder("Gather", op_registrations);
+  }
+
+  {  // Slice
+    CreateSliceOpBuilder("Slice", op_registrations);
+  }
+
   return op_registrations;
 }
 

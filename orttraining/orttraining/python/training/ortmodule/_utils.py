@@ -7,12 +7,13 @@
 import copy
 import functools
 import inspect
+import json
+import logging
 import os
 import random
 import traceback
 import types
-import warnings
-from typing import List  # noqa: F401
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -22,11 +23,8 @@ from torch.utils.dlpack import to_dlpack
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.tools import pytorch_export_contrib_ops
 
 from . import _onnx_models
-from ._custom_gradient_registry import CustomGradientRegistry
-from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._fallback_exceptions import ORTModuleDeviceException, ORTModuleIOError, wrap_exception
 from ._torch_module_pytorch import TorchModulePytorch
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
@@ -49,7 +47,8 @@ def set_random_states(states):
         torch.cuda.set_rng_state(torch_cuda_state)
 
 
-def _ortvalue_from_torch_tensor(torch_tensor):
+def _ortvalue_from_torch_tensor(torch_tensor: torch.Tensor) -> C.OrtValue:
+    """Converts a torch tensor to an OrtValue."""
     # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
     # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
     # We need to convert bool tensor to unit8 tensor to workaround this.
@@ -63,7 +62,9 @@ def _ortvalue_from_torch_tensor(torch_tensor):
     return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
 
 
-def _ortvalues_to_torch_tensor(ortvalues, device=None):
+def _ortvalues_to_torch_tensor(
+    ortvalues: C.OrtValueVector, device: Optional[torch.device] = None
+) -> Tuple[torch.Tensor, ...]:
     if len(ortvalues) == 0:
         return tuple()
 
@@ -75,7 +76,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device=None):
     if not isinstance(ortvalues, C.OrtValueVector):
         raise TypeError("ortvalues must be an instance of OrtValueVector not %r." % type(ortvalues))
 
-    res = ortvalues.to_dlpacks(_from_dlpack)
+    res: List[torch.Tensor] = ortvalues.to_dlpacks(_from_dlpack)
     bool_indices = ortvalues.bool_tensor_indices()
     if len(bool_indices):
         # DLPack structure does not know for sure if it stores boolean
@@ -97,7 +98,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device=None):
     return tuple(res)
 
 
-def _torch_tensor_to_dlpack(tensor):
+def _torch_tensor_to_dlpack(tensor: torch.Tensor):
     # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
     # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
     # We need to convert bool tensor to unit8 tensor to workaround this.
@@ -110,7 +111,7 @@ def _torch_tensor_to_dlpack(tensor):
     return to_dlpack(tensor)
 
 
-def _check_same_device(device, argument_str, *args):
+def _check_same_device(device: torch.device, argument_str: str, *args):
     """Check that all tensor arguments in *args reside on the same device as the input device"""
 
     assert isinstance(device, torch.device), "`device` must be a valid `torch.device` object"
@@ -126,7 +127,7 @@ def _check_same_device(device, argument_str, *args):
                 )
 
 
-def get_device_index(device):
+def get_device_index(device: Union[str, int, torch.device]) -> int:
     if isinstance(device, str):
         # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
         device = torch.device(device)
@@ -135,7 +136,7 @@ def get_device_index(device):
     return 0 if device.index is None else device.index
 
 
-def get_device_str(device):
+def get_device_str(device: Union[str, int, torch.device]) -> str:
     if isinstance(device, str):
         # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
         if device.find(":") == -1:
@@ -152,11 +153,14 @@ def get_device_str(device):
     return device
 
 
-def get_device_from_module(module):
+def get_device_from_module(module) -> Optional[torch.device]:
     """Returns the first device found in the `module`'s parameters or None
 
     Args:
         module (torch.nn.Module): PyTorch model to extract device from
+
+    Returns:
+        torch.device: Device extracted from `module`'s parameters or None
 
     Raises:
         ORTModuleFallbackException: When more than one device is found at `module`
@@ -175,12 +179,15 @@ def get_device_from_module(module):
     return device
 
 
-def get_device_from_inputs(args, kwargs):
+def get_device_from_inputs(args, kwargs) -> Optional[torch.device]:
     """Returns device from first PyTorch Tensor within args or kwargs
 
     Args:
         args: List with inputs
         kwargs: Dictionary with inputs
+
+    Returns:
+        torch.device: Device extracted from `args` or `kwargs` or None
     """
 
     device = None
@@ -191,7 +198,7 @@ def get_device_from_inputs(args, kwargs):
     return device
 
 
-def _create_iobinding(io_binding, inputs, model, device):
+def _create_iobinding(io_binding, inputs, model, device: torch.device):
     """Creates IO binding for a `model` inputs and output"""
     for idx, value_info in enumerate(model.graph.input):
         io_binding.bind_ortvalue_input(
@@ -206,7 +213,9 @@ def _create_iobinding(io_binding, inputs, model, device):
         io_binding.bind_output(value_info.name, device.type, device_id=device_id)
 
 
-def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.Module, user_module: torch.nn.Module):
+def check_for_name_collisions_and_bind_methods_to_ortmodule(
+    ortmodule: torch.nn.Module, user_module: torch.nn.Module, logger: logging.Logger
+):
     """Warns if there are any common attributes between the user's model and ORTModule and binds user methods to ORTModule
 
     If there are methods defined on the user's model that ORTModule does not recognize (custom methods),
@@ -246,7 +255,7 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                 # This is a user defined/overridden method. Check for collisions.
                 if attribute_name in ortmodule_attributes:
                     # This is a user defined method, issue a warning.
-                    warnings.warn(
+                    logger.warning(
                         f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                         "User Module's method may not be called upon invocation through ORTModule."
                     )
@@ -260,7 +269,7 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
             if attribute_name not in torch_module_attributes and attribute_name in ortmodule_attributes:
                 # This is a user defined attribute that collides with ORTModule
                 if attribute_name in ortmodule_attributes:
-                    warnings.warn(
+                    logger.warning(
                         f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                         "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule."
                     )
@@ -336,13 +345,6 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
     ortmodule.forward = pytorch_module.forward
 
 
-def warn_of_constant_inputs(data):
-    warnings.warn(
-        f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
-        " Please consider moving constant arguments to the model constructor."
-    )
-
-
 def patch_torch_module_ort_forward_method(torch_module_ort):
     def _forward(self, *inputs, **kwargs):
         """Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -380,19 +382,6 @@ def patch_ortmodule_forward_method(ortmodule):
     functools.update_wrapper(ortmodule.forward.__func__, ortmodule._torch_module.forward.__func__)
 
 
-def reinitialize_ortmodule(ortmodule):
-    # Re-register contrib OPs
-    pytorch_export_contrib_ops.register()
-    CustomOpSymbolicRegistry.register_all()
-    CustomGradientRegistry.register_all()
-
-    # Re-initialize the ORTModule forward method
-    patch_ortmodule_forward_method(ortmodule)
-
-    # Re-bind users custom methods to ORTModule
-    check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule, ortmodule.module)
-
-
 def reinitialize_torch_module_ort(torch_module):
     # Re-initialize the forward method
     patch_torch_module_ort_forward_method(torch_module)
@@ -418,3 +407,57 @@ def reinitialize_graph_execution_manager(graph_execution_manager):
 def reinitialize_training_manager(training_manager):
     # Redefine training managers forward_class
     training_manager._forward_class = training_manager._create_autofunction_class()
+
+
+def get_runtime_pytorch_version():
+    from packaging import version
+
+    return version.parse(torch.__version__.split("+")[0])
+
+
+def check_function_has_param(function: Callable, param_name: str) -> bool:
+    return param_name in inspect.signature(function).parameters
+
+
+def get_fully_qualified_class_name(cls: type) -> str:
+    """Returns the fully qualified class name of the given class."""
+    module = cls.__module__
+    if module == "builtins":
+        return cls.__qualname__  # avoid outputs like 'builtins.str'
+    return module + "." + cls.__qualname__
+
+
+def save_tuning_results(session, is_training, tuning_results_path):
+    """Save the online Op tuning results to a json file in the specified path."""
+
+    os.makedirs(tuning_results_path, exist_ok=True)
+    suffix = "training" if is_training else "inference"
+    tuning_result_file = os.path.join(tuning_results_path, f"tuning_results_{suffix}.json")
+    with open(tuning_result_file, "w", encoding="utf-8") as f:
+        json.dump(session.get_tuning_results(), f, indent=4)
+
+
+def set_tuning_results(session, is_training, tuning_results_path):
+    """Set the offline Op tuning results from a json file in the specified path."""
+
+    suffix = "training" if is_training else "inference"
+    tuning_result_file = os.path.join(tuning_results_path, f"tuning_results_{suffix}.json")
+    if os.path.isfile(tuning_result_file):
+        with open(tuning_result_file, encoding="utf-8") as f:
+            session.set_tuning_results(json.load(f))
+
+
+def get_rank() -> int:
+    """Returns the rank of the current process. If distributed training is not initialized, returns 0."""
+    if torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+
+    return 0
+
+
+def get_world_size() -> int:
+    """Returns the world size of the current process. If distributed training is not initialized, returns 1."""
+    if torch.distributed.is_initialized():
+        return torch.distributed.get_world_size()
+
+    return 1

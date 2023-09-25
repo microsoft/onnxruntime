@@ -563,6 +563,15 @@
             },
             "comments": "python-pillow. Implementation logic for anti-aliasing copied by Resize CPU kernel."
          }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
+               "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
+            }            
+         }
       }
    ],
    "Version": 1

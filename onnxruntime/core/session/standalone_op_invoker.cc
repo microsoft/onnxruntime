@@ -361,14 +361,14 @@ onnxruntime::Status CreateOpAttr(const char* name, const void* data, int len, Or
   return status;
 }
 
-onnxruntime::Status CreateOp(const OrtKernelInfo* info,
-                             const char* op_name,
-                             const char* domain,
+onnxruntime::Status CreateOp(_In_ const OrtKernelInfo* info,
+                             _In_z_ const char* op_name,
+                             _In_z_ const char* domain,
                              int version,
-                             const char** type_constraint_names,
-                             const ONNXTensorElementDataType* type_constraint_values,
+                             _In_reads_(type_constraint_count) const char** type_constraint_names,
+                             _In_reads_(type_constraint_count) const ONNXTensorElementDataType* type_constraint_values,
                              int type_constraint_count,
-                             const OrtOpAttr* const* attr_values,
+                             _In_reads_(attr_count) const OrtOpAttr* const* attr_values,
                              int attr_count,
                              int input_count,
                              int output_count,
@@ -421,7 +421,7 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   static const OrtValueNameIdxMap kEmptyNameMap;
 
   OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap,
-                               kernel_info->GetDataTransferManager());
+                               kernel_info->GetDataTransferManager(), kernel_info->GetAllocators());
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
 
   auto& node_repo = NodeRepo::GetInstance();
@@ -481,16 +481,16 @@ ORT_API(void, OrtApis::ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr* op_attr) {
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     _In_ const OrtKernelInfo* info,
-                    _In_ const char* op_name,
-                    _In_ const char* domain,
-                    _In_ int version,
-                    _In_opt_ const char** type_constraint_names,
-                    _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                    _In_opt_ int type_constraint_count,
-                    _In_opt_ const OrtOpAttr* const* attr_values,
-                    _In_opt_ int attr_count,
-                    _In_ int input_count,
-                    _In_ int output_count,
+                    _In_z_ const char* op_name,
+                    _In_z_ const char* domain,
+                    int version,
+                    _In_reads_(type_constraint_count) const char** type_constraint_names,
+                    _In_reads_(type_constraint_count) const ONNXTensorElementDataType* type_constraint_values,
+                    int type_constraint_count,
+                    _In_reads_(attr_count) const OrtOpAttr* const* attr_values,
+                    int attr_count,
+                    int input_count,
+                    int output_count,
                     _Outptr_ OrtOp** ort_op) {
   API_IMPL_BEGIN
   auto status = onnxruntime::standalone::CreateOp(info,
@@ -550,7 +550,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo, _In_ const OrtKernelInfo* info, _Ou
 ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy) {
   if (info_copy) {
     auto kernel_info = reinterpret_cast<onnxruntime::OpKernelInfo*>(info_copy);
-    GSL_SUPPRESS(r .11)
+    GSL_SUPPRESS(r.11)
     delete kernel_info;
   }
 }

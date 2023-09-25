@@ -8,25 +8,36 @@ This converts GPT2 or T5 model to onnx with beam search operator.
 Example 1: convert gpt2 model with beam search:
     python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx
 
-Example 2: convert T5 model with beam search in two steps:
+Example 2: convert gpt2 model with beam search containing specific cuda optimizations:
+    python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx --use_gpu               \
+        --past_present_share_buffer --use_decoder_masked_attention
+
+Example 3: convert gpt2 model with beam search with mixed precision and enable SkipLayerNorm strict mode:
+    python convert_generation.py -m gpt2 --output gpt2_beam_search.onnx --use_gpu -p fp16 --use_sln_strict_mode
+
+Example 4: convert T5 model with beam search in two steps:
     cd ./models/t5
     python convert_to_onnx.py -m t5-small
     cd ../..
-    python convert_generation.py -m t5-small --model_type t5                                   \
+    python convert_generation.py -m t5-small --model_type t5                                    \
         --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
         --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
         --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
-Example 3: convert T5 model with beam search. All in one step:
+Example 5: convert T5 model with beam search. All in one step:
     python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 
-Example 4: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
+Example 6: convert T5 model with beam search containing specific cuda optimizations. All in one step:
+    python convert_generation.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx   \
+        --use_gpu --past_present_share_buffer --use_decoder_masked_attention
+
+Example 7: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
     python convert_generation.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
 
-Example 5: convert gpt2 model with greedy search:
+Example 8: convert gpt2 model with greedy search:
     python convert_generation.py -m gpt2 --output gpt2_greedy_search.onnx --num_beams 1 --num_return_sequences 1
 
-Example 6: convert gpt2 model with sampling:
+Example 9: convert gpt2 model with sampling:
     python convert_generation.py -m gpt2 --output gpt2_sampling.onnx --num_beams 1 --num_return_sequences 1 --top_p 0.6
 """
 
@@ -34,7 +45,6 @@ import argparse
 import logging
 import math
 import os
-import sys
 import time
 from enum import Enum
 from pathlib import Path
@@ -43,9 +53,14 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import onnx
 import torch
-from benchmark_helper import Precision
+from benchmark_helper import Precision, setup_logger
 from fusion_utils import NumpyHelper
+from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx
+from models.gpt2.gpt2_helper import PRETRAINED_GPT2_MODELS
+from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
+from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS
 from onnx import GraphProto, ModelProto, TensorProto
+from onnx_model import OnnxModel
 from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
@@ -58,16 +73,6 @@ from transformers import (
 )
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
-from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E402
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
-from benchmark_helper import setup_logger  # noqa: E402
-from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models  # noqa: E402
-from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -413,6 +418,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     test_group = parser.add_argument_group("Other options for testing parity and performance")
 
     test_group.add_argument(
+        "--use_sln_strict_mode",
+        required=False,
+        action="store_true",
+        help="Enable strict mode for SLN in CUDA provider. This ensures a better accuracy but will be slower.",
+    )
+    test_group.set_defaults(use_sln_strict_mode=False)
+
+    test_group.add_argument(
         "--use_gpu", required=False, action="store_true", help="use GPU for inference. Required for fp16."
     )
     test_group.set_defaults(use_gpu=False)
@@ -632,12 +645,13 @@ def pad_weights_of_logits_matmul(onnx_path: str, use_external_data_format: bool 
     return True
 
 
-def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
+def create_ort_session(model_path: str, use_gpu: bool, use_sln_strict_mode: bool) -> InferenceSession:
     """Create OnnxRuntime session.
 
     Args:
         model_path (str): onnx model path
         use_gpu (bool): use GPU or not
+        use_sln_strict_mode (bool): use strict mode for skip layer normalization or not
 
     Raises:
         RuntimeError: CUDAExecutionProvider is not available when --use_gpu is specified.
@@ -653,6 +667,12 @@ def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
             raise RuntimeError("CUDAExecutionProvider is not available for --use_gpu!")
         else:
             logger.info("use CUDAExecutionProvider")
+        if use_sln_strict_mode:
+            cuda_provider_options = {"enable_skip_layer_norm_strict_mode": True}
+            provider_options = {"CUDAExecutionProvider": cuda_provider_options}
+            execution_providers = [
+                (name, provider_options[name]) if name in provider_options else name for name in execution_providers
+            ]
 
     ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
     return ort_session
@@ -863,6 +883,8 @@ def remove_shared_initializers(
     graph2: GraphProto,
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
+    signature_cache1: Optional[dict] = None,
+    signature_cache2: Optional[dict] = None,
 ):
     """Remove initializers with same value from two graphs.
 
@@ -871,6 +893,8 @@ def remove_shared_initializers(
         graph2 (GraphProto): the second graph to process
         shared_prefix (str): add prefix to the shared initializers among two graphs
         min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
+        signature_cache1 (dict): Optional dictionary to store data signatures of tensors in graph1 in order to speed up comparison
+        signature_cache2 (dict): Optional dictionary to store data signatures of tensors in graph2 in order to speed up comparison
     """
 
     mapping_initializers_1 = {}
@@ -887,7 +911,7 @@ def remove_shared_initializers(
             if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
                 continue
 
-            if OnnxModel.has_same_value(initializer1, initializer2):
+            if OnnxModel.has_same_value(initializer1, initializer2, signature_cache1, signature_cache2):
                 mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
                 shared_initializers_1.append(initializer1)
 
@@ -965,9 +989,16 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
     decoder = OnnxModel(decoder_model)
     encoder.add_prefix_to_names("e_")
     decoder.add_prefix_to_names("d_")
-    encoder.remove_duplicated_initializer()
-    decoder.remove_duplicated_initializer()
-    initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_")
+    signature_cache1, signature_cache2 = {}, {}
+    encoder.remove_duplicated_initializer(signature_cache1)
+    decoder.remove_duplicated_initializer(signature_cache2)
+    initializers = remove_shared_initializers(
+        decoder.model.graph,
+        encoder.model.graph,
+        shared_prefix="s_",
+        signature_cache1=signature_cache1,
+        signature_cache2=signature_cache2,
+    )
     return initializers
 
 
@@ -1181,8 +1212,72 @@ def update_decoder_subgraph_use_decoder_masked_attention(
     return True
 
 
+def find_past_seq_len_usage(subg: GraphProto):
+    """Correct graph which originally use dim of past_seq_len from input_ids's shape which is fixed to max_seq_len after
+       shared past/present buffer
+
+    Args:
+        subg (GraphProto): GraphProto of the decoder subgraph
+    return:
+        tensor_names_to_rename : set of tensor names which is equal to past_sequence_length
+        nodes_to_remove : list of node to remove
+    """
+    tensor_names_to_rename = set()
+    nodes_to_remove = []
+
+    graph_intput_names = {inp.name: index for index, inp in enumerate(subg.input)}
+
+    input_name_to_nodes = {}
+    output_name_to_node = {}
+    for node in subg.node:
+        for input_name in node.input:
+            if input_name:
+                if input_name not in input_name_to_nodes:
+                    input_name_to_nodes[input_name] = [node]
+                else:
+                    input_name_to_nodes[input_name].append(node)
+        for output_name in node.output:
+            if output_name:
+                output_name_to_node[output_name] = node
+
+    for node in subg.node:
+        # find "Shape(past_key_self..) --> Gather(*, 2)"
+        if node.op_type == "Gather":
+            if not node.input[1] or not node.input[0]:
+                continue
+            shape_tensor_name, shape_index_name = (node.input[0], node.input[1])
+            ini_gather_indices = None
+            for tensor in subg.initializer:
+                if tensor.name == shape_index_name:
+                    ini_gather_indices = tensor
+                    break
+            if ini_gather_indices is None:
+                continue
+            gather_indices_arr = onnx.numpy_helper.to_array(ini_gather_indices)
+            if gather_indices_arr.size == 1 and gather_indices_arr.item() == 2 and node.input[0] in output_name_to_node:
+                shape_node = output_name_to_node[shape_tensor_name]
+                if (
+                    shape_node.op_type == "Shape"
+                    and shape_node.input[0]
+                    and shape_node.input[0] in graph_intput_names
+                    and (
+                        shape_node.input[0].startswith("past_key_self_")
+                        or shape_node.input[0].startswith("past_value_self_")
+                    )
+                ):
+                    tensor_names_to_rename.add(node.output[0])
+                    nodes_to_remove.append(node)
+                    if len(input_name_to_nodes[shape_node.output[0]]) == 1:
+                        nodes_to_remove.append(shape_node)
+    return tensor_names_to_rename, nodes_to_remove
+
+
 def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphProto):
-    input_self_past_0 = 2
+    input_self_past_0 = 1
+    # w/wo attention mask, w/wo hidden_state
+    graph_input_names = [gi.name for gi in subg.input]
+    while input_self_past_0 < 3 and not graph_input_names[input_self_past_0].startswith("past"):
+        input_self_past_0 += 1
     output_self_past_0 = 1
 
     num_layers = int((len(subg.input) - input_self_past_0) / 4)
@@ -1206,9 +1301,6 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
             rel_pos_bias_node = node
             break
 
-    if rel_pos_bias_node is None:
-        return False
-
     decoder_masked_attention_supported_attr = [
         "past_present_share_buffer",
         "num_heads",
@@ -1217,8 +1309,31 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
         "domain",
     ]
 
+    target_squeezed_past_seq_name = "past_sequence_length_squeezed_int64"
+    tensor_names_to_rename, nodes_to_remove = find_past_seq_len_usage(subg)
+    if len(tensor_names_to_rename) > 0:
+        for name_to_rename in tensor_names_to_rename:
+            print(f"Found tensor name {name_to_rename} to be renamed to {target_squeezed_past_seq_name}")
+        for nr in nodes_to_remove:
+            print(f"Found node to removed: type:{nr.op_type}, name:{nr.name}")
+
+        squeeze_node = onnx.helper.make_node(
+            "Squeeze",
+            ["past_sequence_length"],
+            ["past_sequence_length_squeezed"],
+            name="node_past_sequence_length_squeeze",
+        )
+        cast_node = onnx.helper.make_node(
+            "Cast",
+            ["past_sequence_length_squeezed"],
+            [target_squeezed_past_seq_name],
+            name="node_past_sequence_length_squeeze_cast",
+            to=TensorProto.INT64,
+        )
+        new_nodes.extend([squeeze_node, cast_node])
+
     for node in subg.node:
-        if len(node.output) > 0 and node.output[0] == rel_pos_bias_node.input[1]:
+        if len(node.output) > 0 and rel_pos_bias_node is not None and node.output[0] == rel_pos_bias_node.input[1]:
             cast_node = onnx.helper.make_node(
                 "Cast",
                 ["past_sequence_length"],
@@ -1240,20 +1355,16 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
                 node.input[0],  # query
                 node.input[1],  # key
                 node.input[2],  # value
-                node.input[4],  # 2D mask
-                node.input[5],  # relative_position_bias
             ]
 
-            if len(node.input) > 6:
-                nis.extend([node.input[6]])  # past_key
-                nis.extend([node.input[7]])  # past_value
-            else:
-                nis.extend([""])  # past_key
-                nis.extend([""])  # past_value
-
+            nis.extend([node.input[4] if len(node.input) > 4 else ""])  # 2D mask
+            nis.extend([node.input[5] if len(node.input) > 5 else ""])  # relative_position_bias
+            nis.extend([node.input[6] if len(node.input) > 6 else ""])  # past_key
+            nis.extend([node.input[7] if len(node.input) > 7 else ""])  # past_value
             nis.extend(["past_sequence_length"])  # past_sequence_length
             nis.extend(["beam_width"])  # beam_width
             nis.extend(["cache_indirection"])  # cache_indirection
+            nis.extend([node.input[3] if len(node.input) > 3 else ""])  # bias
 
             kwargs["past_present_share_buffer"] = 1
 
@@ -1261,10 +1372,15 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
                 "DecoderMaskedMultiHeadAttention", nis, node.output, name=node.name, **kwargs
             )
 
-        new_nodes.extend([node])
+        if node not in nodes_to_remove:
+            for index, name in enumerate(node.input):
+                if name in tensor_names_to_rename:
+                    node.input[index] = target_squeezed_past_seq_name
+            new_nodes.extend([node])
 
     subg.ClearField("node")
     subg.node.extend(new_nodes)
+    orig_input_names = [inp.name for inp in subg.input]
 
     new_inputs = []
     for i, vi in enumerate(subg.input):
@@ -1276,15 +1392,20 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
                 shape=[shape[0], shape[1], "max_seq_len", shape[3]],
             )
         new_inputs.extend([vi])
-    new_inputs.extend([onnx.helper.make_tensor_value_info("past_sequence_length", onnx.TensorProto.INT32, shape=[1])])
-    new_inputs.extend([onnx.helper.make_tensor_value_info("beam_width", onnx.TensorProto.INT32, shape=[1])])
-    new_inputs.extend(
-        [
-            onnx.helper.make_tensor_value_info(
-                "cache_indirection", onnx.TensorProto.INT32, shape=["batch_size", "beam_width", "max_seq_len"]
-            )
-        ]
-    )
+    if "past_sequence_length" not in orig_input_names:
+        new_inputs.extend(
+            [onnx.helper.make_tensor_value_info("past_sequence_length", onnx.TensorProto.INT32, shape=[1])]
+        )
+    if "beam_width" not in orig_input_names:
+        new_inputs.extend([onnx.helper.make_tensor_value_info("beam_width", onnx.TensorProto.INT32, shape=[1])])
+    if "cache_indirection" not in orig_input_names:
+        new_inputs.extend(
+            [
+                onnx.helper.make_tensor_value_info(
+                    "cache_indirection", onnx.TensorProto.INT32, shape=["batch_size", "beam_width", "max_seq_len"]
+                )
+            ]
+        )
     subg.ClearField("input")
     subg.input.extend(new_inputs)
 
@@ -1300,6 +1421,65 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphP
         new_outputs.extend([vi])
     subg.ClearField("output")
     subg.output.extend(new_outputs)
+
+    return True
+
+
+def pack_qkv_for_decoder_masked_mha(model_proto: ModelProto):
+    onnx_model = OnnxModel(model_proto)
+    output_name_to_node = onnx_model.output_name_to_node()
+
+    nodes_to_add = []
+    nodes_to_remove = []
+    for node in onnx_model.nodes():
+        if node.op_type == "DecoderMaskedMultiHeadAttention":
+            if "past_key_cross" in node.input[1] and "past_value_cross" in node.input[2]:
+                continue
+            q_matmul = output_name_to_node[node.input[0]]
+            k_matmul = output_name_to_node[node.input[1]]
+            v_matmul = output_name_to_node[node.input[2]]
+
+            q_weight = onnx_model.get_initializer(q_matmul.input[1])
+            k_weight = onnx_model.get_initializer(k_matmul.input[1])
+            v_weight = onnx_model.get_initializer(v_matmul.input[1])
+            if not (q_weight and k_weight and v_weight):
+                return False
+
+            qw = NumpyHelper.to_array(q_weight)
+            kw = NumpyHelper.to_array(k_weight)
+            vw = NumpyHelper.to_array(v_weight)
+
+            qkv_weight = np.concatenate([qw, kw, vw], axis=1)
+
+            matmul_node_name = onnx_model.create_node_name("MatMul", name_prefix="MatMul_QKV")
+            weight = onnx.helper.make_tensor(
+                name=matmul_node_name + "_weight",
+                data_type=TensorProto.FLOAT if q_weight.data_type == 1 else TensorProto.FLOAT16,
+                dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
+                vals=qkv_weight.flatten().tolist(),
+            )
+
+            model_proto.graph.initializer.extend([weight])
+
+            matmul_node = onnx.helper.make_node(
+                "MatMul",
+                inputs=[q_matmul.input[0], matmul_node_name + "_weight"],
+                outputs=[matmul_node_name + "_out"],
+                name=matmul_node_name,
+            )
+
+            node.input[0] = matmul_node.output[0]
+            node.input[1] = ""
+            node.input[2] = ""
+
+            nodes_to_add.extend([matmul_node])
+            nodes_to_remove.extend([q_matmul, k_matmul, v_matmul])
+
+    onnx_model.add_nodes(nodes_to_add)
+    onnx_model.remove_nodes(nodes_to_remove)
+    onnx_model.update_graph()
+
+    onnx_model.topological_sort()
 
     return True
 
@@ -1929,21 +2109,6 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         encoder_model.graph.name = f"{args.model_type} encoder and decoder init"
         verify_t5_encoder_decoder_init_subgraph(encoder_model.graph, args.precision)
 
-        if not args.disable_shared_initializers:
-            # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
-            initializers = get_shared_initializers(encoder_model, decoder_model)
-            logger.info(
-                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in encoder and decoder subgraphs are moved to the main graph"
-            )
-
-            # TODO(tianleiwu): investigate the following which causes error in inference
-            # Move initializer from subgraph to main graph could reduce memory usage in inference.
-            # moved_initializers = move_initializers(encoder_model.graph)
-            # logger.info(
-            #     f"{len(moved_initializers)} initializers ({[i.name for i in moved_initializers]}) from the encoder are moved to the main graph"
-            # )
-            # initializers.extend(moved_initializers)
-
         make_dim_proto_numeric_t5(encoder_model, config)
         make_dim_proto_numeric_t5(decoder_model, config)
 
@@ -1959,6 +2124,26 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 logger.info("*****update t5 decoder subgraph successfully!!!*****")
             else:
                 logger.info("*****DecoderMaskedMultiHeadAttention is not applied to T5 decoder*****")
+
+            if pack_qkv_for_decoder_masked_mha(decoder_model):
+                logger.info("*****pack qkv for decoder masked mha successfully!!!*****")
+            else:
+                logger.info("*****pack qkv for decoder masked mha failed!!!*****")
+
+        if not args.disable_shared_initializers:
+            # Unique shared initializers from the decoder and decoder_init could reduce memory usage in inference.
+            initializers = get_shared_initializers(encoder_model, decoder_model)
+            logger.info(
+                f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in encoder and decoder subgraphs are moved to the main graph"
+            )
+
+            # TODO(tianleiwu): investigate the following which causes error in inference
+            # Move initializer from subgraph to main graph could reduce memory usage in inference.
+            # moved_initializers = move_initializers(encoder_model.graph)
+            # logger.info(
+            #     f"{len(moved_initializers)} initializers ({[i.name for i in moved_initializers]}) from the encoder are moved to the main graph"
+            # )
+            # initializers.extend(moved_initializers)
 
         node.attribute.extend(
             [
@@ -2346,7 +2531,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
         return
 
     logger.debug("Creating ort session......")
-    ort_session = create_ort_session(args.output, args.use_gpu)
+    ort_session = create_ort_session(args.output, args.use_gpu, args.use_sln_strict_mode)
 
     logger.debug("Run ort session......")
     result = ort_session.run(None, inputs)
@@ -2548,7 +2733,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
 
     logger.debug("ORT inputs", inputs)  # noqa: PLE1205
 
-    ort_session = create_ort_session(args.output, args.use_gpu)
+    ort_session = create_ort_session(args.output, args.use_gpu, args.use_sln_strict_mode)
 
     # Test performance
     latency = []

@@ -8,6 +8,8 @@
 #include <vector>
 
 #ifdef USE_COMPOSABLE_KERNEL
+#include "core/providers/rocm/composable_kernel_common.h"
+
 #include "ck/ck.hpp"
 #include "ck/library/tensor_operation_instance/gpu/softmax.hpp"
 #include "ck/tensor_operation/gpu/device/device_softmax.hpp"
@@ -22,32 +24,17 @@ namespace rocm {
 
 #ifdef USE_COMPOSABLE_KERNEL
 
-template <typename T>
-struct DataTypeAdaptor {
-  using type = T;
-};
-
-template <>
-struct DataTypeAdaptor<half> {
-  using type = ck::half_t;
-};
-
-template <>
-struct DataTypeAdaptor<BFloat16> {
-  using type = ck::bhalf16_t;
-};
-
 using Nop = ck::tensor_operation::element_wise::PassThrough;
 constexpr int Rank = 4;
 constexpr int NumReduceDim = 1;
 
 template <typename InputT, typename OutputT, typename AccT>
 auto GetCKSoftmaxTypeStringAndOps() {
-  using InDataType = typename DataTypeAdaptor<InputT>::type;
-  using OutDataType = typename DataTypeAdaptor<OutputT>::type;
-  using AccDataType = typename DataTypeAdaptor<AccT>::type;
+  using InDataType = typename CKDataTypeAdaptor<InputT>::type;
+  using OutDataType = typename CKDataTypeAdaptor<OutputT>::type;
+  using AccDataType = typename CKDataTypeAdaptor<AccT>::type;
   using DeviceSoftmax = ck::tensor_operation::device::
-      DeviceSoftmax<InDataType, AccDataType, OutDataType, Nop, Nop, Rank>;
+      DeviceSoftmax<InDataType, AccDataType, OutDataType, Nop, Nop, Rank, NumReduceDim>;
   using InstanceFactory = ck::tensor_operation::device::instance::DeviceOperationInstanceFactory<DeviceSoftmax>;
 
   std::vector<std::pair<std::string, tunable::Op<SoftmaxParams<InputT, OutputT>>>> ret;
@@ -62,9 +49,6 @@ auto GetCKSoftmaxTypeStringAndOps() {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->is_log_softmax,
           impl->GetTypeString(), " does not support log softmax");
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          impl->GetRank() != Rank || impl->GetNumReduceDim() != NumReduceDim,
-          impl->GetTypeString(), " does not support current Rank or NumReduceDim ", params->Signature());
 
       std::vector<ck::index_t> in_lengths{1, 1, params->batch_count, params->softmax_elements};
       std::vector<ck::index_t> in_strides{params->batch_count * params->input_stride, params->batch_count * params->input_stride, params->input_stride, 1};
@@ -75,7 +59,7 @@ auto GetCKSoftmaxTypeStringAndOps() {
                                            params->input, params->output, nop, nop);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->stream});
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_softmax_op)));

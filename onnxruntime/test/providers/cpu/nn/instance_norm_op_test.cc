@@ -41,11 +41,7 @@ TEST(InstanceNormalizationOpTest, InstanceNorm) {
                                    -0.14644464F, -0.82262872F, -0.66852817F, 1.63760153F,
                                    -1.65898662F, 0.27618144F, 0.64840618F, 0.734399F};
   test.AddOutput<float>("Y", input_dims, expected_output);
-#if defined(OPENVINO_CONFIG_MYRIAD)  // Disabling this test on MYRIADX temporarily due to a bug
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-#endif
 }
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
@@ -71,11 +67,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
                                    0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
   test.AddOutput<float>("Y", input_dims, expected_output);
 
-#if defined(OPENVINO_CONFIG_MYRIAD)  // Disabling this test on MYRIADX temporarily due to a bug
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-#endif
 }
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
@@ -109,11 +101,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
                                    0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
 
   test.AddOutput<float>("Y", input_dims, expected_output);
-#if defined(OPENVINO_CONFIG_MYRIAD)  // Disabling this test on MYRIADX temporarily due to a bug
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-#endif
 }
 
 // Only CUDA and ROCm kernels have float 16 support
@@ -155,11 +143,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch1_fp16) {
   test.AddInput<MLFloat16>("B", {3}, B_fp16);
   test.AddOutput<MLFloat16>("Y", input_dims, expected_output_fp16);
 
-#if defined(OPENVINO_CONFIG_MYRIAD)  // Disabling this test on MYRIADX temporarily due to a bug
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-#endif
 }
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch2_fp16) {
@@ -206,11 +190,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2_fp16) {
   test.AddInput<MLFloat16>("B", {3}, B_fp16);
   test.AddOutput<MLFloat16>("Y", input_dims, expected_output_fp16);
 
-#if defined(OPENVINO_CONFIG_MYRIAD)  // Disabling this test on MYRIADX temporarily due to a bug
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-#endif
 }
 
 #endif
@@ -254,11 +234,7 @@ TEST(InstanceNormalizationOpTest, InstanceNorm_2) {
                                    1.88028F, 2.353724F, -0.25549555F,
                                    2.0837004F, 2.8466992F, 2.0773761F};
   test.AddOutput<float>("Y", input_dims, expected_output);
-#if defined(OPENVINO_CONFIG_MYRIAD)  // Disabling this test on MYRIADX temporarily due to a bug
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-#endif
 }
 
 TEST(InstanceNormalizationOpTest, InstanceNormNCHW) {
@@ -281,11 +257,8 @@ TEST(InstanceNormalizationOpTest, InstanceNormNCHW) {
   test.AddOutput<float>("Y", input_dims, expected_output);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {
-    kTensorrtExecutionProvider,
-#if defined(OPENVINO_CONFIG_MYRIAD)  // Disabling this test on MYRIADX temporarily due to a bug
-        kOpenVINOExecutionProvider,
-#endif
-  });
+                                                           kTensorrtExecutionProvider,
+                                                       });
 }
 
 }  // namespace test

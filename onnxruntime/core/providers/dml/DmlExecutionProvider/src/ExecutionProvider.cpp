@@ -68,7 +68,7 @@ namespace Dml
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider)
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
@@ -81,11 +81,6 @@ namespace Dml
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
-
-        // Register the allocators with ORT, through concrete ORT methods on the IExecutionProvider base class
-        InsertAllocator(m_impl->GetGpuAllocator());
-        InsertAllocator(m_impl->GetCpuInputAllocator());
-        InsertAllocator(m_impl->GetCpuOutputAllocator());
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -189,27 +184,32 @@ namespace Dml
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
-        // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
-        // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
-        m_allocator = std::make_shared<BucketizedBufferAllocator>(
-            m_d3d12Device.Get(),
-            m_context,
-            CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-            D3D12_HEAP_FLAG_NONE,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
-
-        m_context->SetAllocator(m_allocator);
-
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
 
-        // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
-        m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
-        m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
-
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
+
+        m_lastUploadFlushTime = std::chrono::steady_clock::now();
+    }
+
+    std::vector<onnxruntime::AllocatorPtr> ExecutionProviderImpl::CreatePreferredAllocators() {
+        if (!m_allocator)
+        {
+            // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
+            // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
+            m_allocator = std::make_shared<BucketizedBufferAllocator>(m_d3d12Device.Get(),
+                m_context,  // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
+                CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
+            m_context->SetAllocator(m_allocator);
+            // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
+            m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
+        }
+
+        return std::vector<onnxruntime::AllocatorPtr>{m_allocator, m_cpuInputAllocator,};
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
@@ -447,6 +447,7 @@ namespace Dml
             const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
+            FlushUploadsIfReady();
         }
         else if (!src->IsCpuData() && dst->IsCpuData())
         {
@@ -566,10 +567,21 @@ namespace Dml
         assert(!m_closed);
 
         m_uploadHeap->BeginUploadToGpu(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, AsByteSpan(srcData, static_cast<size_t>(srcDataSize)));
+        FlushUploadsIfReady();
 
         return S_OK;
         }
         ORT_CATCH_RETURN
+    }
+
+    void ExecutionProviderImpl::FlushUploadsIfReady() const
+    {
+        // Periodically flush uploads to make sure the GPU is not idle for too long
+        if (std::chrono::steady_clock::now() - m_lastUploadFlushTime > m_batchFlushInterval)
+        {
+            Flush();
+            m_lastUploadFlushTime = std::chrono::steady_clock::now();
+        }
     }
 
     uint32_t ExecutionProviderImpl::GetSupportedDeviceDataTypeMask() const
@@ -624,18 +636,20 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto sequence_ops = std::array<char*, 6>{
+        auto cpuOnDmlOperators = std::array<char*, 8>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
             "SequenceLength",
             "SequenceErase",
-            "SequenceInsert"
+            "SequenceInsert",
+            "OptionalGetElement",
+            "OptionalHasElement"
         };
 
-        for (auto& sequence_op : sequence_ops)
+        for (auto& cpuOnDmlOperator : cpuOnDmlOperators)
         {
-            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
+            if (strcmp(cpuOnDmlOperator, node.OpType().c_str()) == 0)
             {
                 return true;
             }
@@ -661,9 +675,10 @@ namespace Dml
 
     bool IsCustomOpShader(const onnxruntime::Node& node)
     {
-        auto custom_ops = std::array<char*, 2>{
+        auto custom_ops = std::array<char*, 3>{
             "DFT",
-            "STFT"
+            "STFT",
+            "GridSample"
         };
 
         for (auto& custom_op : custom_ops)
@@ -947,11 +962,6 @@ namespace Dml
         m_context->Flush();
     }
 
-    void ExecutionProviderImpl::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-    {
-        m_allocator->SetDefaultRoundingMode(roundingMode);
-    }
-
     void ExecutionProviderImpl::ReleaseCompletedReferences()
     {
          m_context->ReleaseCompletedReferences();
@@ -1099,12 +1109,6 @@ namespace Dml
         return m_cpuInputAllocator;
     }
 
-    std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetCpuOutputAllocator()
-    {
-        return m_cpuOutputAllocator;
-    }
-
-
     onnxruntime::common::Status ExecutionProviderImpl::OnSessionInitializationEnd()
     {
         // Flush and trim resources, including staging memory used to upload weights.
@@ -1114,6 +1118,10 @@ namespace Dml
         m_context->GetCurrentCompletionEvent().WaitForSignal();
         m_context->ReleaseCompletedReferences();
         m_uploadHeap->Trim();
+
+        // Allocations after this point are potentially transient and their sizes are
+        // rounded to enable pooling.
+        m_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
 
         return onnxruntime::common::Status::OK();
     }
@@ -1136,12 +1144,6 @@ namespace Dml
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
         dmlexecutionprovider->Flush();
-    }
-
-    void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->SetDefaultRoundingMode(roundingMode);
     }
 
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider * provider)

@@ -31,8 +31,12 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
     data_ops_ = new DataOps(graph_viewer_, V_2022_2, device_type_);
   } else if (version_param == "V_2022_3") {
     data_ops_ = new DataOps(graph_viewer_, V_2022_3, device_type_);
+  } else if (version_param == "V_2023_0") {
+    data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_);
+  } else if (version_param == "V_2023_1") {
+    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2022_3, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
   }
 }
 
@@ -40,7 +44,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // Check if it is a subgraph
-  if (graph_viewer_.IsSubgraph()) {
+  if (graph_viewer_.IsSubgraph() && graph_viewer_.Name() == "tf2onnx") {
     return result;
   }
 
@@ -73,11 +77,19 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     }
 
     const auto& nodes = graph_viewer_.GetNodesInTopologicalOrder();
+
+    const auto& node = graph_viewer_.GetNode(nodes[0]);
+
+    // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
+    // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
+    if (nodes.size() <= 3) {
+      if (data_ops_->IsOpSupportedOnlyInModel(node->OpType())) {
+        return result;
+      }
+    }
+
     // Nodes that work well in models but not as a single node
     if (nodes.size() == 1) {
-      const auto& node = graph_viewer_.GetNode(nodes[0]);
-      if (data_ops_->IsOpSupportedOnlyInModel(node->OpType()))
-        return result;
       // If reshape is not an intermediate node, shape needs to be an initializer
       if (data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node)) {
         return result;
@@ -117,7 +129,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       } else {
         auto node = graph_viewer_.GetNode(node_idx);
         const auto& optype = node->OpType();
-        if (data_ops_->InsertNode(node, optype)) {
+        if (data_ops_->InsertNode(optype)) {
           modified_unsupported_nodes.push_back(node_idx);
         }
       }
@@ -127,20 +139,9 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
     auto connected_clusters = GetConnectedClusters(graph_viewer_, ng_clusters);
 
-    // Myriad plugin can only load 10 subgraphs
-    if (device_type_ == "MYRIAD" && connected_clusters.size() > 10) {
-      std::sort(connected_clusters.begin(), connected_clusters.end(),
-                [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) -> bool {
-                  return v1.size() > v2.size();
-                });
-    }
     int no_of_clusters = 0;
 
     for (auto this_cluster : connected_clusters) {
-      if (device_type_ == "MYRIAD" && no_of_clusters == 10) {
-        break;
-      }
-
       // If subgraph has less then three, graph is considered trivial
       if (this_cluster.size() < 3) {
         continue;
@@ -188,14 +189,8 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
         if (node->OpType() == "Slice") {
           auto input = node->InputDefs()[0];
           auto input_name = input->Name();
-          const bool is_data_int32 = input->Type()->find("int32") != std::string::npos;
-          const bool is_data_int64 = input->Type()->find("int64") != std::string::npos;
           auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
           if (it != cluster_graph_inputs.end()) {
-            if (device_type_.find("MYRIAD") != std::string::npos && (is_data_int32 || is_data_int64)) {
-              omit_subgraph = true;
-              break;
-            }
             if (slice_map.count(input_name) == 0) {
               slice_map[input_name] = 1;
             } else {

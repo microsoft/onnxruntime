@@ -3,7 +3,6 @@
 
 #include "rocm_allocator.h"
 #include "rocm_common.h"
-#include "core/framework/allocatormgr.h"
 #include "gpu_data_transfer.h"
 
 namespace onnxruntime {

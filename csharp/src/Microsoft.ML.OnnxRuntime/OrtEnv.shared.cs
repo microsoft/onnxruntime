@@ -276,7 +276,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options"></param>
         /// <returns></returns>
         /// <exception cref="OnnxRuntimeException">if the singleton has already been created</exception>
-        public static OrtEnv CreateInstanceWithOptions(EnvironmentCreationOptions options)
+        public static OrtEnv CreateInstanceWithOptions(ref EnvironmentCreationOptions options)
         {
             // Non-thread safe, best effort hopefully helpful check.
             // Environment is usually created once per process, so this should be fine.

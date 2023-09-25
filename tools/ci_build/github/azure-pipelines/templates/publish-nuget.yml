@@ -11,8 +11,11 @@ stages:
   - NuGet_Test_Linux_CPU
   - NuGet_Test_Win_GPU
   - NuGet_Test_Linux_GPU
+  - NuGet_Test_Linux_ROCm
   - NuGet_Test_MacOS
   - NuGet_Packaging_DML
+  - NuGet_Test_Win_Training_CPU
+  - NuGet_Test_Linux_Training_CPU
   jobs:
   - job:
     workspace:
@@ -20,7 +23,7 @@ stages:
     variables:
     - name: GDN_CODESIGN_TARGETDIRECTORY
       value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-    pool: 'Win-CPU-2021'
+    pool: 'onnxruntime-Win-CPU-2022'
 
     steps:
     - checkout: self
@@ -55,7 +58,7 @@ stages:
               REM use a single .csv file to put the data
               echo os,arch,build_config,size > $(Build.BinariesDirectory)\binary_size_data.txt
               7z.exe l -slt %%~ni.zip runtimes\linux-arm64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,aarch64,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-              7z.exe l -slt %%~ni.zip runtimes\osx.10.14-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+              7z.exe l -slt %%~ni.zip runtimes\osx-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
               7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
               7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
               )
@@ -81,7 +84,19 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       inputs:
+        artifactName: 'drop-signed-nuget-Training-CPU'
+        targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+
+    - task: DownloadPipelineArtifact@0
+      displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+      inputs:
         artifactName: 'drop-signed-nuget-GPU'
+        targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+
+    - task: DownloadPipelineArtifact@0
+      displayName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
+      inputs:
+        artifactName: 'drop-signed-nuget-ROCm'
         targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
 
     - task: NuGetCommand@2

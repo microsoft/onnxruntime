@@ -6,7 +6,6 @@
 
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
 from typing import List
@@ -14,13 +13,11 @@ from typing import List
 import numpy
 import onnx
 import torch
+from onnx_model import OnnxModel
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import WhisperConfig
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +30,13 @@ class WhisperEncoder(torch.nn.Module):
         self.encoder = encoder
         self.config = config
 
-    def forward(self, input_features, attention_mask):
+    def forward(self, input_features):
         return self.encoder.model.encoder(input_features)[0]
 
 
 class WhisperEncoderInputs:
-    def __init__(self, input_features, attention_mask):
+    def __init__(self, input_features):
         self.input_ids: torch.LongTensor = input_features
-        # HF Whisper model doesn't support Attention Mask functionality
 
     @staticmethod
     def create_dummy(
@@ -57,14 +53,12 @@ class WhisperEncoderInputs:
         Returns:
             WhisperEncoderInputs: dummy inputs for encoder
         """
-        dtype = torch.float32
 
         input_features = torch.randn(
             size=(batch_size, feature_size, sequence_length),
             device=device,
         )
-        attention_mask = torch.ones([batch_size, feature_size, sequence_length], dtype=dtype, device=device)
-        return WhisperEncoderInputs(input_features, attention_mask)
+        return WhisperEncoderInputs(input_features)
 
     def to_list(self) -> List:
         if self.input_features is None:
@@ -134,7 +128,6 @@ class WhisperEncoderHelper:
         """Run inference of ONNX model."""
         ort_inputs = {
             "input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy()),
-            "attention_mask": numpy.ascontiguousarray(inputs.attention_mask.cpu().numpy()),
         }
 
         return ort_session.run(None, ort_inputs)

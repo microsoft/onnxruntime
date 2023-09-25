@@ -24,6 +24,8 @@
 
 #pragma once
 #include "onnxruntime_c_api.h"
+#include "onnxruntime_float16.h"
+
 #include <cstddef>
 #include <cstdio>
 #include <array>
@@ -128,6 +130,13 @@ inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 std::string GetVersionString();
 
 /// <summary>
+/// This function returns the onnxruntime build information: including git branch,
+/// git commit id, build type(Debug/Release/RelWithDebInfo) and cmake cpp flags.
+/// </summary>
+/// <returns>string</returns>
+std::string GetBuildInfoString();
+
+/// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
 /// returns a vector of strings representing the available execution providers.
 /// </summary>
@@ -135,73 +144,357 @@ std::string GetVersionString();
 std::vector<std::string> GetAvailableProviders();
 
 /** \brief IEEE 754 half-precision floating point data type
- * \details It is necessary for type dispatching to make use of C++ API
- * The type is implicitly convertible to/from uint16_t.
+ *
+ * \details This struct is used for converting float to float16 and back
+ * so the user could feed inputs and fetch outputs using these type.
+ *
  * The size of the structure should align with uint16_t and one can freely cast
  * uint16_t buffers to/from Ort::Float16_t to feed and retrieve data.
  *
- * Generally, you can feed any of your types as float16/blfoat16 data to create a tensor
- * on top of it, providing it can form a continuous buffer with 16-bit elements with no padding.
- * And you can also feed a array of uint16_t elements directly. For example,
- *
  * \code{.unparsed}
- * uint16_t values[] = { 15360, 16384, 16896, 17408, 17664};
- * constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
- * std::vector<int64_t> dims = {values_length};  // one dimensional example
- * Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
- * // Note we are passing bytes count in this api, not number of elements -> sizeof(values)
- * auto float16_tensor = Ort::Value::CreateTensor(info, values, sizeof(values),
- *                                                dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+ * // This example demonstrates converion from float to float16
+ * constexpr float values[] = {1.f, 2.f, 3.f, 4.f, 5.f};
+ * std::vector<Ort::Float16_t> fp16_values;
+ * fp16_values.reserve(std::size(values));
+ * std::transform(std::begin(values), std::end(values), std::back_inserter(fp16_values),
+ *     [](float value) { return Ort::Float16_t(value); });
+ *
  * \endcode
- *
- * Here is another example, a little bit more elaborate. Let's assume that you use your own float16 type and you want to use
- * a templated version of the API above so the type is automatically set based on your type. You will need to supply an extra
- * template specialization.
- *
- * \code{.unparsed}
- * namespace yours { struct half {}; } // assume this is your type, define this:
- * namespace Ort {
- * template<>
- * struct TypeToTensorType<yours::half> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
- * } //namespace Ort
- *
- * std::vector<yours::half> values;
- * std::vector<int64_t> dims = {values.size()}; // one dimensional example
- * Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
- * // Here we are passing element count -> values.size()
- * auto float16_tensor = Ort::Value::CreateTensor<yours::half>(info, values.data(), values.size(), dims.data(), dims.size());
- *
- *  \endcode
  */
-struct Float16_t {
-  uint16_t value;
-  constexpr Float16_t() noexcept : value(0) {}
-  constexpr Float16_t(uint16_t v) noexcept : value(v) {}
-  constexpr operator uint16_t() const noexcept { return value; }
-  constexpr bool operator==(const Float16_t& rhs) const noexcept { return value == rhs.value; };
-  constexpr bool operator!=(const Float16_t& rhs) const noexcept { return value != rhs.value; };
+struct Float16_t : onnxruntime_float16::Float16Impl<Float16_t> {
+ private:
+  /// <summary>
+  /// Constructor from a 16-bit representation of a float16 value
+  /// No conversion is done here.
+  /// </summary>
+  /// <param name="v">16-bit representation</param>
+  constexpr explicit Float16_t(uint16_t v) noexcept { val = v; }
+
+ public:
+  using Base = onnxruntime_float16::Float16Impl<Float16_t>;
+
+  /// <summary>
+  /// Default constructor
+  /// </summary>
+  Float16_t() = default;
+
+  /// <summary>
+  /// Explicit conversion to uint16_t representation of float16.
+  /// </summary>
+  /// <param name="v">uint16_t bit representation of float16</param>
+  /// <returns>new instance of Float16_t</returns>
+  constexpr static Float16_t FromBits(uint16_t v) noexcept { return Float16_t(v); }
+
+  /// <summary>
+  /// __ctor from float. Float is converted into float16 16-bit representation.
+  /// </summary>
+  /// <param name="v">float value</param>
+  explicit Float16_t(float v) noexcept { val = Base::ToUint16Impl(v); }
+
+  /// <summary>
+  /// Converts float16 to float
+  /// </summary>
+  /// <returns>float representation of float16 value</returns>
+  float ToFloat() const noexcept { return Base::ToFloatImpl(); }
+
+  /// <summary>
+  /// Checks if the value is negative
+  /// </summary>
+  /// <returns>true if negative</returns>
+  using Base::IsNegative;
+
+  /// <summary>
+  /// Tests if the value is NaN
+  /// </summary>
+  /// <returns>true if NaN</returns>
+  using Base::IsNaN;
+
+  /// <summary>
+  /// Tests if the value is finite
+  /// </summary>
+  /// <returns>true if finite</returns>
+  using Base::IsFinite;
+
+  /// <summary>
+  /// Tests if the value represents positive infinity.
+  /// </summary>
+  /// <returns>true if positive infinity</returns>
+  using Base::IsPositiveInfinity;
+
+  /// <summary>
+  /// Tests if the value represents negative infinity
+  /// </summary>
+  /// <returns>true if negative infinity</returns>
+  using Base::IsNegativeInfinity;
+
+  /// <summary>
+  /// Tests if the value is either positive or negative infinity.
+  /// </summary>
+  /// <returns>True if absolute value is infinity</returns>
+  using Base::IsInfinity;
+
+  /// <summary>
+  /// Tests if the value is NaN or zero. Useful for comparisons.
+  /// </summary>
+  /// <returns>True if NaN or zero.</returns>
+  using Base::IsNaNOrZero;
+
+  /// <summary>
+  /// Tests if the value is normal (not zero, subnormal, infinite, or NaN).
+  /// </summary>
+  /// <returns>True if so</returns>
+  using Base::IsNormal;
+
+  /// <summary>
+  /// Tests if the value is subnormal (denormal).
+  /// </summary>
+  /// <returns>True if so</returns>
+  using Base::IsSubnormal;
+
+  /// <summary>
+  /// Creates an instance that represents absolute value.
+  /// </summary>
+  /// <returns>Absolute value</returns>
+  using Base::Abs;
+
+  /// <summary>
+  /// Creates a new instance with the sign flipped.
+  /// </summary>
+  /// <returns>Flipped sign instance</returns>
+  using Base::Negate;
+
+  /// <summary>
+  /// IEEE defines that positive and negative zero are equal, this gives us a quick equality check
+  /// for two values by or'ing the private bits together and stripping the sign. They are both zero,
+  /// and therefore equivalent, if the resulting value is still zero.
+  /// </summary>
+  /// <param name="lhs">first value</param>
+  /// <param name="rhs">second value</param>
+  /// <returns>True if both arguments represent zero</returns>
+  using Base::AreZero;
+
+  /// <summary>
+  /// User defined conversion operator. Converts Float16_t to float.
+  /// </summary>
+  explicit operator float() const noexcept { return ToFloat(); }
+
+  using Base::operator==;
+  using Base::operator!=;
+  using Base::operator<;
 };
 
 static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
 
 /** \brief bfloat16 (Brain Floating Point) data type
- * \details It is necessary for type dispatching to make use of C++ API
- * The type is implicitly convertible to/from uint16_t.
+ *
+ * \details This struct is used for converting float to bfloat16 and back
+ * so the user could feed inputs and fetch outputs using these type.
+ *
  * The size of the structure should align with uint16_t and one can freely cast
  * uint16_t buffers to/from Ort::BFloat16_t to feed and retrieve data.
  *
- * See also code examples for Float16_t above.
+ * \code{.unparsed}
+ * // This example demonstrates converion from float to float16
+ * constexpr float values[] = {1.f, 2.f, 3.f, 4.f, 5.f};
+ * std::vector<Ort::BFloat16_t> bfp16_values;
+ * bfp16_values.reserve(std::size(values));
+ * std::transform(std::begin(values), std::end(values), std::back_inserter(bfp16_values),
+ *     [](float value) { return Ort::BFloat16_t(value); });
+ *
+ * \endcode
  */
-struct BFloat16_t {
-  uint16_t value;
-  constexpr BFloat16_t() noexcept : value(0) {}
-  constexpr BFloat16_t(uint16_t v) noexcept : value(v) {}
-  constexpr operator uint16_t() const noexcept { return value; }
-  constexpr bool operator==(const BFloat16_t& rhs) const noexcept { return value == rhs.value; };
-  constexpr bool operator!=(const BFloat16_t& rhs) const noexcept { return value != rhs.value; };
+struct BFloat16_t : onnxruntime_float16::BFloat16Impl<BFloat16_t> {
+ private:
+  /// <summary>
+  /// Constructor from a uint16_t representation of bfloat16
+  /// used in FromBits() to escape overload resolution issue with
+  /// constructor from float.
+  /// No conversion is done.
+  /// </summary>
+  /// <param name="v">16-bit bfloat16 value</param>
+  constexpr explicit BFloat16_t(uint16_t v) noexcept { val = v; }
+
+ public:
+  using Base = onnxruntime_float16::BFloat16Impl<BFloat16_t>;
+
+  BFloat16_t() = default;
+
+  /// <summary>
+  /// Explicit conversion to uint16_t representation of bfloat16.
+  /// </summary>
+  /// <param name="v">uint16_t bit representation of bfloat16</param>
+  /// <returns>new instance of BFloat16_t</returns>
+  static constexpr BFloat16_t FromBits(uint16_t v) noexcept { return BFloat16_t(v); }
+
+  /// <summary>
+  /// __ctor from float. Float is converted into bfloat16 16-bit representation.
+  /// </summary>
+  /// <param name="v">float value</param>
+  explicit BFloat16_t(float v) noexcept { val = Base::ToUint16Impl(v); }
+
+  /// <summary>
+  /// Converts bfloat16 to float
+  /// </summary>
+  /// <returns>float representation of bfloat16 value</returns>
+  float ToFloat() const noexcept { return Base::ToFloatImpl(); }
+
+  /// <summary>
+  /// Checks if the value is negative
+  /// </summary>
+  /// <returns>true if negative</returns>
+  using Base::IsNegative;
+
+  /// <summary>
+  /// Tests if the value is NaN
+  /// </summary>
+  /// <returns>true if NaN</returns>
+  using Base::IsNaN;
+
+  /// <summary>
+  /// Tests if the value is finite
+  /// </summary>
+  /// <returns>true if finite</returns>
+  using Base::IsFinite;
+
+  /// <summary>
+  /// Tests if the value represents positive infinity.
+  /// </summary>
+  /// <returns>true if positive infinity</returns>
+  using Base::IsPositiveInfinity;
+
+  /// <summary>
+  /// Tests if the value represents negative infinity
+  /// </summary>
+  /// <returns>true if negative infinity</returns>
+  using Base::IsNegativeInfinity;
+
+  /// <summary>
+  /// Tests if the value is either positive or negative infinity.
+  /// </summary>
+  /// <returns>True if absolute value is infinity</returns>
+  using Base::IsInfinity;
+
+  /// <summary>
+  /// Tests if the value is NaN or zero. Useful for comparisons.
+  /// </summary>
+  /// <returns>True if NaN or zero.</returns>
+  using Base::IsNaNOrZero;
+
+  /// <summary>
+  /// Tests if the value is normal (not zero, subnormal, infinite, or NaN).
+  /// </summary>
+  /// <returns>True if so</returns>
+  using Base::IsNormal;
+
+  /// <summary>
+  /// Tests if the value is subnormal (denormal).
+  /// </summary>
+  /// <returns>True if so</returns>
+  using Base::IsSubnormal;
+
+  /// <summary>
+  /// Creates an instance that represents absolute value.
+  /// </summary>
+  /// <returns>Absolute value</returns>
+  using Base::Abs;
+
+  /// <summary>
+  /// Creates a new instance with the sign flipped.
+  /// </summary>
+  /// <returns>Flipped sign instance</returns>
+  using Base::Negate;
+
+  /// <summary>
+  /// IEEE defines that positive and negative zero are equal, this gives us a quick equality check
+  /// for two values by or'ing the private bits together and stripping the sign. They are both zero,
+  /// and therefore equivalent, if the resulting value is still zero.
+  /// </summary>
+  /// <param name="lhs">first value</param>
+  /// <param name="rhs">second value</param>
+  /// <returns>True if both arguments represent zero</returns>
+  using Base::AreZero;
+
+  /// <summary>
+  /// User defined conversion operator. Converts BFloat16_t to float.
+  /// </summary>
+  explicit operator float() const noexcept { return ToFloat(); }
+
+  // We do not have an inherited impl for the below operators
+  // as the internal class implements them a little differently
+  bool operator==(const BFloat16_t& rhs) const noexcept;
+  bool operator!=(const BFloat16_t& rhs) const noexcept { return !(*this == rhs); }
+  bool operator<(const BFloat16_t& rhs) const noexcept;
 };
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
+
+/** \brief float8e4m3fn (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E4M3FN_t {
+  uint8_t value;
+  constexpr Float8E4M3FN_t() noexcept : value(0) {}
+  constexpr Float8E4M3FN_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E4M3FN_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E4M3FN_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E4M3FN_t) == sizeof(uint8_t), "Sizes must match");
+
+/** \brief float8e4m3fnuz (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E4M3FNUZ_t {
+  uint8_t value;
+  constexpr Float8E4M3FNUZ_t() noexcept : value(0) {}
+  constexpr Float8E4M3FNUZ_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E4M3FNUZ_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E4M3FNUZ_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E4M3FNUZ_t) == sizeof(uint8_t), "Sizes must match");
+
+/** \brief float8e5m2 (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E5M2_t {
+  uint8_t value;
+  constexpr Float8E5M2_t() noexcept : value(0) {}
+  constexpr Float8E5M2_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E5M2_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E5M2_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E5M2_t) == sizeof(uint8_t), "Sizes must match");
+
+/** \brief float8e5m2fnuz (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E5M2FNUZ_t {
+  uint8_t value;
+  constexpr Float8E5M2FNUZ_t() noexcept : value(0) {}
+  constexpr Float8E5M2FNUZ_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E5M2FNUZ_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E5M2FNUZ_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E5M2FNUZ_t) == sizeof(uint8_t), "Sizes must match");
 
 namespace detail {
 // This is used internally by the C++ API. This macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
@@ -426,6 +719,8 @@ struct Env : detail::Base<OrtEnv> {
   Env& UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level);  ///< Wraps OrtApi::UpdateEnvWithCustomLogLevel
 
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
+
+  Env& CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo* mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocatorV2
 };
 
 /** \brief Custom Op Domain
@@ -771,6 +1066,28 @@ struct SessionImpl : ConstSessionImpl<T> {
            const char* const* output_names, Value* output_values, size_t output_count);
 
   void Run(const RunOptions& run_options, const IoBinding&);  ///< Wraps OrtApi::RunWithBinding
+
+  /** \brief Run the model asynchronously in a thread owned by intra op thread pool
+   *
+   * Wraps OrtApi::RunAsync
+   *
+   * \param[in] run_options
+   * \param[in] input_names Array of null terminated UTF8 encoded strings of the input names
+   * \param[in] input_values Array of Value objects of length input_count
+   * \param[in] input_count Number of elements in the input_names and inputs arrays
+   * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
+   * \param[out] output_values Array of provided Values to be filled with outputs.
+   *             On calling RunAsync, output_values[i] could either be initialized by a null pointer or a preallocated OrtValue*.
+   *             Later, on invoking the callback, each output_values[i] of null will be filled with an OrtValue* allocated by onnxruntime.
+   *             Then, an OrtValue** pointer will be casted from output_values, and pass to the callback.
+   *             NOTE: it is customer's duty to finally release output_values and each of its member,
+   *             regardless of whether the member (Ort::Value) is allocated by onnxruntime or preallocated by the customer.
+   * \param[in] output_count Number of elements in the output_names and outputs array
+   * \param[in] callback Callback function on model run completion
+   * \param[in] user_data User data that pass back to the callback
+   */
+  void RunAsync(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
+                const char* const* output_names, Value* output_values, size_t output_count, RunAsyncCallbackFn callback, void* user_data);
 
   /** \brief End profiling and return a copy of the profiling file name.
    *
@@ -1310,6 +1627,7 @@ struct Value : detail::ValueImpl<OrtValue> {
   static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
 
   /** \brief Creates a tensor with a user supplied buffer. Wraps OrtApi::CreateTensorWithDataAsOrtValue.
+   *
    * \param info Memory description of where the p_data buffer resides (CPU vs GPU etc).
    * \param p_data Pointer to the data buffer.
    * \param p_data_byte_count The number of bytes in the data buffer.
@@ -1320,7 +1638,12 @@ struct Value : detail::ValueImpl<OrtValue> {
   static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
 
-  /** \brief Creates a tensor using a supplied OrtAllocator. Wraps OrtApi::CreateTensorAsOrtValue.
+  /** \brief Creates an OrtValue with a tensor using a supplied OrtAllocator. Wraps OrtApi::CreateTensorAsOrtValue.
+   *         This overload will allocate the buffer for the tensor  according to the supplied shape and data type.
+   *         The allocated buffer will be owned by the returned OrtValue and will be freed when the OrtValue is released.
+   *         The input data would need to be copied into the allocated buffer.
+   *         This API is not suitable for strings.
+   *
    * \tparam T The numeric datatype. This API is not suitable for strings.
    * \param allocator The allocator to use.
    * \param shape Pointer to the tensor shape dimensions.
@@ -1329,7 +1652,12 @@ struct Value : detail::ValueImpl<OrtValue> {
   template <typename T>
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
 
-  /** \brief Creates a tensor using a supplied OrtAllocator. Wraps OrtApi::CreateTensorAsOrtValue.
+  /** \brief Creates an OrtValue with a tensor using the supplied OrtAllocator.
+   *   Wraps OrtApi::CreateTensorAsOrtValue.
+   *   The allocated buffer will be owned by the returned OrtValue and will be freed when the OrtValue is released.
+   *   The input data would need to be copied into the allocated buffer.
+   *   This API is not suitable for strings.
+   *
    * \param allocator The allocator to use.
    * \param shape Pointer to the tensor shape dimensions.
    * \param shape_len The number of tensor shape dimensions.
@@ -1337,11 +1665,35 @@ struct Value : detail::ValueImpl<OrtValue> {
    */
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
 
-  static Value CreateMap(Value& keys, Value& values);       ///< Wraps OrtApi::CreateValue
-  static Value CreateSequence(std::vector<Value>& values);  ///< Wraps OrtApi::CreateValue
+  /** \brief Creates an OrtValue with a Map Onnx type representation.
+   *  The API would ref-count the supplied OrtValues and they will be released
+   *  when the returned OrtValue is released. The caller may release keys and values after the call
+   *  returns.
+   *
+   * \param keys an OrtValue containing a tensor with primitive data type keys.
+   * \param values an OrtValue that may contain a tensor. Ort currently supports only primitive data type values.
+   */
+  static Value CreateMap(const Value& keys, const Value& values);  ///< Wraps OrtApi::CreateValue
 
+  /** \brief Creates an OrtValue with a Sequence Onnx type representation.
+   *  The API would ref-count the supplied OrtValues and they will be released
+   *  when the returned OrtValue is released. The caller may release the values after the call
+   *  returns.
+   *
+   * \param values a vector of OrtValues that must have the same Onnx value type.
+   */
+  static Value CreateSequence(const std::vector<Value>& values);  ///< Wraps OrtApi::CreateValue
+
+  /** \brief Creates an OrtValue wrapping an Opaque type.
+   *  This is used for experimental support of non-tensor types.
+   *
+   * \tparam T - the type of the value.
+   * \param domain - zero terminated utf-8 string. Domain of the type.
+   * \param type_name - zero terminated utf-8 string. Name of the type.
+   * \param value - the value to be wrapped.
+   */
   template <typename T>
-  static Value CreateOpaque(const char* domain, const char* type_name, const T&);  ///< Wraps OrtApi::CreateOpaqueValue
+  static Value CreateOpaque(const char* domain, const char* type_name, const T& value);  ///< Wraps OrtApi::CreateOpaqueValue
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
@@ -1803,196 +2155,10 @@ struct Op : detail::Base<OrtOp> {
               size_t output_count);
 };
 
-/// <summary>
-/// This entire structure is deprecated, but we not marking
-/// it as a whole yet since we want to preserve for the next release.
-/// </summary>
-struct CustomOpApi {
-  CustomOpApi(const OrtApi& api) : api_(api) {}
-
-  /** \deprecated use Ort::Value::GetTensorTypeAndShape()
-   * [[deprecated]]
-   * This interface produces a pointer that must be released. Not exception safe.
-   */
-  [[deprecated("use Ort::Value::GetTensorTypeAndShape()")]] OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
-
-  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetElementCount()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetElementCount()")]] size_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
-
-  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetElementType()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetElementType()")]] ONNXTensorElementDataType GetTensorElementType(const OrtTensorTypeAndShapeInfo* info);
-
-  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetDimensionsCount()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetDimensionsCount()")]] size_t GetDimensionsCount(_In_ const OrtTensorTypeAndShapeInfo* info);
-
-  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetShape()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetShape()")]] void GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
-
-  /** \deprecated
-   * [[deprecated]]
-   * This interface sets dimensions to TensorTypeAndShapeInfo, but has no effect on the OrtValue.
-   */
-  [[deprecated("Do not use")]] void SetDimensions(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
-
-  /** \deprecated use Ort::Value::GetTensorMutableData()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  template <typename T>
-  [[deprecated("use Ort::Value::GetTensorMutableData()")]] T* GetTensorMutableData(_Inout_ OrtValue* value);
-
-  /** \deprecated use Ort::Value::GetTensorData()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  template <typename T>
-  [[deprecated("use Ort::Value::GetTensorData()")]] const T* GetTensorData(_Inout_ const OrtValue* value);
-
-  /** \deprecated use Ort::Value::GetTensorMemoryInfo()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::Value::GetTensorMemoryInfo()")]] const OrtMemoryInfo* GetTensorMemoryInfo(_In_ const OrtValue* value);
-
-  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetShape()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetShape()")]] std::vector<int64_t> GetTensorShape(const OrtTensorTypeAndShapeInfo* info);
-
-  /** \deprecated use TensorTypeAndShapeInfo instances for automatic ownership.
-   * [[deprecated]]
-   * This interface is not exception safe.
-   */
-  [[deprecated("use TensorTypeAndShapeInfo")]] void ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input);
-
-  /** \deprecated use Ort::KernelContext::GetInputCount
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::KernelContext::GetInputCount")]] size_t KernelContext_GetInputCount(const OrtKernelContext* context);
-
-  /** \deprecated use Ort::KernelContext::GetInput
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::KernelContext::GetInput")]] const OrtValue* KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index);
-
-  /** \deprecated use Ort::KernelContext::GetOutputCount
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::KernelContext::GetOutputCount")]] size_t KernelContext_GetOutputCount(const OrtKernelContext* context);
-
-  /** \deprecated use Ort::KernelContext::GetOutput
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::KernelContext::GetOutput")]] OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
-
-  /** \deprecated use Ort::KernelContext::GetGPUComputeStream
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::KernelContext::GetGPUComputeStream")]] void* KernelContext_GetGPUComputeStream(const OrtKernelContext* context);
-
-  /** \deprecated use Ort::ThrowOnError()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::ThrowOnError()")]] void ThrowOnError(OrtStatus* result);
-
-  /** \deprecated use Ort::OpAttr
-   * [[deprecated]]
-   * This interface is not exception safe.
-   */
-  [[deprecated("use Ort::OpAttr")]] OrtOpAttr* CreateOpAttr(_In_ const char* name,
-                                                            _In_ const void* data,
-                                                            _In_ int len,
-                                                            _In_ OrtOpAttrType type);
-
-  /** \deprecated use Ort::OpAttr
-   * [[deprecated]]
-   * This interface is not exception safe.
-   */
-  [[deprecated("use Ort::OpAttr")]] void ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr);
-
-  /** \deprecated use Ort::Op
-   * [[deprecated]]
-   * This interface is not exception safe.
-   */
-  [[deprecated("use Ort::Op")]] OrtOp* CreateOp(_In_ const OrtKernelInfo* info,
-                                                _In_ const char* op_name,
-                                                _In_ const char* domain,
-                                                _In_ int version,
-                                                _In_opt_ const char** type_constraint_names,
-                                                _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                                                _In_opt_ int type_constraint_count,
-                                                _In_opt_ const OrtOpAttr* const* attr_values,
-                                                _In_opt_ int attr_count,
-                                                _In_ int input_count,
-                                                _In_ int output_count);
-
-  /** \deprecated use Ort::Op::Invoke
-   * [[deprecated]]
-   * This interface is redundant
-   */
-  [[deprecated("use Ort::Op::Invoke")]] void InvokeOp(_In_ const OrtKernelContext* context,
-                                                      _In_ const OrtOp* ort_op,
-                                                      _In_ const OrtValue* const* input_values,
-                                                      _In_ int input_count,
-                                                      _Inout_ OrtValue* const* output_values,
-                                                      _In_ int output_count);
-
-  /** \deprecated use Ort::Op for automatic lifespan management.
-   * [[deprecated]]
-   * This interface is not exception safe.
-   */
-  [[deprecated("use Ort::Op")]] void ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op);
-
-  /** \deprecated use Ort::KernelInfo for automatic lifespan management or for
-   * querying attributes
-   * [[deprecated]]
-   * This interface is redundant
-   */
-  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>, float, int64_t, and string
-  [[deprecated("use Ort::KernelInfo::GetAttribute")]] T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
-
-  /** \deprecated use Ort::KernelInfo::Copy
-   * querying attributes
-   * [[deprecated]]
-   * This interface is not exception safe
-   */
-  [[deprecated("use Ort::KernelInfo::Copy")]] OrtKernelInfo* CopyKernelInfo(_In_ const OrtKernelInfo* info);
-
-  /** \deprecated use Ort::KernelInfo for lifespan management
-   * querying attributes
-   * [[deprecated]]
-   * This interface is not exception safe
-   */
-  [[deprecated("use Ort::KernelInfo")]] void ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_copy);
-
- private:
-  const OrtApi& api_;
-};
-
-template <typename TOp, typename TKernel>
+template <typename TOp, typename TKernel, bool WithStatus = false>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
     OrtCustomOp::version = ORT_API_VERSION;
-    OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info) { return static_cast<const TOp*>(this_)->CreateKernel(*api, info); };
     OrtCustomOp::GetName = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetName(); };
 
     OrtCustomOp::GetExecutionProviderType = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetExecutionProviderType(); };
@@ -2004,7 +2170,6 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetOutputTypeCount(); };
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputType(index); };
 
-    OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<TKernel*>(op_kernel)->Compute(context); };
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26409)
@@ -2020,6 +2185,26 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicInputHomogeneity()); };
     OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicOutputMinArity(); };
     OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicOutputHomogeneity()); };
+#ifdef __cpp_if_constexpr
+    if constexpr (WithStatus) {
+#else
+    if (WithStatus) {
+#endif
+      OrtCustomOp::CreateKernelV2 = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info, void** op_kernel) -> OrtStatusPtr {
+        return static_cast<const TOp*>(this_)->CreateKernelV2(*api, info, op_kernel);
+      };
+      OrtCustomOp::KernelComputeV2 = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
+        return static_cast<TKernel*>(op_kernel)->ComputeV2(context);
+      };
+    } else {
+      OrtCustomOp::CreateKernelV2 = nullptr;
+      OrtCustomOp::KernelComputeV2 = nullptr;
+
+      OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info) { return static_cast<const TOp*>(this_)->CreateKernel(*api, info); };
+      OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
+        static_cast<TKernel*>(op_kernel)->Compute(context);
+      };
+    }
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider

@@ -9,7 +9,19 @@ namespace cuda {
 ONNX_OPERATOR_KERNEL_EX(
     Reshape,
     kOnnxDomain,
-    14,
+    19,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypesIRv9())
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
+        .Alias(0, 0)
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
+    Reshape);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Reshape,
+    kOnnxDomain,
+    14, 18,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())

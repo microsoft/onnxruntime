@@ -5,7 +5,12 @@
 
 void simple_assert(const bool cond, const std::string& text) {
   if (!cond) {
+#ifndef ORT_NO_EXCEPTIONS
     throw std::runtime_error(text);
+#else
+    std::cerr << text << std::endl;
+    std::terminate();
+#endif
   }
 }
 

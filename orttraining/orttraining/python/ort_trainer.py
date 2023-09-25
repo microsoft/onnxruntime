@@ -1181,14 +1181,18 @@ class ORTTrainer:
     def _verify_fully_optimized_model(self, model):
         assert len(model.graph.output) > 0
         # model's first output must be the loss tensor
-        if (
-            model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().FLOAT
-            and model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().FLOAT16
-            and model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().DOUBLE
-            and model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().COMPLEX64
-            and model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().COMPLEX128
-            and model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().BFLOAT16
-        ):
+        if model.graph.output[0].type.tensor_type.elem_type not in {
+            onnx.TensorProto.FLOAT,
+            onnx.TensorProto.FLOAT16,
+            onnx.TensorProto.DOUBLE,
+            onnx.TensorProto.COMPLEX64,
+            onnx.TensorProto.COMPLEX128,
+            onnx.TensorProto.BFLOAT16,
+            onnx.TensorProto.FLOAT8E4M3FN,
+            onnx.TensorProto.FLOAT8E4M3FNUZ,
+            onnx.TensorProto.FLOAT8E5M2,
+            onnx.TensorProto.FLOAT8E5M2FNUZ,
+        }:
             raise RuntimeError(
                 "the first output of a model to run with fully optimized ORT backend must be float types."
             )
@@ -1203,10 +1207,10 @@ class LossScaler:
         self,
         loss_scale_input_name,
         is_dynamic_scale,
-        loss_scale=float(1 << 16),  # noqa: B008
+        loss_scale=float(1 << 16),
         up_scale_window=2000,
         min_loss_scale=1.0,
-        max_loss_scale=float(1 << 24),  # noqa: B008
+        max_loss_scale=float(1 << 24),
     ):
         super().__init__()
         self.loss_scale_input_name_ = loss_scale_input_name

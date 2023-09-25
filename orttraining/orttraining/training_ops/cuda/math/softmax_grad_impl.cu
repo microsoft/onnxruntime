@@ -268,7 +268,7 @@ Status SoftmaxGradImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* input
 
 #define CASE_LOG2_ELEMENTS(log2_elements_value)                                                                  \
   case log2_elements_value: {                                                                                    \
-    if (log2_elements_value < start_to_use_register_efficient_func) {                                            \
+    if constexpr (log2_elements_value < start_to_use_register_efficient_func) {                                  \
       LAUNCH_KERNEL(log2_elements_value, softmax_warp_backward);                                                 \
     } else {                                                                                                     \
       LAUNCH_KERNEL(log2_elements_value, softmax_warp_backward_register_efficicent);                             \

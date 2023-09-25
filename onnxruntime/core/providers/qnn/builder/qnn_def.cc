@@ -4,6 +4,7 @@
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include <memory>
+#include <ostream>
 #include <cstring>
 
 namespace onnxruntime {
@@ -17,42 +18,6 @@ size_t memscpy(void* dst, size_t dst_size, const void* src, size_t copy_size) {
   memcpy(dst, src, min_size);
 
   return min_size;
-}
-
-void QnnLogStdoutCallback(const char* format,
-                          QnnLog_Level_t level,
-                          uint64_t timestamp,
-                          va_list argument_parameter) {
-  const char* levelStr = "";
-  switch (level) {
-    case QNN_LOG_LEVEL_ERROR:
-      levelStr = " ERROR ";
-      break;
-    case QNN_LOG_LEVEL_WARN:
-      levelStr = "WARNING";
-      break;
-    case QNN_LOG_LEVEL_INFO:
-      levelStr = "  INFO ";
-      break;
-    case QNN_LOG_LEVEL_DEBUG:
-      levelStr = " DEBUG ";
-      break;
-    case QNN_LOG_LEVEL_VERBOSE:
-      levelStr = "VERBOSE";
-      break;
-    case QNN_LOG_LEVEL_MAX:
-      levelStr = "UNKNOWN";
-      break;
-  }
-
-  double ms = (double)timestamp / 1000000.0;
-  // To avoid interleaved messages
-  {
-    std::lock_guard<std::mutex> lock(qnn_log_mutex_);
-    fprintf(stdout, "%8.1fms [%-7s] ", ms, levelStr);
-    vfprintf(stdout, format, argument_parameter);
-    fprintf(stdout, "\n");
-  }
 }
 
 void SetQnnTensorType(Qnn_Tensor_t& qnn_tensor, Qnn_TensorType_t tensor_type) {
@@ -368,7 +333,10 @@ bool QnnOpConfigWrapper::QnnGraphOpValidation(const QNN_INTERFACE_VER_TYPE& qnn_
                                               std::string& error_msg) {
   auto validation_status = qnn_interface.backendValidateOpConfig(backend_handle, op_config_);
   if (QNN_SUCCESS != validation_status) {
-    error_msg = "Validating node failed for: " + name_;
+    std::ostringstream oss;
+    oss << "QNN.backendValidateOpConfig() failed for node `" << name_ << "` of type `"
+        << type_name_ << "` with error code " << validation_status << std::endl;
+    error_msg = oss.str();
     return false;
   }
 
@@ -380,11 +348,18 @@ bool QnnOpConfigWrapper::CreateQnnGraphOp(const QNN_INTERFACE_VER_TYPE& qnn_inte
                                           std::string& error_msg) {
   auto status = qnn_interface.graphAddNode(graph, op_config_);
   if (QNN_GRAPH_NO_ERROR != status) {
-    error_msg = "Adding node failed for: " + name_;
+    std::ostringstream oss;
+    oss << "QNN.graphAddNode() failed for node `" << name_ << "` of type `" << type_name_
+        << "` with error code " << status << std::endl;
+    error_msg = oss.str();
     return false;
   }
 
   return true;
+}
+
+bool IsNpuBackend(QnnBackendType backend_type) {
+  return backend_type == QnnBackendType::HTP || backend_type == QnnBackendType::DSP;
 }
 
 }  // namespace qnn

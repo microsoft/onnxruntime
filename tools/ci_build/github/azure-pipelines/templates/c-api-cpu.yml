@@ -38,6 +38,16 @@ parameters:
   type: string
   default: 'default'
 
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
+
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -47,6 +57,9 @@ stages:
   parameters:
     AllowReleasedOpsetOnly: 1
     BuildForAllArchs: true
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+    DoEsrp: ${{ parameters.DoEsrp }}
 
 - stage: Android_Java_API_AAR_Packaging_Mobile
   dependsOn: []
@@ -88,10 +101,12 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
     timeoutInMinutes: 300
     steps:
     - template: set-version-number-variables-step.yml
+
+    - template: use-xcode-version.yml
 
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
@@ -160,6 +175,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: false
+    ort_build_pool_name: onnxruntime-Win-CPU-2022
 
 - template: win-ci.yml
   parameters:
@@ -192,7 +208,7 @@ stages:
 - stage: Jar_Packaging
   dependsOn:
   - Linux_C_API_Packaging_CPU
-  - MacOS_C_API_Packaging_CPU
+  - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
@@ -202,7 +218,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'Win-CPU-2021'
+    pool: 'onnxruntime-Win-CPU-2022'
 
     steps:
     - checkout: self
@@ -274,8 +290,9 @@ stages:
 
 - stage: NuGet_Packaging_CPU
   dependsOn:
+  - Setup
   - Linux_C_API_Packaging_CPU
-  - MacOS_C_API_Packaging_CPU
+  - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
@@ -293,6 +310,7 @@ stages:
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+      ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
 
     steps:
     - checkout: self
@@ -399,7 +417,7 @@ stages:
         #
         # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
         script: |
-          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6  -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6  -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
@@ -417,7 +435,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+        msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if eq(parameters.DoEsrp, true) }}:
@@ -442,7 +460,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2
@@ -477,7 +495,7 @@ stages:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
         PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
-        PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx.10.14-x64'
+        PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
         VerifyNugetSigning: false
 
     - task: PublishPipelineArtifact@0
@@ -510,10 +528,11 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
+
 - stage: Nodejs_Packaging_CPU
   dependsOn:
   - Linux_C_API_Packaging_CPU
-  - MacOS_C_API_Packaging_CPU
+  - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
@@ -521,7 +540,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'Win-CPU-2021'
+    pool: 'onnxruntime-Win-CPU-2022'
     variables:
       ${{ if eq(parameters.IsReleaseBuild, true) }}:
         NpmPackagingMode: 'release'
@@ -760,30 +779,32 @@ stages:
 
 - template: ../nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'Win-CPU-2021'
+    AgentPool : 'onnxruntime-Win-CPU-2022'
     Skipx86Tests : false
     NugetPackageName : 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
 
 - template: ../nuget/templates/test_linux.yml
   parameters:
-    AgentPool : aiinfra-Linux-CPU
+    AgentPool : onnxruntime-Ubuntu2004-AMD-CPU
     NugetPackageName : 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-12
+    AgentPool : macOS-13
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
   parameters:
-    AgentPool : 'Win-CPU-2021'
+    AgentPool : 'onnxruntime-Win-CPU-2022'
     StageSuffix : 'Win_CPU_x64'
 
 - template: ../nodejs/templates/test_linux.yml
   parameters:
-    AgentPool : 'aiinfra-Linux-CPU'
+    AgentPool : 'onnxruntime-Ubuntu2004-AMD-CPU'
     StageSuffix : 'Linux_CPU_x64'
 
 - template: ../nodejs/templates/test_macos.yml
@@ -796,7 +817,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'Win-CPU-2021'
+    pool: 'onnxruntime-Win-CPU-2022'
     timeoutInMinutes: 60
     variables:
     - name: runCodesignValidationInjection
@@ -837,7 +858,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'aiinfra-Linux-CPU'
+    pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
     variables:
     - name: runCodesignValidationInjection
       value: false
@@ -881,7 +902,7 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
     variables:
     - name: runCodesignValidationInjection
       value: false
@@ -896,6 +917,8 @@ stages:
         artifactName: 'onnxruntime-java'
         targetPath: '$(Build.BinariesDirectory)/final-jar'
 
+    - template: use-xcode-version.yml
+
     - task: CmdLine@2
       inputs:
           script: |
@@ -907,7 +930,6 @@ stages:
             popd
             wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
             wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
-            sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
             DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
             java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
           workingDirectory: '$(Build.BinariesDirectory)/final-jar'
@@ -918,5 +940,3 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-
-

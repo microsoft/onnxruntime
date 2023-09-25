@@ -66,7 +66,7 @@ TEST(CropContribOpTest, CropBorderAndScale) {
 }
 
 TEST(ImageScalerContribOpTest, ImageScalerTest) {
-  // TODO: Unskip when fixed #41968513
+  // Won't fix for DML which only accepts 1 or 3 channels, as the op was only experimental and since removed.
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
   }

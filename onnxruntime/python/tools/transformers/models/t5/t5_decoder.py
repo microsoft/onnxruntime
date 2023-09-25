@@ -6,24 +6,21 @@
 
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy
 import onnx
 import torch
+from io_binding_helper import TypeHelper
+from onnx_model import OnnxModel
 from past_helper import PastKeyValuesHelper
 from t5_encoder import T5EncoderInputs
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import MT5Config, T5Config
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from io_binding_helper import TypeHelper  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +35,7 @@ class T5DecoderInit(torch.nn.Module):
         decoder: torch.nn.Module,
         lm_head: torch.nn.Module,
         config: Union[T5Config, MT5Config],
-        decoder_start_token_id: int = None,
+        decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
         self.decoder = decoder
@@ -100,7 +97,8 @@ class T5Decoder(torch.nn.Module):
         )
 
     def forward(self, decoder_input_ids, encoder_attention_mask, *past):
-        past_key_values = PastKeyValuesHelper.group_by_layer(past, self.config.num_layers)
+        num_decoder_layers = self.config.num_decoder_layers
+        past_key_values = PastKeyValuesHelper.group_by_layer(past, num_decoder_layers)
 
         # This is a hack since only the third dimension of encoder_hidden_states is used here
         dummy_encoder_hidden_states = encoder_attention_mask.unsqueeze(2)
@@ -162,7 +160,7 @@ class T5DecoderInputs:
             T5DecoderInputs: dummy inputs for decoder
         """
         num_attention_heads: int = config.num_heads
-        num_layers: int = config.num_layers
+        num_layers: int = config.num_decoder_layers
         vocab_size: int = config.vocab_size
 
         # Do not use head_size = hidden_size / num_attention_heads here.
@@ -263,9 +261,11 @@ class T5DecoderHelper:
         )
         input_list = inputs.to_list()
 
-        past_names = PastKeyValuesHelper.get_past_names(decoder.config.num_layers, present=False)
-        present_names = PastKeyValuesHelper.get_past_names(decoder.config.num_layers, present=True)
-        present_self_names = present_names[: 2 * decoder.config.num_layers]
+        num_decoder_layers = decoder.config.num_decoder_layers
+
+        past_names = PastKeyValuesHelper.get_past_names(num_decoder_layers, present=False)
+        present_names = PastKeyValuesHelper.get_past_names(num_decoder_layers, present=True)
+        present_self_names = present_names[: 2 * num_decoder_layers]
 
         input_past_names = past_names if isinstance(decoder, T5Decoder) else []
         output_present_names = present_self_names if isinstance(decoder, T5Decoder) else present_names
@@ -407,20 +407,21 @@ class T5DecoderHelper:
                 torch_outputs = model(*input_list)
 
             ort_outputs = T5DecoderHelper.onnxruntime_inference(ort_session, inputs)
+            num_decoder_layers = model.config.num_decoder_layers
 
             max_diff = numpy.amax(numpy.abs(torch_outputs[0].cpu().numpy() - ort_outputs[0]))
             max_diff_all = max_diff
             logger.debug(f"logits max_diff={max_diff}")
 
-            for i in range(2 * model.config.num_layers):
+            for i in range(2 * num_decoder_layers):
                 max_diff = numpy.amax(numpy.abs(torch_outputs[1][i].cpu().numpy() - ort_outputs[1 + i]))
                 logger.debug(f"self attention past state {i} max_diff={max_diff}")
                 max_diff_all = max(max_diff_all, max_diff)
 
             if isinstance(model, T5DecoderInit):
-                for i in range(2 * model.config.num_layers):
+                for i in range(2 * num_decoder_layers):
                     max_diff = numpy.amax(
-                        numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[1 + 2 * model.config.num_layers + i])
+                        numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[1 + 2 * num_decoder_layers + i])
                     )
                     logger.debug(f"cross attention past state {i} max_diff={max_diff}")
                     max_diff_all = max(max_diff_all, max_diff)

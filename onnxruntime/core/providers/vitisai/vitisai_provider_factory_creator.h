@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
@@ -6,11 +6,13 @@
 #include <memory>
 
 #include "core/providers/providers.h"
+#include "core/framework/provider_options.h"
 
 namespace onnxruntime {
+
+struct VitisAIExecutionProviderInfo;
+
 struct VitisAIProviderFactoryCreator {
-  static std::shared_ptr<IExecutionProviderFactory> Create(
-      const char* backend_type, int device_id, const char* export_runtime_module,
-      const char* load_runtime_module);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options);
 };
 }  // namespace onnxruntime

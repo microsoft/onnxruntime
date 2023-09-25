@@ -22,6 +22,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       "from highest to lowest.");
 
   m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
+  m.def("get_build_info", []() -> std::string { return ORT_BUILD_INFO; });
 }
 }  // namespace python
 }  // namespace onnxruntime

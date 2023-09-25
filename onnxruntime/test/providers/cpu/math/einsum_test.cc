@@ -22,7 +22,7 @@ TEST(Einsum, ExplicitEinsumAsIdentity_1D_input) {
   test.AddAttribute<std::string>("equation", "i->i");
   test.AddInput<float>("x", {5}, {0.9f, 2.5f, 2.3f, 1.5f, -4.5f});
   test.AddOutput<float>("y", {5}, {0.9f, 2.5f, 2.3f, 1.5f, -4.5f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 // Implicit
@@ -31,7 +31,7 @@ TEST(Einsum, ImplicitEinsumAsIdentity_1D_input) {
   test.AddAttribute<std::string>("equation", "i");
   test.AddInput<float>("x", {5}, {0.9f, 2.5f, 2.3f, 1.5f, -4.5f});
   test.AddOutput<float>("y", {5}, {0.9f, 2.5f, 2.3f, 1.5f, -4.5f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 // Theme: Transpose/Permutation
@@ -435,7 +435,7 @@ TEST(Einsum, ExplicitEinsumAsBatchedDiagonalOp_1) {
 TEST(Einsum, ImplicitEinsumAsDiagonalOp) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: provider_test_utils.cc(284): error: The difference between expected[i] and output[i] is 5, which exceeds threshold";
+    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 5, which exceeds threshold";
   }
 
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
@@ -448,7 +448,7 @@ TEST(Einsum, ImplicitEinsumAsDiagonalOp) {
 TEST(Einsum, ImplicitEinsumAsDiagonalOp_1) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: provider_test_utils.cc(284): error: The difference between expected[i] and output[i] is 15, which exceeds threshold";
+    GTEST_SKIP() << "Skipping because of the following error: error: The difference between expected[i] and output[i] is 15, which exceeds threshold";
   }
 
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);

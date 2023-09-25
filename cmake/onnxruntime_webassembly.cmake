@@ -110,6 +110,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_providers
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
+      ${PROVIDERS_WEBNN}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -186,6 +187,7 @@ else()
     onnxruntime_providers
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_WEBNN}
     onnxruntime_session
     onnxruntime_util
     re2::re2
@@ -194,13 +196,17 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
   endif()
 
+  if(onnxruntime_USE_WEBNN)
+    target_link_libraries(onnxruntime_webassembly PRIVATE onnxruntime_providers_webnn)
+  endif()
+
   if (onnxruntime_ENABLE_TRAINING)
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
   set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
-  if (onnxruntime_USE_JS)
-    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput")
+  if (onnxruntime_USE_JSEP)
+    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput,_JsepGetNodeName")
   else()
     set(EXPORTED_FUNCTIONS "_malloc,_free")
   endif()
@@ -219,17 +225,18 @@ else()
     --no-entry
   )
 
-  if (onnxruntime_USE_JS)
+  if (onnxruntime_USE_JSEP)
     # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
     #       This flag allows async functions to be called from sync functions, in the cost of binary size and
     #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
 
-    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JS=1)
+    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
       "SHELL:-s ASYNCIFY=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
     )
+    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js)
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -242,7 +249,7 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s ASSERTIONS=2"
       "SHELL:-s SAFE_HEAP=1"
-      "SHELL:-s STACK_OVERFLOW_CHECK=1"
+      "SHELL:-s STACK_OVERFLOW_CHECK=2"
       "SHELL:-s DEMANGLE_SUPPORT=1"
     )
   else()
@@ -255,6 +262,10 @@ else()
     )
   endif()
 
+  if (onnxruntime_USE_WEBNN)
+   set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --bind -sWASM_BIGINT")
+  endif()
+
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
   target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
 
@@ -265,21 +276,31 @@ else()
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasmThreaded"
-      "SHELL:-s USE_PTHREADS=1"
+      "SHELL:-s DEFAULT_PTHREAD_STACK_SIZE=131072"
     )
-    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
-    else()
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-threaded")
-    endif()
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasm"
     )
-    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd")
-    else()
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm")
-    endif()
   endif()
+
+  set(target_name_list ort)
+
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND target_name_list  "training")
+  endif()
+
+  list(APPEND target_name_list  "wasm")
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    list(APPEND target_name_list  "simd")
+  endif()
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    list(APPEND target_name_list  "threaded")
+  endif()
+
+  list(JOIN target_name_list  "-" target_name)
+
+  set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name})
 endif()

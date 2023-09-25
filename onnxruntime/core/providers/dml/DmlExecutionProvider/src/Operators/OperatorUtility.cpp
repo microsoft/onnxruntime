@@ -364,19 +364,10 @@ namespace Dml
                 int onnxAxis = HandleNegativeAxis(kernelInfo.GetOptionalAttribute<int>(AttrName::GraphFusedAxis, -1), onnxDimCount);
 
                 auto dmlAdjustedAxis = GetDmlAdjustedAxis(onnxAxis, onnxDimCount, kernelInfo.GetTensorShapeDescription().GetInputTensorDimensionCount(0));
-
-                // If the axis is supported by Softmax, use this version instead since it's more likely to be supported by metacommands
-                if (dmlAdjustedAxis == onnxDimCount - 1)
-                {
-                    activation.desc.activationType = DML_OPERATOR_ACTIVATION_SOFTMAX;
-                }
-                else
-                {
-                    activation.desc.activationType = DML_OPERATOR_ACTIVATION_SOFTMAX1;
-                    activation.dmlAxes.push_back(dmlAdjustedAxis);
-                    activation.desc.params.softmax1.Axes = activation.dmlAxes.data();
-                    activation.desc.params.softmax1.AxisCount = gsl::narrow_cast<uint32_t>(activation.dmlAxes.size());
-                }
+                activation.desc.activationType = DML_OPERATOR_ACTIVATION_SOFTMAX1;
+                activation.dmlAxes.push_back(dmlAdjustedAxis);
+                activation.desc.params.softmax1.Axes = activation.dmlAxes.data();
+                activation.desc.params.softmax1.AxisCount = gsl::narrow_cast<uint32_t>(activation.dmlAxes.size());
             }
             else
             {

@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - java
+      - java/**
   schedule:
     - cron: '0 0 1 * *'
   workflow_dispatch:
@@ -23,7 +23,7 @@ jobs:
     name: Generate Java docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up JDK 11
         uses: actions/setup-java@v3
         with:

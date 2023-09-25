@@ -1,3 +1,32 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 parameters:
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
@@ -8,7 +37,7 @@ stages:
 - stage: x64_debug
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'Debug'
         EnvSetupScript: setup_env.bat
@@ -18,17 +47,16 @@ stages:
         isX86: false
         job_name_suffix: x64_debug
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: x64_release
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -40,17 +68,16 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: x64_release_dnnl
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -60,19 +87,18 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: DNNL
         GenerateDocumentation: false
         WITH_CACHE: true
         # Intel EPs require Intel CPUs
-        MachinePool: 'Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win2022-Intel-CPU'
 
 # Tests doesn't work on AMD CPUs
 - stage: x64_release_xnnpack
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -81,40 +107,38 @@ stages:
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release
-        RunOnnxRuntimeTests: false
-        RunStaticCodeAnalysis: false
+        RunOnnxRuntimeTests: true
         isTraining: false
         ORT_EP_NAME: XNNPACK
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: x64_release_winml
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --use_winml --enable_wcos --disable_rtti
+        additionalBuildFlags: --use_winml --enable_wcos --disable_rtti --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.22000.0
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release_winml
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         # WinML has many warnings
-        RunStaticCodeAnalysis: false
         EnablePython: false
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: x86_release
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_x86.bat
@@ -124,17 +148,16 @@ stages:
         isX86: true
         job_name_suffix: x86_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win-CPU-2019'
+        MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: training_x64_debug
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'Debug'
         EnvSetupScript: setup_env.bat
@@ -144,17 +167,16 @@ stages:
         isX86: false
         job_name_suffix: training_x64_debug
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         isTraining: true
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win2019-CPU-training'
+        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
 
 - stage: training_x64_release
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -164,17 +186,16 @@ stages:
         isX86: false
         job_name_suffix: training_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: true
         isTraining: true
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win2019-CPU-training-AMD'
+        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
 
 - stage: ort_training_apis_x64_release
   dependsOn: []
   jobs:
-    - template: templates/win-ci-vs-2019.yml
+    - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -184,10 +205,29 @@ stages:
         isX86: false
         job_name_suffix: ort_training_apis_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         EnablePython: false
         isTraining: true
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: true
-        MachinePool: 'onnxruntime-Win2019-CPU-training-AMD'
+        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
+
+- stage: x64_release_azure
+  dependsOn: []
+  jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_azure.bat
+        buildArch: x64
+        additionalBuildFlags: --use_azure --use_lock_free_queue
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_release_azure
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        EnablePython: false
+        isTraining: false
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        WITH_CACHE: true
+        MachinePool: 'onnxruntime-Win-CPU-2022'

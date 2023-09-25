@@ -12,12 +12,21 @@
 #include "qnn_def.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/allocator.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace qnn {
+
+// POD struct that stores information about an ONNX input.
+// Filled out by QnnModelWrapper::GetOnnxInputInfo()
+struct OnnxInputInfo {
+  std::vector<uint32_t> shape;
+  Qnn_DataType_t qnn_data_type;
+  Qnn_QuantizeParams_t quant_param;
+  bool is_initializer;
+  const ONNX_NAMESPACE::TensorProto* initializer_tensor;
+};
 
 class QnnModelWrapper {
  public:
@@ -28,7 +37,7 @@ class QnnModelWrapper {
                   const std::unordered_map<std::string, size_t>& input_index_map,
                   const std::unordered_map<std::string, size_t>& output_index_map,
                   const std::unordered_set<std::string>& initializer_lookup,
-                  const onnxruntime::AllocatorPtr& cpu_allocator)
+                  QnnBackendType qnn_backend_type)
       : graph_viewer_(graph_viewer),
         logger_(logger),
         qnn_interface_(qnn_interface),
@@ -36,7 +45,7 @@ class QnnModelWrapper {
         input_index_map_(input_index_map),
         output_index_map_(output_index_map),
         initializer_lookup_(initializer_lookup),
-        cpu_allocator_(cpu_allocator) {
+        qnn_backend_type_(qnn_backend_type) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
@@ -108,12 +117,18 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
-  onnxruntime::AllocatorPtr GetAllocator() const {
-    if (cpu_allocator_ == nullptr) {
-      LOGS_DEFAULT(ERROR) << "cpu_allocator is null!";
-    }
-    return cpu_allocator_;
-  }
+  // TODO(hecli) rename to GetTensorInfo
+  Status GetOnnxInputInfo(const NodeUnitIODef& input, OnnxInputInfo& input_info) const;
+
+  Status AddReshapeNode(const std::string& input_name,
+                        const std::string& output_name,
+                        const std::vector<uint32_t>& input_shape,
+                        const std::vector<uint32_t>& output_shape,
+                        const Qnn_DataType_t& tensor_data_type,
+                        const Qnn_QuantizeParams_t& quantize_param,
+                        bool do_op_validation,
+                        bool is_for_input = true,
+                        bool is_for_output = false);
 
   Status AddTransposeNode(NodeIndex node_index,
                           const std::string& input_name,
@@ -123,8 +138,9 @@ class QnnModelWrapper {
                           const std::vector<uint32_t>& output_shape,
                           const Qnn_DataType_t& tensor_data_type,
                           const Qnn_QuantizeParams_t& quantize_param,
-                          const bool is_for_input = true,
-                          const bool is_for_output = false);
+                          bool do_op_validation,
+                          bool is_for_input = true,
+                          bool is_for_output = false);
 
   // Tranpose NCHW->HWCN for QNN weight
   Status AddNchwToHwcnTranspose(NodeIndex node_index,
@@ -134,12 +150,13 @@ class QnnModelWrapper {
                                 const std::vector<uint32_t>& output_shape,
                                 const Qnn_DataType_t& tensor_data_type,
                                 const Qnn_QuantizeParams_t& quantize_param,
-                                const bool is_for_input = true,
-                                const bool is_for_output = false) {
+                                bool do_op_validation,
+                                bool is_for_input = true,
+                                bool is_for_output = false) {
     LOGS(logger_, VERBOSE) << "Add NCHW->HWCN Transpose node after Conv weight input: " << input_name
                            << " -> " << output_name;
     return AddTransposeNode(node_index, input_name, output_name, input_shape, nchw2hwcn_perm_, output_shape,
-                            tensor_data_type, quantize_param, is_for_input, is_for_output);
+                            tensor_data_type, quantize_param, do_op_validation, is_for_input, is_for_output);
   }
 
   // Tranpose CNHW->HWCN for QNN weight
@@ -150,13 +167,19 @@ class QnnModelWrapper {
                                 const std::vector<uint32_t>& output_shape,
                                 const Qnn_DataType_t& tensor_data_type,
                                 const Qnn_QuantizeParams_t& quantize_param,
-                                const bool is_for_input = true,
-                                const bool is_for_output = false) {
+                                bool do_op_validation,
+                                bool is_for_input = true,
+                                bool is_for_output = false) {
     LOGS(logger_, VERBOSE) << "Add CNHW->HWCN Transpose node after ConvTranspose weight input: " << input_name
                            << " -> " << output_name;
     return AddTransposeNode(node_index, input_name, output_name, input_shape, cnhw2hwcn_perm_, output_shape,
-                            tensor_data_type, quantize_param, is_for_input, is_for_output);
+                            tensor_data_type, quantize_param, do_op_validation, is_for_input, is_for_output);
   }
+
+  Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                               std::vector<uint8_t>& unpacked_tensor) const;
+
+  QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
@@ -211,9 +234,9 @@ class QnnModelWrapper {
   const std::unordered_map<std::string, size_t>& input_index_map_;
   const std::unordered_map<std::string, size_t>& output_index_map_;
   const std::unordered_set<std::string>& initializer_lookup_;
-  onnxruntime::AllocatorPtr cpu_allocator_;
   const std::vector<uint32_t> nchw2hwcn_perm_{2, 3, 1, 0};
   const std::vector<uint32_t> cnhw2hwcn_perm_{2, 3, 0, 1};
+  QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
 };  // QnnModelWrapper
 
 }  // namespace qnn

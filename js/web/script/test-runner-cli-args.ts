@@ -37,6 +37,7 @@ Options:
                                    webgpu
                                    wasm
                                    xnnpack
+                                   webnn
  -e=<...>, --env=<...>         Specify the environment to run the test. Should be one of the following:
                                  chrome     (default)
                                  edge       (Windows only)
@@ -65,7 +66,7 @@ Options:
 
 *** Backend Options ***
 
- --wasm-number-threads         Set the WebAssembly number of threads
+ -x, --wasm-number-threads     Set the WebAssembly number of threads
  --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
  --wasm-enable-simd            Set whether to enable SIMD
  --wasm-enable-proxy           Set whether to enable proxy worker
@@ -79,6 +80,7 @@ Options:
 
  --no-sandbox                  This flag will be passed to Chrome.
                                  Sometimes Chrome need this flag to work together with Karma.
+ --chromium-flags=<...>        This flag will be passed to Chrome and Edge browsers. Can be used multiple times.
 
 Examples:
 
@@ -104,7 +106,7 @@ Examples:
 
 export declare namespace TestRunnerCliArgs {
   type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
-  type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'xnnpack';
+  type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'xnnpack'|'webnn';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
   type BundleMode = 'prod'|'dev'|'perf';
 }
@@ -170,8 +172,9 @@ export interface TestRunnerCliArgs {
   cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-  globalEnvFlags?: Env;
+  globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
+  chromiumFlags: string[];
 }
 
 
@@ -263,9 +266,9 @@ function parseWasmOptions(_args: minimist.ParsedArgs): InferenceSession.WebAssem
 }
 
 function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
-  const numThreads = args['wasm-number-threads'];
+  const numThreads = args.x || args['wasm-number-threads'];
   if (typeof numThreads !== 'undefined' && typeof numThreads !== 'number') {
-    throw new Error('Flag "wasm-number-threads" must be a number value');
+    throw new Error('Flag "x"/"wasm-number-threads" must be a number value');
   }
   const initTimeout = args['wasm-init-timeout'];
   if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
@@ -294,7 +297,7 @@ function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLEx
   return {name: 'webgl'};
 }
 
-function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
+function parseWebglFlags(args: minimist.ParsedArgs): Partial<Env.WebGLFlags> {
   const contextId = args['webgl-context-id'];
   if (contextId !== undefined && contextId !== 'webgl' && contextId !== 'webgl2') {
     throw new Error('Flag "webgl-context-id" is invalid');
@@ -318,7 +321,7 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 
-function parseWebgpuFlags(args: minimist.ParsedArgs): Env.WebGpuFlags {
+function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
   const profilingMode = args['webgpu-profiling-mode'];
   if (profilingMode !== undefined && profilingMode !== 'off' && profilingMode !== 'default') {
     throw new Error('Flag "webgpu-profiling-mode" is invalid');
@@ -326,7 +329,7 @@ function parseWebgpuFlags(args: minimist.ParsedArgs): Env.WebGpuFlags {
   return {profilingMode};
 }
 
-function parseGlobalEnvFlags(args: minimist.ParsedArgs): Env {
+function parseGlobalEnvFlags(args: minimist.ParsedArgs): NonNullable<TestRunnerCliArgs['globalEnvFlags']> {
   const wasm = parseWasmFlags(args);
   const webgl = parseWebglFlags(args);
   const webgpu = parseWebgpuFlags(args);
@@ -359,12 +362,13 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   }
 
   // Option: -b=<...>, --backend=<...>
-  const browserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack'];
+  const browserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack', 'webnn'];
 
-  // TODO: remove this when Chrome support WebGPU.
-  //       we need this for now because Chrome does not support webgpu yet,
+  // TODO: remove this when Chrome support WebNN.
+  //       we need this for now because Chrome does not support webnn yet,
   //       and ChromeCanary is not in CI.
-  const defaultBrowserBackends = ['webgl', /* 'webgpu', */ 'wasm', 'xnnpack'];
+
+  const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack' /*, 'webnn'*/];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
   const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :
@@ -376,6 +380,10 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   }
 
   const globalEnvFlags = parseGlobalEnvFlags(args);
+
+  if (backend.includes('webnn') && !globalEnvFlags.wasm!.proxy) {
+    throw new Error('Backend webnn requires flag "wasm-enable-proxy" to be set to true.');
+  }
 
   // Options:
   // --log-verbose=<...>
@@ -432,6 +440,17 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
 
+  // parse chromium flags
+  let chromiumFlags = args['chromium-flags'];
+  if (!chromiumFlags) {
+    chromiumFlags = [];
+  } else if (typeof chromiumFlags === 'string') {
+    chromiumFlags = [chromiumFlags];
+  } else if (!Array.isArray(chromiumFlags)) {
+    throw new Error(`Invalid command line arg: --chromium-flags: ${chromiumFlags}`);
+  }
+
+
   npmlog.verbose('TestRunnerCli.Init', ` Mode:              ${mode}`);
   npmlog.verbose('TestRunnerCli.Init', ` Env:               ${env}`);
   npmlog.verbose('TestRunnerCli.Init', ` Debug:             ${debug}`);
@@ -455,6 +474,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     webglOptions,
     wasmOptions,
     globalEnvFlags,
-    noSandbox
+    noSandbox,
+    chromiumFlags
   };
 }

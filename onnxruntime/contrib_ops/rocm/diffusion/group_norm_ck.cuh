@@ -8,6 +8,8 @@
 #include <vector>
 
 #ifdef USE_COMPOSABLE_KERNEL
+#include "core/providers/rocm/composable_kernel_common.h"
+
 #include "ck/ck.hpp"
 #include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
@@ -22,15 +24,7 @@ namespace rocm {
 
 #ifdef USE_COMPOSABLE_KERNEL
 
-template <typename T>
-struct DataTypeAdaptor {
-  using type = T;
-};
-
-template <>
-struct DataTypeAdaptor<half> {
-  using type = ck::half_t;
-};
+using onnxruntime::rocm::CKDataTypeAdaptor;
 
 using Swish = ck::tensor_operation::element_wise::Swish;
 using Pass = ck::tensor_operation::element_wise::PassThrough;
@@ -40,9 +34,9 @@ constexpr int NumReduceDim = 3;
 
 template <typename T, typename AccT, bool WithSwish>
 auto GetCKGroupNormNHWCTypeStringAndOps() {
-  using InDataType = typename DataTypeAdaptor<T>::type;
-  using OutDataType = typename DataTypeAdaptor<T>::type;
-  using AccDataType = typename DataTypeAdaptor<AccT>::type;
+  using InDataType = typename CKDataTypeAdaptor<T>::type;
+  using OutDataType = typename CKDataTypeAdaptor<T>::type;
+  using AccDataType = typename CKDataTypeAdaptor<AccT>::type;
   using GammaDataType = float;
   using BetaDataType = float;
 
@@ -86,7 +80,7 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
                                            activation);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->stream});
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_group_norm_op)));

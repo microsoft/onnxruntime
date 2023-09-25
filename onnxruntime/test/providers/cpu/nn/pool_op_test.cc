@@ -301,7 +301,7 @@ TEST(PoolTest, MaxPool2D_uint8) {
   test.AddInput<uint8_t>("Input", {1, 1, 5, 5}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25});
 
   test.AddOutput<uint8_t>("Output", output_shape, output);
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run();
@@ -936,6 +936,35 @@ TEST(PoolTest, AveragePool_10_ceil1_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
+}
+
+TEST(PoolTest, AveragePool_19_dilation_2d) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+
+  std::vector<float> x_vals = {
+      1, 3, 2, 4,
+      5, 7, 6, 8,
+      9, 11, 10, 12,
+      13, 15, 14, 16};
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 2};
+  std::vector<float> expected_vals = {5.5f, 7.5f, 9.5f, 11.5f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(PoolTest, GlobalAveragePool) {

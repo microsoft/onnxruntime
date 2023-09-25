@@ -18,9 +18,7 @@
 #include "core/framework/onnxruntime_optional_type_info.h"
 #include "core/framework/TensorSeq.h"
 
-using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
-using onnxruntime::MLFloat16;
 #if !defined(DISABLE_SPARSE_TENSORS)
 using onnxruntime::SparseTensor;
 #endif

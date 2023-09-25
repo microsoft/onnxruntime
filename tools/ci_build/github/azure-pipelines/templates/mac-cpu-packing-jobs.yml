@@ -37,7 +37,7 @@ jobs:
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
-    vmImage: 'macOS-12'
+    vmImage: 'macOS-13'
   timeoutInMinutes: 300
   steps:
   - checkout: self
@@ -45,15 +45,16 @@ jobs:
     submodules: none
 
   - task: UsePythonVersion@0
-    # Use python 3.8 to avoid build some of the required packages
-    displayName: Use Python 3.8
+    displayName: Use Python 3.11
     inputs:
-      versionSpec: 3.8
+      versionSpec: 3.11
   - task: NodeTool@0
     inputs:
       versionSpec: '16.x'
 
   - template: set-version-number-variables-step.yml
+
+  - template: use-xcode-version.yml
 
   - template: mac-build-step-with-cache.yml
     parameters:
@@ -72,7 +73,6 @@ jobs:
             export ONNX_ML=1
             export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
             python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-            sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
           displayName: 'Install dependencies'
           env:
             CCACHE_DIR: $(PROTO_CACHE_DIR)

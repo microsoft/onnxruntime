@@ -709,13 +709,13 @@ TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
   NameMLValMap feeds;
   OrtValue ml_value;
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), scalar, a, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], scalar, a, &ml_value);
   feeds.insert(std::make_pair("a", ml_value));
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), scalar, b, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], scalar, b, &ml_value);
   feeds.insert(std::make_pair("b", ml_value));
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), scalar, trip_count, &ml_value);
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], scalar, trip_count, &ml_value);
   feeds.insert(std::make_pair("max_trip_count", ml_value));
-  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), scalar, keep_going, &ml_value);
+  CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], scalar, keep_going, &ml_value);
   feeds.insert(std::make_pair("keep_going_inp", ml_value));
 
   // prepare outputs
@@ -930,7 +930,7 @@ TEST(Loop, PassThroughSubgraphInputNoTypeOrShape) {
   test.AddOutput<float>("loop_var_0_final", {1}, {123.f});
 
   // Disable TensorRT on unsupported data type BOOL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(Loop, BugFixIssue4031_implicit_input_handling) {
@@ -947,7 +947,7 @@ TEST(Loop, BugFixIssue4031_implicit_input_handling) {
 
   // prepare inputs
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f},
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1}, {123.f},
                        &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("state_var_in", ml_value));
@@ -1252,10 +1252,6 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
 
-    // Since this test is being written at a time when only opset 15  has been released, we set
-    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-    test.test_allow_released_onnx_opset_only_ = false;
-
     auto body = create_subgraph(true);
     test.AddAttribute<GraphProto>("body", body);
 
@@ -1271,9 +1267,6 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   // CASE 2: Optional tensor + non-none
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
-    // Since this test is being written at a time when only opset 15  has been released, we set
-    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-    test.test_allow_released_onnx_opset_only_ = false;
 
     auto body = create_subgraph(true);
     test.AddAttribute<GraphProto>("body", body);
@@ -1291,9 +1284,6 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   // CASE 3: Optional tensor sequence + none
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
-    // Since this test is being written at a time when only opset 15  has been released, we set
-    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-    test.test_allow_released_onnx_opset_only_ = false;
 
     auto body = create_subgraph(false);
     test.AddAttribute<GraphProto>("body", body);
@@ -1311,9 +1301,6 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   // CASE 4: Optional tensor sequence + non-none
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
-    // Since this test is being written at a time when only opset 15  has been released, we set
-    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-    test.test_allow_released_onnx_opset_only_ = false;
 
     auto body = create_subgraph(false);
     test.AddAttribute<GraphProto>("body", body);

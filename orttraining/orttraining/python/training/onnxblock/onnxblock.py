@@ -20,7 +20,9 @@ class ForwardBlock(blocks.Block):
     must subclass this class. The subclass's implementation of the build method must return the
     name of the graph output. This block will automatically register the output as a graph output
     and build the model.
+
     Example:
+
     >>> class MyForwardBlock(ForwardBlock):
     >>>     def __init__(self):
     >>>         super().__init__()
@@ -84,7 +86,9 @@ class TrainingBlock(blocks.Block):
     must subclass this class. The subclass's implementation of the build method must return
     the name of the output from where backpropagation must begin (typically the name of the
     output from the loss function).
+
     Example:
+
     >>> class MyTrainingBlock(TrainingBlock):
     >>>     def __init__(self):
     >>>         super().__init__()
@@ -198,11 +202,10 @@ class TrainingBlock(blocks.Block):
         # The order of model inputs after gradient graph building is: user inputs, model parameters as inputs
         # The order of the model outputs is: user outputs, model parameter gradients (in the order of parameter inputs)
         self._training_model, self._eval_model = _training_graph_utils.build_gradient_graph(
-            model,
-            self._requires_grad,
-            self._frozen_params,
-            output,
+            model, self._requires_grad, self._frozen_params, output, accessor._GLOBAL_CUSTOM_OP_LIBRARY
         )
+
+        logging.debug("Adding gradient accumulation nodes for training block %s", self.__class__.__name__)
 
         _training_graph_utils.build_gradient_accumulation_graph(self._training_model, self._requires_grad)
 

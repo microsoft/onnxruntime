@@ -6,7 +6,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
 - stage: Python_Packaging
@@ -14,63 +14,39 @@ stages:
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.2.3'
+      RocmVersion: '5.6'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.2.3'
+      RocmVersion: '5.6'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.10'
-      RocmVersion: '5.2.3'
+      RocmVersion: '5.6'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.3.2'
+      RocmVersion: '5.7'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.3.2'
+      RocmVersion: '5.7'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.10'
-      RocmVersion: '5.3.2'
+      RocmVersion: '5.7'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.4'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.9'
-      RocmVersion: '5.4'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.10'
-      RocmVersion: '5.4'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.8'
-      RocmVersion: '5.4.2'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.9'
-      RocmVersion: '5.4.2'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.10'
-      RocmVersion: '5.4.2'
-  - template: templates/rocm.yml
-    parameters:
-      PythonVersion: '3.8'
-      RocmVersion: '5.4.2'
+      RocmVersion: '5.7'
       BuildConfig: 'RelWithDebInfo'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.4.2'
+      RocmVersion: '5.7'
       BuildConfig: 'RelWithDebInfo'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.10'
-      RocmVersion: '5.4.2'
+      RocmVersion: '5.7'
       BuildConfig: 'RelWithDebInfo'

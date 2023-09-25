@@ -3027,7 +3027,7 @@ namespace Windows::AI::MachineLearning::Adapter
         CASE_PROTO(UINT8, uint8_t, int32_data_size);
         CASE_PROTO(UINT16, uint16_t, int32_data_size);
         CASE_PROTO(UINT32, uint32_t, uint64_data_size);
-        CASE_PROTO(UINT64, uint64_t, int64_data_size);
+        CASE_PROTO(UINT64, uint64_t, uint64_data_size);
         CASE_PROTO(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
         default: ORT_THROW_HR(E_INVALIDARG);
         }

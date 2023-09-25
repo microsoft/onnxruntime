@@ -209,14 +209,15 @@ namespace Dml
 
     // Creates a partition for a node which is not a DML graph node, and finalizes partitions
     // which are inputs of the new partition.
-    std::unique_ptr<GraphPartition> CreateNonGraphNodePartitionAndFinalizeInputs(
+    std::unique_ptr<GraphPartition> CreatePartitionAndFinalizeInputs(
         const onnxruntime::Node& node,
         bool isDmlNode,
+        bool isDmlGraphPartitionNode,
         std::unordered_map<std::string, GraphPartition*>& nodeNameToPartitionMap
     )
     {
         std::unique_ptr<GraphPartition> partition = std::make_unique<GraphPartition>();
-        partition->SetIsDmlGraphPartition(false);
+        partition->SetIsDmlGraphPartition(isDmlGraphPartitionNode);
         partition->SetIsDmlPartition(isDmlNode);
         partition->AddNodeIndex(node.Index());
 
@@ -344,13 +345,8 @@ namespace Dml
     // Whether any operator in the model contains a subgraph.  This is true
     // if the graph being partitioned is itself within a subgraph, or contains
     // an operator with a subgraph.
-    bool ModelUsesSubgraph(const onnxruntime::GraphViewer& graph)
+    bool ContainsSubgraph(const onnxruntime::GraphViewer& graph)
     {
-        if (graph.IsSubgraph())
-        {
-            return true;
-        }
-
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
 
         for (size_t nodeIndex : toplogicalOrder)
@@ -383,7 +379,8 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
-        std::function<void(const onnxruntime::Node&)> onNodeUnsupportedInGraph)
+        gsl::span<const onnxruntime::NodeIndex> additionalSplittingNodes,
+        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputs)
     {
         // Nodes are uniquely identified by the name of their first output argument
         std::vector<std::unique_ptr<GraphPartition>> partitions;
@@ -418,7 +415,9 @@ namespace Dml
         }
 
         // Check whether this graph is a subgraph, or contains any node with a subgraph.
-        bool modelUsesSubgraph = ModelUsesSubgraph(graph);
+        bool containsSubgraph = ContainsSubgraph(graph);
+
+        uint32_t splittingNodeIndex = 0;
 
         // Build up partitions while traversing the graph.
         for (size_t nodeIndex : toplogicalOrder)
@@ -451,17 +450,19 @@ namespace Dml
             // Add a unique partition if graph node usage is not supported.
             //
             // Partitioning is disabled in models with subgraphs to work around issues with implicit inputs.
-            // The partitioning algorithm does not currently consider such inputs.  Transfering shared initializers
+            // The partitioning algorithm does not currently consider such inputs. Transferring shared initializers
             // for partitions could also cause problems.  Note, operators with subgraphs are currently not efficient
             // anyhow due to CPU/GPU copies.
-            if (modelUsesSubgraph || !isDmlGraphNode)
+            if (containsSubgraph || !isDmlGraphNode)
             {
-                if (onNodeUnsupportedInGraph)
-                {
-                    onNodeUnsupportedInGraph(node);
-                }
+                partitions.push_back(CreatePartitionAndFinalizeInputs(node, isDmlNode, false, nodeNameToPartitionMap));
+                continue;
+            }
 
-                partitions.push_back(CreateNonGraphNodePartitionAndFinalizeInputs(node, isDmlNode, nodeNameToPartitionMap));
+            if (splittingNodeIndex < additionalSplittingNodes.size() && additionalSplittingNodes[splittingNodeIndex] == nodeIndex)
+            {
+                partitions.push_back(CreatePartitionAndFinalizeInputs(node, isDmlNode, isDmlGraphNode, nodeNameToPartitionMap));
+                ++splittingNodeIndex;
                 continue;
             }
 
@@ -500,7 +501,7 @@ namespace Dml
                             firstNonFinalInputPartition->AddInput(arg->Name());
                         }
 
-                        if (graphInputs.find(arg->Name()) != graphInputs.end())
+                        if (graphInputs.find(arg->Name()) != graphInputs.end() || implicitInputs.find(arg->Name()) != implicitInputs.end())
                         {
                             firstNonFinalInputPartition->AddInput(arg->Name());
                         }

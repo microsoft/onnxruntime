@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #ifdef ENABLE_TRAINING
+
 #include <onnx/defs/attr_proto_util.h>
 
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
@@ -15,74 +16,17 @@
 
 namespace onnxruntime {
 
-// Put utilities in anonymous namespace.
-namespace {
-NodeArg* InsertNodesForValidLabelIndices(Graph& graph, Node& node, NodeArg* label_input, NodeArg* reduce_index_input) {
-  InlinedVector<NodeArg*> input_args{label_input, reduce_index_input};
-
-  InlinedVector<NodeArg*> output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("label_sub_result"),
-                                                                node.MutableInputDefs()[1]->TypeAsProto())};
-
-  Node& sub_node = graph.AddNode(graph.GenerateNodeName("labels_sub"), "Sub", "label sub padding idx", input_args,
-                                 output_args, nullptr, kOnnxDomain);
-  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(sub_node), "Failed to set op schema for " + sub_node.Name());
-  sub_node.SetExecutionProviderType(node.GetExecutionProviderType());
-
-  auto non_zero_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("labels_filter_pad_result"),
-                                                    node.MutableInputDefs()[1]->TypeAsProto());
-
-  Node& non_zero_node = graph.AddNode(graph.GenerateNodeName("labels_filter_pad"), "NonZero",
-                                      "labels filtering padding idx",
-                                      {sub_node.MutableOutputDefs()[0]},
-                                      {non_zero_out_arg}, nullptr, kOnnxDomain);
-
-  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(non_zero_node),
-              "Failed to set op schema for " + non_zero_node.Name());
-
-  const std::string dim_name = MakeString("valid_label_count_", utils::GetRandomSeed());
-
-  // 1D input NonZero generates output of shape (1,valid_token_count).
-  ONNX_NAMESPACE::TensorShapeProto non_zero_output_shape;
-  non_zero_output_shape.add_dim()->set_dim_value(1);
-  non_zero_output_shape.add_dim()->set_dim_param(dim_name);
-  non_zero_out_arg->SetShape(non_zero_output_shape);
-  non_zero_node.SetExecutionProviderType(node.GetExecutionProviderType());
-
-  InlinedVector<NodeArg*> squeeze_input_args;
-  squeeze_input_args.push_back(non_zero_out_arg);
-
-  bool opset_lower_than_13 = onnxruntime::optimizer::compute_optimizer::GetONNXOpSetVersion(graph) < 13;
-  onnxruntime::NodeAttributes attributes;
-  if (opset_lower_than_13) {
-    attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{0});
-  } else {
-    squeeze_input_args.push_back(onnxruntime::optimizer::compute_optimizer::CreateInitializerFromVector(
-        graph, {1}, {0}, graph.GenerateNodeArgName("axes")));
-  }
-
-  auto squeeze_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("squeeze_adaptor"),
-                                                   non_zero_out_arg->TypeAsProto());
-  Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("squeeze_adaptor"), "Squeeze", "nonzero_squeezer",
-                                     squeeze_input_args, {squeeze_out_arg}, &attributes, kOnnxDomain);
-  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(squeeze_node),
-              "Failed to set op schema for " + squeeze_node.Name());
-
-  // After Squeeze, the shape becomes (valid_token_count).
-  ONNX_NAMESPACE::TensorShapeProto squeeze_output_shape;
-  squeeze_output_shape.add_dim()->set_dim_param(dim_name);
-  squeeze_out_arg->SetShape(squeeze_output_shape);
-  squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
-
-  return squeeze_out_arg;
-}
-}  // namespace
-
 Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                             const logging::Logger& logger) const {
   LOG_DEBUG_INFO(logger, "Enter InsertGatherBeforeSceLoss");
 
+  if (sparse_label_input_names_.size() == 0) {
+    LOG_DEBUG_INFO(logger, "Exit InsertGatherBeforeSceLoss, no sparse label input names.");
+    return Status::OK();
+  }
+
   GraphViewer graph_viewer(graph);
-  size_t handled_sce_node_count = 0;  // For summary
+  [[maybe_unused]] size_t handled_sce_node_count = 0;  // For summary
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
   for (const auto index : order) {
     auto* node_ptr = graph.GetNode(index);
@@ -101,13 +45,29 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
       continue;
     }
 
+    const NodeArg* label_input_arg = node.InputDefs()[1];
+
     // Check whether this SCE node is handled or not.
-    const Node* labels_producer = graph.GetProducerNode(node.MutableInputDefs()[1]->Name());
+    const Node* labels_producer = graph.GetProducerNode(label_input_arg->Name());
     // Skip if already inserted a ShrunkenGather node.
     if (labels_producer && graph_utils::IsSupportedOptypeVersionAndDomain(
                                *labels_producer, "ShrunkenGather", {1}, kMSDomain)) {
       LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
                                  ") due to labels input is already consumed by a ShrunkenGather node.");
+      continue;
+    }
+
+    // Label input can be a graph input or from a Reshape node taking a graph input as its data input.
+    if (labels_producer && graph_utils::IsSupportedOptypeVersionAndDomain(
+                               *labels_producer, "Reshape", {1, 5, 13, 14}, kOnnxDomain)) {
+      label_input_arg = labels_producer->InputDefs()[0];
+    }
+    // Then check if the label input is graph input and in the sparse label input list.
+    if (!graph.IsInputsIncludingInitializers(label_input_arg) ||
+        std::find(sparse_label_input_names_.begin(), sparse_label_input_names_.end(),
+                  label_input_arg->Name()) == sparse_label_input_names_.end()) {
+      LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                 ") due to labels input is not a graph input or not in the sparse label input list.");
       continue;
     }
 
@@ -141,7 +101,8 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
       if (node.InputDefs().size() < 4 || !graph_utils::IsConstantInitializer(
                                              graph, node.InputDefs()[3]->Name(), /* check_outer_scope */ false)) {
         LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                   ") due to target padding idx is non-constant initializer. Input count: " + std::to_string(node.InputDefs().size()));
+                                   ") due to target padding idx is non-constant initializer. Input count: " +
+                                   std::to_string(node.InputDefs().size()));
         continue;
       }
       ignore_index_node_arg = node.MutableInputDefs()[3];
@@ -165,7 +126,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
       continue;
     }
 
-    // SoftmaxCrossEntropyLossInternal op definition guarantees that the the first dimension of both inputs must match,
+    // SoftmaxCrossEntropyLossInternal op definition guarantees that the first dimension of both inputs must match,
     // we don't do the check explicitly here.
 
     LOG_DEBUG_INFO(logger, "Inserting Sub+NonZero nodes for filtering valid tokens");
@@ -174,7 +135,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     // subgraph retrieving valid tokens for each SoftmaxCrossEntropyLossInternal node.
     // The duplication will be removed by CSE graph transformers.
     NodeArg* valid_labels_input_arg =
-        InsertNodesForValidLabelIndices(graph, node, node.MutableInputDefs()[1], ignore_index_node_arg);
+        onnxruntime::optimizer::compute_optimizer::InsertNodesForValidIndices(graph, node.MutableInputDefs()[1], ignore_index_node_arg, node.GetExecutionProviderType());
 
     // Insert the ShrunkenGather node on the two inputs.
     for (int i = 0; i < 2; ++i) {
@@ -217,8 +178,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     handled_sce_node_count += 1;
   }
 
-  LOG_DEBUG_INFO(logger, "Exit InsertGatherBeforeSceLoss, handled " + std::to_string(handled_sce_node_count) +
-                             " SCE nodes");
+  LOGS(logger, INFO) << "Total handled SCE node count:  " << handled_sce_node_count;
 
   return Status::OK();
 }

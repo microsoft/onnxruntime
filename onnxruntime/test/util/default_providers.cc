@@ -14,12 +14,7 @@ namespace onnxruntime {
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
-  auto ret = CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
-  // The factory created CPU provider doesn't create/reg allocators; something that is expected by
-  // clients of DefaultCpuExecutionProvider; hence the need to call RegisterAllocator explicitly.
-  AllocatorManager mgr;  // needed only to call RegisterAllocator
-  ret->RegisterAllocator(mgr);
-  return ret;
+  return CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
 }
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
@@ -91,10 +86,19 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const OrtOpenVINOProviderOptions* params) {
+#ifdef USE_OPENVINO
+  return OpenVINOProviderFactoryCreator::Create(params)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(params);
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
-  OrtOpenVINOProviderOptions params;
-  return OpenVINOProviderFactoryCreator::Create(&params)->CreateProvider();
+  ProviderOptions provider_options_map;
+  return OpenVINOProviderFactoryCreator::Create(&provider_options_map)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -106,6 +110,16 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   provider_options.do_copy_in_default_stream = true;
   if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
+std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
+#ifdef USE_CUDA
+  if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
+    return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(provider_options);
 #endif
   return nullptr;
 }
@@ -181,6 +195,7 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
   provider_options.do_copy_in_default_stream = true;
   provider_options.tunable_op_enable = test_tunable_op ? 1 : 0;
   provider_options.tunable_op_tuning_enable = test_tunable_op ? 1 : 0;
+  provider_options.tunable_op_max_tuning_duration_ms = 0;
   if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif
@@ -219,7 +234,7 @@ std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider() {
   backend_path = "./QnnCpu.dll";
 #endif
   provider_options_map["backend_path"] = backend_path;
-  return QNNProviderFactoryCreator::Create(provider_options_map)->CreateProvider();
+  return QNNProviderFactoryCreator::Create(provider_options_map, nullptr)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -227,7 +242,7 @@ std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options) {
 #ifdef USE_QNN
-  return QNNProviderFactoryCreator::Create(options)->CreateProvider();
+  return QNNProviderFactoryCreator::Create(options, nullptr)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(options);
   return nullptr;

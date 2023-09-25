@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - csharp
+      - csharp/**
   schedule:
     - cron: '0 0 1 * *'
   workflow_dispatch:
@@ -24,11 +24,11 @@ jobs:
     env:
       DOCFXVERSION: 2.62.2
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Setup .NET
-      uses: actions/setup-dotnet@v2
+      uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: 5.0.x
+        dotnet-version: 6.0.x
     - name: Restore dependencies
       run: dotnet restore csharp/ApiDocs/ApiDocs.csproj
     - name: Download DocFX

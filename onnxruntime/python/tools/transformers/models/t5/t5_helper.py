@@ -6,22 +6,19 @@
 
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Dict, List, Union
 
 import torch
+from float16 import float_to_float16_max_diff
+from onnx_model import OnnxModel
+from optimizer import optimize_model
 from t5_decoder import T5Decoder, T5DecoderHelper, T5DecoderInit
 from t5_encoder import T5Encoder, T5EncoderHelper
 from t5_encoder_decoder_init import T5EncoderDecoderInit, T5EncoderDecoderInitHelper
 from transformers import MT5ForConditionalGeneration, T5ForConditionalGeneration
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from float16 import float_to_float16_max_diff  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from optimizer import optimize_model  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +63,7 @@ class T5Helper:
         device: torch.device,
         merge_encoder_and_decoder_init: bool = True,
         model_type: str = "t5",
+        state_dict_path: str = "",
     ) -> Dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
@@ -84,6 +82,9 @@ class T5Helper:
             model = MT5ForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
         else:
             raise ValueError("only support mode_type=t5 or mt5")
+
+        if state_dict_path:
+            model.load_state_dict(torch.load(state_dict_path))
 
         decoder = T5Decoder(model.decoder, model.lm_head, model.config)
         decoder.eval().to(device)

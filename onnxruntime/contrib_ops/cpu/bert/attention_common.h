@@ -27,6 +27,8 @@ enum AttentionQkvFormat {
   QKV_BSN3H,             // for TRT fused attention, qkv are packed
   Q_K_V_BNSH_QKV_BS3NH,  // for TRT fused causal attention, data has two formats (qkv is 3BNSH, gemm_buffer is BS3NH)
   Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
+  Q_K_V_TNH,             // for memory efficient attention, qkv are not packed, and paddings are removed.
+  QKV_TN3H,              // for TRT fused attention, qkv are packed and paddings are removed
 };
 
 enum AttentionKernelType {
@@ -35,6 +37,7 @@ enum AttentionKernelType {
   AttentionKernel_TrtFlashAttention,
   AttentionKernel_TrtFusedCrossAttention,
   AttentionKernel_CutlassMemoryEfficientAttention,
+  AttentionKernel_FlashAttention,
   AttentionKernel_Default
 };
 
@@ -42,16 +45,15 @@ enum AttentionKernelType {
 struct AttentionParameters {
   int batch_size;
   int sequence_length;
-  int kv_sequence_length;             // input sequence length of K or V
-  int past_sequence_length;           // sequence length in past state of K or V
-  int original_past_sequence_length;  // original sequence length in past state of K or V
-  int total_sequence_length;          // total sequence length of K or V
-  int max_sequence_length;            // max sequence length from 4D mask
-  int input_hidden_size;              // first dimension of weights for input projection
-  int hidden_size;                    // hidden size of Q or K
-  int head_size;                      // hidden size per head of Q or K
-  int v_hidden_size;                  // hidden size of V
-  int v_head_size;                    // hidden size per head of V
+  int kv_sequence_length;     // input sequence length of K or V
+  int past_sequence_length;   // sequence length in past state of K or V
+  int total_sequence_length;  // total sequence length of K or V
+  int max_sequence_length;    // max sequence length from 4D mask
+  int input_hidden_size;      // first dimension of weights for input projection
+  int hidden_size;            // hidden size of Q or K
+  int head_size;              // hidden size per head of Q or K
+  int v_hidden_size;          // hidden size of V
+  int v_head_size;            // hidden size per head of V
   int num_heads;
   bool is_unidirectional;
   bool past_present_share_buffer;
@@ -97,8 +99,16 @@ constexpr const char* kDisableTrtFlashAttention = "ORT_DISABLE_TRT_FLASH_ATTENTI
 // Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).
 constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION";
 
+// Environment variable to enable or disable flash attention. Default is 0 (enabled).
+constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
+
 // Minimum sequence length to enable memory efficient attention in FP32.
-constexpr int kMinSequenceLengthForMemoryEfficientAttentionFp32 = 256;
+constexpr int kMinSeqLenForMemoryEfficientAttentionFp32 = 256;
+
+// Minimum sequence length to prefer flash attention when input format is packed QKV for MultiHeadAttention
+constexpr const char* kMinSeqLenForFlashAttentionPackedQKV = "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV";
+// Default value for the above setting.
+constexpr int kDefaultMinSeqLenForFlashAttentionPackedQKV = 513;
 
 }  // namespace attention
 

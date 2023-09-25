@@ -1439,7 +1439,7 @@ public:
 /**
  * @brief Half precision activation functions, with optional sum tensor.
  * Supplied sum tensor must be the same layout as the GEMM output tensor.
- * And the supplied sum tensor will be added to the final result.
+ * And the supplied sum tensor will be added to the tensor before activation.
 */
 class MLAS_HALF_GEMM_ACTIVATION_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR
 {

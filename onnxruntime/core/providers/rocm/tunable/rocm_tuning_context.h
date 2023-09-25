@@ -41,10 +41,16 @@ class RocmTuningContext : public ITuningContext {
   void DisableTuning() override;
   bool IsTuningEnabled() const override;
 
+  void SetMaxTuningDurationMs(int max_duration_ms) override;
+  int GetMaxTuningDurationMs() const override;
+
   TuningResultsManager& GetTuningResultsManager() override;
   const TuningResultsManager& GetTuningResultsManager() const override;
 
   const TuningResultsValidator& GetTuningResultsValidator() const override;
+
+  IAllocatorUniquePtr<void> GetScratchBuffer(
+      size_t bytes, Stream* stream, OrtMemType mem_type = OrtMemTypeDefault) const;
 
  private:
   TunableOpInfo* info_;  // non-owning handle

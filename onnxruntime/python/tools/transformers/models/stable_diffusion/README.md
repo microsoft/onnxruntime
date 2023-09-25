@@ -65,32 +65,28 @@ In below example, we run the scripts in source code directory. You can get sourc
 
 ```
 git clone https://github.com/microsoft/onnxruntime
-cd onnxruntime/python/tools/transformers/models/stable_diffusion
+cd onnxruntime/onnxruntime/python/tools/transformers/models/stable_diffusion
 ```
 
 ## Example of Stable Diffusion 1.5
 
-Below is an example to optimize Stable Diffusion 1.5 in Linux. For Windows OS, please change the format of path to be like `.\sd-v1-5` instead of `./sd-v1-5`.
+Below is an example to optimize Stable Diffusion 1.5 in Linux. For Windows OS, please change the format of path to be like `.\sd` instead of `./sd`.
 
 ### Setup Environment (CUDA)
 
+It is recommended to create a Conda environment with Python 3.8, 3.9 or 3.10, and run the model with [CUDA 11.7](https://developer.nvidia.com/cuda-11-7-0-download-archive) or 11.8.
 ```
-conda create -n py310 python=3.10
-conda activate py310
-pip install -r requirements.txt
+conda create -n py38 python=3.8
+conda activate py38
+pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
 pip install -r requirements-cuda.txt
 ```
 
-For Windows, the torch package installed from PyPI is CPU only. To enable support for GPU, it is necessary to install PyTorch version 1.13.1+cu117 or above using the following method:
-```
-pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
-```
-
-ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. See https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html for compatible versions (like [CUDA 11.7](https://developer.nvidia.com/cuda-11-7-0-download-archive) and cuDNN 8.5.0.96 in Windows).
+ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. CUDA 11.7 and cuDNN 8.5 are used in our tests.
 
 #### Install Nightly (Optional)
 
-Skip this step if you use onnxruntime-gpu 1.14.* release package.
+Skip this step if you use onnxruntime-gpu package from official releases.
 
 To try latest optimizations, you can install [ort-nightly-gpu](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu/) package like the following:
 
@@ -101,45 +97,80 @@ pip install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPacka
 
 ### Setup Environment (ROCm)
 
-It is recommended that the users should run the model with ROCm 5.4 or newer and Python 3.9. Note that Windows is not
-supported for ROCm at the moment.
+It is recommended that the users run the model with ROCm 5.4 or newer and Python 3.8, 3.9 or 3.10.
+Note that Windows is not supported for ROCm at the moment.
 
 ```
-conda create -n py39 python=3.9
-conda activate py39
-pip install -r requirements.txt
+conda create -n py38 python=3.8
+conda activate py38
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/torch-1.12.1%2Brocm5.4-cp38-cp38-linux_x86_64.whl
+pip install torch-1.12.1+rocm5.4-cp38-cp38-linux_x86_64.whl
 pip install -r requirements-rocm.txt
 ```
 
-AMD GPU version of torch build can be installed from [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/),
-user need to download the whl file and `pip install <file.whl>` manually. Or directly from https://download.pytorch.org/whl/rocm5.4.2 via
+AMD GPU version of PyTorch can be installed from [pytorch.org](https://pytorch.org/get-started/locally/) or [AMD Radeon repo](https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/).
+
+#### Install onnxruntime-rocm
+
+Here is an example to build onnxruntime from source with Rocm 5.4.2 in Ubuntu 20.04, and install the wheel.
+
+(1) Install [ROCm 5.4.2](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4.2/page/How_to_Install_ROCm.html). Note that the version is also used in PyTorch 2.0 ROCm package.
+
+(2) Install some tools used in build:
 ```
-pip install torch==2.0.0 --index-url https://download.pytorch.org/whl/rocm5.4.2
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+        wget \
+        zip \
+        ca-certificates \
+        build-essential \
+        curl \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        python3-dev
+pip install numpy packaging "wheel>=0.35.1"
+wget --quiet https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-linux-x86_64.tar.gz
+tar zxf cmake-3.26.3-linux-x86_64.tar.gz
+export PATH=${PWD}/cmake-3.26.3-linux-x86_64/bin:${PATH}
 ```
 
-Please follow the [official docs](https://onnxruntime.ai/docs/build/eps.html#amd-rocm) to build ONNXRuntime from source.
+(3) Build and Install ONNX Runtime
+```
+git clone https://github.com/microsoft/onnxruntime
+cd onnxruntime
+sh build.sh --config Release --use_rocm --rocm_home /opt/rocm --rocm_version 5.4.2 --build_wheel
+pip install build/Linux/Release/dist/*.whl
+```
+
+You can also follow the [official docs](https://onnxruntime.ai/docs/build/eps.html#amd-rocm) to build with docker.
 
 ### Export ONNX pipeline
+This step will export stable diffusion 1.5 to ONNX model in float32 using script from diffusers.
 
-This step will export stable diffusion 1.5 to ONNX model in float32 using script from diffusers. Before running the script, you need to be logged in via `huggingface-cli login`.
+It is recommended to use PyTorch 1.12.1 or 1.13.1 in this step. Using PyTorch 2.0 will encounter issue in exporting onnx.
 
 ```
 curl https://raw.githubusercontent.com/huggingface/diffusers/v0.15.1/scripts/convert_stable_diffusion_checkpoint_to_onnx.py > convert_sd_onnx.py
-python convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path  ./sd-v1-5
+python convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path  ./sd_v1_5/fp32
+```
+
+For SDXL, use optimum to export the model:
+```
+pip install optimum diffusers onnx onnxruntime-gpu
+optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task stable-diffusion-xl ./sd_xl_base_onnx
 ```
 
 ### Optimize ONNX Pipeline
 
 Example to optimize the exported float32 ONNX models, and save to float16 models:
-
 ```
-python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
+python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd_v1_5/fp32 -o ./sd_v1_5/fp16 --float16
 ```
 
-If you installed ONNX Runtime v1.14, some optimizations (packed QKV and BiasAdd) will be disabled automatically since they are not available in v1.14.
-
-For Stable Diffusion 2.1 model with CUDA EP, you will need force Attention to run in float32 to avoid black image by appending `--force_fp32_ops unet:Attention` to the command line.
-If you are using nightly package, append `--force_fp32_ops unet:MultiHeadAttention` instead.
+For SDXL model, it is recommended to use a machine with 32 GB or more memory to optimize.
+```
+python optimize_pipeline.py -i ./sd_xl_base_onnx -o ./sd_xl_base_fp16 --float16
+```
 
 ### Run Benchmark
 
@@ -147,18 +178,28 @@ The benchmark.py script will run a warm-up prompt twice, and measure the peak GP
 
 Note that the first run might need more time and memory: For example, cuDNN convolution algorithm search or model compile happens in the first run.
 
-Example to benchmark the optimized pipeline with batch size 1 on CUDA EP:
+To avoid black image output for Stable Diffusion 2.1 with CUDA EP, we can set an environment variable before inferencing:
 ```
-python -m onnxruntime.transformers.models.stable_diffusion.benchmark -p ./sd-v1-5-fp16/ -b 1
+export ORT_DISABLE_TRT_FLASH_ATTENTION=1
 ```
+
+Before running benchmark on PyTorch, you need to be logged in via `huggingface-cli login` once.
+
+Example to benchmark the optimized pipeline of stable diffusion 1.5 with batch size 1 on CUDA EP:
+```
+python benchmark.py -p ./sd_v1_5/fp16 -b 1 -v 1.5
+python benchmark.py -b 1 -v 1.5
+```
+For the first command, '-p' specifies a directory of optimized ONNX pipeline as generated by optimize_pipeline.py.
+For the second command without '-p', we will use OnnxruntimeCudaStableDiffusionPipeline to export and optimize ONNX models for clip, unet and vae decoder.
 
 On ROCm EP, use the following command instead:
 ```
-python -m onnxruntime.transformers.models.stable_diffusion.benchmark -p ./sd-v1-5-fp16/ -b 1 --tuning --provider=rocm
+python benchmark.py -p ./sd_v1_5/fp16 -b 1 --tuning --provider rocm -v 1.5
 ```
 
-Note: you can substitute `python -m onnxruntime.transformers.models.stable_diffusion.benchmark` with `python benchmark.py` if your current working directory is this files directory.
-In the following, we will use it interchangeably.
+For ROCm EP, you can substitute `python benchmark.py` with `python -m onnxruntime.transformers.models.stable_diffusion.benchmark` since
+the installed package is built from source. For CUDA, it is recommended to run `python benchmark.py` with the latest benchmark script.
 
 For ROCm EP, the `--tuning` is mandatory because we heavily rely on tuning to find the runable kernels for ORT `OpKernel`s.
 
@@ -169,25 +210,42 @@ The default parameters are stable diffusion version=1.5, height=512, width=512, 
 Run PyTorch 1.13.1+cu117 with xFormers like the following
 
 ```
-python benchmark.py -e torch -b 1 --use_xformers
+pip install xformers==0.0.16
+python benchmark.py -e torch -b 1 --use_xformers -v 1.5
 ```
 
 ### Run Benchmark with PyTorch 2.0 with torch.compile
 
-Let's create a new environment to run PyTorch 2.0:
-
+For CUDA:
 ```
-conda create -n pt2 python=3.10
-conda activate pt2
-pip install torch --index-url https://download.pytorch.org/whl/cu117
-pip install -r requirements.txt
-pip install -r requirements_cuda.txt  # or requirements_rocm.txt
-python benchmark.py -e torch -b 1 --enable_torch_compile
+pip install torch --upgrade --index-url https://download.pytorch.org/whl/cu117
+python benchmark.py -e torch -b 1 --enable_torch_compile -v 1.5
+```
+
+For ROCm:
+```
+pip install torch --upgrade --index-url https://download.pytorch.org/whl/rocm5.4.2
+python benchmark.py -e torch -b 1 --enable_torch_compile --provider rocm  -v 1.5
 ```
 
 Sometime, it complains ptxas not found when there are multiple CUDA versions installed. It can be fixed like `export TRITON_PTXAS_PATH=/usr/local/cuda-11.7/bin/ptxas` before running benchmark.
 
 Note that torch.compile is not supported in Windows: we encountered error `Windows not yet supported for torch.compile`. So it is excluded from RTX 3060 results of Windows.
+
+
+### Run Benchmark with TensorRT and TensorRT execution provider
+
+For TensorRT installation, follow https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html.
+
+```
+pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
+pip install --upgrade polygraphy>=0.47.0 onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
+pip install -r requirements-tensorrt.txt
+export CUDA_MODULE_LOADING=LAZY
+python benchmark.py -e tensorrt -b 1 -v 1.5
+python benchmark.py -e onnxruntime -r tensorrt -b 1 -v 1.5
+python benchmark.py -e onnxruntime -r tensorrt -b 1 -v 1.5 --enable_cuda_graph
+```
 
 ### Example Benchmark output
 
@@ -201,13 +259,13 @@ Common settings for below test results:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 4.8             | 4,117               | 4,625                |
+| onnxruntime | 1.14.1                  | CUDA                  | 1          | 4.8             | 4,117               | 4,625                |
 | torch       | 2.0.0+cu117             | default               | 1          | 5.6             | 4,325               | 4,047                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 6.0             | 9,124               | 9,130                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 17.7            | 6,659               | 6,659                |
+| onnxruntime | 1.14.1                  | CUDA                  | 4          | 17.7            | 6,659               | 6,659                |
 | torch       | 2.0.0+cu117             | default               | 4          | 20.1            | 6,421               | 6,907                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 21.6            | 10,407              | 10,409               |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 33.5            | 6,663               | 6,663                |
+| onnxruntime | 1.14.1                  | CUDA                  | 8          | 33.5            | 6,663               | 6,663                |
 | torch       | 2.0.0+cu117             | default               | 8          | 39.5            | 10,767              | 10,813               |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 41.1            | 10,825              | 9,255                |
 
@@ -215,18 +273,30 @@ Common settings for below test results:
 #### Results of A100-SXM4-40GB (Ubuntu 20.04)
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 1.1             | 6,883               | 7,395                |
+| onnxruntime | 1.14.1                  | CUDA                  | 1          | 1.1             | 6,883               | 7,395                |
 | torch       | 2.0.0+cu117             | default               | 1          | 1.5             | 13,828              | 4,400                |
 | torch       | 2.0.0+cu117             | compile               | 1          | 1.8             | 13,892              | 4,386                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 3.7             | 7,381               | 7,381                |
+| onnxruntime | 1.14.1                  | CUDA                  | 4          | 3.7             | 7,381               | 7,381                |
 | torch       | 2.0.0+cu117             | default               | 4          | 3.9             | 31,278              | 6,870                |
 | torch       | 2.0.0+cu117             | compile               | 4          | 3.4             | 31,364              | 6,880                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 6.9             | 7,411               | 7,411                |
+| onnxruntime | 1.14.1                  | CUDA                  | 8          | 6.9             | 7,411               | 7,411                |
 | torch       | 2.0.0+cu117             | default               | 8          | 7.6             | 31,660              | 10,122               |
 | torch       | 2.0.0+cu117             | compile               | 8          | 6.5             | 31,800              | 10,308               |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 16         | 13.6            | 11,479              | 11,479               |
+| onnxruntime | 1.14.1                  | CUDA                  | 16         | 13.6            | 11,479              | 11,479               |
 | torch       | 2.0.0+cu117             | default               | 16         | 14.8            | 32,306              | 16,520               |
 | torch       | 2.0.0+cu117             | compile               | 16         | 12.6            | 32,636              | 16,898               |
+
+#### Results of A100-PCIE-80GB (Ubuntu 20.04)
+| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
+| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
+| tensorrt    | 8.6.1                   | default               | 1          | 1.00            | 9,056               | 9,056                |
+| onnxruntime | 1.16.0 nightly          | tensorrt              | 1          | 1.09            | 11,250              | 11,250               |
+| onnxruntime | 1.16.0 nightly          | tensorrt (cuda graph) | 1          | 0.96            | 11,382              | 11,382               |
+| onnxruntime | 1.16.0 nightly          | cuda                  | 1          | 1.11            | 4,760               | 5,144                |
+| onnxruntime | 1.16.0 nightly          | cuda (cuda graph)     | 1          | 1.04            | 5,230               | 5,390                |
+| tensorrt    | 8.6.1                   | default               | 4          | 3.39            | 9,072               | 9,072                |
+| onnxruntime | 1.16.0 nightly          | tensorrt              | 4          | 3.60            | 11,266              | 11,266               |
+| onnxruntime | 1.16.0 nightly          | tensorrt (cuda graph) | 4          | 3.43            | 11,428              | 11,428               |
 
 #### Results of V100-PCIE-16GB (Ubuntu 20.04)
 
@@ -234,15 +304,15 @@ Results from Standard_NC6s_v3 Azure virtual machine:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 2.7             | 12,646              | 7,152                |
+| onnxruntime | 1.14.1                  | CUDA                  | 1          | 2.7             | 12,646              | 7,152                |
 | torch       | 2.0.0+cu117             | compile               | 1          | 3.2             | 13,317              | 3,909                |
 | torch       | 2.0.0+cu117             | default               | 1          | 2.7             | 13,343              | 3,921                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 3.5             | 14,979              | 10,449               |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 8.4             | 7,114               | 7,114                |
+| onnxruntime | 1.14.1                  | CUDA                  | 4          | 8.4             | 7,114               | 7,114                |
 | torch       | 2.0.0+cu117             | compile               | 4          | 8.0             | 13,897              | 6,821                |
 | torch       | 2.0.0+cu117             | default               | 4          | 8.7             | 13,873              | 6,607                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 9.1             | 12,969              | 8,421                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 15.9            | 7,120               | 7,120                |
+| onnxruntime | 1.14.1                  | CUDA                  | 8          | 15.9            | 7,120               | 7,120                |
 | torch       | 2.0.0+cu117             | compile               | 8          | 15.5            | 14,669              | 10,355               |
 | torch       | 2.0.0+cu117             | default               | 8          | 17.0            | 14,469              | 9,657                |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 17.4            | 15,593              | 9,133                |
@@ -256,15 +326,22 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 5.6             | 4,925               | 4,925                |
+| onnxruntime | 1.14.1                  | CUDA                  | 1          | 5.6             | 4,925               | 4,925                |
+| onnxruntime | 1.15.1                  | CUDA                  | 1          | 5.5             | 3,738               | 4,250                |
+| onnxruntime | 1.15.1 (tensorrt 8.6.1) | Tensorrt              | 1          | 4.8             | 10,710              | 10,710               |
+| onnxruntime | 1.16.0 nightly          | Tensorrt (cuda graph) | 1          | 4.7             | 11,746              | 10,746               |
+| tensorrt    | 8.6.1                   | default               | 1          | 5.0             | 8,530               | 8,530                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 6.9             | 14,845              | 10,317               |
 | torch       | 2.0.0+cu117             | compile               | 1          | 6.0             | 12,989              | 3,841                |
 | torch       | 2.0.0+cu117             | default               | 1          | 6.4             | 12,987              | 3,841                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 23.0            | 6,977               | 6,977                |
+| onnxruntime | 1.14.1                  | CUDA                  | 4          | 23.0            | 6,977               | 6,977                |
+| onnxruntime | 1.15.1                  | CUDA                  | 4          | 22.6            | 6,298               | 6,298                |
+| onnxruntime | 1.15.1 (tensorrt 8.6.1) | Tensorrt              | 4          | 21.8            | 10,746              | 10,746               |
+| tensorrt    | 8.6.1                   | default               | 4          | 22.2            | 8,542               | 8,542                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 25.8            | 12,819              | 8,269                |
 | torch       | 2.0.0+cu117             | compile               | 4          | 22.2            | 14,637              | 6,583                |
 | torch       | 2.0.0+cu117             | default               | 4          | 25.2            | 14,409              | 6,355                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 46.4            | 6,779               | 6,779                |
+| onnxruntime | 1.14.1                  | CUDA                  | 8          | 46.4            | 6,779               | 6,779                |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 51.4            | 14,827              | 9,001                |
 | torch       | 2.0.0+cu117             | compile               | 8          | 46.5            | 12,595              | 10,171               |
 | torch       | 2.0.0+cu117             | default               | 8          | 50.7            | 11,955              | 9,531                |
@@ -273,15 +350,15 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | dev                     | ROCMExecutionProvider | 1          | 2.2             | 5,548               | 4,908                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 1          | 2.2             | 5,548               | 4,908                |
 | torch       | 1.12.1+rocm5.4          | -                     | 1          | 3.4             | 6,653               | 4,613                |
 | torch       | 2.0.0+rocm5.4.2         | default               | 1          | 3.2             | 5,977               | 4,368                |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 1          | 3.0             | 5,869               | 4,266                |
-| onnxruntime | dev                     | ROCMExecutionProvider | 4          | 6.6             | 5,546               | 4,906                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 4          | 6.6             | 5,546               | 4,906                |
 | torch       | 1.12.1+rocm5.4          | -                     | 4          | 10.1            | 19,477              | 11,325               |
 | torch       | 2.0.0+rocm5.4.2         | default               | 4          | 10.5            | 13,051              | 7,300                |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 4          | 9.2             | 12,879              | 7,190                |
-| onnxruntime | dev                     | ROCMExecutionProvider | 8          | 12.5            | 9,778               | 9,006                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 8          | 12.5            | 9,778               | 9,006                |
 | torch       | 1.12.1+rocm5.4          | -                     | 8          | 19.3            | 55,851              | 20,014               |
 | torch       | 2.0.0+rocm5.4.2         | default               | 8          | 20.3            | 23,551              | 11,930               |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 8          | 17.8            | 23,303              | 11,800               |
@@ -290,15 +367,15 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | dev                     | ROCMExecutionProvider | 1          | 2.4             | 5,254               | 4,614                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 1          | 2.4             | 5,254               | 4,614                |
 | torch       | 1.12.1+rocm5.4          | -                     | 1          | 3.5             | 5,771               | 4,672                |
 | torch       | 2.0.0+rocm5.4.2         | default               | 1          | 3.5             | 5,811               | 4,206                |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 1          | 3.1             | 5,774               | 4,168                |
-| onnxruntime | dev                     | ROCMExecutionProvider | 4          | 7.5             | 7,290               | 6,646                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 4          | 7.5             | 7,290               | 6,646                |
 | torch       | 1.12.1+rocm5.4          | -                     | 4          | 10.7            | 19,334              | 11,181               |
 | torch       | 2.0.0+rocm5.4.2         | default               | 4          | 11.5            | 12,881              | 7,151                |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 4          | 10.0            | 12,740              | 7,073                |
-| onnxruntime | dev                     | ROCMExecutionProvider | 8          | 14.4            | 7,320               | 6,676                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 8          | 14.4            | 7,320               | 6,676                |
 | torch       | 1.12.1+rocm5.4          | -                     | 8          | 20.2            | 31,820              | 19,908               |
 | torch       | 2.0.0+rocm5.4.2         | default               | 8          | 22.2            | 23,415              | 11,815               |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 8          | 19.3            | 23,154              | 11,667               |
@@ -315,13 +392,8 @@ Some kernels are enabled by MIOpen. We hereby thank for the AMD developers' coll
 ### Future Works
 
 There are other optimizations might improve the performance or reduce memory footprint:
-
-* Use IO Binding in the pipeline. Currently the input and output of each model is in CPU, and extra data copy between GPU and CPU slows down the pipeline.
-* Use CUDA graph to speed up inference.
 * Export the whole pipeline into a single ONNX model. Currently, there are multiple ONNX models (CLIP, VAE and U-Net etc). Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator. The end result is more efficient and less memory footprint.
-* For Stable Diffusion 2.1, we force Attention in fp32 to avoid black image. That slows down the inference significantly. We could potentially change attention kernel (like fp32 accumulation) to avoid the issue.
+* For Stable Diffusion 2.1, we disable TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention in Windows to improve performance.
 * Reduce GPU memory footprint by actively deleting buffers for intermediate results.
-* Reduce GPU memory footprint by providing options for CPU RAM Offloading.
-* Attention fusion in CLIP
 * Safety Checker Optimization
 * Leverage FP8 in latest GPU

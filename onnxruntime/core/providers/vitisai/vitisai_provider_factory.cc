@@ -1,58 +1,58 @@
-// Copyright (c) Xilinx Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/vitisai/vitisai_provider_factory.h"
-#include <atomic>
-#include "vitisai_execution_provider.h"
 #include "vitisai_provider_factory_creator.h"
+
+#include "vaip/global_api.h"
+#include "./vitisai_execution_provider.h"
+#include "core/framework/execution_provider.h"
+
 #include "core/session/abi_session_options_impl.h"
+#include "nlohmann/json.hpp"
+#include <fstream>
+#include <unordered_map>
+#include <string>
 
 using namespace onnxruntime;
-
+using json = nlohmann::json;
 namespace onnxruntime {
 
+static std::string ConfigToJsonStr(const std::unordered_map<std::string, std::string>& config) {
+  const auto& filename = config.at("config_file");
+  std::ifstream f(filename);
+  json data = json::parse(f);
+  for (const auto& entry : config) {
+    data[entry.first] = entry.second;
+  }
+  return data.dump();
+}
+
+VitisAIExecutionProviderInfo::VitisAIExecutionProviderInfo(const ProviderOptions& provider_options) : provider_options_(provider_options), json_config_{ConfigToJsonStr(provider_options)} {}
+
 struct VitisAIProviderFactory : IExecutionProviderFactory {
-  VitisAIProviderFactory(std::string&& backend_type, int device_id, std::string&& export_runtime_module,
-                         std::string&& load_runtime_module)
-      : backend_type_(std::move(backend_type)), device_id_(device_id), export_runtime_module_(std::move(export_runtime_module)), load_runtime_module_(std::move(load_runtime_module)) {}
+  VitisAIProviderFactory(const VitisAIExecutionProviderInfo& info) : info_(info) {}
   ~VitisAIProviderFactory() = default;
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
-  // The Vitis AI DPU target
-  const std::string backend_type_;
-  // Device ID (Unused for now)
-  int device_id_;
-  // If not empty, the path to the file where the PyXIR runtime module
-  //	should be exported to (used for cross compilation)
-  const std::string export_runtime_module_;
-  // If not empty, the path to the file where the PyXIR runtime module
-  //	should be loaded from
-  const std::string load_runtime_module_;
+  VitisAIExecutionProviderInfo info_;
 };
 
 std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider() {
-  VitisAIExecutionProviderInfo info;
-  info.backend_type = backend_type_;
-  info.device_id = device_id_;
-  info.export_runtime_module = export_runtime_module_;
-  info.load_runtime_module = load_runtime_module_;
-  return std::make_unique<VitisAIExecutionProvider>(info);
+  return std::make_unique<VitisAIExecutionProvider>(info_);
 }
 
-std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(
-    const char* backend_type, int device_id, const char* export_runtime_module,
-    const char* load_runtime_module) {
-  return std::make_shared<onnxruntime::VitisAIProviderFactory>(
-      backend_type, device_id, export_runtime_module, load_runtime_module);
+std::shared_ptr<IExecutionProviderFactory>
+CreateExecutionProviderFactory_VITISAI(const VitisAIExecutionProviderInfo& info) {
+  initialize_vitisai_ep();
+  return std::make_shared<VitisAIProviderFactory>(info);
 }
+
+std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
+  initialize_vitisai_ep();
+  auto info = VitisAIExecutionProviderInfo{provider_options};
+  return std::make_shared<VitisAIProviderFactory>(info);
+}
+
 }  // namespace onnxruntime
-
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_VITISAI,
-                    _In_ OrtSessionOptions* options, _In_ const char* backend_type, int device_id,
-                    const char* export_runtime_module, const char* load_runtime_module) {
-  options->provider_factories.push_back(onnxruntime::VitisAIProviderFactoryCreator::Create(
-      backend_type, device_id, export_runtime_module, load_runtime_module));
-  return nullptr;
-}
