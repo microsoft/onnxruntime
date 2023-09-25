@@ -2384,8 +2384,7 @@ TEST(CApiTest, get_available_providers_cpp) {
 TEST(CApiTest, get_version_string_cpp) {
   auto version_string = Ort::GetVersionString();
   ASSERT_FALSE(version_string.empty());
-  std::u8string const ort_version = ORT_VERSION;
-  ASSERT_EQ(version_string, std::string (ort_version.begin(), ort_version.end()));
+  ASSERT_EQ(version_string, std::string(ORT_VERSION));
 }
 
 TEST(CApiTest, get_build_info_string) {

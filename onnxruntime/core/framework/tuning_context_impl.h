@@ -206,13 +206,11 @@ static Status CheckKeysMatching(
 }
 
 std::string TuningResultsValidator::GetOrtVersion() const {
-  std::u8string const version = ORT_VERSION;
-  return {version.begin(), version.end()};
+  return ORT_VERSION;
 }
 
 Status TuningResultsValidator::ValidateOrtVersion(const std::string& value) const {
-  std::u8string const version = ORT_VERSION;
-  ORT_RETURN_IF(value != std::string (version.begin(),version.end()), "onnxruntime version mismatch");
+  ORT_RETURN_IF(value != ORT_VERSION, "onnxruntime version mismatch");
   return Status::OK();
 }
 

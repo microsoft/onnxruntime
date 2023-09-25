@@ -2744,7 +2744,7 @@ static_assert(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*) == 254, "Size
 static_assert(offsetof(OrtApi, KernelContext_GetResource) / sizeof(void*) == 265, "Size of version 16 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert( std::u8string_view(ORT_VERSION) == u8"1.17.0",
+static_assert(std::string_view(ORT_VERSION) == "1.17.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 // 2. If there were any APIs added to ort_api_1_to_17 above:
@@ -2758,17 +2758,17 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."
           " Current ORT Version is: %s\n",
-          version, ORT_API_VERSION, reinterpret_cast<const char *>(ORT_VERSION));
+          version, ORT_API_VERSION, ORT_VERSION);
 
   return nullptr;  // Unsupported version
 }
 
 ORT_API(const char*, OrtApis::GetVersionString) {
-  return reinterpret_cast<const char*>(ORT_VERSION);
+  return ORT_VERSION;
 }
 
 ORT_API(const char*, OrtApis::GetBuildInfoString) {
-  return reinterpret_cast<const char*>(ORT_BUILD_INFO);
+  return ORT_BUILD_INFO;
 }
 
 const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION {
