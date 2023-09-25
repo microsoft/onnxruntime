@@ -22,14 +22,15 @@ Status CheckInputs(const T* query,
                    int kv_num_heads,
                    const T* past_seq_len,
                    float scale) {
-  //     past_key                   : (B, S*, N_k, H)
-  //     past_value                 : (B, S*, N_k, H)
+  //     past_key                   : (B, S*, N_k, H) or (B, N_k, S*, H)
+  //     past_value                 : (B, S*, N_k, H) or (B, N_k, S*, H)
   // no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D_kv) or (B, N_k, S*, H)
   //     value            (V)       : (B, L, D_kv) or (B, N_k, S*, H)
 
-  AttentionQkvFormat qkv_format;
+  AttentionQkvFormat qkv_format = Q_K_V_BSNH;
+  AttentionQkvFormat past_kv_format = Q_K_V_BSNH;
 
   const auto& query_dims = query->Shape().GetDims();
   const auto& key_dims = key->Shape().GetDims();
@@ -77,19 +78,40 @@ Status CheckInputs(const T* query,
                              past_value_dims[0]);
     }
 
-    if (past_key_dims[1] != past_value_dims[1]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' and 'past_value' should have same dimension 1 (max sequence length), got ",
-                             past_key_dims[1]);
-    }
-    if (past_key_dims[2] != kv_num_heads) {
+    // BNSH
+    if (past_key_dims[1] == kv_num_heads) {
+      past_kv_format = Q_K_V_BNSH;
+      if (past_key_dims[2] != past_value_dims[2]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "BNSH Input 'past_key' and 'past_value' should have same dimension 2 (max sequence length), got ",
+                              past_key_dims[1]);
+      }
+      if (past_value_dims[1] != kv_num_heads) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "Input 'past_value' shall have kv_num_heads");
+      }
+      // We assume all sequence in past kv are left-padded to max sequence length
+      max_sequence_length = static_cast<int>(past_key_dims[2]);
+    // BSNH
+    } else if (past_key_dims[2] == kv_num_heads) {
+      past_kv_format = Q_K_V_BSNH;
+
+      if (past_key_dims[1] != past_value_dims[1]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "BSNH Input 'past_key' and 'past_value' should have same dimension 1 (max sequence length), got ",
+                              past_key_dims[1]);
+      }
+      if (past_value_dims[2] != kv_num_heads) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "Input 'past_value' shall have kv_num_heads");
+      }
+      // We assume all sequence in past kv are left-padded to max sequence length
+      max_sequence_length = static_cast<int>(past_key_dims[1]);
+    } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'past_key' shall have kv_num_heads");
     }
-    if (past_value_dims[2] != kv_num_heads) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_value' shall have kv_num_heads");
-    }
+
     if (past_key_dims[3] != head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'past_key' dimension 3 should be same as head_size, got ",
@@ -100,8 +122,6 @@ Status CheckInputs(const T* query,
                              "Input 'past_value' dimension 3 should be same as head_size, got ",
                              past_value_dims[3]);
     }
-    // We assume all sequence in past kv are left-padded to max sequence length
-    max_sequence_length = static_cast<int>(past_key_dims[1]);
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
@@ -193,6 +213,7 @@ Status CheckInputs(const T* query,
     output_parameters->is_unidirectional = true;
     output_parameters->scale = scale;
     output_parameters->qkv_format = qkv_format;
+    output_parameters->past_kv_format = past_kv_format;
   }
 
   return Status::OK();

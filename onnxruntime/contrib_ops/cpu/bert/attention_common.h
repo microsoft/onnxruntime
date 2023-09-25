@@ -99,6 +99,7 @@ struct GroupQueryAttentionParameters {
   float scale;
   int num_splits;  // number of splits for splitkv
   AttentionQkvFormat qkv_format;
+  AttentionQkvFormat past_kv_format;
 };
 
 namespace attention {
