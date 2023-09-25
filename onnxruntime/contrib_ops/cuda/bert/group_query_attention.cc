@@ -88,12 +88,13 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  if (parameters.past_kv_format == AttentionQkvFormat::BSNH) {
-    std::vector<int64_t> present_dims{
-        parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
+  std::vector<int64_t> present_dims;
+  if (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH) {
+    present_dims = {
+      parameters.batch_size, parameters.max_sequence_length, parameters.kv_num_heads, parameters.head_size};
   } else { // BNSH
-    std::vector<int64_t> present_dims{
-        parameters.batch_size, parameters.max_sequence_length, parameters.kv_num_heads, parameters.head_size};
+    present_dims = {
+        parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
   }
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(1, present_shape);

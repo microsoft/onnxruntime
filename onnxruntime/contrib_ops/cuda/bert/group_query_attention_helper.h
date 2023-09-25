@@ -109,7 +109,7 @@ Status CheckInputs(const T* query,
       max_sequence_length = static_cast<int>(past_key_dims[1]);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' shall have kv_num_heads");
+                             "Input 'past_key' shall have format BSNH or BNSH");
     }
 
     if (past_key_dims[3] != head_size) {

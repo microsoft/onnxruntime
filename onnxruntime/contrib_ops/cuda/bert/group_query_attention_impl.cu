@@ -73,8 +73,8 @@ Status QkvToContext(
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
-
-  AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+  AttentionQkvFormat qkv_format = parameters.qkv_format;
+  AttentionQkvFormat past_kv_format = parameters.past_kv_format;
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(head_size)) : parameters.scale;
@@ -96,6 +96,7 @@ Status QkvToContext(
           reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum)));
     } else {
       // Assume past and present kv share buffer.
+      assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
       assert(parameters.past_sequence_length >= 0);
       assert(data.past_value != nullptr);
 
@@ -107,11 +108,12 @@ Status QkvToContext(
       int blk_in_grid = ceil( float(batch_size) / thr_per_blk );
       repeat_seqlen<<< blk_in_grid, thr_per_blk, 0, stream >>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
 
+      bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
       ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
           device_prop, stream, query, past_key, past_value, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
           reinterpret_cast<void*>(data.seqlens_k), batch_size, num_heads, kv_num_heads,
           head_size, sequence_length, max_sequence_length, kv_sequence_length,
-          scale, is_causal, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
+          scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
           reinterpret_cast<void*>(data.out_accum)));
     }
 
