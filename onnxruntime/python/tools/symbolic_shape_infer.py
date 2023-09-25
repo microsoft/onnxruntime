@@ -2385,10 +2385,10 @@ class SymbolicShapeInference:
         output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
         assert output_tensor_ranks
 
-        from onnxruntime.training.ortmodule._custom_autograd_function_exporter import PythonOpShapeInferStore
+        from onnxruntime.capi._pybind_state import get_shape_inference_function
 
         func_name = get_attribute(node, "func_name").decode()
-        shape_inferer = PythonOpShapeInferStore.get_shape_infer(func_name)
+        shape_inferer = get_shape_inference_function(func_name)
 
         # Set the context output separately.
         # The first output is torch.autograd.Function''s context.

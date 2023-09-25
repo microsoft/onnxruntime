@@ -294,7 +294,8 @@ void PythonOpBase::SetContextOutput(OpKernelContext* context, void* diff_ctx) co
 
 void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  ORT_ENFORCE(returned_ortvalues.size() == all_output_to_tensor_input_reuse_map_.size() - 1, "PythonOp output count mismatch inplace map count.",
+  ORT_ENFORCE(returned_ortvalues.size() == all_output_to_tensor_input_reuse_map_.size() - 1,
+              "PythonOp output count mismatch inplace map count.",
               returned_ortvalues.size(), " != ", all_output_to_tensor_input_reuse_map_.size() - 1);
   for (size_t i = 0; i < returned_ortvalues.size(); ++i) {
     size_t output_index = i + 1;

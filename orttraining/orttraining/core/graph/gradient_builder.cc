@@ -1848,6 +1848,17 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
               "PythonOpGrad requiring gradient output count mismatch.");
   attrs.push_back(MakeAttribute("output_tensor_requires_grads", bw_tensor_output_requires_grads));
 
+  // Copy bw_tensor_reuse_map attribute from PythonOp to PythonOpGrad if it is present.
+  auto attr_it = src_attrs.find("bw_tensor_reuse_map");
+  if (attr_it != src_attrs.end()) {
+    std::vector<int64_t> tensor_output_to_tensor_input_reuse_map;
+    tensor_output_to_tensor_input_reuse_map.reserve(src_attrs["bw_tensor_reuse_map"].ints().size());
+    for (const auto output_to_tensor_input_alias_mapindex : src_attrs["bw_tensor_reuse_map"].ints()) {
+      tensor_output_to_tensor_input_reuse_map.push_back(output_to_tensor_input_alias_mapindex);
+    }
+    attrs.push_back(MakeAttribute("tensor_reuse_map", tensor_output_to_tensor_input_reuse_map));
+  }
+
   if (src_attrs.find("comment") != src_attrs.end() && utils::HasString(src_attrs.at("comment"))) {
     attrs.push_back(MakeAttribute("comment", src_attrs.at("comment").s()));
   }
