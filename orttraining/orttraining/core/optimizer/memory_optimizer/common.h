@@ -66,7 +66,7 @@ struct UserConfig {
  * @param output_index The output index of the node.
  * @return std::string
  */
-std::string GetTensorElemCountInSymbolicString(const Node* node, int output_index);
+std::string GetTensorElemCountInSymbolicString(const Node* node, size_t output_index);
 
 int ParseIntValueFromString(std::string_view str);
 

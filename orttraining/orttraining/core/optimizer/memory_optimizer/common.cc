@@ -81,7 +81,7 @@ std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* sha
 
 }  // namespace
 
-std::string GetTensorElemCountInSymbolicString(const Node* node, int output_index) {
+std::string GetTensorElemCountInSymbolicString(const Node* node, size_t output_index) {
   const auto& output_def = node->OutputDefs()[output_index];
   const auto shape = output_def->Shape();
 
