@@ -412,8 +412,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* t_input_metadata = context->Input<Tensor>(5);
   const Tensor* positions = context->Input<Tensor>(6);
   const Tensor* cos_sin_cache = context->Input<Tensor>(7);
-  const Tensor* kv_quant_param = (context->InputCount() > 8) ? context->Input<Tensor>(8) : nullptr;
-  ORT_UNUSED_PARAMETER(kv_quant_param);
+  const Tensor* kv_quant_param = context->Input<Tensor>(8);
 
   InputMetadata* input_metadata = reinterpret_cast<InputMetadata*>(t_input_metadata->Data<int64_t>()[0]);
 
@@ -475,6 +474,20 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
+  int kv_quant_block_size = 0;
+  int kv_quant_param_dtype = 0; // fp32
+  if (kv_quant_param != nullptr) {
+    ORT_ENFORCE(key_cache && key_cache->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8);
+    ORT_ENFORCE(value_cache && value_cache->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8);
+    ORT_ENFORCE(query->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, "Current only support fp16 with quant kv cache")
+    if (key_cache->GetElementType() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT32) {
+      kv_quant_param_dtype = 1; // fp16
+    }
+    auto kv_quant_param_shape = kv_quant_param->Shape(); // [num_blocks, 2, num_kv_heads, block_size, head_size / kv_quant_block_size]
+    ORT_ENFORCE(kv_quant_param_shape[4] > 0 && head_size_ % kv_quant_param_shape[4] == 0);
+    kv_quant_block_size = head_size_ / kv_quant_param_shape[4];
+  }
+
   auto key_cache_shape = key_cache->Shape();
   if (num_valid_tokens > 0 && key_cache_shape.Size() > 3) {
     int64_t key_shape_r[3] = {num_valid_tokens, num_kv_heads_, head_size_};
@@ -504,8 +517,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     single_query_cached_kv_attention(Stream(context),
                                      output->MutableData<MLFloat16>() + num_prompt_tokens * num_heads_ * head_size_,
                                      query_data + num_prompt_tokens * num_heads_ * head_size_,
-                                     key_cache->Data<MLFloat16>(),
-                                     value_cache->Data<MLFloat16>(),
+                                     key_cache->DataRaw(),
+                                     value_cache->DataRaw(),
                                      head_mapping_.get(),
                                      scale_,
                                      reinterpret_cast<const int32_t*>(input_metadata->block_tables),
@@ -515,7 +528,11 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                      input_metadata->max_context_len,
                                      nullptr,
                                      generation_qeury_shape,
-                                     num_queries_per_kv_, 1);
+                                     num_queries_per_kv_,
+                                     1,
+                                     kv_quant_param ? kv_quant_param->DataRaw() : nullptr,
+                                     kv_quant_block_size,
+                                     kv_quant_param_dtype);
     CHECK_CUDA_ERROR();
   }
   return Status::OK();

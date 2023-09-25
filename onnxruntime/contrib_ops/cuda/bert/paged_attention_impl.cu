@@ -70,18 +70,80 @@ inline __device__ float block_sum(float* red_smem, float sum) {
   return __shfl_sync(uint32_t(-1), sum, 0);
 }
 
+template <typename kv_quant_param_t>
+class NoQuantProcessor {
+ public:
+  static constexpr bool IS_QUANTIZED = false;
+  using kv_mem_scalar_t = scalar_t;
+};
+
+template <typename quant_params_elem_t>  // float or float16
+class KVQuantProcessor {
+ public:
+  static constexpr bool IS_QUANTIZED = true;
+  static constexpr int32_t K = 0;
+  static constexpr int32_t V = 1;
+
+  using kv_mem_scalar_t = int8_t;
+  using kv_quant_param_t = quant_params_elem_t;
+  KVQuantProcessor(const kv_quant_param_t* params_cache, int kv_quant_chunk_size, int num_kv_heads, int head_size, int block_size)
+      : kv_quant_params_cache_(params_cache), kv_quant_chunk_size_(kv_quant_chunk_size), block_size_(block_size) {
+    assert(head_size % kv_quant_chunk_size == 0);
+    head_stride_ = block_size * (head_size / kv_quant_chunk_size);
+    k_or_v_stride_ = num_kv_heads * head_stride_;
+  }
+
+  template <typename VecT>
+  inline __device__ VecT LoadAndDequantizeK(
+      const VecT* ptr,
+      const int block_id,
+      const int in_block_token_id,
+      const int head_id,
+      const int in_head_idx) {
+    const kv_quant_param_t* kv_block = kv_quant_params_cache_ + (int64_t)(block_id * 2) * k_or_v_stride_;
+    float* unit_scale = (float)*(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
+    return LoadQuantVec(ptr, unit_scale);
+  }
+
+  template <typename VecT, typename ScaleMemVec>
+  inline __device__ VecT LoadAndDequantizeV(
+      const VecT* ptr,
+      const int block_id,
+      const int in_block_token_id,
+      const int head_id,
+      const int in_head_idx) {
+    const kv_quant_param_t* kv_block = kv_quant_params_cache_ + (int64_t)(block_id * 2 + 1) * k_or_v_stride_;
+    using ScaleFloatVec = typename FloatVec<ScaleMemVec>::Type;
+    if constexpr (std::is_same<ScaleMemT, ScaleFloatVec>::value) {
+      const ScaleFloatVec float_scale_vec = *(const ScaleFloatVec*)(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
+      return LoadQuantVecByScales(ptr, float_scale_vec);
+    } else {
+      const VecT scale_vec = *(const VecT*)(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
+      const ScaleFloatVec float_scale_vec = to_float(scale_vec);
+      return LoadQuantVecByScales(ptr, float_scale_vec);
+    }
+  }
+
+  const kv_quant_param_t* kv_quant_params_cache_;  // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
+  const int kv_quant_chunk_size_;                  // for how many consecutive values, calc one scale for them to quant
+  const int block_size_;
+  const int head_stride_;
+  const int k_or_v_stride_;
+};
+
 // Grid: (num_heads, num_seqs).
 template <
     typename scalar_t,
+    typename kv_quant_handler_t,
     int HEAD_SIZE,
     int BLOCK_SIZE,
     int NUM_THREADS>
 __global__ void single_query_cached_kv_attention_kernel(
-    scalar_t* __restrict__ out,            // [num_seqs, num_heads, head_size]
-    const scalar_t* __restrict__ q,        // [num_seqs, num_heads, head_size]
-    const scalar_t* __restrict__ k_cache,  // [num_blocks, num_kv_heads, head_size/x, block_size, x]
-    const scalar_t* __restrict__ v_cache,  // [num_blocks, num_kv_heads, head_size, block_size]
-    const int* __restrict__ head_mapping,  // [num_heads]
+    scalar_t* __restrict__ out,                                       // [num_seqs, num_heads, head_size]
+    const scalar_t* __restrict__ q,                                   // [num_seqs, num_heads, head_size]
+    const kv_quant_handler_t::kv_mem_scalar_t* __restrict__ k_cache,  // [num_blocks, num_kv_heads, head_size/x, block_size, x]
+    const kv_quant_handler_t::kv_mem_scalar_t* __restrict__ v_cache,  // [num_blocks, num_kv_heads, head_size, block_size]
+    const int* __restrict__ head_mapping,                             // [num_heads]
     const float scale,
     const int* __restrict__ block_tables,  // [num_seqs, max_num_blocks_per_seq]
     const int* __restrict__ context_lens,  // [num_seqs]
@@ -89,7 +151,8 @@ __global__ void single_query_cached_kv_attention_kernel(
     const float* __restrict__ alibi_slopes,  // [num_heads]
     const int q_stride,
     const int kv_block_stride,
-    const int kv_head_stride) {
+    const int kv_head_stride,
+    const kv_quant_handler_t quant_handler) {
   constexpr int THREAD_GROUP_SIZE = MAX(WARP_SIZE / BLOCK_SIZE, 1);
   constexpr int NUM_THREAD_GROUPS = NUM_THREADS / THREAD_GROUP_SIZE;  // Note: This assumes THREAD_GROUP_SIZE divides NUM_THREADS
   assert(NUM_THREADS % THREAD_GROUP_SIZE == 0);
@@ -115,6 +178,9 @@ __global__ void single_query_cached_kv_attention_kernel(
   constexpr int VEC_SIZE = MAX(16 / (THREAD_GROUP_SIZE * sizeof(scalar_t)), 1);
   using K_vec = typename Vec<scalar_t, VEC_SIZE>::Type;
   using Q_vec = typename Vec<scalar_t, VEC_SIZE>::Type;
+  if constexpr (!kv_quant_handler_t::IS_QUANTIZED) {
+    assert(quant_handler.kv_quant_chunk_size_ % VEC_SIZE == 0);
+  }
 
   constexpr int NUM_ELEMS_PER_THREAD = HEAD_SIZE / THREAD_GROUP_SIZE;
   constexpr int NUM_VECS_PER_THREAD = NUM_ELEMS_PER_THREAD / VEC_SIZE;
@@ -172,11 +238,21 @@ __global__ void single_query_cached_kv_attention_kernel(
 
 #pragma unroll
       for (int j = 0; j < NUM_VECS_PER_THREAD; j++) {
-        const scalar_t* k_ptr = k_cache + physical_block_number * kv_block_stride_m + kv_head_idx * kv_head_stride_m + physical_block_offset * x;
+        const auto* k_ptr = k_cache + physical_block_number * kv_block_stride_m + kv_head_idx * kv_head_stride_m + physical_block_offset * x;
         const int vec_idx = thread_group_offset + j * THREAD_GROUP_SIZE;
         const int offset1 = (vec_idx * VEC_SIZE) / x;
         const int offset2 = (vec_idx * VEC_SIZE) % x;
-        k_vecs[j] = *reinterpret_cast<const K_vec*>(k_ptr + offset1 * BLOCK_SIZE * x + offset2);
+        if constexpr (!kv_quant_handler_t::IS_QUANTIZED) {
+          k_vecs[j] = *reinterpret_cast<const K_vec*>(k_ptr + offset1 * BLOCK_SIZE * x + offset2);
+        } else {
+          k_vecs[j] = quant_handler.LoadAndDequantize(
+              reinterpret_cast<const K_vec*>(k_ptr + offset1 * BLOCK_SIZE * x + offset2),
+              kv_quant_handler_t::K,
+              physical_block_number,
+              physical_block_offset,
+              kv_head_idx,
+              vec_idx * VEC_SIZE);
+        }
       }
 
       // Compute dot product.
@@ -239,6 +315,9 @@ __global__ void single_query_cached_kv_attention_kernel(
   using V_vec = typename Vec<scalar_t, V_VEC_SIZE>::Type;
   using L_vec = typename Vec<scalar_t, V_VEC_SIZE>::Type;
   using Float_L_vec = typename FloatVec<L_vec>::Type;
+  if constexpr (!kv_quant_handler_t::IS_QUANTIZED) {
+    assert(quant_handler.kv_quant_chunk_size_ % V_VEC_SIZE == 0);
+  }
 
   constexpr int NUM_V_VECS_PER_ROW = BLOCK_SIZE / V_VEC_SIZE;
   constexpr int NUM_ROWS_PER_ITER = WARP_SIZE / NUM_V_VECS_PER_ROW;
@@ -266,7 +345,19 @@ __global__ void single_query_cached_kv_attention_kernel(
       const int row_idx = lane / NUM_V_VECS_PER_ROW + i * NUM_ROWS_PER_ITER;
       if (row_idx < HEAD_SIZE) {
         const int offset = row_idx * BLOCK_SIZE + physical_block_offset;
-        V_vec v_vec = *reinterpret_cast<const V_vec*>(v_ptr + offset);
+
+        V_vec v_vec;
+        if constexpr (!kv_quant_handler_t::IS_QUANTIZED) {
+          v_vec = *reinterpret_cast<const V_vec*>(v_ptr + offset);
+        } else {
+          v_vec = quant_handler.LoadAndDequantizeV(
+              reinterpret_cast<const V_vec*>(v_ptr + offset),
+              physical_block_number,
+              physical_block_offset,
+              kv_head_idx,
+              row_idx);
+        }
+
         if (block_idx == num_blocks - 1) {
           // NOTE(woosuk): When v_vec contains the tokens that are out of the context,
           // we should explicitly zero out the values since they may contain NaNs.
@@ -485,7 +576,6 @@ __global__ void repeat_key_value_kernel(
   }
 }
 
-
 }  // namespace vllm
 
 #define LAUNCH_ATTENTION_KERNEL(T, HEAD_SIZE, BLOCK_SIZE, NUM_THREADS)                 \
@@ -529,7 +619,7 @@ void single_query_cached_kv_attention_launcher(
   int num_heads = query_shapes[1];
   int head_size = query_shapes[2];
   // int max_num_blocks_per_seq = 1;            // block_tables.size(1);xxxxxxxxxxxxxxxxxxxxxxxx
-  int query_stride = head_size * num_heads;  // query.stride(0);
+  int query_stride = head_size * num_heads;                                       // query.stride(0);
   int kv_block_stride = num_heads * head_size / num_queries_per_kv * BLOCK_SIZE;  // xxxxxxxxxxxxxxxxxxxxxxxx
   int kv_head_stride = head_size * BLOCK_SIZE;                                    // key_cache.stride(1);
 
@@ -642,10 +732,10 @@ void single_query_cached_kv_attention_launcher(
 
 void single_query_cached_kv_attention(
     const cudaStream_t stream,
-    const void* out,           // [num_seqs, num_heads, head_size]
-    const void* query,         // [num_seqs, num_heads, head_size]
-    const void* key_cache,     // [num_blocks, num_kv_heads, head_size/x, block_size, x]
-    const void* value_cache,   // [num_blocks, num_kv_heads, head_size, block_size]
+    const void* out,          // [num_seqs, num_heads, head_size]
+    const void* query,        // [num_seqs, num_heads, head_size]
+    const void* key_cache,    // [num_blocks, num_kv_heads, head_size/x, block_size, x]
+    const void* value_cache,  // [num_blocks, num_kv_heads, head_size, block_size]
     const int* head_mapping,  // [num_heads]
     float scale,
     const int* block_tables,  // [num_seqs, max_num_blocks_per_seq]
@@ -656,17 +746,20 @@ void single_query_cached_kv_attention(
     const float* __restrict__ alibi_slopes_ptr,
     const int64_t* query_shapes,
     int num_queries_per_kv,
-    int dtype) {
+    int dtype,
+    const void* kv_quant_params,  // [num_blocks, 2, num_kv_heads, block_size, head_size / kv_quant_chunk_size]
+    int kv_quant_chunk_size,
+    int kv_quant_param_dtype) {
   // static_assert(std::is_same_v<T, float> || std::is_same_v<T, BFloat16> || std::is_same_v<T, MLFloat16>, "Unsupported data type: ");
   // if constexpr (std::is_same_v<T, float>) {
-  if (dtype == 0) {
+  if (dtype == 0) {  // float
     CALL_KERNEL_LAUNCHER_BLOCK_SIZE(float);
-    //} else if constexpr (std::is_same_v<T, MLFloat16>) {
-  } else if (dtype == 1) {
-    // half
-    CALL_KERNEL_LAUNCHER_BLOCK_SIZE(uint16_t);
-    //} else if constexpr (std::is_same_v<T, BFloat16>) {
-  } else if (dtype == 2) {
+  } else if (dtype == 1) {  // half
+    if (kv_quant_chunk_size == 0) {
+      CALL_KERNEL_LAUNCHER_BLOCK_SIZE(uint16_t);
+    } else {
+    }
+  } else if (dtype == 2) {  //} else if constexpr (std::is_same_v<T, BFloat16>) {
     // CALL_KERNEL_LAUNCHER_BLOCK_SIZE(__nv_bfloat16);
   }
 }
@@ -794,7 +887,7 @@ void LaunchRepeatKeyValue(
         static_cast<const scalar_t*>(key),
         static_cast<const scalar_t*>(value),
         input_shape[2], 0);
-  }else if (repeat == 4) {
+  } else if (repeat == 4) {
     vllm::repeat_key_value_kernel<scalar_t, 4, unroll_len><<<grid, block, 0, stream>>>(
         static_cast<scalar_t*>(key_out),
         static_cast<scalar_t*>(value_out),
