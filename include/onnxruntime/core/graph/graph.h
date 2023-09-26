@@ -1159,6 +1159,14 @@ class Graph {
   */
   Status InlineFunction(Node& node);
 
+  /** Inlines a function via building and Resolving local subgraph.
+   *  Then inserting that subgraph into the main graph. The api aims
+   *  to save on a global Resolve() by calling it on a locally produced
+   *  subgraph, copying the nodes and then fixing up the edges in the target
+   *  graph.
+   */
+  Status InlineFunctionViaSubgraph(Node& callnode);
+
   /**
   Directly insert the nodes in the function proto provided into the dest graph.
   The function converts Constant nodes into the initializers in the destination graph.
@@ -1180,12 +1188,14 @@ class Graph {
    to be updated to be unique as well as the Defs.
    @param graph_to_inline to be inlined
    @param model_path model path of the subgraph
-   @param inlined_to_target_map - map of indices of the graph_to_inline to indices of nodes
+   @param unique_id - optinal unique id to be appended to the node names if present.
+   @param inlined_to_target_map - optional map of indices of the graph_to_inline to indices of nodes
     copied into this graph.
   */
   Status InlineSubgraph(const Graph& graph_to_inline,
                         const Path& model_path,
-                        InlinedHashMap<NodeIndex, NodeIndex>& inlined_to_target_map);
+                        std::optional<std::string_view> unique_id,
+                        InlinedHashMap<NodeIndex, NodeIndex>* inlined_to_target_map);
 
   /**
   This function redirects this graph edges that involved inlined_function and redirects them into the nodes

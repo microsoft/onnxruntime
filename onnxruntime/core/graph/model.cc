@@ -98,7 +98,6 @@ Model::Model(const std::string& graph_name,
     model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()), func_ptr);
   }
 
-  model_local_function_templates_.reserve(model_proto_.functions().size());
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
@@ -111,8 +110,7 @@ Model::Model(const std::string& graph_name,
     auto func_template_ptr = std::make_unique<FunctionTemplate>();
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
-    model_local_function_templates_.push_back(std::move(func_template_ptr));
-    model_local_function_templates_maps_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] = model_local_function_templates_.back().get();
+    model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), std::move(func_template_ptr));
   }
 
   // need to call private ctor so can't use make_shared
@@ -220,7 +218,6 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), &func);
   }
 
-  model_local_function_templates_.reserve(model_proto_.functions().size());
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
@@ -233,9 +230,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     auto func_template_ptr = std::make_unique<FunctionTemplate>();
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
-    model_local_function_templates_.push_back(std::move(func_template_ptr));
-    model_local_function_templates_maps_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] =
-        model_local_function_templates_.back().get();
+    model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), std::move(func_template_ptr));
   }
 
   // create instance. need to call private ctor so can't use make_unique
@@ -244,7 +239,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
                          logger, options.strict_shape_type_inference));
 }
 
-const InlinedHashMap<std::string, FunctionTemplate*>& Model::GetModelLocalFunctionTemplates() const {
+const InlinedHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetModelLocalFunctionTemplates() const {
   return model_local_function_templates_maps_;
 }
 

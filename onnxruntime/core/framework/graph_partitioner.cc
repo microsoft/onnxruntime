@@ -129,6 +129,21 @@ struct GetCapabilityForEPParams {
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
+
+auto get_capabilities = [](const IExecutionProvider& ep,
+                           const GraphViewer& graph_viewer,
+                           const IExecutionProvider::IKernelLookup& kernel_lookup) {
+  auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
+
+  // In theory an EP could return an empty capability. Remove those.
+  capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
+                                    [](const std::unique_ptr<ComputeCapability>& capability) {
+                                      return !capability || !capability->sub_graph;
+                                    }),
+                     capabilities.end());
+
+  return capabilities;
+};
 }  // namespace
 
 static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
@@ -142,21 +157,6 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
     return Status::OK();
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-  auto get_capabilities = [](const IExecutionProvider& ep,
-                             const GraphViewer& graph_viewer,
-                             const IExecutionProvider::IKernelLookup& kernel_lookup) {
-    auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
-
-    // In theory an EP could return an empty capability. Remove those.
-    capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
-                                      [](const std::unique_ptr<ComputeCapability>& capability) {
-                                        return !capability || !capability->sub_graph;
-                                      }),
-                       capabilities.end());
-
-    return capabilities;
-  };
 
   const auto& kernel_registry_mgr = params.kernel_registry_mgr.get();
   const auto kernel_registries_for_ep = kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type);
@@ -239,6 +239,26 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+// This function queries the capabilities for a given EP, but it does not assign the nodes.
+// It also does not perform layout transformation. This will be done during normal partitioning.
+static Status GetCapabilityForEPForAotInlining(const Graph& graph,
+                                               const KernelRegistryManager& kernel_registry_mgr,
+                                               const IExecutionProvider& current_ep,
+                                               std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
+  const auto& ep_type = current_ep.Type();
+
+  const auto kernel_registries_for_ep = kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type);
+  const KernelLookup kernel_lookup{ep_type,
+                                   kernel_registries_for_ep,
+                                   kernel_registry_mgr.GetKernelTypeStrResolver()};
+
+  const GraphViewer graph_viewer(graph);
+  capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
+
+  return Status::OK();
+}
+
 /**
  * Check if a node can be placed on a specific provider.
  * Do nothing if the node is already assigned
@@ -518,16 +538,92 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
   // successfully inlined, we re-run the partitioner on the modified graph.
   // NOTE: Inlining the function will change the nodes in the Graph instance, so we can't do that while iterating
   // using graph.Nodes().
-  std::vector<Node*> nodes_to_inline;
+  InlinedVector<Node*> nodes_to_inline;
   for (auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType().empty() && node.CanBeInlined()) {
       nodes_to_inline.push_back(&node);
     }
   }
 
+  // if (!nodes_to_inline.empty()) {
+  //   DebugBreak();
+  // }
+
   for (auto* node : nodes_to_inline) {
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
     modified_graph = true;
+  }
+
+  return Status::OK();
+}
+
+static Status IntelligentAotFunctionInliningImpl(const ExecutionProviders& execution_providers,
+                                                 const KernelRegistryManager& kernel_registry_mgr,
+                                                 Graph& graph,
+                                                 size_t& inlined_round_count) {
+  // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
+  // doing it here saves all providers checking for this in GetCapability
+  if (graph.NumberOfNodes() == 0) {
+    return Status::OK();
+  }
+
+  for (auto& node : graph.Nodes()) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      // we pass through the FuncManager from the top level graph
+      ORT_RETURN_IF_ERROR(IntelligentAotFunctionInliningImpl(execution_providers,
+                                                             kernel_registry_mgr,
+                                                             *subgraph,
+                                                             inlined_round_count));
+    }
+  }
+
+  // Gather the candidates
+  InlinedVector<NodeIndex> inline_candidates;
+  for (auto& node : graph.Nodes()) {
+    if (node.CanBeInlined()) {
+      inline_candidates.push_back(node.Index());
+    }
+  }
+
+  if (inline_candidates.empty()) {
+    return Status::OK();
+  }
+
+  // Find out all the nodes that are already taken
+  InlinedHashSet<NodeIndex> claimed_by_ep;
+  for (const auto& ep : execution_providers) {
+    std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph, kernel_registry_mgr, *ep, capabilities));
+    for (auto& capability : capabilities) {
+      const auto& nodes = capability->sub_graph->nodes;
+      if (nodes.size() == 1) {
+        // Single node capability.
+        ORT_IGNORE_RETURN_VALUE(claimed_by_ep.insert(nodes[0]));
+      } else {
+        auto unclaimed_count = std::count_if(nodes.cbegin(), nodes.cend(), [&claimed_by_ep](NodeIndex node_index) {
+          return claimed_by_ep.count(node_index) == 0;
+        });
+
+        if (nodes.size() == narrow<size_t>(unclaimed_count)) {
+          claimed_by_ep.insert(nodes.cbegin(), nodes.cend());
+        }
+      }
+    }
+  }
+
+  // XXX: Insert version check. We need to collect all the versions
+  // that imported by the model. If the version is not supported by
+  // the model, we can not inline it.
+
+  for (auto node_index : inline_candidates) {
+    if (claimed_by_ep.count(node_index) == 0) {
+      auto* node = graph.GetNode(node_index);
+      if (node != nullptr) {
+        ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
+        ++inlined_round_count;
+      }
+    }
   }
 
   return Status::OK();
@@ -554,7 +650,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
-    modified_graph = false;
+    // modified_graph = false;
     ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
 
     // Resolve and rerun graph partitioning and inlining if there was a change
@@ -692,6 +788,34 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 
   return Status::OK();
 }
+
+#ifndef ORT_MINIMAL_BUILD
+
+Status GraphPartitioner::IntelligentAotFunctionInlining(Graph& graph,
+                                                        const ExecutionProviders& execution_providers,
+                                                        const KernelRegistryManager& kernel_registry_manager) const {
+  do {
+    size_t inlined_round_count = 0;
+    ORT_RETURN_IF_ERROR(IntelligentAotFunctionInliningImpl(execution_providers,
+                                                           kernel_registry_manager,
+                                                           graph,
+                                                           inlined_round_count));
+
+    if (inlined_round_count == 0) {
+      break;
+    }
+
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+  } while (true);
+
+  // XXX: Consider removing local model functions
+  // Currently the model is const as viewed from the graph.
+  // However, inlined functions contribute the most to resulting model size.
+
+  return Status::OK();
+}
+
+#endif
 
 Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    const layout_transformation::TransformLayoutFunction& transform_layout_function,

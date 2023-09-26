@@ -33,6 +33,20 @@ class GraphPartitioner {
                    Mode mode = Mode::kNormal,
                    const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
 
+#ifndef ORT_MINIMAL_BUILD
+  // Ahead of Time Function inlining. The main purpose of the function is to inline as many
+  // functions as possible and delete locally defined functions to reduce the size of the model.
+  // This would enable other optimizations to be more effective.
+  //
+  // This function performs GetCapability on the graph and its subgraphs bottom up
+  // and inlines any functions that are not claimed by any of the execution providers.
+  // This function does not attempt to run layout transformation, and it does not assign EPs.
+  // The latter will be done by graph partitioning.
+  Status IntelligentAotFunctionInlining(Graph& graph,
+                                        const ExecutionProviders& execution_providers,
+                                        const KernelRegistryManager& kernel_registry_manager) const;
+#endif
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
 

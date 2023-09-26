@@ -139,7 +139,7 @@ class Model {
   // Returns empty string if not specified.
   const std::string GraphDocString() const;
 
-  const InlinedHashMap<std::string, FunctionTemplate*>& GetModelLocalFunctionTemplates() const;
+  const InlinedHashMap<std::string, std::unique_ptr<FunctionTemplate>>& GetModelLocalFunctionTemplates() const;
 
 #else
   // Get model's IR version.
@@ -312,14 +312,9 @@ class Model {
   // this map will be used for the local functions' schema's type/shape inference.
   // This container is used by ONNX code and must be an std::unordered_map.
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
-  // this is the container that host the generated schemas for model local functions.
-  // the generated schemare will be used for graph resolving and type/shape inference.
-  // those schemas' type/shape inference will reference to the model_local_functions_ as context,
-  // so need to keep them with same lifetime.
-  InlinedVector<std::unique_ptr<FunctionTemplate>> model_local_function_templates_;
   // this is the map from function id to the local function template.
   // this map will be used by graph to instantiate the function body.
-  InlinedHashMap<std::string, FunctionTemplate*> model_local_function_templates_maps_;
+  InlinedHashMap<std::string, std::unique_ptr<FunctionTemplate>> model_local_function_templates_maps_;
 #else
   // properties that would normally come from ModelProto
   std::string producer_version_;
