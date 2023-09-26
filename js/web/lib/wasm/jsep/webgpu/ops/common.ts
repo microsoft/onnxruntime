@@ -336,7 +336,7 @@ const createIndicesHelper =
 
       const broadcastIndicesToOffset = (varIndices: string) => {
         implementationUsed.broadcastIndicesToOffset = true;
-        return `broadcastIndicesToOffset${name}(${varIndices});`;
+        return `broadcastIndicesToOffset${name}(${varIndices})`;
       };
 
       const indices = (...init: ReadonlyArray<number|string>) =>
