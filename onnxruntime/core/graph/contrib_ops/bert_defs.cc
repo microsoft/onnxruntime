@@ -658,6 +658,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PackedMultiHeadAttentionTypeAndShapeInference(ctx);
         }));
 
+void propagateShapeAndTypeFromFirstInputAndParam(ONNX_NAMESPACE::InferenceContext& ctx) {
+  propagateShapeAndTypeFromFirstInput(ctx);
+  // fix output_shape
+  auto* output_shape =
+      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+  for (int i = 0; i < output_shape->dim_size(); i++) {
+    auto* dim_i = output_shape->mutable_dim(i);
+    if (dim_i->has_dim_param() && dim_i->dim_value() == 0) {
+      dim_i->set_dim_value(-1);
+    }
+  }
+}
+
 constexpr const char* PagedAttention_ver1_doc = R"DOC(
 PagedAttention is from https://vllm.ai/
 It consists of two types of attention.
@@ -686,17 +700,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(2, "value", "The input V-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
         .Input(3, "key_cache", "Blocked key cache in this layer.", "T2")
         .Input(4, "value_cache", "Blocked value cache in this layer.", "T2")
-        .Input(5, "input_metadata", "Block mapping for each token, and some other eseential infos in InputMetadata, This input Tensor has shape [1], the value is a pointer of struct InputMetadata. It should be converted into a class and used then", "T1")
+        .Input(5, "input_metadata", "Block mapping for each token, and some other eseential infos in InputMetadata, This input Tensor has shape [1], the value is a pointer of struct InputMetadata. It should be converted into a class and used then", "T1", OpSchema::Optional)
         .Input(6, "positions", "positions used for RoPE embedding", "T1", OpSchema::Optional)
-        .Input(7, "cos_sin_cache", "cos_sin_cache used for RoPE embedding", "T", OpSchema::Optional)
+        .Input(7, "cos_sin_cache_or_alibi_bais", "cos_sin_cache used for RoPE embedding, alibi for alibi embinding", "T3", OpSchema::Optional)
         .Input(8, "kv_quant_param", "quantization param for kvcache, like scale and zeropoint", "T", OpSchema::Optional)
         .Output(0, "output", "Attention output", "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"},
                         "Constrain input and output types to float/ tensors.")
         .TypeConstraint("T1", {"tensor(int64)"}, "Constrain input META types to pointer tensors.")
         .TypeConstraint("T2", {"tensor(int8)", "tensor(float16)", "tensor(float)", "tensor(bfloat16)"}, "kvcache and quant scale")
+        .TypeConstraint("T3", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"}, "alibi scopt or cos_sin_cache")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateShapeAndTypeFromFirstInput(ctx);
+          propagateShapeAndTypeFromFirstInputAndParam(ctx);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -709,7 +724,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1, "weight", "2D input tensor with shape (hidden_size)", "T")
         .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+        .TypeAndShapeInferenceFunction(
+            [](ONNX_NAMESPACE::InferenceContext& ctx) {
+              propagateShapeAndTypeFromFirstInputAndParam(ctx);
+            }));
 
 void SiluMulShapeInfer(InferenceContext& ctx) {
   auto* output_shape =

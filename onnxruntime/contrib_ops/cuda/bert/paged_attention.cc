@@ -218,47 +218,50 @@ PagedAttention<T>::PagedAttention(const OpKernelInfo& info) : CudaKernel(info), 
 }
 
 template <typename T>
-void MemoryEfficientAttn(const cudaDeviceProp& device_prop, cudaStream_t stream,
-                         const Tensor* query, const Tensor* key, const Tensor* value,
-                         Tensor* output, const InputMetadata* input_metadata,
-                         PackedAttentionParameters params) {
-  MemoryEfficientAttentionParams attn_param;
-  attn_param.sm = device_prop.major * 10 + device_prop.minor;
-  attn_param.is_half = sizeof(T) == 2;
-  attn_param.batch_size = input_metadata->attn_bias.batchsize;
-  attn_param.num_heads = params.num_heads;
-  attn_param.sequence_length = input_metadata->attn_bias.q_seqinfo.max_seqlen;
-  attn_param.kv_sequence_length = 0;
-  attn_param.qk_head_size = params.head_size;
-  attn_param.v_head_size = params.head_size;
-  attn_param.causal = true;
-  attn_param.scale = params.scale;
-  attn_param.seqlen_k_ptr = nullptr;
-  attn_param.seqstart_q_ptr = reinterpret_cast<int32_t*>(input_metadata->attn_bias.q_seqinfo.seqstart);
-  attn_param.seqstart_k_ptr = reinterpret_cast<int32_t*>(input_metadata->attn_bias.q_seqinfo.seqstart);
-  attn_param.query = query->DataRaw();
-  attn_param.key = key->DataRaw();
-  attn_param.value = value->DataRaw();
-  attn_param.attn_bias = nullptr;
-  attn_param.is_attn_bias_batched = false;
-  attn_param.output = output->MutableDataRaw();
-  attn_param.workspace = nullptr;
-  attn_param.stream = stream;
-  run_memory_efficient_attention(attn_param);
-}
-
-template <typename T>
 Status PagedAttention<T>::CheckInputs(
-    const Tensor* query,
-    const Tensor* key,
-    const Tensor* value,
+    OpKernelContext* context,
     const InputMetadata* input_metadata,
     PackedAttentionParameters& parameters) const {
-  ORT_UNUSED_PARAMETER(query);
-  ORT_UNUSED_PARAMETER(key);
-  ORT_UNUSED_PARAMETER(value);
+  const Tensor* query = context->Input<Tensor>(0);
+  const Tensor* key_cache = context->Input<Tensor>(3);
+  const Tensor* value_cache = context->Input<Tensor>(4);
+  const Tensor* positions = context->Input<Tensor>(6);
+
+  const auto& query_shape = query->Shape();
+  if (query_shape.NumDimensions() < 2 || query_shape.NumDimensions() > 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid query shape: ", query_shape, " expected 2 or 3 dimensions");
+  }
+  int64_t batch_size = 1;
+  int64_t seq_len = query_shape[0];
+  if (query_shape.NumDimensions() == 3) {
+    batch_size = query_shape[0];
+    seq_len = query_shape[1];
+  }
+
+  if (batch_size != 1 && input_metadata->num_prompt_tokens * input_metadata->num_generation_tokens != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Invalid input_medata, batch_size should be 1 when prompt"
+                           " and generation tokens are both present");
+  }
+
+  if (batch_size * seq_len < input_metadata->num_valid_tokens) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid query shape: ", query_shape,
+                           " expected at least ", input_metadata->num_valid_tokens, " tokens");
+  }
+
+  if (key_cache->Shape().NumDimensions() != 5 || value_cache->Shape().NumDimensions() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid key_cache or value_cache shape: ",
+                           key_cache->Shape(), " ", value_cache->Shape());
+  }
+
+  if (positions && positions->Shape().Size() > 0 &&
+      positions->Shape()[positions->Shape().NumDimensions() - 1] != batch_size * seq_len) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid positions shape: ", positions->Shape());
+  }
+
   int64_t num_prompt_tokens = input_metadata->num_prompt_tokens;
 
+  // padding removed
   parameters.batch_size = input_metadata->attn_bias.batchsize;
   // parameters.sequence_length = gsl::narrow<int>(num_prompt_tokens);
   parameters.head_size = head_size_;
@@ -286,15 +289,14 @@ Status PagedAttention<T>::CheckInputs(
 
 template <typename T>
 Status PagedAttention<T>::DoQKVProjectionIfNeed(OpKernelContext* context,
+                                                InputMetadata* input_metadata,
                                                 PackedAttentionParameters parameters,
                                                 IAllocatorUniquePtr<T>& gemm_buffer) const {
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
 
-  const Tensor* t_input_metadata = context->Input<Tensor>(5);
-  InputMetadata* input_metadata = reinterpret_cast<InputMetadata*>(t_input_metadata->Data<int64_t>()[0]);
-
+  // query for input, key for weights, value for bias, so their dimensions are different.
   if (key->Shape().NumDimensions() == value->Shape().NumDimensions()) {
     return Status::OK();
   }
@@ -337,13 +339,12 @@ Status PagedAttention<T>::DoQKVProjectionIfNeed(OpKernelContext* context,
 
 template <typename T>
 Status PagedAttention<T>::RunMultiHeadAttention(Tensor* output, OpKernelContext* context,
+                                                InputMetadata* input_metadata,
                                                 PackedAttentionParameters parameters,
                                                 IAllocatorUniquePtr<T>& gemm_buffer) const {
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
-  const Tensor* t_input_metadata = context->Input<Tensor>(5);
-  InputMetadata* input_metadata = reinterpret_cast<InputMetadata*>(t_input_metadata->Data<int64_t>()[0]);
 
   const Tensor* bias = nullptr;
   const Tensor* relative_position_bias = nullptr;
@@ -402,6 +403,98 @@ Status PagedAttention<T>::RunMultiHeadAttention(Tensor* output, OpKernelContext*
   data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::QKV_TN3H : AttentionQkvFormat::Q_K_V_TNH;
   return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }
+
+InputMetadata* GetOrCreateMedataFromInput(OpKernelContext* context, InputMetadata* s_input_metadata, int8_t* meta_data_space) {
+  const Tensor* t_input_metadata = context->Input<Tensor>(5);
+  if (t_input_metadata && t_input_metadata->Data<int64_t>()[0]) {
+    return reinterpret_cast<InputMetadata*>(t_input_metadata->Data<int64_t>()[0]);
+  }
+
+  const Tensor* query = context->Input<Tensor>(0);
+  const Tensor* key_cache = context->Input<Tensor>(3);
+  int seq_len = query->Shape().NumDimensions() == 3 ? query->Shape()[1] : query->Shape()[0];
+
+  const Tensor* positions = context->Input<Tensor>(6);
+  std::vector<int64_t> cpu_position(positions->Shape().Size());
+  CUDA_CALL_THROW(cudaMemcpy(cpu_position.data(), positions->DataRaw(),
+                             positions->SizeInBytes(), cudaMemcpyDeviceToHost));
+  while (cpu_position.back() == 0) {
+    cpu_position.pop_back();
+    seq_len--;
+  }
+  InputMetadata* input_metadata = s_input_metadata;
+  input_metadata->num_valid_tokens = seq_len;
+
+  std::vector<int32_t> slot_mapping;
+  std::vector<int32_t> context_lens;
+  std::vector<int32_t> block_tables;
+  std::vector<int32_t> seqstart;
+
+  input_metadata->max_context_len = 0;
+  // in prompt mode
+  if (cpu_position.back() == 0 ||
+      cpu_position.size() > 1) {
+    input_metadata->num_prompt_tokens = seq_len;
+    input_metadata->num_generation_tokens = 0;
+    slot_mapping.resize(input_metadata->num_prompt_tokens);
+    std::iota(slot_mapping.begin(), slot_mapping.end(), 0);
+  } else {
+    int32_t block_size = gsl::narrow<int32_t>(key_cache->Shape()[3]);
+    int32_t past_seq_len = cpu_position.back();
+    input_metadata->num_prompt_tokens = 0;
+    input_metadata->num_generation_tokens = seq_len;
+    slot_mapping.push_back(past_seq_len);
+    context_lens.push_back(past_seq_len + 1);
+    for (int i = 0; i < past_seq_len + 1; i += block_size) {
+      block_tables.push_back(i / block_size);
+    }
+    input_metadata->max_context_len = context_lens.back();
+  }
+
+  if (block_tables.empty()) {
+    input_metadata->block_tables = 0;
+  } else {
+    // copy to cuda
+    CUDA_CALL_THROW(cudaMemcpy(meta_data_space, block_tables.data(),
+                               block_tables.size() * sizeof(int32_t), cudaMemcpyHostToDevice));
+    input_metadata->block_tables = reinterpret_cast<int64_t>(meta_data_space);
+    meta_data_space += block_tables.size() * sizeof(int32_t);
+  }
+  if (context_lens.empty()) {
+    input_metadata->context_lens = 0;
+  } else {
+    // copy to cuda
+    CUDA_CALL_THROW(cudaMemcpy(meta_data_space, context_lens.data(),
+                               context_lens.size() * sizeof(int32_t), cudaMemcpyHostToDevice));
+    input_metadata->context_lens = reinterpret_cast<int64_t>(meta_data_space);
+    meta_data_space += context_lens.size() * sizeof(int32_t);
+  }
+  {
+    // copy to cuda
+    CUDA_CALL_THROW(cudaMemcpy(meta_data_space, slot_mapping.data(),
+                               slot_mapping.size() * sizeof(int32_t), cudaMemcpyHostToDevice));
+    input_metadata->slot_mapping = reinterpret_cast<int64_t>(meta_data_space);
+    meta_data_space += slot_mapping.size() * sizeof(int32_t);
+  }
+  input_metadata->max_num_blocks_per_seq = block_tables.size();
+  std::memset(input_metadata->cache_events.events, 0, sizeof(THEvent));
+
+  if (input_metadata->num_prompt_tokens > 0) {
+    seqstart.push_back(0);
+    seqstart.push_back(input_metadata->num_prompt_tokens);
+
+    // copy to cuda
+    CUDA_CALL_THROW(cudaMemcpy(meta_data_space, seqstart.data(),
+                               seqstart.size() * sizeof(int32_t), cudaMemcpyHostToDevice));
+    input_metadata->attn_bias.q_seqinfo.seqstart = reinterpret_cast<int64_t>(meta_data_space);
+    input_metadata->attn_bias.q_seqinfo.max_seqlen = input_metadata->num_prompt_tokens;
+    input_metadata->attn_bias.batchsize = 1;
+    meta_data_space += seqstart.size() * sizeof(int32_t);
+  }
+
+  return input_metadata;
+}
+
 template <typename T>
 Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* query = context->Input<Tensor>(0);
@@ -409,20 +502,21 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* key_cache = context->Input<Tensor>(3);
   const Tensor* value_cache = context->Input<Tensor>(4);
-  const Tensor* t_input_metadata = context->Input<Tensor>(5);
   const Tensor* positions = context->Input<Tensor>(6);
   const Tensor* cos_sin_cache = context->Input<Tensor>(7);
   const Tensor* kv_quant_param = (context->InputCount() > 8) ? context->Input<Tensor>(8) : nullptr;
   ORT_UNUSED_PARAMETER(kv_quant_param);
 
-  InputMetadata* input_metadata = reinterpret_cast<InputMetadata*>(t_input_metadata->Data<int64_t>()[0]);
+  int seq_len = query->Shape().NumDimensions() == 3? query->Shape()[1] : query->Shape()[0];
+  auto meta_data_space = this->template GetScratchBuffer<int8_t>(std::max(1024, seq_len * 3) * sizeof(int32_t), context->GetComputeStream());
+  InputMetadata self_build_input_metadata;
+  InputMetadata* input_metadata = GetOrCreateMedataFromInput(context, &self_build_input_metadata, meta_data_space.get());
 
-  const auto& device_prop = GetDeviceProp();
   PackedAttentionParameters parameters;
-  ORT_RETURN_IF_ERROR(CheckInputs(query, key, value, input_metadata, parameters));
+  ORT_RETURN_IF_ERROR(CheckInputs(context, input_metadata, parameters));
 
   IAllocatorUniquePtr<T> gemm_buffer;
-  ORT_RETURN_IF_ERROR(DoQKVProjectionIfNeed(context, parameters, gemm_buffer));
+  ORT_RETURN_IF_ERROR(DoQKVProjectionIfNeed(context, input_metadata, parameters, gemm_buffer));
 
   T* query_data = const_cast<T*>(query->Data<T>());
   T* key_data = const_cast<T*>(key->Data<T>());
@@ -459,20 +553,9 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   int64_t num_prompt_tokens = input_metadata->num_prompt_tokens;
-  bool use_multihead_attn = ParseEnvironmentVariableWithDefault<bool>("use_multihead_attn", true);
-
   if (num_prompt_tokens > 0) {
-    if (use_multihead_attn) {
-      ORT_RETURN_IF_ERROR(RunMultiHeadAttention(output, context, parameters, gemm_buffer));
-    } else {
-      MemoryEfficientAttn<MLFloat16>(device_prop, Stream(context),
-                                     query,
-                                     key,
-                                     value,
-                                     output,
-                                     input_metadata,
-                                     parameters);
-    }
+    ORT_RETURN_IF_ERROR(RunMultiHeadAttention(output, context, input_metadata, parameters, gemm_buffer));
+    CHECK_CUDA_ERROR();
   }
 
   auto key_cache_shape = key_cache->Shape();
