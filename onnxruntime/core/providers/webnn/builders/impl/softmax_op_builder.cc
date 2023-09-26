@@ -39,6 +39,9 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (input_size != 2) {
     NodeAttrHelper helper(node);
     int32_t axis = helper.Get("axis", 1);
+    if (node.SinceVersion() >= 13)
+      // Opset 13 has default value -1.
+      axis = helper.Get("axis", -1);
     //  Coerce the input into a 2-dimensional tensor with dimensions [a_0 * ... * a_{k-1}, a_k * ... * a_{n-1}].
     axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_size));
     int32_t first_dim = static_cast<int32_t>(std::reduce(input_shape.begin(), input_shape.begin() + axis,
@@ -80,6 +83,7 @@ bool SoftmaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
   NodeAttrHelper helper(node);
   const int64_t axis = helper.Get("axis", 1);
   // WebNN softmax only support reshape for the last axis or version before 13.
+  // TODO: support opset 13 by composing into: Exp(input) / ReduceSum(Exp(input), axis=axis, keepdims=1).
   if (axis != -1 && axis != input_shape.size() - 1 && node.SinceVersion() >= 13) {
     LOGS(logger, VERBOSE) << "SoftMax only support axis 1 or -1, input axis: " << axis;
     return false;
