@@ -105,6 +105,7 @@ struct TensorrtFuncState {
   std::string fused_node_name;
   tensorrt_ptr::unique_pointer<nvonnxparser::IParser>* parser = nullptr;
   std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
+  std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
   std::unique_ptr<nvinfer1::IBuilder>* builder = nullptr;
   std::unique_ptr<nvinfer1::INetworkDefinition>* network = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
@@ -246,6 +247,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   // For those non thread safe operations, TRT EP uses (1) lock_guard or (2) PerThreadContext to make sure synchronization.
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::ICudaEngine>> engines_;
+  std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::IBuilder>> builders_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::INetworkDefinition>> networks_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
@@ -256,6 +258,21 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
 
+  // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
+  cudnnHandle_t external_cudnn_handle_ = nullptr;
+  cublasHandle_t external_cublas_handle_ = nullptr;
+
+  CUDAGraph cuda_graph_;
+  bool is_graph_captured_ = false;
+  int regular_run_count_before_graph_capture_ = 0;
+  // There is chance (currently only happens in CUDA EP) that the second regular run allocates GPU memory for causes like:
+  // (1) memory pattern is enabled. (2) arena allocation for stream.
+  // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
+  // to allocate enough memory in Arena before graph capturing.
+  const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
+
+  // [Note] We don't use PerThreadContext for now since it has issue with multithreading
+  //
   // TRT or CUDA objects that must be maintained on a per thread basis will be put under this PerThreadContext data structure.
   // For example, TensorRT execution context and CUDA graph are the ones to be put here.
   class PerThreadContext final {
