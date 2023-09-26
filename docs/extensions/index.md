@@ -99,11 +99,16 @@ If the pre processing operator is a HuggingFace tokenizer, you can also easily g
 
 ```python
 import onnxruntime as _ort
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, GPT2Tokenizer
 from onnxruntime_extensions import OrtPyFunction, gen_processing_models
 
-tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
-model = OrtPyFunction(gen_processing_models(tokenizer, pre_kwargs={})[0])
+# SentencePieceTokenizer
+spm_hf_tokenizer = AutoTokenizer.from_pretrained("t5-base", model_max_length=512)
+spm_onnx_model = OrtPyFunction(gen_processing_models(spm_hf_tokenizer, pre_kwargs={})[0])
+
+# GPT2Tokenizer
+gpt2_hf_tokenizer = GPT2Tokenizer.from_pretrained("Xenova/gpt-4", use_fast=False)
+gpt2_onnx_model = OrtPyFunction(gen_processing_models(gpt2_hf_tokenizer, pre_kwargs={})[0])
 ```
 
 For more information, you can check the API using the following:
