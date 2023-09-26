@@ -143,6 +143,6 @@ for (long i = 0; i < elementsNum; ++i)
 * [BERT NLP example](bert-nlp-csharp-console-app.md)
 * [Run on GPU](csharp-gpu.md)
 * [Yolov3](yolov3_object_detection_csharp.md)
-* [Faster CNN](fastercnn_csharp.md)
+* [Faster CNN](fasterrcnn_csharp.md)
 * [Resnet 50](resnet50_csharp.md)
 
