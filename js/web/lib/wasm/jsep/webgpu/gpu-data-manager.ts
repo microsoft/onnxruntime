@@ -108,10 +108,13 @@ export const downloadGpuData =
 
             const arrayBuffer = gpuReadBuffer.getMappedRange();
             if (getTargetBuffer) {
+              // if we already have a CPU buffer to accept the data, no need to clone the ArrayBuffer.
               const targetBuffer = getTargetBuffer();
               targetBuffer.set(new Uint8Array(arrayBuffer, 0, originalSize));
               return targetBuffer;
             } else {
+              // the mapped ArrayBuffer will be released when the GPU buffer is destroyed. Need to clone the
+              // ArrayBuffer.
               return new Uint8Array(arrayBuffer.slice(0, originalSize));
             }
           } finally {
