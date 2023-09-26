@@ -23,7 +23,7 @@ namespace contrib {
 namespace GenerationCudaDeviceHelper {
 
 Status ReorderPastState(
-    const void* cuda_device_prop,
+    gsl::span<uintptr_t>& past_state_address_buffer,
     std::vector<Tensor*>& past_state_vector,
     Tensor& past_state_staging,
     Stream* stream);

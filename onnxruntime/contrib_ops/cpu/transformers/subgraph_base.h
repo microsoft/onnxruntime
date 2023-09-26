@@ -43,6 +43,7 @@ class Subgraph {
   int head_size;
   int vocab_size;
   int num_layers;
+  int num_caches;
   bool past_present_share_buffer_;
   bool has_decoder_masked_attention_;
 

@@ -56,7 +56,7 @@ namespace GenerationCudaDeviceHelper {
 // It might be better to forcefully require the same type since cast node generates
 // extra overhead.
 Status ReorderPastState(
-    const void*,
+    gsl::span<uintptr_t>& past_state_address_buffer,
     std::vector<Tensor*>& past_state_vector,
     Tensor& past_state_staging,
     Stream* stream) {
@@ -75,20 +75,31 @@ Status ReorderPastState(
   size_t head_size = packed_past ? past_state_dims[4] : past_state_dims[3];
   size_t total_past_num = past_state_vector.size();
 
+  std::cout << "batch_size: " << batch_size << std::endl;
+  std::cout << "num_heads: " << num_heads << std::endl;
+  std::cout << "max_length: " << max_length << std::endl;
+  std::cout << "head_size: " << head_size << std::endl;
+  std::cout << "total_past_num: " << total_past_num << std::endl;
+
   void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
 
   std::vector<void*> past_state_address_buffer_h(total_past_num);
   std::transform(past_state_vector.begin(), past_state_vector.end(), past_state_address_buffer_h.begin(),
                  [](Tensor* tensor) -> void* { return tensor->MutableDataRaw(); });
 
-  void* past_state_address_buffer_d = nullptr; // bugbug
+  // print past_state_address_buffer_h
+  for (int i = 0; i < past_state_address_buffer_h.size(); i++) {
+    std::cout << "past_state_address_buffer_h[" << i << "]: " << past_state_address_buffer_h[i] << std::endl;
+  }
+
+  uintptr_t* past_state_address_buffer_d = past_state_address_buffer.data();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_address_buffer_d, past_state_address_buffer_h.data(), total_past_num,
                                        cudaMemcpyHostToDevice, cuda_stream));
 
   size_t chunk_size = static_cast<size_t>(16 / past_state.DataType()->Size());
 
   // [B, N, max_length, head_size] -> [B, N, head_size / x, max_length, x]
-  cuda::ReorderPastStatesKernelLauncher(reinterpret_cast<std::uintptr_t*>(past_state_address_buffer_d),
+  cuda::ReorderPastStatesKernelLauncher(reinterpret_cast<uintptr_t*>(past_state_address_buffer_d),
                                         past_state_staging_buffer,
                                         static_cast<int>(batch_size),
                                         static_cast<int>(num_heads),

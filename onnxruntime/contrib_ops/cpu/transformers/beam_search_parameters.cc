@@ -108,7 +108,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
               "logits_processor shall be a non-negative integer, got ", logits_processor);
 }
 
-void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
+void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers, int number_caches) {
   // Override vocab_size using the inferred shape from the decoder subgraph ONLY IF
   // the vocab_size hasn't been explicitly specified by the user (as an attribute of BeamSearch)
   if (vocab_size == -1 || vocab_size == 0) {
@@ -117,6 +117,7 @@ void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads,
   num_heads = heads;
   head_size = hidden_size_per_head;
   num_layers = layers;
+  num_caches = number_caches;
 }
 
 }  // namespace transformers

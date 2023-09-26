@@ -147,7 +147,8 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
                                         t5_decoder_subgraph_->num_heads,
                                         t5_decoder_subgraph_->head_size,
-                                        t5_decoder_subgraph_->num_layers);
+                                        t5_decoder_subgraph_->num_layers,
+                                        t5_decoder_subgraph_->num_caches);
     }
   } else if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
     if (attribute_name == "encoder") {
@@ -172,7 +173,8 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       parameters_.SetSubgraphParameters(whisper_decoder_subgraph_->vocab_size,
                                         whisper_decoder_subgraph_->num_heads,
                                         whisper_decoder_subgraph_->head_size,
-                                        whisper_decoder_subgraph_->num_layers);
+                                        whisper_decoder_subgraph_->num_layers,
+                                        whisper_decoder_subgraph_->num_caches);
     }
   }
 

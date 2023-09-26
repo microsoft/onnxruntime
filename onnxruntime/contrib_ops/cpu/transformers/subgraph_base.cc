@@ -26,6 +26,7 @@ Subgraph::Subgraph(
       head_size(0),
       vocab_size(0),
       num_layers(0),
+      num_caches(0),
       past_present_share_buffer_(false),
       has_decoder_masked_attention_(false),
       allocator_(nullptr),

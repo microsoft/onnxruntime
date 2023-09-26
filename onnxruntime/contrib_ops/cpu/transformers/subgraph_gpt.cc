@@ -175,6 +175,7 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
   head_size = static_cast<int>(past_shape->dim(4).dim_value());
   vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
   num_layers = static_cast<int>(subgraph_outputs.size()) - 1;
+  num_caches = num_layers;
 
   constexpr auto int32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
   constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;

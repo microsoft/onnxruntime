@@ -51,12 +51,13 @@ struct BeamSearchState : IBeamSearchState<T> {
     if (has_decoder_masked_attention) {
       // We need a temp staging buffer to do the past 'K' state re-ordering that is needed
       // when using DecoderMaskedSelfAttention
-      // bugbug: if combined past, use num_layers, if splited past, use num_layers * 2, need to fix this:
-      TensorShape staging_for_past_state_reorder_buffer_shape = {2 * parameters.num_layers * static_cast<int64_t>(batch_beam_size) * parameters.num_heads * parameters.max_length * parameters.head_size};
+      TensorShape staging_for_past_state_reorder_buffer_shape = {
+        parameters.num_caches * static_cast<int64_t>(batch_beam_size) * parameters.num_heads * parameters.max_length * parameters.head_size};
 
       Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
 
       this->staging_for_past_state_reorder = std::move(temp);
+      this->cache_addresses = AllocateBuffer<uintptr_t>(allocator, cache_addresses_buffer_, parameters.num_caches);
     }
   }
 
@@ -79,6 +80,7 @@ struct BeamSearchState : IBeamSearchState<T> {
   BufferUniquePtr scores_buffer_;
   BufferUniquePtr topk_temp_buffer_;
   BufferUniquePtr sequences_device_buffer_;
+  BufferUniquePtr cache_addresses_buffer_;
 };
 
 struct BeamSearchCpuState : IBeamSearchCpuState {

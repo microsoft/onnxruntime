@@ -70,7 +70,8 @@ std::pair<Status, std::unique_ptr<GptSubgraph>> CreateGptSubgraphAndUpdateParame
   parameters.SetSubgraphParameters(gpt_subgraph->vocab_size,
                                    gpt_subgraph->num_heads,
                                    gpt_subgraph->head_size,
-                                   gpt_subgraph->num_layers);
+                                   gpt_subgraph->num_layers,
+                                   gpt_subgraph->num_caches);
 
   return std::make_pair(status, std::move(gpt_subgraph));
 }
@@ -156,7 +157,8 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
     //   parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
     //                                     t5_decoder_subgraph_->num_heads,
     //                                     t5_decoder_subgraph_->head_size,
-    //                                     t5_decoder_subgraph_->num_layers);
+    //                                     t5_decoder_subgraph_->num_layers,
+    //                                     t5_decoder_subgraph_->num_caches);
     // }
   }
 

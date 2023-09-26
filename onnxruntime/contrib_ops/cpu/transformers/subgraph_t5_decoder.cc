@@ -94,6 +94,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   // Save parameters related to the subgraph.
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
   num_layers = (static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) / 2;
+  num_caches = num_layers * 2;
 
   // If input_ids's shape is ['batch_size', 1] then use next token as input_ids.
   // Otherwise in the case of shape ['batch_size', 'sequence'], use sequence as input_ids.

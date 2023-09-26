@@ -68,6 +68,7 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   // Save parameters related to the subgraph.
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
   num_layers = (static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) / 4;
+  num_caches = num_layers * 2;
 
   constexpr auto int32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
   constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
