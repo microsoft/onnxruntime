@@ -110,17 +110,64 @@ export interface OrtWasmModule extends EmscriptenModule {
   // #endregion
 
   // #region JSEP
+  /**
+   * This is the entry of JSEP initialization. This function is called once when initializing ONNX Runtime.
+   * This function initializes WebGPU backend and registers a few callbacks that will be called in C++ code.
+   */
   jsepInit?
       (backend: JSEP.BackendType, alloc: JSEP.AllocFunction, free: JSEP.FreeFunction, upload: JSEP.UploadFunction,
        download: JSEP.DownloadFunction, createKernel: JSEP.CreateKernelFunction,
        releaseKernel: JSEP.ReleaseKernelFunction, run: JSEP.RunFunction): void;
 
+  /**
+   * [exported from wasm] Specify a kernel's output when running OpKernel::Compute().
+   *
+   * @param context - specify the kernel context pointer.
+   * @param index - specify the index of the output.
+   * @param data - specify the pointer to encoded data of type and dims.
+   */
   _JsepOutput(context: number, index: number, data: number): number;
+  /**
+   * [exported from wasm] Get name of an operator node.
+   *
+   * @param kernel - specify the kernel pointer.
+   * @returns the pointer to a C-style UTF8 encoded string representing the node name.
+   */
   _JsepGetNodeName(kernel: number): number;
 
+  /**
+   * [exported from js_internal_api.js] Register a user GPU buffer for usage of a session's input or output.
+   *
+   * @param sessionId - specify the session ID.
+   * @param index - specify an integer to represent which input/output it is registering for. For input, it is the
+   *     input_index corresponding to the session's inputNames. For output, it is the inputCount + output_index
+   *     corresponding to the session's ouputNames.
+   * @param buffer - specify the GPU buffer to register.
+   * @param size - specify the original data size in byte.
+   * @returns the GPU data ID for the registered GPU buffer.
+   */
   jsepRegisterBuffer: (sessionId: number, index: number, buffer: GPUBuffer, size: number) => number;
+  /**
+   * [exported from js_internal_api.js] Unregister all user GPU buffers for a session.
+   *
+   * @param sessionId - specify the session ID.
+   */
   jsepUnregisterBuffers?: (sessionId: number) => void;
+  /**
+   * [exported from js_internal_api.js] Get the GPU buffer by GPU data ID.
+   *
+   * @param dataId - specify the GPU data ID
+   * @returns the GPU buffer.
+   */
   jsepGetBuffer: (dataId: number) => GPUBuffer;
+  /**
+   * [exported from js_internal_api.js] Create a function to be used to create a GPU Tensor.
+   *
+   * @param gpuBuffer - specify the GPU buffer
+   * @param size - specify the original data size in byte.
+   * @param type - specify the tensor type.
+   * @returns the generated downloader function.
+   */
   jsepCreateDownloader:
       (gpuBuffer: GPUBuffer, size: number,
        type: Tensor.GpuBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
