@@ -333,6 +333,10 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::LoadCheckpointFromBuffer, _In_ const void* 
                     _In_ const size_t num_bytes, _Outptr_ OrtCheckpointState** checkpoint_state) {
   API_IMPL_BEGIN
 
+  if (checkpoint_buffer == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Expected a valid checkpoint buffer. Actual: nullptr.");
+  }
+
   *checkpoint_state = nullptr;
   auto chkpt_state = std::make_unique<onnxruntime::training::api::CheckpointState>();
   const auto* checkpoint_bytes = reinterpret_cast<const uint8_t*>(checkpoint_buffer);
@@ -559,6 +563,76 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::GetProperty, _In_ const OrtCheckpointState*
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::GetParameterTypeAndShape, _In_ const OrtCheckpointState* checkpoint_state,
+                    _In_ const char* parameter_name, _Outptr_ OrtTensorTypeAndShapeInfo** parameter_type_and_shape) {
+  API_IMPL_BEGIN
+
+  auto chkpt_state = reinterpret_cast<const onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+  auto it = chkpt_state->module_checkpoint_state.named_parameters.find(parameter_name);
+  if (it == chkpt_state->module_checkpoint_state.named_parameters.end()) {
+    std::string err_msg = "Parameter name " + std::string(parameter_name) + " not found in checkpoint state.";
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
+  }
+
+  return OrtApis::GetTensorTypeAndShape(&it->second->Data(), parameter_type_and_shape);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::UpdateParameter, _Inout_ OrtCheckpointState* checkpoint_state,
+                    _In_ const char* parameter_name, _In_ OrtValue* parameter) {
+  API_IMPL_BEGIN
+  if (parameter == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Expected a valid parameter. Actual: nullptr.");
+  }
+
+  auto chkpt_state = reinterpret_cast<const onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+  auto it = chkpt_state->module_checkpoint_state.named_parameters.find(parameter_name);
+  if (it == chkpt_state->module_checkpoint_state.named_parameters.end()) {
+    std::string err_msg = "Parameter name " + std::string(parameter_name) + " not found in checkpoint state.";
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
+  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(it->second->CopyFrom(
+      chkpt_state->module_checkpoint_state.train_session_data_transfer_mgr, *parameter));
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::GetParameter, _In_ const OrtCheckpointState* checkpoint_state,
+                    _In_ const char* parameter_name, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ OrtValue** parameter) {
+  API_IMPL_BEGIN
+
+  if (parameter == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Expected a valid parameter. Actual: nullptr.");
+  }
+
+  auto chkpt_state = reinterpret_cast<const onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+  auto it = chkpt_state->module_checkpoint_state.named_parameters.find(parameter_name);
+  if (it == chkpt_state->module_checkpoint_state.named_parameters.end()) {
+    std::string err_msg = "Parameter name " + std::string(parameter_name) + " not found in checkpoint state.";
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
+  }
+
+  if (!it->second->Data().IsTensor()) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Expected a tensor type for the parameter. Found a non-tensor type.");
+  }
+  const auto& parameter_tensor = it->second->Data().Get<onnxruntime::Tensor>();
+  ORT_API_RETURN_IF_ERROR(OrtApis::CreateTensorAsOrtValue(
+      allocator, parameter_tensor.Shape().GetDims().data(), parameter_tensor.Shape().NumDimensions(),
+      ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, parameter));
+
+  auto status = it->second->CopyTo(
+      chkpt_state->module_checkpoint_state.train_session_data_transfer_mgr, **parameter);
+  if (!status.IsOK()) {
+    OrtApis::ReleaseValue(*parameter);
+    return onnxruntime::ToOrtStatus(status);
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtTrainingApi ort_training_api = {
     // NOTE: The C# bindings depend on the API order within this struct. Since Training APIs are not officially
     // released, it is OK to change the order here, however a corresponding matching change should also be done in the
@@ -592,7 +666,10 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::TrainingSessionGetEvalModelInputName,
     &OrtTrainingApis::AddProperty,
     &OrtTrainingApis::GetProperty,
-    &OrtTrainingApis::LoadCheckpointFromBuffer};
+    &OrtTrainingApis::LoadCheckpointFromBuffer,
+    &OrtTrainingApis::GetParameterTypeAndShape,
+    &OrtTrainingApis::UpdateParameter,
+    &OrtTrainingApis::GetParameter};
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {
   // No constraints on the API version yet.
