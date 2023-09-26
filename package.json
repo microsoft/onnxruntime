@@ -10,7 +10,8 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --plugin-search-dir . --check . && eslint .",
 		"format": "prettier --plugin-search-dir . --write .",
-		"deploy": "npx gh-pages -d build -r git@github.com:MaanavD/onnxruntime.git"
+		"deploy": "npx gh-pages -d build -r git@github.com:MaanavD/onnxruntime.git",
+		"postbuild": "npx svelte-sitemap --domain https://onnxruntime.ai"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^2.0.0",
@@ -33,6 +34,7 @@
 		"svelte-check": "^3.4.3",
 		"svelte-highlight": "^7.3.0",
 		"svelte-preprocess-import-assets": "^1.0.1",
+		"svelte-sitemap": "^2.6.0",
 		"tailwindcss": "^3.3.3",
 		"tslib": "^2.4.1",
 		"typescript": "^5.0.0",

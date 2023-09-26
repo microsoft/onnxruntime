@@ -29,12 +29,21 @@
 			link: 'https://cloudblogs.microsoft.com/opensource/2023/07/05/on-device-training-with-onnx-runtime-a-deep-dive/'
 		},
 		{
+			title: 'Build and deploy fast and portable speech recognition applications with ONNX Runtime and Whisper',
+			date: 'June 7th, 2023',
+			blurb:
+				'Learn how ONNX Runtime accelerates Whisper and makes it easy to deploy on desktop, mobile, in the cloud, and even in the browser.',
+			link: 'https://medium.com/microsoftazure/build-and-deploy-fast-and-portable-speech-recognition-applications-with-onnx-runtime-and-whisper-5bf0969dd56b'
+		},
+		{
 			title: 'On-Device Training: Efficient training on the edge with ONNX Runtime',
 			date: 'May 31st, 2023',
 			blurb:
 				'This blog introduces On-Device Training to enable training models on edge devices with the data available on-edge. It extends ORT Inference on edge to include federated learning and personalization scenarios.',
 			link: 'https://cloudblogs.microsoft.com/opensource/2023/05/31/on-device-training-efficient-training-on-the-edge-with-onnx-runtime/'
 		},
+	];
+	let blogs = [
 		{
 			title:
 				'Unlocking the end-to-end Windows AI developer experience using ONNX runtime and Olive',
@@ -42,9 +51,7 @@
 			blurb:
 				'This blog reviews the new capabilities of ONNX Runtime and the Olive toolchain to support hybrid inferencing, NPU EPs, and hardware aware model optimizations on Windows and other platforms',
 			link: 'https://blogs.windows.com/windowsdeveloper/2023/05/23/unlocking-the-end-to-end-windows-ai-developer-experience-using-onnx-runtime-and-olive'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title:
 				'Bringing the power of AI to Windows 11 - unlocking a new era of productivity for customers and developers with Windows Copilot and Dev Home',
