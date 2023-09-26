@@ -151,7 +151,7 @@ namespace Dml::GraphDescBuilder
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
-        const void* executionHandle)
+        const ExecutionProviderImpl* providerImpl)
     {
         const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph.GetMetaDef()->inputs;
         const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph.GetMetaDef()->outputs;
@@ -196,7 +196,7 @@ namespace Dml::GraphDescBuilder
         const uint32_t minNodeCountToReuseCommandList = 5;
         bool reuseCommandList = false;
 
-        if (indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList)
+        if (indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList || providerImpl->IsMcdmDevice())
         {
             reuseCommandList = true;
         }
@@ -256,7 +256,7 @@ namespace Dml::GraphDescBuilder
             graphNodeProps.internalRegInfo->graphNodeFactoryRegistration->factory(
                 node,
                 constantCpuNodeInputGetter,
-                executionHandle,
+                providerImpl,
                 /*out*/ &graphNodeCreateInfo
             );
 
