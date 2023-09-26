@@ -229,7 +229,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
     convInputs.push(inputs[2]);
   }
 
-  if (isChannelsLast && adjustedAttributes.dilations[1] === 1) {
+  if (isChannelsLast && adjustedAttributes.dilations[1] === 1 && outChannels < 8) {
     context.compute(createConvNHWCProgramInfoLoader(convInputs, adjustedAttributes, outputShape), {inputs: convInputs});
     return;
   }
