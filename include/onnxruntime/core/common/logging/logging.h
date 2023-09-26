@@ -179,6 +179,10 @@ class LoggingManager final {
     @param Profiling Event Record
   */
   void SendProfileEvent(profiling::EventRecord& eventRecord) const;
+
+  bool IsDefaultOwner() const;
+  void MakeDefaultOwner(LoggingManager* srcLoggingManager);
+
   ~LoggingManager();
 
  private:
@@ -246,6 +250,8 @@ class Logger {
      @param vlog_level The verbosity.
   */
   void SetVerbosity(int vlog_level) noexcept { max_vlog_level_ = vlog_level; }
+
+  void SetLoggingManager(const LoggingManager* loggingManager) noexcept { logging_manager_ = loggingManager; }
 
   /**
      Check if output is enabled for the provided LogSeverity and DataType values.

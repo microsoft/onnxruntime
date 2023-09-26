@@ -50,10 +50,12 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
   if (lm_info.logging_function) {
     std::unique_ptr<ISink> logger = std::make_unique<LoggingWrapper>(lm_info.logging_function,
                                                                      lm_info.logger_param);
+
+    auto logInstanceType = p_instances_.empty() ? LoggingManager::InstanceType::Default : LoggingManager::InstanceType::Temporal;
     lmgr = std::make_unique<LoggingManager>(std::move(logger),
                                             static_cast<Severity>(lm_info.default_warning_level),
                                             false,
-                                            LoggingManager::InstanceType::Default,
+                                            logInstanceType,
                                             &name);
   } else {
     auto sink = MakePlatformDefaultLogSink();
@@ -85,6 +87,12 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
   std::lock_guard<onnxruntime::OrtMutex> lock(m_);
   auto sptr = std::find_if(p_instances_.begin(), p_instances_.end(), [env_ptr](std::shared_ptr<OrtEnv> i) { return i.get() == env_ptr; });
   ORT_ENFORCE(sptr != p_instances_.end());  // sanity check
+
+  // If we are about to delete the owner of the default logger and there is another env available
+  // then move the default logger owner
+  if ((p_instances_.size() > 1) && (*sptr)->GetLoggingManager()->IsDefaultOwner()) {
+      p_instances_[1]->GetLoggingManager()->MakeDefaultOwner((*sptr)->GetLoggingManager());
+  }
   p_instances_.erase(sptr);
 }
 

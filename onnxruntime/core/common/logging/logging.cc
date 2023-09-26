@@ -161,6 +161,17 @@ void LoggingManager::SendProfileEvent(profiling::EventRecord& eventRecord) const
   sink_->SendProfileEvent(eventRecord);
 }
 
+bool LoggingManager::IsDefaultOwner() const {
+  return owns_default_logger_;
+}
+
+void LoggingManager::MakeDefaultOwner(LoggingManager* srcLoggingManager) {
+  std::lock_guard<OrtMutex> guard(DefaultLoggerMutex());
+  this->owns_default_logger_ = true;
+  srcLoggingManager->owns_default_logger_ = false;
+  s_default_logger_->SetLoggingManager(this);
+}
+
 static minutes InitLocaltimeOffset(const time_point<system_clock>& epoch) noexcept {
   // convert the system_clock time_point (UTC) to localtime and gmtime to calculate the difference.
   // we do this once, and apply that difference in GetTimestamp().
