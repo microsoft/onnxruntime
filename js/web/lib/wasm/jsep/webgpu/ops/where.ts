@@ -6,7 +6,7 @@ import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createBroadcastHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 const createWhereOpProgramShader =
     (shaderHelper: ShaderHelper, inputs: readonly TensorView[], dimsOutput: readonly number[], isBroadcast: boolean,
@@ -15,10 +15,9 @@ const createWhereOpProgramShader =
       const vecSize = Math.ceil(outputSize / 4);
 
       const output = outputVariable('outputData', typeOutput, dimsOutput, 4);
-      const a = inputVariable('aData', inputs[1].dataType, inputs[1].dims, 4);
-      const b = inputVariable('bData', inputs[2].dataType, inputs[2].dims, 4);
-      const c = inputVariable('cData', inputs[0].dataType, inputs[0].dims, 4);
-      const broadcastImpl = isBroadcast ? createBroadcastHelper([a, b, c], output).broadcastIndicesToOffset() : '';
+      const a = inputVariable('aData', inputs[1].dataType, inputs[1].dims, 4, output);
+      const b = inputVariable('bData', inputs[2].dataType, inputs[2].dims, 4, output);
+      const c = inputVariable('cData', inputs[0].dataType, inputs[0].dims, 4, output);
 
       let assignment: string;
       const expression = (a: string, b: string, c: string) => `select(${b}, ${a}, ${c})`;
@@ -34,9 +33,9 @@ const createWhereOpProgramShader =
           const expressionC = `bool(cData[indexC${x}] & ${0xff000000 >>> ((3 - x) * 8)}u)`;
           return `
             let outputIndices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};
-            let offsetA${x} = broadcastIndicesToOffsetA(outputIndices${x});
-            let offsetB${x} = broadcastIndicesToOffsetB(outputIndices${x});
-            let offsetC${x} = broadcastIndicesToOffsetC(outputIndices${x});
+            let offsetA${x} = ${a.broadcastIndicesToOffset(`outputIndices${x}`)};
+            let offsetB${x} = ${b.broadcastIndicesToOffset(`outputIndices${x}`)};
+            let offsetC${x} = ${c.broadcastIndicesToOffset(`outputIndices${x}`)};
             let indexA${x} = offsetA${x} / 4u;
             let indexB${x} = offsetB${x} / 4u;
             let indexC${x} = offsetC${x} / 4u;
@@ -65,7 +64,6 @@ const createWhereOpProgramShader =
 
       return `
         ${shaderHelper.declareVariables(c, a, b, output)}
-        ${broadcastImpl}
         ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
         ${assignment}

@@ -103,6 +103,15 @@ export interface IndicesHelper {
   readonly indicesToOffset: (varIndices: string) => string;
 
   /**
+   * WGSL code of an `u32` expression for getting original offset from broadcast indices.
+   *
+   * @param varIndices - a `type.indices` expression representing the output indices.
+   *
+   * @returns an `u32` expression
+   */
+  readonly broadcastIndicesToOffset: (varIndices: string) => string;
+
+  /**
    * WGSL code of generating an indices literal
    *
    * @param init - initial value.
@@ -248,8 +257,8 @@ export const tensorTypeToWsglValueType = (type: DataType, components: 1|2|3|4 = 
  *    vec4.
  */
 const createIndicesHelper =
-    (name: string, tensorType: number, shape: readonly number[], isInput: boolean,
-     components: 1|2|3|4): IndicesHelper => {
+    (name: string, tensorType: number, shape: readonly number[], isInput: boolean, components: 1|2|3|4,
+     output?: IndicesHelper): IndicesHelper => {
       const rank = shape.length;
       const indicesType = rank < 2 ? 'u32' : rank <= 4 ? `vec${rank}<u32>` : `array<u32, ${rank}>`;
       const mappedType = getWgslMappedType(tensorType, components);
@@ -262,6 +271,7 @@ const createIndicesHelper =
       const implementationUsed = {
         offsetToIndices: false,
         indicesToOffset: false,
+        broadcastIndicesToOffset: false,
         set: false,
         setByIndices: false,
         get: false,
@@ -293,7 +303,7 @@ const createIndicesHelper =
         return rank < 2 ? varOffset : `o2i_${name}(${varOffset})`;
       };
 
-      const offsets: string[] = [];
+      let offsets: string[] = [];
       if (rank >= 2) {
         for (let i = rank - 1; i >= 0; i--) {
           offsets.push(`${strides[i]}u * (indices[${i}])`);
@@ -308,6 +318,25 @@ const createIndicesHelper =
       const indicesToOffset = (varIndices: string) => {
         implementationUsed.indicesToOffset = true;
         return rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
+      };
+
+      let broadcastIndicesToOffsetImplementation = '';
+      // Currently output is only used when there is broadcasting.
+      if (output) {
+        offsets = [];
+        for (let i = shape.length - 1; i >= 0; i--) {
+          const idx = output.indicesGet('outputIndices', i + output.shape.length - shape.length);
+          offsets.push(`${strides[i]}u * (${idx} % ${shape[i]}u)`);
+        }
+        broadcastIndicesToOffsetImplementation =
+            `fn broadcastIndicesToOffset${name}(outputIndices: ${output.type.indices}) -> u32 {
+             return ${offsets.length > 0 ? offsets.join('+') : '0u'};
+           }`;
+      }
+
+      const broadcastIndicesToOffset = (varIndices: string) => {
+        implementationUsed.broadcastIndicesToOffset = true;
+        return `broadcastIndicesToOffset${name}(${varIndices});`;
       };
 
       const indices = (...init: ReadonlyArray<number|string>) =>
@@ -462,6 +491,9 @@ const createIndicesHelper =
         if (implementationUsed.indicesToOffset) {
           impls.push(indicesToOffsetImplementation);
         }
+        if (implementationUsed.broadcastIndicesToOffset) {
+          impls.push(broadcastIndicesToOffsetImplementation);
+        }
         if (implementationUsed.set) {
           impls.push(setImplementation);
         }
@@ -482,6 +514,7 @@ const createIndicesHelper =
         type,
         offsetToIndices,
         indicesToOffset,
+        broadcastIndicesToOffset,
         indices,
         indicesGet,
         indicesSet,
@@ -505,11 +538,12 @@ const createIndicesHelper =
  * @param type - the tensor type of the input.
  * @param shape - the tensor shape of the input.
  * @param components - the number of components of the input. available values are 1, 2, 3, 4. default is 1.
+ * @param output - output IndicesHelper, used when there is broadcasting.
  * @returns an IndicesHelper for the input.
  */
 export const inputVariable =
-    (name: string, type: number, shape: readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
-        createIndicesHelper(name, type, shape, true, components);
+    (name: string, type: number, shape: readonly number[], components: 1|2|3|4 = 1, output?: IndicesHelper):
+        IndicesHelper => createIndicesHelper(name, type, shape, true, components, output);
 
 /**
  * Create a IndicesHelper for an output.
@@ -523,43 +557,6 @@ export const inputVariable =
 export const outputVariable =
     (name: string, type: number, shape: readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
         createIndicesHelper(name, type, shape, false, components);
-
-/**
- * A helper class for generating WGSL code for manipulating broadcast indices for a shader's input.
- */
-export interface BroadcastHelper {
-  /**
-   * WGSL code for getting offset from broadcast indices.
-   *
-   */
-  broadcastIndicesToOffset(): string;
-}
-
-class BroadcastHelperImpl implements BroadcastHelper {
-  constructor(private inputs: IndicesHelper[], private output: IndicesHelper) {}
-
-  broadcastIndicesToOffset(): string {
-    let implementation = '';
-    for (let j = 0; j < this.inputs.length; j++) {
-      const dims = this.inputs[j].shape;
-      const name = this.inputs[j].name.substring(0, 1).toUpperCase();
-      const strides = ShapeUtil.computeStrides(dims);
-      const offsets: string[] = [];
-      for (let i = dims.length - 1; i >= 0; i--) {
-        const idx = this.output.indicesGet('outputIndices', i + this.output.shape.length - dims.length);
-        offsets.push(`${strides[i]}u * (${idx} % ${dims[i]}u)`);
-      }
-      implementation += `fn broadcastIndicesToOffset${name}(outputIndices: ${this.output.type.indices}) -> u32 {
-               return ${offsets.length > 0 ? offsets.join('+') : '0u'};
-             }
-            `;
-    }
-    return implementation;
-  }
-}
-
-export const createBroadcastHelper = (inputs: IndicesHelper[], output: IndicesHelper): BroadcastHelper =>
-    new BroadcastHelperImpl(inputs, output);
 
 /**
  * A ShaderHelper is a helper class for generating WGSL code.
