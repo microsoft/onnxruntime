@@ -239,7 +239,6 @@ class MinMaxCalibrater(CalibraterBase):
         self.intermediate_outputs = []
 
     def collect_data(self, data_reader: CalibrationDataReader):
-        print(self.max_intermediate_outputs)
         while True:
             inputs = data_reader.get_next()
             if not inputs:
