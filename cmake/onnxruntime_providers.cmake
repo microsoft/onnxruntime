@@ -1616,7 +1616,8 @@ if (onnxruntime_USE_ROCM)
   if(NOT MSVC)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-unused-parameter)
-    target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-undefined-var-template)
+    # causes cc1plus: error: unrecognized command line option ‘-Wno-undefined-var-template’ [-Werror]
+    #target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-undefined-var-template)
   endif()
 
   onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
