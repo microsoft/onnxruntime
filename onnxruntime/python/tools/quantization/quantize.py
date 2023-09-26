@@ -376,7 +376,7 @@ def quantize_static(
         ("CalibTensorRangeSymmetric", "symmetric"),
         ("CalibMovingAverage", "moving_average"),
         ("CalibMovingAverageConstant", "averaging_constant"),
-        ("CalibMaxIntermediateOutputs", "max_intermediate_outputs")
+        ("CalibMaxIntermediateOutputs", "max_intermediate_outputs"),
     ]
     calib_extra_options = {
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
