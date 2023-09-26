@@ -39,7 +39,12 @@ include(CMakeDependentOption)
 include(FetchContent)
 include(CheckFunctionExists)
 
+# TODO: update this once all system adapt c++20
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+set(CMAKE_CXX_STANDARD 20)
+else()
 set(CMAKE_CXX_STANDARD 17)
+endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
