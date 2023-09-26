@@ -171,7 +171,16 @@ public:
     return axis_specs.at(axis);
   }
 
-  int64_t GetAxisPartitionCount(int64_t axis) const {
+  int64_t GetPartitionAxis() const {
+    for (int64_t i = 0; i < axis_specs.size(); ++i) {
+      if (axis_specs[i].cond == AxisPartitionSpec::Condition::Shard) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  int64_t GetPartitionCount(int64_t axis) const {
     auto axis_spec = GetAxisSpec(axis);
     if (axis_spec.cond == AxisPartitionSpec::Condition::Replica) {
       return 1;

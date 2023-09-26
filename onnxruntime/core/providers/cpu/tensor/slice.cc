@@ -81,7 +81,6 @@ Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, g
                                     TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
   size_t cur = 0;
   size_t nxt = 0;
-  std::cout << "00\n";
   while (true) {
     // Skip all leading slicing dims.
     while (nxt < starts.size() && (steps[nxt] != 1 || input_dimensions[nxt] != output_dims[nxt])) {
@@ -112,7 +111,6 @@ Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, g
     }
   }
 
-  std::cout << "01\n";
   // No actual slice dim, and all dims are size 1.
   if (cur == 0) {
     p_flattened_input_dims->emplace_back(1LL);
@@ -123,7 +121,6 @@ Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, g
     ++cur;
   }
 
-  std::cout << "02\n";
   if (p_flattened_output_dims->size() == output_dims.size()) {
     p_flattened_input_dims->clear();
     p_flattened_output_dims->clear();
@@ -135,7 +132,6 @@ Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, g
     steps.resize(cur);
   }
 
-  std::cout << "03\n";
   return Status::OK();
 }
 

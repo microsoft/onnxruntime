@@ -250,44 +250,15 @@ Status FuncSlice(
   const std::vector<int64_t>& steps,
   Tensor* output
 ) {
-  std::cout << "0\n" << std::endl;
   gsl::span<const int64_t> starts_span = gsl::make_span(starts.data(), starts.size());
   gsl::span<const int64_t> ends_span = gsl::make_span(ends.data(), ends.size());
   gsl::span<const int64_t> axes_span = gsl::make_span(axes.data(), axes.size());
   gsl::span<const int64_t> steps_span = gsl::make_span(steps.data(), steps.size());
-
-  // Print starts, ends, axes, and steps.
-  std::cout << "Starts: ";
-  for (const auto& start : starts) {
-    std::cout << start << " ";
-  }
-  std::cout << std::endl;
-
-  std::cout << "Ends: ";
-  for (const auto& end : ends) {
-    std::cout << end << " ";
-  }
-  std::cout << std::endl;
-
-  std::cout << "Axes: ";
-  for (const auto& axis : axes) {
-    std::cout << axis << " ";
-  }
-  std::cout << std::endl;
-
-  std::cout << "Steps: ";
-  for (const auto& step : steps) {
-    std::cout << step << " ";
-  }
-  std::cout << std::endl;
-
-
   const auto& input_shape = input->Shape();
   const auto input_dimensions = input_shape.GetDims();
 
   SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
 
-  std::cout << "1\n";
   ORT_RETURN_IF_ERROR(
     SliceOp::PrepareForComputeHelper(starts_span, ends_span, axes_span, steps_span, compute_metadata)
   );
@@ -295,8 +266,6 @@ Status FuncSlice(
   ORT_RETURN_IF_ERROR(SliceBase::FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
                                         compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
                                         compute_metadata.p_flattened_output_dims_));
-  auto err = cudaGetLastError();
-  ORT_ENFORCE(err == cudaSuccess);
 
   TensorShape output_shape(compute_metadata.output_dims_);
 
@@ -305,12 +274,8 @@ Status FuncSlice(
   TArray<int64_t> input_strides;
   TArray<fast_divmod> output_strides;
 
-  std::cout << "2\n";
   ORT_RETURN_IF_ERROR(SliceCuda::ComputeSliceStrides(input_shape, input_strides, output_strides, compute_metadata));
-  err = cudaGetLastError();
-  ORT_ENFORCE(err == cudaSuccess);
 
-  std::cout << "3\n";
   ORT_RETURN_IF_ERROR(SliceImpl(
     cuda_kernel->Stream(ctx),
     input->DataType()->Size(),
@@ -323,9 +288,6 @@ Status FuncSlice(
     output->MutableDataRaw(),
     output_shape.Size()
   ));
-
-  err = cudaGetLastError();
-  ORT_ENFORCE(err == cudaSuccess);
 
   return Status::OK();
 }
