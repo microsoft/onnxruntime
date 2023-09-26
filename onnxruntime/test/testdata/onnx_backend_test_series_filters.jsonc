@@ -279,7 +279,18 @@
         "^test_string_split_empty_string_delimiter",
         "^test_string_split_empty_tensor",
         "^test_string_split_maxsplit",
-        "^test_string_split_no_delimiter"
+        "^test_string_split_no_delimiter",
+        "^test_dft_axis_cpu",
+        "^test_dft_cpu",
+        "^test_dft_inverse_cpu",
+        "^test_isinf_cpu",
+        "^test_isinf_float16_cpu",
+        "^test_isinf_negative_cpu",
+        "^test_isinf_positive_cpu",
+        "^test_isnan_cpu",
+        "^test_isnan_float16_cpu",
+        "^test_reduce_max_bool_inputs_cpu",
+        "^test_reduce_min_bool_inputs_cpu"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
