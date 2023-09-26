@@ -241,7 +241,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 
    Follow [documentation](https://docs.openvino.ai/2023.0/index.html) for detailed instructions.
 
-  *2023.0 is the recommended OpenVINO™ version. [OpenVINO™ 2022.1](https://docs.openvino.ai/2022.1/index.html) is minimal OpenVINO™ version requirement.*
+  *2023.0 is the recommended OpenVINO™ version. [OpenVINO™ 2022.1](https://docs.openvino.ai/archive/2022.1/index.html) is minimal OpenVINO™ version requirement.*
   *The minimum ubuntu version to support 2023.0 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
