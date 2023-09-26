@@ -13,7 +13,7 @@ nav_order: 1
 Here is a simple tutorial for getting started with running inference on an existing ONNX model for a given input data.
 The model is typically trained using any of the well-known training frameworks and then exported into the ONNX format. 
 
-Note, that the following classed `NamedOnnxValue`, `DisposableNamedOnnxValue`, `FixedBufferOnnxValue` are going
+Note, that the following classes `NamedOnnxValue`, `DisposableNamedOnnxValue`, `FixedBufferOnnxValue` are going
 to be deprecated in the future. They are not recommended for new code.
 
 The new `OrtValue` based API is the recommended approach. The `OrtValue` API generates less garbage and is more performant.
