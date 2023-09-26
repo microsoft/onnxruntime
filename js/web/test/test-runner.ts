@@ -597,6 +597,7 @@ export async function sessionRun(options: {
     for (const name in outputs) {
       if (Object.hasOwnProperty.call(outputs, name)) {
         const tensor = outputs[name];
+        // Tensor.getData(true) release the underlying resource
         await tensor.getData(true);
       }
     }
@@ -610,13 +611,6 @@ export async function sessionRun(options: {
         tensor.dispose();
       }
     }
-    // // dispose the GPU tensors in fetches
-    // for (const name in fetches) {
-    //   if (Object.hasOwnProperty.call(fetches, name)) {
-    //     const tensor = fetches[name];
-    //     tensor.dispose();
-    //   }
-    // }
   }
 }
 
