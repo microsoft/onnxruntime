@@ -34,6 +34,237 @@ namespace cuda {
 
 namespace vllm {
 
+template <typename T>
+struct TFloatTypeFrom {
+};
+
+template <>
+struct TFloatTypeFrom<float> {
+  using Type = float;
+};
+
+template <>
+struct TFloatTypeFrom<uint16_t> {
+  using Type = half;
+};
+
+inline __device__ __half2 DequantizeChar2(const char2 ch2, const float unit_scale) {
+  return __float22half2_rn(float2{unit_scale * ch2.x, unit_scale * ch2.y});
+}
+
+inline __device__ __half2 DequantizeChar2(const char2 ch2, const float2 unit_scales) {
+  return __float22half2_rn(float2{unit_scales.x * ch2.x, unit_scales.y * ch2.y});
+}
+
+template <typename TVec>
+class QuantVec {};
+
+struct __align__(4) Char2x2 {
+  char2 x;
+  char2 y;
+};
+
+struct __align__(8) Char2x4 {
+  char2 x;
+  char2 y;
+  char2 z;
+  char2 w;
+};
+
+template <>
+class QuantVec<uint32_t> {
+ public:
+  using Type = char2;
+};
+
+template <>
+class QuantVec<uint2> {
+ public:
+  using Type = Char2x2;
+};
+
+template <>
+class QuantVec<uint4> {
+ public:
+  using Type = Char2x4;
+};
+
+template <typename TVec>
+inline __device__ TVec DequantizeVec(const typename QuantVec<TVec>::Type quant_vec_m, const float unit_scale);
+
+template <>
+inline __device__ uint32_t DequantizeVec<uint32_t>(const char2 ch2, const float unit_scale) {
+  union __align__(4) {
+    __half2 h2;
+    uint32_t whole;
+  }
+  uh;
+  uh.h2 = DequantizeChar2(ch2, unit_scale);
+  return uh.whole;
+}
+
+template <>
+inline __device__ uint2 DequantizeVec<uint2>(const Char2x2 ch2x2, const float unit_scale) {
+  union __align__(8) {
+    struct __align__(8) {
+      __half2 h2x;
+      __half2 h2y;
+    };
+    uint2 whole;
+  }
+  vec;
+  vec.h2x = DequantizeChar2(ch2x2.x, unit_scale);
+  vec.h2y = DequantizeChar2(ch2x2.y, unit_scale);
+  return vec.whole;
+}
+
+template <>
+inline __device__ uint4 DequantizeVec<uint4>(const Char2x4 ch2x4, const float unit_scale) {
+  union __align__(16) {
+    struct __align__(16) {
+      __half2 h2x;
+      __half2 h2y;
+      __half2 h2z;
+      __half2 h2w;
+    };
+    uint4 whole;
+  }
+  vec;
+  vec.h2x = DequantizeChar2(ch2x4.x, unit_scale);
+  vec.h2y = DequantizeChar2(ch2x4.y, unit_scale);
+  vec.h2z = DequantizeChar2(ch2x4.z, unit_scale);
+  vec.h2w = DequantizeChar2(ch2x4.w, unit_scale);
+  return vec.whole;
+}
+
+template <typename TVec>
+inline __device__ TVec LoadQuantVec(const TVec* q8, const float unit_scale) {
+  using TQuantVec = typename QuantVec<TVec>::Type;
+  TQuantVec quant_vec = *(const TQuantVec*)q8;
+  return DequantizeVec<TVec>(quant_vec, unit_scale);
+}
+
+template <typename TVec>
+inline __device__ TVec DequantizeByScaleVec(const typename QuantVec<TVec>::Type quant_vec_m, const typename FloatVec<TVec> unit_scales);
+
+template <>
+inline __device__ uint32_t DequantizeByScaleVec<uint32_t>(const char2 ch2, const float2 unit_scales) {
+  union __align__(4) {
+    __half2 h2;
+    uint32_t whole;
+  }
+  uh;
+  uh.h2 = DequantizeChar2(ch2, unit_scales);
+  return uh.whole;
+}
+
+template <>
+inline __device__ uint2 DequantizeByScaleVec<uint2>(const Char2x2 ch2x2, const Float4_ unit_scales) {
+  union __align__(8) {
+    struct __align__(8) {
+      __half2 h2x;
+      __half2 h2y;
+    };
+    uint2 whole;
+  }
+  vec;
+  vec.h2x = DequantizeChar2(ch2x2.x, unit_scales.x);
+  vec.h2y = DequantizeChar2(ch2x2.y, unit_scales.y);
+  return vec.whole;
+}
+
+template <>
+inline __device__ uint4 DequantizeByScaleVec<uint4>(const Char2x4 ch2x4, const Float8_ unit_scales) {
+  union __align__(16) {
+    struct __align__(16) {
+      __half2 h2x;
+      __half2 h2y;
+      __half2 h2z;
+      __half2 h2w;
+    };
+    uint4 whole;
+  }
+  vec;
+  vec.h2x = DequantizeChar2(ch2x4.x, unit_scales.x);
+  vec.h2y = DequantizeChar2(ch2x4.y, unit_scales.y);
+  vec.h2z = DequantizeChar2(ch2x4.z, unit_scales.z);
+  vec.h2w = DequantizeChar2(ch2x4.w, unit_scales.w);
+  return vec.whole;
+}
+
+template <typename TVec>
+inline __device__ TVec LoadQuantVecByScales(const TVec* q8, const typename FloatVec<TVec> unit_scales) {
+  using TQuantVec = typename QuantVec<TVec>::Type;
+  TQuantVec quant_vec = *(const TQuantVec*)q8;
+  return DequantizeByScaleVec<TVec>(quant_vec, unit_scale);
+}
+
+template <typename TFp, typename TVec>
+inline __device__ TFp MaxAbsFloat(const TVec v);
+
+template <>
+inline __device__ __half MaxAbsFloat(const uint32_t v) {
+  union __align__(4) {
+    __half2 h2;
+    uint32_t whole;
+  }
+  uvec = {.whole = v};
+  const __half2 h2 = __habs2(uvec.h2);
+  return __hmax(h2.x, h2.y);
+}
+
+template <>
+inline __device__ __half MaxAbsFloat(const uint2 v) {
+  // make it simple rather than save one op
+  return __hmax(MaxAbsFloat<__half, uint32_t>(v.x), MaxAbsFloat<__half, uint32_t>(v.y));
+}
+
+template <>
+inline __device__ __half MaxAbsFloat(const uint4 v) {
+  return __hmax(__hmax(MaxAbsFloat<__half, uint32_t>(v.x), MaxAbsFloat<__half, uint32_t>(v.y)),
+                __hmax(MaxAbsFloat<__half, uint32_t>(v.z), MaxAbsFloat<__half, uint32_t>(v.w)));
+}
+
+template <typename TVec>
+inline __device__ typename QuantVec<TVec>::Type Quantize(const TVec v, const float scale);
+
+template <>
+inline __device__ char2 Quantize(const uint32_t v, const float inv_unit_scale) {
+  union __align__(4) {
+    uint32_t u;
+    __half2 h2;
+  }
+  uh2 = {v};
+  float2 f2 = __half22float2(uh2.h2);
+  return char2{(char)min(max(-127, __float2int_rn(inv_unit_scale * f2.x)), 127),
+               (char)min(max(-127, __float2int_rn(inv_unit_scale * f2.y)), 127)};
+}
+
+template <>
+inline __device__ Char2x2 Quantize(const uint2 v, const float inv_unit_scale) {
+  Char2x2 ch2x2;
+  ch2x2.x = Quantize<uint32_t>(v.x, inv_unit_scale);
+  ch2x2.y = Quantize<uint32_t>(v.y, inv_unit_scale);
+  return ch2x2;
+}
+
+template <>
+inline __device__ Char2x4 Quantize(const uint4 v, const float inv_unit_scale) {
+  Char2x4 ch2x4;
+  ch2x4.x = Quantize<uint32_t>(v.x, inv_unit_scale);
+  ch2x4.y = Quantize<uint32_t>(v.y, inv_unit_scale);
+  ch2x4.z = Quantize<uint32_t>(v.z, inv_unit_scale);
+  ch2x4.w = Quantize<uint32_t>(v.w, inv_unit_scale);
+  return ch2x4;
+}
+
+template <typename TVec>
+inline __device__ void QuantizeTo(int8_t* dst, const TVec v, const float inv_unit_scale) {
+  using TQuantVec = typename QuantVec<TVec>::Type;
+  TQuantVec quant_vec = Quantize(v, inv_unit_scale);
+  *(TQuantVec*)dst = quant_vec;
+}
+
 // Utility function for attention softmax.
 template <int NUM_WARPS>
 inline __device__ float block_sum(float* red_smem, float sum) {
@@ -70,19 +301,18 @@ inline __device__ float block_sum(float* red_smem, float sum) {
   return __shfl_sync(uint32_t(-1), sum, 0);
 }
 
-template <typename kv_quant_param_t>
+template <typename scalar_t>
 class NoQuantProcessor {
  public:
   static constexpr bool IS_QUANTIZED = false;
   using kv_mem_scalar_t = scalar_t;
+  int dummy = 0;
 };
 
 template <typename quant_params_elem_t>  // float or float16
 class KVQuantProcessor {
  public:
   static constexpr bool IS_QUANTIZED = true;
-  static constexpr int32_t K = 0;
-  static constexpr int32_t V = 1;
 
   using kv_mem_scalar_t = int8_t;
   using kv_quant_param_t = quant_params_elem_t;
@@ -578,22 +808,23 @@ __global__ void repeat_key_value_kernel(
 
 }  // namespace vllm
 
-#define LAUNCH_ATTENTION_KERNEL(T, HEAD_SIZE, BLOCK_SIZE, NUM_THREADS)                 \
-  vllm::single_query_cached_kv_attention_kernel<T, HEAD_SIZE, BLOCK_SIZE, NUM_THREADS> \
-      <<<grid, block, shared_mem_size, stream>>>(                                      \
-          out_ptr,                                                                     \
-          query_ptr,                                                                   \
-          key_cache_ptr,                                                               \
-          value_cache_ptr,                                                             \
-          head_mapping_ptr,                                                            \
-          scale,                                                                       \
-          block_tables_ptr,                                                            \
-          context_lens_ptr,                                                            \
-          max_num_blocks_per_seq,                                                      \
-          alibi_slopes_ptr,                                                            \
-          query_stride,                                                                \
-          kv_block_stride,                                                             \
-          kv_head_stride);
+#define LAUNCH_ATTENTION_KERNEL(T, QH, HEAD_SIZE, BLOCK_SIZE, NUM_THREADS)                 \
+  vllm::single_query_cached_kv_attention_kernel<T, QH, HEAD_SIZE, BLOCK_SIZE, NUM_THREADS> \
+      <<<grid, block, shared_mem_size, stream>>>(                                          \
+          out_ptr,                                                                         \
+          query_ptr,                                                                       \
+          key_cache_ptr,                                                                   \
+          value_cache_ptr,                                                                 \
+          head_mapping_ptr,                                                                \
+          scale,                                                                           \
+          block_tables_ptr,                                                                \
+          context_lens_ptr,                                                                \
+          max_num_blocks_per_seq,                                                          \
+          alibi_slopes_ptr,                                                                \
+          query_stride,                                                                    \
+          kv_block_stride,                                                                 \
+          kv_head_stride,                                                                  \
+          quant_handler);
 
 // TODO(woosuk): Tune NUM_THREADS.
 template <
@@ -614,7 +845,10 @@ void single_query_cached_kv_attention_launcher(
     int max_context_len,
     const float* alibi_slopes_ptr,
     const int64_t* query_shapes,
-    int num_queries_per_kv) {
+    int num_queries_per_kv,
+    const void* kv_quant_params,
+    int kv_quant_chunk_size,
+    int kv_quant_param_dtype) {
   int num_seqs = query_shapes[0];
   int num_heads = query_shapes[1];
   int head_size = query_shapes[2];
@@ -643,37 +877,84 @@ void single_query_cached_kv_attention_launcher(
 
   dim3 grid(num_heads, num_seqs);
   dim3 block(NUM_THREADS);
-  switch (head_size) {
-    // NOTE(woosuk): To reduce the compilation time, we omitted head sizes
-    // 32, 160, 192, 256.
-    // case 32:
-    //   LAUNCH_ATTENTION_KERNEL(T, 32, BLOCK_SIZE, NUM_THREADS);
-    //   break;
-    case 64:
-      LAUNCH_ATTENTION_KERNEL(T, 64, BLOCK_SIZE, NUM_THREADS);
+  if (kv_quant_params == nullptr) {
+    using QuantHandler = typename NoQuantProcessor<T>;
+    QuantHandler quant_handler;
+    switch (head_size) {
+    using
+        // NOTE(woosuk): To reduce the compilation time, we omitted head sizes
+        // 32, 160, 192, 256.
+        // case 32:
+        //   LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 32, BLOCK_SIZE, NUM_THREADS);
+        //   break;
+        case 64:
+      LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 64, BLOCK_SIZE, NUM_THREADS);
       break;
-    case 80:
-      LAUNCH_ATTENTION_KERNEL(T, 80, BLOCK_SIZE, NUM_THREADS);
-      break;
-    case 96:
-      LAUNCH_ATTENTION_KERNEL(T, 96, BLOCK_SIZE, NUM_THREADS);
-      break;
-    case 128:
-      LAUNCH_ATTENTION_KERNEL(T, 128, BLOCK_SIZE, NUM_THREADS);
-      break;
-    // case 160:
-    //   LAUNCH_ATTENTION_KERNEL(T, 160, BLOCK_SIZE, NUM_THREADS);
-    //   break;
-    // case 192:
-    //   LAUNCH_ATTENTION_KERNEL(T, 192, BLOCK_SIZE, NUM_THREADS);
-    //   break;
-    // case 256:
-    //   LAUNCH_ATTENTION_KERNEL(T, 256, BLOCK_SIZE, NUM_THREADS);
-    //   break;
-    default:
-      // TORCH_CHECK(false, "Unsupported head size: ", head_size);
-      abort();
-      break;
+      case 80:
+        LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 80, BLOCK_SIZE, NUM_THREADS);
+        break;
+      case 96:
+        LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 96, BLOCK_SIZE, NUM_THREADS);
+        break;
+      case 128:
+        LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 128, BLOCK_SIZE, NUM_THREADS);
+        break;
+      // case 160:
+      //   LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 160, BLOCK_SIZE, NUM_THREADS);
+      //   break;
+      // case 192:
+      //   LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 192, BLOCK_SIZE, NUM_THREADS);
+      //   break;
+      // case 256:
+      //   LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 256, BLOCK_SIZE, NUM_THREADS);
+      //   break;
+      default:
+        // TORCH_CHECK(false, "Unsupported head size: ", head_size);
+        abort();
+        break;
+    }
+  } else {
+    if constexpr (std::is_same<T, uint16_t>::value) {
+      using QuantHandler = typename KVQuantProcessor<half>; // TODO: support float scales
+      QuantHandler quant_handler(
+          (const QuantHandler::kv_quant_param_t*)kv_quant_params,
+          kv_quant_chunk_size,
+          num_heads / num_queries_per_kv,
+          BLOCK_SIZE);
+
+      switch (head_size) {
+        // NOTE(woosuk): To reduce the compilation time, we omitted head sizes
+        // 32, 160, 192, 256.
+        // case 32:
+        //   LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 32, BLOCK_SIZE, NUM_THREADS);
+        //   break;
+        case 64:
+          LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 64, BLOCK_SIZE, NUM_THREADS);
+          break;
+        case 80:
+          LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 80, BLOCK_SIZE, NUM_THREADS);
+          break;
+        case 96:
+          LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 96, BLOCK_SIZE, NUM_THREADS);
+          break;
+        case 128:
+          LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 128, BLOCK_SIZE, NUM_THREADS);
+          break;
+        // case 160:
+        //   LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 160, BLOCK_SIZE, NUM_THREADS);
+        //   break;
+        // case 192:
+        //   LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 192, BLOCK_SIZE, NUM_THREADS);
+        //   break;
+        // case 256:
+        //   LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 256, BLOCK_SIZE, NUM_THREADS);
+        //   break;
+        default:
+          // TORCH_CHECK(false, "Unsupported head size: ", head_size);
+          abort();
+          break;
+      }
+    }
   }
 }
 
@@ -692,7 +973,10 @@ void single_query_cached_kv_attention_launcher(
       max_context_len,                                      \
       alibi_slopes_ptr,                                     \
       query_shapes,                                         \
-      num_queries_per_kv);
+      num_queries_per_kv,                                   \
+      kv_quant_params,                                      \
+      int kv_quant_chunk_size,                              \
+      int kv_quant_param_dtype);
 
 // NOTE(woosuk): To reduce the compilation time, we omitted block sizes
 // 1, 2, 4, 64, 128, 256.
@@ -747,7 +1031,7 @@ void single_query_cached_kv_attention(
     const int64_t* query_shapes,
     int num_queries_per_kv,
     int dtype,
-    const void* kv_quant_params,  // [num_blocks, 2, num_kv_heads, block_size, head_size / kv_quant_chunk_size]
+    const void* kv_quant_params,  // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
     int kv_quant_chunk_size,
     int kv_quant_param_dtype) {
   // static_assert(std::is_same_v<T, float> || std::is_same_v<T, BFloat16> || std::is_same_v<T, MLFloat16>, "Unsupported data type: ");
@@ -755,10 +1039,7 @@ void single_query_cached_kv_attention(
   if (dtype == 0) {  // float
     CALL_KERNEL_LAUNCHER_BLOCK_SIZE(float);
   } else if (dtype == 1) {  // half
-    if (kv_quant_chunk_size == 0) {
-      CALL_KERNEL_LAUNCHER_BLOCK_SIZE(uint16_t);
-    } else {
-    }
+    CALL_KERNEL_LAUNCHER_BLOCK_SIZE(uint16_t);
   } else if (dtype == 2) {  //} else if constexpr (std::is_same_v<T, BFloat16>) {
     // CALL_KERNEL_LAUNCHER_BLOCK_SIZE(__nv_bfloat16);
   }
