@@ -3,112 +3,6 @@
   "Version": 1,
   "Registrations": [
     {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "autoconf",
-          "Version": "2.71",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "automake",
-          "Version": "1.16.5",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.5.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "libtool",
-          "Version": "2.4.7",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/libtool/libtool-2.4.7.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "git",
-          "Version": "2.36.2",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.36.2.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "sqlite_autoconf",
-          "Version": "3390200",
-          "DownloadUrl": "https://www.sqlite.org/2022/sqlite-autoconf-3390200.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "openssl",
-          "Version": "1.1.1q",
-          "DownloadUrl": "https://www.openssl.org/source/openssl-1.1.1q.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "50cf2b6dd4fdf04309445f2eec8de7051d953abf",
-          "repositoryUrl": "https://github.com/besser82/libxcrypt.git"
-        },
-        "comments": "manylinux dependency LIBXCRYPT"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "a896e3d066448b3530dbcaa48869fafefd738f57",
-          "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
-        },
-        "comments": "git submodule at cmake/external/emsdk"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "7a2ed51a6b682a83e345ff49fc4cfd7ca47550db",
-          "repositoryUrl": "https://github.com/google/libprotobuf-mutator.git"
-        },
-        "comments": "git submodule at cmake/external/libprotobuf-mutator"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "e2525550194ce3d8a2c4a3af451c9d9b3ae6650e",
-          "repositoryUrl": "https://github.com/onnx/onnx.git"
-        },
-        "comments": "git submodule at cmake/external/onnx"
-      }
-    },
-    {
       "component": {
         "type": "git",
         "git": {
@@ -266,6 +160,16 @@
           "repositoryUrl": "https://github.com/boostorg/mp11.git"
         },
         "comments": "mp11"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "fdefbe85ed9c362b95b9b401cd19db068a76141f",
+          "repositoryUrl": "https://github.com/onnx/onnx.git"
+        },
+        "comments": "onnx"
       }
     },
     {

@@ -578,7 +578,7 @@ TEST(Scan9, DISABLED_BadShape) {
   ShortSequenceOneInBatchOneLoopStateVar(
       options,
       "Node:concat Output:concat_out_1 [ShapeInferenceError] Mismatch between number of source and target dimensions. "
-      "Source=2 Target=1");
+      "inferred=2 declared=1");
 }
 
 TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVar) {

@@ -2056,7 +2056,7 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1"));
   tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
-             "Mismatch between number of source and target dimensions. Source=1 Target=2",
+             "Mismatch between number of inferred and declared dimensions. inferred=1 declared=2",
              excluded_provider_types);
 }
 
