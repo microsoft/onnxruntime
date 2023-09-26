@@ -1063,7 +1063,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           }
 
           quant_opts.add_calibration_data(quant_params);
-          migraphx::quantize_int8(prog, targ, quant_opts);
+          //migraphx::quantize_int8(prog, targ, quant_opts);
         }
 
         prog.compile(t);
