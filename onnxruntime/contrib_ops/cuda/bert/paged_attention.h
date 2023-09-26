@@ -55,13 +55,12 @@ class PagedAttention final : public TrtFusedAttention<T>, public CudaKernel {
 
  private:
   Status CheckInputs(
-      const Tensor* query,
-      const Tensor* key,
-      const Tensor* value,
+      OpKernelContext* context,
       const InputMetadata* input_metadata,
       PackedAttentionParameters& parameters) const;
-  Status RunMultiHeadAttention(Tensor* output, OpKernelContext* context, PackedAttentionParameters parameters, IAllocatorUniquePtr<T>& gemm_buffer) const;
-  Status DoQKVProjectionIfNeed(OpKernelContext* context, PackedAttentionParameters parameters,
+  Status RunMultiHeadAttention(Tensor* output, OpKernelContext* context, InputMetadata* input_metadata,
+                               PackedAttentionParameters parameters, IAllocatorUniquePtr<T>& gemm_buffer) const;
+  Status DoQKVProjectionIfNeed(OpKernelContext* context, InputMetadata* input_metadata, PackedAttentionParameters parameters,
                                IAllocatorUniquePtr<T>& gemm_buffer) const;
 
   int32_t num_heads_;                  // number of attention heads
