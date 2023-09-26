@@ -140,7 +140,7 @@ for (long i = 0; i < elementsNum; ++i)
 ## More examples
 
 * [Stable Diffusion](stable-diffusion-csharp.md)
-* [BERT NLP example](bert-nlp-csharp-console.md)
+* [BERT NLP example](bert-nlp-csharp-console-app.md)
 * [Run on GPU](csharp-gpu.md)
 * [Yolov3](yolov3_object_detection_csharp.md)
 * [Faster CNN](fastercnn_csharp.md)
