@@ -25,7 +25,7 @@ See this table for supported versions:
 
 | ONNX Runtime Version | CUDA Toolkit Version | cuDNN Version|
 |----------------------|----------------------|--------------|
-| 1.13 - 1.14          | 11.6                 | 8.5.0.96     |
+| 1.13 - 1.16          | 11.6                 | 8.5.0.96     |
 | 1.9 - 1.12           | 11.4                 | 8.2.2.26     |
 
 NOTE: Full table can be found [here](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements)
@@ -47,7 +47,9 @@ torch.cuda.is_available()
 - Now you can enable GPU in the C# ONNX Runtime API with the following code:
 
 ```cs
-var session = new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(0));
+// keep in mind almost all of the classes are disposable.
+using var gpuSessionOptions = SessionOptions.MakeSessionOptionWithCudaProvider(0);
+using var session = new InferenceSession(modelPath, gpuSessionOptions);
 ```
 
 ## Checkout more C# ONNX Runtime resources
