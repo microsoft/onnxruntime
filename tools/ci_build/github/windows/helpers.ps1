@@ -611,7 +611,7 @@ function Install-ONNX {
     }
     
     Write-Host "Installing python packages..."
-    [string[]]$pip_args = "-m", "pip", "install", "-y", "-qq", "--disable-pip-version-check", "setuptools>=68.2.2", "wheel", "numpy", "protobuf==$protobuf_version"
+    [string[]]$pip_args = "-m", "pip", "install", "-qq", "--disable-pip-version-check", "setuptools>=68.2.2", "wheel", "numpy", "protobuf==$protobuf_version"
     &"python.exe" $pip_args
     if ($lastExitCode -ne 0) {
       exit $lastExitCode
