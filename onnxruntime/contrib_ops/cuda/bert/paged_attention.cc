@@ -479,8 +479,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (kv_quant_param != nullptr) {
     ORT_ENFORCE(key_cache && key_cache->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8);
     ORT_ENFORCE(value_cache && value_cache->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8);
-    ORT_ENFORCE(query->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, "Current only support fp16 with quant kv cache")
-    if (key_cache->GetElementType() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT32) {
+    ORT_ENFORCE(query->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, "Current only support fp16 with quant kv cache");
+    if (key_cache->GetElementType() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       kv_quant_param_dtype = 1; // fp16
     }
     auto kv_quant_param_shape = kv_quant_param->Shape(); // [num_blocks, 2, num_kv_heads, block_size, head_size / kv_quant_block_size]

@@ -145,7 +145,9 @@ inline __device__ TVec LoadQuantVec(const TVec* q8, const float unit_scale) {
 }
 
 template <typename TVec>
-inline __device__ TVec DequantizeByScaleVec(const typename QuantVec<TVec>::Type quant_vec_m, const typename FloatVec<TVec> unit_scales);
+inline __device__ TVec DequantizeByScaleVec(
+    const typename QuantVec<TVec>::Type quant_vec_m,
+    const typename FloatVec<TVec>::Type unit_scales);
 
 template <>
 inline __device__ uint32_t DequantizeByScaleVec<uint32_t>(const char2 ch2, const float2 unit_scales) {
@@ -193,10 +195,10 @@ inline __device__ uint4 DequantizeByScaleVec<uint4>(const Char2x4 ch2x4, const F
 }
 
 template <typename TVec>
-inline __device__ TVec LoadQuantVecByScales(const TVec* q8, const typename FloatVec<TVec> unit_scales) {
+inline __device__ TVec LoadQuantVecByScales(const TVec* q8, const typename FloatVec<TVec>::Type unit_scales) {
   using TQuantVec = typename QuantVec<TVec>::Type;
   TQuantVec quant_vec = *(const TQuantVec*)q8;
-  return DequantizeByScaleVec<TVec>(quant_vec, unit_scale);
+  return DequantizeByScaleVec<TVec>(quant_vec, unit_scales);
 }
 
 template <typename TFp, typename TVec>
@@ -265,6 +267,73 @@ inline __device__ void QuantizeTo(int8_t* dst, const TVec v, const float inv_uni
   *(TQuantVec*)dst = quant_vec;
 }
 
+template <typename scalar_t>
+class NoQuantProcessor {
+ public:
+  using kv_mem_scalar_t = scalar_t;
+  static constexpr bool IS_QUANTIZED = false;
+  kv_mem_scalar_t* dummy = nullptr;
+};
+
+template <typename quant_params_elem_t>  // float or float16
+class KVQuantProcessor {
+ public:
+  using kv_mem_scalar_t = int8_t;
+  using kv_quant_param_t = quant_params_elem_t;
+  static constexpr bool IS_QUANTIZED = true;
+
+  KVQuantProcessor(
+      const kv_quant_param_t* params_cache,
+      int kv_quant_chunk_size,
+      int num_kv_heads,
+      int head_size,
+      int block_size)
+      : kv_quant_params_cache_(params_cache),
+        kv_quant_chunk_size_(kv_quant_chunk_size),
+        block_size_(block_size),
+        head_stride_(block_size * (head_size / kv_quant_chunk_size)),
+        k_or_v_stride_(num_kv_heads * head_stride_) {
+    assert(head_size % kv_quant_chunk_size == 0);
+  }
+
+  template <typename VecT>
+  inline __device__ VecT LoadAndDequantizeK(
+      const VecT* ptr,
+      const int block_id,
+      const int in_block_token_id,
+      const int head_id,
+      const int in_head_idx) const {
+    const kv_quant_param_t* kv_block = kv_quant_params_cache_ + (int64_t)(block_id * 2) * k_or_v_stride_;
+    float unit_scale = (float)*(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
+    return LoadQuantVec(ptr, unit_scale);
+  }
+
+  template <typename VecT>
+  inline __device__ VecT LoadAndDequantizeV(
+      const VecT* ptr,
+      const int block_id,
+      const int in_block_token_id,
+      const int head_id,
+      const int in_head_idx) const {
+    const kv_quant_param_t* kv_block = kv_quant_params_cache_ + (int64_t)(block_id * 2 + 1) * k_or_v_stride_;
+    if constexpr (std::is_same<kv_quant_param_t, float>::value) {
+      const VecT float_scale_vec = *(const VecT*)(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
+      return LoadQuantVecByScales(ptr, float_scale_vec);
+    } else {
+      const VecT scale_vec = *(const VecT*)(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
+      using ScaleFp32Vec = typename FloatVec<VecT>::Type;
+      const ScaleFp32Vec float_scale_vec = to_float(scale_vec);
+      return LoadQuantVecByScales(ptr, float_scale_vec);
+    }
+  }
+
+  const kv_quant_param_t* kv_quant_params_cache_;  // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
+  const int kv_quant_chunk_size_;                  // for how many consecutive values, calc one scale for them to quant
+  const int block_size_;
+  const int head_stride_;
+  const int k_or_v_stride_;
+};
+
 // Utility function for attention softmax.
 template <int NUM_WARPS>
 inline __device__ float block_sum(float* red_smem, float sum) {
@@ -301,66 +370,6 @@ inline __device__ float block_sum(float* red_smem, float sum) {
   return __shfl_sync(uint32_t(-1), sum, 0);
 }
 
-template <typename scalar_t>
-class NoQuantProcessor {
- public:
-  static constexpr bool IS_QUANTIZED = false;
-  using kv_mem_scalar_t = scalar_t;
-  int dummy = 0;
-};
-
-template <typename quant_params_elem_t>  // float or float16
-class KVQuantProcessor {
- public:
-  static constexpr bool IS_QUANTIZED = true;
-
-  using kv_mem_scalar_t = int8_t;
-  using kv_quant_param_t = quant_params_elem_t;
-  KVQuantProcessor(const kv_quant_param_t* params_cache, int kv_quant_chunk_size, int num_kv_heads, int head_size, int block_size)
-      : kv_quant_params_cache_(params_cache), kv_quant_chunk_size_(kv_quant_chunk_size), block_size_(block_size) {
-    assert(head_size % kv_quant_chunk_size == 0);
-    head_stride_ = block_size * (head_size / kv_quant_chunk_size);
-    k_or_v_stride_ = num_kv_heads * head_stride_;
-  }
-
-  template <typename VecT>
-  inline __device__ VecT LoadAndDequantizeK(
-      const VecT* ptr,
-      const int block_id,
-      const int in_block_token_id,
-      const int head_id,
-      const int in_head_idx) {
-    const kv_quant_param_t* kv_block = kv_quant_params_cache_ + (int64_t)(block_id * 2) * k_or_v_stride_;
-    float* unit_scale = (float)*(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
-    return LoadQuantVec(ptr, unit_scale);
-  }
-
-  template <typename VecT, typename ScaleMemVec>
-  inline __device__ VecT LoadAndDequantizeV(
-      const VecT* ptr,
-      const int block_id,
-      const int in_block_token_id,
-      const int head_id,
-      const int in_head_idx) {
-    const kv_quant_param_t* kv_block = kv_quant_params_cache_ + (int64_t)(block_id * 2 + 1) * k_or_v_stride_;
-    using ScaleFloatVec = typename FloatVec<ScaleMemVec>::Type;
-    if constexpr (std::is_same<ScaleMemT, ScaleFloatVec>::value) {
-      const ScaleFloatVec float_scale_vec = *(const ScaleFloatVec*)(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
-      return LoadQuantVecByScales(ptr, float_scale_vec);
-    } else {
-      const VecT scale_vec = *(const VecT*)(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
-      const ScaleFloatVec float_scale_vec = to_float(scale_vec);
-      return LoadQuantVecByScales(ptr, float_scale_vec);
-    }
-  }
-
-  const kv_quant_param_t* kv_quant_params_cache_;  // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
-  const int kv_quant_chunk_size_;                  // for how many consecutive values, calc one scale for them to quant
-  const int block_size_;
-  const int head_stride_;
-  const int k_or_v_stride_;
-};
-
 // Grid: (num_heads, num_seqs).
 template <
     typename scalar_t,
@@ -369,11 +378,11 @@ template <
     int BLOCK_SIZE,
     int NUM_THREADS>
 __global__ void single_query_cached_kv_attention_kernel(
-    scalar_t* __restrict__ out,                                       // [num_seqs, num_heads, head_size]
-    const scalar_t* __restrict__ q,                                   // [num_seqs, num_heads, head_size]
-    const kv_quant_handler_t::kv_mem_scalar_t* __restrict__ k_cache,  // [num_blocks, num_kv_heads, head_size/x, block_size, x]
-    const kv_quant_handler_t::kv_mem_scalar_t* __restrict__ v_cache,  // [num_blocks, num_kv_heads, head_size, block_size]
-    const int* __restrict__ head_mapping,                             // [num_heads]
+    scalar_t* __restrict__ out,                                                // [num_seqs, num_heads, head_size]
+    const scalar_t* __restrict__ q,                                            // [num_seqs, num_heads, head_size]
+    const typename kv_quant_handler_t::kv_mem_scalar_t* __restrict__ k_cache,  // [num_blocks, num_kv_heads, head_size/x, block_size, x]
+    const typename kv_quant_handler_t::kv_mem_scalar_t* __restrict__ v_cache,  // [num_blocks, num_kv_heads, head_size, block_size]
+    const int* __restrict__ head_mapping,                                      // [num_heads]
     const float scale,
     const int* __restrict__ block_tables,  // [num_seqs, max_num_blocks_per_seq]
     const int* __restrict__ context_lens,  // [num_seqs]
@@ -408,7 +417,7 @@ __global__ void single_query_cached_kv_attention_kernel(
   constexpr int VEC_SIZE = MAX(16 / (THREAD_GROUP_SIZE * sizeof(scalar_t)), 1);
   using K_vec = typename Vec<scalar_t, VEC_SIZE>::Type;
   using Q_vec = typename Vec<scalar_t, VEC_SIZE>::Type;
-  if constexpr (!kv_quant_handler_t::IS_QUANTIZED) {
+  if constexpr (kv_quant_handler_t::IS_QUANTIZED) {
     assert(quant_handler.kv_quant_chunk_size_ % VEC_SIZE == 0);
   }
 
@@ -475,9 +484,8 @@ __global__ void single_query_cached_kv_attention_kernel(
         if constexpr (!kv_quant_handler_t::IS_QUANTIZED) {
           k_vecs[j] = *reinterpret_cast<const K_vec*>(k_ptr + offset1 * BLOCK_SIZE * x + offset2);
         } else {
-          k_vecs[j] = quant_handler.LoadAndDequantize(
+          k_vecs[j] = quant_handler.LoadAndDequantizeK(
               reinterpret_cast<const K_vec*>(k_ptr + offset1 * BLOCK_SIZE * x + offset2),
-              kv_quant_handler_t::K,
               physical_block_number,
               physical_block_offset,
               kv_head_idx,
@@ -545,9 +553,6 @@ __global__ void single_query_cached_kv_attention_kernel(
   using V_vec = typename Vec<scalar_t, V_VEC_SIZE>::Type;
   using L_vec = typename Vec<scalar_t, V_VEC_SIZE>::Type;
   using Float_L_vec = typename FloatVec<L_vec>::Type;
-  if constexpr (!kv_quant_handler_t::IS_QUANTIZED) {
-    assert(quant_handler.kv_quant_chunk_size_ % V_VEC_SIZE == 0);
-  }
 
   constexpr int NUM_V_VECS_PER_ROW = BLOCK_SIZE / V_VEC_SIZE;
   constexpr int NUM_ROWS_PER_ITER = WARP_SIZE / NUM_V_VECS_PER_ROW;
@@ -569,7 +574,7 @@ __global__ void single_query_cached_kv_attention_kernel(
     L_vec logits_vec;
     from_float(logits_vec, *reinterpret_cast<Float_L_vec*>(logits + token_idx));
 
-    const scalar_t* v_ptr = v_cache + physical_block_number * kv_block_stride_m + kv_head_idx * kv_head_stride_m;
+    const auto* v_ptr = v_cache + physical_block_number * kv_block_stride_m + kv_head_idx * kv_head_stride_m;
 #pragma unroll
     for (int i = 0; i < NUM_ROWS_PER_THREAD; i++) {
       const int row_idx = lane / NUM_V_VECS_PER_ROW + i * NUM_ROWS_PER_ITER;
@@ -813,8 +818,8 @@ __global__ void repeat_key_value_kernel(
       <<<grid, block, shared_mem_size, stream>>>(                                          \
           out_ptr,                                                                         \
           query_ptr,                                                                       \
-          key_cache_ptr,                                                                   \
-          value_cache_ptr,                                                                 \
+          (const typename QH::kv_mem_scalar_t*)key_cache_ptr,                              \
+          (const typename QH::kv_mem_scalar_t*)value_cache_ptr,                            \
           head_mapping_ptr,                                                                \
           scale,                                                                           \
           block_tables_ptr,                                                                \
@@ -824,7 +829,7 @@ __global__ void repeat_key_value_kernel(
           query_stride,                                                                    \
           kv_block_stride,                                                                 \
           kv_head_stride,                                                                  \
-          quant_handler);
+          quant_handler)
 
 // TODO(woosuk): Tune NUM_THREADS.
 template <
@@ -835,8 +840,8 @@ void single_query_cached_kv_attention_launcher(
     const cudaStream_t stream,
     T* out,
     const T* query,
-    const T* key_cache,
-    const T* value_cache,
+    const void* key_cache,
+    const void* value_cache,
     const int* head_mapping,
     float scale,
     const int* block_tables,
@@ -878,18 +883,17 @@ void single_query_cached_kv_attention_launcher(
   dim3 grid(num_heads, num_seqs);
   dim3 block(NUM_THREADS);
   if (kv_quant_params == nullptr) {
-    using QuantHandler = typename NoQuantProcessor<T>;
+    using QuantHandler = vllm::NoQuantProcessor<T>;
     QuantHandler quant_handler;
     switch (head_size) {
-    using
-        // NOTE(woosuk): To reduce the compilation time, we omitted head sizes
-        // 32, 160, 192, 256.
-        // case 32:
-        //   LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 32, BLOCK_SIZE, NUM_THREADS);
-        //   break;
-        case 64:
-      LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 64, BLOCK_SIZE, NUM_THREADS);
-      break;
+      // NOTE(woosuk): To reduce the compilation time, we omitted head sizes
+      // 32, 160, 192, 256.
+      // case 32:
+      //   LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 32, BLOCK_SIZE, NUM_THREADS);
+      //   break;
+      case 64:
+        LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 64, BLOCK_SIZE, NUM_THREADS);
+        break;
       case 80:
         LAUNCH_ATTENTION_KERNEL(T, QuantHandler, 80, BLOCK_SIZE, NUM_THREADS);
         break;
@@ -915,11 +919,12 @@ void single_query_cached_kv_attention_launcher(
     }
   } else {
     if constexpr (std::is_same<T, uint16_t>::value) {
-      using QuantHandler = typename KVQuantProcessor<half>; // TODO: support float scales
+      using QuantHandler = typename vllm::KVQuantProcessor<half>;
       QuantHandler quant_handler(
           (const QuantHandler::kv_quant_param_t*)kv_quant_params,
           kv_quant_chunk_size,
           num_heads / num_queries_per_kv,
+          head_size,
           BLOCK_SIZE);
 
       switch (head_size) {
@@ -954,6 +959,9 @@ void single_query_cached_kv_attention_launcher(
           abort();
           break;
       }
+    } else {
+      // Do not support
+      abort();
     }
   }
 }
@@ -963,8 +971,8 @@ void single_query_cached_kv_attention_launcher(
       stream,                                               \
       (T*)out,                                              \
       (const T*)query,                                      \
-      (const T*)key_cache,                                  \
-      (const T*)value_cache,                                \
+      (const void*)key_cache,                               \
+      (const void*)value_cache,                             \
       (const int*)head_mapping,                             \
       scale,                                                \
       block_tables,                                         \
@@ -975,8 +983,8 @@ void single_query_cached_kv_attention_launcher(
       query_shapes,                                         \
       num_queries_per_kv,                                   \
       kv_quant_params,                                      \
-      int kv_quant_chunk_size,                              \
-      int kv_quant_param_dtype);
+      kv_quant_chunk_size,                                  \
+      kv_quant_param_dtype)
 
 // NOTE(woosuk): To reduce the compilation time, we omitted block sizes
 // 1, 2, 4, 64, 128, 256.
