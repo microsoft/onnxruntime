@@ -180,7 +180,16 @@ class LoggingManager final {
   */
   void SendProfileEvent(profiling::EventRecord& eventRecord) const;
 
+  /**
+    Return if this LoggingManager is the owner of the default logger
+    @returns True/False
+  */
   bool IsDefaultOwner() const;
+
+  /**
+    Pass ownership of the default logger from the given LoggingManager to this
+    @param srcLoggingManager LoggingManager to take ownership from
+  */
   void MakeDefaultOwner(LoggingManager* srcLoggingManager);
 
   ~LoggingManager();
@@ -251,6 +260,10 @@ class Logger {
   */
   void SetVerbosity(int vlog_level) noexcept { max_vlog_level_ = vlog_level; }
 
+  /**
+     Set the LoggingManager for this logger
+     @param loggingManager LoggingManager to set
+  */
   void SetLoggingManager(const LoggingManager* loggingManager) noexcept { logging_manager_ = loggingManager; }
 
   /**
