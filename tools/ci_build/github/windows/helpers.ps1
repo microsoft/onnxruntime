@@ -607,11 +607,10 @@ function Install-ONNX {
     python.exe -m pip uninstall -y onnx -qq
     
     Write-Host "Installing python packages..."
-    $p = Start-Process -NoNewWindow -Wait -PassThru -FilePath "python.exe" -ArgumentList "-m", "pip", "install", "--disable-pip-version-check", "setuptools", "wheel", "numpy", "protobuf==$protobuf_version"
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "Install dependent python wheels failed. Exitcode: $exitCode"
-        exit $exitCode
+	[string[]]$pip_args = "-m", "pip", "install", "--disable-pip-version-check", "setuptools>=68.2.2", "wheel", "numpy", "protobuf==$protobuf_version"
+	&"python.exe" $pip_args
+    if ($lastExitCode -ne 0) {
+      exit $lastExitCode
     }
 
     $url=Get-DownloadURL -name onnx -src_root $src_root
