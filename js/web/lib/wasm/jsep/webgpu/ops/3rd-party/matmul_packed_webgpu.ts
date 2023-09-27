@@ -338,46 +338,47 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
     };
 
 const matMulReadWriteFnSource =
-    (component: number, hasBias: boolean, applyActivation: string, variables: IndicesHelper[]): string => {
-      const batchAVariable = variables[0];
-      const batchBVariable = variables[1];
-      const batchVariable = variables[2];
-      const aVariable = variables[3];
-      const bVariable = variables[4];
-      const outputVariable = variables[5];
-      const broadCastADims = getBroadcastDims(batchAVariable.shape, batchVariable.shape);
-      const broadCastBDims = getBroadcastDims(batchBVariable.shape, batchVariable.shape);
-      const getAIndices = () => {
-        const aRank = aVariable.shape.length;
-        const batchRank = batchVariable.shape.length;
-        let resStr = `var aIndices: ${aVariable.type.indices};`;
-        for (let i = aRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-          resStr += `\naIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
-        }
-        broadCastADims.forEach(i => {
-          resStr += `\naIndices[${i}] = 0;`;
-        });
-        resStr += `\naIndices[${aRank - 2}] = u32(row);
+    (component: number, hasBias: boolean, applyActivation: string, variables: IndicesHelper[], isChannelsLast = false):
+        string => {
+          const batchAVariable = variables[0];
+          const batchBVariable = variables[1];
+          const batchVariable = variables[2];
+          const aVariable = variables[3];
+          const bVariable = variables[4];
+          const outputVariable = variables[5];
+          const broadCastADims = getBroadcastDims(batchAVariable.shape, batchVariable.shape);
+          const broadCastBDims = getBroadcastDims(batchBVariable.shape, batchVariable.shape);
+          const getAIndices = () => {
+            const aRank = aVariable.shape.length;
+            const batchRank = batchVariable.shape.length;
+            let resStr = `var aIndices: ${aVariable.type.indices};`;
+            for (let i = aRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
+              resStr += `\naIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
+            }
+            broadCastADims.forEach(i => {
+              resStr += `\naIndices[${i}] = 0;`;
+            });
+            resStr += `\naIndices[${aRank - 2}] = u32(row);
                    aIndices[${aRank - 1}] = u32(colIn);`;
-        return resStr;
-      };
-      const getBIndices = () => {
-        const bRank = bVariable.shape.length;
-        const batchRank = batchVariable.shape.length;
-        let resStr = `var bIndices: ${bVariable.type.indices};`;
-        for (let i = bRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-          resStr += `\nbIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
-        }
-        broadCastBDims.forEach(i => {
-          resStr += `\nbIndices[${i}] = 0;`;
-        });
-        resStr += `\nbIndices[${bRank - 2}] = u32(row);
+            return resStr;
+          };
+          const getBIndices = () => {
+            const bRank = bVariable.shape.length;
+            const batchRank = batchVariable.shape.length;
+            let resStr = `var bIndices: ${bVariable.type.indices};`;
+            for (let i = bRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
+              resStr += `\nbIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
+            }
+            broadCastBDims.forEach(i => {
+              resStr += `\nbIndices[${i}] = 0;`;
+            });
+            resStr += `\nbIndices[${bRank - 2}] = u32(row);
                    bIndices[${bRank - 1}] = u32(colIn);`;
-        return resStr;
-      };
-      const source = `
+            return resStr;
+          };
+          const source = `
     fn mm_readA(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${
-          typeSnippet(component)} {
+              typeSnippet(component)} {
       var value = ${typeSnippet(component)}(0.0);
       let col = colIn * ${component};
       if(row < dimAOuter && col < dimInner)
@@ -389,7 +390,7 @@ const matMulReadWriteFnSource =
     }
 
     fn mm_readB(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${
-          typeSnippet(component)} {
+              typeSnippet(component)} {
       var value = ${typeSnippet(component)}(0.0);
       let col = colIn * ${component};
       if(row < dimInner && col < dimBOuter)
@@ -405,18 +406,19 @@ const matMulReadWriteFnSource =
       if (row < dimAOuter && col < dimBOuter) {
         var value = valueIn;
         let coords = vec3<i32>(batch, row, colIn);
-        ${hasBias ? 'value = value + bias[colIn];' : ''}
+        ${hasBias ? `value = value + ${isChannelsLast ? 'bias[colIn]' : `${typeSnippet(component)}(bias[row])`};` : ''}
         ${applyActivation}
         ${outputVariable.setByIndices('vec3<u32>(coords)', 'value')}
       }
     }
     `;
-      return source;
-    };
+          return source;
+        };
 
 export const createMatmulProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes,
-     outputShape: readonly number[], reshapedOutputShape?: readonly number[]): ProgramInfo => {
+     outputShape: readonly number[], reshapedOutputShape?: readonly number[],
+     isChannelsLast = false /* only used for conv2dByMatMul*/): ProgramInfo => {
       const aShape = inputs[0].dims;
       const bShape = inputs[1].dims;
 
@@ -454,9 +456,10 @@ export const createMatmulProgramInfo =
       variables.push(output);
       const inputVariables = [A, B];
       const hasBias = inputs.length > 2;
-      const declareFunctions = matMulReadWriteFnSource(components, hasBias, applyActivation, variables);
+      const declareFunctions = matMulReadWriteFnSource(components, hasBias, applyActivation, variables, isChannelsLast);
       if (hasBias) {
-        inputVariables.push(inputVariable('bias', inputs[2].dataType, [dimBOuter / components], components));
+        const biasComponents = isChannelsLast ? components : 1;
+        inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims, biasComponents));
       }
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   const dimAOuter: i32 = ${dimAOuter};
