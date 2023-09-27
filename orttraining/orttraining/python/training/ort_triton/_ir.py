@@ -185,7 +185,7 @@ class ComputeNode(IRNode):
     """
 
     def __init__(
-        self, op_type: str, inputs: List[TensorArg], outputs: List[TensorArg], attributes: Dict[str, Any] = {}
+        self, op_type: str, inputs: List[TensorArg], outputs: List[TensorArg], attributes: Dict[str, Any] = dict()
     ):
         super().__init__(inputs, outputs)
         self._op_type: str = op_type

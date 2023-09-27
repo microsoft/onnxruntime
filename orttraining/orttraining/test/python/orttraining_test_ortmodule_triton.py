@@ -145,10 +145,10 @@ def _torch_quick_gelu(input, **kwargs):
 
 
 def _torch_gelu_grad(dy, x):
-    kAlpha = 0.70710678118654752440
-    kBeta = 1.12837916709551257390 * 0.70710678118654752440 * 0.5
-    cdf = 0.5 * (1 + torch.erf(x * kAlpha))
-    pdf = kBeta * torch.exp(x * x * -0.5)
+    alpha = 0.70710678118654752440
+    beta = 1.12837916709551257390 * 0.70710678118654752440 * 0.5
+    cdf = 0.5 * (1 + torch.erf(x * alpha))
+    pdf = beta * torch.exp(x * x * -0.5)
     return dy * (cdf + x * pdf)
 
 
