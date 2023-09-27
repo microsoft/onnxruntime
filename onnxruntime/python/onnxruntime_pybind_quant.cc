@@ -4,28 +4,34 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <pybind11/functional.h>
-#include <numpy/npy_common.h>
 
 #include "contrib_ops/cpu/quantization/dequantize_blockwise.h"
 #include "core/util/thread_utils.h"
+
+namespace pybind11 {
+namespace detail {
+  // python3 -c 'import numpy as np; print(np.dtype(np.float16).num)'
+constexpr int NPY_FLOAT16 = 23;
+template <>
+struct npy_format_descriptor<onnxruntime::MLFloat16> {
+  static constexpr auto name = _("float16");
+  static pybind11::dtype dtype() {
+    handle ptr = npy_api::get().PyArray_DescrFromType_(NPY_FLOAT16);
+    return reinterpret_borrow<pybind11::dtype>(ptr);
+  }
+    static std::string format() {
+    // following: https://docs.python.org/3/library/struct.html#format-characters
+    return "e";
+  }
+};
+}  // namespace detail
+}  // namespace pybind11
 
 namespace onnxruntime {
 namespace python {
 
 namespace py = pybind11;
 using namespace onnxruntime;
-
-template <typename T>
-class ToOrtType {
- public:
-  typedef T MappedType;
-};
-
-template <>
-class ToOrtType<npy_half> {
- public:
-  typedef MLFloat16 MappedType;
-};
 
 template <typename T>
 void QuantizeMatMul4BitsBlockwise(
@@ -46,11 +52,10 @@ void QuantizeMatMul4BitsBlockwise(
   py::buffer_info scale_buf = scale.request();
   py::buffer_info zp_buf = zero_points.request();
 
-  typedef typename ToOrtType<T>::MappedType OrtType;
-  contrib::QuantizeBlockwise<OrtType>(
+  contrib::QuantizeBlockwise<T>(
       static_cast<uint8_t*>(dst_buf.ptr),
-      static_cast<const OrtType*>(src_buf.ptr),
-      static_cast<OrtType*>(scale_buf.ptr),
+      static_cast<const T*>(src_buf.ptr),
+      static_cast<T*>(scale_buf.ptr),
       is_symmetric ? nullptr : static_cast<uint8_t*>(zp_buf.ptr),
       block_size,
       4,
@@ -60,8 +65,8 @@ void QuantizeMatMul4BitsBlockwise(
 }
 
 void CreateQuantPybindModule(py::module& m) {
-  m.def("quantize_matmul_4bits_float", &QuantizeMatMul4BitsBlockwise<float>);
-  m.def("quantize_matmul_4bits_fp16", &QuantizeMatMul4BitsBlockwise<npy_half>);
+  m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<float>);
+  m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<MLFloat16>);
 }
 
 }  // namespace python
