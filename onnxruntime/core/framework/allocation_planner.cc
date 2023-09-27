@@ -830,34 +830,31 @@ class PlannerImpl {
   }
 
   std::vector<std::pair<int, int>> GetAliasMap(const Node& node, const KernelCreateInfo& kernel_create_info) {
-    if (kernel_create_info.kernel_def != nullptr) {
+    OER_ENFORCE(kernel_create_info.kernel_def != nullptr, "KernelDef is null for node: ", node.Name());
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
-      if ((node.OpType().compare("PythonOp") == 0 || node.OpType().compare("PythonOpGrad") == 0) &&
-          node.Domain() == kMSDomain) {
-        const auto& attrs = node.GetAttributes();
-        auto attr_it = attrs.find("tensor_reuse_map");
-        if (attr_it != attrs.end()) {
-          const auto& inplace_map = attr_it->second.ints();
-          std::vector<std::pair<int, int>> alias_map;
-          alias_map.reserve(inplace_map.size());
-          for (int i = 0; i < inplace_map.size(); ++i) {
-            int output_index = i;
-            int input_index = inplace_map[i];
-            if (input_index == -1) {
-              // skip because no reuse for this output
-              continue;
-            }
-            alias_map.emplace_back(std::make_pair(input_index, output_index));
+    if ((node.OpType().compare("PythonOp") == 0 || node.OpType().compare("PythonOpGrad") == 0) &&
+        node.Domain() == kMSDomain) {
+      const auto& attrs = node.GetAttributes();
+      auto attr_it = attrs.find("tensor_reuse_map");
+      if (attr_it != attrs.end()) {
+        const auto& inplace_map = attr_it->second.ints();
+        std::vector<std::pair<int, int>> alias_map;
+        alias_map.reserve(inplace_map.size());
+        for (int i = 0; i < inplace_map.size(); ++i) {
+          int output_index = i;
+          int input_index = inplace_map[i];
+          if (input_index == -1) {
+            // skip because no reuse for this output
+            continue;
           }
-          return alias_map;
+          alias_map.emplace_back(std::make_pair(input_index, output_index));
         }
+        return alias_map;
       }
+    }
 #endif
 
-      return kernel_create_info.kernel_def->Alias();
-    }
-
-    return {};
+    return kernel_create_info.kernel_def->Alias();
   }
 
   void GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
