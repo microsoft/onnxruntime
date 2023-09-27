@@ -153,35 +153,31 @@ std::vector<size_t> calculate_perms(int64_t axis, int64_t another_axis, size_t r
   return permutation;
 }
 
-std::unique_ptr<Tensor> FuncAllGather(
-  NcclKernel* nccl_kernel,
+void FuncAllGather(
+  const NcclKernel* nccl_kernel,
   OpKernelContext* ctx,
   const Tensor* input,
   const int64_t group_size,
-  const int64_t axis
+  const int64_t axis,
+  Tensor* output
 ) {
-  ORT_ENFORCE(group_size >= 0);
-  ORT_ENFORCE(axis >= 0);
-  auto nccl_ctx = nccl_kernel->GetNcclContext();
-  ORT_ENFORCE(group_size == nccl_ctx->Size(), "Currently all GPUs in world participate AllGather.");
+  ORT_ENFORCE(output->Shape().Size() == input->Shape().Size() * group_size, "Input and output shapes mismatch.");
+  ORT_ENFORCE(group_size >= 0, "group_size should be non-negative.");
+  ORT_ENFORCE(axis >= 0, "axis should be non-negative.");
   AllocatorPtr alloc;
-  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc) == Status::OK());
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc) == Status::OK(), "Fail to find allocator.");
   if (axis == 0) {
     const void* input_data = input->DataRaw();
     const auto input_shape = input->Shape();
-    TensorShape output_shape(input_shape);
-    output_shape[axis] = group_size * output_shape[axis];
-    auto output = Tensor::Create(input->DataType(), output_shape, alloc);
     void* output_data = output->MutableDataRaw();
     ncclAllGather(
       input_data,
       output_data,
       input_shape.Size(),
       GetNcclDataType(input->DataType()),
-      nccl_ctx->Comm(),
+      nccl_kernel->Comm(),
       nccl_kernel->Stream(ctx)
     );
-    return output;
   } else {
     const auto source_shape = input->Shape();
     TensorShape transposed_shape(source_shape);
@@ -207,21 +203,34 @@ std::unique_ptr<Tensor> FuncAllGather(
       gathered_buffer->MutableDataRaw(),
       transposed_shape.Size(),
       GetNcclDataType(input->DataType()),
-      nccl_ctx->Comm(),
+      nccl_kernel->Comm(),
       nccl_kernel->Stream(ctx)
     );
 
-    TensorShape output_shape(gathered_shape);
-    output_shape[axis] = gathered_shape[0];
-    output_shape[0] = gathered_shape[axis];
-    auto output = Tensor::Create(input->DataType(), output_shape, alloc);
-
+    ORT_ENFORCE(gathered_buffer->Shape().Size() == output->Shape().Size());
     ORT_ENFORCE(onnxruntime::cuda::Transpose::DoTranspose(nccl_kernel->GetDeviceProp(),
                                                           nccl_kernel->Stream(ctx),
                                                           nccl_kernel->GetCublasHandle(ctx),
                                                           perm, *gathered_buffer, *output) == Status::OK());
-    return output;
   }
+}
+
+std::unique_ptr<Tensor> FuncAllGather(
+  const NcclKernel* nccl_kernel,
+  OpKernelContext* ctx,
+  const Tensor* input,
+  const int64_t group_size,
+  const int64_t axis
+) {
+  ORT_ENFORCE(group_size >= 0);
+  ORT_ENFORCE(axis >= 0);
+  AllocatorPtr alloc;
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc) == Status::OK());
+  TensorShape output_shape(input->Shape());
+  output_shape[axis] = group_size * output_shape[axis];
+  auto output = Tensor::Create(input->DataType(), output_shape, alloc);
+  FuncAllGather(nccl_kernel, ctx, input, group_size, axis, output.get());
+  return output;
 }
 
 Status AllGather::ComputeInternal(OpKernelContext* context) const {
@@ -364,6 +373,61 @@ TensorShape ComputeShardShape(const TensorShape source_shape, int64_t shard_axis
   return shard_shape;
 }
 
+void GatherTensor(
+  // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+  // TODO: remove CudaKernel and OpKernelContext.
+  const NcclKernel* nccl_kernel,
+  // Do NOT use ctx to access inputs and outputs.
+  // Inputs and outputs are passed in as function arguments.
+  OpKernelContext* ctx,
+  const TensorPartitionSpec& spec,
+  const Tensor* tensor,
+  Tensor* gathered
+) {
+  const int64_t shard_axis = spec.GetPartitionAxis();
+  const int64_t shard_count = spec.GetPartitionCount(shard_axis);
+
+  FuncAllGather(
+    nccl_kernel,
+    ctx,
+    tensor,
+    shard_count,
+    shard_axis,
+    gathered
+  );
+}
+
+std::unique_ptr<Tensor> GatherTensor(
+  // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+  // TODO: remove CudaKernel and OpKernelContext.
+  const NcclKernel* nccl_kernel,
+  // Do NOT use ctx to access inputs and outputs.
+  // Inputs and outputs are passed in as function arguments.
+  OpKernelContext* ctx,
+  const TensorPartitionSpec& spec,
+  const Tensor* tensor
+) {
+  const int64_t shard_axis = spec.GetPartitionAxis();
+  const int64_t shard_count = spec.GetPartitionCount(shard_axis);
+  TensorShape gathered_shape(tensor->Shape());
+  gathered_shape[shard_axis] *= shard_count;
+
+  AllocatorPtr alloc;
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc) == Status::OK());
+  auto gathered = Tensor::Create(tensor->DataType(), gathered_shape, alloc);
+
+  FuncAllGather(
+    nccl_kernel,
+    ctx,
+    tensor,
+    shard_count,
+    shard_axis,
+    gathered.get()
+  );
+
+  return gathered;
+}
+
 void ShardTensor(
   // Use OpKernel and do a pointer cast to unify functional calls with other eps.
   // TODO: remove CudaKernel and OpKernelContext.
@@ -431,6 +495,94 @@ std::unique_ptr<Tensor> ShardTensor(
   );
 
   return shard_buffer;
+}
+
+
+void ReshardTensor(
+  // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+  // TODO: remove CudaKernel and OpKernelContext.
+  const NcclKernel* nccl_kernel,
+  // Do NOT use ctx to access inputs and outputs.
+  // Inputs and outputs are passed in as function arguments.
+  OpKernelContext* ctx,
+  const TensorPartitionSpec& src_spec,
+  const TensorPartitionSpec& dst_spec,
+  const int64_t device_id,
+  const Tensor* src,
+  Tensor* dst
+) {
+  if (src_spec.HasShard() && dst_spec.HasNoShard()) {
+    GatherTensor(
+      nccl_kernel,
+      ctx,
+      src_spec,
+      src,
+      dst
+    );
+    return;
+  } else if (src_spec.HasNoShard() && dst_spec.HasShard()) {
+    ShardTensor(
+      nccl_kernel,
+      ctx,
+      dst_spec,
+      device_id,
+      src,
+      dst
+    );
+  } else if (src_spec.HasShard() && dst_spec.HasShard()) {
+    int64_t src_axis = src_spec.GetPartitionAxis();
+    int64_t dst_axis = dst_spec.GetPartitionAxis();
+    ORT_ENFORCE(src_axis != dst_axis, "No reshard is needed. Don't call this function.");
+
+    auto all_replica_buffer = GatherTensor(
+      nccl_kernel,
+      ctx,
+      src_spec,
+      src
+    );
+
+    ShardTensor(
+      nccl_kernel,
+      ctx,
+      dst_spec,
+      device_id,
+      all_replica_buffer.get(),
+      dst
+    );
+  } else {
+    ORT_THROW("Not supported yet. Probably resharding is not needed.");
+  }
+}
+
+std::unique_ptr<Tensor> ReshardTensor(
+  // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+  // TODO: remove CudaKernel and OpKernelContext.
+  const NcclKernel* nccl_kernel,
+  // Do NOT use ctx to access inputs and outputs.
+  // Inputs and outputs are passed in as function arguments.
+  OpKernelContext* ctx,
+  const TensorPartitionSpec& src_spec,
+  const TensorPartitionSpec& dst_spec,
+  const int64_t device_id,
+  const Tensor* src
+) {
+  // Implement ReshardTensor but returning a unique_ptr to Tensor instead.
+  const auto origin_shape = ComputeOriginShape(src->Shape(), src_spec);
+  const auto dst_shape = ComputeShardShape(origin_shape, dst_spec);
+
+  AllocatorPtr alloc;
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc) == Status::OK());
+  auto dst = Tensor::Create(src->DataType(), dst_shape, alloc);
+  ReshardTensor(
+    nccl_kernel,
+    ctx,
+    src_spec,
+    dst_spec,
+    device_id,
+    src,
+    dst.get()
+  );
+  return dst;
 }
 
 template <typename T>
@@ -528,7 +680,8 @@ Status DistributedMatMul<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   // Case 3: A is sharded, B is sharded.
-  //  1. shard on (-1, -1):
+  //  1. shard on (-1, -1): MatMul(RS, RS) -> MatMul(RS, SR) + AllReduce -> RR
+  //                                       -> MatMul(RR, RS) -> RS
   //  2. shard on (-1, -2): MatMul(RS, SR) -> MatMul(RS, SR) + AllReduce -> RR
   //  3. shard on (-2, -1)
   //  4. shard on (-2, -2)
@@ -536,6 +689,18 @@ Status DistributedMatMul<T>::ComputeInternal(OpKernelContext* context) const {
   if (spec_A.HasShard() && spec_B.HasShard()) {
     if (spec_A.OnlyShardAxis(-1) && spec_B.OnlyShardAxis(-1)) {
       // Case 3-1
+      if (spec_Y.HasNoShard()) {
+        // Case 3-1-1
+        auto tmp_spec_B = TensorPartitionSpec::Create(spec_B, -2);
+        auto tmp_tensor_shard_B = ReshardTensor(this, context, spec_B, tmp_spec_B, nccl_->Rank(), tensor_shard_B);
+        auto tensor_shard_Y = context->Output(0, tensor_shard_shape_Y);
+        ORT_ENFORCE(onnxruntime::cuda::FuncMatMul<T>(
+          this, context, tensor_shard_A, tmp_tensor_shard_B.get(), 1.0, false, false, false, false, tensor_shard_Y
+        ) == Status::OK());
+        ORT_ENFORCE(FuncAllReduce(
+            nccl_->Comm(), Stream(context), tensor_shard_Y, tensor_shard_Y
+        ) == Status::OK());
+      }
     } else if (spec_A.OnlyShardAxis(-1) && spec_B.OnlyShardAxis(-2) && spec_Y.HasNoShard()) {
       // Case 3-2
       auto tensor_shard_Y = context->Output(0, tensor_shard_shape_Y);

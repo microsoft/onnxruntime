@@ -49,8 +49,8 @@ class NcclKernel : public ::onnxruntime::cuda::CudaKernel {
  public:
   explicit NcclKernel(const OpKernelInfo& info);
 
-  NcclContext* GetNcclContext() {
-    return nccl_;
+  ncclComm_t Comm() const {
+    return nccl_->Comm();
   }
 
  protected:
@@ -138,6 +138,16 @@ public:
     spec.axis_specs = axis_specs;
     spec.device_mesh = device_mesh;
     return spec;
+  }
+  static TensorPartitionSpec Create(
+    const TensorPartitionSpec& spec, int64_t new_shard_axis
+  ) {
+    if (new_shard_axis < 0) {
+      new_shard_axis += spec.axis_specs.size();
+    }
+    TensorPartitionSpec new_spec = spec;
+    std::swap(new_spec.axis_specs[new_shard_axis], new_spec.axis_specs[spec.GetPartitionAxis()]);
+    return new_spec;
   }
   std::string to_string() const {
     std::ostringstream os;

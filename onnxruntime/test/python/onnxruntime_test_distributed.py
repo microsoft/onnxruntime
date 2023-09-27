@@ -30,8 +30,6 @@ def MatMul2D(X: FLOAT[2, "s"], W: FLOAT["s", 2]) -> FLOAT[2, 2]:
 onnx_model = MatMul2D.to_model_proto()
 
 rank = comm.Get_rank()
-print(rank)
-print(onnx_model)
 sess = ort.InferenceSession(onnx_model.SerializeToString(), providers=["CUDAExecutionProvider"],
             provider_options=[{"device_id": str(rank)}])
 
@@ -44,6 +42,28 @@ W = np.array([[1, 1],
 
 X_shard = np.split(X, 2, axis=1)[rank]
 W_shard = np.split(W, 2, axis=0)[rank]
+result = sess.run(None, {"X": X_shard, "W": W_shard})
+if rank == 0:
+    print(result[0])
+    print(np.matmul(X, W))
+
+
+@onnxscript.script()
+def MatMul2D_RS_RS_RR(X: FLOAT[2, "s"], W: FLOAT[4, "t"]) -> FLOAT[2, 2]:
+    return MICROSOFT_OPSET.DistributedMatMul(
+        X,
+        W,
+        device_mesh_shape=[2],
+        device_mesh_elements=[0, 1],
+        input_shard_specs=["RS[0]", "RS[0]"],
+        output_shard_specs=["RR"])
+onnx_model = MatMul2D_RS_RS_RR.to_model_proto()
+rank = comm.Get_rank()
+sess = ort.InferenceSession(onnx_model.SerializeToString(), providers=["CUDAExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}])
+
+X_shard = np.split(X, 2, axis=1)[rank]
+W_shard = np.split(W, 2, axis=1)[rank]
 result = sess.run(None, {"X": X_shard, "W": W_shard})
 if rank == 0:
     print(result[0])
