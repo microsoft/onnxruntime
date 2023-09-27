@@ -329,11 +329,11 @@ const createIndicesHelper =
           offsets.push(`${strides[i]}u * (${idx} % ${shape[i]}u)`);
         }
         broadcastIndicesToOffsetImplementation =
-            `fn broadcastIndicesToOffset${name}(outputIndices: ${output.type.indices}) -> u32 {
+            `fn ${output.name}broadcastIndicesTo${name}Offset(outputIndices: ${output.type.indices}) -> u32 {
              return ${offsets.length > 0 ? offsets.join('+') : '0u'};
            }`;
         implementationUsed.broadcastIndicesToOffset = true;
-        return `broadcastIndicesToOffset${name}(${varIndices})`;
+        return `${output.name}broadcastIndicesTo${name}Offset(${varIndices})`;
       };
 
       const indices = (...init: ReadonlyArray<number|string>) =>
