@@ -1218,13 +1218,13 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
     // required, optional and invalid input
     status = RunOptionalInputTest(true, true, true, version, sess_env);
     ASSERT_FALSE(status.IsOK());
-    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid input name"));
 
     // missing required
     status = RunOptionalInputTest(false, true, false, version, sess_env);
     ASSERT_FALSE(status.IsOK());
     if (version == 3) {
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid input name"));
     } else {
       EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
     }
@@ -2056,7 +2056,7 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1"));
   tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
-             "Mismatch between number of source and target dimensions. Source=1 Target=2",
+             "Mismatch between number of inferred and declared dimensions. inferred=1 declared=2",
              excluded_provider_types);
 }
 
