@@ -1110,12 +1110,12 @@ class PlannerImpl {
         }
 
         const KernelCreateInfo& ci = *kci_it->second;
-        const auto alias_map = GetAliasMap(*node, ci);
-        if (alias_map.size() == 0) {
+        if (ci.kernel_def == nullptr) {
           continue;
         }
 
         bool found_reusable = false;
+        const auto alias_map = GetAliasMap(*node, ci);
         auto input_args = node->InputDefs();
         for (auto* input_arg : input_args) {
           OrtValueIndex input_idx_global{};

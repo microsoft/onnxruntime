@@ -1,8 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+
 #pragma once
 
+#include <string>
+#include <vector>
 #include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
@@ -29,3 +33,4 @@ class PythonOpRewriter : public RewriteRule {
 };
 
 }  // namespace onnxruntime
+#endif

@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include <mutex>
 #include <optional>
+#include <string>
+#include <vector>
 #include "orttraining/core/framework/torch/python_common.h"
 
 #ifndef SHARED_PROVIDER

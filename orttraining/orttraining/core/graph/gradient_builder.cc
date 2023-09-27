@@ -1851,11 +1851,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   // Copy bw_tensor_reuse_map attribute from PythonOp to PythonOpGrad if it is present.
   auto attr_it = src_attrs.find("bw_tensor_reuse_map");
   if (attr_it != src_attrs.end()) {
-    std::vector<int64_t> tensor_output_to_tensor_input_reuse_map;
-    tensor_output_to_tensor_input_reuse_map.reserve(src_attrs["bw_tensor_reuse_map"].ints().size());
-    for (const auto output_to_tensor_input_alias_mapindex : src_attrs["bw_tensor_reuse_map"].ints()) {
-      tensor_output_to_tensor_input_reuse_map.push_back(output_to_tensor_input_alias_mapindex);
-    }
+    std::vector<int64_t> tensor_output_to_tensor_input_reuse_map(attr_it->second.ints().begin(),
+                                                                 attr_it->second.ints().end());
     attrs.push_back(MakeAttribute("tensor_reuse_map", tensor_output_to_tensor_input_reuse_map));
   }
 

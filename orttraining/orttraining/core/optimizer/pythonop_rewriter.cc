@@ -1,20 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "orttraining/core/optimizer/pythonop_rewriter.h"
 
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
-
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/torch_proxy.h"
 #include "orttraining/core/framework/torch/custom_function_register.h"
-#endif
 
 namespace onnxruntime {
 
 Status PythonOpRewriter::Apply(Graph&, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
   bool modified = false;
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "PythonOp", {1}, kMSDomain) &&
       node.GetAttributes().find("tensor_reuse_map") == node.GetAttributes().end()) {
@@ -99,11 +101,7 @@ Status PythonOpRewriter::Apply(Graph&, Node& node, RewriteRuleEffect& rule_effec
 
   if (modified)
     rule_effect = RewriteRuleEffect::kUpdatedCurrentNode;
-#else
-  ORT_UNUSED_PARAMETER(node);
-  ORT_UNUSED_PARAMETER(rule_effect);
 
-#endif
   return Status::OK();
 }
 
@@ -112,3 +110,5 @@ bool PythonOpRewriter::SatisfyCondition(const Graph&, const Node&, const logging
 }
 
 }  // namespace onnxruntime
+
+#endif

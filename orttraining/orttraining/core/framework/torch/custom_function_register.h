@@ -36,10 +36,12 @@ class OrtTorchFunctionPool final {
 
   // Shape inference function is used to infer output shape of a PythonOp.
   void RegisterShapeInferenceFunction(const std::string& key, PyObject* obj);
+  // Return a borrowed reference to the stored Python function, if it exists; otherwise, return nullptr.
   std::optional<PyObject*> TryGettingShapeInferenceFunction(const std::string& key);
 
   // Input alias function is used to infer memory reuse map of a PythonOp.
   void RegisterInputAliasFunction(const std::string& key, PyObject* obj);
+  // Return a borrowed reference to the stored Python function, if it exists; otherwise, return nullptr.
   std::optional<PyObject*> TryGettingInputAliasFunction(const std::string& key);
 
   // Autograd function may take input of "non-tensor && non int/float && non int/float tuple" types.
