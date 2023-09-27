@@ -238,7 +238,7 @@ const convTranspose2d =
       const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
       const isChannelsLast = attributes.format === 'NHWC';
       const hasBias = inputs.length === 3;
-      if (adjustedAttributes.group !== 1) {
+      if (adjustedAttributes.group !== 1 || adjustedAttributes.dilations.reduce((x, y) => x * y, 1) !== 1) {
         context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes));
         return;
       }
