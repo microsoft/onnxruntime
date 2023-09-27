@@ -149,6 +149,13 @@ public:
     std::swap(new_spec.axis_specs[new_shard_axis], new_spec.axis_specs[spec.GetPartitionAxis()]);
     return new_spec;
   }
+  static TensorPartitionSpec CreateAllReplica(
+    const TensorPartitionSpec& spec
+  ) {
+    TensorPartitionSpec new_spec = spec;
+    new_spec.axis_specs[spec.GetPartitionAxis()] = AxisPartitionSpec::CreateReplica();
+    return new_spec;
+  }
   std::string to_string() const {
     std::ostringstream os;
     os << "TensorPartitionSpec { ";

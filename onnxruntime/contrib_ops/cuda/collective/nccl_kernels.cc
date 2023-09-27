@@ -700,6 +700,14 @@ Status DistributedMatMul<T>::ComputeInternal(OpKernelContext* context) const {
         ORT_ENFORCE(FuncAllReduce(
             nccl_->Comm(), Stream(context), tensor_shard_Y, tensor_shard_Y
         ) == Status::OK());
+      } else if (spec_Y.OnlyShardAxis(-1)) {
+        // Cas 3-1-2
+        auto tmp_spec_A = TensorPartitionSpec::CreateAllReplica(spec_A);
+        auto tmp_tensor_shard_A = ReshardTensor(this, context, spec_A, tmp_spec_A, nccl_->Rank(), tensor_shard_A);
+        auto tensor_shard_Y = context->Output(0, tensor_shard_shape_Y);
+        ORT_ENFORCE(onnxruntime::cuda::FuncMatMul<T>(
+          this, context, tmp_tensor_shard_A.get(), tensor_shard_B, 1.0, false, false, false, false, tensor_shard_Y
+        ) == Status::OK());
       }
     } else if (spec_A.OnlyShardAxis(-1) && spec_B.OnlyShardAxis(-2) && spec_Y.HasNoShard()) {
       // Case 3-2
