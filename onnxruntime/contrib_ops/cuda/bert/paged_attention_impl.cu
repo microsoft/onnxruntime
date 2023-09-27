@@ -796,14 +796,14 @@ __global__ void quantize_reshape_and_cache_kernel(
   // round it up to power of 2
   int num_threads_per_chunk = max(WARP_SIZE, kv_quant_chunk_size / VEC_SIZE);
   if ((num_threads_per_chunk ^ (num_threads_per_chunk - 1)) != 0) {
-    num_threads_per_chunk = 1 << clz(num_threads_per_chunk);
+    num_threads_per_chunk = 1 << (32 - __clz(num_threads_per_chunk));
   }
   const int num_chunks_per_head = head_size / kv_quant_chunk_size;
   const int quant_chunk_idx = threadIdx.x / num_threads_per_chunk;
   const int quant_chunk_offset = threadIdx.x % num_threads_per_chunk;
 
-  const int num_h_per_iter = num_threads_per_chunk * VEC_SIZE;
-  const int num_iters = (kv_quant_chunk_size + num_h_per_iter - 1) / num_h_per_iter;
+  const int num_h_per_iter_per_chunk = num_threads_per_chunk * VEC_SIZE;
+  const int num_iters = (kv_quant_chunk_size + num_h_per_iter_per_chunk - 1) / num_h_per_iter_per_chunk;
 
   half2 max_kv_fp16{0, 0};
   Vec k_vecs[MAX_NUM_ITER_PER_CHUNK];
@@ -812,15 +812,15 @@ __global__ void quantize_reshape_and_cache_kernel(
   int64_t src_k_idx = (int64_t)token_idx * key_stride + head_idx * head_size + quant_chunk_idx * kv_quant_chunk_size;
   int64_t src_v_idx = (int64_t)token_idx * value_stride + head_idx * head_size + quant_chunk_idx * kv_quant_chunk_size;
   for (int iter = 0; iter < num_iters; iter++) {
-    int h = quant_chunk_offset * VEC_SIZE + iter * num_h_per_iter;
-    if (quant_chunk_idx < num_chunks_per_head && i < kv_quant_chunk_size) {
-      k_vec[iter] = *(const Vec*)(&key[src_k_idx + h]);
-      v_vec[iter] = *(const Vec*)(&value[src_v_idx + h]);
+    int h_in_chunk = quant_chunk_offset * VEC_SIZE + iter * num_h_per_iter_per_chunk;
+    if (quant_chunk_idx < num_chunks_per_head && h_in_chunk < kv_quant_chunk_size) {
+      k_vecs[iter] = *(const Vec*)(&key[src_k_idx + h_in_chunk]);
+      v_vecs[iter] = *(const Vec*)(&value[src_v_idx + h_in_chunk]);
     } else {  // make sure all threads are alive to reduce
-      k_vec[iter] = Vec{0, 0, 0, 0};
-      v_vec[iter] = Vec{0, 0, 0, 0};
+      k_vecs[iter] = Vec{{CUDART_ZERO_FP16, CUDART_ZERO_FP16}, {CUDART_ZERO_FP16, CUDART_ZERO_FP16}};
+      v_vecs[iter] = k_vecs[iter];
     }
-    max_kv_fp16 = __hmax2(max_kv_fp16, __half2{MaxAbsFloat(k_vec), MaxAbsFloat(v_vec)});
+    max_kv_fp16 = __hmax2(max_kv_fp16, __half2{MaxAbsFloat<__half, Half2x2>(k_vecs[iter]), MaxAbsFloat<__half, Half2x2>(v_vecs[iter])});
     for (int mask = num_threads_per_chunk / 2; mask >= 1; mask /= 2) {
       max_kv_fp16 = __hmax2(max_kv_fp16, __shfl_xor_sync(uint32_t(-1), max_kv_fp16, mask));
     }
@@ -844,10 +844,10 @@ __global__ void quantize_reshape_and_cache_kernel(
 
   int64_t tgt_kv_idx = ((int64_t)block_idx * num_heads * +head_idx) * head_size * block_size;
   for (int iter = 0; iter < num_iters; iter++) {
-    QVec ch2x2_k = Quantize(k_vec[iter], inv_unit_scale_k);
-    QVec ch2x2_v = Quantize(v_vec[iter], inv_unit_scale_v);
+    QVec ch2x2_k = Quantize(k_vecs[iter], inv_unit_scale_k);
+    QVec ch2x2_v = Quantize(v_vecs[iter], inv_unit_scale_v);
 
-    int h = quant_chunk_offset * VEC_SIZE + iter * num_h_per_iter;
+    int h = quant_chunk_offset * VEC_SIZE + iter * num_h_per_iter_per_chunk + quant_chunk_idx * kv_quant_chunk_size;
     const int tgt_key_idx = tgt_kv_idx + (h / x) * block_size * x + block_offset * x + (h % x);
     const int tgt_value_idx = tgt_kv_idx * h * block_size + block_offset;
 
@@ -1209,8 +1209,8 @@ void reshape_and_cache(
     const int64_t* value_shapes,
     const int64_t block_size,
     const int vec_x,
-    int dtype,
-    const void* kv_quant_param,
+    const int dtype,
+    void* kv_quant_param,
     const int kv_quant_chunk_size,
     const int kv_quant_param_dtype) {
   int num_tokens = key_shapes[0];
@@ -1260,8 +1260,8 @@ void reshape_and_cache(
       vllm::quantize_reshape_and_cache_kernel<<<grid, block, 0, stream>>>(
           (const half*)key,
           (const half*)value,
-          (half*)key_cache,
-          (half*)value_cache,
+          (int8_t*)key_cache,
+          (int8_t*)value_cache,
           slot_mapping,
           key_stride,
           value_stride,

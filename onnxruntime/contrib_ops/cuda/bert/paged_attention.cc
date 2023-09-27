@@ -505,7 +505,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                       block_size,
                       key_cache_shape[4],
                       1,
-                      kv_quant_param != nullptr ? kv_quant_param->MutableDataRaw() : nullptr,
+                      (kv_quant_param != nullptr) ? (void *)kv_quant_param->DataRaw() : (void*)nullptr,
                       kv_quant_chunk_size,
                       kv_quant_param_dtype);
     CHECK_CUDA_ERROR();
