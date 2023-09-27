@@ -1,7 +1,9 @@
 #include "sharding_spec.h"
+#include <cctype>
 #include <sstream>
 #include <vector>
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
@@ -31,12 +33,17 @@ TensorPartitionSpec CreateTensorPartitionSpec(std::string spec_string, std::vect
       ++dim_index;
     } else if (token == 'S') {
       std::stringstream ss;
-      // Skip "[".
+      // Next should be "[".
+      ++token_index;
+      char left_bracket = spec_string.at(token_index);
+      ORT_ENFORCE(left_bracket == '[', "Invalid partition token: ", left_bracket, " in ", spec_string);
+      // Move to digit part.
       ++token_index;
       while (spec_string.at(token_index) != ']') {
         // Now token_index should points to the first digit of
         // axis index.
         char digit = spec_string.at(token_index);
+        ORT_ENFORCE(std::isdigit(digit), "Invalid partition token: ", token, " in ", spec_string);
         ss << digit;
         // Loaded a digit. Go to next token.
         ++token_index;
@@ -46,6 +53,8 @@ TensorPartitionSpec CreateTensorPartitionSpec(std::string spec_string, std::vect
       AxisPartitionSpec axis_spec = AxisPartitionSpec::CreateShard(device_mesh_index);
       axis_specs.push_back(axis_spec);
       // Skip "]".
+      char right_bracket = spec_string.at(token_index);
+      ORT_ENFORCE(right_bracket == ']', "Invalid partition token: ", token, " in ", spec_string);
       ++token_index;
     } else {
       throw std::invalid_argument("Invalid partition token: " + token);
@@ -75,6 +84,10 @@ TensorPartitionSpec CreateTensorShardSpec(
 }
 
 TensorShape ComputeOriginShape(const TensorShape& shard_shape, const TensorPartitionSpec& spec) {
+  ORT_ENFORCE(gsl::narrow<int64_t>(shard_shape.NumDimensions()) == spec.Rank(), "Shard shape and spec rank mismatch.");
+  if (spec.HasNoShard()) {
+    return shard_shape;
+  }
   TensorShape shape(shard_shape);
   const int64_t axis = spec.GetPartitionAxis();
   shape[axis] *= spec.GetPartitionCount(axis);
@@ -82,6 +95,7 @@ TensorShape ComputeOriginShape(const TensorShape& shard_shape, const TensorParti
 }
 
 TensorShape ComputeShardShape(const TensorShape& shape, const TensorPartitionSpec& spec) {
+  ORT_ENFORCE(gsl::narrow<int64_t>(shape.NumDimensions()) == spec.Rank(), "Shape and spec rank mismatch.");
   TensorShape shard_shape(shape);
   if (spec.HasNoShard()) {
     return shard_shape;
@@ -93,10 +107,10 @@ TensorShape ComputeShardShape(const TensorShape& shape, const TensorPartitionSpe
 
 TensorShape ComputeShardShape(const TensorShape source_shape, int64_t shard_axis, int64_t shard_count) {
   if (shard_axis < 0) {
-    shard_axis += source_shape.NumDimensions();
+    shard_axis += gsl::narrow<int64_t>(source_shape.NumDimensions());
   }
   TensorShape shard_shape(source_shape);
-  ORT_ENFORCE(shard_axis < source_shape.NumDimensions(), "Shard axis must be less than the number of dimensions of the source tensor.");
+  ORT_ENFORCE(shard_axis < gsl::narrow<int64_t>(source_shape.NumDimensions()), "Shard axis must be less than the number of dimensions of the source tensor.");
   ORT_ENFORCE(source_shape[shard_axis] % shard_count == 0, "Number of shards must be divisible by sharded axis' dimension.");
   shard_shape[shard_axis] = source_shape[shard_axis] / shard_count;
   return shard_shape;
@@ -136,6 +150,23 @@ std::tuple<TensorPartitionSpec, TensorPartitionSpec> NormalizeTensorPartitionSpe
   } else {
     return std::make_tuple(left, right);
   }
+}
+
+bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec) {
+  if (spec.HasNoShard()) {
+    return true;
+  }
+  if (gsl::narrow<int64_t>(shape.NumDimensions()) != spec.Rank()) {
+    return false;
+  }
+  const int64_t axis = spec.GetPartitionAxis();
+  if (axis < 0 || gsl::narrow<size_t>(axis) >= shape.NumDimensions()) {
+    return false;
+  }
+  if (shape[axis] % spec.GetPartitionCount(axis) != 0) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace cuda

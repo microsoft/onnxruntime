@@ -58,15 +58,6 @@ class TensorPartitionSpec {
     spec.device_mesh = device_mesh;
     return spec;
   }
-  static TensorPartitionSpec Create(
-      const TensorPartitionSpec& spec, int64_t new_shard_axis) {
-    if (new_shard_axis < 0) {
-      new_shard_axis += spec.axis_specs.size();
-    }
-    TensorPartitionSpec new_spec = spec;
-    std::swap(new_spec.axis_specs[new_shard_axis], new_spec.axis_specs[spec.GetPartitionAxis()]);
-    return new_spec;
-  }
   static TensorPartitionSpec CreateAllReplica(
       const TensorPartitionSpec& spec) {
     TensorPartitionSpec new_spec = spec;
@@ -97,7 +88,7 @@ class TensorPartitionSpec {
       axis += axis_specs.size();
     }
     bool answer = true;
-    for (int64_t i = 0; i < axis_specs.size(); ++i) {
+    for (int64_t i = 0; i < gsl::narrow<int64_t>(axis_specs.size()); ++i) {
       if (i == axis && axis_specs[i].cond != AxisPartitionSpec::Condition::Shard) {
         answer = false;
       } else if (i != axis && axis_specs[i].cond == AxisPartitionSpec::Condition::Shard) {
@@ -107,7 +98,7 @@ class TensorPartitionSpec {
     return answer;
   }
   int64_t Rank() const {
-    return axis_specs.size();
+    return gsl::narrow<int64_t>(axis_specs.size());
   }
 
   const AxisPartitionSpec& GetAxisSpec(int64_t axis) const {
@@ -117,13 +108,26 @@ class TensorPartitionSpec {
     return axis_specs.at(axis);
   }
 
+  const AxisPartitionSpec& GetPartitionAxisSpec() const {
+    return GetAxisSpec(GetPartitionAxis());
+  }
+
   int64_t GetPartitionAxis() const {
-    for (int64_t i = 0; i < axis_specs.size(); ++i) {
+    for (int64_t i = 0; i < gsl::narrow<int64_t>(axis_specs.size()); ++i) {
       if (axis_specs[i].cond == AxisPartitionSpec::Condition::Shard) {
         return i;
       }
     }
     return -1;
+  }
+
+  int64_t GetNegativePartitionAxis() const {
+    for (int64_t i = 0; i < gsl::narrow<int64_t>(axis_specs.size()); ++i) {
+      if (axis_specs[i].cond == AxisPartitionSpec::Condition::Shard) {
+        return i - axis_specs.size();
+      }
+    }
+    return 0;
   }
 
   int64_t GetPartitionCount(int64_t axis) const {
@@ -161,6 +165,8 @@ std::tuple<TensorShape, TensorShape> NormalizeShapes(const TensorShape& left, co
 
 std::tuple<TensorPartitionSpec, TensorPartitionSpec> NormalizeTensorPartitionSpecs(
     const TensorPartitionSpec& left, const TensorPartitionSpec& right);
+
+bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec);
 
 }  // namespace cuda
 }  // namespace contrib
