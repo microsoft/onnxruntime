@@ -12,6 +12,9 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/utils.h"
+#include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
+#include "core/optimizer/transpose_optimization/optimizer_api.h"
+#include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/test_environment.h"
@@ -19,6 +22,7 @@
 #include "test/providers/internal_testing/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -4395,9 +4399,9 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue9671) {
 
   SessionOptions so;
   so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue9671";
-  InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_uri));
-  ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());  // optimizers run during initialization
 }
 
 // regression test for a model where the transpose optimizations incorrectly removed a node providing an implicit
@@ -4409,9 +4413,9 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue10305) {
 
   SessionOptions so;
   so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue10305";
-  InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_uri));
-  ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());  // optimizers run during initialization
 }
 
 // regression test for a model with DQ node with per-axis dequantization followed by a Transpose.
@@ -4432,18 +4436,18 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
 
   {
     so.graph_optimization_level = TransformerLevel::Default;  // off
-    InferenceSession session_object{so, GetEnvironment()};
-    ASSERT_STATUS_OK(session_object.Load(model_uri));
-    ASSERT_STATUS_OK(session_object.Initialize());
-    ASSERT_STATUS_OK(session_object.Run(feeds, output_names, &fetches_orig));
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
   }
 
   {
     so.graph_optimization_level = TransformerLevel::Level1;  // enable transpose optimizer
-    InferenceSession session_object{so, GetEnvironment()};
-    ASSERT_STATUS_OK(session_object.Load(model_uri));
-    ASSERT_STATUS_OK(session_object.Initialize());
-    ASSERT_STATUS_OK(session_object.Run(feeds, output_names, &fetches));
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
   }
 
   ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
@@ -4497,6 +4501,13 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
   for (const auto& node : graph.Nodes()) {
     EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
                                                                 << "' was not assigned to the internal testing EP.";
+
+    if (node.Name() == "Mul_212" || node.Name() == "Add_213") {
+      // check that the special case in TransposeInputs for a single element input reconnects things back up correctly
+      const auto& inputs = node.InputDefs();
+      EXPECT_EQ(inputs.size(), size_t(2));
+      EXPECT_TRUE(inputs[1]->Exists());
+    }
   }
 #endif
 }
@@ -4542,6 +4553,87 @@ TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
                                                                 << "' was not assigned to the internal testing EP.";
   }
 #endif
+}
+
+static void CheckSharedInitializerHandling(bool broadcast) {
+  auto model_uri = broadcast ? ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast.onnx")
+                             : ORT_TSTR("testdata/transpose_optimizer_shared_initializers.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 2, 2, 3};
+  std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], input_dims, input_data, &input);
+
+  NameMLValMap feeds{{"input0", input}};
+
+  std::vector<std::string> output_names{"output0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+
+  // get results with no modifications to the model
+  {
+    so.graph_optimization_level = TransformerLevel::Default;  // off
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    // we call the ONNX transpose optimizer directly to simplify the model required to exercise the shared initializer
+    // handling. this means we don't need to disable optimizers that might alter the graph before the
+    // transpose optimizer runs (at a minimum ConstantFolding, CommonSubexpressionElimination and ConstantSharing).
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    using namespace onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    // default optimization cost check
+    OptimizeResult result = Optimize(*api_graph);
+
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Transpose"], 0) << "The Transpose nodes should have been pushed through and canceled out.";
+
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
+// test we re-use a modified shared initializer wherever possible. model has one initializer that is used by 3 DQ nodes
+// and one initializer that is used by 2 Add nodes. both cases should be handled with the initializer being
+// modified in-place for the first usage, and the Transpose added to the second usage being cancelled out when the
+// original Transpose at the start of the model is pushed down.
+TEST(TransposeOptimizerTests, SharedInitializerHandling) {
+  CheckSharedInitializerHandling(/*broadcast*/ false);
+}
+
+// same setup as the above test, however the initializer is broadcast to bring UnsqueezeInput into play.
+// the in-place modification of the initializer for the first usage results in
+//   <initializer> -> Transpose -> Squeeze -> {DQ | Add}
+// the later usages of the initializer should attempt to cancel out the Squeeze in UnsqueezeInput,
+// followed by canceling out the Transpose in TransposeInput.
+TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast) {
+  CheckSharedInitializerHandling(/*broadcast*/ true);
 }
 }  // namespace test
 }  // namespace onnxruntime

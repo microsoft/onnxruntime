@@ -242,6 +242,12 @@ class NodeRef {
   /// <returns>since version or default value -1</returns>
   virtual int SinceVersion() const = 0;
 
+  /// <summary>
+  /// Get the unique id of the node.
+  /// </summary>
+  /// <returns>Id</returns>
+  virtual int64_t Id() const = 0;
+
   virtual ~NodeRef(){};
 };
 
