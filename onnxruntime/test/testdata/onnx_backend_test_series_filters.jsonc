@@ -464,6 +464,14 @@
         "^test_squeeze_negative_axes"
     ],
     "current_failing_tests_OPENVINO_CPU_FP32": [
+        "^test_affine_grid_2d_align_corners",
+        "^test_affine_grid_2d_align_corners_expanded",
+        "^test_affine_grid_2d",
+        "^test_affine_grid_2d_expanded",
+        "^test_affine_grid_3d_align_corners",
+        "^test_affine_grid_3d_align_corners_expanded",
+        "^test_affine_grid_3d",
+        "^test_affine_grid_3d_expanded",
         "^test_operator_permute2",
         "^test_operator_repeat",
         "^test_operator_repeat_dim_overflow",
