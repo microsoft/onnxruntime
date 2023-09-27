@@ -169,6 +169,14 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
   conversion_buffers_out = std::move(conversion_buffers);
   return Status::OK();
 }
+
+bool IsArrayContiguous(MLMultiArray *array) {
+    int batch_stride = [array.strides[0] intValue];
+    auto shape = array.shape;
+    int batch_elems=1;
+    for (int i=1; i<[shape count]; i++) batch_elems *= [shape[i] intValue];
+    return batch_stride == batch_elems;
+}
 }  // namespace
 
 NS_ASSUME_NONNULL_BEGIN
@@ -324,6 +332,8 @@ NS_ASSUME_NONNULL_BEGIN
                                  ") do not match");
         }
 
+        ORT_RETURN_IF_NOT(IsArrayContiguous(data),
+                            "Non contiguous output MLMultiArray are not currently supported");
         const void* model_output_buffer = data.dataPointer;
 
         if (model_output_buffer == nullptr) {
