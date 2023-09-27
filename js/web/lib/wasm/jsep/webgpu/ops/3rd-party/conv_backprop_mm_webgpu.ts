@@ -86,8 +86,8 @@ const conv2dTransposeCommonSnippet =
 
       let WRow = ${col} / (filterDims[1] * inChannels);
       let WCol = ${col} / inChannels % filterDims[1];
-      let xR = f32(outRow / strides[0] - pads[0] + dilation[0] * WRow);
-      let xC = f32(outCol / strides[1] - pads[1] + dilation[1] * WCol);
+      let xR = f32(outRow - pads[0] + dilation[0] * WRow) / f32(strides[0]);
+      let xC = f32(outCol - pads[1] + dilation[1] * WCol) / f32(strides[1]);
       if (xR < 0.0 || xR >= f32(${xHeight}) || fract(xR) > 0.0) {
         return ${typeSnippet(innerElementSize)}(0.0);
       }

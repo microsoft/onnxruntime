@@ -97,9 +97,11 @@ const getAdjustedConvTransposeAttributes =
 
       // always return a new object so does not modify the original attributes
       const newAttributes: T = Object.assign({}, attributes);
-      Object.assign(
-          newAttributes,
-          {kernelShape, pads, outputPadding, outputShape, dilations, strides, cacheKey: attributes.cacheKey});
+      const cacheKey = attributes.cacheKey + [
+        kernelShape.join('n,'), pads.join(','), strides.join(','), outputPadding.join(','), outputShape.join(','),
+        dilations.join(',')
+      ].join('_');
+      Object.assign(newAttributes, {kernelShape, pads, outputPadding, outputShape, dilations, strides, cacheKey});
       return newAttributes;
     };
 
@@ -236,7 +238,7 @@ const convTranspose2d =
       const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
       const isChannelsLast = attributes.format === 'NHWC';
       const hasBias = inputs.length === 3;
-      if (adjustedAttributes.group !== 1 || attributes.strides.reduce((a, b) => a * b, 1) !== 1) {
+      if (adjustedAttributes.group !== 1) {
         context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes));
         return;
       }
