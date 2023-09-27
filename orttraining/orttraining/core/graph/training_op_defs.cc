@@ -3909,7 +3909,7 @@ Return true if all elements are true and false otherwise.
       // Other attributes.
       .Attr(
           "tensor_reuse_map",
-          "A int array indicating whether output at each index is reusing specific input or now."
+          "A int array indicating whether output at each index is reusing specific input or not."
           "If the given index is -1, it means the output is not reusing any input."
           "For example, there are 2 tensor inputs and 3 tensor outputs (including ctx), "
           "tensor_reuse_map = [-1, 1, 0] means"
@@ -4072,7 +4072,7 @@ Return true if all elements are true and false otherwise.
           AttributeProto::STRING)
       .Attr(
           "tensor_reuse_map",
-          "A int array indicating whether output at each index is reusing specific input or now."
+          "A int array indicating whether output at each index is reusing specific input or not."
           "If the given index is -1, it means the output is not reusing any input."
           "For example, there are 3 inputs (including ctx) and 2 outputs, tensor_reuse_map = [2, 1] means"
           "- the output 0 reuses the input 2."
