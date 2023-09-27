@@ -798,8 +798,8 @@ void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
   TransposeInputImpl(graph, /* nodes_using_updated_shared_initializer */ nullptr, node, i, perm, perm_inv);
 }
 
-void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm,
-                    const std::vector<int64_t>& perm_inv) {
+static void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm,
+                           const std::vector<int64_t>& perm_inv) {
   TransposeInputImpl(ctx.graph, &ctx.nodes_using_updated_shared_initializer, node, i, perm, perm_inv);
 }
 
