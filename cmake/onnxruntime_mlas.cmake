@@ -581,7 +581,7 @@ set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
   target_compile_options(onnxruntime_mlas PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd6385>" "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-    target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize" 131072>)
+    target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize 131072>")
   endif()
 endif()
 
