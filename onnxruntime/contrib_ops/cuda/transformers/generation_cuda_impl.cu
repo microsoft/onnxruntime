@@ -1335,31 +1335,39 @@ __global__ void CopyCacheToStagingKernel(const std::uintptr_t* in_out_address_bu
 }
 
 template <typename T>
-__global__ void ReorderPastStatesKernel(const std::uintptr_t* in_out_address_buffer,
+__global__ void ReorderPastStatesKernel(std::uintptr_t* in_out_address_buffer,
                                         const T* past_states_staging_buffer,
                                         int batch_size,
                                         int num_heads,
                                         int max_length,
                                         int head_size,
                                         int chunk_size) {
-  //[B, N, max_length, head_size] -> [B, N, head_size / x, max_length, x]
+  //[B, N, max_length, H2(head_size/chunk_size), chunk_size] -> [B, N, H2(head_size/chunk_size), max_length, chunk_size]
   const int p = blockIdx.x;
   const int b = blockIdx.y / num_heads;
   const int n = blockIdx.y % num_heads;
   const int s = blockIdx.z;
-  const int h = threadIdx.x;
+  const int h2 = threadIdx.x;
   const int c = threadIdx.y;
 
-  const int in_offset = ((b * num_heads + n) * max_length + s) * head_size + h +
-                        p * batch_size * num_heads * max_length * head_size;
-  const int out_offset = b * num_heads * head_size * max_length + n * head_size * max_length +
-                         (h / chunk_size) * max_length * chunk_size + s * chunk_size + c;
+  const int in_offset = p * batch_size * num_heads * max_length * head_size +
+                        b * num_heads * max_length * head_size +
+                        n * max_length * head_size +
+                        s * head_size +
+                        h2 * chunk_size +
+                        c;
+
+  const int out_offset = b * num_heads * max_length * head_size +
+                         n * max_length * head_size +
+                         h2 * max_length * chunk_size +
+                         s * chunk_size +
+                         c;
 
   T* past = (T*)(in_out_address_buffer[p]);
   past[out_offset] = past_states_staging_buffer[in_offset];
 }
 
-void ReorderPastStatesKernelLauncher(const std::uintptr_t* in_out_address_buffer,
+void ReorderPastStatesKernelLauncher(std::uintptr_t* in_out_address_buffer,
                                      void* past_states_staging_buffer,
                                      int batch_size,
                                      int num_heads,
@@ -1370,7 +1378,7 @@ void ReorderPastStatesKernelLauncher(const std::uintptr_t* in_out_address_buffer
                                      cudaStream_t stream) {
   const dim3 grid(total_past_num, batch_size * num_heads, max_length);
   const dim3 block(head_size);
-  const dim3 block2(head_size, chunk_size);
+  const dim3 block2(int(head_size / chunk_size), chunk_size);
   if (chunk_size == 4) {
     // float
     CopyCacheToStagingKernel<<<grid, block, 0, stream>>>(in_out_address_buffer,
@@ -1387,7 +1395,7 @@ void ReorderPastStatesKernelLauncher(const std::uintptr_t* in_out_address_buffer
                                                          max_length,
                                                          head_size,
                                                          chunk_size);
-  } else if (chunk_size == 2) {
+  } else if (chunk_size == 8) {
     // half
     CopyCacheToStagingKernel<<<grid, block, 0, stream>>>(in_out_address_buffer,
                                                          reinterpret_cast<half*>(past_states_staging_buffer),
