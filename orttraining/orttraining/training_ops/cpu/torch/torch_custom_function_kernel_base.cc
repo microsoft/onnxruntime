@@ -328,7 +328,6 @@ void PythonOpGradBase::Init(const OpKernelInfo& info) {
   ORT_ENFORCE(output_tensor_types_.size() == output_tensor_requires_grads_.size(),
               "backward tensor output count mismatch");
 
-  // Mao from
   std::vector<int64_t> tensor_output_to_tensor_input_alias_map =
       info.GetAttrsOrDefault("tensor_reuse_map",
                              std::vector<int64_t>((info.node().OutputDefs().size()), -1));
