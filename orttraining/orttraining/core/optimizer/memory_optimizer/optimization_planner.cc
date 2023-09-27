@@ -73,7 +73,11 @@ Status MemoryOptimizationPlanner::UpdateNodePlansFromExecutionPlan(const GraphVi
         const auto& reused_ort_value_name = idx_to_ortvalue_name_map.at(reused_ort_value_idx);
 
         const Node* p_node = graph_viewer.GetProducerNode(reused_ort_value_name);
-        ORT_ENFORCE(p_node != nullptr);
+        if (p_node == nullptr) {
+          // This is a graph input.
+          continue;
+        }
+
         int src_op_output_index = optimizer_utils::IndexOfNodeOutput(*p_node, *node_arg);
         node_plan->reuse_buffers[output_index] = std::make_pair(p_node, src_op_output_index);
       }

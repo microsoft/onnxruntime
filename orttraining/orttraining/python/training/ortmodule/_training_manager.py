@@ -18,7 +18,7 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo, unflatten_user_output
-from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
+from ._logger import LogLevel, ORTModuleInitPhase, SuppressLogs, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
 from .graph_transformer_registry import GraphTransformerRegistry
@@ -434,7 +434,7 @@ class TrainingManager(GraphExecutionManager):
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
 
-        if self._runtime_inspector.is_memory_inspector_enabled():
+        if self._runtime_inspector.is_memory_inspector_enabled() and self._debug_options.log_level <= LogLevel.INFO:
             # Create a training agent without enabling memory optimization.
             execution_agent = TrainingAgent(
                 self._onnx_models.optimized_model.SerializeToString(),
