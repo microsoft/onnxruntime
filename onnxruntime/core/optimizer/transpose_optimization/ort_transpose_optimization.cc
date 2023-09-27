@@ -15,8 +15,9 @@ namespace onnxruntime {
 static bool EPAwareHandleResize(HandlerArgs& args) {
   // Whilst Resize is not technically layout sensitive, execution providers typically implement handling for only one
   // layout. Due to that, only push a Transpose through a Resize once it is assigned and we know it's being handled
-  // by an EP that supports multiple layouts. Currently that's just the CPU EP.
-  if (args.node.GetExecutionProviderType() == kCpuExecutionProvider) {
+  // by an EP that supports multiple layouts. Currently that's the CPU and XNNPACK EPs.
+  const auto ep_type = args.node.GetExecutionProviderType();
+  if (ep_type == kCpuExecutionProvider || ep_type == kXnnpackExecutionProvider) {
     // allow NCHW <-> NHWC for now. not clear any other sort of transpose has a valid usage in a real model
     int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
     if (rank_int == 4) {
