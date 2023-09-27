@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Set, Tuple
 
 import sympy
-from onnx import NodeProto
+from onnx import NodeProto, helper
 
 from ._common import AutotuneConfigs, TensorInfo
 from ._ir import (
@@ -378,7 +378,10 @@ class GraphLowering:
             return DropoutNode(inputs, outputs, offset_calc)
         if is_reduction_node(node):
             return ReduceNode(op_type, inputs, outputs, offset_calc)
-        return ComputeNode(op_type, inputs, outputs)
+        attributes = {}
+        for attr in node.attribute:
+            attributes[attr.name] = helper.get_attribute_value(attr)
+        return ComputeNode(op_type, inputs, outputs, attributes)
 
     def _analyze_kernel_io_list(self):
         cross_kernel_inputs = set()

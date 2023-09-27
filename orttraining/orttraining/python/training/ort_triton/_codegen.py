@@ -263,10 +263,20 @@ class TritonCodegen(NodeVisitor):
         "Rsqrt": "{indent}{o0} = 1.0 / tl.sqrt({i0})\n",
         "Cast": "{indent}{o0} = {i0}.to(tl.{dtype})\n",
         "CastBool": "{indent}{o0} = {i0} != 0\n",
-        "Erf": "{indent}{o0} = tl.libdevice.erf({i0})\n",
-        "Gelu": "{indent}{o0} = (tl.libdevice.erf({i0} / 1.41421356237) + 1.0) * 0.5\n",
+        "Erf": "{indent}{o0} = tl.erf({i0})\n",
+        "Gelu": "{indent}{o0} = {i0} * 0.5 * (tl.math.erf({i0} * 0.70710678118654752440) + 1.0)\n",
+        "QuickGelu": "{indent}{o0} = {i0} * tl.sigmoid({i0} * {alpha})\n",
+        "GeluGrad": (
+            "{indent}{o0} = {i0} * (0.5 * (1.0 + tl.math.erf(0.70710678118654752440 * {i1})) + "
+            "{i1} * 1.12837916709551257390 * 0.70710678118654752440 * 0.5 * tl.exp(-0.5 * {i1} * {i1}))\n"
+        ),
+        "QuickGeluGrad": (
+            "{indent}tmp_v = {i1} * {alpha}\n"
+            "{indent}tmp_sigmoid = tl.sigmoid(tmp_v)\n"
+            "{indent}{o0} = {i0} * tmp_sigmoid * (1.0 + tmp_v * (1.0 - tmp_sigmoid))\n"
+        ),
         "Exp": "{indent}{o0} = tl.exp({i0})\n",
-        "Tanh": "{indent}{o0} = tl.libdevice.tanh({i0})\n",
+        "Tanh": "{indent}{o0} = tl.math.tanh({i0})\n",
         "Where": "{indent}{o0} = tl.where({i0}, {i1}, {i2})\n",
         "Sigmoid": "{indent}{o0} = tl.sigmoid({i0})\n",
         "Log": "{indent}{o0} = tl.log({i0})\n",
@@ -302,6 +312,9 @@ class TritonCodegen(NodeVisitor):
                 op_type = "CastBool"
             else:
                 kwargs["dtype"] = to_dtype.__name__
+
+        if op_type == "QuickGelu" or op_type == "QuickGeluGrad":
+            kwargs["alpha"] = str(node.attributes.get("alpha", 1.702))
 
         if op_type == "Sum":
             output_var = kwargs["o0"]
