@@ -368,14 +368,12 @@ class WeightS8ScaleFp32 {
   virtual void packWeight(const int N, const int K, const float* B, const int ldb, PackedWeight* stor,
                           bool is_sym = true) {
     utils::aligned_vector<int8_t> tmpq(N * K);
-    auto ptr = dynamic_cast<PackedWeightKBlock*>(stor);
-    if (ptr) {
-      int nk_scale = utils::updiv(K, ptr->mBlockSize);
-      StorageSimpleCorrection<float, int8_t, float> corr;
-      corr.resize(N, nk_scale, is_sym, false);
-      quantizeWeight(N, K, B, ldb, ptr->mBlockSize, tmpq.data(), corr.get_scales(), corr.get_zps());
-      packQWeight(N, K, tmpq.data(), ldb, corr.get_scales(), corr.get_zps(), stor);
-    }
+    auto ptr = reinterpret_cast<PackedWeightKBlock*>(stor);
+    int nk_scale = utils::updiv(K, ptr->mBlockSize);
+    StorageSimpleCorrection<float, int8_t, float> corr;
+    corr.resize(N, nk_scale, is_sym, false);
+    quantizeWeight(N, K, B, ldb, ptr->mBlockSize, tmpq.data(), corr.get_scales(), corr.get_zps());
+    packQWeight(N, K, tmpq.data(), ldb, corr.get_scales(), corr.get_zps(), stor);
   }
 
   virtual void unpackWeight(const int N, const int K, PackedWeight* stor, float* B, const int ldb) {
@@ -432,31 +430,29 @@ class WeightS8ScaleFp32 {
 
   virtual void packQWeight(const int N, const int K, const int8_t* B, const int ldb, const float* scales,
                            const int8_t* zero_points, PackedWeight* ptr) {
-    auto stor = dynamic_cast<StorageWeight*>(ptr);
-    if (stor) {
-      int rawnk_scale = utils::updiv(K, stor->mBlockSize);
-      int nk_scale = utils::updiv(stor->mKPad, stor->mBlockSize);
+    auto stor = reinterpret_cast<StorageWeight*>(ptr);
+    int rawnk_scale = utils::updiv(K, stor->mBlockSize);
+    int nk_scale = utils::updiv(stor->mKPad, stor->mBlockSize);
 #pragma omp parallel for
-      for (int i = 0; i < nk_scale; i++) {  // padding copy
-        if (i < rawnk_scale) {
-          std::memcpy(stor->mSPtr + i * stor->mNPad, scales + i * N, N * sizeof(scales[0]));
-          if (zero_points != nullptr) {
-            std::memcpy(stor->mZPtr + i * stor->mNPad, zero_points + i * N, N * sizeof(zero_points[0]));
-          }
-        } else {
-          std::memset(stor->mSPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(stor->mSPtr[0]));
-          if (zero_points != nullptr) {
-            std::memset(stor->mZPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
-          }
+    for (int i = 0; i < nk_scale; i++) {  // padding copy
+      if (i < rawnk_scale) {
+        std::memcpy(stor->mSPtr + i * stor->mNPad, scales + i * N, N * sizeof(scales[0]));
+        if (zero_points != nullptr) {
+          std::memcpy(stor->mZPtr + i * stor->mNPad, zero_points + i * N, N * sizeof(zero_points[0]));
+        }
+      } else {
+        std::memset(stor->mSPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(stor->mSPtr[0]));
+        if (zero_points != nullptr) {
+          std::memset(stor->mZPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
         }
       }
+    }
 
-      reorderWeight(N, K, B, ldb, stor->mWPtr);
-      if (stor->has_reduce()) {
-        utils::avector<float> deq(K * N);
-        unpackWeight(N, K, stor, deq.data(), N);
-        reduceWeight(N, K, stor->mBlockSize, deq.data(), ldb, stor->mRPtr, stor->mNPad);
-      }
+    reorderWeight(N, K, B, ldb, stor->mWPtr);
+    if (stor->has_reduce()) {
+      utils::avector<float> deq(K * N);
+      unpackWeight(N, K, stor, deq.data(), N);
+      reduceWeight(N, K, stor->mBlockSize, deq.data(), ldb, stor->mRPtr, stor->mNPad);
     }
   }
 
@@ -481,6 +477,7 @@ class WeightS8ScaleFp32 {
           auto ret = RowReduceSum::template forward<ISA_T>(  //
               src + i * ldb, ldb, rowremain, colremain, dst + i / KBlock * ldr);
           assert(ret == JblasSuccess);
+          (void)ret;
         }
       }
     }
@@ -488,84 +485,65 @@ class WeightS8ScaleFp32 {
 
   virtual inline JBLAS_CODE getWeight(float** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param) {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        if constexpr (_GemmCore_T::PACK_ROW == 1) {
-          kernel::wrapper::DecompressKBlockS8F32::forward<ISA_T, float>(
-              bptr + i * KPad, *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-              _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-              _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
-              wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad);
-        } else {
-          kernel::wrapper::DecompressKBlockS8FP32PackRow::forward<ISA_T, float>(
-              bptr + i * KPad, *dstptr + i * k_size, k_size, _GemmCore_T::NTILE, _GemmCore_T::NTILE, _GemmCore_T::NTILE,
-              wptr->mSPtr + n_offset + i, wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset,
-              wptr->mBlockSize, NPad, _GemmCore_T::PACK_ROW);
-        }
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      if constexpr (_GemmCore_T::PACK_ROW == 1) {
+        kernel::wrapper::DecompressKBlockS8F32::forward<ISA_T, float>(
+            bptr + i * KPad, *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
+            wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad);
+      } else {
+        kernel::wrapper::DecompressKBlockS8FP32PackRow::forward<ISA_T, float>(
+            bptr + i * KPad, *dstptr + i * k_size, k_size, _GemmCore_T::NTILE, _GemmCore_T::NTILE, _GemmCore_T::NTILE,
+            wptr->mSPtr + n_offset + i, wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset,
+            wptr->mBlockSize, NPad, _GemmCore_T::PACK_ROW);
       }
-      *dststep = k_size;
-      return JblasSuccess;
     }
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
   virtual inline JBLAS_CODE getWeight(int8_t** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param) {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
-      kernel::wrapper::Memcpy2D::template forward<ISA_T, int8_t, int8_t>(
-          bptr, *dstptr, n_size / _GemmCore_T::NTILE, _GemmCore_T::NTILE * k_size, _GemmCore_T::NTILE * KPad,
-          _GemmCore_T::NTILE * k_size);
-      *dststep = k_size;
-      return JblasSuccess;
-    }
-    return JblasInvalidParam;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
+    kernel::wrapper::Memcpy2D::template forward<ISA_T, int8_t, int8_t>(
+        bptr, *dstptr, n_size / _GemmCore_T::NTILE, _GemmCore_T::NTILE * k_size, _GemmCore_T::NTILE * KPad,
+        _GemmCore_T::NTILE * k_size);
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
   virtual JBLAS_CODE getScale(float** dstptr, int* dststep, int n_size, int k_size, int n_offset, int k_offset,
                               const Param& _param) {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      *dstptr = wptr->mSPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
-      *dststep = NPad;
-      return JblasSuccess;
-    }
-    return JblasInvalidParam;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    *dstptr = wptr->mSPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
+    *dststep = NPad;
+    return JblasSuccess;
   }
 
   virtual JBLAS_CODE getReduce(float** dstptr, int* dststep, int n_size, int k_size, int n_offset, int k_offset,
                                const Param& _param) {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      *dstptr = wptr->mRPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
-      *dststep = NPad;
-      return JblasSuccess;
-    }
-    return JblasInvalidParam;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    *dstptr = wptr->mRPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
+    *dststep = NPad;
+    return JblasSuccess;
   }
 
   virtual JBLAS_CODE getZp(int8_t** dstptr, int* dststep, int n_size, int k_size, int n_offset, int k_offset,
                            const Param& _param) {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      *dstptr = wptr->mZPtr == nullptr ? nullptr : wptr->mZPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
-      *dststep = NPad;
-      return JblasSuccess;
-    }
-    return JblasInvalidParam;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    *dstptr = wptr->mZPtr == nullptr ? nullptr : wptr->mZPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
+    *dststep = NPad;
+    return JblasSuccess;
   }
 
  protected:
@@ -620,6 +598,7 @@ class WeightS8ScaleFp32 {
         auto ret = PaddingInterleaveMNWType::template forward<ISA_T>(  //
             src, dst, rowremain, colremain, rowsize, colsize, ldb, KPad);
         assert(ret == JblasSuccess);
+        (void)ret;
       }
     }
   }
@@ -662,17 +641,15 @@ class WeightS8ScaleFp32PerChannelN : public WeightS8ScaleFp32<_GemmCore_T, ISA_T
 
   virtual void packQWeight(const int N, const int K, const int8_t* B, const int ldb, const float* scales,
                            const int8_t* zero_points, PackedWeight* ptr) override {
-    auto stor = dynamic_cast<StorageWeight*>(ptr);
-    if (stor) {
-      std::memcpy(stor->mSPtr, scales, N * sizeof(scales[0]));
-      if (zero_points != nullptr) {
-        std::memcpy(stor->mZPtr, zero_points, N * sizeof(zero_points[0]));
-      }
-      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, stor->mWPtr);
-      utils::avector<float> deq(K * N);
-      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::unpackWeight(N, K, stor, deq.data(), N);
-      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reduceWeight(N, K, K, deq.data(), ldb, stor->mRPtr, stor->mNPad);
+    auto stor = reinterpret_cast<StorageWeight*>(ptr);
+    std::memcpy(stor->mSPtr, scales, N * sizeof(scales[0]));
+    if (zero_points != nullptr) {
+      std::memcpy(stor->mZPtr, zero_points, N * sizeof(zero_points[0]));
     }
+    WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, stor->mWPtr);
+    utils::avector<float> deq(K * N);
+    WeightS8ScaleFp32<_GemmCore_T, ISA_T>::unpackWeight(N, K, stor, deq.data(), N);
+    WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reduceWeight(N, K, K, deq.data(), ldb, stor->mRPtr, stor->mNPad);
   }
 };
 
@@ -741,33 +718,31 @@ class WeightS4ScaleFp32 : public WeightS8ScaleFp32<_GemmCore_T, ISA_T> {
 
   virtual void packQWeight(const int N, const int K, const int8_t* B, const int ldb, const float* scales,
                            const int8_t* zero_points, PackedWeight* ptr) override {
-    auto stor = dynamic_cast<StorageWeight*>(ptr);
-    if (stor) {
-      int rawnk_scale = utils::updiv(K, stor->mBlockSize);
-      int nk_scale = utils::updiv(stor->mKPad, stor->mBlockSize);
+    auto stor = reinterpret_cast<StorageWeight*>(ptr);
+    int rawnk_scale = utils::updiv(K, stor->mBlockSize);
+    int nk_scale = utils::updiv(stor->mKPad, stor->mBlockSize);
 #pragma omp parallel for
-      for (int i = 0; i < nk_scale; i++) {  // padding copy
-        if (i < rawnk_scale) {
-          std::memcpy(stor->mSPtr + i * stor->mNPad, scales + i * N, N * sizeof(scales[0]));
-          if (zero_points != nullptr) {
-            std::memcpy(stor->mZPtr + i * stor->mNPad, zero_points + i * N, N * sizeof(zero_points[0]));
-          }
-        } else {
-          std::memset(stor->mSPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(stor->mSPtr[0]));
-          if (zero_points != nullptr) {
-            std::memset(stor->mZPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
-          }
+    for (int i = 0; i < nk_scale; i++) {  // padding copy
+      if (i < rawnk_scale) {
+        std::memcpy(stor->mSPtr + i * stor->mNPad, scales + i * N, N * sizeof(scales[0]));
+        if (zero_points != nullptr) {
+          std::memcpy(stor->mZPtr + i * stor->mNPad, zero_points + i * N, N * sizeof(zero_points[0]));
+        }
+      } else {
+        std::memset(stor->mSPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(stor->mSPtr[0]));
+        if (zero_points != nullptr) {
+          std::memset(stor->mZPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
         }
       }
-      utils::avector<int8_t> reorded(stor->mKPad * stor->mNPad);
-      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded.data());
-      compressWeight(stor->mNPad, stor->mKPad, reorded.data(), stor->mNPad, stor->mWPtr);
-      if (stor->has_reduce()) {
-        utils::avector<float> deq(K * N);
-        WeightS8ScaleFp32<_GemmCore_T, ISA_T>::unpackWeight(N, K, stor, deq.data(), N);
-        WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reduceWeight(N, K, stor->mBlockSize, deq.data(), ldb, stor->mRPtr,
-                                                            stor->mNPad);
-      }
+    }
+    utils::avector<int8_t> reorded(stor->mKPad * stor->mNPad);
+    WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded.data());
+    compressWeight(stor->mNPad, stor->mKPad, reorded.data(), stor->mNPad, stor->mWPtr);
+    if (stor->has_reduce()) {
+      utils::avector<float> deq(K * N);
+      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::unpackWeight(N, K, stor, deq.data(), N);
+      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reduceWeight(N, K, stor->mBlockSize, deq.data(), ldb, stor->mRPtr,
+                                                          stor->mNPad);
     }
   }
 
@@ -788,119 +763,93 @@ class WeightS4ScaleFp32 : public WeightS8ScaleFp32<_GemmCore_T, ISA_T> {
         auto ret = doCompress(B + rowidx * ldb + colidx, dstptr + rowidx * ldb / 2 + colidx / 2, rowremain, colremain,
                               ldb, ldb);
         assert(ret == JblasSuccess);
+        (void)ret;
       }
     }
   }
 
   virtual inline JBLAS_CODE getWeight(int8_t** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        kernel::wrapper::DecompressKBlockS4S8::forward<ISA_T, S4_T>(
-            (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW);
-      }
-      *dststep = k_size;
-      return JblasSuccess;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      kernel::wrapper::DecompressKBlockS4S8::forward<ISA_T, S4_T>(
+          (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW);
     }
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
   virtual inline JBLAS_CODE getWeight(float** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    // TODO unpack vnni format to fp32
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        if constexpr (_GemmCore_T::PACK_ROW == 1) {
-          kernel::wrapper::DecompressKBlockS4FP<float>::forward<ISA_T, float, S4_T>(
-              (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-              _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-              _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
-              wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad);
-        } else {
-          kernel::wrapper::DecompressKBlockS4FPPackRow<float>::forward<ISA_T, float, S4_T>(
-              (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size, _GemmCore_T::NTILE,
-              _GemmCore_T::NTILE, _GemmCore_T::NTILE, wptr->mSPtr + n_offset + i,
-              wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad,
-              _GemmCore_T::PACK_ROW);
-        }
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      if constexpr (_GemmCore_T::PACK_ROW == 1) {
+        kernel::wrapper::DecompressKBlockS4FP<float>::forward<ISA_T, float, S4_T>(
+            (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
+            wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad);
+      } else {
+        kernel::wrapper::DecompressKBlockS4FPPackRow<float>::forward<ISA_T, float, S4_T>(
+            (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size, _GemmCore_T::NTILE, _GemmCore_T::NTILE,
+            _GemmCore_T::NTILE, wptr->mSPtr + n_offset + i,
+            wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad,
+            _GemmCore_T::PACK_ROW);
       }
-      *dststep = k_size;
-      return JblasSuccess;
     }
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
   virtual inline JBLAS_CODE getWeight(utils::bf16** dstptr, int* dststep, int k_size, int n_size, int k_offset,
                                       int n_offset, const Param& _param) {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        kernel::wrapper::DecompressKBlockS4FP<utils::bf16>::forward<ISA_T, float, S4_T>(
-            (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
-            wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset / _GemmCore_T::PACK_ROW,
-            wptr->mBlockSize / _GemmCore_T::PACK_ROW, NPad);
-      }
-      *dststep = k_size;
-      return JblasSuccess;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      kernel::wrapper::DecompressKBlockS4FP<utils::bf16>::forward<ISA_T, float, S4_T>(
+          (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
+          wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset / _GemmCore_T::PACK_ROW,
+          wptr->mBlockSize / _GemmCore_T::PACK_ROW, NPad);
     }
-    assert(false);
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
   virtual JBLAS_CODE getScale(float** dstptr, int* dststep, int n_size, int k_size, int n_offset, int k_offset,
                               const Param& _param) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      *dstptr = wptr->mSPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
-      *dststep = NPad;
-      return JblasSuccess;
-    }
-    assert(false);
-    return JblasInvalidParam;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    *dstptr = wptr->mSPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
+    *dststep = NPad;
+    return JblasSuccess;
   }
 
   virtual JBLAS_CODE getReduce(float** dstptr, int* dststep, int n_size, int k_size, int n_offset, int k_offset,
                                const Param& _param) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      *dstptr = wptr->mRPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
-      *dststep = NPad;
-      return JblasSuccess;
-    }
-    return JblasInvalidParam;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    *dstptr = wptr->mRPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
+    *dststep = NPad;
+    return JblasSuccess;
   }
 
   virtual JBLAS_CODE getZp(int8_t** dstptr, int* dststep, int n_size, int k_size, int n_offset, int k_offset,
                            const Param& _param) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      *dstptr = wptr->mZPtr == nullptr ? nullptr : wptr->mZPtr + n_offset + k_offset / wptr->mBlockSize * wptr->mStep;
-      *dststep = wptr->mStep;
-      return JblasSuccess;
-    }
-    assert(false);
-    return JblasInvalidParam;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    *dstptr = wptr->mZPtr == nullptr ? nullptr : wptr->mZPtr + n_offset + k_offset / wptr->mBlockSize * wptr->mStep;
+    *dststep = wptr->mStep;
+    return JblasSuccess;
   }
 
  protected:
@@ -955,19 +904,17 @@ class WeightS4ScaleFp32PerChannelN : public WeightS8ScaleFp32PerChannelN<_GemmCo
 
   virtual void packQWeight(const int N, const int K, const int8_t* B, const int ldb, const float* scales,
                            const int8_t* zero_points, PackedWeight* ptr) override {
-    auto stor = dynamic_cast<StorageWeight*>(ptr);
-    if (stor) {
-      std::memcpy(stor->mSPtr, scales, N * sizeof(scales[0]));
-      if (zero_points != nullptr) {
-        std::memcpy(stor->mZPtr, zero_points, N * sizeof(zero_points[0]));
-      }
-      utils::avector<int8_t> reorded(stor->mKPad * stor->mNPad);
-      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded.data());
-      compressWeight(stor->mNPad, stor->mKPad, reorded.data(), stor->mNPad, stor->mWPtr);
-      utils::avector<float> deq(K * N);
-      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::unpackWeight(N, K, stor, deq.data(), N);
-      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reduceWeight(N, K, K, deq.data(), ldb, stor->mRPtr, stor->mNPad);
+    auto stor = reinterpret_cast<StorageWeight*>(ptr);
+    std::memcpy(stor->mSPtr, scales, N * sizeof(scales[0]));
+    if (zero_points != nullptr) {
+      std::memcpy(stor->mZPtr, zero_points, N * sizeof(zero_points[0]));
     }
+    utils::avector<int8_t> reorded(stor->mKPad * stor->mNPad);
+    WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded.data());
+    compressWeight(stor->mNPad, stor->mKPad, reorded.data(), stor->mNPad, stor->mWPtr);
+    utils::avector<float> deq(K * N);
+    WeightS8ScaleFp32<_GemmCore_T, ISA_T>::unpackWeight(N, K, stor, deq.data(), N);
+    WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reduceWeight(N, K, K, deq.data(), ldb, stor->mRPtr, stor->mNPad);
   }
 
   void compressWeight(const int N, const int K, const int8_t* B, const int ldb, utils::bit4x2* dstptr) {
@@ -987,56 +934,49 @@ class WeightS4ScaleFp32PerChannelN : public WeightS8ScaleFp32PerChannelN<_GemmCo
         auto ret = doCompress(B + rowidx * ldb + colidx, dstptr + rowidx * ldb / 2 + colidx / 2, rowremain, colremain,
                               ldb, ldb);
         assert(ret == JblasSuccess);
+        (void)ret;
       }
     }
   }
 
   virtual inline JBLAS_CODE getWeight(int8_t** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        kernel::wrapper::DecompressKBlockS4S8::forward<ISA_T, S4_T>(
-            (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW);
-      }
-      *dststep = k_size;
-      return JblasSuccess;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      kernel::wrapper::DecompressKBlockS4S8::forward<ISA_T, S4_T>(
+          (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW);
     }
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
   virtual inline JBLAS_CODE getWeight(float** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    // TODO unpack vnni format to fp32
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        if constexpr (_GemmCore_T::PACK_ROW == 1) {
-          kernel::wrapper::DecompressPerNS4FP<float>::forward<ISA_T, float, S4_T>(
-              (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-              _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-              _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
-              wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad);
-        } else {
-          kernel::wrapper::DecompressPerNS4FPPackRow<float>::forward<ISA_T, float, S4_T>(
-              (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size, _GemmCore_T::NTILE,
-              _GemmCore_T::NTILE, _GemmCore_T::NTILE, wptr->mSPtr + n_offset + i,
-              wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad,
-              _GemmCore_T::PACK_ROW);
-        }
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      if constexpr (_GemmCore_T::PACK_ROW == 1) {
+        kernel::wrapper::DecompressPerNS4FP<float>::forward<ISA_T, float, S4_T>(
+            (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
+            wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad);
+      } else {
+        kernel::wrapper::DecompressPerNS4FPPackRow<float>::forward<ISA_T, float, S4_T>(
+            (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size, _GemmCore_T::NTILE, _GemmCore_T::NTILE,
+            _GemmCore_T::NTILE, wptr->mSPtr + n_offset + i,
+            wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad,
+            _GemmCore_T::PACK_ROW);
       }
-      *dststep = k_size;
-      return JblasSuccess;
     }
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
  protected:
@@ -1109,118 +1049,99 @@ class WeightS4ScaleBf16 : public WeightS4ScaleFp32<_GemmCore_T, ISA_T, S4_T> {
 
   virtual void packQWeight(const int N, const int K, const int8_t* B, const int ldb, const float* scales,
                            const int8_t* zero_points, PackedWeight* ptr) override {
-    auto stor = dynamic_cast<StorageWeight*>(ptr);
-    if (stor) {
-      int rawnk_scale = utils::updiv(K, stor->mBlockSize);
-      int nk_scale = utils::updiv(stor->mKPad, stor->mBlockSize);
+    auto stor = reinterpret_cast<StorageWeight*>(ptr);
+    int rawnk_scale = utils::updiv(K, stor->mBlockSize);
+    int nk_scale = utils::updiv(stor->mKPad, stor->mBlockSize);
 #pragma omp parallel for
-      for (int i = 0; i < nk_scale; i++) {
-        if (i < rawnk_scale) {
-          for (int j = 0; j < N; j++) {
-            *(stor->mSPtr + i * stor->mNPad + j) = utils::cast<float, utils::bf16>(*(scales + i * N + j));
-            if (zero_points != nullptr) {
-              std::memcpy(stor->mZPtr + i * stor->mNPad, zero_points + i * N, N * sizeof(zero_points[0]));
-            }
-          }
-        } else {
-          std::memset(stor->mSPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(stor->mSPtr[0]));
+    for (int i = 0; i < nk_scale; i++) {
+      if (i < rawnk_scale) {
+        for (int j = 0; j < N; j++) {
+          *(stor->mSPtr + i * stor->mNPad + j) = utils::cast<float, utils::bf16>(*(scales + i * N + j));
           if (zero_points != nullptr) {
-            std::memset(stor->mZPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
+            std::memcpy(stor->mZPtr + i * stor->mNPad, zero_points + i * N, N * sizeof(zero_points[0]));
           }
         }
+      } else {
+        std::memset(stor->mSPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(stor->mSPtr[0]));
+        if (zero_points != nullptr) {
+          std::memset(stor->mZPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
+        }
       }
-      utils::avector<int8_t> reorded(stor->mKPad * stor->mNPad);
-      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded.data());
-      WeightS4ScaleFp32<_GemmCore_T, ISA_T, S4_T>::compressWeight(stor->mNPad, stor->mKPad, reorded.data(), stor->mNPad,
-                                                                  stor->mWPtr);
     }
+    utils::avector<int8_t> reorded(stor->mKPad * stor->mNPad);
+    WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded.data());
+    WeightS4ScaleFp32<_GemmCore_T, ISA_T, S4_T>::compressWeight(stor->mNPad, stor->mKPad, reorded.data(), stor->mNPad,
+                                                                stor->mWPtr);
   }
 
   virtual inline JBLAS_CODE getWeight(int8_t** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const PackedWeight* ptr) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(ptr);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        kernel::wrapper::DecompressKBlockS4S8::forward<ISA_T, S4_T>(
-            (utils::int4x2*)bptr + i * KPad / 2, *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW);
-      }
-      *dststep = k_size;
-      return JblasSuccess;
+    auto wptr = reinterpret_cast<const StorageWeight*>(ptr);
+    auto NPad = wptr->mNPad;
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      kernel::wrapper::DecompressKBlockS4S8::forward<ISA_T, S4_T>(
+          (utils::int4x2*)bptr + i * KPad / 2, *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW);
     }
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
   virtual inline JBLAS_CODE getWeight(float** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const PackedWeight* ptr) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(ptr);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        kernel::wrapper::DecompressKBlockS4FP<float>::forward<ISA_T, utils::bf16, S4_T>(
-            (utils::int4x2*)bptr + i * KPad / 2, *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
-            wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad);
-      }
-      *dststep = k_size;
-      return JblasSuccess;
+    auto wptr = reinterpret_cast<const StorageWeight*>(ptr);
+    auto NPad = wptr->mNPad;
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      kernel::wrapper::DecompressKBlockS4FP<float>::forward<ISA_T, utils::bf16, S4_T>(
+          (utils::int4x2*)bptr + i * KPad / 2, *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
+          wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad);
     }
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
   virtual inline JBLAS_CODE getWeight(utils::bf16** dstptr, int* dststep, int k_size, int n_size, int k_offset,
                                       int n_offset, const PackedWeight* ptr) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(ptr);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        kernel::wrapper::DecompressKBlockS4FP<utils::bf16>::forward<ISA_T, utils::bf16, S4_T>(
-            (utils::int4x2*)bptr + i * KPad / 2, *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
-            wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad);
-      }
-      *dststep = k_size;
-      return JblasSuccess;
+    auto wptr = reinterpret_cast<const StorageWeight*>(ptr);
+    auto NPad = wptr->mNPad;
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      kernel::wrapper::DecompressKBlockS4FP<utils::bf16>::forward<ISA_T, utils::bf16, S4_T>(
+          (utils::int4x2*)bptr + i * KPad / 2, *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
+          wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset, wptr->mBlockSize, NPad);
     }
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
   virtual inline JBLAS_CODE getScale(utils::bf16** dstptr, int* dststep, int n_size, int k_size, int n_offset,
                                      int k_offset, const PackedWeight* ptr) {
-    auto wptr = dynamic_cast<const StorageWeight*>(ptr);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      *dstptr = wptr->mSPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
-      *dststep = NPad;
-      return JblasSuccess;
-    }
-    assert(false);
-    return JblasInvalidParam;
+    auto wptr = reinterpret_cast<const StorageWeight*>(ptr);
+    auto NPad = wptr->mNPad;
+    auto KPad = wptr->mKPad;
+    *dstptr = wptr->mSPtr + n_offset + k_offset / wptr->mBlockSize * NPad;
+    *dststep = NPad;
+    return JblasSuccess;
   }
 
   virtual inline JBLAS_CODE getZp(utils::bf16** dstptr, int* dststep, int n_size, int k_size, int n_offset,
                                   int k_offset, const PackedWeight* ptr) {
     // no asym support for any kinds of fp4
-    auto wptr = dynamic_cast<const StorageWeight*>(ptr);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      *dstptr = nullptr;
-      *dststep = NPad;
-      return JblasSuccess;
-    }
-    assert(false);
-    return JblasInvalidParam;
+    auto wptr = reinterpret_cast<const StorageWeight*>(ptr);
+    auto NPad = wptr->mNPad;
+    *dstptr = nullptr;
+    *dststep = NPad;
+    return JblasSuccess;
   }
 };
 
@@ -1275,69 +1196,59 @@ class WeightF4ScaleFp32 : public WeightS4ScaleFp32<_GemmCore_T, ISA_T, S4_CLIP> 
 
   virtual inline JBLAS_CODE getWeight(float** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param) override {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    // TODO unpack vnni format to fp32
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        if (_GemmCore_T::PACK_ROW == 1) {
-          kernel::wrapper::DecompressKBlockF4Fp<float>::forward<ISA_T, float, F4_T>(
-              reinterpret_cast<utils::f4x2*>(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-              _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-              _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i, k_offset, wptr->mBlockSize, NPad);
-        } else {
-          kernel::wrapper::DecompressKBlockF4FPPackRow<float>::forward<ISA_T, float, F4_T>(
-              (utils::f4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size, _GemmCore_T::NTILE, _GemmCore_T::NTILE,
-              _GemmCore_T::NTILE, wptr->mSPtr + n_offset + i, k_offset, wptr->mBlockSize, NPad, _GemmCore_T::PACK_ROW);
-        }
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      if constexpr (_GemmCore_T::PACK_ROW == 1) {
+        kernel::wrapper::DecompressKBlockF4Fp<float>::forward<ISA_T, float, F4_T>(
+            reinterpret_cast<utils::f4x2*>(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i, k_offset, wptr->mBlockSize, NPad);
+      } else {
+        kernel::wrapper::DecompressKBlockF4FPPackRow<float>::forward<ISA_T, float, F4_T>(
+            (utils::f4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size, _GemmCore_T::NTILE, _GemmCore_T::NTILE,
+            _GemmCore_T::NTILE, wptr->mSPtr + n_offset + i, k_offset, wptr->mBlockSize, NPad, _GemmCore_T::PACK_ROW);
       }
-      *dststep = k_size;
-      return JblasSuccess;
     }
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
 
   virtual inline JBLAS_CODE getWeight(utils::bf16** dstptr, int* dststep, int k_size, int n_size, int k_offset,
                                       int n_offset, const Param& _param) {
-    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
-    if (wptr) {
-      auto NPad = wptr->mNPad;
-      auto KPad = wptr->mKPad;
-      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
-      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
-        kernel::wrapper::DecompressKBlockF4Fp<utils::bf16>::forward<ISA_T, float, F4_T>(
-            reinterpret_cast<utils::f4x2*>(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
-            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i, k_offset / _GemmCore_T::PACK_ROW,
-            wptr->mBlockSize / _GemmCore_T::PACK_ROW, NPad);
-      }
-      *dststep = k_size;
-      return JblasSuccess;
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    auto NPad = wptr->mNPad;
+    auto KPad = wptr->mKPad;
+    auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+    for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+      kernel::wrapper::DecompressKBlockF4Fp<utils::bf16>::forward<ISA_T, float, F4_T>(
+          reinterpret_cast<utils::f4x2*>(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+          _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i, k_offset / _GemmCore_T::PACK_ROW,
+          wptr->mBlockSize / _GemmCore_T::PACK_ROW, NPad);
     }
-    assert(false);
-    return JblasInvalidParam;
+    *dststep = k_size;
+    return JblasSuccess;
   }
   virtual void packQWeight(const int N, const int K, const int8_t* B, const int ldb, const float* scales,
                            PackedWeight* ptr) {
-    auto stor = dynamic_cast<StorageWeight*>(ptr);
-    if (stor) {
-      int rawnk_scale = utils::updiv(K, stor->mBlockSize);
-      int nk_scale = utils::updiv(stor->mKPad, stor->mBlockSize);
+    auto stor = reinterpret_cast<StorageWeight*>(ptr);
+    int rawnk_scale = utils::updiv(K, stor->mBlockSize);
+    int nk_scale = utils::updiv(stor->mKPad, stor->mBlockSize);
 #pragma omp parallel for
-      for (int i = 0; i < nk_scale; i++) {  // padding copy
-        if (i < rawnk_scale) {
-          std::memcpy(stor->mSPtr + i * stor->mNPad, scales + i * N, N * sizeof(scales[0]));
-        } else {
-          std::memset(stor->mSPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(stor->mSPtr[0]));
-        }
+    for (int i = 0; i < nk_scale; i++) {  // padding copy
+      if (i < rawnk_scale) {
+        std::memcpy(stor->mSPtr + i * stor->mNPad, scales + i * N, N * sizeof(scales[0]));
+      } else {
+        std::memset(stor->mSPtr + i * stor->mNPad, 0, stor->mNPad * sizeof(stor->mSPtr[0]));
       }
-      utils::avector<int8_t> reorded(stor->mKPad * stor->mNPad);
-      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded.data());
-      WeightS4ScaleFp32<_GemmCore_T, ISA_T, S4_CLIP>::compressWeight(stor->mNPad, stor->mKPad, reorded.data(),
-                                                                     stor->mNPad, stor->mWPtr);
     }
+    utils::avector<int8_t> reorded(stor->mKPad * stor->mNPad);
+    WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded.data());
+    WeightS4ScaleFp32<_GemmCore_T, ISA_T, S4_CLIP>::compressWeight(stor->mNPad, stor->mKPad, reorded.data(),
+                                                                   stor->mNPad, stor->mWPtr);
   }
 
  protected:
@@ -1456,10 +1367,7 @@ class GemmSLauncherKBlockPackWeight {
 
   template <typename... Eltops>
   void launch(const ParallelConfig& _config, const Param& _param, Eltops... ops) {
-    auto blkptr = dynamic_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramB.packedW);
-    if (blkptr == nullptr) {
-      return;
-    }
+    auto blkptr = reinterpret_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramB.packedW);
     int rowremain = utils::remainsize(_config.rowidx, _param.M, _config.rowsize);
     int colremain = utils::remainsize(_config.colidx, _param.N, _config.colsize);
     auto StackTmp = alloca(_config.StackSize);
@@ -1512,7 +1420,7 @@ class GemmSLauncherKBlockPackWeight {
         mProA.getZp(&azp_ptr, &azp_step, _param.paramA, m_remain, k_padded, (blk_m + i + _config.rowidx), iterk);
         mGemmCore.forward(aptr_cache, bptr_cache, cptr_cache, azp_ptr, ascale_ptr, ascale_step, wscale_ptr, wscale_step,
                           m_remain, n_padded, k_padded, blkptr->mBlockSize, acache_step * sizeof(AType), bcache_stride,
-                          _config.NStep * sizeof(CType), iterk);
+                          ccache_stride, iterk);
       }
     }
     mEpilogue.forward(c_block_ptr, _config.NStep, (_config.rowidx + blk_m), _config.colidx + blk_n, blk_msize,
@@ -1558,10 +1466,7 @@ class GemmLauncherKBlock {
 
   template <typename... Eltops>
   void launch(const ParallelConfig& _config, const Param& _param, Eltops... ops) {
-    auto blkptr = dynamic_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramB.packedW);
-    if (blkptr == nullptr) {
-      return;
-    }
+    auto blkptr = reinterpret_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramB.packedW);
     int rowremain = utils::remainsize(_config.rowidx, _param.M, _config.rowsize);
     int colremain = utils::remainsize(_config.colidx, _param.N, _config.colsize);
     auto StackTmp = alloca(_config.StackSize);
@@ -1615,7 +1520,7 @@ class GemmLauncherKBlock {
         mProA.getZp(&azp_ptr, &azp_step, _param.paramA, m_remain, k_padded, (blk_m + i + _config.rowidx), iterk);
         mGemmCore.forward(aptr_cache, bptr_cache, cptr_cache, azp_ptr, ascale_ptr, ascale_step, wscale_ptr, reduce_ptr,
                           wscale_step, m_remain, n_padded, k_padded, blkptr->mBlockSize, acache_step * sizeof(AType),
-                          bcache_stride, _config.NStep * sizeof(CType), iterk);
+                          bcache_stride, ccache_stride, iterk);
       }
     }
     mEpilogue.forward(c_block_ptr, _config.NStep, (_config.rowidx + blk_m), _config.colidx + blk_n, blk_msize,
@@ -1640,10 +1545,7 @@ class GemmInterfaceKBlockPackWeight {
 
   template <typename... Eltops>
   JBLAS_CODE compute(const Arguments& _param, Eltops... ops) {
-    auto bptr = dynamic_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramB.packedW);
-    if (bptr == nullptr) {
-      return JblasInvalidParam;
-    }
+    auto bptr = reinterpret_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramB.packedW);
     auto cb = utils::CpuBase();
     auto para = Parallel();
     para.update(_param.M, _param.N, _param.K, bptr->mBlockSize, cb.mNumThreads);
@@ -1686,10 +1588,7 @@ class GemmInterfaceKblockParallelAB {
 
   template <bool _LaunchA, bool _LaunchB>
   JBLAS_CODE compute(const Arguments& _param) {
-    auto bptr = dynamic_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramB.packedW);
-    if (bptr == nullptr) {
-      return JblasInvalidParam;
-    }
+    auto bptr = reinterpret_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramB.packedW);
     auto paraA = getActivationPtr()->createParallel(_param.M, _param.K, _param.KBlock);
     auto paraB = getWeightPtr()->createParallel(_param.K, _param.N, _param.KBlock);
     auto para = Parallel();
@@ -1713,6 +1612,7 @@ class GemmInterfaceKblockParallelAB {
       }
       if constexpr (_LaunchA || _LaunchB) {
 #pragma omp barrier
+        (void)(0);  // make msvc happy with c++20
       }
       int colidx, rowidx, rowsize, colsize;
       para.getIndex(tidx, &rowidx, &colidx, &rowsize, &colsize);

@@ -44,7 +44,6 @@ static inline JBLAS_CODE padding_interleave(const T_SRC* src_ptr, T_DST* dst_ptr
 template <typename T_SRC, typename T_DST = T_SRC>
 static inline JBLAS_CODE revert_padding_interleave(const T_SRC* src_ptr, T_DST* dst_ptr, int row, int col, int rowpad,
                                                    int colpad, int src_step, int dst_step, int NTile, int RowPack) {
-  const T_DST dst_0(0);
   static_assert(sizeof(T_SRC) == sizeof(T_DST), "SRC & DST size should be the same");
   for (int i = 0; i < rowpad; i += RowPack) {
     for (int j = 0; j < colpad; j += NTile) {
@@ -387,6 +386,8 @@ template <JBLAS_SIGN_INT_TYPE S4_T>
 inline JBLAS_CODE decompress_pern_s4_fp_packrow(utils::int4x2* srcptr, float* dstptr, int row, int col, int ld_src,
                                                 int ld_dst, float* scales, int8_t* zero_points, int k_offset,
                                                 int kblock, int NPad, int packrow) {
+  (void)NPad;
+  (void)kblock;
   for (int i = 0; i < row; i += packrow) {
     if (packrow == 1) {
       auto sptr = scales;
@@ -450,22 +451,22 @@ inline int8_t fp4_bnb_quantize(float x) {
   if (x > 0.29166667f)
     if (x > 0.583333f)
       if (x > 0.8333333f)
-        return 0b0011 + sign;
+        return static_cast<int8_t>(0b0011 + sign);
       else
-        return 0b0010 + sign;
+        return static_cast<int8_t>(0b0010 + sign);
     else if (x > 0.4166667f)
-      return 0b101 + sign;
+      return static_cast<int8_t>(0b101 + sign);
     else
-      return 0b100 + sign;
+      return static_cast<int8_t>(0b100 + sign);
   else if (x > 0.0859375f)
     if (x > 0.20833333f)
-      return 0b0111 + sign;
+      return static_cast<int8_t>(0b0111 + sign);
     else
-      return 0b0110 + sign;
+      return static_cast<int8_t>(0b0110 + sign);
   else if (x > 0.00260417f)
-    return 0b0001 + sign;
+    return static_cast<int8_t>(0b0001 + sign);
   else
-    return 0b0000 + sign;
+    return static_cast<int8_t>(0b0000 + sign);
 }
 
 inline int8_t fp4_e2m1_quantize(float x) {
@@ -486,26 +487,26 @@ inline int8_t fp4_e2m1_quantize(float x) {
   if (x > 1.75f / 6) {
     if (x > 3.5f / 6) {
       if (x > 5.f / 6)
-        return 0b111 + sign;  // 6
+        return static_cast<int8_t>(0b111 + sign);  // 6
       else
-        return 0b110 + sign;  // 4
+        return static_cast<int8_t>(0b110 + sign);  // 4
     } else {
       if (x > 2.5f / 6)
-        return 0b101 + sign;  // 3
+        return static_cast<int8_t>(0b101 + sign);  // 3
       else
-        return 0b100 + sign;  // 2
+        return static_cast<int8_t>(0b100 + sign);  // 2
     }
   } else {
     if (x > 0.53125f / 6) {
       if (x > 1.25f / 6)
-        return 0b011 + sign;  // 1.5
+        return static_cast<int8_t>(0b011 + sign);  // 1.5
       else
-        return 0b010 + sign;  // 1
+        return static_cast<int8_t>(0b010 + sign);  // 1
     } else {
       if (x > 0.03125f / 6)
-        return 0b0001 + sign;  // 0.0625
+        return static_cast<int8_t>(0b0001 + sign);  // 0.0625
       else
-        return 0b0000 + sign;  // 0
+        return static_cast<int8_t>(0b0000 + sign);  // 0
     }
   }
 }

@@ -50,10 +50,10 @@ class JitBase : protected Xbyak::CodeGenerator {
 #endif
   }
 
-  void generate_Nbitsmask(const Xbyak::Opmask& _msk, const Xbyak::Reg64& _pos, const Xbyak::Reg64& _total,
+  void generate_Nbitsmask(const Xbyak::Opmask& _msk, const Xbyak::Reg64& _pos, const Xbyak::Address& _total,
                           const Xbyak::Reg64& _tmp, const Xbyak::Reg64& _tmp1, int N) {
     inLocalLabel();
-    mov(_tmp, _total);
+    lea(_tmp, _total);
     sub(_tmp, _pos);
     cmp(_tmp, N);
     jb(".maskflag");
@@ -77,6 +77,10 @@ class JitBase : protected Xbyak::CodeGenerator {
     kmovq(_msk, _tmp1);
     L(".maskend");
     outLocalLabel();
+  }
+  void generate_Nbitsmask(const Xbyak::Opmask& _msk, const Xbyak::Reg64& _pos, const Xbyak::Reg64& _total,
+                          const Xbyak::Reg64& _tmp, const Xbyak::Reg64& _tmp1, int N) {
+    generate_Nbitsmask(_msk, _pos, ptr[_total], _tmp, _tmp1, N);
   }
 };
 

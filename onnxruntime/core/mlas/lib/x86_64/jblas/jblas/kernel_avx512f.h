@@ -50,14 +50,14 @@ static inline __m512i unpack_4bits(__m256i v4bits, __m512i vmask) {
 
 template <JBLAS_SIGN_INT_TYPE S4_T>
 static inline void convert_s4_s8(int8_t* dstptr, int8_t* srcptr, __m512i vmask, int LoadMask) {
-  auto ymm = _mm256_maskz_loadu_epi32(LoadMask, (const __m256i*)(srcptr));
+  auto ymm = _mm256_maskz_loadu_epi32(__mmask8(LoadMask), (const __m256i*)(srcptr));
   auto zmm = unpack_4bits(ymm, vmask);
   if constexpr (S4_T == S4_FULLRANGE) {
     zmm = _mm512_srli_epi32(zmm, 4);
     auto s8 = _mm512_set1_epi8(8);
     zmm = _mm512_sub_epi8(zmm, s8);
   }
-  _mm512_mask_storeu_epi64(dstptr, LoadMask, zmm);
+  _mm512_mask_storeu_epi64(dstptr, __mmask8(LoadMask), zmm);
 }
 
 constexpr void (*pad_fp4)(int8_t* dstptr, int8_t* srcptr, __m512i vmask, int) = &convert_s4_s8<S4_CLIP>;
@@ -117,7 +117,7 @@ static inline void dequant_f4_N(_DST_T* dstptr, int8_t* srcptr, __m512* vscales,
 #if CompileBF16()
       auto bf16_v = (__m256i)_mm512_cvtneps_pbh(fzmm);
 #else
-      auto bf16_v = _mm512_cvtepi32_epi16(_mm512_bsrli_epi128(_mm512_castps_si512(fzmm), 2));
+      auto bf16_v = _mm512_cvtepi32_epi16(_mm512_bsrli_epi128(_mm512_castps_si512(fzmm), 2));//TODO cvt with LSB
 #endif
       _mm256_storeu_si256((__m256i*)(dstptr + iv * 16), bf16_v);
     } else {
@@ -553,7 +553,6 @@ static inline JBLAS_CODE quantize_fp_u8_colblock(int row, int col, const SRC_T* 
   int constexpr VLen = 16;
   auto vff = _mm512_set1_epi32(255);
   auto v0 = _mm512_set1_epi32(0);
-  int i = 0;
   int vblocksize = utils::padto_le(blocksize, VLen);
   int colblk = utils::padto_le(col, blocksize);
   for (int i = 0; i < row; i += 1) {
@@ -649,7 +648,6 @@ static inline JBLAS_CODE quantize_fp_s8_colblock(int row, int col, const SRC_T* 
   int constexpr VLen = 16;
   auto vpos = _mm512_set1_epi32(127);
   auto vneg = _mm512_set1_epi32(-128);
-  int i = 0;
   int VBlockSize = utils::padto_le(blocksize, VLen);
   int colblk = utils::padto_le(col, blocksize);
   for (int i = 0; i < row; i += 1) {

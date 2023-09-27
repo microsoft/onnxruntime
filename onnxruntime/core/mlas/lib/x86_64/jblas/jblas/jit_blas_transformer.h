@@ -48,11 +48,6 @@ class QKVGemmInterfacePackWeight {
   WeightType* getWeightPtr() { return &mLauncher.mProB; }
 
   JBLAS_CODE compute(const Arguments& _param, Parallel _paral = Parallel()) {
-    auto bptr = dynamic_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramsB[0].packedW);
-    if (bptr == nullptr) {
-      return JblasInvalidParam;
-    }
-
     auto cb = utils::CpuBase();
     if (_paral.update(_param.M, _param.N, _param.K, cb.mNumThreads)) {
       static bool dbgprint = false;
@@ -115,10 +110,7 @@ class QKVGemmInterfacePackWeightParallelAB {
 
   template <bool _LaunchA, bool _LaunchB>
   JBLAS_CODE compute(const Arguments& _param) {
-    auto bptr = dynamic_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramsB[0].packedW);
-    if (bptr == nullptr) {
-      return JblasInvalidParam;
-    }
+    auto bptr = reinterpret_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramsB[0].packedW);
     auto cb = utils::CpuBase();
     Parallel _paral = Parallel();
     if (_paral.update(_param.M, _param.N, _param.K, cb.mNumThreads)) {
@@ -144,6 +136,7 @@ class QKVGemmInterfacePackWeightParallelAB {
       }
       if constexpr (_LaunchA || _LaunchB) {
 #pragma omp barrier
+        (void)(0);  // make msvc happy with c++20
       }
       launchT(_param, tidx, _paral, cb.mL2Cache);
     }
@@ -197,10 +190,7 @@ class QKVGemmInterfaceKBlockPackWeight {
   WeightType* getWeightPtr() { return &mLauncher.mProB; }
 
   JBLAS_CODE compute(const Arguments& _param, Parallel _paral = Parallel()) {
-    auto bptr = dynamic_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramsB[0].packedW);
-    if (bptr == nullptr) {
-      return JblasInvalidParam;
-    }
+    auto bptr = reinterpret_cast<const prologue::weight_comp::PackedWeightKBlock*>(_param.paramsB[0].packedW);
     auto cb = utils::CpuBase();
     if (_paral.update(_param.M, _param.N, _param.K, bptr->mBlockSize, cb.mNumThreads)) {
       static bool dbgprint = false;

@@ -125,7 +125,7 @@ class GemmCore_Row_NN_4x24_AVX2 {
       cmp(reg_tmp, NTILE);
       jl(".n16", T_NEAR);
       generate_kloop(_mtile, NRegs);
-      write_back(_mtile, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -136,7 +136,7 @@ class GemmCore_Row_NN_4x24_AVX2 {
       cmp(reg_tmp, 16);
       jl(".n8", T_NEAR);
       generate_kloop(_mtile, 2);
-      write_back(_mtile, 2, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, 2);
       add(reg_itern, 16);
       add(reg_matBptr, 16 * sizeof(BType));
       jmp(".nend", T_NEAR);
@@ -144,7 +144,7 @@ class GemmCore_Row_NN_4x24_AVX2 {
       L(".n8");
       xor_(reg_iterk, reg_iterk);
       generate_kloop(_mtile, 1);
-      write_back(_mtile, 1, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, 1);
       add(reg_itern, 8);
       add(reg_matBptr, 8 * sizeof(BType));
       L(".nend");
@@ -164,14 +164,14 @@ class GemmCore_Row_NN_4x24_AVX2 {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KUNROLL * KTILE);
       jl(".k1loop", T_NEAR);
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, KUNROLL * AKStepSize);
       add(reg_tmp1, KUNROLL * BKStepSize);
       add(reg_iterk, KUNROLL * KTILE);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_mtile, _nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -181,12 +181,11 @@ class GemmCore_Row_NN_4x24_AVX2 {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _ktile, const Xbyak::Reg64& reg_tmp, const Xbyak::Reg64& reg_matAptr,
-                      const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _ktile, const Xbyak::Reg64& _reg_matBptr) {
       for (int kk = 0; kk < _ktile; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int i = 0; i < _NRegs; i++) {
-          vmovups(Xbyak::Ymm(BReg + i), ptr[reg_matBptr + kk * BKStepSize + i * VecBytes]);
+          vmovups(Xbyak::Ymm(BReg + i), ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
         }
         for (int mm = 0; mm < _mtile; mm++) {
           vbroadcastss(Xbyak::Ymm(AReg), ptr[reg_tmp]);
@@ -198,8 +197,7 @@ class GemmCore_Row_NN_4x24_AVX2 {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       load32(reg_matCptr, ptr[parambase + OFFSET(kpos)]);
       cmp(reg_matCptr, 0);
@@ -351,7 +349,7 @@ class GemmCore_Row_NN_2x48_AVX2 {
       xor_(reg_iterk, reg_iterk);
 
       generate_kloop(_mtile, NRegs);
-      write_back(_mtile, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -373,14 +371,14 @@ class GemmCore_Row_NN_2x48_AVX2 {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KUNROLL * KTILE);
       jl(".k1loop", T_NEAR);
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, KUNROLL * AKStepSize);
       add(reg_tmp1, KUNROLL * BKStepSize);
       add(reg_iterk, KUNROLL * KTILE);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_mtile, _nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -390,22 +388,20 @@ class GemmCore_Row_NN_2x48_AVX2 {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _ktile, const Xbyak::Reg64& reg_tmp, const Xbyak::Reg64& reg_matAptr,
-                      const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _ktile, const Xbyak::Reg64& _reg_matBptr) {
       for (int kk = 0; kk < _ktile; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int i = 0; i < _mtile; ++i)
           vbroadcastss(Xbyak::Ymm(AReg + i), ptr[reg_matAptr + kk * AKStepSize + reg_astep * i]);
         for (int j = 0; j < _NRegs; j++) {
-          vmovups(Xbyak::Ymm(BReg), ptr[reg_matBptr + kk * BKStepSize + j * VecBytes]);
+          vmovups(Xbyak::Ymm(BReg), ptr[_reg_matBptr + kk * BKStepSize + j * VecBytes]);
           for (int i = 0; i < _mtile; ++i)
             vfmadd231ps(Xbyak::Ymm(CReg + i * NRegs + j), Xbyak::Ymm(BReg), Xbyak::Ymm(AReg + i));
         }
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       load32(reg_matCptr, ptr[parambase + OFFSET(kpos)]);
       cmp(reg_matCptr, 0);
@@ -562,7 +558,7 @@ class GemmCore_Row_NN_4x24_AVX_VNNI {
       cmp(reg_tmp, NTILE);
 
       generate_kloop(_mtile, NRegs);
-      write_back(_mtile, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -584,14 +580,14 @@ class GemmCore_Row_NN_4x24_AVX_VNNI {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KTILE * KUNROLL);
       jl(".k1loop", T_NEAR);
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, AKStepSize * KUNROLL);
       add(reg_tmp1, BKStepSize * KUNROLL);
       add(reg_iterk, KTILE * KUNROLL);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_mtile, _nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -601,12 +597,11 @@ class GemmCore_Row_NN_4x24_AVX_VNNI {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& reg_tmp,
-                      const Xbyak::Reg64& reg_matAptr, const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& _reg_matBptr) {
       for (int kk = 0; kk < _kunroll; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int i = 0; i < _NRegs; i++) {
-          vmovups(Xbyak::Ymm(BReg + i), ptr[reg_matBptr + kk * BKStepSize + i * VecBytes]);
+          vmovups(Xbyak::Ymm(BReg + i), ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
         }
         for (int mm = 0; mm < _mtile; mm++) {
           vpbroadcastd(Xbyak::Ymm(AReg), ptr[reg_tmp]);
@@ -618,8 +613,7 @@ class GemmCore_Row_NN_4x24_AVX_VNNI {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       load32(reg_matCptr, ptr[parambase + OFFSET(kpos)]);
       cmp(reg_matCptr, 0);
@@ -775,7 +769,7 @@ class GemmCore_Row_NN_2x48_AVX_VNNI {
       cmp(reg_tmp, NTILE);
 
       generate_kloop(_mtile, NRegs);
-      write_back(_mtile, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -797,14 +791,14 @@ class GemmCore_Row_NN_2x48_AVX_VNNI {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KTILE * KUNROLL);
       jl(".k1loop", T_NEAR);
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, AKStepSize * KUNROLL);
       add(reg_tmp1, BKStepSize * KUNROLL);
       add(reg_iterk, KTILE * KUNROLL);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_mtile, _nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -814,12 +808,11 @@ class GemmCore_Row_NN_2x48_AVX_VNNI {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& reg_tmp,
-                      const Xbyak::Reg64& reg_matAptr, const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& _reg_matBptr) {
       for (int kk = 0; kk < _kunroll; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int i = 0; i < _NRegs; i++) {
-          vmovups(Xbyak::Ymm(BReg + i), ptr[reg_matBptr + kk * BKStepSize + i * VecBytes]);
+          vmovups(Xbyak::Ymm(BReg + i), ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
         }
         for (int mm = 0; mm < _mtile; mm++) {
           vpbroadcastd(Xbyak::Ymm(AReg), ptr[reg_tmp]);
@@ -831,8 +824,7 @@ class GemmCore_Row_NN_2x48_AVX_VNNI {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       load32(reg_matCptr, ptr[parambase + OFFSET(kpos)]);
       cmp(reg_matCptr, 0);
@@ -985,7 +977,7 @@ class GemmCore_Row_NN_8x48_AVX512F {
       cmp(reg_tmp, NTILE);
       jl(".n32", T_NEAR);
       generate_kloop(_mtile, NRegs);
-      write_back(_mtile, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -996,7 +988,7 @@ class GemmCore_Row_NN_8x48_AVX512F {
       cmp(reg_tmp, 32);
       jl(".n16", T_NEAR);
       generate_kloop(_mtile, 2);
-      write_back(_mtile, 2, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, 2);
       add(reg_itern, 32);
       add(reg_matBptr, 32 * sizeof(BType));
       jmp(".nend", T_NEAR);
@@ -1004,7 +996,7 @@ class GemmCore_Row_NN_8x48_AVX512F {
       L(".n16");
       xor_(reg_iterk, reg_iterk);
       generate_kloop(_mtile, 1);
-      write_back(_mtile, 1, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, 1);
       add(reg_itern, 16);
       add(reg_matBptr, 16 * sizeof(BType));
       L(".nend");
@@ -1024,14 +1016,14 @@ class GemmCore_Row_NN_8x48_AVX512F {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KUNROLL * KTILE);
       jl(".k1loop", T_NEAR);
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, KUNROLL * AKStepSize);
       add(reg_tmp1, KUNROLL * BKStepSize);
       add(reg_iterk, KUNROLL * KTILE);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_mtile, _nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -1041,12 +1033,11 @@ class GemmCore_Row_NN_8x48_AVX512F {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _ktile, const Xbyak::Reg64& reg_tmp, const Xbyak::Reg64& reg_matAptr,
-                      const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _ktile, const Xbyak::Reg64& _reg_matBptr) {
       for (int kk = 0; kk < _ktile; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int i = 0; i < _NRegs; i++) {
-          vmovups(Xbyak::Zmm(BReg + i), ptr[reg_matBptr + kk * BKStepSize + i * VecBytes]);
+          vmovups(Xbyak::Zmm(BReg + i), ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
         }
         for (int mm = 0; mm < _mtile; mm++) {
           vbroadcastss(Xbyak::Zmm(AReg), ptr[reg_tmp]);
@@ -1058,8 +1049,7 @@ class GemmCore_Row_NN_8x48_AVX512F {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       load32(reg_matCptr, ptr[parambase + OFFSET(kpos)]);
       cmp(reg_matCptr, 0);
@@ -1216,7 +1206,7 @@ class GemmCore_Row_NN_8x64_AVX512_FP16 {
       cmp(reg_tmp, NTILE);
       jl(".n32", T_NEAR);
       generate_kloop(_mtile, NRegs);
-      write_back(_mtile, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -1225,7 +1215,7 @@ class GemmCore_Row_NN_8x64_AVX512_FP16 {
 
       L(".n32");
       generate_kloop(_mtile, 1);
-      write_back(_mtile, 1, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, 1);
       add(reg_itern, 32);
       add(reg_matBptr, 32 * sizeof(BType));
 
@@ -1246,14 +1236,14 @@ class GemmCore_Row_NN_8x64_AVX512_FP16 {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KUNROLL * KTILE);
       jl(".k1loop", T_NEAR);
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, KUNROLL * AKStepSize);
       add(reg_tmp1, KUNROLL * BKStepSize);
       add(reg_iterk, KUNROLL * KTILE);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_mtile, _nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -1263,12 +1253,11 @@ class GemmCore_Row_NN_8x64_AVX512_FP16 {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _ktile, const Xbyak::Reg64& reg_tmp, const Xbyak::Reg64& reg_matAptr,
-                      const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _ktile, const Xbyak::Reg64& _reg_matBptr) {
       for (int kk = 0; kk < _ktile; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int i = 0; i < _NRegs; i++) {
-          vmovups(Xbyak::Zmm(BReg + i), ptr[reg_matBptr + kk * BKStepSize + i * VecBytes]);
+          vmovups(Xbyak::Zmm(BReg + i), ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
         }
         for (int mm = 0; mm < _mtile; mm++) {
           vpbroadcastw(Xbyak::Zmm(AReg), ptr[reg_tmp]);
@@ -1280,8 +1269,7 @@ class GemmCore_Row_NN_8x64_AVX512_FP16 {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       load32(reg_matCptr, ptr[parambase + OFFSET(kpos)]);
       cmp(reg_matCptr, 0);
@@ -1438,7 +1426,7 @@ class GemmCore_Row_NN_8x96_AVX512_FP16 {
       cmp(reg_tmp, NTILE);
       jl(".n64", T_NEAR);
       generate_kloop(_mtile, NRegs);
-      write_back(_mtile, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -1449,14 +1437,14 @@ class GemmCore_Row_NN_8x96_AVX512_FP16 {
       cmp(reg_tmp, 64);
       jl(".n32", T_NEAR);
       generate_kloop(_mtile, 2);
-      write_back(_mtile, 2, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, 2);
       add(reg_itern, 64);
       add(reg_matBptr, 64 * sizeof(BType));
       jmp(".nend", T_NEAR);
 
       L(".n32");
       generate_kloop(_mtile, 1);
-      write_back(_mtile, 1, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, 1);
       add(reg_itern, 32);
       add(reg_matBptr, 32 * sizeof(BType));
 
@@ -1477,14 +1465,14 @@ class GemmCore_Row_NN_8x96_AVX512_FP16 {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KUNROLL * KTILE);
       jl(".k1loop", T_NEAR);
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, KUNROLL * AKStepSize);
       add(reg_tmp1, KUNROLL * BKStepSize);
       add(reg_iterk, KUNROLL * KTILE);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_mtile, _nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -1494,12 +1482,11 @@ class GemmCore_Row_NN_8x96_AVX512_FP16 {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _ktile, const Xbyak::Reg64& reg_tmp, const Xbyak::Reg64& reg_matAptr,
-                      const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _ktile, const Xbyak::Reg64& _reg_matBptr) {
       for (int kk = 0; kk < _ktile; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int i = 0; i < _NRegs; i++) {
-          vmovups(Xbyak::Zmm(BReg + i), ptr[reg_matBptr + kk * BKStepSize + i * VecBytes]);
+          vmovups(Xbyak::Zmm(BReg + i), ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
         }
         for (int mm = 0; mm < _mtile; mm++) {
           vpbroadcastw(Xbyak::Zmm(AReg), ptr[reg_tmp]);
@@ -1511,8 +1498,7 @@ class GemmCore_Row_NN_8x96_AVX512_FP16 {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       load32(reg_matCptr, ptr[parambase + OFFSET(kpos)]);
       cmp(reg_matCptr, 0);
@@ -1669,7 +1655,7 @@ class GemmCore_Row_NN_8x48_AVX512_VNNI {
       cmp(reg_tmp, NTILE);
       jl(".n32", T_NEAR);
       generate_kloop(_mtile, NRegs);
-      write_back(_mtile, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -1680,7 +1666,7 @@ class GemmCore_Row_NN_8x48_AVX512_VNNI {
       cmp(reg_tmp, 32);
       jl(".n16", T_NEAR);
       generate_kloop(_mtile, 2);
-      write_back(_mtile, 2, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, 2);
       add(reg_itern, 32);
       add(reg_matBptr, 32 * sizeof(int8_t) * 4);
       jmp(".nend", T_NEAR);
@@ -1688,7 +1674,7 @@ class GemmCore_Row_NN_8x48_AVX512_VNNI {
       L(".n16");
       xor_(reg_iterk, reg_iterk);
       generate_kloop(_mtile, 1);
-      write_back(_mtile, 1, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(_mtile, 1);
       add(reg_itern, 16);
       add(reg_matBptr, 16 * sizeof(int8_t) * 4);
       L(".nend");
@@ -1708,14 +1694,14 @@ class GemmCore_Row_NN_8x48_AVX512_VNNI {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KTILE * KUNROLL);
       jl(".k1loop", T_NEAR);
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, AKStepSize * KUNROLL);
       add(reg_tmp1, BKStepSize * KUNROLL);
       add(reg_iterk, KTILE * KUNROLL);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_mtile, _nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_mtile, _nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -1725,12 +1711,11 @@ class GemmCore_Row_NN_8x48_AVX512_VNNI {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& reg_tmp,
-                      const Xbyak::Reg64& reg_matAptr, const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& _reg_matBptr) {
       for (int kk = 0; kk < _kunroll; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int i = 0; i < _NRegs; i++) {
-          vmovups(Xbyak::Zmm(BReg + i), ptr[reg_matBptr + kk * BKStepSize + i * VecBytes]);
+          vmovups(Xbyak::Zmm(BReg + i), ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
         }
         for (int mm = 0; mm < _mtile; mm++) {
           vpbroadcastd(Xbyak::Zmm(AReg), ptr[reg_tmp]);
@@ -1742,8 +1727,7 @@ class GemmCore_Row_NN_8x48_AVX512_VNNI {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       load32(reg_matCptr, ptr[parambase + OFFSET(kpos)]);
       cmp(reg_matCptr, 0);
@@ -1898,7 +1882,7 @@ class GemmCore_Row_NN_16x64_AMX_BF16 {
       cmp(reg_tmp, NTILE);
       jl(".n48", T_NEAR);
       generate_kloop(NRegs);
-      write_back(MTILE, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -1909,7 +1893,7 @@ class GemmCore_Row_NN_16x64_AMX_BF16 {
       cmp(reg_tmp, 48);
       jl(".n32", T_NEAR);
       generate_kloop(3);
-      write_back(MTILE, 3, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, 3);
       add(reg_itern, 48);
       add(reg_matBptr, 48 * sizeof(BType));
       jmp(".nend", T_NEAR);
@@ -1918,7 +1902,7 @@ class GemmCore_Row_NN_16x64_AMX_BF16 {
       cmp(reg_tmp, 32);
       jl(".n16", T_NEAR);
       generate_kloop(2);
-      write_back(MTILE, 2, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, 2);
       add(reg_itern, 32);
       add(reg_matBptr, 32 * sizeof(BType));
       jmp(".nend", T_NEAR);
@@ -1926,7 +1910,7 @@ class GemmCore_Row_NN_16x64_AMX_BF16 {
       L(".n16");
       xor_(reg_iterk, reg_iterk);
       generate_kloop(1);
-      write_back(MTILE, 1, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, 1);
       add(reg_itern, 16);
       add(reg_matBptr, 16 * sizeof(BType));
       L(".nend");
@@ -1946,14 +1930,14 @@ class GemmCore_Row_NN_16x64_AMX_BF16 {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KUNROLL * KTILE);
       jl(".k1loop", T_NEAR);
-      generate_fma(_nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, KUNROLL * AKStepSize);
       add(reg_tmp1, KUNROLL * BKStepSize);
       add(reg_iterk, KUNROLL * KTILE);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -1963,13 +1947,12 @@ class GemmCore_Row_NN_16x64_AMX_BF16 {
       outLocalLabel();
     }
 
-    void generate_fma(int _NTile, int _kunroll, const Xbyak::Reg64& reg_tmp, const Xbyak::Reg64& reg_matAptr,
-                      const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _NTile, int _kunroll, const Xbyak::Reg64& _reg_matBptr) {
       mov(reg_tmp, NTILE * 4);
       if (_NTile <= B_tilenum) {
         for (int kk = 0; kk < _kunroll; kk++) {
           for (int i = 0; i < _NTile; i++) {
-            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
+            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[_reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
           }
 
           for (int mm = 0; mm < 1; mm++) {
@@ -1982,7 +1965,7 @@ class GemmCore_Row_NN_16x64_AMX_BF16 {
       } else {
         for (int kk = 0; kk < _kunroll; kk++) {
           for (int i = 0; i < _NTile - 1; i++) {
-            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
+            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[_reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
           }
 
           for (int mm = 0; mm < 1; mm++) {
@@ -1990,15 +1973,14 @@ class GemmCore_Row_NN_16x64_AMX_BF16 {
             for (int i = 0; i < _NTile - 1; i++) {
               tdpbf16ps(Xbyak::Tmm(CTile + mm * C_tilenum + i), Xbyak::Tmm(ATile + mm), Xbyak::Tmm(BTile + i));
             }
-            tileloaddt1(Xbyak::Tmm(BTile + 0), ptr[reg_matBptr + reg_tmp + kk * BKStepSize + (_NTile - 1) * 64]);
+            tileloaddt1(Xbyak::Tmm(BTile + 0), ptr[_reg_matBptr + reg_tmp + kk * BKStepSize + (_NTile - 1) * 64]);
             tdpbf16ps(Xbyak::Tmm(CTile + mm * C_tilenum + _NTile - 1), Xbyak::Tmm(ATile + mm), Xbyak::Tmm(BTile + 0));
           }
         }
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       mov(reg_tmp, dword[parambase + OFFSET(workspace)]);
       mov(reg_tmp1, NTILE * 4);
@@ -2177,7 +2159,7 @@ class GemmCore_Row_NN_16x48_AMX_BF16 {
       cmp(reg_tmp, NTILE);
       jl(".n32", T_NEAR);
       generate_kloop(NRegs);
-      write_back(MTILE, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -2188,7 +2170,7 @@ class GemmCore_Row_NN_16x48_AMX_BF16 {
       cmp(reg_tmp, 32);
       jl(".n16", T_NEAR);
       generate_kloop(2);
-      write_back(MTILE, 2, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, 2);
       add(reg_itern, 32);
       add(reg_matBptr, 32 * sizeof(BType));
       jmp(".nend", T_NEAR);
@@ -2196,7 +2178,7 @@ class GemmCore_Row_NN_16x48_AMX_BF16 {
       L(".n16");
       xor_(reg_iterk, reg_iterk);
       generate_kloop(1);
-      write_back(MTILE, 1, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, 1);
       add(reg_itern, 16);
       add(reg_matBptr, 16 * sizeof(BType));
       L(".nend");
@@ -2216,14 +2198,14 @@ class GemmCore_Row_NN_16x48_AMX_BF16 {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KUNROLL * KTILE);
       jl(".k1loop", T_NEAR);
-      generate_fma(_nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, KUNROLL * AKStepSize);
       add(reg_tmp1, KUNROLL * BKStepSize);
       add(reg_iterk, KUNROLL * KTILE);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -2233,12 +2215,11 @@ class GemmCore_Row_NN_16x48_AMX_BF16 {
       outLocalLabel();
     }
 
-    void generate_fma(int _NTile, int _kunroll, const Xbyak::Reg64& reg_tmp, const Xbyak::Reg64& reg_matAptr,
-                      const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _NTile, int _kunroll, const Xbyak::Reg64& _reg_matBptr) {
       mov(reg_tmp, NTILE * 4);
       for (int kk = 0; kk < _kunroll; kk++) {
         for (int i = 0; i < _NTile; i++) {
-          tileloaddt1(Xbyak::Tmm(BTile + i), ptr[reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
+          tileloaddt1(Xbyak::Tmm(BTile + i), ptr[_reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
         }
 
         for (int mm = 0; mm < 1; mm++) {
@@ -2250,8 +2231,7 @@ class GemmCore_Row_NN_16x48_AMX_BF16 {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       mov(reg_tmp, dword[parambase + OFFSET(workspace)]);
       mov(reg_tmp1, NTILE * 4);
@@ -2431,7 +2411,7 @@ class GemmCore_Row_NN_16x64_AMX_I8 {
       cmp(reg_tmp, NTILE);
       jl(".n48", T_NEAR);
       generate_kloop(NRegs);
-      write_back(MTILE, NRegs, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, NRegs);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -2442,7 +2422,7 @@ class GemmCore_Row_NN_16x64_AMX_I8 {
       cmp(reg_tmp, 48);
       jl(".n32", T_NEAR);
       generate_kloop(3);
-      write_back(MTILE, 3, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, 3);
       add(reg_itern, 48);
       add(reg_matBptr, 48 * sizeof(BType));
       jmp(".nend", T_NEAR);
@@ -2451,7 +2431,7 @@ class GemmCore_Row_NN_16x64_AMX_I8 {
       cmp(reg_tmp, 32);
       jl(".n16", T_NEAR);
       generate_kloop(2);
-      write_back(MTILE, 2, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, 2);
       add(reg_itern, 32);
       add(reg_matBptr, 32 * sizeof(BType));
       jmp(".nend", T_NEAR);
@@ -2459,7 +2439,7 @@ class GemmCore_Row_NN_16x64_AMX_I8 {
       L(".n16");
       xor_(reg_iterk, reg_iterk);
       generate_kloop(1);
-      write_back(MTILE, 1, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, 1);
       add(reg_itern, 16);
       add(reg_matBptr, 16 * sizeof(BType));
       L(".nend");
@@ -2479,14 +2459,14 @@ class GemmCore_Row_NN_16x64_AMX_I8 {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KUNROLL * KTILE);
       jl(".k1loop", T_NEAR);
-      generate_fma(_nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, KUNROLL * AKStepSize);
       add(reg_tmp1, KUNROLL * BKStepSize);
       add(reg_iterk, KUNROLL * KTILE);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -2496,13 +2476,12 @@ class GemmCore_Row_NN_16x64_AMX_I8 {
       outLocalLabel();
     }
 
-    void generate_fma(int _NTile, int _kunroll, const Xbyak::Reg64& reg_tmp, const Xbyak::Reg64& reg_matAptr,
-                      const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _NTile, int _kunroll, const Xbyak::Reg64& _reg_matBptr) {
       mov(reg_tmp, NTILE * 4);
       if (_NTile <= B_tilenum) {
         for (int kk = 0; kk < _kunroll; kk++) {
           for (int i = 0; i < _NTile; i++) {
-            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
+            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[_reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
           }
 
           for (int mm = 0; mm < 1; mm++) {
@@ -2516,7 +2495,7 @@ class GemmCore_Row_NN_16x64_AMX_I8 {
       } else {
         for (int kk = 0; kk < _kunroll; kk++) {
           for (int i = 0; i < _NTile - 1; i++) {
-            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
+            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[_reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
           }
 
           for (int mm = 0; mm < 1; mm++) {
@@ -2525,7 +2504,7 @@ class GemmCore_Row_NN_16x64_AMX_I8 {
               _tdpb<AType, BType>(Xbyak::Tmm(CTile + mm * C_tilenum + i), Xbyak::Tmm(ATile + mm),
                                   Xbyak::Tmm(BTile + i));
             }
-            tileloaddt1(Xbyak::Tmm(BTile + 0), ptr[reg_matBptr + reg_tmp + kk * BKStepSize + (_NTile - 1) * 64]);
+            tileloaddt1(Xbyak::Tmm(BTile + 0), ptr[_reg_matBptr + reg_tmp + kk * BKStepSize + (_NTile - 1) * 64]);
             _tdpb<AType, BType>(Xbyak::Tmm(CTile + mm * C_tilenum + _NTile - 1), Xbyak::Tmm(ATile + mm),
                                 Xbyak::Tmm(BTile + 0));
           }
@@ -2533,8 +2512,7 @@ class GemmCore_Row_NN_16x64_AMX_I8 {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       mov(reg_tmp, dword[parambase + OFFSET(workspace)]);
       mov(reg_tmp1, NTILE * 4);
@@ -2713,7 +2691,7 @@ class GemmCore_Row_NN_16x48_AMX_I8 {
       cmp(reg_tmp, NTILE);
       jl(".n32", T_NEAR);
       generate_kloop(C_tilenum);
-      write_back(MTILE, C_tilenum, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, C_tilenum);
       load32(reg_tmp, ptr[parambase + OFFSET(bstep)]);
       imul(reg_tmp, reg_tmp, NTILE);
       add(reg_matBptr, reg_tmp);
@@ -2724,7 +2702,7 @@ class GemmCore_Row_NN_16x48_AMX_I8 {
       cmp(reg_tmp, 32);
       jl(".n16", T_NEAR);
       generate_kloop(2);
-      write_back(MTILE, 2, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, 2);
       add(reg_itern, 32);
       add(reg_matBptr, 32 * sizeof(BType));
       jmp(".nend", T_NEAR);
@@ -2732,7 +2710,7 @@ class GemmCore_Row_NN_16x48_AMX_I8 {
       L(".n16");
       xor_(reg_iterk, reg_iterk);
       generate_kloop(1);
-      write_back(MTILE, 1, parambase, reg_matCptr, reg_cstep, reg_itern);
+      write_back(MTILE, 1);
       add(reg_itern, 16);
       add(reg_matBptr, 16 * sizeof(BType));
       L(".nend");
@@ -2752,14 +2730,14 @@ class GemmCore_Row_NN_16x48_AMX_I8 {
       sub(reg_tmp, reg_iterk);
       cmp(reg_tmp, KUNROLL * KTILE);
       jl(".k1loop", T_NEAR);
-      generate_fma(_nregs, KUNROLL, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_nregs, KUNROLL, reg_tmp1);
       add(reg_matAptr, KUNROLL * AKStepSize);
       add(reg_tmp1, KUNROLL * BKStepSize);
       add(reg_iterk, KUNROLL * KTILE);
       jmp(".kloopend", T_NEAR);
 
       L(".k1loop");
-      generate_fma(_nregs, 1, reg_tmp, reg_matAptr, reg_tmp1, reg_astep);
+      generate_fma(_nregs, 1, reg_tmp1);
       add(reg_matAptr, 1 * AKStepSize);
       add(reg_tmp1, 1 * BKStepSize);
       add(reg_iterk, 1 * KTILE);
@@ -2769,13 +2747,12 @@ class GemmCore_Row_NN_16x48_AMX_I8 {
       outLocalLabel();
     }
 
-    void generate_fma(int _NTile, int _kunroll, const Xbyak::Reg64& reg_tmp, const Xbyak::Reg64& reg_matAptr,
-                      const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _NTile, int _kunroll, const Xbyak::Reg64& _reg_matBptr) {
       mov(reg_tmp, NTILE * 4);
       if (_NTile <= B_tilenum) {
         for (int kk = 0; kk < _kunroll; kk++) {
           for (int i = 0; i < _NTile; i++) {
-            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
+            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[_reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
           }
 
           for (int mm = 0; mm < 1; mm++) {
@@ -2789,7 +2766,7 @@ class GemmCore_Row_NN_16x48_AMX_I8 {
       } else {
         for (int kk = 0; kk < _kunroll; kk++) {
           for (int i = 0; i < _NTile - 1; i++) {
-            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
+            tileloaddt1(Xbyak::Tmm(BTile + i), ptr[_reg_matBptr + reg_tmp + kk * BKStepSize + i * 64]);
           }
 
           for (int mm = 0; mm < 1; mm++) {
@@ -2798,7 +2775,7 @@ class GemmCore_Row_NN_16x48_AMX_I8 {
               _tdpb<AType, BType>(Xbyak::Tmm(CTile + mm * C_tilenum + i), Xbyak::Tmm(ATile + mm),
                                   Xbyak::Tmm(BTile + i));
             }
-            tileloaddt1(Xbyak::Tmm(BTile + 0), ptr[reg_matBptr + reg_tmp + kk * BKStepSize + (_NTile - 1) * 64]);
+            tileloaddt1(Xbyak::Tmm(BTile + 0), ptr[_reg_matBptr + reg_tmp + kk * BKStepSize + (_NTile - 1) * 64]);
             _tdpb<AType, BType>(Xbyak::Tmm(CTile + mm * C_tilenum + _NTile - 1), Xbyak::Tmm(ATile + mm),
                                 Xbyak::Tmm(BTile + 0));
           }
@@ -2806,8 +2783,7 @@ class GemmCore_Row_NN_16x48_AMX_I8 {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& parambase, const Xbyak::Reg64& reg_matCptr,
-                    const Xbyak::Reg64& reg_cstep, const Xbyak::Reg64& reg_itern) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       mov(reg_tmp, dword[parambase + OFFSET(workspace)]);
       mov(reg_tmp1, NTILE * 4);
@@ -3010,19 +2986,19 @@ class GemmCore_Row_NN_3x48_AVX512_VNNI_KBLOCK {
       cmp(reg_tmp, NTILE);
       jl(".n32", T_NEAR);
       generate_kloop(_mtile, NRegs);
-      write_back(_mtile, NRegs, reg_matCptr, reg_cstep);
+      write_back(_mtile, NRegs);
       jmp(".nend", T_NEAR);
 
       L(".n32");
       cmp(reg_tmp, 32);
       jl(".n16", T_NEAR);
       generate_kloop(_mtile, 2);
-      write_back(_mtile, 2, reg_matCptr, reg_cstep);
+      write_back(_mtile, 2);
       jmp(".nend", T_NEAR);
 
       L(".n16");
       generate_kloop(_mtile, 1);
-      write_back(_mtile, 1, reg_matCptr, reg_cstep);
+      write_back(_mtile, 1);
 
       L(".nend");
       mov(reg_ret, 0);
@@ -3047,8 +3023,8 @@ class GemmCore_Row_NN_3x48_AVX512_VNNI_KBLOCK {
       }
       xor_(reg_tmp2, reg_tmp2);
       L(".kbloop");
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_matBptr, reg_astep);
-      generate_zp_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matBptr);
+      generate_fma(_mtile, _nregs, KUNROLL);
+      generate_zp_fma(_mtile, _nregs, KUNROLL);
       add(reg_matAptr, AKStepSize * KUNROLL);
       add(reg_matBptr, BKStepSize * KUNROLL);
       add(reg_iterk, KTILE * KUNROLL);
@@ -3085,8 +3061,7 @@ class GemmCore_Row_NN_3x48_AVX512_VNNI_KBLOCK {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& reg_tmp,
-                      const Xbyak::Reg64& reg_matAptr, const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _kunroll) {
       for (int kk = 0; kk < _kunroll; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int i = 0; i < _NRegs; i++) {
@@ -3102,8 +3077,7 @@ class GemmCore_Row_NN_3x48_AVX512_VNNI_KBLOCK {
       }
     }
 
-    void generate_zp_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& reg_tmp,
-                         const Xbyak::Reg64& reg_matBptr) {
+    void generate_zp_fma(int _mtile, int _NRegs, int _kunroll) {
       for (int kk = 0; kk < _kunroll; kk++) {
         for (int i = 0; i < _NRegs; i++) {
           vmovups(Xbyak::Zmm(BReg + i), ptr[reg_matBptr + kk * BKStepSize + i * VecBytes]);
@@ -3129,7 +3103,7 @@ class GemmCore_Row_NN_3x48_AVX512_VNNI_KBLOCK {
       }
     }
 
-    void write_back(int _mtile, int _NRegs, const Xbyak::Reg64& reg_matCptr, const Xbyak::Reg64& reg_cstep) {
+    void write_back(int _mtile, int _NRegs) {
       inLocalLabel();
       load32(reg_matCptr, ptr[parambase + OFFSET(kpos)]);
       cmp(reg_matCptr, 0);
@@ -3396,7 +3370,7 @@ class GemmCore_Row_NN_4x48_AVX512_VNNI_KBLOCK {
       xor_(reg_tmp2, reg_tmp2);
       load32(reg_tmp3, ptr[parambase + OFFSET(kblock)]);
       L(".kbloop");
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_matBptr, reg_astep);
+      generate_fma(_mtile, _nregs, KUNROLL);
       add(reg_matAptr, AKStepSize * KUNROLL);
       add(reg_matBptr, BKStepSize * KUNROLL);
       add(reg_iterk, KTILE * KUNROLL);
@@ -3414,8 +3388,7 @@ class GemmCore_Row_NN_4x48_AVX512_VNNI_KBLOCK {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& reg_tmp,
-                      const Xbyak::Reg64& reg_matAptr, const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _kunroll) {
       for (int kk = 0; kk < _kunroll; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int i = 0; i < _NRegs; i++) {
@@ -3705,7 +3678,7 @@ class GemmCore_Row_NN_1x48_AVX_VNNI_KBLOCK {
       xor_(reg_tmp2, reg_tmp2);
       load32(reg_tmp3, ptr[parambase + OFFSET(kblock)]);
       L(".kbloop");
-      generate_fma(_mtile, _nregs, KUNROLL, reg_tmp, reg_matAptr, reg_matBptr, reg_astep);
+      generate_fma(_mtile, _nregs, KUNROLL);
       add(reg_matAptr, AKStepSize * KUNROLL);
       add(reg_matBptr, BKStepSize * KUNROLL);
       add(reg_iterk, KTILE * KUNROLL);
@@ -3723,8 +3696,7 @@ class GemmCore_Row_NN_1x48_AVX_VNNI_KBLOCK {
       outLocalLabel();
     }
 
-    void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& reg_tmp,
-                      const Xbyak::Reg64& reg_matAptr, const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _mtile, int _NRegs, int _kunroll) {
       for (int kk = 0; kk < _kunroll; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
         for (int mm = 0; mm < _mtile; mm++) {
@@ -4048,7 +4020,7 @@ class GemmCore_Row_NN_16x48_AMX_INT8_KBLOCK {
       }
       xor_(reg_tmp2, reg_tmp2);
       L(".kbloop");
-      generate_fma(_nregs, KUNROLL, reg_tmp, reg_matAptr, reg_matBptr, reg_astep);
+      generate_fma(_nregs, KUNROLL);
       add(reg_matAptr, AKStepSize * KUNROLL);
       add(reg_matBptr, BKStepSize * KUNROLL);
       add(reg_iterk, KTILE * KUNROLL);
@@ -4071,8 +4043,7 @@ class GemmCore_Row_NN_16x48_AMX_INT8_KBLOCK {
       outLocalLabel();
     }
 
-    void generate_fma(int _NNum, int _kunroll, const Xbyak::Reg64& reg_tmp, const Xbyak::Reg64& reg_matAptr,
-                      const Xbyak::Reg64& reg_matBptr, const Xbyak::Reg64& reg_astep) {
+    void generate_fma(int _NNum, int _kunroll) {
       mov(reg_tmp, NTILE * 4);
       for (int kk = 0; kk < _kunroll; kk++) {
         for (int i = 0; i < _NNum; i++) {

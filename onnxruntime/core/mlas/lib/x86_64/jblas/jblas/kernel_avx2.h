@@ -306,7 +306,6 @@ static inline JBLAS_CODE quantize_fp_u8_colblock(int row, int col, const SRC_T* 
   int constexpr VLen = 8;
   auto vff = _mm256_set1_epi32(255);
   auto v0 = _mm256_set1_epi32(0);
-  int i = 0;
   int vblocksize = utils::padto_le(blocksize, VLen);
   int colblk = utils::padto_le(col, blocksize);
   for (int i = 0; i < row; i++) {
@@ -447,6 +446,10 @@ static inline JBLAS_CODE fp32_cvt_bf16_2D_write_back(const void* raw_srcptr, voi
   return JblasSuccess;
 }
 
+#ifdef __GNUC__
+#pragma GCC pop_options
+#else
+#endif
 #endif
 }  // namespace avx2
 }  // namespace kernel

@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <vector>
 
 #include "jit_blas.h"
@@ -68,7 +69,6 @@ struct bf16 {
   bf16() : x(0) {}
 
 #if CompileBF16()
-#pragma GCC push_options
 #pragma GCC target("avx512vl", "avx512bf16")
   explicit bf16(float vf32) : x(bit_cast<uint16_t>(_mm_cvtness_sbh(vf32))) {}
 #else
@@ -126,8 +126,9 @@ struct fp16 {
     const uint32_t m = b & 0x007FFFFF;
     // sign : normalized : denormalized : saturate
 
-    this->x = (b & 0x80000000) >> 16 | (e > 112) * ((((e - 112) << 10) & 0x7C00) | m >> 13) |
-              ((e < 113) & (e > 101)) * ((((0x007FF000 + m) >> (125 - e)) + 1) >> 1) | (e > 143) * 0x7FFF;
+    this->x = static_cast<uint16_t>((b & 0x80000000) >> 16 | (e > 112) * ((((e - 112) << 10) & 0x7C00) | m >> 13) |
+                                    ((e < 113) & (e > 101)) * ((((0x007FF000 + m) >> (125 - e)) + 1) >> 1) |
+                                    (e > 143) * 0x7FFF);
 #endif
     return *this;
   }
@@ -167,7 +168,7 @@ struct fp16 {
     // followed by the mantissa.
     else {
       int sign = x & 0x8000;
-      return bf16::from_bin(sign | (exponent + 128 - 16) << 7 | mantissa >> 3);
+      return bf16::from_bin(static_cast<uint16_t>(sign | (exponent + 128 - 16) << 7 | mantissa >> 3));
     }
 #endif
   }
@@ -189,7 +190,7 @@ struct int4x2 : bit4x2 {
     dst = dst / 16;
     dst = dst > 7 ? 7 : dst;
     dst = dst < -8 ? -8 : dst;
-    return dst;
+    return static_cast<int8_t>(dst);
   }
 };
 
@@ -198,6 +199,22 @@ struct f4x2 : bit4x2 {
   f4x2() : bit4x2() {}
 };
 
+template <typename T>
+inline constexpr JBLAS_DTYPE jblas_dtype = std::is_same_v<T, double>    ? JBLAS_DTYPE::JblasF64
+                                           : std::is_same_v<T, float>   ? JBLAS_DTYPE::JblasF32
+                                           : std::is_same_v<T, bf16>    ? JBLAS_DTYPE::JblasBF16
+                                           : std::is_same_v<T, int8_t>  ? JBLAS_DTYPE::JblasS8
+                                           : std::is_same_v<T, uint8_t> ? JBLAS_DTYPE::JblasU8
+                                                                        : (assert(0), JBLAS_DTYPE::JblasF32);
+
+inline constexpr size_t jblas_dtype_size(const JBLAS_DTYPE t) {
+  return t == JblasF64    ? sizeof(double)
+         : t == JblasF32  ? sizeof(float)
+         : t == JblasBF16 ? sizeof(bf16)
+         : t == JblasS8   ? sizeof(int8_t)
+         : t == JblasU8   ? sizeof(uint8_t)
+                          : (assert(false), 0);
+}
 #ifndef _WIN32
 #include <err.h>
 #include <errno.h>
@@ -464,6 +481,7 @@ class CpuDevice {
   inline bool AVX512_VNNI() { return mHasAVX512_VNNI; }
   inline bool AMX_INT8() { return mHasAMX_INT8; }
   inline bool AMX_BF16() { return mHasAMX_BF16; }
+  inline bool AVX512_BF16() { return mHasAVX512_BF16; }
   inline bool AVX512_FP16() { return mHasAVX512_FP16; }
 #define ADD_FLAG(isa) mHas##isa = _cpu.has(_cpu.t##isa)
   CpuDevice() {
@@ -477,6 +495,7 @@ class CpuDevice {
     ADD_FLAG(AVX_VNNI);
     ADD_FLAG(AMX_BF16);
     ADD_FLAG(AMX_INT8);
+    ADD_FLAG(AVX512_BF16);
     ADD_FLAG(AVX512_FP16);
     numcores = _cpu.getNumCores(Xbyak::util::IntelCpuTopologyLevel::CoreLevel);
     ompthreads = omp_get_max_threads();
@@ -493,14 +512,17 @@ class CpuDevice {
   }
 
   void print() {
-    printf("AVX:%d AVX2:%d AVX512F:%d AVX_VNNI:%d AVX512_VNNI:%d AMX_INT8:%d AMX_BF16:%d AVX512_FP16:%d\n", mHasAVX,
-           mHasAVX2, mHasAVX512F, mHasAVX_VNNI, mHasAVX512_VNNI, mHasAMX_INT8, mHasAMX_BF16, mHasAVX512_FP16);
+    printf(
+        "AVX:%d AVX2:%d AVX512F:%d AVX_VNNI:%d AVX512_VNNI:%d AMX_INT8:%d AMX_BF16:%d AVX512_BF16:%d AVX512_FP16:%d\n",
+        mHasAVX, mHasAVX2, mHasAVX512F, mHasAVX_VNNI, mHasAVX512_VNNI, mHasAMX_INT8, mHasAMX_BF16, mHasAVX512_BF16,
+        mHasAVX512_FP16);
   }
 #undef ADD_FLAG
 
  protected:
   uint32_t L2Cache, L1Cache;
-  bool mHasAVX2, mHasAVX_VNNI, mHasAVX, mHasAVX512_VNNI, mHasAMX_INT8, mHasAMX_BF16, mHasAVX512F, mHasAVX512_FP16;
+  bool mHasAVX2, mHasAVX_VNNI, mHasAVX, mHasAVX512_VNNI, mHasAMX_INT8, mHasAMX_BF16, mHasAVX512F, mHasAVX512_BF16,
+      mHasAVX512_FP16;
   int numcores;
   int ompthreads;
   int numthreads;
@@ -517,7 +539,7 @@ class CpuDevice {
   }
 
 struct Parallel2D {
-  virtual void getIndex(int threadIdx, int* row, int* col, int* rowsize, int* colsize) const {
+  virtual void getIndex(int threadIdx, int* row, int* col, int* rowsize, int* colsize, bool padding = true) const {
     if (threadIdx >= mValidThreads) {
       *rowsize = 0;
       *colsize = 0;
@@ -527,8 +549,12 @@ struct Parallel2D {
     int ty = threadIdx / mColThreads;
     *col = tx * mThdCol;
     *row = ty * mThdRow;
-    *colsize = padto(remainsize(*col, mCols, mThdCol), mPadCol);
-    *rowsize = padto(remainsize(*row, mRows, mThdRow), mPadRow);
+    *colsize = remainsize(*col, mCols, mThdCol);
+    *rowsize = remainsize(*row, mRows, mThdRow);
+    if (padding) {
+      *colsize = padto(*colsize, mPadCol);
+      *rowsize = padto(*rowsize, mPadRow);
+    }
   }
 
   void calc_valid_threads() { mValidThreads = mColThreads * int(std::ceil(float(mRows) / mThdRow)); }
@@ -619,7 +645,7 @@ struct Parallel2DGemm : Parallel2D {
     if (BA_ratio >= 10) {
       // B matrix is too big, need split K to reduce latency
       int const NStage = 10;
-      int const K_Split = padto(updiv(K, 10), _GemmCore_T::KTILE);
+      int const K_Split = padto(updiv(K, NStage), _GemmCore_T::KTILE);
       if (mKStep > K_Split) {
         mKStep = K_Split;
       }
@@ -669,7 +695,7 @@ struct Parallel2DGemm : Parallel2D {
   // B Access = M/mMStep
   // A Access = N/mNStep
   void update_cache_blocking() {
-    int constexpr MRef = 256, KRef = 256;
+    int constexpr KRef = 256;
     size_t csize_total = mL2Size - _GemmCore_T::PREFERED_N * KRef * BSize;
     int maxM = static_cast<int>(csize_total / _GemmCore_T::PREFERED_N / CSize);
     maxM = downdiv(maxM, _GemmCore_T::MTILE);
@@ -877,7 +903,6 @@ struct Parallel2DGemmKBlock : Parallel2D {
   }
 
   void update_cache_blocking(int kblock) {
-    int constexpr MRef = 256;
     int kRef = kblock > 256 ? 256 : kblock;
     size_t csize_total = mL2Size - _GemmCore_T::PREFERED_N * kRef * BSize;
     int maxM = static_cast<int>(csize_total / _GemmCore_T::PREFERED_N / CSize);
@@ -1005,7 +1030,6 @@ struct Parallel2DGemmKBlockFixed : Parallel2D {
   }
 
   void update_cache_blocking(int kblock) {
-    int constexpr MRef = 256;
     int kRef = 256;
     if (kblock > 256) {
       kRef = kblock / 2;
@@ -1106,4 +1130,13 @@ static float nf4_dequant_fp32_LUT[] = {0.f,
                                        0.7229568362236023f,
                                        1.0f};
 
+// Calcuate instruction(s) size (in bytes). Example:
+// const int s = get_inst_size([](Xbyak::CodeGenerator* c) { c->vmovups(c->ptr[c->rax], c->zmm0); });
+// printf("inst_size: %d\n", s);
+inline size_t get_inst_size(std::function<void(Xbyak::CodeGenerator*)> inst) {
+  Xbyak::CodeGenerator code;
+  code.resetSize();
+  inst(&code);
+  return code.getSize();
+}
 }  // namespace jblas

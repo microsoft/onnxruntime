@@ -114,7 +114,6 @@ class ActivationBase {
       return kernel::wrapper::Memcpy2D::forward<ISA_T, AType, AType>(aptr + m_offset * _param.lda + k_offset, *dstptr,
                                                                      m_size, k_size, _param.lda, k_pad);
     }
-    return JblasSuccess;
   }
 };
 
@@ -161,22 +160,22 @@ using ActivationConverterBf16 = ActivationConverter<_GemmCore_T, ISA_T, utils::b
 template <typename QT_T, typename ST_T>
 class StorageQuantActivation {
  public:
-  QT_T *mWPtr, *mZPtr;
-  ST_T* mSPtr;
-  int lda, lds;
-  void resize(int m, int lda, int lds, int8_t* ptr) {
+  QT_T *mWPtr = NULL, *mZPtr = NULL;
+  ST_T* mSPtr = NULL;
+  int lda = 0, lds = 0;
+  void resize(int m, int _lda, int _lds, int8_t* ptr) {
     if (ptr) {
-      setPtr(m, lda, lds, ptr);
+      setPtr(m, _lda, _lds, ptr);
     } else {
-      auto size = getSize(m, lda, lds);
+      auto size = getSize(m, _lda, _lds);
       mBuffer.resize(size);
-      setPtr(m, lda, lds, mBuffer.data());
+      setPtr(m, _lda, _lds, mBuffer.data());
     }
   }
 
-  static size_t getSize(int m, int lda, int lds) {
+  static size_t getSize(int m, int _lda, int _lds) {
     size_t total = 0;
-    total = size_t(m) * lda * sizeof(QT_T) + (size_t)m * lds * (sizeof(QT_T) + sizeof(ST_T));
+    total = size_t(m) * _lda * sizeof(QT_T) + (size_t)m * _lds * (sizeof(QT_T) + sizeof(ST_T));
     return total;
   }
 
@@ -194,7 +193,7 @@ class StorageQuantActivation {
 template <typename QT_T, typename ST_T>
 class StorageQuantActivationKblock : public StorageQuantActivation<QT_T, ST_T> {
  public:
-  int kblock;
+  int kblock = 0;
   void resize(int m, int k, int _kblock, int8_t* ptr) {
     if (ptr) {
       setPtr(m, k, _kblock, ptr);
@@ -213,9 +212,8 @@ class StorageQuantActivationKblock : public StorageQuantActivation<QT_T, ST_T> {
 
   void setPtr(int m, int k, int _kblock, int8_t* ptr) {
     kblock = _kblock;
-    int lda = k;
-    int lds = utils::updiv(k, kblock);
-    StorageQuantActivation<QT_T, ST_T>::setPtr(m, lda, lds, ptr);
+    auto tmplds = utils::updiv(k, kblock);
+    StorageQuantActivation<QT_T, ST_T>::setPtr(m, k, tmplds, ptr);
   }
 };
 
@@ -286,6 +284,8 @@ class ActivationU8KBlockQuantize {
 
   JBLAS_CODE getActivation(AType** dstptr, int* dststep, const Param& _param, int m_size, int k_size, int m_offset,
                            int k_offset) {
+    (void)m_size;
+    (void)k_size;
     auto quan = _param.quan;
     auto aptr = const_cast<AType*>(quan->mWPtr);
     *dstptr = aptr + m_offset * _param.lda + k_offset;
@@ -295,6 +295,8 @@ class ActivationU8KBlockQuantize {
 
   JBLAS_CODE getScale(SType** dstptr, int* dststep, const Param& _param, int m_size, int k_size, int m_offset,
                       int k_offset) {
+    (void)m_size;
+    (void)k_size;
     auto quan = _param.quan;
     auto ptr = const_cast<SType*>(quan->mSPtr);
     *dstptr = ptr + m_offset * quan->lds + k_offset / quan->kblock;
@@ -304,6 +306,8 @@ class ActivationU8KBlockQuantize {
 
   static inline JBLAS_CODE getZp(AType** dstptr, int* dststep, const Param& _param, int m_size, int k_size,
                                  int m_offset, int k_offset) {
+    (void)m_size;
+    (void)k_size;
     auto quan = _param.quan;
     *dstptr = &quan->mZPtr[(m_offset)*quan->lds + k_offset / quan->kblock];
     *dststep = quan->lds;
@@ -458,6 +462,8 @@ class ActivationS8KBlockQuantize {
 
   JBLAS_CODE getActivation(AType** dstptr, int* dststep, const Param& _param, int m_size, int k_size, int m_offset,
                            int k_offset) {
+    (void)m_size;
+    (void)k_size;
     auto quan = _param.quan;
     auto aptr = const_cast<AType*>(quan->mWPtr);
     *dstptr = aptr + m_offset * quan->lda + k_offset;
@@ -467,6 +473,8 @@ class ActivationS8KBlockQuantize {
 
   JBLAS_CODE getScale(SType** dstptr, int* dststep, const Param& _param, int m_size, int k_size, int m_offset,
                       int k_offset) {
+    (void)m_size;
+    (void)k_size;
     auto quan = _param.quan;
     auto ptr = const_cast<SType*>(quan->mSPtr);
     *dstptr = ptr + m_offset * quan->lds + k_offset / quan->kblock;
@@ -476,6 +484,13 @@ class ActivationS8KBlockQuantize {
 
   static inline JBLAS_CODE getZp(AType** dstptr, int* dststep, const Param& _param, int m_size, int k_size,
                                  int m_offset, int k_offset) {
+    (void)m_size;
+    (void)k_size;
+    (void)dstptr;
+    (void)dststep;
+    (void)_param;
+    (void)m_offset;
+    (void)k_offset;
     return JblasSuccess;
   }
 };
@@ -530,7 +545,6 @@ class ActivationSymS8Quantize {
       int colremain = utils::remainsize(colidx, para.mCols, colsize);
       auto thdqptr = quan->mWPtr + rowidx * quan->lda + colidx;
       auto thdsptr = quan->mSPtr + rowidx * quan->lds;
-      auto thdzptr = quan->mZPtr + rowidx * quan->lds;
       kernel::wrapper::QuantizeS8ColBlock::template forward<ISA_T, SRC_T>(
           rowremain, colremain, srcptr, _param.lda, thdqptr, quan->lda, thdsptr, quan->lds, para.mCols);
     }
@@ -712,13 +726,13 @@ class WeightPack : public WeightBase<typename _GemmCore_T::BType, ISA_T> {
       auto ret = PaddingInterleaveMNWType::template forward<ISA_T>(  //
           src, dst, rowremain, colremain, rowsize, colsize, _param.ldb, packedw->mKPad);
       assert(ret == JblasSuccess);
+      (void)ret;
     }
   }
 
   inline JBLAS_CODE getWeight(WType** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                               const Param param) {
     auto wptr = param.packedW;
-    auto NPad = wptr->mNPad;
     auto KPad = wptr->mKPad;
     auto bptr = wptr->template getPtr<WType>() + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
     kernel::wrapper::Memcpy2D::template forward<ISA_T, WType, WType>(

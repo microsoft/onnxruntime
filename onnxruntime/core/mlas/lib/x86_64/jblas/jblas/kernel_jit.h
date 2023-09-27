@@ -12,23 +12,15 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 #pragma once
+#include <algorithm>
 #include <functional>
+#include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "jit_base.hpp"
 #include "jit_blas_utils.h"
 #include "kernel_jit_injector.h"
-struct decompress_block_s4_f32_codegen_param {
-  int row;
-  int col;
-  int kblock;
-  int ld_src;
-  int ld_dst;
-  bool operator==(const decompress_block_s4_f32_codegen_param& other) const {
-    return row == other.row && col == other.col && kblock == other.kblock && ld_src == other.ld_src &&
-           ld_dst == other.ld_dst;
-  }
-};
 
 namespace jblas {
 namespace kernel {
@@ -268,7 +260,6 @@ class JitMemcpy2DAvx512f : protected jblas::xbyak::JitAvx512f {
                         int(srcstep * sizeof(_SRC_T)),
                         int(dststep * sizeof(_DST_T))};
     int row4 = utils::padto_le(row, 4);
-    int irow = 0;
     if (row4) {
       param.row = row4;
       instance4_withops.mKernel(&param);
@@ -292,7 +283,6 @@ class JitMemcpy2DAvx512f : protected jblas::xbyak::JitAvx512f {
     inLocalLabel();  // use local label for multiple instance
     {
       int SF_TmpSize = 64;
-      int SF_TmpPos = 16 * 10;
       Xbyak::util::StackFrame st(this, 1, 13, 16 * 10 + SF_TmpSize);
       const Xbyak::Reg64& parambase = st.p[0];
       const Xbyak::Reg64& reg_srcptr = st.t[0];
@@ -438,7 +428,6 @@ class CustomMemCpy : public JitMemcpy2DAvx512f {
     static CustomMemCpy instance4_withops(4, p);
     auto param = params{const_cast<float*>(srcptr), dstptr, elt_const_v, row, col, srcstride, dststride};
     int row4 = utils::padto_le(row, 4);
-    int irow = 0;
     if (row4) {
       param.row = row4;
       instance4_withops.mKernel(&param);
@@ -478,171 +467,6 @@ static inline Xbyak::Zmm unpack_4bit_2regs(Xbyak::CodeGenerator* jit, Xbyak::Ymm
   return dst;
 }
 
-class DequanKBlockS4F32 {
- public:
-  static inline void decompress_load_scale(Xbyak::CodeGenerator* jit, int zmm_scale_num,
-                                           const std::vector<Xbyak::Zmm>& scale_zmms, const Xbyak::Reg64& reg_scale) {
-    for (int i = 0; i < zmm_scale_num; i++) jit->vmovups(scale_zmms[i], jit->zword[reg_scale + i * 16 * sizeof(float)]);
-  }
-
-  struct convert_s4_s8_param {
-    Xbyak::CodeGenerator* jit;
-    Xbyak::RegExp src_addr;
-    Xbyak::RegExp dst_addr;
-    Xbyak::Zmm vmask;  // TODO: contain one tmp_zmm.
-    Xbyak::Opmask load_mask;
-    Xbyak::Opmask store_mask;
-    Xbyak::Opmask unpack_mask;
-    int free_zmm_idx;
-  };
-
-  template <int N>
-  static inline void convert_s4_s8(convert_s4_s8_param p) {
-    Xbyak::Ymm ymm(p.free_zmm_idx);
-    if (N == 48) {
-      p.jit->vmovdqu64(Xbyak::Ymm(p.free_zmm_idx) | p.load_mask, p.jit->yword[p.src_addr]);
-      auto zmm = unpack_4bit(p.jit, ymm, Xbyak::Zmm(p.free_zmm_idx + 1), Xbyak::Zmm(p.free_zmm_idx + 2), p.vmask,
-                             p.unpack_mask);
-      p.jit->vmovdqu64(p.jit->ptr[p.dst_addr] | p.store_mask, zmm);
-    }
-    if (N == 64) {
-      p.jit->vmovdqu(ymm, p.jit->yword[p.src_addr]);
-      auto zmm = unpack_4bit(p.jit, ymm, Xbyak::Zmm(p.free_zmm_idx + 1), Xbyak::Zmm(p.free_zmm_idx + 2), p.vmask,
-                             p.unpack_mask);
-      p.jit->vmovdqu32(p.jit->ptr[p.dst_addr], zmm);
-    }
-  }
-
-  template <int N>
-  static inline void dequant_s8_N(Xbyak::CodeGenerator* jit, Xbyak::RegExp dst_addr, Xbyak::RegExp src_addr,
-                                  const std::vector<Xbyak::Zmm>& zmms, int zmm_begin_idx,
-                                  const std::vector<Xbyak::Zmm>& scales) {
-    int constexpr VLoop = N / 16;
-    for (int iv = 0; iv < VLoop; iv += 1) {
-      jit->movdqu(Xbyak::Xmm(zmms[zmm_begin_idx + iv].getIdx()), jit->xword[src_addr + iv * 16]);
-      jit->vpmovsxbd(zmms[iv], Xbyak::Xmm(zmms[zmm_begin_idx + iv].getIdx()));
-      jit->vcvtdq2ps(zmms[iv], zmms[iv]);
-      jit->vmulps(zmms[iv], zmms[iv], scales[iv]);
-      jit->vmovups(jit->zword[dst_addr + iv * 16 * sizeof(float)], zmms[iv]);
-    }
-  }
-
-  class decompress_block_s4_f32 : protected Xbyak::CodeGenerator {
-    struct params {
-      float* scale_addr;
-      void* s4;
-      void* s8;
-      float* f32;
-    };
-    typedef void (*ker_t)(params* p);
-
-   public:
-    decompress_block_s4_f32(decompress_block_s4_f32_codegen_param p) : Xbyak::CodeGenerator(128 * 1024) {
-      assert(p.col == 48);
-      int zmm_scale_num = p.col / 16;
-      Xbyak::Zmm zmm_mask(31);
-      int data_zmm_num = 16;
-      int data_idx = 0;
-      int scale_idx = 16;
-      std::vector<Xbyak::Zmm> scale_zmms(zmm_scale_num);
-      std::vector<Xbyak::Zmm> data_zmms(data_zmm_num);
-      std::transform(scale_zmms.begin(), scale_zmms.end(), scale_zmms.begin(),
-                     [&](Xbyak::Zmm zmm) { return Xbyak::Zmm(scale_idx++); });
-      std::transform(data_zmms.begin(), data_zmms.end(), data_zmms.begin(),
-                     [&](Xbyak::Zmm zmm) { return Xbyak::Zmm(data_idx++); });
-      inLocalLabel();
-      Xbyak::Label const_v;
-      {
-        Xbyak::util::StackFrame sf(this, 1, 13, 64);
-        auto& reg_param = sf.p[0];
-        auto& reg_scale = sf.t[1];
-        auto& reg_s4 = sf.t[2];
-        auto& reg_s8 = sf.t[3];
-        auto& reg_f32 = sf.t[4];
-        auto& reg_tmp = sf.t[5];
-        auto& reg_kblock_loop = sf.t[6];
-        Xbyak::Opmask load_mask(2);
-        Xbyak::Opmask store_mask(3);
-        Xbyak::Opmask unpack_mask(4);
-        vbroadcastss(zmm_mask, dword[rip + const_v]);
-        mov(reg_tmp, 0xaaaaaaaaaaaaaaaa);
-        kmovq(unpack_mask, reg_tmp);
-        if (p.col == 48) {
-          mov(reg_tmp.cvt32(), 0x7);
-          kmovd(load_mask, reg_tmp.cvt32());
-          mov(reg_tmp.cvt32(), 0x3f);
-          kmovd(store_mask, reg_tmp.cvt32());
-
-          mov(reg_scale, ptr[reg_param + OFFSET(scale_addr)]);
-          mov(reg_s4, ptr[reg_param + OFFSET(s4)]);
-          mov(reg_s8, ptr[reg_param + OFFSET(s8)]);
-          mov(reg_f32, ptr[reg_param + OFFSET(f32)]);
-          decompress_load_scale(this, zmm_scale_num, scale_zmms, reg_scale);
-          auto max_row_unroll = data_zmm_num / zmm_scale_num;
-          if (p.row != p.kblock) {
-            int i = 0;
-            for (int i = 0; i < p.row; i++) {
-              convert_s4_s8_param cvt_p = {this,
-                                           reg_s4 + i * p.ld_src,
-                                           reg_s8 + i * 64,  // avoid leap the cache-line.
-                                           zmm_mask,
-                                           load_mask,
-                                           store_mask,
-                                           unpack_mask,
-                                           data_zmms[0].getIdx()};
-              convert_s4_s8<48>(cvt_p);
-            }
-            auto max_unroll_num = p.row / max_row_unroll;
-            auto tail_row_unroll = p.row % max_row_unroll;
-            for (; i < max_unroll_num; i++)
-              for (int j = 0; j < max_row_unroll; j++)
-                dequant_s8_N<48>(this, reg_f32 + (i * max_row_unroll + j) * p.ld_dst * sizeof(float),
-                                 reg_s8 + (i * max_row_unroll + j) * 64, data_zmms, j * zmm_scale_num, scale_zmms);
-            for (int k = 0; k < tail_row_unroll; k++)
-              dequant_s8_N<48>(this, reg_f32 + (i * max_row_unroll + k) * p.ld_dst * sizeof(float),
-                               reg_s8 + (i * max_row_unroll + k) * 64, data_zmms, k * zmm_scale_num, scale_zmms);
-          } else {
-            auto fin_row_unroll = max_row_unroll;
-            while (p.col * fin_row_unroll % 64 != 0) fin_row_unroll -= 1;
-            int Loop64 = p.col * fin_row_unroll / 64;
-            xor_(reg_kblock_loop, reg_kblock_loop);
-            L(".kblock_loop");
-            imul(reg_tmp, reg_kblock_loop, p.ld_src);
-            for (int j = 0; j < Loop64; j++) {
-              convert_s4_s8_param cvt_p = {
-                  this,        reg_s4 + reg_tmp + 32 * j, reg_s8 + j * 64, zmm_mask, load_mask, store_mask,
-                  unpack_mask, data_zmms[0].getIdx()};
-              convert_s4_s8<64>(cvt_p);
-            }
-            imul(reg_tmp, reg_kblock_loop, p.ld_dst * sizeof(float));
-            for (int k = 0; k < fin_row_unroll; k++)
-              dequant_s8_N<48>(this, reg_f32 + reg_tmp + k * p.ld_dst * sizeof(float), reg_s8 + k * 48, data_zmms,
-                               k * zmm_scale_num, scale_zmms);
-            add(reg_kblock_loop, fin_row_unroll);
-            cmp(reg_kblock_loop, p.kblock);
-            jl(".kblock_loop");
-          }
-        }
-      }
-      outLocalLabel();
-      L(const_v);
-      uint32_t const_value[] = {0xf0f0f0f0};
-      db(reinterpret_cast<uint8_t*>(const_value), sizeof(const_value));
-      this->ready();
-      ker_ = this->getCode<ker_t>();
-    }
-
-    void fwd(float* scale, void* s4, void* tmp_buf, float* f32) {
-      params p{scale, s4, tmp_buf, f32};
-      ker_(&p);
-    }
-
-   private:
-    ker_t ker_;
-    int dump_idx = 0;
-  };
-};
-
 class DecompressS4S8_AVX512F : protected jblas::xbyak::JitAvx512f {
  public:
   struct params {
@@ -656,20 +480,14 @@ class DecompressS4S8_AVX512F : protected jblas::xbyak::JitAvx512f {
   DecompressS4S8_AVX512F() {
     inLocalLabel();  // use local label for multiple instance
     int SF_TmpSize = 64;
-    int SF_TmpPos = 16 * 10;
     Xbyak::util::StackFrame st(this, 1, 13, 16 * 10 + SF_TmpSize);
     const Xbyak::Reg64& parambase = st.p[0];
     const Xbyak::Reg64& reg_srcptr = st.t[0];
     const Xbyak::Reg64& reg_dstptr = st.t[1];
-    const Xbyak::Reg64& reg_srcstride = st.t[2];
-    const Xbyak::Reg64& reg_dststride = st.t[3];
-    const Xbyak::Reg64& reg_rowsize = st.t[4];
     const Xbyak::Reg64& reg_size = st.t[5];
     const Xbyak::Reg64& reg_iterrow = st.t[6];
     const Xbyak::Reg64& reg_itercol = st.t[7];
     const Xbyak::Reg64& reg_tmp = st.t[8];
-    const Xbyak::Reg64& reg_tmpsrc = st.t[9];
-    const Xbyak::Reg64& reg_tmpdst = st.t[10];
     const Xbyak::Reg64& reg_tmp1 = st.t[12];
     const Xbyak::Reg64& reg_ret = rax;
 
@@ -740,6 +558,426 @@ static inline JBLAS_CODE decompress_s4_s8(utils::int4x2* srcptr, int8_t* dstptr,
   DecompressS4S8_AVX512F::forward(srcptr, dstptr, (size_t)row * col);
   return JblasSuccess;
 }
+
+// src: row x col => dst: ⌈col/n_tile⌉ x ⌈row/row_pack⌉ x n_tile x row_pack (zeor-padded)
+// Extra padding can be applied with memset calls in `static void forward(...)`
+class PaddingInterleaveCvt : protected xbyak::JitAvx512f {
+ public:
+  struct params {
+    const void* srcptr;
+    void* dstptr;
+    int row, col;
+    int srcstride, dststride;  // dst = dst_base + dststride * n_idx, where n_idx % n_tile == 0
+  };
+  typedef void (*func_t)(params* p);
+  void operator()(params* p) const { mKernel(p); }
+
+ private:
+  static inline const uint16_t idx_interleave_self[32] = {
+      0,  16, 1,  17, 2,  18, 3,  19,  //
+      4,  20, 5,  21, 6,  22, 7,  23,  //
+      8,  24, 9,  25, 10, 26, 11, 27,  //
+      12, 28, 13, 29, 14, 30, 15, 31,  //
+  };
+
+  PaddingInterleaveCvt(int n_tile, JBLAS_DTYPE dst_t) : PaddingInterleaveCvt(n_tile, dst_t, dst_t) {}
+  PaddingInterleaveCvt(int n_tile, JBLAS_DTYPE dst_t, JBLAS_DTYPE src_t, int row_pack = 0) : xbyak::JitAvx512f() {
+    inLocalLabel();  // use local label for multiple instance
+    const auto src_bytes = static_cast<int>(utils::jblas_dtype_size(src_t));
+    const auto dst_bytes = static_cast<int>(utils::jblas_dtype_size(dst_t));
+    if (row_pack == 0) row_pack = 4 / dst_bytes;  // default value
+    const auto ne_zmm = 64 / std::max(src_bytes, dst_bytes);
+    const auto src_bytes_vmm = ne_zmm * src_bytes;
+
+    assert(n_tile % ne_zmm == 0);
+    assert(row_pack > 0 && row_pack < 3);  // TODO(yi): int8 interleave not implemented
+
+    int SF_TmpSize = 64;
+    Xbyak::Label l_idx_interleave_self;
+    std::shared_ptr<void> epilogue{
+        // generate code at the very end
+        nullptr, [&](void*) {
+          align(64);
+          L(l_idx_interleave_self);
+          db(reinterpret_cast<const uint8_t*>(idx_interleave_self), sizeof(idx_interleave_self));
+          outLocalLabel();  // end of local label
+
+          this->ready();
+          this->mKernel = this->getCode<func_t>();
+        }};
+    Xbyak::util::StackFrame st(this, 1, 13, 16 * 10 + SF_TmpSize);
+    const Xbyak::Reg64& parambase = st.p[0];
+    const Xbyak::Reg64& reg_srcptr = st.t[0];
+    const Xbyak::Reg64& reg_dstptr = st.t[1];
+    const Xbyak::Reg64& reg_srcstride = st.t[2];
+    const Xbyak::Reg64& reg_dststride = st.t[3];
+    const Xbyak::Reg64& reg_colsize = st.t[5];
+    const Xbyak::Reg64& reg_iterrow = st.t[6];
+    const Xbyak::Reg64& reg_itercol = st.t[7];
+    const Xbyak::Reg64& reg_tmp = st.t[8];
+    const Xbyak::Reg64& reg_tmp1 = st.t[9];
+    const Xbyak::Reg64& reg_tmp2 = st.t[12];
+    const Xbyak::Reg64& reg_tmp3 = st.t[10];
+
+    const Xbyak::Reg64& reg_ret = rax;
+    auto& mask_rd = k1;
+    const Xbyak::Zmm& vreg_idx0 = zmm31;
+
+    vreg_push(rsp);
+    vmovups(vreg_idx0, zword[rip + l_idx_interleave_self]);
+    mov(reg_srcptr, ptr[parambase + OFFSET(srcptr)]);
+    mov(reg_dstptr, ptr[parambase + OFFSET(dstptr)]);
+    mov(reg_srcstride.cvt32(), ptr[parambase + OFFSET(srcstride)]);
+    mov(reg_dststride.cvt32(), ptr[parambase + OFFSET(dststride)]);
+    mov(reg_colsize.cvt32(), ptr[parambase + OFFSET(col)]);
+
+    std::vector<Xbyak::Zmm> reg_srcs(row_pack), reg_tmps(row_pack);
+    const int ZIDX_TranSrc = 0;
+    const int ZIDX_TransTmp = row_pack;
+    for (int i = 0; i < row_pack; i++) reg_srcs[i] = Xbyak::Zmm(ZIDX_TranSrc + i);
+    for (int i = 0; i < row_pack; i++) reg_tmps[i] = Xbyak::Zmm(ZIDX_TransTmp + i);
+
+    xor_(reg_iterrow, reg_iterrow);
+    L(".rowloop");
+    xor_(reg_itercol, reg_itercol);
+    mov(reg_tmp2.cvt32(), ptr[parambase + OFFSET(row)]);
+    sub(reg_tmp2, reg_iterrow);
+    cmp(reg_tmp2, row_pack);
+    jb(".tailrowloop", T_NEAR);
+
+    L(".colloop");
+    mov(reg_tmp1, reg_itercol);
+    imul(reg_tmp1, reg_dststride);
+    lea(reg_tmp, ptr[reg_dstptr + reg_tmp1]);
+    lea(reg_tmp1, ptr[reg_srcptr + reg_itercol * src_bytes]);
+    for (int jj = 0; jj < n_tile; jj += ne_zmm) {
+      generate_Nbitsmask(mask_rd, reg_itercol, ptr[reg_colsize - jj], reg_tmp2, reg_tmp3, ne_zmm);
+      for (int ii = 0; ii < row_pack; ii++) {
+        const Xbyak::Xmm reg_srcs_ii = src_bytes_vmm == 64   ? Xbyak::Zmm(reg_srcs[ii].getIdx())
+                                       : src_bytes_vmm == 32 ? Xbyak::Ymm(reg_srcs[ii].getIdx())
+                                       : src_bytes_vmm == 16 ? Xbyak::Xmm(reg_srcs[ii].getIdx())
+                                                             : (assert(false), reg_srcs[ii]);
+        if (src_bytes == 1) {
+          vmovdqu8(reg_srcs_ii | mask_rd | T_z, ptr[reg_tmp1 + ii * reg_srcstride + jj * src_bytes]);
+        } else if (src_bytes == 2) {
+          vmovdqu16(reg_srcs_ii | mask_rd | T_z, ptr[reg_tmp1 + ii * reg_srcstride + jj * src_bytes]);
+        } else if (src_bytes == 4) {
+          vmovdqu32(reg_srcs_ii | mask_rd | T_z, ptr[reg_tmp1 + ii * reg_srcstride + jj * src_bytes]);
+        }
+      }
+      if (src_t == JblasF32 && dst_t == JblasBF16) {
+        vcvtne2ps2bf16(reg_tmps[0], reg_srcs[1], reg_srcs[0]);
+        vpermt2w(reg_tmps[0], vreg_idx0, reg_tmps[0]);
+        vmovups(ptr[reg_tmp + jj * row_pack * dst_bytes], reg_tmps[0]);
+      } else {
+        // interleave_2rows_4regs(reg_srcs.data(), reg_tmps.data());
+        assert(false);  // Not implemented
+      }
+    }
+    add(reg_itercol, n_tile);
+    cmp(reg_itercol.cvt32(), ptr[parambase + OFFSET(col)]);
+    jb(".colloop");
+    lea(reg_srcptr, ptr[reg_srcptr + row_pack * reg_srcstride]);
+    lea(reg_dstptr, ptr[reg_dstptr + row_pack * n_tile * dst_bytes]);
+
+    add(reg_iterrow, row_pack);
+    cmp(reg_iterrow.cvt32(), ptr[parambase + OFFSET(row)]);
+    jb(".rowloop");
+    jmp(".aftercolloop", T_NEAR);
+
+    L(".tailrowloop");
+    L(".tailcolloop");
+    mov(reg_tmp1, reg_itercol);
+    imul(reg_tmp1, reg_dststride);
+    lea(reg_tmp, ptr[reg_dstptr + reg_tmp1]);
+    lea(reg_tmp1, ptr[reg_srcptr + reg_itercol * src_bytes]);
+    for (int jj = 0; jj < n_tile; jj += ne_zmm) {
+      generate_Nbitsmask(mask_rd, reg_itercol, ptr[reg_colsize - jj], reg_tmp2, reg_tmp3, ne_zmm);
+      if (row_pack == 2) {
+        const Xbyak::Xmm reg_srcs_0 = src_bytes_vmm == 64   ? Xbyak::Zmm(reg_srcs[0].getIdx())
+                                      : src_bytes_vmm == 32 ? Xbyak::Ymm(reg_srcs[0].getIdx())
+                                      : src_bytes_vmm == 16 ? Xbyak::Xmm(reg_srcs[0].getIdx())
+                                                            : (assert(false), reg_srcs[0]);
+        if (src_bytes == 1) {
+          vmovdqu8(reg_srcs_0 | mask_rd | T_z, ptr[reg_tmp1 + jj * src_bytes]);
+        } else if (src_bytes == 2) {
+          vmovdqu16(reg_srcs_0 | mask_rd | T_z, ptr[reg_tmp1 + jj * src_bytes]);
+        } else if (src_bytes == 4) {
+          vmovdqu32(reg_srcs_0 | mask_rd | T_z, ptr[reg_tmp1 + jj * src_bytes]);
+        }
+        vxorps(reg_srcs[1], reg_srcs[1]);
+      } else {
+        assert(false);
+      }
+      if (src_t == JblasF32 && dst_t == JblasBF16) {
+        vcvtne2ps2bf16(reg_tmps[0], reg_srcs[1], reg_srcs[0]);
+        vpermt2w(reg_tmps[0], vreg_idx0, reg_tmps[0]);
+        vmovups(ptr[reg_tmp + jj * row_pack * dst_bytes], reg_tmps[0]);
+      } else {
+        assert(false);
+      }
+    }
+    add(reg_itercol, n_tile);
+    cmp(reg_itercol.cvt32(), ptr[parambase + OFFSET(col)]);
+    jb(".tailcolloop");
+    L(".aftercolloop");
+    mov(reg_ret, 0);
+    vreg_pop(rsp);
+  }
+
+  func_t mKernel = nullptr;
+
+ public:
+  template <int NTile, typename T_SRC, typename T_DST = T_SRC, int RowPack = 4 / sizeof(T_DST)>
+  static void forward(const T_SRC* src, T_DST* dst, int row, int col, int row_pad, int col_pad, int src_step,
+                      int dst_step) {
+    const auto kern_col_pad = utils::padto(col, NTile);
+    const auto kern_row_pad = utils::padto(row, RowPack);
+    assert(kern_col_pad <= col_pad && col_pad % NTile == 0);
+    assert(kern_row_pad <= row_pad && row_pad % RowPack == 0);
+    const auto src_stride = static_cast<int>(sizeof(T_SRC)) * src_step;
+    const auto dst_stride = static_cast<int>(sizeof(T_DST)) * dst_step;
+    params param = {src, dst, row, col, src_stride, dst_stride};
+    static const PaddingInterleaveCvt kern(NTile, utils::jblas_dtype<T_DST>, utils::jblas_dtype<T_SRC>, RowPack);
+    kern(&param);
+
+    // extra row and col pad
+    const auto row_pad_size_memset = sizeof(T_DST) * (row_pad - kern_row_pad) * NTile;
+    if (row_pad_size_memset) {
+      for (int j = 0; j < kern_col_pad; j += NTile)
+        memset(dst + j * dst_step + kern_row_pad * NTile, 0, row_pad_size_memset);
+    }
+    for (int j = kern_col_pad; j < col_pad; j += NTile)  //
+      memset(dst + j * dst_step, 0, sizeof(T_DST) * NTile * row_pad);
+  }
+
+  template <int NTile, typename T_SRC, typename T_DST = T_SRC, int RowPack = 4 / sizeof(T_DST)>
+  static void reference(const T_SRC* src, T_DST* dst, int row, int col, int row_pad, int col_pad, int src_step,
+                        int dst_step) {
+    assert(utils::padto(col, NTile) <= col_pad && col_pad % NTile == 0);
+    assert(utils::padto(row, RowPack) <= row_pad && row_pad % RowPack == 0);
+    for (int i = 0; i < row_pad; i += RowPack)
+      for (int j = 0; j < col_pad; j += NTile)
+        for (int ii = 0; ii < RowPack; ++ii)
+          for (int jj = 0; jj < NTile; ++jj)
+            dst[i * NTile + j * dst_step + ii + jj * RowPack] =
+                static_cast<T_DST>((i + ii < row && j + jj < col) ? src[(i + ii) * src_step + j + jj] : 0);
+  }
+};
+
+// src: row x col => dst: ⌈row/m_tile⌉ x ⌈col/(trans_cell*col_pack==64/sizeof(t_dst))⌉ x m_tile x col_pack (zeor-padded)
+// Note1: the extra padding on the dimension of col due to the implementation limitation
+// Note2: dst will only be zero-padded to a multiple of trans_cell in the dimension of m_tile
+// Extra padding can be applied with memset calls in `static void forward(...)`
+class PaddingTransInterleaveCvt : protected xbyak::JitAvx512f {
+ public:
+  struct params {
+    const void* srcptr;
+    void* dstptr;
+    int row, col;
+    int srcstride;  // src = src_base + srcstride * m_idx
+    int dststride;  // dst = dst_base + dststride * m_idx, where m_idx % m_tile == 0
+  };
+  typedef void (*func_t)(params* p);
+  void operator()(params* p) const { mKernel(p); }
+  const int trans_cell;  // transpose matrices of size trans_cellxtrans_cell (in terms of #elements or #packs)
+
+ private:
+  PaddingTransInterleaveCvt(int m_tile, JBLAS_DTYPE dst_t) : PaddingTransInterleaveCvt(m_tile, dst_t, dst_t) {}
+  PaddingTransInterleaveCvt(int m_tile, JBLAS_DTYPE dst_t, JBLAS_DTYPE src_t, int col_pack = 0)
+      : xbyak::JitAvx512f(), trans_cell(64 / col_pack / int(utils::jblas_dtype_size(dst_t))) {
+    const auto src_bytes = static_cast<int>(utils::jblas_dtype_size(src_t));
+    const auto dst_bytes = static_cast<int>(utils::jblas_dtype_size(dst_t));
+    if (col_pack == 0) col_pack = 4 / dst_bytes;  // default value
+    // const auto src_bytes_vmm = ne_zmm * src_bytes;
+    // const auto dst_bytes_vmm = ne_zmm * dst_bytes;
+
+    assert(m_tile % trans_cell == 0);
+    assert(col_pack > 0 && col_pack < 3);  // TODO(yi): int8 interleave not implemented
+
+    inLocalLabel();                // use local label for multiple instance
+    std::shared_ptr<void> epilogue{// generate code at the very end
+                                   nullptr, [&](void*) {
+                                     outLocalLabel();  // end of local label
+
+                                     this->ready();
+                                     this->mKernel = this->getCode<func_t>();
+                                   }};
+    Xbyak::util::StackFrame st(this, 1, 11 | Xbyak::util::UseRDX, 16 * 10);
+    const Xbyak::Reg64& parambase = st.p[0];
+    const Xbyak::Reg64& reg_srcptr = st.t[0];
+    const Xbyak::Reg64& reg_dstptr = st.t[1];
+    const Xbyak::Reg64& reg_srcstride = st.t[2];
+    const Xbyak::Reg64& reg_dststride = st.t[3];
+    const Xbyak::Reg64& reg_colsize = st.t[4];
+    const Xbyak::Reg64& reg_iterrow = st.t[5];
+    const Xbyak::Reg64& reg_itercol = st.t[6];
+    const Xbyak::Reg64& reg_tmp = st.t[7];
+    const Xbyak::Reg64& reg_tmp2 = st.t[9];
+    const Xbyak::Reg64& reg_tmp3 = st.t[10];
+
+    const Xbyak::Reg64& reg_ret = rax;
+    const auto& mask_rd = k1;
+    const auto& mask_rd2 = k2;
+
+    vreg_push(rsp);
+    mov(reg_srcptr, ptr[parambase + OFFSET(srcptr)]);
+    mov(reg_srcstride.cvt32(), ptr[parambase + OFFSET(srcstride)]);
+    mov(reg_dststride.cvt32(), ptr[parambase + OFFSET(dststride)]);
+    mov(reg_colsize.cvt32(), ptr[parambase + OFFSET(col)]);
+
+    std::vector<Xbyak::Zmm> reg_srcs(trans_cell), reg_tmps(trans_cell);
+    const int ZIDX_TranSrc = 0;
+    const int ZIDX_TransTmp = trans_cell;
+    for (int i = 0; i < trans_cell; i++) reg_srcs[i] = Xbyak::Zmm(ZIDX_TranSrc + i);
+    for (int i = 0; i < trans_cell; i++) reg_tmps[i] = Xbyak::Zmm(ZIDX_TransTmp + i);
+
+    xor_(reg_iterrow, reg_iterrow);
+    L(".rowloop");
+    xor_(rdx, rdx);
+    mov(rax, reg_iterrow);
+    mov(reg_tmp, m_tile);
+    div(reg_tmp);                                 // reg_iterrow `div` m_tile
+    imul(reg_dstptr, rdx, col_pack * dst_bytes);  // ii * col_pack
+    add(reg_dstptr, ptr[parambase + OFFSET(dstptr)]);
+    imul(reg_tmp, rax, m_tile);
+    imul(reg_tmp, reg_dststride);
+    lea(reg_dstptr, ptr[reg_dstptr + reg_tmp]);  // dst = dst_base + i * dst_step + ii * col_pack
+    xor_(reg_itercol, reg_itercol);
+
+    mov(reg_tmp2.cvt32(), ptr[parambase + OFFSET(row)]);
+    sub(reg_tmp2, reg_iterrow);
+    cmp(reg_tmp2, trans_cell);
+    jb(".tailrowloop", T_NEAR);
+
+    L(".colloop");
+    generate_Nbitsmask(mask_rd, reg_itercol, ptr[reg_colsize], reg_tmp2, reg_tmp3, 64 / dst_bytes);
+    if (src_t == JblasF32 && dst_t == JblasBF16) {
+      kshiftrq(mask_rd2, mask_rd, 16);
+      assert(trans_cell == 16);
+      for (int ii = 0; ii < trans_cell; ++ii) {
+        lea(reg_tmp, (ii == 0) ? ptr[reg_srcptr + reg_itercol * src_bytes] : ptr[reg_tmp + reg_srcstride]);
+        vmovups(reg_srcs[ii] | mask_rd | T_z, zword[reg_tmp]);
+        vmovups(reg_tmps[ii] | mask_rd2 | T_z, zword[reg_tmp + 64]);
+        vcvtne2ps2bf16(reg_srcs[ii], reg_tmps[ii], reg_srcs[ii]);
+      }
+      transpose16x16_4B(reg_srcs.data(), reg_tmps.data());
+      for (int jj = 0; jj < trans_cell; ++jj) {
+        vmovups(ptr[reg_dstptr + jj * m_tile * col_pack * dst_bytes], reg_srcs[jj]);
+      }
+    } else {
+      assert(false);  // Not implemented
+    }
+    lea(reg_dstptr, ptr[reg_dstptr + col_pack * trans_cell * dst_bytes * m_tile]);
+    lea(reg_itercol, ptr[reg_itercol + col_pack * trans_cell]);
+    cmp(reg_itercol.cvt32(), ptr[parambase + OFFSET(col)]);
+    jb(".colloop");
+
+    imul(reg_tmp, reg_srcstride, trans_cell);
+    lea(reg_srcptr, ptr[reg_srcptr + reg_tmp]);  // srcptr += trans_cell * srcstride
+    lea(reg_iterrow, ptr[reg_iterrow + trans_cell]);
+    cmp(reg_iterrow.cvt32(), ptr[parambase + OFFSET(row)]);
+    jb(".rowloop");
+    jmp(".aftercolloop", T_NEAR);
+
+    L(".tailrowloop");
+    // reg_itercol, reg_dstptr should have been set in the non-tail section
+    Xbyak::Label l_tail_tbl;
+    std::vector<Xbyak::Label> l_tail_case(trans_cell);
+    mov(reg_tmp, l_tail_tbl);                              // TODO(Yi): rip + l + offset?
+    jmp(ptr[reg_tmp + reg_tmp2 * sizeof(void*)], T_NEAR);  // switch(rows-iterrow) ...
+    align(sizeof(intptr_t));
+    L(l_tail_tbl);
+    db(reinterpret_cast<uintptr_t>(nullptr), sizeof(intptr_t));  // case 0 should never occour
+    for (int i = 1; i < trans_cell; ++i) putL(l_tail_case[i]);
+
+    for (int m_tail = 1; m_tail < trans_cell; ++m_tail) {  // case (m_tail):
+      auto& tailcolloop = l_tail_case[m_tail];
+      L(tailcolloop);
+      generate_Nbitsmask(mask_rd, reg_itercol, ptr[reg_colsize], reg_tmp2, reg_tmp3, 64 / dst_bytes);
+      if (src_t == JblasF32 && dst_t == JblasBF16) {
+        kshiftrq(mask_rd2, mask_rd, 16);
+        assert(trans_cell == 16);
+        for (int ii = 0; ii < trans_cell; ++ii) {
+          if (ii < m_tail) {
+            lea(reg_tmp, (ii == 0) ? ptr[reg_srcptr + reg_itercol * src_bytes] : ptr[reg_tmp + reg_srcstride]);
+            vmovups(reg_srcs[ii] | mask_rd | T_z, zword[reg_tmp]);
+            vmovups(reg_tmps[ii] | mask_rd2 | T_z, zword[reg_tmp + 64]);
+            vcvtne2ps2bf16(reg_srcs[ii], reg_tmps[ii], reg_srcs[ii]);
+          } else if (ii == m_tail) {
+            vxorps(reg_srcs[ii], reg_srcs[ii], reg_srcs[ii]);
+          } else {
+            vmovaps(reg_srcs[ii], reg_srcs[m_tail]);
+          }
+        }
+        transpose16x16_4B(reg_srcs.data(), reg_tmps.data());
+        for (int jj = 0; jj < trans_cell; ++jj) {
+          vmovups(ptr[reg_dstptr + jj * m_tile * col_pack * dst_bytes], reg_srcs[jj]);
+        }
+      } else {
+        assert(false);  // Not implemented
+      }
+      lea(reg_dstptr, ptr[reg_dstptr + col_pack * trans_cell * dst_bytes * m_tile]);
+      lea(reg_itercol, ptr[reg_itercol + col_pack * trans_cell]);
+      cmp(reg_itercol.cvt32(), ptr[parambase + OFFSET(col)]);
+      jb(tailcolloop);
+      jmp(".aftercolloop", T_NEAR);
+    }
+
+    L(".aftercolloop");
+    mov(reg_ret, 0);
+    vreg_pop(rsp);
+  }
+
+  func_t mKernel = nullptr;
+
+ public:
+  template <int MTile, typename T_SRC, typename T_DST = T_SRC, int ColPack = 4 / sizeof(T_DST)>
+  static void forward(const T_SRC* src, T_DST* dst, int row, int col, int row_pad, int col_pad, int src_step,
+                      int dst_step) {
+    assert(utils::padto(row, MTile) <= row_pad && row_pad % MTile == 0);
+    assert(utils::padto(col, ColPack) <= col_pad && col_pad % ColPack == 0);
+    static const PaddingTransInterleaveCvt kern(MTile, utils::jblas_dtype<T_DST>, utils::jblas_dtype<T_SRC>, ColPack);
+    // 0-padded guarantee by jit kern
+    const auto kern_row_pad = utils::padto(row, kern.trans_cell),
+               kern_col_pad = utils::padto(col, kern.trans_cell * ColPack);
+    assert(kern_row_pad <= row_pad && row_pad % MTile == 0);
+    assert(kern_col_pad <= col_pad && col_pad % ColPack == 0);
+    const auto src_stride = static_cast<int>(sizeof(T_SRC)) * src_step;
+    const auto dst_stride = static_cast<int>(sizeof(T_DST)) * dst_step;
+    params param = {src, dst, row, col, src_stride, dst_stride};
+    kern(&param);
+
+    // extra row and col pad
+    const auto col_pad_size_memset = sizeof(T_DST) * (col_pad - kern_col_pad) * MTile;
+    if (col_pad_size_memset) {
+      for (int i = 0; i < kern_row_pad; i += MTile)
+        memset(dst + i * dst_step + kern_col_pad * MTile, 0, col_pad_size_memset);
+    }
+    const auto row_tail_pad_size_memset = sizeof(T_DST) * (utils::padto(row, MTile) - kern_row_pad) * ColPack;
+    if (row_tail_pad_size_memset) {  // row tail due to kernel limitation: kern_row_pad < next_multiple_of_MTile
+      const auto kern_row_pad_le_mtile = utils::padto_le(kern_row_pad, MTile);
+      const auto tail_dst_base = dst + kern_row_pad_le_mtile * dst_step + kern_row_pad % MTile * ColPack;
+      for (int j = 0; j < kern_col_pad; j += ColPack) memset(tail_dst_base + j * MTile, 0, row_tail_pad_size_memset);
+    }
+    for (int j = utils::padto(row, MTile); j < row_pad; j += MTile)
+      memset(dst + kern_row_pad * dst_step, 0, sizeof(T_DST) * MTile * col_pad);
+  }
+
+  template <int MTile, typename T_SRC, typename T_DST = T_SRC, int ColPack = 4 / sizeof(T_DST)>
+  static void reference(const T_SRC* src, T_DST* dst, int row, int col, int row_pad, int col_pad, int src_step,
+                        int dst_step) {
+    assert(utils::padto(row, MTile) <= row_pad && row_pad % MTile == 0);
+    assert(utils::padto(col, ColPack) <= col_pad && col_pad % ColPack == 0);
+    for (int i = 0; i < row_pad; i += MTile)
+      for (int j = 0; j < col_pad; j += ColPack)
+        for (int ii = 0; ii < MTile; ++ii)
+          for (int jj = 0; jj < ColPack; ++jj)
+            dst[j * MTile + i * dst_step + jj + ii * ColPack] =
+                static_cast<T_DST>((j + jj < col && i + ii < row) ? src[(i + ii) * src_step + j + jj] : 0);
+  }
+};
+
 }  // namespace jit
 }  // namespace kernel
 }  // namespace jblas

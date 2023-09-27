@@ -520,7 +520,7 @@ class eltwise_injector {
     // For b-d, we need 31 polynomials and will do a table lookup for those.
     // To simplify the logic, we will also put a) in the table.
     auto coeffs_address = [&](int coeff_off, int off = 0) {
-      return table_val(tanh_pol_table, coeff_off * tanh_n_polynomials + off);
+      return table_val(tanh_pol_table, (size_t)coeff_off * tanh_n_polynomials + off);
     };
     auto gather_coefficient = [&](Zmm vmm_coeff, int coeff_idx, Zmm vmm_pol_idx) {
       Zmm zmm_coeff(vmm_coeff.getIdx());

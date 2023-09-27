@@ -65,8 +65,8 @@ class GemmLauncherPackWeight {
     int colremain = utils::remainsize(_config.colidx, _param.N, _config.colsize);
     auto StackTmp = alloca(_config.StackSize);
     auto tmpB = (BType*)(StackTmp);
-    auto tmpA = (AType*)(tmpB + _config.NStep * _config.KStep);
-    auto tmpC = (CType*)(tmpA + GemmCore::MTILE * _config.KStep);
+    auto tmpA = (AType*)(tmpB + (size_t)_config.NStep * _config.KStep);
+    auto tmpC = (CType*)(tmpA + (size_t)GemmCore::MTILE * _config.KStep);
     for (int itern = 0; itern < colremain; itern += _config.NStep) {
       int n_remain = utils::remainsize(itern, colremain, _config.NStep);
       for (int iterm = 0; iterm < rowremain; iterm += _config.MStep) {
@@ -190,6 +190,7 @@ class GemmInterfaceParallelAB {
       }
       if constexpr (_LaunchA || _LaunchB) {
 #pragma omp barrier
+        (void)(0);  // make msvc happy with c++20
       }
       int colidx, rowidx, rowsize, colsize;
       para.getIndex(tidx, &rowidx, &colidx, &rowsize, &colsize);

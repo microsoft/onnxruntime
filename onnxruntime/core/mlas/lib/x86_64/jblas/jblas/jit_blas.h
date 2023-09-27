@@ -71,18 +71,3 @@ enum JBLAS_SIGN_INT_TYPE {
   S4_FULLRANGE,
   S4_UNDEF,
 };
-void jblas_sgemm(const JBLAS_LAYOUT Layout, const JBLAS_TRANSPOSE TransA, const JBLAS_TRANSPOSE TransB, const int M,
-                 const int N, const int K, const float alpha, const float* A, const int lda, const float* B,
-                 const int ldb, float* C, const int ldc, const float beta, const float* D, const int ldd);
-
-void jblas_bf16gemm(const JBLAS_LAYOUT Layout, const JBLAS_TRANSPOSE TransA, const JBLAS_TRANSPOSE TransB, const int M,
-                    const int N, const int K, const float alpha, const uint16_t* A, const int lda, const uint16_t* B,
-                    const int ldb, uint16_t* C, const int ldc, const float beta, const uint16_t* D, const int ldd);
-
-void jblas_u8s8gemm(const JBLAS_LAYOUT Layout, const JBLAS_TRANSPOSE TransA, const JBLAS_TRANSPOSE TransB, const int M,
-                    const int N, const int K, const float alpha, const uint8_t* A, const int lda, const float scaleA,
-                    const int zeropointA, const int8_t* B, const int ldb, const float scaleB, uint8_t* C, const int ldc,
-                    const float scaleC, const int zeropointC, const float beta, uint8_t* D, const int ldd,
-                    const float scaleD, const int zeropointD);
-
-void jblas_set_num_threads(int num);
