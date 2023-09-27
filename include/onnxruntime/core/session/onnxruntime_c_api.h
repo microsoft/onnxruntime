@@ -4413,6 +4413,21 @@ struct OrtApi {
    * \since Version 1.16.
    */
   ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
+
+  /** \brief Use a deterministic compute algorithm if available.
+   *
+   * A small number of GPU operator kernels have the ability to use either a non-deterministic or deterministic
+   * implementation. The default is non-deterministic.
+   *
+   * \see https://github.com/search?q=repo%3Amicrosoft%2Fonnxruntime+GetUseDeterministicCompute&type=code for usages.
+   *
+   * \param[in] options Session options
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SessionOptionsUseDeterministicCompute, _Inout_ OrtSessionOptions* options);
 };
 
 /*

@@ -112,18 +112,18 @@ task sourcesJar(type: Jar) {
 	from android.sourceSets.main.java.srcDirs
 }
 
-task javadoc(type: Javadoc) {
-	source = android.sourceSets.main.java.srcDirs
-	classpath += project.files(android.getBootClasspath().join(File.pathSeparator))
-}
+// task javadoc(type: Javadoc) {
+// 	source = android.sourceSets.main.java.srcDirs
+// 	classpath += project.files(android.getBootClasspath().join(File.pathSeparator))
+// }
 
-task javadocJar(type: Jar, dependsOn: javadoc) {
-	archiveClassifier = 'javadoc'
-	from javadoc.destinationDir
-}
+// task javadocJar(type: Jar, dependsOn: javadoc) {
+// 	archiveClassifier = 'javadoc'
+// 	from javadoc.destinationDir
+// }
 
 artifacts {
-	archives javadocJar
+// 	archives javadocJar
 	archives sourcesJar
 }
 
@@ -142,7 +142,7 @@ publishing {
 
 			// Three artifacts, the `aar`, the sources and the javadoc
 			artifact("$buildDir/outputs/aar/${project.name}-release.aar")
-			artifact javadocJar
+			// artifact javadocJar
 			artifact sourcesJar
 
 			pom {

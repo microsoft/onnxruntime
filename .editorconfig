@@ -1,0 +1,4 @@
+# All files
+[*]
+spelling_checkable_types = strings,identifiers,comments
+spelling_error_severity = warning 

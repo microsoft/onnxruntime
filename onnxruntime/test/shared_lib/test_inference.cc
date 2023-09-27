@@ -3450,3 +3450,16 @@ TEST(CApiTest, RunAsyncFail) {
   Ort::RunOptions run_options;
   EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
 }
+
+TEST(TempTest, Loop) {
+  const std::basic_string<ORTCHAR_T> model = ORT_TSTR("testdata/mnist.onnx");
+
+  for (size_t i = 0; i < 10; i++) {
+    Ort::AllocatorWithDefaultOptions allocator;
+    Ort::Session session = Ort::Session(*ort_env, model.c_str(), Ort::SessionOptions{});
+
+    std::vector<int64_t> shape{1, 2, 3, 4};
+    auto ort_value = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+    std::cout << ort_value.GetCount();
+  }
+}
