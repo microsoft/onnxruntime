@@ -15,11 +15,23 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime;
 
-template<typename T>
+template <typename T>
+class ToOrtType {
+ public:
+  typedef T MappedType;
+};
+
+template <>
+class ToOrtType<npy_half> {
+ public:
+  typedef MLFloat16 MappedType;
+};
+
+template <typename T>
 void QuantizeMatMul4BitsBlockwise(
-    py::array_t<uint8_t> dst,    // shape: [ N, block_per_K, block_blob_size ]
-    py::array_t<T> src,          // shape: [K, N]
-    py::array_t<T> scale,        // shape: [N, block_per_K]
+    py::array_t<uint8_t> dst,          // shape: [ N, block_per_K, block_blob_size ]
+    py::array_t<T> src,                // shape: [K, N]
+    py::array_t<T> scale,              // shape: [N, block_per_K]
     py::array_t<uint8_t> zero_points,  // shape: [N, block_per_K]
     int32_t block_size,
     int32_t N,
@@ -29,29 +41,22 @@ void QuantizeMatMul4BitsBlockwise(
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
                                           concurrency::ThreadPoolType::INTRA_OP);
 
-  if constexpr (std::is_same_v<T, npy_half>) {
-    contrib::QuantizeBlockwise<MLFloat16>(
-        dst.mutable_data(),
-        reinterpret_cast<const MLFloat16*>(src.data()),
-        reinterpret_cast<MLFloat16*>(scale.mutable_data()),
-        is_symmetric ? nullptr : zero_points.mutable_data(),
-        block_size,
-        4,
-        N,
-        K,
-        tp.get());
-  } else {
-    contrib::QuantizeBlockwise<T>(
-        dst.mutable_data(),
-        src.data(),
-        scale.mutable_data(),
-        is_symmetric ? nullptr : zero_points.mutable_data(),
-        block_size,
-        4,
-        N,
-        K,
-        tp.get());
-  }
+  py::buffer_info dst_buf = dst.request();
+  py::buffer_info src_buf = src.request();
+  py::buffer_info scale_buf = scale.request();
+  py::buffer_info zp_buf = zero_points.request();
+
+  typedef typename ToOrtType<T>::MappedType OrtType;
+  contrib::QuantizeBlockwise<OrtType>(
+      static_cast<uint8_t*>(dst_buf.ptr),
+      static_cast<const OrtType*>(src_buf.ptr),
+      static_cast<OrtType*>(scale_buf.ptr),
+      is_symmetric ? nullptr : static_cast<uint8_t*>(zp_buf.ptr),
+      block_size,
+      4,
+      N,
+      K,
+      tp.get());
 }
 
 void CreateQuantPybindModule(py::module& m) {

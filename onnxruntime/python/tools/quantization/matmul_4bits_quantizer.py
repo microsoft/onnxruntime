@@ -19,6 +19,8 @@ from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 from .onnx_model import ONNXModel
 from .quant_utils import attribute_to_kwarg, load_model_with_shape_infer
 import coloredlogs
+from onnxruntime.capi._pybind_state import quantize_matmul_4bits_fp16
+from onnxruntime.capi._pybind_state import quantize_matmul_4bits_float
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,13 @@ class MatMul4BitsQuantizer:
         packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
         scales = np.zeros((cols, k_blocks), dtype=fp32weight.dtype)
         zero_point = np.zeros((cols, k_blocks), dtype="uint8")
+
+        if fp32weight.dtype == np.float32:
+            quantize_matmul_4bits_float(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.is_symmetric)
+        else:
+            quantize_matmul_4bits_fp16(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.is_symmetric)
+
+        '''
         fp32weight = np.transpose(fp32weight).copy()
         for n in range(cols):
             for k_id in range(0, rows, block_size):
@@ -84,7 +93,7 @@ class MatMul4BitsQuantizer:
                 blk_int0 = np.clip(fp32weight[n, k_id:k_id+block_size:2] * reciprocal_scale + zp, 0, 15).astype("uint8")
                 blk_int1 = np.clip(fp32weight[n, k_id + 1:k_id+block_size:2] * reciprocal_scale + zp, 0, 15).astype("uint8")
                 packed[n, k_id // block_size] = np.bitwise_or(blk_int0, np.left_shift(blk_int1, 4))
-
+        '''
         return (packed.reshape((cols, k_blocks, blob_size)),
                 scales.reshape((cols, k_blocks)),
                 zero_point.reshape((cols, k_blocks)))
@@ -217,6 +226,7 @@ set of 4b integers with a scaling factor and an optional offset.
     parser.set_defaults(verbose=False)
     parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
     parser.set_defaults(use_external_data_format=False)
+    parser.add_argument("--node_to_excludes", nargs='+', type=str, required=False, default=[])
 
     return parser.parse_args()
 
