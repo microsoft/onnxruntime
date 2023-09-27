@@ -4,6 +4,8 @@
 #pragma once
 
 #include <cstdint>
+#include <algorithm>
+#include <cmath>
 
 namespace onnxruntime {
 namespace contrib {
@@ -96,7 +98,7 @@ struct BlockwiseQuantBlock<T, block_size, 4> {
       zp = (uint8_t)roundf(zero_point_fp);
     }
 
-    for (size_t kk = 0; kk < klen; kk += 2) {
+    for (int32_t kk = 0; kk < klen; kk += 2) {
       const float v0 = static_cast<float>(src[N * kk]);
       const uint8_t vi0 = (uint8_t)std::min(15.0f, std::max(0.0f, roundf(v0 * reciprocal_scale + zp)));
 
