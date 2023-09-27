@@ -4454,7 +4454,7 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
 }
 
 // These tests uses internal testing EP with static kernels which requires a full build,
-// and the NHWC Conv with requires contrib ops
+// and the NHWC Conv which requires contrib ops
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 // Test a Transpose node followed by a Reshape that is logically equivalent to an Transpose can be merged.
