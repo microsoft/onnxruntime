@@ -103,7 +103,7 @@ export interface IndicesHelper {
   readonly indicesToOffset: (varIndices: string) => string;
 
   /**
-   * WGSL code of an `u32` expression for getting original offset from broadcast indices.
+   * WGSL code of an `u32` expression for getting original offset from broadcasted indices.
    *
    * @param varIndices - a `type.indices` expression representing the output indices.
    * @param output - output IndicesHelper.
