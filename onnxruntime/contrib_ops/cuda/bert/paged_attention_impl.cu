@@ -71,6 +71,11 @@ struct __align__(8) Char2x4 {
   char2 w;
 };
 
+struct __align__(8) Half2x2 {
+  half2 x;
+  half2 y;
+};
+
 template <>
 class QuantVec<uint32_t> {
  public:
@@ -78,7 +83,19 @@ class QuantVec<uint32_t> {
 };
 
 template <>
+class QuantVec<half2> {
+ public:
+  using Type = char2;
+};
+
+template <>
 class QuantVec<uint2> {
+ public:
+  using Type = Char2x2;
+};
+
+template <>
+class QuantVec<Half2x2> {
  public:
   using Type = Char2x2;
 };
@@ -222,6 +239,18 @@ inline __device__ __half MaxAbsFloat(const uint2 v) {
 }
 
 template <>
+inline __device__ __half MaxAbsFloat(const __half2 v) {
+  const __half2 h2 = __habs2(v);
+  return __hmax(h2.x, h2.y);
+}
+
+template <>
+inline __device__ __half MaxAbsFloat(const Half2x2 v) {
+  // make it simple rather than save one op
+  return __hmax(MaxAbsFloat<__half, __half2>(v.x), MaxAbsFloat<__half, __half2>(v.y));
+}
+
+template <>
 inline __device__ __half MaxAbsFloat(const uint4 v) {
   return __hmax(__hmax(MaxAbsFloat<__half, uint32_t>(v.x), MaxAbsFloat<__half, uint32_t>(v.y)),
                 __hmax(MaxAbsFloat<__half, uint32_t>(v.z), MaxAbsFloat<__half, uint32_t>(v.w)));
@@ -231,15 +260,20 @@ template <typename TVec>
 inline __device__ typename QuantVec<TVec>::Type Quantize(const TVec v, const float scale);
 
 template <>
+inline __device__ char2 Quantize(const half2 h2, const float inv_unit_scale) {
+  float2 f2 = __half22float2(h2);
+  return char2{(char)min(max(-127, __float2int_rn(inv_unit_scale * f2.x)), 127),
+               (char)min(max(-127, __float2int_rn(inv_unit_scale * f2.y)), 127)};
+}
+
+template <>
 inline __device__ char2 Quantize(const uint32_t v, const float inv_unit_scale) {
   union __align__(4) {
     uint32_t u;
     __half2 h2;
   }
   uh2 = {v};
-  float2 f2 = __half22float2(uh2.h2);
-  return char2{(char)min(max(-127, __float2int_rn(inv_unit_scale * f2.x)), 127),
-               (char)min(max(-127, __float2int_rn(inv_unit_scale * f2.y)), 127)};
+  return Quantize(uh2.h2, inv_unit_scale);
 }
 
 template <>
@@ -247,6 +281,14 @@ inline __device__ Char2x2 Quantize(const uint2 v, const float inv_unit_scale) {
   Char2x2 ch2x2;
   ch2x2.x = Quantize<uint32_t>(v.x, inv_unit_scale);
   ch2x2.y = Quantize<uint32_t>(v.y, inv_unit_scale);
+  return ch2x2;
+}
+
+template <>
+inline __device__ Char2x2 Quantize(const Half2x2 v, const float inv_unit_scale) {
+  Char2x2 ch2x2;
+  ch2x2.x = Quantize<half2>(v.x, inv_unit_scale);
+  ch2x2.y = Quantize<half2>(v.y, inv_unit_scale);
   return ch2x2;
 }
 
@@ -711,6 +753,109 @@ __global__ void reshape_and_cache_kernel(
   }
 }
 
+// Prerequest:
+//    kv_quant_chunk_size % 4 == 0
+//    head_size % 4 == 0
+//    head_size % kv_quant_chunk_size == 0
+// num_threads_per_chunk = min(32, kv_quant_chunk_size / 4) round up to power 2
+// num_chunks_per_warp = 32 / num_threads_per_chunk
+// num_warps_per_head = ceil( (head_size / kv_quant_chunk_size) / num_chunks_per_warp )
+// grid: [num_tokens, num_heads]
+// block: [num_warps_per_head * 32]
+__global__ void quantize_reshape_and_cache_kernel(
+    const half* __restrict__ key,          // [num_tokens, num_heads, head_size]
+    const half* __restrict__ value,        // [num_tokens, num_heads, head_size]
+    int8_t* __restrict__ key_cache,        // [num_blocks, num_heads, head_size/x, block_size, x]
+    int8_t* __restrict__ value_cache,      // [num_blocks, num_heads, head_size, block_size]
+    const int* __restrict__ slot_mapping,  // [num_tokens]
+    const int key_stride,
+    const int value_stride,
+    const int num_heads,
+    const int head_size,
+    const int block_size,
+    const int x,
+    void* __restrict__ kv_param_cache,  // [num_blocks, 2, num_heads, head_size / kv_quant_chunk_size, block_size]
+    const int kv_quant_chunk_size,
+    bool use_fp32_scales) {
+  using Vec = Half2x2;
+  using QVec = QuantVec<Vec>::Type;
+  constexpr int VEC_SIZE = 4;
+  constexpr int MAX_NUM_ITER_PER_CHUNK = 2;
+
+  const int token_idx = blockIdx.x;
+  const int head_idx = blockIdx.y;
+  const int slot_idx = slot_mapping[token_idx];
+  const int block_idx = slot_idx / block_size;
+  const int block_offset = slot_idx % block_size;  // in block token idx
+
+  assert(head_size % kv_quant_chunk_size == 0);
+  assert(kv_quant_chunk_size % VEC_SIZE == 0);
+  assert(head_size % VEC_SIZE == 0);
+  assert(x % 4 == 0);
+
+  // round it up to power of 2
+  int num_threads_per_chunk = max(WARP_SIZE, kv_quant_chunk_size / VEC_SIZE);
+  if ((num_threads_per_chunk ^ (num_threads_per_chunk - 1)) != 0) {
+    num_threads_per_chunk = 1 << clz(num_threads_per_chunk);
+  }
+  const int num_chunks_per_head = head_size / kv_quant_chunk_size;
+  const int quant_chunk_idx = threadIdx.x / num_threads_per_chunk;
+  const int quant_chunk_offset = threadIdx.x % num_threads_per_chunk;
+
+  const int num_h_per_iter = num_threads_per_chunk * VEC_SIZE;
+  const int num_iters = (kv_quant_chunk_size + num_h_per_iter - 1) / num_h_per_iter;
+
+  half2 max_kv_fp16{0, 0};
+  Vec k_vecs[MAX_NUM_ITER_PER_CHUNK];
+  Vec v_vecs[MAX_NUM_ITER_PER_CHUNK];
+
+  int64_t src_k_idx = (int64_t)token_idx * key_stride + head_idx * head_size + quant_chunk_idx * kv_quant_chunk_size;
+  int64_t src_v_idx = (int64_t)token_idx * value_stride + head_idx * head_size + quant_chunk_idx * kv_quant_chunk_size;
+  for (int iter = 0; iter < num_iters; iter++) {
+    int h = quant_chunk_offset * VEC_SIZE + iter * num_h_per_iter;
+    if (quant_chunk_idx < num_chunks_per_head && i < kv_quant_chunk_size) {
+      k_vec[iter] = *(const Vec*)(&key[src_k_idx + h]);
+      v_vec[iter] = *(const Vec*)(&value[src_v_idx + h]);
+    } else {  // make sure all threads are alive to reduce
+      k_vec[iter] = Vec{0, 0, 0, 0};
+      v_vec[iter] = Vec{0, 0, 0, 0};
+    }
+    max_kv_fp16 = __hmax2(max_kv_fp16, __half2{MaxAbsFloat(k_vec), MaxAbsFloat(v_vec)});
+    for (int mask = num_threads_per_chunk / 2; mask >= 1; mask /= 2) {
+      max_kv_fp16 = __hmax2(max_kv_fp16, __shfl_xor_sync(uint32_t(-1), max_kv_fp16, mask));
+    }
+  }
+
+  float2 max_kv_fp32 = __half22float2(max_kv_fp16);
+  float inv_unit_scale_k = max_kv_fp16.x ? (127.0f / max_kv_fp32.x) : 0.0f;
+  float inv_unit_scale_v = max_kv_fp16.y ? (127.0f / max_kv_fp32.y) : 0.0f;
+  if (quant_chunk_offset == 0 && quant_chunk_idx < num_chunks_per_head) {
+    int stride = block_size * (head_size / kv_quant_chunk_size);
+    int64_t k_offset = ((int64_t)block_idx * num_heads * 2 + head_idx) * stride + quant_chunk_idx * block_size + block_offset;
+    int64_t v_offset = k_offset + num_heads * stride;
+    if (use_fp32_scales) {
+      *((float*)kv_param_cache + k_offset) = inv_unit_scale_k;
+      *((float*)kv_param_cache + v_offset) = inv_unit_scale_v;
+    } else {
+      *((half*)kv_param_cache + k_offset) = __float2half(inv_unit_scale_k);
+      *((half*)kv_param_cache + v_offset) = __float2half(inv_unit_scale_v);
+    }
+  }
+
+  int64_t tgt_kv_idx = ((int64_t)block_idx * num_heads * +head_idx) * head_size * block_size;
+  for (int iter = 0; iter < num_iters; iter++) {
+    QVec ch2x2_k = Quantize(k_vec[iter], inv_unit_scale_k);
+    QVec ch2x2_v = Quantize(v_vec[iter], inv_unit_scale_v);
+
+    int h = quant_chunk_offset * VEC_SIZE + iter * num_h_per_iter;
+    const int tgt_key_idx = tgt_kv_idx + (h / x) * block_size * x + block_offset * x + (h % x);
+    const int tgt_value_idx = tgt_kv_idx * h * block_size + block_offset;
+
+    *(QVec*)(&key_cache[tgt_key_idx]) = ch2x2_k;
+    *(QVec*)(&value_cache[tgt_value_idx]) = ch2x2_v;
+  }
+}
+
 template <typename scalar_t, bool IS_NEOX>
 inline __device__ void apply_rotary_embedding(
     scalar_t* __restrict__ arr,
@@ -1064,7 +1209,10 @@ void reshape_and_cache(
     const int64_t* value_shapes,
     const int64_t block_size,
     const int vec_x,
-    int dtype) {
+    int dtype,
+    const void* kv_quant_param,
+    const int kv_quant_chunk_size,
+    const int kv_quant_param_dtype) {
   int num_tokens = key_shapes[0];
   int num_heads = key_shapes[1];
   int head_size = key_shapes[2];
@@ -1080,18 +1228,51 @@ void reshape_and_cache(
   dim3 block(std::min(num_heads * head_size, 512));
   // if constexpr (std::is_same_v<T, MLFloat16>) {
   if (dtype == 1) {
-    vllm::reshape_and_cache_kernel<half><<<grid, block, 0, stream>>>(
-        (const half*)key,
-        (const half*)value,
-        (half*)key_cache,
-        (half*)value_cache,
-        slot_mapping,
-        key_stride,
-        value_stride,
-        num_heads,
-        head_size,
-        block_size,
-        x);
+    if (kv_quant_param == nullptr) {
+      vllm::reshape_and_cache_kernel<half><<<grid, block, 0, stream>>>(
+          (const half*)key,
+          (const half*)value,
+          (half*)key_cache,
+          (half*)value_cache,
+          slot_mapping,
+          key_stride,
+          value_stride,
+          num_heads,
+          head_size,
+          block_size,
+          x);
+    } else {
+      // round it up to power of 2
+      constexpr int VEC_SIZE = 4;
+      int num_iters = (kv_quant_chunk_size / VEC_SIZE + (32 - 1)) / 32;
+      assert(num_iters == 1 || num_iters == 2);
+
+      int num_threads_per_chunk = max(32, kv_quant_chunk_size / VEC_SIZE);
+      int pow = (int)log2(num_threads_per_chunk);
+      if (num_threads_per_chunk > (1 << pow)) {
+        num_threads_per_chunk = (1 << (pow + 1));
+      }
+      const int num_chunks_per_warp = 32 / num_threads_per_chunk;
+      const int num_warps_per_head = ((head_size / kv_quant_chunk_size + num_chunks_per_warp - 1) / num_chunks_per_warp);
+
+      dim3 grid(num_tokens, num_heads);
+      dim3 block(num_warps_per_head * 32);
+      vllm::quantize_reshape_and_cache_kernel<<<grid, block, 0, stream>>>(
+          (const half*)key,
+          (const half*)value,
+          (half*)key_cache,
+          (half*)value_cache,
+          slot_mapping,
+          key_stride,
+          value_stride,
+          num_heads,
+          head_size,
+          block_size,
+          x,
+          kv_quant_param,
+          kv_quant_chunk_size,
+          kv_quant_param_dtype == 0);
+    }
   }
 }
 

@@ -43,7 +43,10 @@ void reshape_and_cache(
     const int64_t* value_shapes,
     const int64_t block_size,
     const int vec_x,
-    int dtype);
+    const int dtype,
+    const void* kv_quant_param = nullptr,
+    const int kv_quant_chunk_size = 0,
+    const int kv_quant_param_dtype = 1);
 
 template <typename T>
 void gather_cached_kv(

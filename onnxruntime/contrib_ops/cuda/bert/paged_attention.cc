@@ -474,18 +474,19 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  int kv_quant_block_size = 0;
+  int kv_quant_chunk_size = 0;
   int kv_quant_param_dtype = 0; // fp32
   if (kv_quant_param != nullptr) {
     ORT_ENFORCE(key_cache && key_cache->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8);
     ORT_ENFORCE(value_cache && value_cache->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8);
     ORT_ENFORCE(query->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, "Current only support fp16 with quant kv cache");
-    if (key_cache->GetElementType() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (kv_quant_param->GetElementType() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       kv_quant_param_dtype = 1; // fp16
     }
-    auto kv_quant_param_shape = kv_quant_param->Shape(); // [num_blocks, 2, num_kv_heads, block_size, head_size / kv_quant_block_size]
-    ORT_ENFORCE(kv_quant_param_shape[4] > 0 && head_size_ % kv_quant_param_shape[4] == 0);
-    kv_quant_block_size = head_size_ / kv_quant_param_shape[4];
+    auto kv_quant_param_shape = kv_quant_param->Shape(); // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
+    ORT_ENFORCE(kv_quant_param_shape.NumDimensions() == 5 && kv_quant_param_shape[3] > 0 && head_size_ % kv_quant_param_shape[3] == 0);
+    kv_quant_chunk_size = head_size_ / kv_quant_param_shape[4];
+    ORT_ENFORCE(kv_quant_chunk_size > 0 && kv_quant_chunk_size % 4 == 0);
   }
 
   auto key_cache_shape = key_cache->Shape();
@@ -503,7 +504,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                       value_shape_r,
                       block_size,
                       key_cache_shape[4],
-                      1);
+                      1,
+                      kv_quant_param != nullptr ? kv_quant_param->MutableDataRaw() : nullptr,
+                      kv_quant_chunk_size,
+                      kv_quant_param_dtype);
     CHECK_CUDA_ERROR();
   }
 
@@ -531,7 +535,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                      num_queries_per_kv_,
                                      1,
                                      kv_quant_param ? kv_quant_param->DataRaw() : nullptr,
-                                     kv_quant_block_size,
+                                     kv_quant_chunk_size,
                                      kv_quant_param_dtype);
     CHECK_CUDA_ERROR();
   }
