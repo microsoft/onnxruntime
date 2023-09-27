@@ -5,6 +5,8 @@
 
 #include "test/providers/kernel_compute_test_utils.h"
 
+#include <utility>
+
 #include "core/framework/execution_providers.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "test/util/include/default_providers.h"
@@ -55,12 +57,20 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
     }
 #if defined(USE_CUDA) || defined(USE_ROCM)
     if ((provider_ == kCudaExecutionProvider || provider_ == kRocmExecutionProvider) && !data.is_cpu_data_) {
-      OrtValue gpu_value;
       const Tensor& tensor = data.value_.Get<Tensor>();
-      Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           execution_providers.Get(ep_type)->CreatePreferredAllocators()[0], gpu_value,
-                           tensor.Strides());
-      ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *gpu_value.GetMutable<Tensor>()));
+
+      Tensor gpu_tensor(tensor.DataType(), tensor.Shape(),
+                        execution_providers.Get(ep_type)->CreatePreferredAllocators()[0]);
+
+      if (const auto strides = tensor.Strides(); !strides.empty()) {
+        gpu_tensor.SetShapeAndStrides(tensor.Shape(), strides);
+      }
+
+      ASSERT_STATUS_OK(dtm.CopyTensor(tensor, gpu_tensor));
+
+      OrtValue gpu_value;
+      Tensor::InitOrtValue(std::move(gpu_tensor), gpu_value);
+
       initializer_map[name] = gpu_value;
     }
 #endif
@@ -161,8 +171,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       } else {
         const Tensor& tensor = outputs[i].Get<Tensor>();
         Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                             execution_providers.Get(cpu_ep_type)->CreatePreferredAllocators()[0], cpu_value,
-                             tensor.Strides());
+                             execution_providers.Get(cpu_ep_type)->CreatePreferredAllocators()[0], cpu_value);
         ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>()));
       }
 

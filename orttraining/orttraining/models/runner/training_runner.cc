@@ -1252,7 +1252,7 @@ Status WithOrtValuesFromTensorProtos(
 
     OrtValue ort_value;
 
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(
         Env::Default(), model_location.c_str(), tensor_proto, mem_buffer,
         ort_value));
 
