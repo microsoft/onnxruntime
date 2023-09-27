@@ -127,12 +127,12 @@ struct BlockwiseQuantBlock<T, block_size, 4> {
     scale_block = static_cast<T>(scale);
     const float reciprocal_scale = scale ? 1.0f / scale : 0.0f;
 
-    for (size_t kk = 0; kk < klen; kk += 2) {
+    for (int32_t kk = 0; kk < klen; kk += 2) {
       const float v0 = src[N * kk] * reciprocal_scale;
-      const uint8_t vi0 = (uint8_t)std::min(15.0f, std::max(0.0f, v0 + 8.5f));
+      const uint8_t vi0 = (uint8_t)std::min(15.0f, std::max(0.0f, v0 + 8.f));
 
       const float v1 = (kk + 1 < klen) ? src[N * (kk + 1)] * reciprocal_scale : 0;
-      const uint8_t vi1 = (uint8_t)std::min(15.0f, std::max(0.0f, v1 + 8.5f));
+      const uint8_t vi1 = (uint8_t)std::min(15.0f, std::max(0.0f, v1 + 8.f));
 
       main_blob[kk / 2] = vi0 | (vi1 << 4);
     }
