@@ -437,11 +437,7 @@ def generate_files(line_list, args):
         )
 
     if args.execution_provider == "tensorrt":
-        files_list.append(
-            "<file src="
-            + '"'
-            + '" target="build\\native\\include" />'
-        )
+        files_list.append("<file src=" + '"' + '" target="build\\native\\include" />')
 
     if args.execution_provider == "dnnl":
         files_list.append(

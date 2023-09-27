@@ -469,40 +469,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       std::string calibration_table, cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        OrtTensorRTProviderOptionsV2 params{
-            0,
-            0,
-            nullptr,
-            1000,
-            1,
-            1 << 30,
-            0,
-            0,
-            nullptr,
-            0,
-            0,
-            0,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            2,
-            -1,
-            nullptr,
-            nullptr,
-            nullptr,
-            nullptr,
-            nullptr,
-            0};
+        OrtTensorRTProviderOptionsV2 params;
         for (auto option : it->second) {
           if (option.first == "device_id") {
             if (!option.second.empty()) {
@@ -1237,7 +1204,7 @@ void addGlobalMethods(py::module& m) {
 #ifdef USE_TENSORRT
   m.def(
       "register_tensorrt_plugins_as_custom_ops", [](PySessionOptions& so, const ProviderOptions& options) { RegisterTensorRTPluginsAsCustomOps(so, options); },
-      "Regsiter TensorRT plugins as custom ops.");
+      "Register TensorRT plugins as custom ops.");
 #endif
 
 #ifdef ENABLE_ATEN
