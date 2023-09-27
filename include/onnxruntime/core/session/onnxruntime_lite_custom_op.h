@@ -15,14 +15,71 @@
 // Note - all APIs in this header are ABI.
 
 #pragma once
+#ifdef ORT_NATIVE_OP
+#include "core/framework/op_kernel.h"
+#else
 #include "onnxruntime_cxx_api.h"
+#endif
 #include <optional>
 #include <numeric>
 #include <functional>
 #include <unordered_set>
 
+#ifdef ORT_NATIVE_OP
+
+namespace onnxruntime {
+namespace lite {
+
+#else
+
 namespace Ort {
 namespace Custom {
+
+#endif
+
+#ifdef ORT_NATIVE_OP
+
+#define ORT_CXX_API_THROW(string, code) // todo - throw a native onnxruntime ex here
+
+using OrtKernelContext = ::onnxruntime::OpKernelContext;
+
+struct TypeShapeInfo {
+  std::vector<int64_t> GetShape() const {
+    return {};
+  }
+};
+
+struct InputValue {
+  TypeShapeInfo GetTensorTypeAndShapeInfo() {
+    return {};
+  }
+  const void* GetTensorRawData() const { return nullptr; }
+};
+
+using ConstValue = InputValue;
+
+struct OutputValue {
+template<typename R>
+  R* GetTensorMutableData() { return nullptr; }
+};
+
+struct KernelContext {
+  explicit KernelContext(OrtKernelContext* ctx): ctx_(ctx) {}
+  size_t GetInputCount() const { return 0; }
+  size_t GetOutputCount() const { return 0; }
+  InputValue GetInput(size_t /*index*/) const { return {}; }
+  OutputValue GetOutput(size_t /*index*/, const int64_t* /*dim_values*/, size_t /*dim_count*/) const { return {}; }
+  OutputValue GetOutput(size_t /*index*/, const std::vector<int64_t>& /*dims*/) const { return {}; }
+  // void* GetGPUComputeStream() const;
+  // Logger GetLogger() const;
+  // OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
+  OrtKernelContext* GetOrtKernelContext() const { return ctx_; }
+
+ private:
+  OrtKernelContext* ctx_;
+};
+
+#endif
 
 class ArgBase {
  public:
@@ -32,12 +89,12 @@ class ArgBase {
   virtual ~ArgBase(){};
 
  protected:
-  struct KernelContext ctx_;
+  KernelContext ctx_;
   size_t indice_;
   bool is_input_;
 };
 
-using ArgPtr = std::unique_ptr<Custom::ArgBase>;
+using ArgPtr = std::unique_ptr<ArgBase>;
 using ArgPtrs = std::vector<ArgPtr>;
 
 class TensorBase : public ArgBase {
@@ -165,6 +222,7 @@ class Tensor : public TensorBase {
   Span<T> span_;
 };
 
+#ifndef ORT_NATIVE_OP
 template <>
 class Tensor<std::string> : public TensorBase {
  public:
@@ -398,6 +456,18 @@ struct TensorArray : public ArgBase {
 };
 
 using Variadic = TensorArray;
+#endif
+
+#ifdef ORT_NATIVE_OP
+
+template <typename... Args>
+struct OpLite : public onnxruntime::OpKernel {
+  Status Compute(_Inout_ onnxruntime::OpKernelContext* context) const override {
+    return Status::OK();
+  }
+};
+
+#else
 
 struct OrtLiteCustomOp : public OrtCustomOp {
   using ConstOptionalFloatTensor = std::optional<const Custom::Tensor<float>&>;
@@ -1029,5 +1099,7 @@ OrtLiteCustomOp* CreateLiteCustomOp(const char* op_name,
   return std::make_unique<LiteOp>(op_name, execution_provider).release();
 }
 
-}  // namespace Custom
-}  // namespace Ort
+#endif // ifdef ORT_NATIVE_OP
+
+}  // namespace Custom/lite
+}  // namespace Ort/onnxruntime

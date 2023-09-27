@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/identity_op.h"
-#include "core/framework/op_lite.h"
+//#include "core/framework/op_lite.h"
 
 namespace onnxruntime {
 
@@ -61,26 +61,43 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 ///////////////////////////////////////////// LITE OP ////////////////////////////////////////////////////
 
-onnxruntime::Status IdentityFooFn(const onnxruntime::lite::Tensor<float>& in, onnxruntime::lite::Tensor<float>& out) {
-  auto shape = in.Shape();
-  const float* raw_in = in.Data();
-  float* raw_out = out.Allocate(shape);
-  if (raw_out) {
-    for (int64_t i = 0; i < in.NumberOfElement(); ++i) {
-      raw_out[i] = raw_in[i];
-    }
-    return Status::OK();
-  } else {
-    return ORT_MAKE_STATUS(StatusCategory::ONNXRUNTIME, StatusCode::RUNTIME_EXCEPTION);
-  }
-}
+//onnxruntime::Status IdentityFooFn(const onnxruntime::lite::Tensor<float>& in, onnxruntime::lite::Tensor<float>& out) {
+//  auto shape = in.Shape();
+//  const float* raw_in = in.Data();
+//  float* raw_out = out.Allocate(shape);
+//  if (raw_out) {
+//    for (int64_t i = 0; i < in.NumberOfElement(); ++i) {
+//      raw_out[i] = raw_in[i];
+//    }
+//    return Status::OK();
+//  } else {
+//    return ORT_MAKE_STATUS(StatusCategory::ONNXRUNTIME, StatusCode::RUNTIME_EXCEPTION);
+//  }
+//}
+//
+//ONNX_OP_BY_FN(
+//    IdentityFoo,
+//    kOnnxDomain,
+//    1,
+//    kCpuExecutionProvider,
+//    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>()}),
+//    IdentityFooFn);
 
-ONNX_OP_BY_FN(
-    IdentityFoo,
-    kOnnxDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>()}),
-    IdentityFooFn);
+#define ORT_NATIVE_OP
+#include "core/session/onnxruntime_lite_custom_op.h"
+
+::onnxruntime::Status IdentityFooFn(const onnxruntime::lite::Tensor<float>& in, onnxruntime::lite::Tensor<float>& out) {
+   auto shape = in.Shape();
+   const float* raw_in = in.Data();
+   float* raw_out = out.Allocate(shape);
+   if (raw_out) {
+     for (int64_t i = 0; i < in.NumberOfElement(); ++i) {
+       raw_out[i] = raw_in[i];
+     }
+     return Status::OK();
+   } else {
+     return ORT_MAKE_STATUS(StatusCategory::ONNXRUNTIME, StatusCode::RUNTIME_EXCEPTION);
+   }
+ }
 
 }  // namespace onnxruntime

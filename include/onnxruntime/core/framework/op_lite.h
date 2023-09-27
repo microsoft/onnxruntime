@@ -10,12 +10,12 @@ namespace onnxruntime {
 namespace lite {
 
 struct Arg {
-  Arg(onnxruntime::OpKernelContext* ctx,
+  Arg(::onnxruntime::OpKernelContext* ctx,
       size_t indice, bool is_input) : ctx_(ctx), indice_(indice), is_input_(is_input) {}
   virtual ~Arg(){};
 
  protected:
-  onnxruntime::OpKernelContext* ctx_;
+  ::onnxruntime::OpKernelContext* ctx_;
   size_t indice_;
   bool is_input_;
 };
@@ -26,12 +26,12 @@ struct Tensor : public Arg {
          size_t indice, bool is_input) : Arg(ctx, indice, is_input) {}
   const T* Data() const {
     ORT_ENFORCE(is_input_);
-    const onnxruntime::Tensor* tensor = ctx_->Input<onnxruntime::Tensor>(II(indice_));
+    const ::onnxruntime::Tensor* tensor = ctx_->Input<::onnxruntime::Tensor>(II(indice_));
     return tensor->Data<T>();
   }
   std::vector<int64_t> Shape() const {
     ORT_ENFORCE(is_input_);
-    const onnxruntime::Tensor* tensor = ctx_->Input<onnxruntime::Tensor>(II(indice_));
+    const ::onnxruntime::Tensor* tensor = ctx_->Input<::onnxruntime::Tensor>(II(indice_));
     std::vector<int64_t> shape;
     for (auto dim : tensor->Shape().AsShapeVector()) {
       shape.push_back(dim);
@@ -40,12 +40,12 @@ struct Tensor : public Arg {
   }
   int64_t NumberOfElement() const {
     ORT_ENFORCE(is_input_);
-    const onnxruntime::Tensor* tensor = ctx_->Input<onnxruntime::Tensor>(II(indice_));
+    const ::onnxruntime::Tensor* tensor = ctx_->Input<::onnxruntime::Tensor>(II(indice_));
     return tensor->Shape().Size();
   }
   T* Allocate(const std::vector<int64_t>& shape) {
     ORT_ENFORCE(!is_input_);
-    onnxruntime::Tensor* tensor = ctx_->Output(II(indice_), shape);
+    ::onnxruntime::Tensor* tensor = ctx_->Output(II(indice_), shape);
     return tensor->MutableData<T>();
   }
 
@@ -57,8 +57,8 @@ using ArgPtr = std::unique_ptr<lite::Arg>;
 using ArgPtrs = std::vector<ArgPtr>;
 
 template <typename... Args>
-struct OpLite : public onnxruntime::OpKernel {
-  using ComputeFn = onnxruntime::Status (*)(Args...);
+struct OpLite : public ::onnxruntime::OpKernel {
+  using ComputeFn = ::onnxruntime::Status (*)(Args...);
 
   // constructor
   OpLite(const OpKernelInfo& info, ComputeFn compute_fn) : OpKernel(info) {
@@ -111,7 +111,7 @@ struct OpLite : public onnxruntime::OpKernel {
   }
 
   // compute
-  Status Compute(_Inout_ onnxruntime::OpKernelContext* context) const override {
+  Status Compute(_Inout_ ::onnxruntime::OpKernelContext* context) const override {
     ArgPtrs args;
     auto t = CreateTuple<0, 0, Args...>(context, args);
     return std::apply([this](Args const&... t_args) { return this->compute_fn_(t_args...); }, t);
@@ -122,7 +122,7 @@ struct OpLite : public onnxruntime::OpKernel {
 };
 
 template <typename... Args>
-onnxruntime::OpKernel* CreateLiteOp(const OpKernelInfo& info, onnxruntime::Status (*compute_fn)(Args...)) {
+::onnxruntime::OpKernel* CreateLiteOp(const OpKernelInfo& info, ::onnxruntime::Status (*compute_fn)(Args...)) {
   using Op = OpLite<Args...>;
   return std::make_unique<Op>(info, compute_fn).release();
 }
