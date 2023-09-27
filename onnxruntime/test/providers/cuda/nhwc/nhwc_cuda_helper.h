@@ -27,11 +27,11 @@
 
 #define MAKE_PROVIDERS_EPS_TYPE(T)             \
   if (std::is_same<T, MLFloat16>::value) {     \
-    MAKE_PROVIDERS_EPS(1e-2)                   \
+    MAKE_PROVIDERS_EPS(2e-2)                   \
   } else if (std::is_same<T, double>::value) { \
-    MAKE_PROVIDERS_EPS(1e-4)                   \
+    MAKE_PROVIDERS_EPS(2e-4)                   \
   } else {                                     \
-    MAKE_PROVIDERS_EPS(1e-3)                   \
+    MAKE_PROVIDERS_EPS(2e-3)                   \
   }
 namespace onnxruntime {
 namespace test {

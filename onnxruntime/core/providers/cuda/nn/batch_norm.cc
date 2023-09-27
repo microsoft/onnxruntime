@@ -184,7 +184,9 @@ SPECIALIZED_COMPUTE(float, kOnnxDomain, false)
 SPECIALIZED_COMPUTE(double, kOnnxDomain, false)
 SPECIALIZED_COMPUTE(MLFloat16, kOnnxDomain, false)
 
+#ifdef ENABLE_CUDA_NHWC_OPS
 SPECIALIZED_COMPUTE(float, kMSInternalNHWCDomain, true)
 SPECIALIZED_COMPUTE(MLFloat16, kMSInternalNHWCDomain, true)
+#endif
 }  // namespace cuda
 }  // namespace onnxruntime

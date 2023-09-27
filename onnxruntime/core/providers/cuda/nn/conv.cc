@@ -36,8 +36,10 @@ REGISTER_KERNEL_TYPED(float, kOnnxDomain, false)
 REGISTER_KERNEL_TYPED(double, kOnnxDomain, false)
 REGISTER_KERNEL_TYPED(MLFloat16, kOnnxDomain, false)
 
+#ifdef ENABLE_CUDA_NHWC_OPS
 REGISTER_KERNEL_TYPED(float, kMSInternalNHWCDomain, true)
 REGISTER_KERNEL_TYPED(MLFloat16, kMSInternalNHWCDomain, true)
+#endif
 
 template <typename T, bool NHWC>
 const cudnnConvolutionFwdAlgo_t Conv<T, NHWC>::kAllAlgos[] = {
