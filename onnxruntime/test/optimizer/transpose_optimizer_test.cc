@@ -4591,7 +4591,6 @@ TEST(TransposeOptimizerTests, QnnResizeOpset11) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
-
 static void CheckSharedInitializerHandling(bool broadcast) {
   auto model_uri = broadcast ? ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast.onnx")
                              : ORT_TSTR("testdata/transpose_optimizer_shared_initializers.onnx");
