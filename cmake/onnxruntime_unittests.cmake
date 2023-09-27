@@ -815,7 +815,9 @@ if (onnxruntime_USE_TENSORRT)
   # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu_* or *xxx_*.
   list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*" )
 endif ()
-
+if(NOT onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
+  list(REMOVE_ITEM all_tests ${TEST_SRC_DIR}/providers/cuda/cuda_provider_test.cc)
+endif()
 AddTest(
   TARGET onnxruntime_test_all
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
@@ -825,6 +827,7 @@ AddTest(
   DEPENDS ${all_dependencies}
   TEST_ARGS ${test_all_args}
 )
+
 if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
   # If we promote the two input values first, it could be more tolerant to integer overflow.
