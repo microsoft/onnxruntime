@@ -53,6 +53,14 @@ class CustomFuncOpKernelInfo:
         self.materialize_grads: bool = False
         self.materialize_grads_config: Optional[Dict[int, Tuple[torch.device, torch.dtype, torch.shape]]] = None
 
+        # For the tensors generated from ORT backend, there is special handling here:
+        # 1. For the first time run for the kernel (the uniqueness of the kernel is defined by kernel_invoke_id),
+        # all such tensors will be cloned (with gradient) in case they are marked as dirty (if not cloned, but marked
+        # as dirty, PyTorch will complain the tensor is a leaf, should not be used for inplace update). Once
+        # `autograd.Function.apply` completes, by checking the existence of the tensor in the dirty_tensors,
+        # `_GlobalOpKernelInfoMap` is updated to save the input indices that are marked as dirty.
+        # 2. For the subsequent runs, if the input index is in `tensor_input_indices_for_mark_dirty`, the tensor
+        # will be cloned (with gradient) before fed into `autograd.Function.apply` as input.
         self.tensor_input_indices_for_mark_dirty: Optional[List[int]] = None
 
         # A list of output indices that needs to be clone before returned, due to inplace update analysis.
