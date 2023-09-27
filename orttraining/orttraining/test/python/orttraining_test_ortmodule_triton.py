@@ -136,7 +136,7 @@ def _torch_layer_norm(input, weight, bias, **kwargs):
 
 
 def _torch_gelu(input):
-    return input * 0.5 * (1 + torch.erf(input * 0.70710678118654752440))
+    return torch.nn.functional.gelu(input)
 
 
 def _torch_quick_gelu(input, **kwargs):
