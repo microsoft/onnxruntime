@@ -33,9 +33,9 @@ const createWhereOpProgramShader =
           const expressionC = `bool(cData[indexC${x}] & ${0xff000000 >>> ((3 - x) * 8)}u)`;
           return `
             let outputIndices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};
-            let offsetA${x} = ${a.broadcastIndicesToOffset(`outputIndices${x}`, output)};
-            let offsetB${x} = ${b.broadcastIndicesToOffset(`outputIndices${x}`, output)};
-            let offsetC${x} = ${c.broadcastIndicesToOffset(`outputIndices${x}`, output)};
+            let offsetA${x} = ${a.broadcastedIndicesToOffset(`outputIndices${x}`, output)};
+            let offsetB${x} = ${b.broadcastedIndicesToOffset(`outputIndices${x}`, output)};
+            let offsetC${x} = ${c.broadcastedIndicesToOffset(`outputIndices${x}`, output)};
             let indexA${x} = offsetA${x} / 4u;
             let indexB${x} = offsetB${x} / 4u;
             let indexC${x} = offsetC${x} / 4u;

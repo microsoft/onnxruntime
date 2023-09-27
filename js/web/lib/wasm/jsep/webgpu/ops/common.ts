@@ -110,7 +110,7 @@ export interface IndicesHelper {
    *
    * @returns an `u32` expression
    */
-  readonly broadcastIndicesToOffset: (varIndices: string, output: IndicesHelper) => string;
+  readonly broadcastedIndicesToOffset: (varIndices: string, output: IndicesHelper) => string;
 
   /**
    * WGSL code of generating an indices literal
@@ -272,7 +272,7 @@ const createIndicesHelper =
       const implementationUsed = {
         offsetToIndices: false,
         indicesToOffset: false,
-        broadcastIndicesToOffset: false,
+        broadcastedIndicesToOffset: false,
         set: false,
         setByIndices: false,
         get: false,
@@ -304,7 +304,7 @@ const createIndicesHelper =
         return rank < 2 ? varOffset : `o2i_${name}(${varOffset})`;
       };
 
-      let offsets: string[] = [];
+      const offsets: string[] = [];
       if (rank >= 2) {
         for (let i = rank - 1; i >= 0; i--) {
           offsets.push(`${strides[i]}u * (indices[${i}])`);
@@ -321,19 +321,19 @@ const createIndicesHelper =
         return rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
       };
 
-      let broadcastIndicesToOffsetImplementation = '';
-      const broadcastIndicesToOffset = (varIndices: string, output: IndicesHelper) => {
+      let broadcastedIndicesToOffsetImplementation = '';
+      const broadcastedIndicesToOffset = (varIndices: string, output: IndicesHelper) => {
         const offsets = [];
         for (let i = shape.length - 1; i >= 0; i--) {
           const idx = output.indicesGet('outputIndices', i + output.shape.length - shape.length);
           offsets.push(`${strides[i]}u * (${idx} % ${shape[i]}u)`);
         }
-        broadcastIndicesToOffsetImplementation =
-            `fn ${output.name}broadcastIndicesTo${name}Offset(outputIndices: ${output.type.indices}) -> u32 {
+        broadcastedIndicesToOffsetImplementation =
+            `fn ${output.name}broadcastedIndicesTo${name}Offset(outputIndices: ${output.type.indices}) -> u32 {
              return ${offsets.length > 0 ? offsets.join('+') : '0u'};
            }`;
-        implementationUsed.broadcastIndicesToOffset = true;
-        return `${output.name}broadcastIndicesTo${name}Offset(${varIndices})`;
+        implementationUsed.broadcastedIndicesToOffset = true;
+        return `${output.name}broadcastedIndicesTo${name}Offset(${varIndices})`;
       };
 
       const indices = (...init: ReadonlyArray<number|string>) =>
@@ -488,8 +488,8 @@ const createIndicesHelper =
         if (implementationUsed.indicesToOffset) {
           impls.push(indicesToOffsetImplementation);
         }
-        if (implementationUsed.broadcastIndicesToOffset) {
-          impls.push(broadcastIndicesToOffsetImplementation);
+        if (implementationUsed.broadcastedIndicesToOffset) {
+          impls.push(broadcastedIndicesToOffsetImplementation);
         }
         if (implementationUsed.set) {
           impls.push(setImplementation);
@@ -511,7 +511,7 @@ const createIndicesHelper =
         type,
         offsetToIndices,
         indicesToOffset,
-        broadcastIndicesToOffset,
+        broadcastedIndicesToOffset,
         indices,
         indicesGet,
         indicesSet,
