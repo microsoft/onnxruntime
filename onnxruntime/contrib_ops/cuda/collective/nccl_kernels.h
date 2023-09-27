@@ -6,6 +6,8 @@
 #include "core/providers/cuda/cuda_kernel.h"
 
 #if defined(ORT_USE_NCCL)
+#include <algorithm>
+#include <tuple>
 #include <optional>
 #include <string>
 #include <nccl.h>
@@ -46,6 +48,10 @@ class NcclContext final {
 class NcclKernel : public ::onnxruntime::cuda::CudaKernel {
  public:
   explicit NcclKernel(const OpKernelInfo& info);
+
+  NcclContext* GetNcclContext() {
+    return nccl_;
+  }
 
  protected:
   NcclContext* nccl_ = nullptr;
@@ -123,10 +129,16 @@ public:
 
 class TensorPartitionSpec {
 public:
-  enum class Condition { Replica, Shard };
   std::vector<AxisPartitionSpec> axis_specs;
   DeviceMesh device_mesh;
-  TensorPartitionSpec(std::vector<AxisPartitionSpec> axis_specs_, DeviceMesh device_mesh_) : axis_specs(axis_specs_), device_mesh(device_mesh_) {};
+  static TensorPartitionSpec Create(
+    const std::vector<AxisPartitionSpec>& axis_specs, const DeviceMesh& device_mesh
+  ) {
+    TensorPartitionSpec spec;
+    spec.axis_specs = axis_specs;
+    spec.device_mesh = device_mesh;
+    return spec;
+  }
   std::string to_string() const {
     std::ostringstream os;
     os << "TensorPartitionSpec { ";
@@ -188,22 +200,10 @@ public:
       return device_mesh.device_mesh_shape.at(axis_spec.device_mesh_axis);
     }
   }
-
-  std::vector<int64_t> ShardShape(const std::vector<int64_t> &origin_shape) {
-    std::vector<int64_t> shard_shape;
-    for (int64_t i = 0; i < origin_shape.size(); ++i) {
-      if (axis_specs[i].cond == AxisPartitionSpec::Condition::Shard) {
-        shard_shape.push_back(origin_shape[i] / device_mesh.device_mesh_shape[axis_specs[i].device_mesh_axis]);
-      } else {
-        shard_shape.push_back(origin_shape[i]);
-      }
-    }
-    return shard_shape;
-  }
 };
 
 
-DeviceMesh create_device_mesh(
+DeviceMesh CreateDeviceMesh(
     std::vector<int64_t> device_mesh_shape,
     std::vector<int64_t> device_mesh_elements
 ) {
@@ -213,7 +213,7 @@ DeviceMesh create_device_mesh(
   return device_mesh;
 }
 
-TensorPartitionSpec create_tensor_partition_spec(std::string spec_string, std::vector<int64_t> device_mesh_shape, std::vector<int64_t> device_mesh_elements) {
+TensorPartitionSpec CreateTensorPartitionSpec(std::string spec_string, std::vector<int64_t> device_mesh_shape, std::vector<int64_t> device_mesh_elements) {
   // "S[0]R"
   std::vector<AxisPartitionSpec> axis_specs;
   size_t dim_index = 0;
@@ -247,64 +247,124 @@ TensorPartitionSpec create_tensor_partition_spec(std::string spec_string, std::v
       throw std::invalid_argument("Invalid partition token: " + token);
     }
   }
-  DeviceMesh device_mesh = create_device_mesh(device_mesh_shape, device_mesh_elements);
-  return TensorPartitionSpec(axis_specs, device_mesh);
+  DeviceMesh device_mesh = CreateDeviceMesh(device_mesh_shape, device_mesh_elements);
+  return TensorPartitionSpec::Create(axis_specs, device_mesh);
 }
 
-void normalize_shapes(std::vector<int64_t>& left, std::vector<int64_t>& right) {
-  if (left.size() > right.size()) {
-    right.insert(right.begin(), left.size() - right.size(), 1);
-  } else if (left.size() < right.size()) {
-    left.insert(left.begin(), right.size() - left.size(), 1);
+TensorPartitionSpec CreateTensorShardSpec(
+  const DeviceMesh& device_mesh,
+  int64_t device_mesh_axis,
+  int64_t shard_axis,
+  int64_t tensor_rank
+) {
+  if (shard_axis < 0) {
+    shard_axis += tensor_rank;
+  }
+  std::vector<AxisPartitionSpec> axis_specs;
+  for (int64_t i = 0; i < tensor_rank; ++i) {
+    if (i == shard_axis) {
+      axis_specs.push_back(AxisPartitionSpec::CreateShard(device_mesh_axis));
+    } else {
+      axis_specs.push_back(AxisPartitionSpec::CreateReplica());
+    }
+  }
+  return TensorPartitionSpec::Create(axis_specs, device_mesh);
+}
+
+TensorShape ComputeOriginShape(const TensorShape& shard_shape, const TensorPartitionSpec& spec) {
+  TensorShape shape(shard_shape);
+  const int64_t axis = spec.GetPartitionAxis();
+  shape[axis] *= spec.GetPartitionCount(axis);
+  return shape;
+}
+
+TensorShape ComputeShardShape(const TensorShape& shape, const TensorPartitionSpec& spec) {
+  TensorShape shard_shape(shape);
+  if (spec.HasNoShard()) {
+    return shard_shape;
+  }
+  const int64_t axis = spec.GetPartitionAxis();
+  shard_shape[axis] /= spec.GetPartitionCount(axis);
+  return shard_shape;
+}
+
+std::tuple<TensorShape, TensorShape> NormalizeShapes(const TensorShape& left, const TensorShape& right) {
+  if (left.NumDimensions() > right.NumDimensions()) {
+    std::vector<int64_t> right_vector(right.NumDimensions(), 0);
+    right.CopyDims(right_vector.data(), right.NumDimensions());
+    // Fill 1's to right shape. E.g.,
+    // left: [1, 2, 3, 4], right: [5, 6, 7] -> left: [1, 2, 3, 4], right: [1, 5, 6, 7]
+    right_vector.insert(right_vector.begin(), left.NumDimensions() - right.NumDimensions(), 1);
+    return std::make_tuple(left, TensorShape(right_vector));
+  } else if (left.NumDimensions() < right.NumDimensions()) {
+    std::vector<int64_t> left_vector(left.NumDimensions(), 0);
+    left.CopyDims(left_vector.data(), left.NumDimensions());
+    // Fill 1's to left shape. E.g.,
+    // left: [1, 2, 3], right: [4, 5, 6, 7] -> left: [1, 2, 3, 1], right: [4, 5, 6, 7]
+    left_vector.insert(left_vector.begin(), right.NumDimensions() - left.NumDimensions(), 1);
+    return std::make_tuple(TensorShape(left_vector), TensorShape(right));
+  } else {
+    return std::make_tuple(TensorShape(left), TensorShape(right));
   }
 }
 
-void normalize_tensor_partition_specs(TensorPartitionSpec& left, TensorPartitionSpec& right) {
+std::tuple<TensorPartitionSpec, TensorPartitionSpec> NormalizeTensorPartitionSpecs(
+  const TensorPartitionSpec& left, const TensorPartitionSpec& right
+) {
+  // TODO: Make it to modify left and right instead of returning new values.
   if (left.axis_specs.size() > right.axis_specs.size()) {
-    right.axis_specs.insert(right.axis_specs.begin(), left.axis_specs.size() - right.axis_specs.size(), AxisPartitionSpec::CreateReplica());
+    auto new_right = TensorPartitionSpec::Create(right.axis_specs, right.device_mesh);
+    new_right.axis_specs.insert(new_right.axis_specs.begin(), left.axis_specs.size() - right.axis_specs.size(), AxisPartitionSpec::CreateReplica());
+    return std::make_tuple(left, new_right);
   } else if (left.axis_specs.size() < right.axis_specs.size()) {
-    left.axis_specs.insert(left.axis_specs.begin(), right.axis_specs.size() - left.axis_specs.size(), AxisPartitionSpec::CreateReplica());
+    auto new_left = TensorPartitionSpec::Create(left.axis_specs, left.device_mesh);
+    new_left.axis_specs.insert(new_left.axis_specs.begin(), right.axis_specs.size() - left.axis_specs.size(), AxisPartitionSpec::CreateReplica());
+    return std::make_tuple(new_left, right);
+  } else {
+    return std::make_tuple(left, right);
   }
 }
 
-void infer_matmul_output_shape(
-    const std::vector<int64_t>& normalized_shape_A,
-    const std::vector<int64_t>& normalized_shape_B,
-    std::vector<int64_t>& shape_Y) {
+TensorShape InferMatmulOutputShape(
+    const TensorShape& shape_A,
+    const TensorShape& shape_B
+) {
   // left_shape: [M, K]
   // right_shape: [K, N]
   // output_shape: [M, N]
   ORT_ENFORCE(
-    normalized_shape_A.size() >= 2 && normalized_shape_B.size() >= 2,
+    shape_A.NumDimensions() >= 2 && shape_B.NumDimensions() >= 2,
     "1-D tensor is not supported by this MatMul."
   );
   ORT_ENFORCE(
-    normalized_shape_A.size() == normalized_shape_B.size(),
+    shape_A.NumDimensions() == shape_B.NumDimensions(),
     "A and B must have the same rank after shape broadcasting."
   );
-  ORT_ENFORCE(shape_Y.size() == 0, "shape_Y must be empty before shape inference.");
-
-  size_t rank = normalized_shape_A.size();
-  shape_Y.reserve(rank);
+  size_t rank = shape_A.NumDimensions();
+  std::vector<int64_t> shape_Y(rank, 0);
   for (size_t i = 0; i < rank; ++i) {
-    const int64_t dim_A = normalized_shape_A.at(i);
-    const int64_t dim_B = normalized_shape_B.at(i);
+    const int64_t dim_A = shape_A[i];
+    const int64_t dim_B = shape_B[i];
     if (i == rank - 1) {
-      shape_Y.push_back(dim_B);
+      shape_Y[i] = dim_B;
     } else if (i == rank - 2) {
-      shape_Y.push_back(dim_A);
+      shape_Y[i] = dim_A;
     } else if (dim_A == 1 && dim_B >= 1) {
-      shape_Y.push_back(dim_B);
+      // dim_A is 1.
+      // dim_B can be either 1 or other positive integer.
+      // due ot shape broadcast.
+      shape_Y[i] = dim_B;
     } else if (dim_B == 1 && dim_A >= 1) {
-      shape_Y.push_back(dim_A);
+      // dim_B is 1.
+      // dim_A can be either 1 or other positive integer.
+      // due ot shape broadcast.
+      shape_Y[i] = dim_A;
     } else {
-      ORT_ENFORCE(
-        dim_A == dim_B,
-        "A and B must have the same shape after shape broadcasting."
-      );
-      shape_Y.push_back(dim_A);
+      ORT_ENFORCE(dim_A == dim_B, "Broadcasting can only happen when one of dim_A and dim_B is 1.");
+      shape_Y[i] = dim_A;
     }
   }
+  return TensorShape(shape_Y);
 };
 
 template <typename T>

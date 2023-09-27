@@ -19,7 +19,7 @@ import onnxruntime as ort
 MICROSOFT_OPSET = onnxscript.values.Opset(domain="com.microsoft", version=1)
 
 @onnxscript.script()
-def MatMul2D(X: FLOAT[2, 4], W: FLOAT[4, 2]) -> FLOAT[2, 2]:
+def MatMul2D(X: FLOAT[2, "s"], W: FLOAT["s", 2]) -> FLOAT[2, 2]:
     return MICROSOFT_OPSET.DistributedMatMul(
         X,
         W,
@@ -42,5 +42,9 @@ W = np.array([[1, 1],
              [3, 3],
              [4, 4]], dtype=np.float32)
 
-print(sess.run(None, {"X": X, "W": W}))
-print(np.matmul(X, W))
+X_shard = np.split(X, 2, axis=1)[rank]
+W_shard = np.split(W, 2, axis=0)[rank]
+result = sess.run(None, {"X": X_shard, "W": W_shard})
+if rank == 0:
+    print(result[0])
+    print(np.matmul(X, W))
