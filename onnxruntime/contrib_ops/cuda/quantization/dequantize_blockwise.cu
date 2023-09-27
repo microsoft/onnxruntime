@@ -18,7 +18,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-__device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, half scale, uint8_t zp, half* output) {
+__device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, half scale, half zp, half* output) {
   half2 scale_half2 = {scale, scale};
   half zp_adjust = -scale * __short2half_rn(zp);
   half2 zp_adjust2 = {zp_adjust, zp_adjust};
@@ -31,7 +31,7 @@ __device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, h
   *(reinterpret_cast<float4*>(output)) = *(reinterpret_cast<float4*>(results));
 }
 
-__device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, float scale, uint8_t zp, float* output) {
+__device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, float scale, float zp, float* output) {
   float zp_adjust = -scale * zp;
   output[0] = float(values_quant & 0xF) * scale + zp_adjust;
   output[1] = float((values_quant >> 4) & 0xF) * scale + zp_adjust;
@@ -77,7 +77,7 @@ Status Dequantize4Bits(
   int blocks_per_tb = GridDim::maxThreadsPerBlock * element_per_thread / block_size;
   int k_blocks = k / block_size;
   int blocks_per_grid = static_cast<int>(CeilDiv(n * k_blocks, blocks_per_tb));
-  int shift = static_cast<int>(log2f(block_size));
+  int shift = static_cast<int>(log2f(float(block_size)));
 
   Dequantize4BitsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       output,
