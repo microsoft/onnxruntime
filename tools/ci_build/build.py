@@ -2055,7 +2055,7 @@ def build_nuget_package(
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
-            "Currently csharp builds and nuget package creation is only supportted on Windows and Linux platforms."
+            "Currently csharp builds and nuget package creation is only supported on Windows and Linux platforms."
         )
 
     csharp_build_dir = os.path.join(source_dir, "csharp")

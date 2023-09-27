@@ -2176,7 +2176,7 @@ def parse_arguments():
         required=False,
         default=True,
         action="store_true",
-        help="Inlcude Float16 into benchmarking.",
+        help="Include Float16 into benchmarking.",
     )
 
     parser.add_argument("--trtexec", required=False, default=None, help="trtexec executable path.")
