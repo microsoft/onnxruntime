@@ -108,7 +108,7 @@ Status MatMulWithCompressWeight<T>::ComputeInternal(OpKernelContext* ctx) const 
           static_cast<int>(helper.K()),
           &alpha,
           reinterpret_cast<const CudaT*>(b_data),
-          K_padded,
+          static_cast<int>(K_padded),
           reinterpret_cast<const CudaT*>(a_data),
           helper.Lda(transa),
           &zero,
