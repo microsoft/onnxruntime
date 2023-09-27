@@ -334,7 +334,10 @@ NS_ASSUME_NONNULL_BEGIN
 
         ORT_RETURN_IF_NOT(IsArrayContiguous(data),
                             "Non contiguous output MLMultiArray are not currently supported");
-        const void* model_output_buffer = data.dataPointer;
+        __block const void* model_output_buffer=nil;
+        [data getBytesWithHandler:^(const void *bytes, NSInteger size) {
+            model_output_buffer = bytes;
+        }];
 
         if (model_output_buffer == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_buffer has no data for ", output_name);
