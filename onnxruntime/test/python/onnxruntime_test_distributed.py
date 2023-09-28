@@ -14,279 +14,289 @@ MICROSOFT_OPSET = onnxscript.values.Opset(domain="com.microsoft", version=1)
 comm = MPI.COMM_WORLD
 
 
-@onnxscript.script()
-def MatMul2D(X: FLOAT[2, "s"], W: FLOAT["s", 2]) -> FLOAT[2, 2]:
-    return MICROSOFT_OPSET.DistributedMatMul(
-        X,
-        W,
-        device_mesh_shape=[2],
-        device_mesh_elements=[0, 1],
-        input_shard_specs=["RS[0]", "S[0]R"],
-        output_shard_specs=["RR"],
-    )
-
-
-@onnxscript.script()
-def MatMul2D_RS_RS_RR(X: FLOAT[2, "s"], W: FLOAT[4, "t"]) -> FLOAT[2, 2]:
-    # Shape informaton should match the shapes seen by the operator.
-    # If the tensor W with shape [4, 2] is sharded following "RS[0]", its shape
-    # should be [4, 1] in ORT when calling ctx->Input<Tensor>(1)->Shape().
-    return MICROSOFT_OPSET.DistributedMatMul(
-        X,
-        W,
-        device_mesh_shape=[2],
-        device_mesh_elements=[0, 1],
-        input_shard_specs=["RS[0]", "RS[0]"],
-        output_shard_specs=["RR"],
-    )
-
-
-@onnxscript.script()
-def MatMul2D_RS_RS_RR(X: FLOAT[2, "s"], W: FLOAT[4, "t"]) -> FLOAT[2, 2]:
-    return MICROSOFT_OPSET.DistributedMatMul(
-        X,
-        W,
-        device_mesh_shape=[2],
-        device_mesh_elements=[0, 1],
-        input_shard_specs=["RS[0]", "RS[0]"],
-        output_shard_specs=["RR"],
-    )
-
-
-@onnxscript.script()
-def MatMul2D_RS_RS_RS(X: FLOAT[2, "s"], W: FLOAT[4, "t"]) -> FLOAT[2, "u"]:
-    return MICROSOFT_OPSET.DistributedMatMul(
-        X,
-        W,
-        device_mesh_shape=[2],
-        device_mesh_elements=[0, 1],
-        input_shard_specs=["RS[0]", "RS[0]"],
-        output_shard_specs=["RS[0]"],
-    )
-
-
-@onnxscript.script()
-def MatMul_SRR_RR_SRR(X: FLOAT["s", 2, 4], W: FLOAT[4, 2]) -> FLOAT["s", 2, 2]:
-    return MICROSOFT_OPSET.DistributedMatMul(
-        X,
-        W,
-        device_mesh_shape=[2],
-        device_mesh_elements=[0, 1],
-        input_shard_specs=["S[0]RR", "RR"],
-        output_shard_specs=["S[0]RR"],
-    )
-
-
-@onnxscript.script()
-def MatMul_SRR_RRRR_RSRR(X: FLOAT["s", 2, 4], W: FLOAT[1, 2, 4, 2]) -> FLOAT[1, "s", 2, 2]:
-    return MICROSOFT_OPSET.DistributedMatMul(
-        X,
-        W,
-        device_mesh_shape=[2],
-        device_mesh_elements=[0, 1],
-        input_shard_specs=["S[0]RR", "RRRR"],
-        output_shard_specs=["RS[0]RR"],
-    )
-
-
-@onnxscript.script()
-def MatMul_SR_RS_RR(X: FLOAT["s", 2], W: FLOAT[2, "t"]) -> FLOAT["s", "t"]:
-    return MICROSOFT_OPSET.DistributedMatMul(
-        X,
-        W,
-        device_mesh_shape=[2],
-        device_mesh_elements=[0, 1],
-        input_shard_specs=["S[0]R", "RS[0]"],
-        output_shard_specs=["RR"],
-    )
-
-
-@onnxscript.script()
-def MatMul_RR_RS_RS(X: FLOAT[4, 2], W: FLOAT[2, "s"]) -> FLOAT[4, "t"]:
-    return MICROSOFT_OPSET.DistributedMatMul(
-        X,
-        W,
-        device_mesh_shape=[2],
-        device_mesh_elements=[0, 1],
-        input_shard_specs=["RR", "RS[0]"],
-        output_shard_specs=["RS[0]"],
-    )
-
-
-# MatMul(RR, SR) -> MatMul(RS, SR) + AllReduce -> RR
-@onnxscript.script()
-def MatMul_RR_SR_RR(X: FLOAT[4, 2], W: FLOAT["s", 6]) -> FLOAT[4, "t"]:
-    return MICROSOFT_OPSET.DistributedMatMul(
-        X,
-        W,
-        device_mesh_shape=[2],
-        device_mesh_elements=[0, 1],
-        input_shard_specs=["RR", "S[0]R"],
-        output_shard_specs=["RR"],
-    )
-
-
-def ShardTensor(X, rank, axis, num_shards):
+def shard_tensor(X, rank, axis, num_shards):
     return np.split(X, num_shards, axis)[rank]
 
 
 class TestDistributedMatMul(unittest.TestCase):
-    def test_MatMul2D(self):
-        rank = comm.Get_rank()
-        X = np.array([[1, 2, 3, 4], [3, 4, 5, 6]], dtype=np.float32)
-        W = np.array([[1, 1], [2, 2], [3, 3], [4, 4]], dtype=np.float32)
+    def test_matmul_rs_sr_rr(self):
+        @onnxscript.script()
+        def matmul_rs_sr_rr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
+            return MICROSOFT_OPSET.DistributedMatMul(
+                tensor_x,
+                tensor_w,
+                device_mesh_shape=[2],
+                device_mesh_elements=[0, 1],
+                input_shard_specs=["RS[0]", "S[0]R"],
+                output_shard_specs=["RR"],
+            )
 
-        onnx_model = MatMul2D.to_model_proto()
+        rank = comm.Get_rank()
+        tensor_x = np.array([[1, 2, 3, 4], [3, 4, 5, 6]], dtype=np.float32)
+        tensor_w = np.array([[1, 1], [2, 2], [3, 3], [4, 4]], dtype=np.float32)
+
+        onnx_model = matmul_rs_sr_rr.to_model_proto(
+            input_types=[FLOAT[2, "s"], FLOAT["s", 2]],
+            output_types=[FLOAT[2, 2]],
+        )
+
         sess = ort.InferenceSession(
             onnx_model.SerializeToString(),
             providers=["CUDAExecutionProvider"],
             provider_options=[{"device_id": str(rank)}],
         )
 
-        X_shard = ShardTensor(X, rank=rank, axis=1, num_shards=2)
-        W_shard = ShardTensor(W, rank=rank, axis=0, num_shards=2)
+        tensor_shard_x = shard_tensor(tensor_x, rank=rank, axis=1, num_shards=2)
+        tensor_shard_w = shard_tensor(tensor_w, rank=rank, axis=0, num_shards=2)
 
-        result = sess.run(None, {"X": X_shard, "W": W_shard})
+        result = sess.run(None, {"tensor_x": tensor_shard_x, "tensor_w": tensor_shard_w})
 
-        expected = np.matmul(X, W)
+        expected = np.matmul(tensor_x, tensor_w)
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
-    def test_MatMul2D_RS_RS_RR(self):
-        rank = comm.Get_rank()
-        X = np.array([[1, 2, 3, 4], [3, 4, 5, 6]], dtype=np.float32)
-        W = np.array([[1, 1], [2, 2], [3, 3], [4, 4]], dtype=np.float32)
+    def test_matmul2d_rs_rs_rr(self):
+        @onnxscript.script()
+        def matmul_rs_rs_rr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
+            return MICROSOFT_OPSET.DistributedMatMul(
+                tensor_x,
+                tensor_w,
+                device_mesh_shape=[2],
+                device_mesh_elements=[0, 1],
+                input_shard_specs=["RS[0]", "RS[0]"],
+                output_shard_specs=["RR"],
+            )
 
-        onnx_model = MatMul2D_RS_RS_RR.to_model_proto()
+        rank = comm.Get_rank()
+        tensor_x = np.array([[1, 2, 3, 4], [3, 4, 5, 6]], dtype=np.float32)
+        tensor_w = np.array([[1, 1], [2, 2], [3, 3], [4, 4]], dtype=np.float32)
+
+        # Shape informaton should match the shapes seen by the operator.
+        # If the tensor W with shape [4, 2] is sharded following "RS[0]", its shape
+        # should be [4, 1] in ORT when calling ctx->Input<Tensor>(1)->Shape().
+        onnx_model = matmul_rs_rs_rr.to_model_proto(
+            input_types=[FLOAT[2, "s"], FLOAT[4, "t"]],
+            output_types=[FLOAT[2, 2]],
+        )
+
         sess = ort.InferenceSession(
             onnx_model.SerializeToString(),
             providers=["CUDAExecutionProvider"],
             provider_options=[{"device_id": str(rank)}],
         )
 
-        X_shard = ShardTensor(X, rank=rank, axis=1, num_shards=2)
-        W_shard = ShardTensor(W, rank=rank, axis=1, num_shards=2)
+        tensor_shard_x = shard_tensor(tensor_x, rank=rank, axis=1, num_shards=2)
+        tensor_shard_w = shard_tensor(tensor_w, rank=rank, axis=1, num_shards=2)
 
-        result = sess.run(None, {"X": X_shard, "W": W_shard})
+        result = sess.run(None, {"tensor_x": tensor_shard_x, "tensor_w": tensor_shard_w})
 
-        expected = np.matmul(X, W)
+        expected = np.matmul(tensor_x, tensor_w)
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
-    def test_MatMul2D_RS_RS_RS(self):
-        rank = comm.Get_rank()
-        X = np.array([[1, 2, 3, 4], [3, 4, 5, 6]], dtype=np.float32)
-        W = np.array([[1, 1], [2, 2], [3, 3], [4, 4]], dtype=np.float32)
+    def test_matmul2d_rs_rs_rs(self):
+        @onnxscript.script()
+        def matmul2d_rs_rs_rs(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
+            return MICROSOFT_OPSET.DistributedMatMul(
+                tensor_x,
+                tensor_w,
+                device_mesh_shape=[2],
+                device_mesh_elements=[0, 1],
+                input_shard_specs=["RS[0]", "RS[0]"],
+                output_shard_specs=["RS[0]"],
+            )
 
-        onnx_model = MatMul2D_RS_RS_RS.to_model_proto()
+        rank = comm.Get_rank()
+        tensor_x = np.array([[1, 2, 3, 4], [3, 4, 5, 6]], dtype=np.float32)
+        tensor_w = np.array([[1, 1], [2, 2], [3, 3], [4, 4]], dtype=np.float32)
+
+        onnx_model = matmul2d_rs_rs_rs.to_model_proto(
+            input_types=[FLOAT[2, "s"], FLOAT[4, "t"]],
+            output_types=[FLOAT[2, "u"]],
+        )
+
         sess = ort.InferenceSession(
             onnx_model.SerializeToString(),
             providers=["CUDAExecutionProvider"],
             provider_options=[{"device_id": str(rank)}],
         )
 
-        X_shard = ShardTensor(X, rank=rank, axis=1, num_shards=2)
-        W_shard = ShardTensor(W, rank=rank, axis=1, num_shards=2)
+        tensor_shard_x = shard_tensor(tensor_x, rank=rank, axis=1, num_shards=2)
+        tensor_shard_w = shard_tensor(tensor_w, rank=rank, axis=1, num_shards=2)
 
-        result = sess.run(None, {"X": X_shard, "W": W_shard})
+        result = sess.run(None, {"tensor_x": tensor_shard_x, "tensor_w": tensor_shard_w})
 
-        expected = ShardTensor(np.matmul(X, W), rank=rank, axis=1, num_shards=2)
+        expected = shard_tensor(np.matmul(tensor_x, tensor_w), rank=rank, axis=1, num_shards=2)
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
-    def test_MatMul_SRR_RR_SRR(self):
+    def test_matmul_srr_rr_srr(self):
+        @onnxscript.script()
+        def matmul_srr_rr_srr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
+            return MICROSOFT_OPSET.DistributedMatMul(
+                tensor_x,
+                tensor_w,
+                device_mesh_shape=[2],
+                device_mesh_elements=[0, 1],
+                input_shard_specs=["S[0]RR", "RR"],
+                output_shard_specs=["S[0]RR"],
+            )
+
         rank = comm.Get_rank()
         # Shape [2, 2, 4]
-        X = np.array([[[1, 2, 3, 4], [3, 4, 5, 6]], [[1, 2, 3, 4], [3, 4, 5, 6]]], dtype=np.float32)
+        tensor_x = np.array([[[1, 2, 3, 4], [3, 4, 5, 6]], [[1, 2, 3, 4], [3, 4, 5, 6]]], dtype=np.float32)
         # Shape [4, 2]
-        W = np.array([[1, 1], [2, 2], [3, 3], [4, 4]], dtype=np.float32)
+        tensor_w = np.array([[1, 1], [2, 2], [3, 3], [4, 4]], dtype=np.float32)
 
-        onnx_model = MatMul_SRR_RR_SRR.to_model_proto()
+        onnx_model = matmul_srr_rr_srr.to_model_proto(
+            input_types=[FLOAT["s", 2, 4], FLOAT[4, 2]],
+            output_types=[FLOAT["s", 2, 2]],
+        )
+
         sess = ort.InferenceSession(
             onnx_model.SerializeToString(),
             providers=["CUDAExecutionProvider"],
             provider_options=[{"device_id": str(rank)}],
         )
 
-        X_shard = ShardTensor(X, rank=rank, axis=0, num_shards=2)
-        W_shard = W
+        tensor_shard_x = shard_tensor(tensor_x, rank=rank, axis=0, num_shards=2)
+        tensor_shard_w = tensor_w
 
-        result = sess.run(None, {"X": X_shard, "W": W_shard})
+        result = sess.run(None, {"tensor_x": tensor_shard_x, "tensor_w": tensor_shard_w})
 
-        expected = ShardTensor(np.matmul(X, W), rank=rank, axis=0, num_shards=2)
+        expected = shard_tensor(np.matmul(tensor_x, tensor_w), rank=rank, axis=0, num_shards=2)
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
-    def test_MatMul_SRR_RRRR_RSRR(self):
+    def test_matmul_srr_rrrr_rsrr(self):
+        @onnxscript.script()
+        def matmul_srr_rrrr_rsrr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
+            return MICROSOFT_OPSET.DistributedMatMul(
+                tensor_x,
+                tensor_w,
+                device_mesh_shape=[2],
+                device_mesh_elements=[0, 1],
+                input_shard_specs=["S[0]RR", "RRRR"],
+                output_shard_specs=["RS[0]RR"],
+            )
+
         rank = comm.Get_rank()
         # Shape [2, 2, 4]
-        X = np.array([[[1, 2, 3, 4], [3, 4, 5, 6]], [[1, 2, 3, 4], [3, 4, 5, 6]]], dtype=np.float32)
+        tensor_x = np.array([[[1, 2, 3, 4], [3, 4, 5, 6]], [[1, 2, 3, 4], [3, 4, 5, 6]]], dtype=np.float32)
         # Shape [1, 2, 4, 2]
-        W = np.array([[[[1, 1], [2, 2], [3, 3], [4, 4]], [[1, 1], [2, 2], [3, 3], [4, 4]]]], dtype=np.float32)
+        tensor_w = np.array([[[[1, 1], [2, 2], [3, 3], [4, 4]], [[1, 1], [2, 2], [3, 3], [4, 4]]]], dtype=np.float32)
 
-        onnx_model = MatMul_SRR_RRRR_RSRR.to_model_proto()
+        onnx_model = matmul_srr_rrrr_rsrr.to_model_proto(
+            input_types=[FLOAT["s", 2, 4], FLOAT[1, 2, 4, 2]],
+            output_types=[FLOAT[1, "s", 2, 2]],
+        )
+
         sess = ort.InferenceSession(
             onnx_model.SerializeToString(),
             providers=["CUDAExecutionProvider"],
             provider_options=[{"device_id": str(rank)}],
         )
 
-        X_shard = ShardTensor(X, rank=rank, axis=0, num_shards=2)
-        W_shard = W
+        tensor_shard_x = shard_tensor(tensor_x, rank=rank, axis=0, num_shards=2)
+        tensor_shard_w = tensor_w
 
-        result = sess.run(None, {"X": X_shard, "W": W_shard})
+        result = sess.run(None, {"tensor_x": tensor_shard_x, "tensor_w": tensor_shard_w})
 
-        expected = ShardTensor(np.matmul(X, W), rank=rank, axis=1, num_shards=2)
+        expected = shard_tensor(np.matmul(tensor_x, tensor_w), rank=rank, axis=1, num_shards=2)
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
-    def test_MatMul_SR_RS_RR(self):
+    def test_matmul_sr_rs_rr(self):
+        @onnxscript.script()
+        def matmul_sr_rs_rr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
+            return MICROSOFT_OPSET.DistributedMatMul(
+                tensor_x,
+                tensor_w,
+                device_mesh_shape=[2],
+                device_mesh_elements=[0, 1],
+                input_shard_specs=["S[0]R", "RS[0]"],
+                output_shard_specs=["RR"],
+            )
+
         rank = comm.Get_rank()
         # Shape [4, 2]
-        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)
+        tensor_x = np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)
         # Shape [2, 2]
-        W = np.array([[1, 1], [2, 2]], dtype=np.float32)
+        tensor_w = np.array([[1, 1], [2, 2]], dtype=np.float32)
 
-        onnx_model = MatMul_SR_RS_RR.to_model_proto()
+        onnx_model = matmul_sr_rs_rr.to_model_proto(
+            input_types=[FLOAT["s", 2], FLOAT[2, "t"]],
+            output_types=[FLOAT["s", "t"]],
+        )
+
         sess = ort.InferenceSession(
             onnx_model.SerializeToString(),
             providers=["CUDAExecutionProvider"],
             provider_options=[{"device_id": str(rank)}],
         )
 
-        X_shard = ShardTensor(X, rank=rank, axis=0, num_shards=2)
-        W_shard = ShardTensor(W, rank=rank, axis=1, num_shards=2)
+        tensor_shard_x = shard_tensor(tensor_x, rank=rank, axis=0, num_shards=2)
+        tensor_shard_w = shard_tensor(tensor_w, rank=rank, axis=1, num_shards=2)
 
-        result = sess.run(None, {"X": X_shard, "W": W_shard})
+        result = sess.run(None, {"tensor_x": tensor_shard_x, "tensor_w": tensor_shard_w})
 
-        expected = np.matmul(X, W)
+        expected = np.matmul(tensor_x, tensor_w)
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
-    def test_MatMul_RR_RS_RS(self):
+    def test_matmul_rr_rs_rs(self):
+        @onnxscript.script()
+        def matmul_rr_rs_rs(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
+            return MICROSOFT_OPSET.DistributedMatMul(
+                tensor_x,
+                tensor_w,
+                device_mesh_shape=[2],
+                device_mesh_elements=[0, 1],
+                input_shard_specs=["RR", "RS[0]"],
+                output_shard_specs=["RS[0]"],
+            )
+
         rank = comm.Get_rank()
         # Shape [4, 2]
-        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)
+        tensor_x = np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)
         # Shape [2, 4]
-        W = np.array([[1, 1, 1, 1], [2, 2, 2, 2]], dtype=np.float32)
+        tensor_w = np.array([[1, 1, 1, 1], [2, 2, 2, 2]], dtype=np.float32)
 
-        onnx_model = MatMul_RR_RS_RS.to_model_proto()
+        onnx_model = matmul_rr_rs_rs.to_model_proto(
+            input_types=[FLOAT[4, 2], FLOAT[2, "s"]],
+            output_types=[FLOAT[4, "t"]],
+        )
+
         sess = ort.InferenceSession(
             onnx_model.SerializeToString(),
             providers=["CUDAExecutionProvider"],
             provider_options=[{"device_id": str(rank)}],
         )
 
-        X_shard = X
-        W_shard = ShardTensor(W, rank=rank, axis=1, num_shards=2)
+        tensor_shard_x = tensor_x
+        tensor_shard_w = shard_tensor(tensor_w, rank=rank, axis=1, num_shards=2)
 
-        result = sess.run(None, {"X": X_shard, "W": W_shard})
+        result = sess.run(None, {"tensor_x": tensor_shard_x, "tensor_w": tensor_shard_w})
 
-        expected = ShardTensor(np.matmul(X, W), rank=rank, axis=1, num_shards=2)
+        expected = shard_tensor(np.matmul(tensor_x, tensor_w), rank=rank, axis=1, num_shards=2)
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
-    def test_MatMul_RR_SR_RR(self):
+    def test_matmul_rr_sr_rr(self):
+        @onnxscript.script()
+        def matmul_rr_sr_rr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
+            return MICROSOFT_OPSET.DistributedMatMul(
+                tensor_x,
+                tensor_w,
+                device_mesh_shape=[2],
+                device_mesh_elements=[0, 1],
+                input_shard_specs=["RR", "S[0]R"],
+                output_shard_specs=["RR"],
+            )
+
         rank = comm.Get_rank()
         # Shape [4, 2]
-        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)
+        tensor_x = np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)
         # Shape [2, 6]
-        W = np.array([[1, 1, 1, 1, 1, 1], [2, 2, 2, 2, 2, 2]], dtype=np.float32)
+        tensor_w = np.array([[1, 1, 1, 1, 1, 1], [2, 2, 2, 2, 2, 2]], dtype=np.float32)
 
-        onnx_model = MatMul_RR_SR_RR.to_model_proto()
+        onnx_model = matmul_rr_sr_rr.to_model_proto(
+            input_types=[FLOAT[4, 2], FLOAT["s", 6]],
+            output_types=[FLOAT[4, 6]],
+        )
 
         sess = ort.InferenceSession(
             onnx_model.SerializeToString(),
@@ -294,12 +304,12 @@ class TestDistributedMatMul(unittest.TestCase):
             provider_options=[{"device_id": str(rank)}],
         )
 
-        X_shard = X
-        W_shard = ShardTensor(W, rank=rank, axis=0, num_shards=2)
+        tensor_shard_x = tensor_x
+        tensor_shard_w = shard_tensor(tensor_w, rank=rank, axis=0, num_shards=2)
 
-        result = sess.run(None, {"X": X_shard, "W": W_shard})
+        result = sess.run(None, {"tensor_x": tensor_shard_x, "tensor_w": tensor_shard_w})
 
-        expected = np.matmul(X, W)
+        expected = np.matmul(tensor_x, tensor_w)
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
 
