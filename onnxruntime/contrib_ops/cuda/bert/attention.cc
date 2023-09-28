@@ -140,27 +140,29 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   if (!use_flash_attention) {
-    if (is_unidirectional_ && enable_fused_causal_attention_) {  // GPT
-      // GPT fused kernels requires left side padding. mask can be:
-      //     none (no padding), 1D sequence lengths or 2d mask.
-      // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
-      // where past state is empty.
-      bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
-      bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
-                                     nullptr == relative_position_bias &&
-                                     parameters.past_sequence_length == 0 &&
-                                     parameters.hidden_size == parameters.v_hidden_size &&
-                                     FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                                        enable_trt_flash_attention_, true);
-      if (use_causal_fused_runner) {
-        // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
-        if (nullptr == fused_fp16_runner_.get()) {
-          fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                            enable_trt_flash_attention_, parameters.scale);
-        }
+    if (is_unidirectional_) {  // GPT
+      if (enable_fused_causal_attention_) {
+        // GPT fused kernels requires left side padding. mask can be:
+        //     none (no padding), 1D sequence lengths or 2d mask.
+        // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
+        // where past state is empty.
+        bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
+        bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
+                                       nullptr == relative_position_bias &&
+                                       parameters.past_sequence_length == 0 &&
+                                       parameters.hidden_size == parameters.v_hidden_size &&
+                                       FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
+                                                                          enable_trt_flash_attention_, true);
+        if (use_causal_fused_runner) {
+          // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
+          if (nullptr == fused_fp16_runner_.get()) {
+            fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                              enable_trt_flash_attention_, parameters.scale);
+          }
 
-        // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
-        fused_runner = fused_fp16_runner_.get();
+          // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
+          fused_runner = fused_fp16_runner_.get();
+        }
       }
     } else {  // BERT
       bool use_fused_runner = !disable_fused_self_attention_ &&
