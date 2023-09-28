@@ -177,9 +177,9 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  // Run layout transformer only for EPs other than CPU EP and provided the preferred layout is NHWC
+  // Run layout transformer for EPs with preferred layout of NHWC
   // CPU EP layout transformation happens later when level 3 transformers are run.
-  if (params.mode != GraphPartitioner::Mode::kAssignOnly &&
+  if (params.mode != GraphPartitioner::Mode::kAssignOnly && params.transform_layout.get() &&
       current_ep.GetPreferredLayout() == DataLayout::NHWC) {
     for (auto& capability : capabilities) {
       TryAssignNodes(graph, *capability->sub_graph, ep_type);

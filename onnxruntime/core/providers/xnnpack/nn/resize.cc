@@ -331,7 +331,13 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kOnnxDomain, 13, 17, kXnnpackExecution
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 
-ONNX_OPERATOR_KERNEL_EX(Resize, kOnnxDomain, 18, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kOnnxDomain, 18, 18, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
+                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
+                                  Resize);
+
+ONNX_OPERATOR_KERNEL_EX(Resize, kOnnxDomain, 19, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
                                                                  DataTypeImpl::GetTensorType<uint8_t>(),
                                                                  DataTypeImpl::GetTensorType<int8_t>()}),
