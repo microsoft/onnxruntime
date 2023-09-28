@@ -13,32 +13,32 @@
 	</p>
 	<a href="./training" class="btn btn-primary">Learn more about ONNX Runtime Training →</a>
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-10 my-4 md:mx-10">
-		<div class="bg-slate-500 p-4 rounded">
-			<div class="grid lg:grid-cols-4 place-items-center">
-				<div class="col-span-3">
-					<h1 class="text-2xl pb-2 text-slate-100">Large Model Training</h1>
+		<div class="bg-slate-300 p-4 rounded">
+			<div class="grid xl:grid-cols-4 place-items-center">
+				<div class="col-span-3 text-black">
+					<h1 class="text-2xl pb-2">Large Model Training</h1>
 					<p class="text-lg">
-						ORTModule accelerates training of large transformer PyTorch models. The training time
-						and cost are reduced with a single line code change. It is built on top of highly
-						successful and proven technologies of ONNX Runtime and ONNX format.
+						ORTModule accelerates training of large transformer PyTorch models, reducing training
+						time and cost with a single line code change.
 					</p>
 				</div>
-				<div class="hidden lg:grid">
+				<div class="hidden xl:grid">
 					<Largemodeltraining />
 				</div>
 			</div>
 		</div>
-		<div class="bg-slate-500 p-4 rounded">
+		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid md:grid-cols-4 place-items-center">
-				<div class="col-span-3">
-					<h1 class="text-2xl pb-2 text-slate-100">On-Device Training</h1>
+				<div class="col-span-3 text-black">
+					<h1 class="text-2xl pb-2">On-Device Training</h1>
 					<p class="text-lg">
 						On-Device Training refers to the process of training a model on an edge device, such as
-						mobile phones, embedded devices, gaming consoles, web browsers, etc. This is in contrast
-						to training a model on a server or a cloud.
+						mobile phones, embedded devices, gaming consoles, web browsers, etc. This is useful for
+						when performance, connectivity, or privacy is a consideration and server-based training
+						is not an option.
 					</p>
 				</div>
-				<div class="hidden lg:grid">
+				<div class="hidden xl:grid">
 					<Ondevtraining />
 				</div>
 			</div>
@@ -53,30 +53,29 @@
 	</p>
 	<a href="./inference" class="btn btn-primary">Learn more about ONNX Runtime Inferencing →</a>
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-10 my-4 md:mx-10">
-		<div class="bg-slate-500 p-4 rounded">
-			<div class="grid lg:grid-cols-4 place-items-center">
-				<div class="col-span-3">
-					<h1 class="text-2xl pb-2 text-slate-100">ONNX Runtime Web</h1>
+		<div class="bg-slate-300 p-4 rounded">
+			<div class="grid xl:grid-cols-4 place-items-center">
+				<div class="col-span-3 text-black">
+					<h1 class="text-2xl pb-2">ONNX Runtime Web</h1>
 					<p class="text-lg">
 						ONNX Runtime Web allows JavaScript developers to run and deploy machine learning models
 						in browsers.
 					</p>
 				</div>
-				<div class="hidden lg:grid">
+				<div class="hidden xl:grid">
 					<Ortweb />
 				</div>
 			</div>
 		</div>
-		<div class="bg-slate-500 p-4 rounded">
+		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid md:grid-cols-4 place-items-center">
-				<div class="col-span-3">
-					<h1 class="text-2xl pb-2 text-slate-100">ONNX Runtime Mobile</h1>
+				<div class="col-span-3 text-black">
+					<h1 class="text-2xl pb-2">ONNX Runtime Mobile</h1>
 					<p class="text-lg">
-						ONNX Runtime Mobile allows you to run model inferencing on mobile devices (iOS and
-						Android).
+						ONNX Runtime Mobile allows you to run model inferencing on mobile devices.
 					</p>
 				</div>
-				<div class="hidden lg:grid">
+				<div class="hidden xl:grid">
 					<Ortmobile />
 				</div>
 			</div>

@@ -1,11 +1,9 @@
 <script lang="ts">
+	import OnnxLight from '../../images/ONNX-Light.svelte';
 	export let title: string;
 	export let description: string;
 	export let imgsrc: string;
 	export let imgalt: string;
-	import OnnxIcon from '../../images/onnx-icon.svelte';
-	if (imgsrc == 'onnxruntimelogo') {
-	}
 </script>
 
 <div class="container mx-auto px-10 my-10">
@@ -20,7 +18,7 @@
 		</div>
 		{#if imgsrc == 'onnxruntimelogo'}
 			<div class="m-auto">
-				<OnnxIcon />
+				<OnnxLight />
 			</div>
 		{:else}
 			<img class="m-auto" src={imgsrc} alt={imgalt} />

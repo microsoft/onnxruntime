@@ -63,7 +63,7 @@
 					</p>
 					<div class="card-actions">
 						<a href="https://onnxruntime.ai/docs/api/" class="btn btn-primary"
-							><span class="hidden md:inline">Get your PyTorch Models ready for</span> optimized deployment
+							><span class="hidden md:grid">Get your PyTorch Models ready for</span> optimized deployment
 							→</a
 						>
 					</div>
@@ -111,7 +111,7 @@
 						platforms.
 					</p>
 					<div class="card-actions">
-						<a class="btn btn-primary hidden md:inline" href="https://cloudblogs.microsoft.com/opensource/tag/onnx"
+						<a class="btn btn-primary hidden md:grid" href="https://cloudblogs.microsoft.com/opensource/tag/onnx"
 							>Check the latest on performance enhancements →</a
 						>
 						<a class="btn btn-primary md:hidden" href="https://cloudblogs.microsoft.com/opensource/tag/onnx">Performance enhancements →</a>
@@ -132,7 +132,7 @@
 						days.
 					</p>
 					<div class="card-actions">
-						<a href="./testimonials" class="btn btn-primary hidden md:inline"
+						<a href="./testimonials" class="btn btn-primary hidden md:grid"
 							>See what ONNX Runtime users are saying →</a
 						>
 						<a href="./testimonials" class="btn btn-primary md:hidden">Testimonials →</a>

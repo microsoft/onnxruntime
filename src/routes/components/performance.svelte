@@ -8,13 +8,12 @@
 			<h1 class="text-4xl">Performance</h1>
 			<br /><br />
 			<p class="text-xl">
-				ONNX Runtime provides high performance for running deep learning models on a range of
-				hardwares. Based on usage scenario requirements, latency, throughput, memory utilization,
-				and model/application size are common dimensions for how performance is measured.
+				ONNX Runtime runs performantly on a range of hardware, excelling in performance dimensions
+				including latency, throughput, memory utilization, and model and application size.
 				<br /><br />
-				While ORT out-of-box aims to provide good performance for the most common usage patterns, there
-				are model optimization techniques and runtime configurations that can be utilized to improve
-				performance for specific use cases and models..
+				In addition to high performance out-of-box for the most common usage patterns, additional 
+				<a href="https://onnxruntime.ai/docs/performance/" class="text-blue-500">model optimization techniques</a> and runtime configurations can further improve performance for specific
+				use cases and models.
 			</p>
 		</div>
 		<div class="m-auto overflow:hidden">

@@ -1,6 +1,6 @@
 <script lang="ts">
+	import OnnxLight from '../../images/ONNX-Light.svelte';
 	import LandingHero from '../components/landing-hero.svelte';
-	import OnnxIcon from '../../images/onnx-icon.svelte';
 	const title = 'Windows + ONNX Runtime';
 	const description =
 		'ONNX Runtime makes it easier for you to create amazing AI experiences on Windows with less engineering effort and better performance.';
@@ -23,7 +23,7 @@
 			>
 		</div>
 		<div class="m-auto">
-			<OnnxIcon />
+			<OnnxLight height={250} width={250}/>
 		</div>
 	</div>
 </div>
@@ -92,7 +92,7 @@
 				<div class="card-actions">
 					<a
 						href="https://github.com/microsoft/Windows-Machine-Learning/tree/master/Samples/WinMLSamplesGallery"
-						class="btn btn-primary hidden md:inline">Check out the Windows ML Sample Gallery →</a
+						class="btn btn-primary hidden md:grid">Check out the Windows ML Sample Gallery →</a
 					>
 					<a
 						href="https://github.com/microsoft/Windows-Machine-Learning/tree/master/Samples/WinMLSamplesGallery"

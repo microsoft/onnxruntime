@@ -5,7 +5,7 @@
 	import FaGithub from 'svelte-icons/fa/FaGithub.svelte';
 	import FaYoutube from 'svelte-icons/fa/FaYoutube.svelte';
 	import FaLinkedinIn from 'svelte-icons/fa/FaLinkedinIn.svelte';
-	import OnnxIcon from '../../images/onnx-icon.svelte';
+	import OnnxLight from '../../images/ONNX-Light.svelte';
 	onMount(() => {
 		themeChange(false);
 	});
@@ -63,11 +63,11 @@
 		</div>
 		<a href="./" class="btn btn-ghost normal-case text-xl">
 			<div class="hidden lg:inline">
-				<OnnxIcon width={32} height={32} />
+				<OnnxLight width={32} height={32} />
 			</div>
 			ONNXRuntime
 			<div class="lg:hidden">
-				<OnnxIcon width={32} height={32} />
+				<OnnxLight width={32} height={32} />
 			</div>
 		</a>
 	</div>

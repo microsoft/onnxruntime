@@ -2,7 +2,7 @@
 	import LandingHero from '../components/landing-hero.svelte';
 	const title = 'Generative AI + ONNX Runtime';
 	const description =
-		'Integrate the power of generative AI in your apps and services with ONNX Runtime. Broad platform support and deep optimizations enable you to benefit from state of the art models for image synthesis, text generation, and more.';
+		'Integrate the power of generative AI in your apps and services with ONNX Runtime. Broad platform support and deep optimizations empower usage of state-of-the-art models for image synthesis, text generation, and more.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
 	import stablediffusion1 from '../../images/StableDiffusion1.webp';
@@ -12,15 +12,12 @@
 <LandingHero {title} {description} {imgsrc} {imgalt} />
 <div class="container mx-auto px-10 my-10">
 	<h1 class="text-4xl">Stable Diffusion + ONNX Runtime</h1>
-	<p class="pb-4">
-		Using ONNX Runtime with this hugely popular text-to-image latent diffusion model for image
-		generation can be hugely beneficial.
-	</p>
+	<p class="pb-4">Use ONNX Runtime to accelerate this popular image generation model.</p>
 	<h2 class="text-3xl pb-4">Benefits</h2>
 	<div class="grid gap-10 grid-cols-1 lg:grid-cols-2 pb-4">
 		<div class="card bg-base-300">
 			<div class="card-body">
-				<h2 class="card-title">Run Stable Diffusion outside of a Python environment</h2>
+				<h2 class="card-title pb-4">Run Stable Diffusion outside of a Python environment</h2>
 				<div class="card-actions">
 					<a
 						href="https://onnxruntime.ai/docs/tutorials/csharp/stable-diffusion-csharp.html"
@@ -36,7 +33,9 @@
 		</div>
 		<div class="card bg-base-300">
 			<div class="card-body">
-				<h2 class="card-title">Speed up inference of Stable Diffusion on Nvidia and AMD GPUs</h2>
+				<h2 class="card-title pb-4">
+					Speed up inference of Stable Diffusion on NVIDIA and AMD GPUs
+				</h2>
 				<div class="card-actions">
 					<a
 						href="https://medium.com/microsoftazure/accelerating-stable-diffusion-inference-with-onnx-runtime-203bd7728540"
@@ -63,9 +62,9 @@
 	</div>
 	<h2 class="text-3xl">Large Language Models + ONNX Runtime</h2>
 	<p class="pb-4">
-		ONNX Runtime also supports many increasingly popular large language model (LLM) families.
-		Several of these model families are available in the Hugging Face Model Hub with hundreds, or
-		even thousands, of models that are easily convertible to ONNX using the Optimum API:
+		ONNX Runtime supports many popular large language model (LLM) families in the Hugging Face Model
+		Hub. These, along with thousands of other models, are easily convertible to ONNX using the
+		Optimum API.
 	</p>
 	<div class="">
 		<a href="https://huggingface.co/models?other=llama" class="btn btn-primary">LLaMA →</a>

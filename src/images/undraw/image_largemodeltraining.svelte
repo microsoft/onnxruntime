@@ -4,6 +4,7 @@
 </script>
 
 <svg
+	stroke="black"
 	width={176 * widthscale}
 	height={126 * heightscale}
 	viewBox="0 0 176 126"

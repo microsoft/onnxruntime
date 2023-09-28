@@ -34,7 +34,7 @@
 			<p class="block mt-1 leading-tight font-bold text-neutral text-lg">{title}</p>
 			<p class="mt-2 text-neutral">{description}</p>
 			<br />
-			<p class="text-secondary text-right">-{author}</p>
+			<p class="text-blue-500 text-right">-{author}</p>
 		</div>
 	</div>
 </article>

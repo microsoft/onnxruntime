@@ -3,7 +3,15 @@
 	import anime from 'animejs';
 	import pytorchlogo from '../../images/logos/PyTorch_logo_black.svg';
 	import windowslogo from '../../images/logos/Windows_logo_and_wordmark.svg';
-	import huggingfacelogo from '../../images/logos/hf-logo-with-title.svg';
+	import huggingfacelogoTitle from '../../images/logos/hf-logo-with-title.svg';
+	import amdLogo from '../../images/logos/amd-logo.png';
+	import huggingfaceLogo from '../../images/logos/huggingface-logo.png';
+	import intelLogo from '../../images/logos/intel-logo.png';
+	import nvidiaLogo from '../../images/logos/nvidia.png';
+	import adobeLogo from '../../images/logos/adobe-logo.png';
+	import oracleLogo from '../../images/logos/oracle-logo.png';
+	import unrealEngineLogo from '../../images/logos/ue-logo.png';
+
 	import { onMount } from 'svelte';
 	// Prevents animations from being messed up when they first start
 	let interact = false;
@@ -26,21 +34,21 @@
 	});
 
 	let handleEnter = (e: any) => {
-		if (interact){
+		if (interact) {
 			anime({
-			targets: e.target,
-			scale: 1.1,
-			duration: 1500
-		});
+				targets: e.target,
+				scale: 1.1,
+				duration: 1500
+			});
 		}
 	};
 	let handleLeave = (e: any) => {
-		if (interact){
+		if (interact) {
 			anime({
-			targets: e.target,
-			scale: 1,
-			duration: 1500
-		});
+				targets: e.target,
+				scale: 1,
+				duration: 1500
+			});
 		}
 	};
 </script>
@@ -51,46 +59,74 @@
 	<div
 		class="grid lg:grid-cols-8 md:grid-cols-4 grid-cols-2 gap-4 mx-auto justify-items-center pt-10"
 	>
-		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner cursor-default bg-secondary rounded">
-			<img src="https://onnxruntime.ai/images/logos/amd-logo.png" alt="AMD" />
+		<button
+			on:mouseenter={handleEnter}
+			on:mouseleave={handleLeave}
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+		>
+			<img src={amdLogo} alt="AMD" />
 		</button>
-		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner cursor-default bg-secondary rounded">
-			<img src="https://onnxruntime.ai/images/logos/huggingface-logo.png" alt="HuggingFace" />
+		<button
+			on:mouseenter={handleEnter}
+			on:mouseleave={handleLeave}
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+		>
+			<img src={huggingfaceLogo} alt="HuggingFace" />
 		</button>
-		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner cursor-default bg-secondary rounded">
-			<img src="https://onnxruntime.ai/images/logos/intel-logo.png" alt="Intel" />
+		<button
+			on:mouseenter={handleEnter}
+			on:mouseleave={handleLeave}
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+		>
+			<img src={intelLogo} alt="Intel" />
 		</button>
-		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner cursor-default bg-secondary rounded">
-			<img src="https://onnxruntime.ai/images/logos/nvidia.png" alt="Nvidia" />
+		<button
+			on:mouseenter={handleEnter}
+			on:mouseleave={handleLeave}
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+		>
+			<img src={nvidiaLogo} alt="Nvidia" />
 		</button>
-		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner cursor-default bg-secondary rounded">
-			<img src="https://onnxruntime.ai/images/logos/adobe-logo.png" alt="Adobe" />
+		<button
+			on:mouseenter={handleEnter}
+			on:mouseleave={handleLeave}
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+		>
+			<img src={adobeLogo} alt="Adobe" />
 		</button>
-		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner cursor-default bg-secondary rounded">
-			<img src="https://onnxruntime.ai/images/logos/visual-studio-logo.png" alt="Microsoft" />
+		<button
+			on:mouseenter={handleEnter}
+			on:mouseleave={handleLeave}
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+		>
+			<img src={unrealEngineLogo} alt="Unreal Engine" />
 		</button>
-		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner cursor-default bg-secondary rounded">
-			<img src="https://onnxruntime.ai/images/logos/oracle-logo.png" alt="Oracle" />
+		<button
+			on:mouseenter={handleEnter}
+			on:mouseleave={handleLeave}
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+		>
+			<img src={oracleLogo} alt="Oracle" />
 		</button>
-			<a
+		<a
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			href="./testimonials"
-			class="w-full partner bg-secondary rounded flex items-center justify-center"
+			class="w-full partner bg-slate-300 border-solid border-2 border-secondary rounded flex items-center justify-center"
 		>
-			<p class="underline">...and many more</p>
+			<p class="underline text-black">...and many more</p>
 		</a>
 	</div>
-	<h1 class="text-2xl pt-10 pb-4">Learn more about how to use ONNX Runtime with:</h1>
+	<h1 class="text-2xl pt-10 pb-4">Learn more about how to use ONNX Runtime with</h1>
 	<div class="grid md:grid-cols-3 grid-cols-1 gap-4 mx-auto pb-10">
-		<a href="./pytorch" class="btn btn-secondary rounded-sm h-full"
+		<a href="./pytorch" class="btn btn-primary bg-slate-300 border-solid border-2 border-secondary rounded h-full"
 			><img class="px-10 py-5" src={pytorchlogo} alt="PyTorch Logo" /></a
 		>
-		<a href="./windows" class="btn btn-secondary rounded-sm h-full"
+		<a href="./windows" class="btn btn-primary bg-slate-300 border-solid border-2 border-secondary rounded h-full"
 			><img class="px-10 py-5" src={windowslogo} alt="Windows Logo" /></a
 		>
-		<a href="./huggingface" class="btn btn-secondary rounded-sm h-full"
-			><img class="px-10 py-5" src={huggingfacelogo} alt="HuggingFace Logo" /></a
+		<a href="./huggingface" class="btn btn-primary bg-slate-300 border-solid border-2 border-secondary rounded h-full"
+			><img class="px-10 py-5" src={huggingfacelogoTitle} alt="HuggingFace Logo" /></a
 		>
 	</div>
 </div>

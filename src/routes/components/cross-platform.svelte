@@ -11,9 +11,9 @@
 			<h1 class="text-4xl">Cross-Platform</h1>
 			<br /><br />
 			<p class="text-xl">
-				Take advantage of the benefits of ONNX Runtime without changing your technology stack.
-				Access ONNX RunTime using your preferred API - C#, C++, C, Python, or Java. Support for
-				Linux, Windows, and Mac allows you to build and deploy applications without worry.
+				Take advantage of ONNX Runtime without changing your technology stack. Support for Linux,
+				Windows, Mac, iOS, Android, and web allows you to build and deploy applications consistently
+				across a variety of devices.
 			</p>
 		</div>
 		<div class="m-auto lg:hidden">

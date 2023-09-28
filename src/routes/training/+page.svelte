@@ -56,7 +56,7 @@
 						class="text-blue-500"
 						href="https://learn.microsoft.com/en-us/azure/machine-learning/resource-azure-container-for-pytorch?view=azureml-api-2"
 						>Azure Container for PyTorch (ACPT)</a
-					> and seamlessly integrates with existing training pipelines for PyTorch models​.
+					> and seamlessly integrates with existing training pipelines for PyTorch models.
 				</p>
 			</div>
 		</div>
@@ -64,8 +64,8 @@
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Flexible & extensible hardware support</h2>
 				<p>
-					The same model and API works with NVIDIA and AMD GPUs, and the extensible "execution
-					provider" architecture allow you to plug-in custom operators, optimizer and hardware
+					The same model and API works with NVIDIA and AMD GPUs, and the extensible <a class="text-blue-500" href="./docs/execution-providers/">execution
+						provider</a> architecture allow you to plug-in custom operators, optimizer and hardware
 					accelerators.
 				</p>
 			</div>
@@ -80,7 +80,7 @@
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Composable with popular acceleration systems</h2>
 				<p>
-					Compose with Deepspeed, Fairscale, Megatron, and more for even faster and more efficient
+					Compose with DeepSpeed, FairScale, Megatron, and more for even faster and more efficient
 					training.
 				</p>
 			</div>
@@ -194,7 +194,7 @@
 	<div class="grid gap-10 grid-cols-1 md:grid-cols-2 mx-auto">
 		<div class="card bg-base-300">
 			<div class="card-body items-center text-center">
-				<h2 class="card-title">Improving data privacy & security</h2>
+				<h2 class="card-title">Improves data privacy & security</h2>
 				<p>
 					especially when working with sensitive data that cannot be shared with a server or a cloud
 				</p>

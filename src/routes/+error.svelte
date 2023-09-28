@@ -1,13 +1,13 @@
 <script>
 	import { base } from '$app/paths';
-	import OnnxIcon from '../images/onnx-icon.svelte';
+	import OnnxLight from '../images/ONNX-Light.svelte';
 </script>
 
 <div class="container mx-auto text-center">
 	<div class="flex items-center justify-center">
 		<h1 class="text-9xl">4</h1>
 		<div>
-			<OnnxIcon width={75} height={75} />
+			<OnnxLight width={100} height={100} />
 		</div>
 		<h1 class="text-9xl">4</h1>
 	</div>
