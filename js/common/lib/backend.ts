@@ -13,10 +13,16 @@ export declare namespace SessionHandler {
   type ReturnType = {[name: string]: OnnxValue};
 }
 
-export declare namespace TrainingSessionHandler {
-  type FeedsType = {[name: string]: OnnxValue};
-  type FetchesType = {[name: string]: OnnxValue | null};
-  type ReturnType = {[name: string]: OnnxValue}|number;
+/**
+ * Represents shared SessionHandler functionality
+ *
+ * @internal
+ */
+interface SessionHandler {
+  dispose(): Promise<void>;
+
+  readonly inputNames: readonly string[];
+  readonly outputNames: readonly string[];
 }
 
 /**
@@ -24,12 +30,7 @@ export declare namespace TrainingSessionHandler {
  *
  * @internal
  */
-export interface SessionHandler {
-  dispose(): Promise<void>;
-
-  readonly inputNames: readonly string[];
-  readonly outputNames: readonly string[];
-
+export interface InferenceSessionHandler extends SessionHandler {
   startProfiling(): void;
   endProfiling(): void;
 
@@ -42,15 +43,15 @@ export interface SessionHandler {
  *
  * @internal
  */
-export interface TrainingSessionHandler {
+export interface TrainingSessionHandler extends SessionHandler {
   dispose(): Promise<void>;
 
   readonly inputNames: readonly string[];
   readonly outputNames: readonly string[];
 
   runTrainStep(
-      feeds: TrainingSessionHandler.FeedsType, fetches: TrainingSessionHandler.FetchesType,
-      options: InferenceSession.RunOptions): Promise<TrainingSessionHandler.ReturnType>;
+      feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
+      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
 }
 
 /**
@@ -64,8 +65,8 @@ export interface Backend {
    */
   init(): Promise<void>;
 
-  createSessionHandler(uriOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<SessionHandler>;
+  createInferenceSessionHandler(uriOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+      Promise<InferenceSessionHandler>;
 
   createTrainingSessionHandler?
       (checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
