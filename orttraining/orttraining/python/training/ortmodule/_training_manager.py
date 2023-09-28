@@ -311,6 +311,9 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
+            if self._runtime_options.enable_zero_stage3_support:
+                self._append_pull_weight_trigger_as_input(kwargs, self._device)
+
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
@@ -320,6 +323,7 @@ class TrainingManager(GraphExecutionManager):
                 kwargs,
                 self._device,
                 self._runtime_inspector,
+                self._zero_stage3_param_map,
             )
 
             outputs = unflatten_user_output(

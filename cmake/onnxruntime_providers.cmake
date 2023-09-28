@@ -1756,7 +1756,7 @@ if (onnxruntime_USE_TVM)
 
   target_include_directories(onnxruntime_providers_tvm PRIVATE
           ${TVM_INCLUDES}
-          ${PYTHON_INLCUDE_DIRS})
+          ${PYTHON_INCLUDE_DIRS})
   onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
   add_dependencies(onnxruntime_providers_tvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
