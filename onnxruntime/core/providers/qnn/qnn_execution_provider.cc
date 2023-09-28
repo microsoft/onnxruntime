@@ -354,8 +354,15 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const size_t num_of_partitions = result.size();
 
   if (load_from_cached_context && 1 == num_of_partitions) {
+    std::string partitioned_graph_name = result[0]->sub_graph->GetMetaDef()->name;
+    if (1 == num_of_supported_nodes) {
+      const auto& node = graph_viewer.Nodes().begin();
+      NodeAttrHelper node_helper(*node);
+      partitioned_graph_name = node_helper.Get("partition_name", "");
+    }
+
     rt = qnn_backend_manager_->ValidateWithContextFile(GetFileNameFromModelPath(graph_viewer.ModelPath()),
-                                                       result[0]->sub_graph->GetMetaDef()->name);
+                                                       partitioned_graph_name);
     if (Status::OK() != rt) {
       LOGS(logger, ERROR) << "QNN failed to validate context cache metadata: " << rt.ErrorMessage();
       return result;
@@ -467,7 +474,11 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       // graph_viewer.Name() is generated in GetCapability, e.g QNN_[hash_id]_[id]
       // dump graph_viewer.Name() as metadata in context cache binary file, so that we can validate it in GetCapability
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(GetFileNameFromModelPath(graph_viewer.ModelPath()),
-                                                               graph_viewer.Name()));
+                                                               graph_viewer.Name(),
+                                                               qnn_models_[fused_node.Name()]->GetInputNames(),
+                                                               qnn_models_[fused_node.Name()]->GetInputsInfo(),
+                                                               qnn_models_[fused_node.Name()]->GetOutputNames(),
+                                                               qnn_models_[fused_node.Name()]->GetOutputsInfo()));
     }
     return Status::OK();
   }

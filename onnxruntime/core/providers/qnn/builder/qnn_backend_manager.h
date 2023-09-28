@@ -69,7 +69,11 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status DumpQnnContext(const std::string& model_name, const std::string& graph_name);
+  Status DumpQnnContext(const std::string& model_name, const std::string& graph_name,
+                        const std::vector<std::string>& input_names,
+                        const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info,
+                        const std::vector<std::string>& output_names,
+                        const std::unordered_map<std::string, OnnxTensorInfo>& outputs_info);
 
   Status LoadCachedQnnContext(QnnModel& qnn_model);
 

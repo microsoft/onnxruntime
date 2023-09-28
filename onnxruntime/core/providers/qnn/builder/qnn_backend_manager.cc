@@ -17,6 +17,8 @@
 #include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
 
+#include "core/graph/model.h"
+
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
 
@@ -347,9 +349,9 @@ bool QnnBackendManager::IsContextCacheFileExists(const std::string& customer_con
     return ctx_file_exists_;
   }
   model_description_ = model_description;
-  // Use user provided context cache file path if exist, otherwise try model_file.onnx.bin by default
+  // Use user provided context cache file path if exist, otherwise try model_file.onnx_ctx.onnx by default
   if (customer_context_cache_path.empty()) {
-    context_cache_path_ = PathToUTF8String(model_pathstring) + ".bin";
+    context_cache_path_ = PathToUTF8String(model_pathstring) + "_ctx.onnx";
   } else {
     context_cache_path_ = customer_context_cache_path;
   }
@@ -367,7 +369,11 @@ Status WriteInt16ToBinaryFile(std::ofstream& of_stream, uint16_t value) {
   return Status::OK();
 }
 
-Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const std::string& graph_name) {
+Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const std::string& graph_name,
+                                         const std::vector<std::string>& input_names,
+                                         const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info,
+                                         const std::vector<std::string>& output_names,
+                                         const std::unordered_map<std::string, OnnxTensorInfo>& outputs_info) {
   if (nullptr == qnn_interface_.contextGetBinarySize ||
       nullptr == qnn_interface_.contextGetBinary) {
     LOGS(*logger_, ERROR) << "Failed to get valid function pointer.";
@@ -403,37 +409,53 @@ Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const st
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Context written buffer exceeds allocated buffer size.");
   }
 
-  std::ofstream of_stream(context_cache_path_.c_str(), std::ofstream::binary);
-  if (!of_stream) {
-    LOGS(*logger_, ERROR) << "Failed to open cached context file.";
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
+  std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
+  Model model(model_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              {}, *logger_);
+  auto& graph = model.MainGraph();
+  graph.SetDescription(model_description_);
+
+  onnxruntime::Version model_version = 5;
+  model.SetModelVersion(model_version);
+  
+  using namespace ONNX_NAMESPACE;
+  std::vector<NodeArg*> inputs;
+  std::vector<NodeArg*> outputs;
+  for (int i = 0; i < input_names.size(); ++i) {
+    std::string input_name = input_names[i];
+    ORT_RETURN_IF(inputs_info.find(input_name) == inputs_info.end(), "Input name: ", input_name, " not exist in inputs_info");
+    const OnnxTensorInfo& input_info = inputs_info.at(input_name);
+    TypeProto tensor_type;
+    tensor_type.mutable_tensor_type()->set_elem_type(input_info.data_type_);
+    for (int j = 0; j < input_info.shape_.size(); ++j) {
+      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(input_info.shape_[i]);
+    }
+    auto& input_arg = graph.GetOrCreateNodeArg(input_name, &tensor_type);
+    inputs.push_back(&input_arg);
+  }
+  for (int i = 0; i < output_names.size(); ++i) {
+    std::string output_name = output_names[i];
+    ORT_RETURN_IF(outputs_info.find(output_name) == outputs_info.end(), "Output name: ", output_name, " not exist in outputs_info");
+    const OnnxTensorInfo& output_info = outputs_info.at(output_name);
+    TypeProto tensor_type;
+    tensor_type.mutable_tensor_type()->set_elem_type(output_info.data_type_);
+    for (int j = 0; j < output_info.shape_.size(); ++j) {
+      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(output_info.shape_[i]);
+    }
+    auto& output_arg = graph.GetOrCreateNodeArg(output_name, &tensor_type);
+    outputs.push_back(&output_arg);
   }
 
-  // Write Ort metadata into context binary file
-  uint16_t model_name_length = static_cast<uint16_t>(model_name.length());
-  uint16_t graph_name_length = static_cast<uint16_t>(graph_name.length());
-  uint16_t model_description_length = static_cast<uint16_t>(model_description_.length());
+  auto& ep_node = graph.AddNode(graph_name, "EPCache", "Onnx Qnn context binary cache for graph partition: " + graph_name, inputs, outputs, nullptr, kMSDomain);
+  unsigned char* buffer = context_buffer.get();
+  std::string cache_payload(buffer, buffer + written_buffer_size);
+  ep_node.AddAttribute("ep_engine_cache", cache_payload);
+  ep_node.AddAttribute("ep_sdk_version", "2.14.1.230828");
+  ep_node.AddAttribute("partition_name", graph_name);
 
-  // Header: uint16_t(totale_length)|uint16_t(model_name_length)|model_name|uint16_t(graph_name_length)|graph_name|uint16_t(model_description_length)|model_description
-  uint16_t header_length = 4 * sizeof(uint16_t) + model_name_length + graph_name_length + model_description_length;
-  uint16_t totale_length = header_length + static_cast<uint16_t>(strlen(QNN_PROVIDER));
-  of_stream.write(QNN_PROVIDER, strlen(QNN_PROVIDER));
+  ORT_RETURN_IF_ERROR(graph.Resolve());
 
-  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, header_length));
-
-  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, model_name_length));
-  of_stream.write(model_name.c_str(), model_name_length);
-
-  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, graph_name_length));
-  of_stream.write(graph_name.c_str(), graph_name_length);
-
-  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, model_description_length));
-  of_stream.write(model_description_.c_str(), model_description_length);
-  model_description_.clear();
-
-  LOGS(*logger_, VERBOSE) << "Dump metadata with length: " << totale_length;
-
-  of_stream.write(reinterpret_cast<char*>(context_buffer.get()), written_buffer_size);
+  ORT_RETURN_IF_ERROR(Model::Save(model, context_cache_path_));
 
   LOGS(*logger_, VERBOSE) << "Dump QNN Context completed.";
   return Status::OK();

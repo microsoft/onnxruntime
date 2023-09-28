@@ -2844,6 +2844,60 @@ void RegisterContribSchemas() {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(EPCache)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for QNN.")
+      .Attr("ep_engine_cache", "payload of the execution provider engine/context cache file.", AttributeProto::STRING)
+      .Attr(
+          "ep_sdk_version",
+          "(Optional) SDK version used to convert the model.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
+          "partition_name",
+          "(Optional) partitioned graph name.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr("notes", "(Optional) Some notes for the model", AttributeProto::STRING, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(
+          0,
+          "inputs",
+          "List of tensors for inputs",
+          "T",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(
+          0,
+          "outputs",
+          "One or more outputs, list of tensors for outputs",
+          "T",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .TypeConstraint(
+          "T",
+          {"tensor(int8)",
+           "tensor(int16)",
+           "tensor(int32)",
+           "tensor(int64)",
+           "tensor(uint8)",
+           "tensor(uint16)",
+           "tensor(uint32)",
+           "tensor(uint64)",
+           "tensor(float16)",
+           "tensor(float)",
+           "tensor(double)"},
+          "Constrain input and output types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
   static const char* BitmaskDropout_ver1_doc = R"DOC(
 BitmaskDropout takes an input floating-point tensor, an optional input ratio (floating-point scalar) and an optional input training_mode (boolean scalar).
 It produces two tensor outputs: output (floating-point tensor) and mask (optional `Tensor<uint32>`). If `training_mode` is true then the output Y will be a random dropout.
