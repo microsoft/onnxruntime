@@ -80,6 +80,7 @@ Options:
 
  --no-sandbox                  This flag will be passed to Chrome.
                                  Sometimes Chrome need this flag to work together with Karma.
+ --chromium-flags=<...>        This flag will be passed to Chrome and Edge browsers. Can be used multiple times.
 
 Examples:
 
@@ -173,6 +174,7 @@ export interface TestRunnerCliArgs {
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
   globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
+  chromiumFlags: string[];
 }
 
 
@@ -295,7 +297,7 @@ function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLEx
   return {name: 'webgl'};
 }
 
-function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
+function parseWebglFlags(args: minimist.ParsedArgs): Partial<Env.WebGLFlags> {
   const contextId = args['webgl-context-id'];
   if (contextId !== undefined && contextId !== 'webgl' && contextId !== 'webgl2') {
     throw new Error('Flag "webgl-context-id" is invalid');
@@ -319,7 +321,7 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 
-function parseWebgpuFlags(args: minimist.ParsedArgs): Env.WebGpuFlags {
+function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
   const profilingMode = args['webgpu-profiling-mode'];
   if (profilingMode !== undefined && profilingMode !== 'off' && profilingMode !== 'default') {
     throw new Error('Flag "webgpu-profiling-mode" is invalid');
@@ -380,8 +382,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const globalEnvFlags = parseGlobalEnvFlags(args);
 
   if (backend.includes('webnn') && !globalEnvFlags.wasm!.proxy) {
-    // Backend webnn is restricted in the dedicated worker.
-    globalEnvFlags.wasm!.proxy = true;
+    throw new Error('Backend webnn requires flag "wasm-enable-proxy" to be set to true.');
   }
 
   // Options:
@@ -439,6 +440,17 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
 
+  // parse chromium flags
+  let chromiumFlags = args['chromium-flags'];
+  if (!chromiumFlags) {
+    chromiumFlags = [];
+  } else if (typeof chromiumFlags === 'string') {
+    chromiumFlags = [chromiumFlags];
+  } else if (!Array.isArray(chromiumFlags)) {
+    throw new Error(`Invalid command line arg: --chromium-flags: ${chromiumFlags}`);
+  }
+
+
   npmlog.verbose('TestRunnerCli.Init', ` Mode:              ${mode}`);
   npmlog.verbose('TestRunnerCli.Init', ` Env:               ${env}`);
   npmlog.verbose('TestRunnerCli.Init', ` Debug:             ${debug}`);
@@ -462,6 +474,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     webglOptions,
     wasmOptions,
     globalEnvFlags,
-    noSandbox
+    noSandbox,
+    chromiumFlags
   };
 }

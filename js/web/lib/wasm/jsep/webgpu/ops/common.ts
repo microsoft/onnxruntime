@@ -192,11 +192,14 @@ export interface IndicesHelper {
 }
 
 const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, string] => {
+  if (components === 3) {
+    throw new Error('vec3 has same alignment as vec4, use vec4 instead');
+  }
+
   // return type is [ storage type, runtime type ] or a single string for both
   switch (type) {
-    // TODO: enable after "shader-f16" WSGL extension release
-    // case DataType.float16:
-    //   return components > 1 ? `vec${components}<f16>` : 'f16';
+    case DataType.float16:
+      return components > 1 ? `vec${components}<f16>` : 'f16';
     case DataType.float:
       return components > 1 ? `vec${components}<f32>` : 'f32';
     case DataType.int32:
@@ -363,7 +366,7 @@ const createIndicesHelper =
 
       const getByIndicesImplementation = rank < 2 ? '' : `
   fn get_${name}ByIndices(indices: ${type.indices}) -> ${valueType} {
-    return ${name}[i2o_${name}(indices)];
+    return ${getByOffset(`i2o_${name}(indices)`)};
   }`;
 
       const getImplementation = rank < 2 ? '' : (() => {
@@ -589,7 +592,8 @@ class ShaderHelperImpl implements ShaderHelper {
     const workgroupSizeZ = typeof workgroupSize === 'number' ? 1 : workgroupSize[2];
 
     const is1DimensionDispatch = this.normalizedDispatchGroup[1] === 1 && this.normalizedDispatchGroup[2] === 1;
-    const paramList = is1DimensionDispatch ? '@builtin(global_invocation_id) global_id : vec3<u32>' :
+    const paramList = is1DimensionDispatch ? `@builtin(global_invocation_id) global_id : vec3<u32>,
+    @builtin(local_invocation_id) local_id : vec3<u32>` :
                                              `@builtin(local_invocation_index) local_index : u32,
     @builtin(workgroup_id) workgroup_id : vec3<u32>`;
     const globalIdxDefinition = is1DimensionDispatch ?
@@ -625,3 +629,27 @@ class ShaderHelperImpl implements ShaderHelper {
 
 export const createShaderHelper = (dispatchGroup: [number, number, number]): ShaderHelper =>
     new ShaderHelperImpl(dispatchGroup);
+
+/**
+ * This function comes from https://github.com/tensorflow/tfjs/blob/master/tfjs-core/src/ops/broadcast_util.ts#L18-L40
+ * Returns the dimensions in the input shape that are broadcasted to
+ * produce the provided output shape.
+ *
+ * The returned dimensions are 0-indexed and sorted. An example:
+ * inShape = [4, 1, 3]
+ * outShape = [5, 4, 3, 3]
+ * result = [1]. Dimension 1 (2nd dimension of input) gets broadcasted 1 => 3.
+ */
+export const getBroadcastDims = (inShape: readonly number[], outShape: readonly number[]): number[] => {
+  const inRank = inShape.length;
+  const dims: number[] = [];
+  for (let i = 0; i < inRank; i++) {
+    const dim = inRank - 1 - i;
+    const a = inShape[dim] || 1;
+    const b = outShape[outShape.length - 1 - i] || 1;
+    if (b > 1 && a === 1) {
+      dims.unshift(dim);
+    }
+  }
+  return dims;
+};

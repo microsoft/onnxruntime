@@ -36,7 +36,8 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
           {"Resize", {}},
           {"Split", {}},
           {"Squeeze", {}},
-          {"Unsqueeze", {}}};
+          {"Unsqueeze", {}},
+          {"Tile", {}}};
 }
 
 static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
@@ -47,6 +48,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
           {"GlobalAveragePool", {}},
+          {"GlobalMaxPool", {}},
           {"LeakyRelu", {}},
           {"ReduceMean", {}},
           {"ReduceMin", {}},
@@ -59,6 +61,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"HardSwish", {}},
           {"Sigmoid", {}},
           {"Slice", {}},
+          {"LogSoftmax", {}},
           {"Softmax", {}},
           {"Sqrt", {}},
           {"Atan", {}},
@@ -68,21 +71,30 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Sign", {}},
           {"Tanh", {}},
           {"Exp", {}},
+          {"Log", {}},
           {"LRN", {}},
           {"Ceil", {}},
+          {"Floor", {}},
+          {"Round", {}},
           {"Abs", {}},
+          {"Neg", {}},
           {"DepthToSpace", {}},
-          {"SpaceToDepth", {}}};
+          {"SpaceToDepth", {}},
+          {"Clip", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
           {"Div", {}},
           {"Mul", {}},
           {"Pow", {}},
-          {"Sub", {}}};
+          {"Sub", {}},
+          {"PRelu", {}},
+          {"GridSample", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
-  return {{"Concat", {}}};
+  return {{"Concat", {}},
+          {"Max", {}},
+          {"Min", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
   return {{"Conv", {}}};
@@ -112,6 +124,13 @@ static const OpVersionsAndSelector::OpVersionsMap GetLogicalComparisonOpVersions
 }
 static const OpVersionsAndSelector::OpVersionsMap GetWhereOpVersionsMap() {
   return {{"Where", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetPadOpVersionsMap() {
+  return {{"Pad", {}}};
+}
+
+static const OpVersionsAndSelector::OpVersionsMap GetTopKOpVersionsMap() {
+  return {{"TopK", {}}};
 }
 
 /* Selector rules registration related */
@@ -207,6 +226,20 @@ void RegisterWhereSelectors(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterPadSelectors(Selectors& qdq_selectors) {
+  /* register selectors for Pad ops */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<PadNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetPadOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterTopKSelector(Selectors& qdq_selectors) {
+  /* register selector for TopK op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<TopKNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetTopKOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
@@ -221,6 +254,8 @@ void SelectorManager::CreateSelectors() {
   RegisterBatchNormalizationSelector(qdq_selectors_);
   RegisterLogicalComparisonSelectors(qdq_selectors_);
   RegisterWhereSelectors(qdq_selectors_);
+  RegisterPadSelectors(qdq_selectors_);
+  RegisterTopKSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

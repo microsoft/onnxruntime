@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {tensorDataTypeEnumToString} from '../../wasm-common';
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
+import {TensorView} from '../tensor-view';
 
 import {createShaderHelper} from './ops/common';
 import {Artifact, GpuData, ProgramInfo} from './types';
@@ -30,7 +32,8 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number]): void {
+  run(buildArtifact: Artifact, inputsTensorView: readonly TensorView[], inputs: GpuData[], outputs: GpuData[],
+      dispatchGroup: [number, number, number]): void {
     const device = this.backend.device;
     const computePassEncoder = this.backend.getComputePassEncoder();
     const profilingEnabled = this.backend.supportTimestampQuery && this.backend.env.webgpu.profilingMode === 'default';
@@ -100,9 +103,17 @@ export class ProgramManager {
         }
 
         this.backend.gpuDataManager.release(syncData.id);
-
+        let inputShapes = '';
+        inputsTensorView.forEach((value, i) => {
+          inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+        });
+        let outputShapes = '';
+        buildArtifact.programInfo.outputs.forEach((value, i) => {
+          outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+        });
         // eslint-disable-next-line no-console
-        console.log(`[profiling] kernel "${kernelId}|${kernelName}" execution time: ${endTime - startTime} ns`);
+        console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
+            endTime - startTime} ns`);
       });
     }
 
@@ -115,10 +126,13 @@ export class ProgramManager {
   }
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
     const device = this.backend.device;
-
+    const extensions: string[] = [];
+    if (device.features.has('shader-f16')) {
+      extensions.push('enable f16;');
+    }
     const shaderHelper = createShaderHelper(normalizedDispatchGroupSize);
     const userCode = programInfo.getShaderSource(shaderHelper);
-    const code = `${shaderHelper.additionalImplementations}\n${userCode}`;
+    const code = `${extensions.join('\n')}\n${shaderHelper.additionalImplementations}\n${userCode}`;
     const shaderModule = device.createShaderModule({code, label: programInfo.name});
     LOG_DEBUG('verbose', () => `[WebGPU] shader code: ${code}`);
 

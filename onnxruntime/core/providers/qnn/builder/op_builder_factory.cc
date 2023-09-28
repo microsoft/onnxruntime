@@ -63,6 +63,8 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
     CreateSimpleOpBuilder("DepthToSpace", *this);
     CreateSimpleOpBuilder("SpaceToDepth", *this);
+
+    CreateSimpleOpBuilder("GridSample", *this);
   }
 
   {
@@ -86,6 +88,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreatePoolOpBuilder("GlobalAveragePool", *this);
     CreatePoolOpBuilder("AveragePool", *this);
     CreatePoolOpBuilder("MaxPool", *this);
+    CreatePoolOpBuilder("GlobalMaxPool", *this);
   }
 
   {
@@ -150,6 +153,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateTransposeOpBuilder("Transpose", *this);
+  }
+
+  {
+    CreatePadOpBuilder("Pad", *this);
   }
 }
 

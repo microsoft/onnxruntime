@@ -3,14 +3,14 @@
 
 #include "core/optimizer/initializer.h"
 
-#include "core/common/gsl.h"
+#include <functional>
+#include <memory>
 
+#include "core/common/gsl.h"
 #include "core/common/path.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/platform/env.h"
-
-#include <functional>
 
 namespace onnxruntime {
 
@@ -18,7 +18,8 @@ Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
                          std::string_view name,
                          gsl::span<const int64_t> dims)
     : name_(name),
-      data_(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims, std::make_shared<CPUAllocator>()) {
+      data_(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims,
+            std::make_shared<CPUAllocator>()) {
   if (!data_.IsDataTypeString()) {
     memset(data_.MutableDataRaw(), 0, data_.SizeInBytes());
   }
@@ -39,7 +40,8 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
   auto proto_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
 
   // This must be pre-allocated
-  Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType(), proto_shape, std::make_shared<CPUAllocator>());
+  Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType(), proto_shape,
+           std::make_shared<CPUAllocator>());
   ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path.ToPathString().c_str(), tensor_proto, w));
   data_ = std::move(w);
 }

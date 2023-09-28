@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
-import {OnnxValue} from './onnx-value.js';
+import {OnnxValue, OnnxValueDataLocation} from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -65,6 +65,13 @@ export declare namespace InferenceSession {
      * This setting is available only in ONNXRuntime (Node.js binding and react-native).
      */
     interOpNumThreads?: number;
+
+    /**
+     * The free dimension override.
+     *
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
+     */
+    freeDimensionOverrides?: {readonly [dimensionName: string]: number};
 
     /**
      * The optimization level.
@@ -137,6 +144,14 @@ export declare namespace InferenceSession {
      * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
      */
     logVerbosityLevel?: number;
+
+    /**
+     * Specify string as a preferred data location for all outputs, or an object that use output names as keys and a
+     * preferred data location as corresponding values.
+     *
+     * This setting is available only in ONNXRuntime Web for WebGL and WebGPU EP.
+     */
+    preferredOutputLocation?: OnnxValueDataLocation|{readonly [outputName: string]: OnnxValueDataLocation};
 
     /**
      * Store configurations for a session. See

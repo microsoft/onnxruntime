@@ -360,14 +360,18 @@ def test_add_get_property(property_value):
         if isinstance(property_value, float):
             property_value = float(np.float32(property_value))
 
-        state["property"] = property_value
-        assert "property" in state
-        assert state["property"] == property_value
+        assert len(state.properties) == 0
+
+        state.properties["property"] = property_value
+        assert "property" in state.properties
+        assert state.properties["property"] == property_value
+        assert len(state.properties) == 1
 
         CheckpointState.save_checkpoint(state, checkpoint_file_path)
         new_state = CheckpointState.load_checkpoint(checkpoint_file_path)
-        assert "property" in new_state
-        assert new_state["property"] == property_value
+        assert "property" in new_state.properties
+        assert new_state.properties["property"] == property_value
+        assert len(new_state.properties) == 1
 
 
 def test_get_input_output_names():
@@ -563,3 +567,60 @@ def test_eval_step_with_ort_values():
         fetches = model(inputs, labels)
         assert isinstance(fetches, OrtValue)
         assert fetches
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_get_and_set_parameter_values(device):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        (
+            checkpoint_file_path,
+            training_model_file_path,
+            eval_model_file_path,
+            _,
+            pt_model,
+        ) = _create_training_artifacts(
+            temp_dir, requires_grad=["fc2.weight", "fc2.bias"], frozen_params=["fc1.weight", "fc1.bias"]
+        )
+
+        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+
+        model = Module(training_model_file_path, state, eval_model_file_path, device=device)
+
+        state_dict = pt_model.state_dict()
+        assert len(state_dict) == len(state.parameters)
+        for parameter_name, _ in state.parameters:
+            assert parameter_name in state_dict
+
+        for name, pt_param in pt_model.named_parameters():
+            ort_param = state.parameters[name]
+            assert ort_param.name == name
+            assert np.allclose(pt_param.detach().cpu().numpy(), ort_param.data)
+            if name in ["fc1.weight", "fc1.bias"]:
+                assert ort_param.requires_grad is False
+                assert ort_param.grad is None
+            else:
+                assert ort_param.requires_grad is True
+                assert np.allclose(ort_param.grad, np.zeros_like(ort_param.data, dtype=np.float32))
+
+        original_param = state.parameters["fc1.weight"].data
+        state.parameters["fc1.weight"].data = np.ones_like(state.parameters["fc1.weight"].data, dtype=np.float32)
+        updated_param = state.parameters["fc1.weight"].data
+        assert np.allclose(updated_param, np.ones_like(updated_param, dtype=np.float32))
+
+        model.train()
+        inputs = torch.randn(64, 784).numpy()
+        labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
+        loss = model(inputs, labels)
+        assert loss is not None
+        for name, _ in pt_model.named_parameters():
+            ort_param = state.parameters[name]
+            assert ort_param.name == name
+            if name in ["fc1.weight", "fc1.bias"]:
+                assert ort_param.requires_grad is False
+                assert ort_param.grad is None
+            else:
+                assert ort_param.requires_grad is True
+                assert ort_param.grad.any()
+
+        state.parameters["fc1.weight"] = original_param
+        assert np.allclose(state.parameters["fc1.weight"].data, original_param)

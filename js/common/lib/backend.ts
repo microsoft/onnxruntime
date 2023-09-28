@@ -5,7 +5,7 @@ import {InferenceSession} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
 
 /**
- * @internal
+ * @ignore
  */
 export declare namespace SessionHandler {
   type FeedsType = {[name: string]: OnnxValue};
@@ -16,7 +16,7 @@ export declare namespace SessionHandler {
 /**
  * Represents shared SessionHandler functionality
  *
- * @internal
+ * @ignore
  */
 interface SessionHandler {
   dispose(): Promise<void>;
@@ -60,7 +60,7 @@ export interface TrainingSessionHandler extends SessionHandler {
 /**
  * Represent a backend that provides implementation of model inferencing.
  *
- * @internal
+ * @ignore
  */
 export interface Backend {
   /**

@@ -4,7 +4,7 @@
 import {Env} from 'onnxruntime-common';
 
 import {configureLogger, LOG_DEBUG} from './log';
-import {TensorView} from './tensor';
+import {TensorView} from './tensor-view';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
@@ -110,6 +110,7 @@ export class WebGpuBackend {
     }
 
     this.env = env;
+    const requiredFeatures: GPUFeatureName[] = [];
     const deviceDescriptor: GPUDeviceDescriptor = {
       requiredLimits: {
         maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
@@ -121,13 +122,16 @@ export class WebGpuBackend {
         maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
         maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
       },
+      requiredFeatures,
     };
     // WebGPU Spec: Timestamp Queries Inside Passes
     // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
     if (adapter.features.has('timestamp-query-inside-passes')) {
       this.supportTimestampQuery = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      deviceDescriptor.requiredFeatures = ['timestamp-query-inside-passes' as any];
+      requiredFeatures.push('timestamp-query-inside-passes' as GPUFeatureName);
+    }
+    if (adapter.features.has('shader-f16')) {
+      requiredFeatures.push('shader-f16');
     }
 
     this.device = await adapter.requestDevice(deviceDescriptor);
@@ -155,6 +159,8 @@ export class WebGpuBackend {
         count: 2,
       });
     }
+
+    Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
   }
 
   dispose(): void {
@@ -284,7 +290,7 @@ export class WebGpuBackend {
         'info',
         () => `[ProgramManager] run "${programInfo.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
-    this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup);
+    this.programManager.run(artifact, inputs, inputDatas, outputDatas, normalizedDispatchGroup);
 
     return outputTensorViews;
   }

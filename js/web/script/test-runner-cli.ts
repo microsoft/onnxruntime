@@ -84,8 +84,10 @@ async function main() {
             .flat();
 
     for (const backend of DEFAULT_BACKENDS) {
-      nodeTests.set(backend, loadNodeTests(backend, allNodeTestsFolders));
-      opTests.set(backend, loadOpTests(backend));
+      if (args.backends.indexOf(backend) !== -1) {
+        nodeTests.set(backend, loadNodeTests(backend, allNodeTestsFolders));
+        opTests.set(backend, loadOpTests(backend));
+      }
     }
   }
 
@@ -475,10 +477,12 @@ async function main() {
           args.bundleMode === 'perf' ? 'perf' :
               args.debug             ? 'debug' :
                                        'test',
-          webgpu, webnn, config.options.globalEnvFlags?.webgpu?.profilingMode === 'default');
+          webgpu, webnn);
       const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
+      const chromiumFlags = ['--enable-features=SharedArrayBuffer', ...args.chromiumFlags];
       if (args.debug) {
         karmaArgs.push('--log-level info --timeout-mocha 9999999');
+        chromiumFlags.push('--remote-debugging-port=9333');
       } else {
         karmaArgs.push('--single-run');
       }
@@ -488,7 +492,16 @@ async function main() {
       if (webgpu || webnn) {
         karmaArgs.push('--force-localhost');
       }
+      if (webgpu) {
+        // flag 'allow_unsafe_apis' is required to enable experimental features like fp16 and profiling inside pass.
+        // flag 'use_dxc' is required to enable DXC compiler.
+        chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
+      }
+      if (webnn) {
+        chromiumFlags.push('--enable-experimental-web-platform-features');
+      }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
+      karmaArgs.push(...chromiumFlags.map(flag => `--chromium-flags=${flag}`));
       if (browser.startsWith('Edge')) {
         // There are currently 2 Edge browser launchers:
         //  - karma-edge-launcher: used to launch the old Edge browser
@@ -580,12 +593,12 @@ async function main() {
   }
 
   function getBrowserNameFromEnv(
-      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean, profile: boolean) {
+      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean) {
     switch (env) {
       case 'chrome':
-        return selectChromeBrowser(mode, webgpu, webnn, profile);
+        return selectChromeBrowser(mode, webgpu, webnn);
       case 'edge':
-        return webgpu ? 'EdgeWebGpuTest' : 'Edge';
+        return 'EdgeTest';
       case 'firefox':
         return 'Firefox';
       case 'electron':
@@ -599,25 +612,14 @@ async function main() {
     }
   }
 
-  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean, profile: boolean) {
-    if (webgpu) {
-      switch (mode) {
-        case 'debug':
-          return profile ? 'ChromeWebGpuProfileDebug' : 'ChromeDebug';
-        default:
-          return profile ? 'ChromeWebGpuProfileTest' : 'ChromeTest';
-      }
-    } else if (webnn) {
-      switch (mode) {
-        case 'debug':
-          return 'ChromeCanaryDebug';
-        default:
-          return 'ChromeCanaryTest';
-      }
+  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean) {
+    if (webnn) {
+      return 'ChromeCanaryTest';
+    } else if (webgpu) {
+      return 'ChromeTest';
     } else {
       switch (mode) {
         case 'debug':
-          return 'ChromeDebug';
         case 'perf':
           return 'ChromeTest';
         default:
