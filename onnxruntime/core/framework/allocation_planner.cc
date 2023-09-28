@@ -830,7 +830,7 @@ class PlannerImpl {
   }
 
   std::vector<std::pair<int, int>> GetAliasMap(const Node& node, const KernelCreateInfo& kernel_create_info) {
-    OER_ENFORCE(kernel_create_info.kernel_def != nullptr, "KernelDef is null for node: ", node.Name());
+    ORT_ENFORCE(kernel_create_info.kernel_def != nullptr, "KernelDef is null for node: ", node.Name());
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     if ((node.OpType().compare("PythonOp") == 0 || node.OpType().compare("PythonOpGrad") == 0) &&
         node.Domain() == kMSDomain) {
