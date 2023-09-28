@@ -15,6 +15,7 @@ import numpy as np
 import numpy.typing as npt
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
+import os
 
 from .onnx_model import ONNXModel
 from .quant_utils import attribute_to_kwarg, load_model_with_shape_infer
@@ -26,10 +27,11 @@ logger = logging.getLogger(__name__)
 class MatMul4BitsQuantizer:
     """Perform 4b quantization of constant MatMul weights"""
 
-    def __init__(self, model: ModelProto, block_size: int, is_symmetric: bool):
+    def __init__(self, model: ModelProto, block_size: int, is_symmetric: bool, nodes_to_exclude=[]):
         self.model = ONNXModel(model)
         self.block_size = block_size
         self.is_symmetric = is_symmetric
+        self.nodes_to_exclude = set(nodes_to_exclude)
 
     @staticmethod
     def __get_initializer(name, graph_path: List[GraphProto]) -> Tuple[TensorProto, GraphProto]:
@@ -70,14 +72,20 @@ class MatMul4BitsQuantizer:
             return node  # only care about MatMul for now
 
         logger.info(f"start to quantize {node.name} ...")
+        if node.name in self.nodes_to_exclude:
+            logger.info(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
+            return node
+
         inputB = node.input[1]  # noqa: N806
         B, Bs_graph = MatMul4BitsQuantizer.__get_initializer(inputB, graph_stack)  # noqa: N806
         if B is None:
+            logger.info("MatMul doesn't have const weight. Skip to quantize")
             return node  # only care about constant weight
 
         # TODO!! assume B is not used by any other node
         B_array = onnx.numpy_helper.to_array(B)  # noqa: N806
         if len(B_array.shape) != 2:
+            logger.info("MatMul weight is not 2D. Skip to quantize")
             return node  # can only process 2-D matrix
 
         packed, scales, zero_points = self.int4_block_quant(B_array)
@@ -115,9 +123,9 @@ class MatMul4BitsQuantizer:
             domain="com.microsoft",
             **kwargs,
         )
-        
-        logger.info(f"finish {node.name} ...")
-        
+
+        logger.info(f"complete quantization of {node.name} ...")
+
         return matmul_q4_node
 
     def _process_subgraph(self, graph_stack: List[GraphProto]):
@@ -191,7 +199,7 @@ set of 4b integers with a scaling factor and an optional offset.
     parser.set_defaults(verbose=False)
     parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
     parser.set_defaults(use_external_data_format=False)
-    parser.add_argument("--node_to_excludes", nargs='+', type=str, required=False, default=[])
+    parser.add_argument("--nodes_to_exclude", nargs='+', type=str, required=False, default=[], help="Specify the nodes to be excluded from quantization with node names")
 
     return parser.parse_args()
 
@@ -210,7 +218,11 @@ if __name__ == "__main__":
     input_model_path = args.input_model
     output_model_path = args.output_model
 
+    if os.path.exists(output_model_path):
+        logger.error(f"file {output_model_path} already exists")
+        raise Exception(f"file {output_model_path} already exists")
+
     model = load_model_with_shape_infer(Path(input_model_path))
-    quant = MatMul4BitsQuantizer(model, args.block_size, args.symmetric)
+    quant = MatMul4BitsQuantizer(model, args.block_size, args.symmetric, nodes_to_exclude = args.nodes_to_exclude)
     quant.process()
     quant.model.save_model_to_file(output_model_path, True)
