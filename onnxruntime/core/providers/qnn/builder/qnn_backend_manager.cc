@@ -369,6 +369,26 @@ Status WriteInt16ToBinaryFile(std::ofstream& of_stream, uint16_t value) {
   return Status::OK();
 }
 
+Status CreateNodeArgs(const std::vector<std::string>& names,
+                      const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
+                      std::vector<NodeArg*>& node_args,
+                      onnxruntime::Graph& graph) {
+  using namespace ONNX_NAMESPACE;
+  for (int i = 0; i < names.size(); ++i) {
+    std::string name = names[i];
+    ORT_RETURN_IF(tensor_info_table.find(name) == tensor_info_table.end(), "Input name: ", name, " not exist in tensor_info_table");
+    const OnnxTensorInfo& tensor_info = tensor_info_table.at(name);
+    TypeProto tensor_type;
+    tensor_type.mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
+    for (int j = 0; j < tensor_info.shape_.size(); ++j) {
+      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);
+    }
+    auto& input_arg = graph.GetOrCreateNodeArg(name, &tensor_type);
+    node_args.push_back(&input_arg);
+  }
+  return Status::OK();
+}
+
 Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const std::string& graph_name,
                                          const std::vector<std::string>& input_names,
                                          const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info,
@@ -421,36 +441,14 @@ Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const st
   using namespace ONNX_NAMESPACE;
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
-  for (int i = 0; i < input_names.size(); ++i) {
-    std::string input_name = input_names[i];
-    ORT_RETURN_IF(inputs_info.find(input_name) == inputs_info.end(), "Input name: ", input_name, " not exist in inputs_info");
-    const OnnxTensorInfo& input_info = inputs_info.at(input_name);
-    TypeProto tensor_type;
-    tensor_type.mutable_tensor_type()->set_elem_type(input_info.data_type_);
-    for (int j = 0; j < input_info.shape_.size(); ++j) {
-      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(input_info.shape_[i]);
-    }
-    auto& input_arg = graph.GetOrCreateNodeArg(input_name, &tensor_type);
-    inputs.push_back(&input_arg);
-  }
-  for (int i = 0; i < output_names.size(); ++i) {
-    std::string output_name = output_names[i];
-    ORT_RETURN_IF(outputs_info.find(output_name) == outputs_info.end(), "Output name: ", output_name, " not exist in outputs_info");
-    const OnnxTensorInfo& output_info = outputs_info.at(output_name);
-    TypeProto tensor_type;
-    tensor_type.mutable_tensor_type()->set_elem_type(output_info.data_type_);
-    for (int j = 0; j < output_info.shape_.size(); ++j) {
-      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(output_info.shape_[i]);
-    }
-    auto& output_arg = graph.GetOrCreateNodeArg(output_name, &tensor_type);
-    outputs.push_back(&output_arg);
-  }
+  ORT_RETURN_IF_ERROR(CreateNodeArgs(input_names, inputs_info, inputs, graph));
+  ORT_RETURN_IF_ERROR(CreateNodeArgs(output_names, outputs_info, outputs, graph));
 
   auto& ep_node = graph.AddNode(graph_name, "EPCache", "Onnx Qnn context binary cache for graph partition: " + graph_name, inputs, outputs, nullptr, kMSDomain);
   unsigned char* buffer = context_buffer.get();
   std::string cache_payload(buffer, buffer + written_buffer_size);
   ep_node.AddAttribute("ep_engine_cache", cache_payload);
-  ep_node.AddAttribute("ep_sdk_version", "2.14.1.230828");
+  ep_node.AddAttribute("ep_sdk_version", sdk_build_version_);
   ep_node.AddAttribute("partition_name", graph_name);
 
   ORT_RETURN_IF_ERROR(graph.Resolve());
@@ -672,8 +670,9 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_
     ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
   }
 
+  sdk_build_version_ = GetBackendBuildId();
   LOGS(logger, VERBOSE) << "Backend build version: "
-                        << GetBackendBuildId();
+                        << sdk_build_version_;
 
   SetLogger(&logger);
   LOGS(logger, VERBOSE) << "SetLogger succeed.";

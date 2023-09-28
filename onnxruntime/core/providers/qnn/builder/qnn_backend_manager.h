@@ -206,6 +206,7 @@ class QnnBackendManager {
   std::string model_description_from_ctx_cache_ = "";
   std::string model_description_ = "";
   std::string context_cache_path_ = "";
+  std::string sdk_build_version_ = "";
   bool ctx_file_exists_ = false;
   bool ctx_metadata_tried_ = false;
   bool ort_generated_ctx_cache_ = false;
