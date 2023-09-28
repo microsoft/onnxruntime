@@ -1242,18 +1242,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   node.SetInput(i, gather_output);
 }
 
-static bool HandleResize([[maybe_unused]] HandlerArgs& args) {
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN) || defined(USE_WEBNN)
-  // The CUDA Resize kernel requires that the input is NCHW, so we can't push a Transpose through a Resize
-  // in ORT builds with CUDA enabled.
-  // The ROCm EP is generated from the CUDA EP kernel so the same applies to builds with ROCm enabled.
-  // The QNN EP requires the input to be NHWC, so the Resize handler is also not enabled for QNN builds.
-  //
-  // TODO: Remove this special case once the CUDA Resize kernel is implemented "generically" (i.e.) aligning with the
-  // generic nature of the ONNX spec.
-  // See https://github.com/microsoft/onnxruntime/pull/10824 for a similar fix applied to the CPU Resize kernel.
-  return false;
-#else
+bool HandleResize([[maybe_unused]] HandlerArgs& args) {
   auto inputs = args.node.Inputs();
   int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
 
@@ -1279,10 +1268,10 @@ static bool HandleResize([[maybe_unused]] HandlerArgs& args) {
   TransposeOutputs(args.ctx, args.node, args.perm);
 
   return true;
-#endif
 }
 
-constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+// Not currently registered by default.
+// constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -2034,8 +2023,11 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Split", split_handler},
     {"Shape", shape_handler},
     {"Pad", pad_handler},
-    {"Resize", resize_handler},
-    {"ReduceSum", reduce_op_handler},
+
+    // Execution providers tend to only implement Resize for specific layouts. Due to that, it's safer to not
+    // push a Transpose through a Resize unless the EP specifically checks that it can handle the change via an
+    // extended handler.
+    // {"Resize", resize_handler},
 
     {"ReduceLogSum", reduce_op_handler},
     {"ReduceLogSumExp", reduce_op_handler},
@@ -2043,6 +2035,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"ReduceMean", reduce_op_handler},
     {"ReduceMin", reduce_op_handler},
     {"ReduceProd", reduce_op_handler},
+    {"ReduceSum", reduce_op_handler},
     {"ReduceSumSquare", reduce_op_handler},
     {"ReduceL1", reduce_op_handler},
     {"ReduceL2", reduce_op_handler},
@@ -2385,6 +2378,8 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
         continue;
       }
 
+      // NOTE: this bleeds ORT specific logic into the base optimizer, however we justify that for now because we expect
+      // the types that the ORT DQ provides to be added to the ONNX spec, at which point this special case can go away.
       if (IsMSDomain(dq_domain) && !TransposeQuantizeDequantizeAxis(ctx.graph, perm_inv, *dq_node)) {
         continue;
       }
