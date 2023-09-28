@@ -245,8 +245,11 @@ stages:
 - stage: arm64_test
   dependsOn: ['arm64_build']
   jobs:
-  - template: templates/py-packaging-linux-test.yml
+  - template: templates/py-packaging-linux-test-cpu.yml
     parameters:
       arch: 'aarch64'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-      device: 'CPU'
+      base_image: 'arm64v8/centos:7'
+      devtoolset_rootpath: /opt/rh/devtoolset-10/root
+      ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
+      prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
