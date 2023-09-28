@@ -204,7 +204,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
   GreedySearchState<T> greedy_state;
   greedy_state.Init(this->cpu_allocator_,
                     this->temp_space_allocator_,
-                    static_cast<const IGenerationParameters&>(*this->parameters_),
+                    static_cast<const ParametersT&>(*this->parameters_),
                     gpt_subgraph_.has_decoder_masked_attention_,
                     this->IsCuda());
 

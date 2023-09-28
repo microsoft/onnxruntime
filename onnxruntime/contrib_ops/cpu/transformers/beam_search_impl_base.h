@@ -52,7 +52,7 @@ struct BeamSearchState : IBeamSearchState<T> {
       // We need a temp staging buffer to do the past 'K' state re-ordering that is needed
       // when using DecoderMaskedSelfAttention
       TensorShape staging_for_past_state_reorder_buffer_shape = {
-        parameters.num_layers * static_cast<int64_t>(batch_beam_size) * parameters.num_heads * parameters.max_length * parameters.head_size};
+        SafeInt<size_t>(parameters.num_layers) * batch_beam_size * parameters.num_heads * parameters.max_length * parameters.head_size};
 
       Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
 
