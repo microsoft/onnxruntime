@@ -3,6 +3,7 @@
 
 import {InferenceSession} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
+import {TrainingSession} from './training-session.js';
 
 /**
  * @ignore
@@ -53,8 +54,8 @@ export interface TrainingSessionHandler extends SessionHandler {
       feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
 
-  setParameters(buffer: ArrayBufferLike, trainableOnly: boolean): void;
-  getParameters(trainableOnly: boolean): Promise<ArrayBufferLike>;
+  loadParametersBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): Promise<void>;
+  getContiguousParameters(trainableOnly: boolean): Promise<ArrayBufferLike>;
 }
 
 /**
@@ -72,8 +73,8 @@ export interface Backend {
       Promise<InferenceSessionHandler>;
 
   createTrainingSessionHandler?
-      (checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
-       evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
+      (checkpointStateUriOrBuffer: TrainingSession.URIorBuffer, trainModelUriOrBuffer: TrainingSession.URIorBuffer,
+       evalModelUriOrBuffer: TrainingSession.URIorBuffer, optimizerModelUriOrBuffer: TrainingSession.URIorBuffer,
        options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler>;
 }
 

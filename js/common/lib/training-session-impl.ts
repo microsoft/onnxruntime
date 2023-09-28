@@ -25,11 +25,11 @@ export class TrainingSession implements TrainingSessionInterface {
     throw new Error('Method not implemented');
   }
 
-  copyParametersFromBuffer(_buffer: ArrayBufferLike, _trainableOnly: boolean): void {
+  async loadParametersBuffer(_buffer: ArrayBufferLike, _trainableOnly: boolean): Promise<void> {
     throw new Error('Method not implemented.');
   }
 
-  async copyParametersToBuffer(_trainableOnly: boolean): Promise<ArrayBufferLike> {
+  async getContiguousParameters(_trainableOnly: boolean): Promise<ArrayBufferLike> {
     throw new Error('Method not implemented.');
   }
 

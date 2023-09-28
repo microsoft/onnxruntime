@@ -55,15 +55,15 @@ export interface TrainingSession {
    * @param buffer - buffer containing parameters
    * @param trainableOnly - True if trainable parameters only to be modified, false otherwise.
    */
-  copyParametersFromBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): void;
+  loadParametersBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): Promise<void>;
 
   /**
-   * Copies from the TrainingSession parameters to the given buffer.
+   * Copies from the TrainingSession parameters to a buffer.
    *
    * @param trainableOnly - True if trainable parameters only to be copied, false othrwise.
    * @returns A promise that resolves to a buffer of the requested parameters.
    */
-  copyParametersToBuffer(trainableOnly: boolean): Promise<ArrayBufferLike>;
+  getContiguousParameters(trainableOnly: boolean): Promise<ArrayBufferLike>;
   // #endregion
 
   // #region release()
