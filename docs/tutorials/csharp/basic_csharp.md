@@ -68,7 +68,7 @@ To start scoring using the model, create a session using the `InferenceSession` 
 using var session = new InferenceSession("model.onnx");
 ```
 
-Once a session is created, you can execute queries using the `Run` method of the  `InferenceSession` object.
+Once a session is created, you can run inference using the `Run` method of the  `InferenceSession` object.
 
 ```cs
 float[] sourceData;  // assume your data is loaded into a flat float array
