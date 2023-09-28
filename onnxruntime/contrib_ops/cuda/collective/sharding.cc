@@ -1,15 +1,21 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "sharding.h"
+#include "mpi_include.h"
 #include "sharding_spec.h"
+
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cuda/tensor/slice.h"
 #include "core/providers/cuda/math/matmul.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/cuda_check_memory.h"
-#include "mpi_include.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+#if defined(ORT_USE_NCCL)
 
 void GatherTensor(
     // Use OpKernel and do a pointer cast to unify functional calls with other eps.
@@ -205,6 +211,8 @@ std::unique_ptr<Tensor> ReshardTensor(
       dst.get());
   return dst;
 }
+
+#endif
 
 }  // namespace cuda
 }  // namespace contrib

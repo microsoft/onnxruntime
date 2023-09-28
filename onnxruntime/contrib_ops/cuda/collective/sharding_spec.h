@@ -1,13 +1,19 @@
-#include <sstream>
-#include <vector>
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
+
+#include <sstream>
+#include <vector>
 
 #pragma once
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+#if defined(ORT_USE_NCCL)
 
 class DeviceMesh {
  public:
@@ -167,6 +173,8 @@ std::tuple<TensorPartitionSpec, TensorPartitionSpec> NormalizeTensorPartitionSpe
     const TensorPartitionSpec& left, const TensorPartitionSpec& right);
 
 bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec);
+
+#endif
 
 }  // namespace cuda
 }  // namespace contrib

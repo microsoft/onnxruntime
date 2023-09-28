@@ -1,23 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
 #include "sharding_spec.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
-#if defined(ORT_USE_NCCL)
 #include <algorithm>
 #include <tuple>
 #include <optional>
 #include <string>
 #include <nccl.h>
 #include <sstream>
-#endif
+
+#pragma once
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+#if defined(ORT_USE_NCCL)
 
 template <typename T>
 class DistributedMatMul final : public NcclKernel {
@@ -30,6 +30,8 @@ class DistributedMatMul final : public NcclKernel {
   std::vector<TensorPartitionSpec> input_shard_specs_;
   std::vector<TensorPartitionSpec> output_shard_specs_;
 };
+
+#endif
 
 }  // namespace cuda
 }  // namespace contrib

@@ -1,14 +1,21 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "sharding_spec.h"
-#include <cctype>
-#include <sstream>
-#include <vector>
+
 #include "core/common/common.h"
 #include "core/common/gsl.h"
 #include "core/framework/tensor_shape.h"
 
+#include <cctype>
+#include <sstream>
+#include <vector>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+#if defined(ORT_USE_NCCL)
 
 DeviceMesh CreateDeviceMesh(
     std::vector<int64_t> device_mesh_shape,
@@ -168,6 +175,8 @@ bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec) {
   }
   return true;
 }
+
+#endif
 
 }  // namespace cuda
 }  // namespace contrib

@@ -1,20 +1,27 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <iostream>
+// Distributed computation.
 #include "sharding.h"
 #include "distributed_matmul.h"
 #include "nccl_kernels.h"
+#include "mpi_include.h"
+
+// ORT system.
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cuda/tensor/slice.h"
 #include "core/providers/cuda/math/matmul.h"
-#include "mpi_include.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/cuda_check_memory.h"
+
+// std C++.
+#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+#if defined(ORT_USE_NCCL)
 
 static TensorShape InferMatmulOutputShape(
     const TensorShape& shape_A,
@@ -291,6 +298,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     DistributedMatMul<MLFloat16>);
+
+#endif
 
 }  // namespace cuda
 }  // namespace contrib

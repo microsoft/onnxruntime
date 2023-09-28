@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <iostream>
 #include "nccl_kernels.h"
+#include "mpi_include.h"
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cuda/tensor/slice.h"
 #include "core/providers/cuda/math/matmul.h"
-#include "mpi_include.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 
@@ -98,6 +97,27 @@ NcclKernel::NcclKernel(const OpKernelInfo& info) : CudaKernel(info) {
 AllReduce::AllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
+Status AllReduce::ComputeInternal(OpKernelContext* context) const {
+  ncclComm_t comm = nccl_->Comm();
+
+  auto input_tensor = context->Input<Tensor>(0);
+  const void* input_data = input_tensor->DataRaw();
+  const auto in_shape = input_tensor->Shape();
+  int64_t input_count = in_shape.Size();
+
+  void* output_data = context->Output(0, in_shape)->MutableDataRaw();
+
+  ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
+  return Status::OK();
+}
+
+AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
+  info.GetAttrOrDefault("group_size", &group_size_, static_cast<int64_t>(1));
+  info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(0));
+  cuda_ep_ = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider());
+}
+
 Status AllGather::ComputeInternal(OpKernelContext* context) const {
   ncclComm_t comm = nccl_->Comm();
 
@@ -164,27 +184,6 @@ Status AllGather::ComputeInternal(OpKernelContext* context) const {
     NCCL_RETURN_IF_ERROR(ncclAllGather(input_data, output_data, input_count, dtype, comm, Stream(context)));
     return Status::OK();
   }
-}
-
-Status AllReduce::ComputeInternal(OpKernelContext* context) const {
-  ncclComm_t comm = nccl_->Comm();
-
-  auto input_tensor = context->Input<Tensor>(0);
-  const void* input_data = input_tensor->DataRaw();
-  const auto in_shape = input_tensor->Shape();
-  int64_t input_count = in_shape.Size();
-
-  void* output_data = context->Output(0, in_shape)->MutableDataRaw();
-
-  ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
-  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
-  return Status::OK();
-}
-
-AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
-  info.GetAttrOrDefault("group_size", &group_size_, static_cast<int64_t>(1));
-  info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(0));
-  cuda_ep_ = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider());
 }
 
 AllToAll::AllToAll(const OpKernelInfo& info) : NcclKernel(info) {

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "sharding_spec.h"
 #include "nccl_kernels.h"
 
@@ -6,6 +9,8 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+#if defined(ORT_USE_NCCL)
 
 void GatherTensor(
     const NcclKernel* nccl_kernel,
@@ -51,6 +56,8 @@ std::unique_ptr<Tensor> ReshardTensor(
     const TensorPartitionSpec& dst_spec,
     const int64_t device_id,
     const Tensor* src);
+
+#endif
 
 }  // namespace cuda
 }  // namespace contrib
