@@ -116,8 +116,8 @@ const conv2dTransposeCommonSnippet =
       const sampleW = `
       let col = colIn * ${innerElementSize};
       let inChannels = ${isChannelsLast ? 'outBackprop[3]' : 'outBackprop[1]'};
-      let coordX = effectiveFilterDims.x - 1 - row / (effectiveFilterDims[1] * inChannels);
-      let coordY = effectiveFilterDims.y - 1 - (row / inChannels) % effectiveFilterDims[1];
+      let coordX = filterDims.x - 1 - row / (filterDims[1] * inChannels);
+      let coordY = filterDims.y - 1 - (row / inChannels) % filterDims[1];
       if (${
           isChannelsLast ? 'row < dimInner && col < dimBOuter' :
                            'row < dimInner && col < dimAOuter'}  && coordX >= 0 && coordY >= 0) {
