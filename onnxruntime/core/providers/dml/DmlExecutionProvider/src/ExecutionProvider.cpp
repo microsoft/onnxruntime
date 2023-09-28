@@ -12,6 +12,7 @@
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorHelper.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlReferenceWrapper.h"
 #include "AbiCustomRegistry.h"
 #include "GraphPartitioner.h"
 #include "core/graph/indexed_sub_graph.h"
@@ -184,8 +185,15 @@ namespace Dml
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
-        m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
-        m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
+        m_uploadHeap = std::make_shared<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
+        m_readbackHeap = std::make_shared<ReadbackHeap>(m_d3d12Device.Get(), m_context);
+
+        auto context_ref = wil::MakeOrThrow<Dml::DmlReferenceWrapper<std::shared_ptr<Dml::ExecutionContext>>>(m_context);
+        auto upload_heap_ref = wil::MakeOrThrow<Dml::DmlReferenceWrapper<std::shared_ptr<Dml::PooledUploadHeap>>>(m_uploadHeap);
+        auto readback_heap_ref = wil::MakeOrThrow<Dml::DmlReferenceWrapper<std::shared_ptr<Dml::ReadbackHeap>>>(m_readbackHeap);
+        ORT_THROW_IF_FAILED(m_d3d12Device->SetPrivateDataInterface(Dml::ExecutionContextGUID, context_ref.Get()));
+        ORT_THROW_IF_FAILED(m_d3d12Device->SetPrivateDataInterface(Dml::UploadHeapGUID, upload_heap_ref.Get()));
+        ORT_THROW_IF_FAILED(m_d3d12Device->SetPrivateDataInterface(Dml::ReadbackHeapGUID, readback_heap_ref.Get()));
 
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
 
@@ -207,6 +215,9 @@ namespace Dml
             m_context->SetAllocator(m_allocator);
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
             m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
+
+            auto allocator_ref = wil::MakeOrThrow<Dml::DmlReferenceWrapper<std::shared_ptr<Dml::BucketizedBufferAllocator>>>(m_allocator);
+            ORT_THROW_IF_FAILED(m_d3d12Device->SetPrivateDataInterface(Dml::AllocatorGUID, allocator_ref.Get()));
         }
 
         return std::vector<onnxruntime::AllocatorPtr>{m_allocator, m_cpuInputAllocator,};

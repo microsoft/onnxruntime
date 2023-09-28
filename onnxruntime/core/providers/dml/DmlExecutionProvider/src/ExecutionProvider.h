@@ -186,8 +186,8 @@ namespace Dml
         bool m_areMetacommandsEnabled = true;
         bool m_native16BitShaderOpsSupported = false;
         std::shared_ptr<ExecutionContext> m_context;
-        std::unique_ptr<PooledUploadHeap> m_uploadHeap;
-        std::unique_ptr<ReadbackHeap> m_readbackHeap;
+        std::shared_ptr<PooledUploadHeap> m_uploadHeap;
+        std::shared_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
         std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
