@@ -106,7 +106,8 @@ if (NOT onnxruntime_ENABLE_ATEN)
   list(APPEND contrib_ops_excluded_files "aten_ops/aten_op.cc")
 endif()
 if (NOT onnxruntime_USE_NCCL)
-  list(APPEND contrib_ops_excluded_files "collective/nccl_kernels.cc")
+  file(GLOB_RECURSE ITEMS_TO_REMOVE "collective/*.cc")
+  list(APPEND contrib_ops_excluded_files ${ITEMS_TO_REMOVE})
 endif()
 
 set(provider_excluded_files
