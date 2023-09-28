@@ -1171,6 +1171,7 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                     ORT_TSTR("VGG 16-fp32"),
                                                     ORT_TSTR("VGG 19-caffe2"),
                                                     ORT_TSTR("VGG 19-bn"),
+                                                    ORT_TSTR("VGG 16-bn"),
                                                     ORT_TSTR("VGG 19"),
                                                     ORT_TSTR("VGG 16"),
                                                     ORT_TSTR("faster_rcnn"),
