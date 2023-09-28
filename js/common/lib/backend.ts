@@ -52,6 +52,9 @@ export interface TrainingSessionHandler extends SessionHandler {
   runTrainStep(
       feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
+
+  setParameters(buffer: ArrayBufferLike, trainableOnly: boolean): void;
+  getParameters(trainableOnly: boolean): Promise<ArrayBufferLike>;
 }
 
 /**

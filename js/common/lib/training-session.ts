@@ -6,6 +6,13 @@ import {TrainingSession as TrainingSessionImpl} from './training-session-impl.js
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
+export declare namespace TrainingSession {
+  /**
+   * Either URI file path (string) or Uint8Array containing model or checkpoint information.
+   */
+  type URIorBuffer = string|Uint8Array;
+}
+
 /**
  * Represent a runtime instance of an ONNX training session,
  * which contains a model that can be trained, and, optionally,
@@ -46,17 +53,17 @@ export interface TrainingSession {
    * Copies from a buffer containing parameters to the TrainingSession parameters.
    *
    * @param buffer - buffer containing parameters
-   * @param trainableOnly - Optional. True if trainable parameters only to be modified, false otherwise.
+   * @param trainableOnly - True if trainable parameters only to be modified, false otherwise.
    */
   copyParametersFromBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): void;
 
   /**
    * Copies from the TrainingSession parameters to the given buffer.
    *
-   * @param buffer - buffer that will be modified. Must be the same size as results of GetParametersSize API call.
-   * @param trainableOnly - Optional. True if trainable parameters only to be copied, false othrwise.
+   * @param trainableOnly - True if trainable parameters only to be copied, false othrwise.
+   * @returns A promise that resolves to a buffer of the requested parameters.
    */
-  copyParametersToBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): void;
+  copyParametersToBuffer(trainableOnly: boolean): Promise<ArrayBufferLike>;
   // #endregion
 
   // #region release()
@@ -82,107 +89,43 @@ export interface TrainingSession {
 }
 
 /**
+ * Represents the optional parameters that can be passed into the TrainingSessionFactory.
+ */
+export interface TrainingSessionCreateOptions {
+  /**
+   * URI or buffer for a .ckpt file that contains the checkpoint for the training model.
+   */
+  checkpointState: TrainingSession.URIorBuffer;
+  /**
+   * URI or buffer for the .onnx training file.
+   */
+  trainModel: TrainingSession.URIorBuffer;
+  /**
+   * Optional. URI or buffer for the .onnx optimizer model file.
+   */
+  optimizerModel?: TrainingSession.URIorBuffer;
+  /**
+   * Optional. URI or buffer for the .onnx eval model file.
+   */
+  evalModel?: TrainingSession.URIorBuffer;
+}
+
+/**
  * Defines method overload possibilities for creating a TrainingSession.
  */
 export interface TrainingSessionFactory {
   // #region create()
 
   /**
-   * Create a new training session and load models asynchronously from an ONNX model file.
+   * Creates a new TrainingSession and asynchronously loads any models passed in through trainingOptions
    *
-   * @param uri - The URI or file path of the model to load.
-   * @param options - specify configuration for creating a new inference session.
-   * @returns A promise that resolves to an InferenceSession object.
+   * @param trainingOptions specify models and checkpoints to load into the Training Session
+   * @param sessionOptions specify configuration for training session behavior
+   *
+   * @returns Promise that resolves to a TrainingSession object
    */
-  create(checkpointStateUri: string, trainModelURI: string, options?: InferenceSession.SessionOptions):
+  create(trainingOptions: TrainingSessionCreateOptions, sessionOptions?: InferenceSession.SessionOptions):
       Promise<TrainingSession>;
-
-  /**
-   * Create a new training session and load models asynchronously from an ONNX model file.
-   *
-   * @param buffer - an ArrayBuffer representation of the model
-   * @param options - specify configuration for creating a new inference session.
-   * @returns A promise that resolves to an InferenceSession object.
-   */
-  create(
-      checkpointStateBuffer: ArrayBufferLike, trainModelBuffer: ArrayBufferLike,
-      options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
-
-  /**
-   * Create a new training session and load models asynchronously from an ONNX model file.
-   *
-   * @param buffer - a Uint8Array representation of the model
-   * @param options - specify configuration for creating a new inference session.
-   * @returns A promise that resolves to an InferenceSession object.
-   */
-  create(checkpointStateBuffer: Uint8Array, trainModelBuffer: Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<TrainingSession>;
-
-  /**
-   * Create a new training session and load models asynchronously from an ONNX model file.
-   *
-   * @param uri - The URI or file path of the model to load.
-   * @param options - specify configuration for creating a new inference session.
-   * @returns A promise that resolves to an InferenceSession object.
-   */
-  create(
-      checkpointStateUri: string, trainModelURI: string, optimizerModelURI?: string,
-      options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
-
-  /**
-   * Create a new training session and load models asynchronously from an ONNX model file.
-   *
-   * @param buffer - an ArrayBufferLike representation of the model
-   * @param options - specify configuration for creating a new inference session.
-   * @returns A promise that resolves to an InferenceSession object.
-   */
-  create(
-      checkpointStateBuffer: ArrayBufferLike, trainModelBuffer: ArrayBufferLike, optimizerModelBuffer?: ArrayBufferLike,
-      options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
-
-  /**
-   * Create a new training session and load models asynchronously from an ONNX model file.
-   *
-   * @param buffer - a Uint8Array representation of the model
-   * @param options - specify configuration for creating a new inference session.
-   * @returns A promise that resolves to an InferenceSession object.
-   */
-  create(
-      checkpointStateBuffer: Uint8Array, trainModelBuffer: Uint8Array, optimizerModelBuffer?: Uint8Array,
-      options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
-
-  /**
-   * Create a new training session and load models asynchronously from an ONNX model file.
-   *
-   * @param uri - The URI or file path of the model to load.
-   * @param options - specify configuration for creating a new inference session.
-   * @returns A promise that resolves to an InferenceSession object.
-   */
-  create(
-      checkpointStateUri: string, trainModelURI: string, optimizerModelURI?: string, evalModelURI?: string,
-      options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
-
-  /**
-   * Create a new training session and load model asynchronously from an array bufer.
-   *
-   * @param buffer - An ArrayBuffer representation of an ONNX model.
-   * @param options - specify configuration for creating a new inference session.
-   * @returns A promise that resolves to an InferenceSession object.
-   */
-  create(
-      checkpointStateBuffer: ArrayBufferLike, trainModelBuffer: ArrayBufferLike, optimizerModelBuffer?: ArrayBufferLike,
-      evalModelBuffer?: ArrayBufferLike, options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
-
-  /**
-   * Create a new training session and load model asynchronously from a Uint8Array.
-   *
-   * @param buffer - A Uint8Array representation of an ONNX model.
-   * @param options - specify configuration for creating a new inference session.
-   * @returns A promise that resolves to an InferenceSession object.
-   */
-  create(
-      checkpointState: Uint8Array, trainModelData: Uint8Array, optimizerModelData?: Uint8Array,
-      evalModelData?: Uint8Array, options?: InferenceSession.SessionOptions): Promise<TrainingSession>;
 
   // #endregion
 }
