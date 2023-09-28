@@ -1,35 +1,35 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
 FROM ubuntu:22.04
 
-ARG ROCM_VERSION=5.6
-ARG AMDGPU_VERSION=${ROCM_VERSION}
-ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
+#ARG ROCM_VERSION=5.6
+#ARG AMDGPU_VERSION=${ROCM_VERSION}
+#ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
 
 CMD ["/bin/bash"]
 
-RUN echo "$APT_PREF" > /etc/apt/preferences.d/rocm-pin-600
+#RUN echo "$APT_PREF" > /etc/apt/preferences.d/rocm-pin-600
 
-ENV DEBIAN_FRONTEND noninteractive
+#ENV DEBIAN_FRONTEND noninteractive
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg && \
-    curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -   &&\
-    printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
-    printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
-    apt-get update && apt-get install -y --no-install-recommends  \
-    sudo   \
-    libelf1   \
-    kmod   \
-    file   \
-    python3   \
-    python3-pip   \
-    rocm-dev   \
-    rocm-libs   \
-    build-essential && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+#RUN apt-get update && \
+#    apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg && \
+#    curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -   &&\
+#    printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
+#    printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
+#    apt-get update && apt-get install -y --no-install-recommends  \
+#    sudo   \
+#    libelf1   \
+#    kmod   \
+#    file   \
+#    python3   \
+#    python3-pip   \
+#    rocm-dev   \
+#    rocm-libs   \
+#    build-essential && \
+#    apt-get clean && \
+#    rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -g 109 render
+#RUN groupadd -g 109 render
 
 RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y libprotobuf\* protobuf-compiler\* && \
     rm -f /usr/local/bin/protoc && apt-get install -y locales unzip wget git && apt-get clean -y
@@ -54,31 +54,31 @@ RUN mkdir -p /tmp/ccache && \
     rm -rf /tmp/ccache
 
 # Install Conda
-ENV PATH /opt/miniconda/bin:${PATH}
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
-    conda init bash && \
-    conda config --set auto_activate_base false && \
-    conda update --all && \
-    rm ~/miniconda.sh && conda clean -ya
+#ENV PATH /opt/miniconda/bin:${PATH}
+#RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
+#    conda init bash && \
+#    conda config --set auto_activate_base false && \
+#    conda update --all && \
+#    rm ~/miniconda.sh && conda clean -ya
 
 # Create rocm-ci environment
-ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/rocm-ci
-ENV CONDA_DEFAULT_ENV rocm-ci
-RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.8
-ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
+#ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/rocm-ci
+#ENV CONDA_DEFAULT_ENV rocm-ci
+#RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.8
+#ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
 
 # Conda base patch
 RUN pip install cryptography==41.0.0
 
 # Enable rocm-ci environment
-SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
+#SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
 
 # ln -sf is needed to make sure that version `GLIBCXX_3.4.30' is found
-RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libstdc++.so.6
+#RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libstdc++.so.6
 
 # Install Pytorch
-RUN pip install install torch==2.0.1 torchvision==0.15.2 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_VERSION}/ && \
-    pip install torch-ort --no-dependencies
+#RUN pip install install torch==2.0.1 torchvision==0.15.2 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_VERSION}/ && \
+RUN pip install torch-ort --no-dependencies
 
 
 ##### Install Cupy to decrease CPU utilization
@@ -94,6 +94,7 @@ RUN wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.b
     rm openmpi-4.1.5.tar.bz2
 
 # Install CuPy, No stable version is available
+RUN pip uninstall -y cython
 RUN git clone https://github.com/ROCmSoftwarePlatform/cupy && cd cupy && \
     git checkout fc251a808037f8a2270860c2a23a683bfc0de43e && \
     export CUPY_INSTALL_USE_HIP=1 && \
