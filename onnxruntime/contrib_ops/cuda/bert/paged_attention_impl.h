@@ -44,7 +44,7 @@ void reshape_and_cache(
     const int64_t block_size,
     const int vec_x,
     const int dtype,
-    void* kv_quant_param = nullptr,
+    void* kv_quant_param = nullptr, // [num_blocks, 2, num_heads, head_size / kv_quant_chunk_size, block_size]
     const int kv_quant_chunk_size = 0,
     const int kv_quant_param_dtype = 1);
 
