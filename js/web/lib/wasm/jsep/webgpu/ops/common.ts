@@ -321,19 +321,24 @@ const createIndicesHelper =
         return rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
       };
 
-      let broadcastedIndicesToOffsetImplementation = '';
+      const broadcastedIndicesToOffsetImplementation: {[key: string]: string} = {};
       const broadcastedIndicesToOffset = (varIndices: string, output: IndicesHelper) => {
+        implementationUsed.broadcastedIndicesToOffset = true;
+        const implKey = `${output.name}broadcastedIndicesTo${name}Offset`;
+        if (implKey in broadcastedIndicesToOffsetImplementation) {
+          return `${implKey}(${varIndices})`;
+        }
         const offsets = [];
         for (let i = shape.length - 1; i >= 0; i--) {
           const idx = output.indicesGet('outputIndices', i + output.shape.length - shape.length);
           offsets.push(`${strides[i]}u * (${idx} % ${shape[i]}u)`);
         }
-        broadcastedIndicesToOffsetImplementation =
-            `fn ${output.name}broadcastedIndicesTo${name}Offset(outputIndices: ${output.type.indices}) -> u32 {
+        broadcastedIndicesToOffsetImplementation[implKey] =
+            `fn ${implKey}(outputIndices: ${output.type.indices}) -> u32 {
              return ${offsets.length > 0 ? offsets.join('+') : '0u'};
            }`;
-        implementationUsed.broadcastedIndicesToOffset = true;
-        return `${output.name}broadcastedIndicesTo${name}Offset(${varIndices})`;
+
+        return `${implKey}(${varIndices})`;
       };
 
       const indices = (...init: ReadonlyArray<number|string>) =>
@@ -489,7 +494,7 @@ const createIndicesHelper =
           impls.push(indicesToOffsetImplementation);
         }
         if (implementationUsed.broadcastedIndicesToOffset) {
-          impls.push(broadcastedIndicesToOffsetImplementation);
+          Object.values(broadcastedIndicesToOffsetImplementation).forEach(impl => impls.push(impl));
         }
         if (implementationUsed.set) {
           impls.push(setImplementation);
