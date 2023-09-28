@@ -116,8 +116,8 @@ const conv2dTransposeCommonSnippet =
       const sampleW = `
       let col = colIn * ${innerElementSize};
       let inChannels = ${isChannelsLast ? 'outBackprop[3]' : 'outBackprop[1]'};
-      let coordX = effectiveFilterDims.x - 1 - row / (effectiveFilterDims[1] * inChannels);
-      let coordY = effectiveFilterDims.y - 1 - (row / inChannels) % effectiveFilterDims[1];
+      let coordX = filterDims.x - 1 - row / (filterDims[1] * inChannels);
+      let coordY = filterDims.y - 1 - (row / inChannels) % filterDims[1];
       if (${
           isChannelsLast ? 'row < dimInner && col < dimBOuter' :
                            'row < dimInner && col < dimAOuter'}  && coordX >= 0 && coordY >= 0) {
@@ -213,7 +213,7 @@ export const createConv2DTransposeMatMulProgramInfo =
         const outShapeStrides : vec3<i32> = vec3<i32>(${ShapeUtil.computeStrides(outputShape).slice(0, 3).join(',')});
         const filterDims : vec2<i32> = vec2<i32>(${attributes.kernelShape[isChannelsLast ? 1 : 2]}, ${
             attributes.kernelShape[isChannelsLast ? 2 : 3]});
-        const effectiveFilterDims : vec2<i32> = filterDims + vec2<i32>(
+            const effectiveFilterDims : vec2<i32> = filterDims + vec2<i32>(
               ${
             attributes.dilations[0] <= 1 ?
                 0 :
@@ -222,10 +222,8 @@ export const createConv2DTransposeMatMulProgramInfo =
             attributes.dilations[1] <= 1 ?
                 0 :
                 (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1)});
-        const pads : vec2<i32> = vec2<i32>(i32(effectiveFilterDims[0]) - 1 - (${
-            attributes.pads[0] + attributes.pads[2]})/2,
-                                         i32(effectiveFilterDims[1]) - 1 - (${
-            attributes.pads[1] + attributes.pads[3]})/2);
+        const pads : vec2<i32> = vec2<i32>(filterDims[0] - 1 - ${attributes.pads[0]},
+                                           filterDims[1] - 1 - ${attributes.pads[1]});
         const strides : vec2<i32> = vec2<i32>(${attributes.strides[0]}, ${attributes.strides[1]});
         const dilation : vec2<i32> = vec2<i32>(${attributes.dilations[0]}, ${attributes.dilations[1]});
         const dimAOuter : i32 = ${dimAOuter};
