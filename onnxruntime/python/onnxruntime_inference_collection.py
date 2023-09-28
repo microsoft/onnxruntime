@@ -420,8 +420,10 @@ class InferenceSession(Session):
         except (ValueError, RuntimeError) as e:
             if self._enable_fallback:
                 try:
+                    print("*************** EP Error ***************")
                     print(f"EP Error {e} when using {providers}")
                     print(f"Falling back to {self._fallback_providers} and retrying.")
+                    print("****************************************")
                     self._create_inference_session(self._fallback_providers, None)
                     # Fallback only once.
                     self.disable_fallback()
@@ -434,11 +436,26 @@ class InferenceSession(Session):
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
-        # Tensorrt can fall back to CUDA. All others fall back to CPU.
+        # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
         if "TensorrtExecutionProvider" in available_providers:
-            self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            if any(
+                provider == "CUDAExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
+                for provider in providers
+            ):
+                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
+        # MIGraphX can fall back to ROCM if it's explicitly assigned. All others fall back to CPU.
         elif "MIGraphXExecutionProvider" in available_providers:
-            self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+            if any(
+                provider == "ROCMExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "ROCMExecutionProvider")
+                for provider in providers
+            ):
+                self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
         else:
             self._fallback_providers = ["CPUExecutionProvider"]
 
