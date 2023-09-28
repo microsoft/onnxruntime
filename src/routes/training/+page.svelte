@@ -88,39 +88,65 @@
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">
-	<h1 class="text-3xl pb-4">Examples</h1>
-	<div class="overflow-x-auto md:px-10">
-		<table class="table">
-			<thead>
-				<tr>
-					<th>Example</th>
-					<th>Performance Comparison</th>
-					<th>Model Change</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-					<td>HuggingFace BART</td>
-					<td>See <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/BART.md">BART</a></td>
-					<td>No model change required</td>
-				</tr>
-				<tr>
-					<td>HuggingFace BERT</td>
-					<td>See <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/BERT.md">BERT</a></td>
-					<td>No model change required</td>
-				</tr>
-				<tr>
-					<td>HuggingFace DistilBERT</td>
-					<td>See <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/DistilBERT.md">DistilBERT</a></td>
-					<td>No model change required</td>
-				</tr>
-				<tr>
-					<td>HuggingFace GPT2</td>
-					<td>See <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/GPT2.md">GPT2</a></td>
-					<td>No model change required</td>
-				</tr>
-			</tbody>
-		</table>
+	<div class="bg-secondary rounded p-4">
+		<h1 class="text-3xl pb-4">Examples</h1>
+		<div class="overflow-x-auto p-4">
+			<table class="table">
+				<thead>
+					<tr>
+						<th>Example</th>
+						<th>Performance Comparison</th>
+						<th>Model Change</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>HuggingFace BART</td>
+						<td
+							>See <a
+								class="text-blue-200"
+								href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/BART.md"
+								>BART</a
+							></td
+						>
+						<td>No model change required</td>
+					</tr>
+					<tr>
+						<td>HuggingFace BERT</td>
+						<td
+							>See <a
+								class="text-blue-200"
+								href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/BERT.md"
+								>BERT</a
+							></td
+						>
+						<td>No model change required</td>
+					</tr>
+					<tr>
+						<td>HuggingFace DistilBERT</td>
+						<td
+							>See <a
+								class="text-blue-200"
+								href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/DistilBERT.md"
+								>DistilBERT</a
+							></td
+						>
+						<td>No model change required</td>
+					</tr>
+					<tr>
+						<td>HuggingFace GPT2</td>
+						<td
+							>See <a
+								class="text-blue-200"
+								href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/GPT2.md"
+								>GPT2</a
+							></td
+						>
+						<td>No model change required</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">

@@ -111,10 +111,10 @@
 						platforms.
 					</p>
 					<div class="card-actions">
-						<a class="btn btn-primary hidden md:inline"
+						<a class="btn btn-primary hidden md:inline" href="https://cloudblogs.microsoft.com/opensource/tag/onnx"
 							>Check the latest on performance enhancements →</a
 						>
-						<a class="btn btn-primary md:hidden">Performance enhancements →</a>
+						<a class="btn btn-primary md:hidden" href="https://cloudblogs.microsoft.com/opensource/tag/onnx">Performance enhancements →</a>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">

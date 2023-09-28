@@ -5,6 +5,8 @@
 	import windowslogo from '../../images/logos/Windows_logo_and_wordmark.svg';
 	import huggingfacelogo from '../../images/logos/hf-logo-with-title.svg';
 	import { onMount } from 'svelte';
+	// Prevents animations from being messed up when they first start
+	let interact = false;
 	onMount(() => {
 		anime({
 			targets: '.partner',
@@ -18,21 +20,28 @@
 				return (l - i) * 50;
 			}
 		});
+		setTimeout(() => {
+			interact = true;
+		}, 1000);
 	});
 
 	let handleEnter = (e: any) => {
-		anime({
+		if (interact){
+			anime({
 			targets: e.target,
 			scale: 1.1,
 			duration: 1500
 		});
+		}
 	};
 	let handleLeave = (e: any) => {
-		anime({
+		if (interact){
+			anime({
 			targets: e.target,
 			scale: 1,
 			duration: 1500
 		});
+		}
 	};
 </script>
 

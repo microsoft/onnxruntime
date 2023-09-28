@@ -5,12 +5,11 @@
 	import Performance from './components/performance.svelte';
 	import CrossPlatform from './components/cross-platform.svelte';
 	import GenerativeAi from './components/generative-ai-hero.svelte';
-	import TrainingInference from './components/training-inference.svelte';
 	import TrainingAndInference from './components/training-and-inference.svelte';
-	import WebMobile from './components/web-mobile.svelte';
-	import IoIosClose from 'svelte-icons/io/IoIosClose.svelte';
+	import IoIosClose from 'svelte-icons/io/IoIosClose.svelte'
 	import { onMount } from 'svelte';
 	import anime from 'animejs';
+	import Saos from 'saos';
 
 	let removetoast = (e: any) => {
 		e.target.parentNode.parentNode.remove();
@@ -33,10 +32,20 @@
 <Hero />
 <Customers />
 <CodeBlocks />
-<GenerativeAi />
-<CrossPlatform />
-<Performance />
-<TrainingAndInference />
+<Saos once={true} animation={'slide-in-left 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
+	<GenerativeAi />
+</Saos>
+<Saos once={true} animation={'slide-in-right 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
+	<CrossPlatform />
+</Saos>
+<Saos once={true} animation={'slide-in-left 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
+	<Performance />
+</Saos>
+
+<div class="divider px-10" />
+<Saos once={true} animation={'slide-in-bottom 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
+	<TrainingAndInference />
+</Saos>
 
 <div class="toast z-10 opacity-0 hidden">
 	<div class="alert alert-info">
@@ -58,3 +67,78 @@
 		<button aria-label="close" on:click={removetoast} class="w-8 h-8 pt-1"><IoIosClose /></button>
 	</div>
 </div>
+
+<style>
+	@-webkit-keyframes -global-slide-in-bottom {
+		0% {
+			-webkit-transform: translateY(1000px);
+			transform: translateY(1000px);
+			opacity: 0;
+		}
+		100% {
+			-webkit-transform: translateY(0);
+			transform: translateY(0);
+			opacity: 1;
+		}
+	}
+	@keyframes -global-slide-in-bottom {
+		0% {
+			-webkit-transform: translateY(1000px);
+			transform: translateY(1000px);
+			opacity: 0;
+		}
+		100% {
+			-webkit-transform: translateY(0);
+			transform: translateY(0);
+			opacity: 1;
+		}
+	}
+	@-webkit-keyframes -global-slide-in-left {
+		0% {
+			-webkit-transform: translateX(-1000px);
+			transform: translateX(-1000px);
+			opacity: 0;
+		}
+		100% {
+			-webkit-transform: translateX(0);
+			transform: translateX(0);
+			opacity: 1;
+		}
+	}
+	@keyframes -global-slide-in-left {
+		0% {
+			-webkit-transform: translateX(-1000px);
+			transform: translateX(-1000px);
+			opacity: 0;
+		}
+		100% {
+			-webkit-transform: translateX(0);
+			transform: translateX(0);
+			opacity: 1;
+		}
+	}
+	@-webkit-keyframes -global-slide-in-right {
+		0% {
+			-webkit-transform: translateX(1000px);
+			transform: translateX(1000px);
+			opacity: 0;
+		}
+		100% {
+			-webkit-transform: translateX(0);
+			transform: translateX(0);
+			opacity: 1;
+		}
+	}
+	@keyframes -global-slide-in-right {
+		0% {
+			-webkit-transform: translateX(1000px);
+			transform: translateX(1000px);
+			opacity: 0;
+		}
+		100% {
+			-webkit-transform: translateX(0);
+			transform: translateX(0);
+			opacity: 1;
+		}
+	}
+</style>

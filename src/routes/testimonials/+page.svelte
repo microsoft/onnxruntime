@@ -276,7 +276,7 @@
 		<div class="mr-5 my-auto">
 			<h1 class="text-5xl mx-4">Our Customers</h1>
 			<h2 class="text-xl mb-4 mx-4">
-				Hear from some of the products and companies using ONNX Runtime:
+				Hear from some of the products and companies using ONNX Runtime
 			</h2>
 		</div>
 		<div class="hidden md:flex">
