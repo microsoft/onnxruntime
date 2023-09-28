@@ -143,12 +143,6 @@ Status CheckInputs(const T* query,
                              "Input 'query' and 'key' shall have same dim 0 (batch size)");
     }
 
-    if (key_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' is expected to have 3 dimensions, got ",
-                             query_dims.size());
-    }
-
     if (num_heads % kv_num_heads != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
@@ -191,24 +185,28 @@ Status CheckInputs(const T* query,
                            "Missing value tensor.");
   }
 
+  // When kv-cache, we take past_seq_len as an argument... otherwise we use size of past kv.
   int32_t past_sequence_length = 0;
+  int present_sequence_length = 0;
   if (past_seq_len != nullptr) {
     if (!onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "past_sequence_length tensor must be of one element when using past kv.");
     }
     past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+    present_sequence_length = max_sequence_length;
+  } else if (past_key != nullptr) {
+    past_sequence_length = max_sequence_length; // length of past_key tensor
+    present_sequence_length = past_sequence_length + kv_sequence_length;
   }
 
-  int total_sequence_length = past_sequence_length + kv_sequence_length;
-  // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
     output_parameters->sequence_length = sequence_length;
     output_parameters->past_sequence_length = past_sequence_length;
     output_parameters->kv_sequence_length = kv_sequence_length;
-    output_parameters->total_sequence_length = total_sequence_length;
+    output_parameters->present_sequence_length = present_sequence_length;
     output_parameters->max_sequence_length = max_sequence_length;
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->num_heads = num_heads;

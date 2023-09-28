@@ -56,7 +56,7 @@ def create_group_query_attention_graph(config, causal=False, past_kv_format=Inpu
                 "past_value",
                 "past_sequence_length",
             ],
-            ["output"],
+            ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
@@ -128,7 +128,7 @@ def create_group_query_attention_graph(config, causal=False, past_kv_format=Inpu
             [config.batch_size, config.sequence_length, config.num_heads * config.head_size],
         ),
         helper.make_tensor_value_info(
-            "past_key",
+            "present_key",
             TensorProto.FLOAT16,
             [
                 config.batch_size,
@@ -138,7 +138,7 @@ def create_group_query_attention_graph(config, causal=False, past_kv_format=Inpu
             ],
         ),
         helper.make_tensor_value_info(
-            "past_value",
+            "present_value",
             TensorProto.FLOAT16,
             [
                 config.batch_size,

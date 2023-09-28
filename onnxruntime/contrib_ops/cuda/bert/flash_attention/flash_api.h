@@ -52,7 +52,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                bool is_causal,
                int num_splits = 0,
                void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads
-               void* out_accum = nullptr           // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
+               void* out_accum = nullptr,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
+               bool kv_bsnh = true
 );
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,

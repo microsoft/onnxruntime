@@ -207,7 +207,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                bool is_causal,
                int num_splits,
                void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
-               void* out_accum           // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
+               void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
+               bool kv_bsnh
 ) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
@@ -228,7 +229,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    nullptr,
                    softmax_lse,
                    softmax_scale,
-                   is_causal);
+                   is_causal,
+                   kv_bsnh);
 
   params.knew_ptr = nullptr;
   params.vnew_ptr = nullptr;
@@ -304,8 +306,8 @@ bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, in
 Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        cudaStream_t stream,
                        void* q,            // batch_size x seqlen_q x num_heads x head_size
-                       void* kcache,       // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k seqlen_k x x head_size
-                       void* vcache,       // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k seqlen_k x x head_size
+                       void* kcache,       // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k seqlen_k x head_size
+                       void* vcache,       // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k seqlen_k x head_size
                        void* k,            // (optional) batch_size x seqlen_k_new x num_heads_k x head_size
                        void* v,            // (optional) batch_size x seqlen_k_new x num_heads_k x head_size
                        void* out,          // batch_size x seqlen_q x num_heads x head_size

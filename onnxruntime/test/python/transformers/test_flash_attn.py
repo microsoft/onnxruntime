@@ -18,7 +18,7 @@ from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
 
-from onnxruntime import InferenceSession, SessionOptions
+from onnxruntime import InferenceSession, SessionOptions, OrtValue
 
 torch.manual_seed(0)
 
@@ -226,7 +226,11 @@ def create_group_query_attention_graph_no_past(config, causal=False):
     return model.SerializeToString()
 
 
-def create_group_query_attention_graph_past(config, causal=False, past_kv_format=Formats.BSNH):
+def create_group_query_attention_graph_past(config, causal=False, past_kv_format=Formats.BSNH, share_buffer=True):
+    past_kv_seqlen = config.kv_sequence_length if share_buffer else config.past_sequence_length
+    present_kv_seqlen = (
+        config.kv_sequence_length if share_buffer else config.past_sequence_length + config.sequence_length
+    )
     nodes = [
         helper.make_node(
             "GroupQueryAttention",
@@ -236,9 +240,9 @@ def create_group_query_attention_graph_past(config, causal=False, past_kv_format
                 "value",
                 "past_key",
                 "past_value",
-                "past_sequence_length",
+                "past_sequence_length" if share_buffer else "",
             ],
-            ["output"],
+            ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
@@ -281,8 +285,8 @@ def create_group_query_attention_graph_past(config, causal=False, past_kv_format
             TensorProto.FLOAT16,
             [
                 config.batch_size,
-                config.kv_sequence_length if past_kv_format == Formats.BSNH else config.kv_num_heads,
-                config.kv_num_heads if past_kv_format == Formats.BSNH else config.kv_sequence_length,
+                past_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
+                config.kv_num_heads if past_kv_format == Formats.BSNH else past_kv_seqlen,
                 config.head_size,
             ],
         ),
@@ -291,17 +295,20 @@ def create_group_query_attention_graph_past(config, causal=False, past_kv_format
             TensorProto.FLOAT16,
             [
                 config.batch_size,
-                config.kv_sequence_length if past_kv_format == Formats.BSNH else config.kv_num_heads,
-                config.kv_num_heads if past_kv_format == Formats.BSNH else config.kv_sequence_length,
+                past_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
+                config.kv_num_heads if past_kv_format == Formats.BSNH else past_kv_seqlen,
                 config.head_size,
             ],
         ),
-        helper.make_tensor_value_info(
-            "past_sequence_length",
-            TensorProto.INT32,
-            [1],
-        ),
     ]
+    if share_buffer:
+        graph_input += [
+            helper.make_tensor_value_info(
+                "past_sequence_length",
+                TensorProto.INT32,
+                [1],
+            )
+        ]
 
     graph_output = [
         helper.make_tensor_value_info(
@@ -310,22 +317,22 @@ def create_group_query_attention_graph_past(config, causal=False, past_kv_format
             [config.batch_size, config.sequence_length, config.num_heads * config.head_size],
         ),
         helper.make_tensor_value_info(
-            "past_key",
+            "present_key",
             TensorProto.FLOAT16,
             [
                 config.batch_size,
-                config.kv_sequence_length if past_kv_format == Formats.BSNH else config.kv_num_heads,
-                config.kv_num_heads if past_kv_format == Formats.BSNH else config.kv_sequence_length,
+                present_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
+                config.kv_num_heads if past_kv_format == Formats.BSNH else present_kv_seqlen,
                 config.head_size,
             ],
         ),
         helper.make_tensor_value_info(
-            "past_value",
+            "present_value",
             TensorProto.FLOAT16,
             [
                 config.batch_size,
-                config.kv_sequence_length if past_kv_format == Formats.BSNH else config.kv_num_heads,
-                config.kv_num_heads if past_kv_format == Formats.BSNH else config.kv_sequence_length,
+                present_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
+                config.kv_num_heads if past_kv_format == Formats.BSNH else present_kv_seqlen,
                 config.head_size,
             ],
         ),
@@ -559,27 +566,75 @@ def gqa_no_past_func(q, k, v, config, causal=True):
     return output
 
 
-def gqa_past_func(q, k, v, config, new_k, new_v, past_kv_format=Formats.BSNH, causal=False):
-    onnx_model_str = create_group_query_attention_graph_past(config, causal, past_kv_format)
+def gqa_past_func(q, k, v, config, new_k, new_v, past_kv_format=Formats.BSNH, causal=False, share_buffer=True):
+    onnx_model_str = create_group_query_attention_graph_past(config, causal, past_kv_format, share_buffer)
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     past_k = k.clone()
     past_v = v.clone()
     new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
     new_v = torch.reshape(new_v, (config.batch_size, config.sequence_length, -1))
-    ort_inputs = {
-        "query": q.detach().cpu().numpy(),
-        "key": new_k.detach().cpu().numpy(),
-        "value": new_v.detach().cpu().numpy(),
-        "past_key": past_k.detach().cpu().numpy(),
-        "past_value": past_v.detach().cpu().numpy(),
-        "past_sequence_length": torch.tensor([config.past_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
-    }
-    sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
-    ort_output, present_k, present_v = ort_session.run(None, ort_inputs)
-    ort_output = numpy.array(ort_output)
-    output = torch.tensor(ort_output)
-    return output, present_k, present_v
+    if share_buffer:
+        ort_inputs = {
+            "query": q.detach().cpu().numpy(),
+            "key": new_k.detach().cpu().numpy(),
+            "value": new_v.detach().cpu().numpy(),
+            "past_key": OrtValue.ortvalue_from_numpy(past_k.detach().cpu().numpy(), "cuda", 0),
+            "past_value": OrtValue.ortvalue_from_numpy(past_v.detach().cpu().numpy(), "cuda", 0),
+            "past_sequence_length": torch.tensor([config.past_sequence_length], dtype=torch.int32)
+            .detach()
+            .cpu()
+            .numpy(),
+        }
+        sess_options = SessionOptions()
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        io_binding = ort_session.io_binding()
+        io_binding.bind_cpu_input("query", ort_inputs["query"])
+        io_binding.bind_cpu_input("key", ort_inputs["key"])
+        io_binding.bind_cpu_input("value", ort_inputs["value"])
+        io_binding.bind_input(
+            "past_key", "cuda", 0, numpy.float16, ort_inputs["past_key"].shape(), ort_inputs["past_key"].data_ptr()
+        )
+        io_binding.bind_input(
+            "past_value",
+            "cuda",
+            0,
+            numpy.float16,
+            ort_inputs["past_value"].shape(),
+            ort_inputs["past_value"].data_ptr(),
+        )
+        io_binding.bind_cpu_input("past_sequence_length", ort_inputs["past_sequence_length"])
+        io_binding.bind_output("output")
+        io_binding.bind_ortvalue_output("present_key", ort_inputs["past_key"])
+        io_binding.bind_ortvalue_output("present_value", ort_inputs["past_value"])
+        ort_session.run_with_iobinding(io_binding)
+        ort_output, present_k, present_v = io_binding.copy_outputs_to_cpu()
+        ort_output = numpy.array(ort_output)
+        output = torch.tensor(ort_output)
+        return output, present_k, present_v
+    else:
+        ort_inputs = {
+            "query": q.detach().cpu().numpy(),
+            "key": new_k.detach().cpu().numpy(),
+            "value": new_v.detach().cpu().numpy(),
+            "past_key": past_k.detach().cpu().numpy(),
+            "past_value": past_v.detach().cpu().numpy(),
+        }
+        sess_options = SessionOptions()
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        io_binding = ort_session.io_binding()
+        io_binding.bind_cpu_input("query", ort_inputs["query"])
+        io_binding.bind_cpu_input("key", ort_inputs["key"])
+        io_binding.bind_cpu_input("value", ort_inputs["value"])
+        io_binding.bind_cpu_input("past_key", ort_inputs["past_key"])
+        io_binding.bind_cpu_input("past_value", ort_inputs["past_value"])
+        io_binding.bind_output("output")
+        io_binding.bind_output("present_key")
+        io_binding.bind_output("present_value")
+        ort_session.run_with_iobinding(io_binding)
+        ort_output, present_k, present_v = io_binding.copy_outputs_to_cpu()
+        ort_output = numpy.array(ort_output)
+        output = torch.tensor(ort_output)
+        return output, present_k, present_v
 
 
 def construct_causal_mask(seqlen_q, seqlen_k, query_padding_mask=None, key_padding_mask=None, device=None):
@@ -685,14 +740,14 @@ def parity_check_mha(
             (config.batch_size, config.sequence_length)
         )
         # ORT Flash
-        out_unpad = flash_attn_varlen_qkvpacked_func(qkv_unpad, cu_seqlens, token_offset, config, causal=causal)
+        out_unpad = flash_attn_varlen_qkvpacked_func(qkv_unpad, cu_seqlens, token_offset, config, causal=False)
         out_unpad = torch.squeeze(out_unpad, 0)
         out = torch.reshape(
             output_pad_fn(out_unpad), (config.batch_size, config.sequence_length, config.num_heads, config.head_size)
         )
         out = out.detach().cpu().numpy()
         # Pytorch to compare
-        out_ref, _ = attention_qkvpacked_ref(qkv, key_padding_mask, 0.0, None, causal=causal)
+        out_ref, _ = attention_qkvpacked_ref(qkv, key_padding_mask, 0.0, None, causal=False)
         out_ref = out_ref.detach().cpu().numpy()
     else:
         q = torch.randn(
@@ -727,13 +782,11 @@ def parity_check_mha(
         out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
         out = out.detach().cpu().numpy()
         # Pytorch to compare
-        out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None, causal=causal)
+        out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None, causal=False)
         out_ref = out_ref.detach().cpu().numpy()
 
     # Compare results
     print(
-        " causal:",
-        causal,
         " B:",
         config.batch_size,
         " S:",
@@ -903,7 +956,7 @@ def parity_check_gqa_past(
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, past_format, causal)
+    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, past_format, causal, True)
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -914,6 +967,152 @@ def parity_check_gqa_past(
 
     # Compare results
     print(
+        "KV-buffer",
+        "past kv format:",
+        "BSNH" if past_format == Formats.BSNH else "BNSH",
+        " causal:",
+        causal,
+        " B:",
+        config.batch_size,
+        " S:",
+        config.sequence_length,
+        " kv S:",
+        config.kv_sequence_length,
+        " N:",
+        config.num_heads,
+        " kv N:",
+        config.kv_num_heads,
+        " h:",
+        config.head_size,
+        " Mean Error:",
+        numpy.mean(numpy.abs(out - out_ref)),
+        numpy.allclose(
+            out,
+            out_ref,
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        ),
+    )
+
+
+def parity_check_gqa_past_no_buff(
+    config,
+    causal=False,
+    past_format=Formats.BSNH,
+    rtol=1e-3,
+    atol=1e-3,
+):
+    q = torch.randn(
+        config.batch_size,
+        config.sequence_length,
+        config.num_heads,
+        config.head_size,
+        device="cuda",
+        dtype=torch.float16,
+        requires_grad=False,
+    )
+    k = torch.randn(
+        config.batch_size,
+        config.past_sequence_length if past_format == Formats.BSNH else config.kv_num_heads,
+        config.kv_num_heads if past_format == Formats.BSNH else config.past_sequence_length,
+        config.head_size,
+        device="cuda",
+        dtype=torch.float16,
+        requires_grad=False,
+    )
+    v = torch.randn(
+        config.batch_size,
+        config.past_sequence_length if past_format == Formats.BSNH else config.kv_num_heads,
+        config.kv_num_heads if past_format == Formats.BSNH else config.past_sequence_length,
+        config.head_size,
+        device="cuda",
+        dtype=torch.float16,
+        requires_grad=False,
+    )
+    new_k = torch.randn(
+        config.batch_size,
+        config.sequence_length,
+        config.kv_num_heads,
+        config.head_size,
+        device="cuda",
+        dtype=torch.float16,
+        requires_grad=False,
+    )
+    new_v = torch.randn(
+        config.batch_size,
+        config.sequence_length,
+        config.kv_num_heads,
+        config.head_size,
+        device="cuda",
+        dtype=torch.float16,
+        requires_grad=False,
+    )
+
+    # Pytorch to compare
+    k_cache_ref = k.clone()
+    v_cache_ref = v.clone()
+    if past_format == Formats.BNSH:
+        k_cache_ref = k_cache_ref.transpose(1, 2)
+        v_cache_ref = v_cache_ref.transpose(1, 2)
+    k_cache_ref = torch.cat((k_cache_ref, new_k), 1)
+    v_cache_ref = torch.cat((v_cache_ref, new_v), 1)
+    k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
+    v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
+    key_padding_mask = None
+    out_ref, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=causal)
+    out_ref = out_ref.detach().cpu().numpy()
+    if past_format == Formats.BNSH:
+        k_cache_ref = k_cache_ref.transpose(1, 2)
+        v_cache_ref = v_cache_ref.transpose(1, 2)
+
+    # Flash function
+    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, past_format, causal, False)
+    out = torch.squeeze(out, 0)
+    out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
+    out = out.detach().cpu().numpy()
+
+    # print(present_k[0, 0, config.past_sequence_length, :10])
+    # print(k_cache_ref[0, 0, config.past_sequence_length, :10])
+    # print(k_cache_ref.shape)
+
+    # print(present_k - k_cache_ref.detach().cpu().numpy())
+
+    # Make sure past-present buffer updating correctly
+    if past_format == Formats.BSNH:
+        assert numpy.allclose(
+            present_k,
+            k_cache_ref.detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        )
+        assert numpy.allclose(
+            present_v,
+            v_cache_ref.detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        )
+    else:
+        assert numpy.allclose(
+            present_k,
+            k_cache_ref.detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        )
+        assert numpy.allclose(
+            present_v,
+            v_cache_ref.detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        )
+
+    # Compare results
+    print(
+        "Unbuffered",
         "past kv format:",
         "BSNH" if past_format == Formats.BSNH else "BNSH",
         " causal:",
@@ -969,25 +1168,34 @@ if __name__ == "__main__":
     #                 config = Config(b, s, s2, 0, n, n, h)
     #                 parity_check_mha(config, False)
     # print("-------- TEST GQA ---------")
-    # for b in [5]:
-    #     for s, s2 in [
-    #         (113, 203),
-    #         (128, 217),
-    #         (113, 211),
-    #         (108, 256),
-    #         (256, 512),
-    #         (512, 256),
-    #         (1024, 1024),
-    #         (1023, 1024),
-    #         (1024, 1023),
-    #         (2048, 2048),
-    #     ]:
-    #         for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-    #             for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
-    #                 for causal in [True, False]:
-    #                     config = Config(b, s, s2, 0, n, n2, h)
-    #                     parity_check_gqa_no_past(config, causal=causal)
+    for b in [5]:
+        for s, s2 in [
+            (113, 203),
+            (128, 217),
+            (113, 211),
+            (108, 256),
+            (256, 512),
+            (512, 256),
+            (1024, 1024),
+            (1023, 1024),
+            (1024, 1023),
+            (2048, 2048),
+        ]:
+            for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
+                for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+                    for causal in [True, False]:
+                        config = Config(b, s, s2, 0, n, n2, h)
+                        parity_check_gqa_no_past(config, causal=causal)
     print("-------- TEST GQA PAST ---------")
+    random.seed(69)
+    # config = Config(1, 1, 10, 5, 8, 8, 8)
+    # parity_check_gqa_past_no_buff(
+    #     config,
+    #     causal=True,
+    #     past_format=Formats.BNSH,
+    #     rtol=1e-3,
+    #     atol=1e-3,
+    # )
     for b in [2]:
         for s, s2 in [
             (1, 128),
@@ -1006,9 +1214,19 @@ if __name__ == "__main__":
                 for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
                     for causal in [True]:
                         for new_kv, past_kv_format in [(True, Formats.BNSH), (True, Formats.BSNH)]:
-                            random.seed(69)
                             sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                             config = Config(b, s, s2, sp, n, n2, h)
                             parity_check_gqa_past(
-                                config, causal=causal, past_format=past_kv_format, rtol=1e-3, atol=1e-3
+                                config,
+                                causal=causal,
+                                past_format=past_kv_format,
+                                rtol=1e-3,
+                                atol=1e-3,
+                            )
+                            parity_check_gqa_past_no_buff(
+                                config,
+                                causal=causal,
+                                past_format=past_kv_format,
+                                rtol=1e-3,
+                                atol=1e-3,
                             )
