@@ -110,12 +110,12 @@ struct GreedySearchState : public IGreedySearchState<T> {
       //`DecoderMaskedSelfAttention` is only supported on CUDA
       if (has_decoder_masked_self_attention) {
         TensorShape staging_for_past_state_reorder_buffer_shape = {
-          parameters.num_caches * parameters.batch_size * parameters.num_heads * parameters.max_length * parameters.head_size};
+          parameters.num_layers * parameters.batch_size * parameters.num_heads * parameters.max_length * parameters.head_size};
 
         Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
 
         this->staging_for_past_state_reorder = std::move(temp);
-        this->cache_addresses = AllocateBuffer<uintptr_t>(allocator, cache_addresses_buffer_, parameters.num_caches);
+        this->cache_addresses = AllocateBuffer<uintptr_t>(allocator, cache_addresses_buffer_, parameters.num_layers);
       }
     }
   }

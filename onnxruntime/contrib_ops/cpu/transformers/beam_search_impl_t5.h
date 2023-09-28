@@ -174,7 +174,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                              this->context_.GetTerminateFlag(),
                                              this->context_.Logger(),
                                              this->ort_stream_));
-
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
   for (int i = 0; i < this->encoder_subgraph_.num_subgraph_inputs; i++) {
@@ -277,18 +276,27 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       size_t offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex());
       // Need to check cross attention's past key tensor size, suppose all layers cross attention key size are same
       auto first_cross_attention_key = decoder_feeds[offset + 2 * static_cast<size_t>(decoder_subgraph_.num_layers)].GetMutable<Tensor>();
-      auto cross_attention_past_key_sz = first_cross_attention_key->Shape().Size();
-      beam_state.EnsurePastStateReorderStagingBuffer(this->temp_space_allocator_, cross_attention_past_key_sz);
+      auto all_cross_attention_past_key_sz = first_cross_attention_key->Shape().Size() * decoder_subgraph_.num_layers;
+      beam_state.EnsurePastStateReorderStagingBuffer(this->temp_space_allocator_, all_cross_attention_past_key_sz);
 
 #ifdef USE_CUDA
       // Here we only need to reorder the past key for self-attention and cross-attention.
-      std::vector<Tensor*> reorder_candidate_tensors;
-      reorder_candidate_tensors.reserve(decoder_subgraph_.num_caches);
+      std::vector<Tensor*> reorder_candidate_tensors(decoder_subgraph_.num_caches);
       for (size_t i = 0; i < static_cast<size_t>(decoder_subgraph_.num_caches); ++i) {
-        reorder_candidate_tensors.push_back(decoder_feeds[offset + 2 * i].GetMutable<Tensor>());
+        reorder_candidate_tensors[i] = decoder_feeds[offset + 2 * i].GetMutable<Tensor>();
       }
+      // Self-attention
+      std::vector<Tensor*> self_keys_tensors(reorder_candidate_tensors.begin(),
+                                             reorder_candidate_tensors.begin() + decoder_subgraph_.num_layers);
       ORT_RETURN_IF_ERROR(reorder_past_state_func_(beam_state.cache_addresses,
-                                                   reorder_candidate_tensors,
+                                                   self_keys_tensors,
+                                                   beam_state.staging_for_past_state_reorder,
+                                                   this->ort_stream_));
+      // Cross-attention
+      std::vector<Tensor*> cross_keys_tensors(reorder_candidate_tensors.begin() + decoder_subgraph_.num_layers,
+                                              reorder_candidate_tensors.end());
+      ORT_RETURN_IF_ERROR(reorder_past_state_func_(beam_state.cache_addresses,
+                                                   cross_keys_tensors,
                                                    beam_state.staging_for_past_state_reorder,
                                                    this->ort_stream_));
       size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;

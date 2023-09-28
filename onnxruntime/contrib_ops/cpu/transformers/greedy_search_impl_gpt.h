@@ -341,10 +341,9 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
       // operations.
       // If we ever do them in different streams, we must use different staging buffers to avoid data
       // races.
-      std::vector<Tensor*> reorder_candidate_tensors;
-      reorder_candidate_tensors.reserve(static_cast<size_t>(gpt_subgraph_.num_caches));
+      std::vector<Tensor*> reorder_candidate_tensors(gpt_subgraph_.num_caches);
       for (size_t i = 0; i < static_cast<size_t>(gpt_subgraph_.num_caches); ++i) {
-        reorder_candidate_tensors.push_back(fetches[offset + i].GetMutable<Tensor>());
+        reorder_candidate_tensors[i] = fetches[offset + i].GetMutable<Tensor>();
       }
       ORT_RETURN_IF_ERROR(reorder_past_state_func_(greedy_state.cache_addresses,
                                                    reorder_candidate_tensors,
