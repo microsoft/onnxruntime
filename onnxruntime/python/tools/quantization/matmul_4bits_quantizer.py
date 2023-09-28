@@ -19,8 +19,7 @@ from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 from .onnx_model import ONNXModel
 from .quant_utils import attribute_to_kwarg, load_model_with_shape_infer
 import coloredlogs
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits_fp16
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits_float
+from onnxruntime.capi._pybind_state import quantize_matmul_4bits
 
 logger = logging.getLogger(__name__)
 
@@ -60,43 +59,9 @@ class MatMul4BitsQuantizer:
         packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
         scales = np.zeros((cols, k_blocks), dtype=fp32weight.dtype)
         zero_point = np.zeros((cols, k_blocks), dtype="uint8")
+        quantize_matmul_4bits(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.is_symmetric)
 
-        if fp32weight.dtype == np.float32:
-            quantize_matmul_4bits_float(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.is_symmetric)
-        else:
-            quantize_matmul_4bits_fp16(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.is_symmetric)
-
-        '''
-        fp32weight = np.transpose(fp32weight).copy()
-        for n in range(cols):
-            for k_id in range(0, rows, block_size):
-                if self.is_symmetric:
-                    amax_idx = np.argmax(np.abs(fp32weight[n, k_id:k_id+block_size]))
-                    bmax = fp32weight[n, k_id + amax_idx]
-                    scale = bmax / (-8)
-                    zp = 8
-                else:
-                    vmin = np.min(fp32weight[n, k_id:k_id+block_size])
-                    vmax = np.max(fp32weight[n, k_id:k_id+block_size])
-                    vmin = min(vmin, 0.0)
-                    vmax = max(vmax, 0.0)
-                    scale = (vmax - vmin) / ((1 << 4) - 1)
-                    zero_point_fp = vmin
-                    if scale != 0.0:
-                        zero_point_fp = 0.0 - vmin / scale
-                    zp = min(15, max(0, round(zero_point_fp)))
-
-                reciprocal_scale = 1.0 / scale if scale != 0 else 0.0
-                scales[n, k_id // block_size] = scale
-                zero_point[n, k_id // block_size] = zp
-
-                blk_int0 = np.clip(fp32weight[n, k_id:k_id+block_size:2] * reciprocal_scale + zp, 0, 15).astype("uint8")
-                blk_int1 = np.clip(fp32weight[n, k_id + 1:k_id+block_size:2] * reciprocal_scale + zp, 0, 15).astype("uint8")
-                packed[n, k_id // block_size] = np.bitwise_or(blk_int0, np.left_shift(blk_int1, 4))
-        '''
-        return (packed.reshape((cols, k_blocks, blob_size)),
-                scales.reshape((cols, k_blocks)),
-                zero_point.reshape((cols, k_blocks)))
+        return (packed, scales, zero_point)
 
     def _q4_matmul_node_weight(self, node: NodeProto, graph_stack: List[GraphProto]) -> NodeProto:
         """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node"""
