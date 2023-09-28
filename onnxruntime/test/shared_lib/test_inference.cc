@@ -3201,6 +3201,9 @@ struct Merge {
     strings_out->SetStringOutput(string_pool, {static_cast<int64_t>(string_pool.size())});
     return Ort::Status(nullptr);
   }
+  Ort::Status InferOutputShape(Ort::Custom::ShapeInferContext&) {
+    return Ort::Status(nullptr);
+  }
   bool reverse_ = false;
 };
 

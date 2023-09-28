@@ -928,6 +928,10 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
   ComputeFnReturnStatus compute_fn_return_status_ = {};
 };  // struct OrtLiteCustomFunc
 
+struct ShapeInferContext {
+  ShapeInferContext(OrtShapeInferContext*){}
+};
+
 /////////////////////////// OrtLiteCustomStruct ///////////////////////////
 // The struct is to implement struct-as-op.
 // E.g. a struct might be defined as:
@@ -964,7 +968,7 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
   OrtLiteCustomStruct(const char* op_name,
                       const char* execution_provider) : OrtLiteCustomOp(op_name,
                                                                         execution_provider) {
-    init(&CustomOp::Compute);
+    SetCompute(&CustomOp::Compute);
 
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* ort_api, const OrtKernelInfo* info) {
       auto kernel = std::make_unique<Kernel>();
@@ -979,10 +983,12 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
     OrtCustomOp::KernelDestroy = [](void* op_kernel) {
       delete reinterpret_cast<Kernel*>(op_kernel);
     };
+
+    SetShapeInfer<CustomOp>(0);
   }
 
   template <typename... Args>
-  void init(CustomComputeFn<Args...>) {
+  void SetCompute(CustomComputeFn<Args...>) {
     ParseArgs<Args...>(input_types_, output_types_);
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
       auto kernel = reinterpret_cast<Kernel*>(op_kernel);
@@ -993,7 +999,7 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
   }
 
   template <typename... Args>
-  void init(CustomComputeFnReturnStatus<Args...>) {
+  void SetCompute(CustomComputeFnReturnStatus<Args...>) {
     ParseArgs<Args...>(input_types_, output_types_);
     OrtCustomOp::KernelComputeV2 = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
       auto kernel = reinterpret_cast<Kernel*>(op_kernel);
@@ -1002,6 +1008,19 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
       return std::apply([kernel](Args const&... t_args) { Status status = kernel->custom_op_->Compute(t_args...); return status.release(); }, t);
     };
   }
+
+  template <typename C>
+  decltype(&C::InferOutputShape) SetShapeInfer(decltype(&C::InferOutputShape)) {
+    OrtCustomOp::InferOutputShape = [](void* op_kernel, OrtShapeInferContext* ort_ctx) -> OrtStatusPtr {
+      ShapeInferContext ctx(ort_ctx);
+      auto kernel = reinterpret_cast<Kernel*>(op_kernel);
+      return kernel->custom_op_->InferOutputShape(ctx);
+    };
+    return {};
+  }
+
+  template <typename C>
+  void SetShapeInfer(...) {}
 };  // struct OrtLiteCustomStruct
 
 /////////////////////////// CreateLiteCustomOp ////////////////////////////

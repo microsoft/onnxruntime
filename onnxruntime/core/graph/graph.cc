@@ -29,6 +29,9 @@
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
 #include "core/graph/function_utils.h"
+#include "core/framework/error_code_helper.h"
+#include "core/session/ort_apis.h"
+#include "core/framework/tensor_type_and_shape.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
@@ -4493,3 +4496,43 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 }
 
 }  // namespace onnxruntime
+
+struct OrtShapeInferContext {
+ public:
+  OrtShapeInferContext(onnxruntime::InferenceContextImpl* ctx_impl) : ctx_impl_(ctx_impl) {}
+  ~OrtShapeInferContext() = default;
+  size_t GetInputCount() const { return input_type_shapes_.size(); }
+  OrtTensorTypeAndShapeInfo* GetInputTypeShape(size_t idx) const { return nullptr; }
+  onnxruntime::Status SetOutputTypeShape(size_t index, const OrtTensorTypeAndShapeInfo* output_shape) const { return onnxruntime::Status::OK(); }
+
+ private:
+  onnxruntime::InferenceContextImpl* ctx_impl_;
+  using TypeShapePtr = std::unique_ptr<OrtTensorTypeAndShapeInfo>;
+  onnxruntime::InlinedVector<TypeShapePtr> input_type_shapes_;
+};
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputCount, _In_ const OrtShapeInferContext* context, _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  *out = context->GetInputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info) {
+  API_IMPL_BEGIN
+  // todo - handle invalid index
+  *info = context->GetInputTypeShape(index);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _In_ const OrtTensorTypeAndShapeInfo* info) {
+  API_IMPL_BEGIN
+  auto status = context->SetOutputTypeShape(index, info);
+  if (status.IsOK()) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+  }
+  API_IMPL_END
+}

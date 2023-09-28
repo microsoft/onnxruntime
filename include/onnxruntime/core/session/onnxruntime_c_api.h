@@ -299,6 +299,7 @@ ORT_RUNTIME_CLASS(DnnlProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
+ORT_RUNTIME_CLASS(ShapeInferContext);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -4413,6 +4414,14 @@ struct OrtApi {
    * \since Version 1.16.
    */
   ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
+
+
+  // todo - doc
+  ORT_API2_STATUS(ShapeInferContext_GetInputCount, _In_ const OrtShapeInferContext* context, _Out_ size_t* out);
+  // todo - return const ... *?
+  ORT_API2_STATUS(ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info);
+  // customer needs to manage the lifetime of info
+  ORT_API2_STATUS(ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _In_ const OrtTensorTypeAndShapeInfo* info);
 };
 
 /*
@@ -4504,6 +4513,8 @@ struct OrtCustomOp {
 
   // Perform the computation step.
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
+
+  OrtStatusPtr(ORT_API_CALL* InferOutputShape)(_In_ void* op_kernel, _In_ OrtShapeInferContext*);
 };
 
 /*
