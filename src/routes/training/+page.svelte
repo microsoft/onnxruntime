@@ -64,7 +64,7 @@
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Flexible & extensible hardware support</h2>
 				<p>
-					The same model and API works with NVIDIA and AMD GPUs, and the extensible <a class="text-blue-500" href="./docs/execution-providers/">execution
+					The same model and API works with NVIDIA and AMD GPUs, and the extensible <a rel="external" class="text-blue-500" href="./docs/execution-providers/">execution
 						provider</a> architecture allow you to plug-in custom operators, optimizer and hardware
 					accelerators.
 				</p>
