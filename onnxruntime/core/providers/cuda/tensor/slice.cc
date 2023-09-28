@@ -237,19 +237,18 @@ Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
 }
 
 Status FuncSlice(
-  // Use OpKernel and do a pointer cast to unify functional calls with other eps.
-  // TODO: remove CudaKernel and OpKernelContext.
-  const CudaKernel* cuda_kernel,
-  // Do NOT use ctx to access inputs and outputs.
-  // Inputs and outputs are passed in as function arguments.
-  OpKernelContext* ctx,
-  const Tensor* input,
-  const std::vector<int64_t>& starts,
-  const std::vector<int64_t>& ends,
-  const std::vector<int64_t>& axes,
-  const std::vector<int64_t>& steps,
-  Tensor* output
-) {
+    // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+    // TODO: remove CudaKernel and OpKernelContext.
+    const CudaKernel* cuda_kernel,
+    // Do NOT use ctx to access inputs and outputs.
+    // Inputs and outputs are passed in as function arguments.
+    OpKernelContext* ctx,
+    const Tensor* input,
+    const std::vector<int64_t>& starts,
+    const std::vector<int64_t>& ends,
+    const std::vector<int64_t>& axes,
+    const std::vector<int64_t>& steps,
+    Tensor* output) {
   gsl::span<const int64_t> starts_span = gsl::make_span(starts.data(), starts.size());
   gsl::span<const int64_t> ends_span = gsl::make_span(ends.data(), ends.size());
   gsl::span<const int64_t> axes_span = gsl::make_span(axes.data(), axes.size());
@@ -260,12 +259,11 @@ Status FuncSlice(
   SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
 
   ORT_RETURN_IF_ERROR(
-    SliceOp::PrepareForComputeHelper(starts_span, ends_span, axes_span, steps_span, compute_metadata)
-  );
+      SliceOp::PrepareForComputeHelper(starts_span, ends_span, axes_span, steps_span, compute_metadata));
 
   ORT_RETURN_IF_ERROR(SliceBase::FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                                        compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
-                                        compute_metadata.p_flattened_output_dims_));
+                                                   compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
+                                                   compute_metadata.p_flattened_output_dims_));
 
   TensorShape output_shape(compute_metadata.output_dims_);
 
@@ -277,17 +275,16 @@ Status FuncSlice(
   ORT_RETURN_IF_ERROR(SliceCuda::ComputeSliceStrides(input_shape, input_strides, output_strides, compute_metadata));
 
   ORT_RETURN_IF_ERROR(SliceImpl(
-    cuda_kernel->Stream(ctx),
-    input->DataType()->Size(),
-    input_dimensions.size(),
-    starts_buffer,
-    steps_buffer,
-    input_strides,
-    output_strides,
-    input->DataRaw(),
-    output->MutableDataRaw(),
-    output_shape.Size()
-  ));
+      cuda_kernel->Stream(ctx),
+      input->DataType()->Size(),
+      input_dimensions.size(),
+      starts_buffer,
+      steps_buffer,
+      input_strides,
+      output_strides,
+      input->DataRaw(),
+      output->MutableDataRaw(),
+      output_shape.Size()));
 
   return Status::OK();
 }

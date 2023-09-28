@@ -121,16 +121,16 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
 template <typename T>
 Status FuncMatMul(
-  const CudaKernel* cuda_kernel,
-  OpKernelContext* ctx,
-  const Tensor* A,
-  const Tensor* B,
-  float alpha,
-  bool trans_A,
-  bool trans_B,
-  bool trans_batch_A,
-  bool trans_batch_B,
-  Tensor* Y) {
+    const CudaKernel* cuda_kernel,
+    OpKernelContext* ctx,
+    const Tensor* A,
+    const Tensor* B,
+    float alpha,
+    bool trans_A,
+    bool trans_B,
+    bool trans_batch_A,
+    bool trans_batch_B,
+    Tensor* Y) {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   // Ignore the transpose flag if rank of input being 1.
@@ -150,8 +150,7 @@ Status FuncMatMul(
 
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(
-      helper.Compute(A->Shape(), B->Shape(), trans_A, trans_B, trans_batch_A, trans_batch_B, false)
-  );
+      helper.Compute(A->Shape(), B->Shape(), trans_A, trans_B, trans_batch_A, trans_batch_B, false));
   const int lda = helper.Lda(trans_A);
   const int ldb = helper.Ldb(trans_B);
   const int ldc = helper.Ldc();
@@ -243,39 +242,37 @@ Status FuncMatMul(
   return Status::OK();
 }
 
-template
-Status FuncMatMul<float>(
-  // Use OpKernel and do a pointer cast to unify functional calls with other eps.
-  // TODO: remove CudaKernel and OpKernelContext.
-  const CudaKernel* cuda_kernel,
-  // Do NOT use ctx to access inputs and outputs.
-  // Inputs and outputs are passed in as function arguments.
-  OpKernelContext* ctx,
-  const Tensor* A,
-  const Tensor* B,
-  float alpha,
-  bool trans_A,
-  bool trans_B,
-  bool trans_batch_A,
-  bool trans_batch_B,
-  Tensor* Y);
+template Status FuncMatMul<float>(
+    // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+    // TODO: remove CudaKernel and OpKernelContext.
+    const CudaKernel* cuda_kernel,
+    // Do NOT use ctx to access inputs and outputs.
+    // Inputs and outputs are passed in as function arguments.
+    OpKernelContext* ctx,
+    const Tensor* A,
+    const Tensor* B,
+    float alpha,
+    bool trans_A,
+    bool trans_B,
+    bool trans_batch_A,
+    bool trans_batch_B,
+    Tensor* Y);
 
-template
-Status FuncMatMul<MLFloat16>(
-  // Use OpKernel and do a pointer cast to unify functional calls with other eps.
-  // TODO: remove CudaKernel and OpKernelContext.
-  const CudaKernel* cuda_kernel,
-  // Do NOT use ctx to access inputs and outputs.
-  // Inputs and outputs are passed in as function arguments.
-  OpKernelContext* ctx,
-  const Tensor* A,
-  const Tensor* B,
-  float alpha,
-  bool trans_A,
-  bool trans_B,
-  bool trans_batch_A,
-  bool trans_batch_B,
-  Tensor* Y);
+template Status FuncMatMul<MLFloat16>(
+    // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+    // TODO: remove CudaKernel and OpKernelContext.
+    const CudaKernel* cuda_kernel,
+    // Do NOT use ctx to access inputs and outputs.
+    // Inputs and outputs are passed in as function arguments.
+    OpKernelContext* ctx,
+    const Tensor* A,
+    const Tensor* B,
+    float alpha,
+    bool trans_A,
+    bool trans_B,
+    bool trans_batch_A,
+    bool trans_batch_B,
+    Tensor* Y);
 
 template <typename T>
 Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {

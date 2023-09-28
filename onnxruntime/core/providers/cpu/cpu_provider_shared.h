@@ -64,8 +64,8 @@ struct ProviderHostCPU {
 
   // From cpu/tensor/slice.h
   virtual Status SliceBase__FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
-                                    TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
-                                    TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) = 0;
+                                              TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
+                                              TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) = 0;
 
   virtual Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
                                               gsl::span<const int64_t> raw_ends,

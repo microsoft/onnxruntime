@@ -42,7 +42,6 @@ class SliceBase {
                                   TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
                                   TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims);
 
-
  protected:
   SliceBase(const OpKernelInfo& info, bool dynamic = false)
       : dynamic_(dynamic) {

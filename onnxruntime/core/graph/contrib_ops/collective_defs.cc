@@ -100,10 +100,11 @@ void RegisterCollectiveOps() {
       .Output(0, "Y", "Matrix multiply results from A * B", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
       .TypeConstraint(
           "T",
-          {"tensor(float16)",
-            "tensor(float)",},
+          {
+              "tensor(float16)",
+              "tensor(float)",
+          },
           "Constrain input and output types to float tensors.");
-
 }
 
 }  // namespace contrib

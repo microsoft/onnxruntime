@@ -140,9 +140,9 @@ Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::sp
                                     gsl::span<const int64_t> raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, compute_metadata));
-  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
-                    compute_metadata.p_flattened_output_dims_);
+  ORT_RETURN_IF_ERROR(FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
+                                        compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
+                                        compute_metadata.p_flattened_output_dims_));
   return Status::OK();
 }
 
@@ -151,9 +151,9 @@ Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::sp
                                     gsl::span<const int64_t> raw_axes, gsl::span<const int64_t> raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
-  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
-                    compute_metadata.p_flattened_output_dims_);
+  ORT_RETURN_IF_ERROR(FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
+                                        compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
+                                        compute_metadata.p_flattened_output_dims_));
 
   return Status::OK();
 }

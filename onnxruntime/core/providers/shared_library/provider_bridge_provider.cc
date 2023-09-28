@@ -513,9 +513,9 @@ bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats
 Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
                                     TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
                                     TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
-                                      return g_host_cpu.SliceBase__FlattenOutputDims(
-                                        input_dimensions, output_dims, starts, ends, steps, p_flattened_input_dims, p_flattened_output_dims
-                                      ); }
+  return g_host_cpu.SliceBase__FlattenOutputDims(
+      input_dimensions, output_dims, starts, ends, steps, p_flattened_input_dims, p_flattened_output_dims);
+}
 
 Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
                                     gsl::span<const int64_t> raw_ends,

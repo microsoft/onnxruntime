@@ -118,7 +118,8 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status SliceBase__FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
                                       TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
                                       TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) override {
-                                        return SliceBase::FlattenOutputDims(input_dimensions, output_dims, starts, ends, steps, p_flattened_input_dims, p_flattened_output_dims); }
+    return SliceBase::FlattenOutputDims(input_dimensions, output_dims, starts, ends, steps, p_flattened_input_dims, p_flattened_output_dims);
+  }
 
   Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
                                       gsl::span<const int64_t> raw_ends,
