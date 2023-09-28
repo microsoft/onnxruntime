@@ -101,7 +101,7 @@ stages:
       - task: NodeTool@0
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
-          versionSpec: '16.x'
+          versionSpec: '18.x'
 
       - template: jobs/set-winenv.yml
         parameters:
@@ -262,25 +262,6 @@ stages:
           inputs:
             AnalyzeTargetGlob: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\**\*.dll'
           continueOnError: true
-
-        - task: DeleteFiles@1
-          displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-          inputs:
-            SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-            Contents: |
-             **/*.obj
-             **/*.pdb
-             **/*.dll
-
-        #Manually set msBuildCommandline so that we can also set CAExcludePath
-        - task: SDLNativeRules@3
-          displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-          condition: and (succeeded(), eq(variables['msbuildPlatform'], 'x64'))
-          inputs:
-            msBuildArchitecture: amd64
-            setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-            msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
-            excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
 
         - task: PostAnalysis@2
           inputs:

@@ -22,7 +22,7 @@ from .quant_utils import apply_plot, load_model_with_shape_infer, smooth_distrib
 
 
 class TensorData:
-    _allowed = frozenset(["avg", "std", "lowest", "highest", "hist", "hist_edges"])
+    _allowed = frozenset(["avg", "std", "lowest", "highest", "hist", "hist_edges", "bins"])
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -55,7 +55,7 @@ class TensorsData:
                     self.data[k] = TensorData(lowest=v[0], highest=v[1])
                     continue
                 if len(v) == 4:
-                    self.data[k] = TensorData(lowest=v[0], highest=v[1], histogram=v[2], bins=v[3])
+                    self.data[k] = TensorData(lowest=v[0], highest=v[1], hist=v[2], bins=v[3])
                     continue
                 raise TypeError(f"Unexpected tuple for {k:r}, it has {len(v)} elements: {v}.")
             if not isinstance(v, TensorData):
