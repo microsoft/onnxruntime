@@ -1,3 +1,6 @@
+<script>
+	import windowsdevkit from '../../images/windowsdevkit.png'
+</script>
 <div class="container mx-auto px-10">
 	<h1 class="text-4xl mb-4">ONNX Runtime + Windows Dev Kit 2023 = NPU powered AI</h1>
 	<h2 class="text-2xl mb-2">Delivering NPU powered AI capabilities in your apps</h2>
@@ -47,6 +50,8 @@
 			<p class="text-xl text-blue-500">Getting Help</p>
 			For help with ONNX Runtime, you can start a discussion on GitHub or file an issue.
 		</div>
-      <div class="m-auto">image</div>
+      <div class="m-auto">
+		<img src={windowsdevkit} alt="Windows Dev kit">
+	  </div>
 	</div>
 </div>
