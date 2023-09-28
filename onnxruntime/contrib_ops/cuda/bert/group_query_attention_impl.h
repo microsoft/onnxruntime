@@ -17,7 +17,6 @@ struct GroupQueryAttentionData {
   const T* query = nullptr;
   const T* key = nullptr;
   const T* value = nullptr;
-  const T* past = nullptr;
   const T* past_key = nullptr;
   const T* past_value = nullptr;
   T* softmax_lse = nullptr;

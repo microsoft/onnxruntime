@@ -34,23 +34,36 @@ void set_params_fprop(Flash_fwd_params& params,
                       void* p_d,
                       void* softmax_lse_d,
                       float softmax_scale,
-                      bool is_causal) {
+                      bool is_causal,
+                      bool kv_bsnh=true) {
   // Set the pointers and strides.
   params.q_ptr = q;
   params.k_ptr = k;
   params.v_ptr = v;
   params.o_ptr = out;
 
-  // All stride are in elements, not bytes.
-  params.q_row_stride = num_heads * head_size;
-  params.k_row_stride = num_heads_k * head_size;
-  params.v_row_stride = num_heads_k * head_size;
-  params.q_head_stride = head_size;
-  params.k_head_stride = head_size;
-  params.v_head_stride = head_size;
-  params.o_row_stride = num_heads * head_size;
-  params.o_head_stride = head_size;
   params.is_bf16 = false;
+
+  // All stride are in elements, not bytes.
+  if (kv_bsnh) {
+    params.q_row_stride = num_heads * head_size;
+    params.k_row_stride = num_heads_k * head_size;
+    params.v_row_stride = num_heads_k * head_size;
+    params.q_head_stride = head_size;
+    params.k_head_stride = head_size;
+    params.v_head_stride = head_size;
+    params.o_row_stride = num_heads * head_size;
+    params.o_head_stride = head_size;
+  } else {
+    params.q_row_stride = num_heads * head_size;
+    params.k_row_stride = head_size;
+    params.v_row_stride = head_size;
+    params.q_head_stride = head_size;
+    params.k_head_stride = seqlen_k * head_size;
+    params.v_head_stride = seqlen_k * head_size;
+    params.o_row_stride = num_heads * head_size;
+    params.o_head_stride = head_size;
+  }
 
   if (cu_seqlens_q_d == nullptr) {
     params.q_batch_stride = seqlen_q * num_heads * head_size;    // stride(0)
@@ -194,7 +207,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                bool is_causal,
                int num_splits,
                void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
-               void* out_accum           // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
+               void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
+               bool kv_bsnh
 ) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
@@ -215,7 +229,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    nullptr,
                    softmax_lse,
                    softmax_scale,
-                   is_causal);
+                   is_causal,
+                   kv_bsnh);
 
   params.knew_ptr = nullptr;
   params.vnew_ptr = nullptr;
@@ -291,8 +306,8 @@ bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, in
 Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        cudaStream_t stream,
                        void* q,            // batch_size x seqlen_q x num_heads x head_size
-                       void* kcache,       // batch_size x seqlen_k x num_heads_k x head_size
-                       void* vcache,       // batch_size x seqlen_k x num_heads_k x head_size
+                       void* kcache,       // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k seqlen_k x head_size
+                       void* vcache,       // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k seqlen_k x head_size
                        void* k,            // (optional) batch_size x seqlen_k_new x num_heads_k x head_size
                        void* v,            // (optional) batch_size x seqlen_k_new x num_heads_k x head_size
                        void* out,          // batch_size x seqlen_q x num_heads x head_size
@@ -307,6 +322,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int seqlen_k_new,
                        const float softmax_scale,
                        bool is_causal,
+                       bool past_bsnh,           // otherwise bnsh
                        int num_splits,
                        void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
                        void* out_accum           // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
@@ -334,7 +350,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                    /*p_ptr=*/nullptr,
                    softmax_lse,
                    softmax_scale,
-                   is_causal);
+                   is_causal,
+                   past_bsnh);
 
   if (k != nullptr && v != nullptr) {
     params.seqlen_knew = seqlen_k_new;

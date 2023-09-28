@@ -28,6 +28,8 @@ namespace cuda {
       (*KernelDefBuilder::Create())                                    \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
+          .MayInplace(3, 1) \
+          .MayInplace(4, 2) \
           .InputMemoryType(OrtMemTypeCPUInput, 5),                     \
       GroupQueryAttention<T>);
 
@@ -44,6 +46,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 1) == 1;
+  is_past_bsnh_ = info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
 #if USE_FLASH_ATTENTION
@@ -77,6 +80,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                         num_heads_,
                                                                         kv_num_heads_,
                                                                         past_seq_len,
+                                                                        is_past_bsnh_,
                                                                         scale_,
                                                                         device_prop.maxThreadsPerBlock));
   parameters.is_unidirectional = is_unidirectional_;
@@ -88,8 +92,14 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> present_dims{
-      parameters.batch_size, parameters.max_sequence_length, parameters.kv_num_heads, parameters.head_size};
+  std::vector<int64_t> present_dims;
+  if (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH) {
+    present_dims = {
+      parameters.batch_size, parameters.present_sequence_length, parameters.kv_num_heads, parameters.head_size};
+  } else { // BNSH
+    present_dims = {
+      parameters.batch_size, parameters.kv_num_heads, parameters.present_sequence_length, parameters.head_size};
+  }
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(1, present_shape);
   Tensor* present_value = context->Output(2, present_shape);
@@ -106,10 +116,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t out_accum_bytes = 0;
   size_t seqlens_k_bytes = 0;
   if (use_flash_attention) {
-    // Flash Attention kv-caching operates in place on a buffer, therefore past and present kv must be the same
-    assert(present_key == nullptr || present_key == past_key);
-    assert(present_value == nullptr || present_value == past_value);
-
     softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
     // split kv buffers
     parameters.num_splits = onnxruntime::flash::num_splits_heuristic(
@@ -149,7 +155,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = reinterpret_cast<const CudaT*>(value->Data<T>());
-  data.past = nullptr;
   data.past_key = (nullptr == past_key) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
   data.past_value = (nullptr == past_value) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
