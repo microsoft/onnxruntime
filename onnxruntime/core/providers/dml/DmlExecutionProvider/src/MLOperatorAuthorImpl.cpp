@@ -2451,90 +2451,87 @@ namespace Windows::AI::MachineLearning::Adapter
             return ret;
         };
 
-        // The kernel creation may have been delayed because input shapes were required but not inferred by schema.
-        if (RequiresLazyInitialization())
+        Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
+        
+        const EdgeShapes* inferredOutputShapeForCompute = &m_inferredOutputShapes;
+
+        if (RequiresDynamicKernelCreation())
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            std::pair<EdgeShapes,ConstantInputSet> key;
 
-            if (RequiresLazyInitialization())
-            {
-                m_inputShapesOfKernelInference = GetInputShapes(context);
+            key.first = GetInputShapes(context);
+            key.second.resize(context->InputCount());
 
-                m_constantInputTensorContentsOfKernel.resize(context->InputCount());
-                for (uint32_t index : m_requiredConstantCpuInputs)
-                {
-                    if (index >= m_constantInputTensorContentsOfKernel.size())
-                    {
-                        continue;
-                    }
-
-                    auto constantInput = constantInputGetter(index);
-
-                    std::visit([this, context, index](auto&& arg) {
-                        FillConstantInputs(arg, context, index);
-                    }, constantInput);
-                }
-
-                m_kernel = inferShapesAndCreateKernel(m_inputShapesOfKernelInference, m_inferredOutputShapes);
-                SetLazyInitialized();
-            }
-        }
-        else if (m_inputShapesOfKernelInference.EdgeCount() > 0)
-        {
-            EdgeShapes local_input_shapes = GetInputShapes(context);
-
-            bool requiredCpuInputsChanged = false;
             for (uint32_t index : m_requiredConstantCpuInputs)
             {
-                if (index >= m_constantInputTensorContentsOfKernel.size())
+                if (index >= key.second.size())
                 {
                     continue;
                 }
 
                 auto constantInput = constantInputGetter(index);
-                requiredCpuInputsChanged = std::visit([this, index](auto&& arg){
-                    return RequiredCpuInputChanged(arg, index);
+
+                std::visit([this, context, index, &key](auto&& arg) {
+                    key.second[index] = GetConstantInputs(arg, context, index);
                 }, constantInput);
-
-                if (requiredCpuInputsChanged)
-                {
-                    break;
-                }
             }
 
-            // In the edge case that the input size is changing across invocations and the kernel requires
-            // its input size at construction, use a local instance of the kernel.
-            if (local_input_shapes != m_inputShapesOfKernelInference || requiredCpuInputsChanged)
+            std::lock_guard<std::mutex> lock(m_mutex);
+
+            auto& cachedKernel = m_kernelMap[key];
+            kernel = cachedKernel.kernel;
+            inferredOutputShapeForCompute = cachedKernel.inferredOutputShapes.get();
+
+            if (!kernel)
             {
-                EdgeShapes localInferredOutputShapes;
-                ComPtr<IMLOperatorKernel> localKernel = inferShapesAndCreateKernel(local_input_shapes, localInferredOutputShapes);
+                cachedKernel.inferredOutputShapes = std::make_shared<EdgeShapes>();
+                cachedKernel.kernel = inferShapesAndCreateKernel(key.first, *cachedKernel.inferredOutputShapes.get());
+                inferredOutputShapeForCompute = cachedKernel.inferredOutputShapes.get();
+                
+                // Update the time and retrieve the underlying CompPtr before modifying the map to evict kernels
+                cachedKernel.lastUsedTick = m_kernelCacheTick++;
+                kernel = cachedKernel.kernel;
 
-                ComPtr<OpKernelContextWrapper> kernelContextWrapper = wil::MakeOrThrow<OpKernelContextWrapper>(
-                    context,
-                    Info().GetExecutionProvider(),
-                    m_internalOperator,
-                    m_requiresOutputShapesAtCreation ? &localInferredOutputShapes : nullptr);
-
-                ORT_THROW_IF_FAILED(localKernel->Compute(kernelContextWrapper.Get()));
-                kernelContextWrapper->Close();
-
-                // Ensure that scheduled work, if any, is completed before freeing the kernel if the execution
-                // provider requires this.
-                if (m_winmlProvider)
+                // The maximum number of kernel variations per operator is reasonably small, so just iterate to find the oldest kernel
+                const size_t maximumCachedKernelsPerNode = 32;
+                if (m_kernelMap.size() > maximumCachedKernelsPerNode)
                 {
-                    m_winmlProvider->QueueReference(localKernel.Get());
+                    assert(m_kernelMap.size() == maximumCachedKernelsPerNode + 1);
+
+                    KernelMap::iterator earliestKernelIter = m_kernelMap.end();
+                    uint64_t earliestTick = std::numeric_limits<uint64_t>::max();
+
+                    for (KernelMap::iterator iter = m_kernelMap.begin(); iter != m_kernelMap.end(); ++iter)
+                    {
+                        if (iter->second.lastUsedTick < earliestTick)
+                        {
+                            earliestKernelIter = iter;
+                            earliestTick = iter->second.lastUsedTick;
+                        }
+                    }
+
+                    assert(earliestKernelIter != m_kernelMap.find(key));
+                    m_kernelMap.erase(earliestKernelIter);
                 }
-                return onnxruntime::Status();
             }
+            else
+            {
+                cachedKernel.lastUsedTick = m_kernelCacheTick++;
+            }
+
+        }
+        else
+        {
+            kernel = m_kernel;
         }
 
         ComPtr<OpKernelContextWrapper> kernelContextWrapper = wil::MakeOrThrow<OpKernelContextWrapper>(
             context,
             Info().GetExecutionProvider(),
             m_internalOperator,
-            m_requiresOutputShapesAtCreation ? &m_inferredOutputShapes : nullptr);
+            m_requiresOutputShapesAtCreation ? inferredOutputShapeForCompute : nullptr);
 
-        ORT_THROW_IF_FAILED(m_kernel->Compute(kernelContextWrapper.Get()));
+        ORT_THROW_IF_FAILED(kernel->Compute(kernelContextWrapper.Get()));
         kernelContextWrapper->Close();
 
         // Ensure that scheduled work, if any, is completed before freeing the kernel if the execution
@@ -2547,64 +2544,11 @@ namespace Windows::AI::MachineLearning::Adapter
         return onnxruntime::Status();
     }
 
-    bool AbiOpKernel::RequiredCpuInputChanged(const ComPtr<IMLOperatorTensor>& constantTensor, uint32_t index) const
+
+    AbiOpKernel::TensorContent AbiOpKernel::GetConstantInputs(const ComPtr<IMLOperatorTensor>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const
     {
-        assert(std::holds_alternative<TensorContent>(m_constantInputTensorContentsOfKernel[index]));
-
-        auto lastValue = std::get<TensorContent>(m_constantInputTensorContentsOfKernel[index]);
-        MLOperatorTensor currentValue(constantTensor.Get());
-
-        if (lastValue.isValid != (currentValue.GetInterface() != nullptr))
-        {
-            return false;
-        }
-
-        if (lastValue.isValid)
-        {
-            if (lastValue.shape != currentValue.GetShape() ||
-                lastValue.type != currentValue.GetTensorDataType() ||
-                currentValue.GetUnalignedTensorByteSize() != lastValue.data.size() ||
-                (memcmp(lastValue.data.data(), currentValue.GetByteData(), lastValue.data.size()) != 0))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    bool AbiOpKernel::RequiredCpuInputChanged(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensorSequence, uint32_t index) const
-    {
-        assert(std::holds_alternative<std::vector<TensorContent>>(m_constantInputTensorContentsOfKernel[index]));
-        auto lastValues = std::get<std::vector<TensorContent>>(m_constantInputTensorContentsOfKernel[index]);
-
-        for (uint32_t sequenceIndex = 0; sequenceIndex < constantTensorSequence.size(); ++sequenceIndex)
-        {
-            const auto& lastValue = lastValues[sequenceIndex];
-            MLOperatorTensor currentValue(constantTensorSequence[sequenceIndex].Get());
-
-            if (lastValue.isValid != (currentValue.GetInterface() != nullptr))
-            {
-                return false;
-            }
-
-            if (lastValue.isValid)
-            {
-                if (lastValue.shape != currentValue.GetShape() ||
-                    lastValue.type != currentValue.GetTensorDataType() ||
-                    currentValue.GetUnalignedTensorByteSize() != lastValue.data.size() ||
-                    (memcmp(lastValue.data.data(), currentValue.GetByteData(), lastValue.data.size()) != 0))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    void AbiOpKernel::FillConstantInputs(const ComPtr<IMLOperatorTensor>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const
-    {
+        
+        TensorContent tensorContent = {};
         // Skip optional constant tensors.
         if (constantTensor != nullptr)
         {
@@ -2612,10 +2556,9 @@ namespace Windows::AI::MachineLearning::Adapter
 
             if (index >= static_cast<uint32_t>(context->InputCount()))
             {
-                return;
+                return tensorContent;
             }
 
-            TensorContent tensorContent{};
             tensorContent.isValid = (tensor.GetInterface() != nullptr);
 
             if (tensor.GetInterface() != nullptr)
@@ -2628,12 +2571,12 @@ namespace Windows::AI::MachineLearning::Adapter
             tensorContent.data.assign(
                 reinterpret_cast<const std::byte*>(tensor.GetByteData()),
                 reinterpret_cast<const std::byte*>(tensor.GetByteData()) + tensor.GetUnalignedTensorByteSize());
-
-            m_constantInputTensorContentsOfKernel[index] = std::move(tensorContent);
         }
+
+        return tensorContent;
     }
 
-    void AbiOpKernel::FillConstantInputs(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensorSequence, onnxruntime::OpKernelContext* context, uint32_t index) const
+    std::vector<AbiOpKernel::TensorContent> AbiOpKernel::GetConstantInputs(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensorSequence, onnxruntime::OpKernelContext* context, uint32_t index) const
     {
         std::vector<TensorContent> tensorContent(constantTensorSequence.size());
 
@@ -2666,7 +2609,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 reinterpret_cast<const std::byte*>(tensor.GetByteData()) + tensor.GetUnalignedTensorByteSize());
         }
 
-        m_constantInputTensorContentsOfKernel[index] = std::move(tensorContent);
+        return tensorContent;
     }
 
     bool AbiOpKernel::InputTensorShapesDefined() const
