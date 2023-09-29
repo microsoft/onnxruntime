@@ -18,20 +18,25 @@ namespace Dml
 
         FusedGraphKernel(
             const onnxruntime::OpKernelInfo& kernelInfo,
-            ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
             Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
-            bool reuseCommandList,
             std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
             std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
             std::vector<DML_BUFFER_BINDING> initInputBindings,
             std::vector<uint8_t>&& isInputsUploadedByDmlEP,
-            std::vector<bool>&& inputsUsed) :
+            const ExecutionProviderImpl* providerImpl,
+            std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> isInitializerTransferable,
+            const onnxruntime::IndexedSubGraph indexedSubGraph,
+            std::unordered_map<std::string, GraphNodeProperties> partitionNodePropsMap) :
         OpKernel(kernelInfo),
-        m_compiledExecutionPlanOperator(compiledExecutionPlanOperator),
-        m_inputsUsed(std::move(inputsUsed)),
         m_outputShapes(outputShapes),
         m_isInputsUploadedByDmlEP(std::move(isInputsUploadedByDmlEP)),
-        m_nonOwnedGraphInputsFromInitializers(nonOwnedGraphInputsFromInitializers)
+        m_nonOwnedGraphInputsFromInitializers(nonOwnedGraphInputsFromInitializers),
+        m_providerImpl(providerImpl),
+        m_isInitializerTransferable(isInitializerTransferable),
+        m_indexedSubGraph(indexedSubGraph),
+        m_partitionNodePropsMap(partitionNodePropsMap),
+        m_initializeResourceRefs(initializeResourceRefs),
+        m_kernelInfo(kernel_info)
         {
             // Get the execution provider interfaces
             m_executionHandle = kernelInfo.GetExecutionProvider()->GetExecutionHandle();
@@ -44,12 +49,6 @@ namespace Dml
                 ORT_THROW_IF_FAILED(providerExecutionObject.As(&m_provider));
                 ORT_THROW_IF_FAILED(providerExecutionObject.As(&m_winmlProvider));
             }
-
-            TranslateAndCompileGraph(
-                kernelInfo,
-                initializeResourceRefs,
-                initInputBindings,
-                reuseCommandList);
         }
 
         void TranslateAndCompileGraph(
@@ -95,6 +94,49 @@ namespace Dml
 
         onnxruntime::Status Compute(onnxruntime::OpKernelContext* kernelContext) const override
         {
+            // Convert partitionONNXGraph into DML EP GraphDesc
+            ComPtr<IDMLDevice> device;
+            ORT_THROW_IF_FAILED(m_providerImpl->GetDmlDevice(device.GetAddressOf()));
+            GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
+                m_isInputsUploadedByDmlEP.data(),
+                m_isInputsUploadedByDmlEP.size(),
+                m_isInitializerTransferable,
+                graph,
+                m_indexedSubGraph,
+                m_partitionNodePropsMap,
+                device.Get(),
+                m_providerImpl);
+
+            // Compile the operator
+            auto compiledPartition = DmlGraphFusionHelper::TryCreateCompiledOperator(
+                graphDesc,
+                m_indexedSubGraph,
+                m_providerImpl);
+
+            const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(m_indexedSubGraph.GetMetaDef()->inputs.size());
+            std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
+            std::vector<bool> inputsUsed;
+            ProcessInputData(
+                m_providerImpl,
+                m_isInputsUploadedByDmlEP,
+                graphDesc.inputEdges,
+                m_indexedSubGraph.GetMetaDef()->inputs,
+                m_isInitializerTransferable,
+                graph,
+                inputsUsed,
+                initInputBindings,
+                m_nonOwnedGraphInputsFromInitializers,
+                m_initializeResourceRefs,
+                nullptr);
+
+            bool resuableCommandList = graphDesc.reuseCommandList;
+
+            TranslateAndCompileGraph(
+                Info(),
+                m_initializeResourceRefs,
+                initInputBindings,
+                resuableCommandList);
+
             // Only re-use the cached command list if its prior execution is complete on the GPU.
             // This requirement can be avoided by mantaining ring buffers.
             if (!m_graphicsCommandList ||
@@ -433,30 +475,36 @@ namespace Dml
 
         std::vector<uint8_t> m_isInputsUploadedByDmlEP;
         std::vector<ComPtr<ID3D12Resource>> m_nonOwnedGraphInputsFromInitializers;
+
+        const ExecutionProviderImpl* m_providerImpl;
+        std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> m_isInitializerTransferable;
+        const onnxruntime::IndexedSubGraph m_indexedSubGraph;
+        std::unordered_map<std::string, GraphNodeProperties> m_partitionNodePropsMap;
+        std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_initializeResourceRefs;
     };
 
     onnxruntime::OpKernel* CreateFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
-        ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
         Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
-        bool reuseCommandList,
         std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
-        std::vector<DML_BUFFER_BINDING> initInputBindings,
         std::vector<uint8_t>&& isInputsUploadedByDmlEP,
-        std::vector<bool>&& inputsUsed
+        const ExecutionProviderImpl* providerImpl,
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
+        const onnxruntime::IndexedSubGraph& indexedSubGraph,
+        std::unordered_map<std::string, GraphNodeProperties>& partitionNodePropsMap
         )
     {
         return new FusedGraphKernel(
             info,
-            compiledExecutionPlanOperator,
             outputShapes,
-            reuseCommandList,
             nonOwnedGraphInputsFromInitializers,
             initializeResourceRefs,
-            initInputBindings,
             std::move(isInputsUploadedByDmlEP),
-            std::move(inputsUsed)
+            providerImpl,
+            isInitializerTransferable,
+            indexedSubGraph,
+            partitionNodePropsMap
         );
     }
 } // namespace Dml

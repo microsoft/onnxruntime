@@ -438,8 +438,7 @@ namespace DmlGraphFusionHelper
         const ExecutionProviderImpl* providerImpl,
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         std::vector<uint8_t>&& isInputsUploadedByDmlEP,
-        const GraphDescBuilder::GraphDesc& graphDesc,
-        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator)
+        std::unordered_map<std::string, GraphNodeProperties>& partitionNodePropsMap)
     {
         auto& fusedNode = graph.BeginFuseSubGraph(indexedSubGraph, indexedSubGraph.GetMetaDef()->name);
         fusedNode.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
@@ -448,46 +447,30 @@ namespace DmlGraphFusionHelper
 
         // Populate input bindings for operator initialization
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initializeResourceRefs; // For lifetime control
-        std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
         std::vector<ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers(fusedNodeInputCount);
-
-        std::vector<bool> inputsUsed;
-        ProcessInputData(
-            providerImpl,
-            isInputsUploadedByDmlEP,
-            graphDesc.inputEdges,
-            indexedSubGraph.GetMetaDef()->inputs,
-            initializerNameToInitializerMap,
-            graph,
-            inputsUsed,
-            initInputBindings,
-            nonOwnedGraphInputsFromInitializers,
-            initializeResourceRefs,
-            nullptr);
 
         // lamda captures for the kernel registration
         Windows::AI::MachineLearning::Adapter::EdgeShapes outputShapes;
         ORT_THROW_HR_IF(E_UNEXPECTED, !TryGetStaticOutputShapes(fusedNode, outputShapes));
-        bool resuableCommandList = graphDesc.reuseCommandList;
-        auto fused_kernel_func = [compiledExecutionPlanOperator,
-                                  outputShapes,
-                                  resuableCommandList,
+        auto fused_kernel_func = [outputShapes,
                                   nonOwnedGraphInputsFromInitializers,
                                   initializeResourceRefs,
-                                  initInputBindings,
                                   isInputsUploadedByDmlEP = std::move(isInputsUploadedByDmlEP),
-                                  inputsUsed = std::move(inputsUsed)]
+                                  providerImpl,
+                                  initializerNameToInitializerMap,
+                                  indexedSubGraph,
+                                  partitionNodePropsMap]
                     (onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
         {
             out.reset(CreateFusedGraphKernel(info,
-                                             compiledExecutionPlanOperator,
                                              outputShapes,
-                                             resuableCommandList,
                                              nonOwnedGraphInputsFromInitializers,
                                              initializeResourceRefs,
-                                             initInputBindings,
                                              std::move(isInputsUploadedByDmlEP),
-                                             std::move(inputsUsed)));
+                                             providerImpl,
+                                             initializerNameToInitializerMap,
+                                             indexedSubGraph,
+                                             partitionNodePropsMap));
             return Status::OK();
         };
 

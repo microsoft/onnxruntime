@@ -78,7 +78,6 @@ namespace DmlGraphFusionHelper
         const ExecutionProviderImpl* providerImpl,
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         std::vector<uint8_t>&& isInputsUploadedByDmlEP,
-        const GraphDescBuilder::GraphDesc& graphDesc,
-        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator);
+        std::unordered_map<std::string, GraphNodeProperties>& partitionNodePropsMap);
 }
 }

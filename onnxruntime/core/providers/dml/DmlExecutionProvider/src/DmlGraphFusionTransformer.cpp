@@ -26,11 +26,10 @@ namespace Dml
 
     struct CompiledPartitionInfo
     {
-        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledOperator;
         onnxruntime::IndexedSubGraph indexedSubGraph;
         std::vector<uint8_t> isInputsUploadedByDmlEP;
-        GraphDescBuilder::GraphDesc graphDesc;
         std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> isInitializerTransferable;
+        std::unordered_map<std::string, GraphNodeProperties> partitionNodePropsMap;
     };
 
     onnxruntime::common::Status DmlGraphFusionTransformer::ApplyImpl(
@@ -189,46 +188,12 @@ namespace Dml
                         indexedSubGraph,
                         std::move(graphNodePropertyMap));
 
-                    // Convert partitionONNXGraph into DML EP GraphDesc
-                    ComPtr<IDMLDevice> device;
-                    ORT_THROW_IF_FAILED(m_providerImpl->GetDmlDevice(device.GetAddressOf()));
-                    GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
-                        isInputsUploadedByDmlEP.data(),
-                        isInputsUploadedByDmlEP.size(),
-                        isInitializerTransferable,
-                        graph,
-                        indexedSubGraph,
-                        partitionNodePropsMap,
-                        device.Get(),
-                        m_providerImpl);
-
-                    // Compile the operator
-                    auto compiledPartition = DmlGraphFusionHelper::TryCreateCompiledOperator(
-                        graphDesc,
-                        indexedSubGraph,
-                        m_providerImpl);
-
-                    if (!compiledPartition)
-                    {
-                        // Fail early if even a single operator is too big to compile. This is highly unlikely.
-                        ORT_THROW_HR_IF(E_INVALIDARG, indexedSubGraph.nodes.size() < 2);
-
-                        // Tell the partitioner to split the current partition in half, in the middle
-                        additionalSplittingNodes.push_back(indexedSubGraph.nodes[indexedSubGraph.nodes.size() / 2]);
-
-                        // Exit early since we need to repartition
-                        break;
-                    }
-                    else
-                    {
-                        auto compiledPartitionInfo = std::make_shared<CompiledPartitionInfo>();
-                        compiledPartitionInfo->compiledOperator = std::move(compiledPartition);
-                        compiledPartitionInfo->indexedSubGraph = std::move(indexedSubGraph);
-                        compiledPartitionInfo->isInputsUploadedByDmlEP = std::move(isInputsUploadedByDmlEP);
-                        compiledPartitionInfo->graphDesc = std::move(graphDesc);
-                        compiledPartitionInfo->isInitializerTransferable = std::move(isInitializerTransferable);
-                        compiledPartitionInfos[partitionIndex] = std::move(compiledPartitionInfo);
-                    }
+                    auto compiledPartitionInfo = std::make_shared<CompiledPartitionInfo>();
+                    compiledPartitionInfo->indexedSubGraph = std::move(indexedSubGraph);
+                    compiledPartitionInfo->isInputsUploadedByDmlEP = std::move(isInputsUploadedByDmlEP);
+                    compiledPartitionInfo->isInitializerTransferable = std::move(isInitializerTransferable);
+                    compiledPartitionInfo->partitionNodePropsMap = std::move(partitionNodePropsMap);
+                    compiledPartitionInfos[partitionIndex] = std::move(compiledPartitionInfo);
                 }
             }
         }
@@ -246,8 +211,7 @@ namespace Dml
                     m_providerImpl,
                     compiledPartitionInfo->indexedSubGraph,
                     std::move(compiledPartitionInfo->isInputsUploadedByDmlEP),
-                    compiledPartitionInfo->graphDesc,
-                    compiledPartitionInfo->compiledOperator);
+                    compiledPartitionInfo->partitionNodePropsMap,);
             }
         }
 
