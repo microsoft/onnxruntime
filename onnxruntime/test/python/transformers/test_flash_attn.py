@@ -18,7 +18,7 @@ from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
 
-from onnxruntime import InferenceSession, SessionOptions, OrtValue
+from onnxruntime import InferenceSession, OrtValue, SessionOptions
 
 torch.manual_seed(0)
 
@@ -1142,32 +1142,32 @@ def parity_check_gqa_past_no_buff(
 
 
 if __name__ == "__main__":
-    # print("-------- TEST PACKED MHA ---------")
-    # for b in [5]:
-    #     for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
-    #         for n in [6]:
-    #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-    #                 config = Config(b, s, s, 0, n, n, h)
-    #                 parity_check_mha(config, True)
-    # print("-------- TEST MHA ---------")
-    # for b in [5]:
-    #     for s, s2 in [
-    #         (113, 203),
-    #         (128, 217),
-    #         (113, 211),
-    #         (108, 256),
-    #         (256, 512),
-    #         (512, 256),
-    #         (1024, 1024),
-    #         (1023, 1024),
-    #         (1024, 1023),
-    #         (2048, 2048),
-    #     ]:
-    #         for n in [6]:
-    #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-    #                 config = Config(b, s, s2, 0, n, n, h)
-    #                 parity_check_mha(config, False)
-    # print("-------- TEST GQA ---------")
+    print("-------- TEST PACKED MHA ---------")
+    for b in [5]:
+        for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
+            for n in [6]:
+                for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+                    config = Config(b, s, s, 0, n, n, h)
+                    parity_check_mha(config, True)
+    print("-------- TEST MHA ---------")
+    for b in [5]:
+        for s, s2 in [
+            (113, 203),
+            (128, 217),
+            (113, 211),
+            (108, 256),
+            (256, 512),
+            (512, 256),
+            (1024, 1024),
+            (1023, 1024),
+            (1024, 1023),
+            (2048, 2048),
+        ]:
+            for n in [6]:
+                for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+                    config = Config(b, s, s2, 0, n, n, h)
+                    parity_check_mha(config, False)
+    print("-------- TEST GQA ---------")
     for b in [5]:
         for s, s2 in [
             (113, 203),
@@ -1188,14 +1188,6 @@ if __name__ == "__main__":
                         parity_check_gqa_no_past(config, causal=causal)
     print("-------- TEST GQA PAST ---------")
     random.seed(69)
-    # config = Config(1, 1, 10, 5, 8, 8, 8)
-    # parity_check_gqa_past_no_buff(
-    #     config,
-    #     causal=True,
-    #     past_format=Formats.BNSH,
-    #     rtol=1e-3,
-    #     atol=1e-3,
-    # )
     for b in [2]:
         for s, s2 in [
             (1, 128),
@@ -1213,7 +1205,7 @@ if __name__ == "__main__":
             for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
                 for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
                     for causal in [True]:
-                        for new_kv, past_kv_format in [(True, Formats.BNSH), (True, Formats.BSNH)]:
+                        for past_kv_format in [Formats.BNSH, Formats.BSNH]:
                             sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                             config = Config(b, s, s2, sp, n, n2, h)
                             parity_check_gqa_past(

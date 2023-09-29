@@ -86,10 +86,10 @@ struct PackedAttentionParameters {
 struct GroupQueryAttentionParameters {
   int batch_size;
   int sequence_length;
-  int past_sequence_length;   // actual sequence length of past_key and past_value
-  int kv_sequence_length;     // sequence length of key and value (or new_k and new_v when past is present)
+  int past_sequence_length;     // actual sequence length of past_key and past_value
+  int kv_sequence_length;       // sequence length of key and value (or new_k and new_v when past is present)
   int present_sequence_length;  // past_sequence_length + kv_sequence_length
-  int max_sequence_length;    // allocated length of past_key and past_value
+  int max_sequence_length;      // allocated length of past_key and past_value
   int hidden_size;
   int num_heads;
   int head_size;

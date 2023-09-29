@@ -84,34 +84,34 @@ Status CheckInputs(const T* query,
       past_kv_format = Q_K_V_BNSH;
       if (past_key_dims[2] != past_value_dims[2]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "BNSH Input 'past_key' and 'past_value' should have same dimension 2 (max sequence length), got ",
-                              past_key_dims[1]);
+                               "BNSH Input 'past_key' and 'past_value' should have same dimension 2 (max sequence length), got ",
+                               past_key_dims[1]);
       }
       if (past_key_dims[1] != kv_num_heads) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "Input 'past_key' shall have kv_num_heads");
+                               "Input 'past_key' shall have kv_num_heads");
       }
       if (past_value_dims[1] != kv_num_heads) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "Input 'past_value' shall have kv_num_heads");
+                               "Input 'past_value' shall have kv_num_heads");
       }
       // We assume all sequence in past kv are left-padded to max sequence length
       max_sequence_length = static_cast<int>(past_key_dims[2]);
-    // BSNH
+      // BSNH
     } else {
       past_kv_format = Q_K_V_BSNH;
       if (past_key_dims[1] != past_value_dims[1]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "BSNH Input 'past_key' and 'past_value' should have same dimension 1 (max sequence length), got ",
-                              past_key_dims[1]);
+                               "BSNH Input 'past_key' and 'past_value' should have same dimension 1 (max sequence length), got ",
+                               past_key_dims[1]);
       }
       if (past_key_dims[2] != kv_num_heads) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "Input 'past_key' shall have kv_num_heads");
+                               "Input 'past_key' shall have kv_num_heads");
       }
       if (past_value_dims[2] != kv_num_heads) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "Input 'past_value' shall have kv_num_heads");
+                               "Input 'past_value' shall have kv_num_heads");
       }
       // We assume all sequence in past kv are left-padded to max sequence length
       max_sequence_length = static_cast<int>(past_key_dims[1]);
@@ -196,7 +196,7 @@ Status CheckInputs(const T* query,
     past_sequence_length = *((*past_seq_len).template Data<int32_t>());
     present_sequence_length = max_sequence_length;
   } else if (past_key != nullptr) {
-    past_sequence_length = max_sequence_length; // length of past_key tensor
+    past_sequence_length = max_sequence_length;  // length of past_key tensor
     present_sequence_length = past_sequence_length + kv_sequence_length;
   }
 

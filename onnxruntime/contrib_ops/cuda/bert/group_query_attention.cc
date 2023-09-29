@@ -28,8 +28,8 @@ namespace cuda {
       (*KernelDefBuilder::Create())                                    \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
-          .MayInplace(3, 1) \
-          .MayInplace(4, 2) \
+          .MayInplace(3, 1)                                            \
+          .MayInplace(4, 2)                                            \
           .InputMemoryType(OrtMemTypeCPUInput, 5),                     \
       GroupQueryAttention<T>);
 
@@ -95,10 +95,10 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   std::vector<int64_t> present_dims;
   if (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH) {
     present_dims = {
-      parameters.batch_size, parameters.present_sequence_length, parameters.kv_num_heads, parameters.head_size};
-  } else { // BNSH
+        parameters.batch_size, parameters.present_sequence_length, parameters.kv_num_heads, parameters.head_size};
+  } else {  // BNSH
     present_dims = {
-      parameters.batch_size, parameters.kv_num_heads, parameters.present_sequence_length, parameters.head_size};
+        parameters.batch_size, parameters.kv_num_heads, parameters.present_sequence_length, parameters.head_size};
   }
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(1, present_shape);

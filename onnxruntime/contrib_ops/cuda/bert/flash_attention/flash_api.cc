@@ -35,7 +35,7 @@ void set_params_fprop(Flash_fwd_params& params,
                       void* softmax_lse_d,
                       float softmax_scale,
                       bool is_causal,
-                      bool kv_bsnh=true) {
+                      bool kv_bsnh = true) {
   // Set the pointers and strides.
   params.q_ptr = q;
   params.k_ptr = k;
@@ -208,8 +208,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                int num_splits,
                void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
                void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
-               bool kv_bsnh
-) {
+               bool kv_bsnh) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
@@ -322,7 +321,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int seqlen_k_new,
                        const float softmax_scale,
                        bool is_causal,
-                       bool past_bsnh,           // otherwise bnsh
+                       bool past_bsnh,  // otherwise bnsh
                        int num_splits,
                        void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
                        void* out_accum           // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
