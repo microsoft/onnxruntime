@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common';
+import {castToF32, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType,} from './common';
 
 export interface SkipLayerNormAttributes extends AttributeWithCacheKey {
   epsilon: number;
@@ -108,7 +108,6 @@ const createSkipLayerNormProgramInfo =
         variables.push(outputVariable('inputSkipBiasSum', inputs[0].dataType, outputShape, components));
       }
       const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-      const castToF32 = components === 1 ? 'f32' : `vec${components}f`;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       const hiddenSize: u32 = ${hiddenSize};
       const hiddenSizeVectorized: u32 = ${hiddenSize / components};
@@ -128,7 +127,7 @@ const createSkipLayerNormProgramInfo =
           let value = inputValue + skipValue + biasValue;
           ${hasInputSkipBiasSumOutput ? 'inputSkipBiasSum[offset + i] = value;' : ''}
           output[offset + i] = value;
-          let f32Value = ${castToF32}(value);
+          let f32Value = ${castToF32(dataType, components, 'value')};
           sum += f32Value;
           squareSum += f32Value * f32Value;
         }
@@ -143,10 +142,10 @@ const createSkipLayerNormProgramInfo =
       }`;
       const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
       if (outputCount > 1) {
-        outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+        outputs.push({dims: meanInvStdDevDim, dataType: DataType.float, gpuDataType: GpuDataType.default});
       }
       if (outputCount > 2) {
-        outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+        outputs.push({dims: meanInvStdDevDim, dataType: DataType.float, gpuDataType: GpuDataType.default});
       }
       if (outputCount > 3) {
         outputs.push({dims: inputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});

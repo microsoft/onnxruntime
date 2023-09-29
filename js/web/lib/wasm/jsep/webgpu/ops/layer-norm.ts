@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common';
+import {castToF32, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType,} from './common';
 
 export interface LayerNormAttributes extends AttributeWithCacheKey {
   axis: number;
@@ -48,8 +49,9 @@ const createLayerNormProgramInfo =
             }
           }
 
+          // TODO: for some reason it does not work correctly with fp16
+          const components = inputs[0].dataType !== DataType.float16 ? getMaxComponents(normSize) : 1;
           const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-          const components = getMaxComponents(normSize);
           const variables = [
             inputVariable('x', inputs[0].dataType, inputs[0].dims, components),
             inputVariable('scale', scale.dataType, scale.dims, components),
@@ -63,33 +65,38 @@ const createLayerNormProgramInfo =
           const hasInvStdOutput = outputCount > 2;
 
           if (hasMeanDataOutput) {
-            variables.push(outputVariable('meanDataOutput', inputs[0].dataType, meanInvStdDevDim));
+            variables.push(outputVariable('meanDataOutput', DataType.float, meanInvStdDevDim));
           }
           if (hasInvStdOutput) {
-            variables.push(outputVariable('invStdOutput', inputs[0].dataType, meanInvStdDevDim));
+            variables.push(outputVariable('invStdOutput', DataType.float, meanInvStdDevDim));
           }
 
           const getShaderSource = (shaderHelper: ShaderHelper) => `
   const normSize: u32 = ${normSize / components};
-  const normSizeTyped: ${dataType} = ${normSize};
-  const epsilon: ${dataType} = ${attributes.epsilon};
+  const epsilon: f32 = ${attributes.epsilon};
 
   ${shaderHelper.declareVariables(...variables)}
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(normCount)}
     let offset = global_idx * normSize;
-    var meanVector = ${fillVector(dataType, components)};
-    var meanSquareVector = ${fillVector(dataType, components)};
+    var meanVector = ${fillVector('f32', components)};
+    var meanSquareVector = ${fillVector('f32', components)};
 
     for (var h: u32 = 0u; h < normSize; h++) {
-      meanVector += x[h + offset];
-      meanSquareVector += x[h + offset] * x[h + offset];
+      let value = ${castToF32(dataType, components, 'x[h + offset]')};
+      meanVector += value;
+      meanSquareVector += value * value;
     }
-    let mean = ${sumVector('meanVector', components)} / normSizeTyped;
-    let meanSquare = sqrt(${sumVector('meanSquareVector', components)} / normSizeTyped - mean * mean + epsilon);
+    let mean = ${sumVector('meanVector', components)} / f32(normSize);
+    let meanSquare = sqrt(${sumVector('meanSquareVector', components)} 
+      / f32(normSize) - mean * mean + epsilon);
 
     for (var j: u32 = 0; j < normSize; j++) {
-      output[j + offset] = (x[j + offset] - mean) / meanSquare * scale[j] ${bias ? '+ bias[j]' : ''};
+      let f32input = ${castToF32(dataType, components, 'x[j + offset]')};
+      let f32scale = ${castToF32(dataType, components, 'scale[j]')};
+      output[j + offset] = ${variables[0].type.value}((f32input - mean) / meanSquare * f32scale
+        ${bias ? `+ ${castToF32(dataType, components, 'bias[j]')}` : ''}
+      );
     }
 
     ${hasMeanDataOutput ? 'meanDataOutput[global_idx] = mean' : ''};
@@ -97,14 +104,10 @@ const createLayerNormProgramInfo =
   }`;
           const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
           if (hasMeanDataOutput) {
-            outputs.push(
-                {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-            );
+            outputs.push({dims: meanInvStdDevDim, dataType: DataType.float, gpuDataType: GpuDataType.default});
           }
           if (hasInvStdOutput) {
-            outputs.push(
-                {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-            );
+            outputs.push({dims: meanInvStdDevDim, dataType: DataType.float, gpuDataType: GpuDataType.default});
           }
 
           return {
