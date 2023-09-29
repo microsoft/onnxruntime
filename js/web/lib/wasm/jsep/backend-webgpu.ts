@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env} from 'onnxruntime-common';
+import {Env, Tensor} from 'onnxruntime-common';
 
 import {configureLogger, LOG_DEBUG} from './log';
-import {TensorView} from './tensor-view';
-import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
+import {createView, TensorView} from './tensor-view';
+import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
 import {ComputeContext, GpuData, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
@@ -97,6 +97,11 @@ export class WebGpuBackend {
   profilingTimeBase?: bigint;
 
   env: Env;
+
+  /**
+   * a SessionID -> a Map of (InputOutputIndex -> [ID, GPUBuffer]) mapping.
+   */
+  sessionExternalDataMapping: Map<number, Map<number, [number, GPUBuffer]>> = new Map();
 
   async initialize(env: Env): Promise<void> {
     if (!navigator.gpu) {
@@ -192,11 +197,13 @@ export class WebGpuBackend {
   }
 
   flush(): void {
-    this.endComputePass();
-    this.device.queue.submit([this.getCommandEncoder().finish()]);
-    this.gpuDataManager.refreshPendingBuffers();
-    this.commandEncoder = null;
-    this.pendingDispatchNumber = 0;
+    if (this.commandEncoder) {
+      this.endComputePass();
+      this.device.queue.submit([this.getCommandEncoder().finish()]);
+      this.gpuDataManager.refreshPendingBuffers();
+      this.commandEncoder = null;
+      this.pendingDispatchNumber = 0;
+    }
   }
 
   /**
@@ -304,12 +311,9 @@ export class WebGpuBackend {
   }
 
   async download(gpuDataId: number, getTargetBuffer: () => Uint8Array): Promise<void> {
-    const arrayBuffer = await this.gpuDataManager.download(gpuDataId);
-
     // the underlying buffer may be changed after the async function is called. so we use a getter function to make sure
     // the buffer is up-to-date.
-    const data = getTargetBuffer();
-    data.set(new Uint8Array(arrayBuffer, 0, data.byteLength));
+    await this.gpuDataManager.download(gpuDataId, getTargetBuffer);
   }
 
   alloc(size: number): number {
@@ -372,7 +376,7 @@ export class WebGpuBackend {
       kernelEntry(context, attributes[1]);
       return 0;  // ORT_OK
     } catch (e) {
-      LOG_DEBUG('warning', `[WebGPU] Kernel "[${opType}] ${nodeName}" failed. Error: ${e}`);
+      errors.push(Promise.resolve(`[WebGPU] Kernel "[${opType}] ${nodeName}" failed. ${e}`));
       return 1;  // ORT_FAIL
     } finally {
       if (useErrorScope) {
@@ -387,4 +391,40 @@ export class WebGpuBackend {
       this.currentKernelId = null;
     }
   }
+
+  // #region external buffer
+  registerBuffer(sessionId: number, index: number, buffer: GPUBuffer, size: number): number {
+    let sessionInputOutputMapping = this.sessionExternalDataMapping.get(sessionId);
+    if (!sessionInputOutputMapping) {
+      sessionInputOutputMapping = new Map();
+      this.sessionExternalDataMapping.set(sessionId, sessionInputOutputMapping);
+    }
+
+    const previousBuffer = sessionInputOutputMapping.get(index);
+    const id = this.gpuDataManager.registerExternalBuffer(buffer, size, previousBuffer?.[1]);
+    sessionInputOutputMapping.set(index, [id, buffer]);
+    return id;
+  }
+  unregisterBuffers(sessionId: number): void {
+    const sessionInputOutputMapping = this.sessionExternalDataMapping.get(sessionId);
+    if (sessionInputOutputMapping) {
+      sessionInputOutputMapping.forEach(bufferInfo => this.gpuDataManager.unregisterExternalBuffer(bufferInfo[1]));
+      this.sessionExternalDataMapping.delete(sessionId);
+    }
+  }
+  getBuffer(gpuDataId: number): GPUBuffer {
+    const gpuData = this.gpuDataManager.get(gpuDataId);
+    if (!gpuData) {
+      throw new Error(`no GPU data for buffer: ${gpuDataId}`);
+    }
+    return gpuData.buffer;
+  }
+  createDownloader(gpuBuffer: GPUBuffer, size: number, type: Tensor.GpuBufferDataTypes):
+      () => Promise<Tensor.DataType> {
+    return async () => {
+      const data = await downloadGpuData(this, gpuBuffer, size);
+      return createView(data.buffer, type);
+    };
+  }
+  // #endregion
 }
