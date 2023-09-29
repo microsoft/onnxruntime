@@ -28,11 +28,21 @@ class QnnBackendManager {
   QnnBackendManager(std::string backend_path,
                     ProfilingLevel profiling_level,
                     uint32_t rpc_control_latency,
-                    HtpPerformanceMode htp_performance_mode)
+                    HtpPerformanceMode htp_performance_mode
+#ifndef NDEBUG
+                    ,
+                    std::string qnn_saver_path = ""
+#endif
+                    )
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
-        htp_performance_mode_(htp_performance_mode) {
+        htp_performance_mode_(htp_performance_mode)
+#ifndef NDEBUG
+        ,
+        qnn_saver_path_(qnn_saver_path)
+#endif
+  {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -140,6 +150,10 @@ class QnnBackendManager {
 
   Status LoadQnnSystemLib();
 
+#ifndef NDEBUG
+  Status LoadQnnSaverBackend();
+#endif
+
   Status UnloadLib(void* handle);
 
   void* LibFunction(void* handle, const char* symbol, std::string& error_msg);
@@ -209,6 +223,9 @@ class QnnBackendManager {
   uint16_t ort_ctx_metadata_length_ = 0;
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
+#endif
+#ifndef NDEBUG
+  const std::string qnn_saver_path_;
 #endif
 };
 

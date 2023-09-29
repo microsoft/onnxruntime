@@ -103,26 +103,88 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
 }
 
 Status QnnBackendManager::LoadBackend() {
-  QnnInterface_t* interface_provider{nullptr};
+  QnnInterface_t* backend_interface_provider{nullptr};
   auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
                                     QnnInterface_t>(backend_path_.c_str(),
                                                     "QnnInterface_getProviders",
                                                     &backend_lib_handle_,
                                                     {QNN_API_VERSION_MAJOR, QNN_API_VERSION_MINOR},
-                                                    &interface_provider);
+                                                    &backend_interface_provider);
   ORT_RETURN_IF_ERROR(rt);
-  Qnn_Version_t interface_version = GetQnnInterfaceVersion(interface_provider);
-  qnn_interface_ = interface_provider->QNN_INTERFACE_VER_NAME;
-  auto backend_id = interface_provider->backendId;
+  qnn_interface_ = backend_interface_provider->QNN_INTERFACE_VER_NAME;
+  auto backend_id = backend_interface_provider->backendId;
   SetQnnBackendType(backend_id);
 
-  LOGS_DEFAULT(INFO) << "Found valid interface, version: " << interface_version.major
-                     << "." << interface_version.minor
-                     << " backend provider name: " << interface_provider->providerName
+  Qnn_Version_t backend_interface_version = GetQnnInterfaceVersion(backend_interface_provider);
+  LOGS_DEFAULT(INFO) << "Found valid interface, version: " << backend_interface_version.major
+                     << "." << backend_interface_version.minor
+                     << " backend provider name: " << backend_interface_provider->providerName
                      << " backend id: " << backend_id;
 
   return Status::OK();
 }
+
+#ifndef NDEBUG
+// Loads the intended backend (e.g., HTP, CPU, etc) to get its type, and then
+// sets QNN Saver as the active backend. QNN op builders will still see the intended backend (e.g., HTP)
+// as the backend type to ensure they emit the expected QNN API calls.
+//
+// QNN Saver is a "debugging" backend that serializes all QNN API calls (and weights) into local files.
+// This information can be used to debug issues by replaying QNN API calls with another backend.
+Status QnnBackendManager::LoadQnnSaverBackend() {
+  void* backend_lib_handle = nullptr;
+
+  // Helper that unloads the intended backend library handle when the `unload_backend_lib` variable
+  // goes out of scope. Similar to `defer` in other languages.
+  auto unload_backend_lib = gsl::finally([&] {
+    if (backend_lib_handle != nullptr) {
+      auto result = UnloadLib(backend_lib_handle);
+      if (Status::OK() != result) {
+        ORT_THROW("Failed to unload backend library.");
+      }
+    }
+  });
+
+  // Load the intended backend (e.g., HTP, CPU) to ensure it is valid and to get its type.
+  QnnInterface_t* backend_interface_provider{nullptr};
+  auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
+                                    QnnInterface_t>(backend_path_.c_str(),
+                                                    "QnnInterface_getProviders",
+                                                    &backend_lib_handle,
+                                                    {QNN_API_VERSION_MAJOR, QNN_API_VERSION_MINOR},
+                                                    &backend_interface_provider);
+  ORT_RETURN_IF_ERROR(rt);
+
+  // Set the "intended" backend type so that QNN builders still make the expected QNN API calls.
+  auto backend_id = backend_interface_provider->backendId;
+  SetQnnBackendType(backend_id);
+
+  // Load the QNN Saver backend and set it as the activate backend.
+  QnnInterface_t* saver_interface_provider{nullptr};
+  auto saver_rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
+                                          QnnInterface_t>(qnn_saver_path_.c_str(),
+                                                          "QnnInterface_getProviders",
+                                                          &backend_lib_handle_,  // NOTE: QNN Saver library handle is set
+                                                          {QNN_API_VERSION_MAJOR, QNN_API_VERSION_MINOR},
+                                                          &saver_interface_provider);
+  ORT_RETURN_IF_ERROR(saver_rt);
+  qnn_interface_ = saver_interface_provider->QNN_INTERFACE_VER_NAME;  // NOTE: QNN Saver will provide the interfaces
+
+  Qnn_Version_t backend_interface_version = GetQnnInterfaceVersion(backend_interface_provider);
+  Qnn_Version_t saver_interface_version = GetQnnInterfaceVersion(saver_interface_provider);
+
+  LOGS_DEFAULT(INFO) << "Using QNN Saver version: " << saver_interface_version.major << "."
+                     << saver_interface_version.minor
+                     << " provider name : " << saver_interface_provider->providerName;
+
+  LOGS_DEFAULT(INFO) << "Intended backend provider name: " << backend_interface_provider->providerName
+                     << " backend id: " << backend_id
+                     << " interface version: " << backend_interface_version.major
+                     << "." << backend_interface_version.minor;
+
+  return Status::OK();
+}
+#endif  // !defined(NDEBUG)
 
 Status QnnBackendManager::LoadQnnSystemLib() {
 #ifdef _WIN32
@@ -641,7 +703,15 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_
     return Status::OK();
   }
 
+#ifndef NDEBUG
+  if (qnn_saver_path_.empty()) {
+    ORT_RETURN_IF_ERROR(LoadBackend());
+  } else {
+    ORT_RETURN_IF_ERROR(LoadQnnSaverBackend());
+  }
+#else
   ORT_RETURN_IF_ERROR(LoadBackend());
+#endif
   LOGS(logger, VERBOSE) << "LoadBackend succeed.";
 
   if (load_from_cached_context) {
