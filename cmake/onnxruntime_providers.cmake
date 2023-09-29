@@ -402,8 +402,12 @@ if (onnxruntime_USE_CUDA)
       )
     endif()
     if (NOT onnxruntime_USE_NCCL)
-      file(GLOB_RECURSE ITEMS_TO_REMOVE "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/*.cc")
-      list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs ${ITEMS_TO_REMOVE})
+      list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/nccl_kernels.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding_spec.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_matmul.cc"
+      )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
@@ -446,7 +450,11 @@ if (onnxruntime_USE_CUDA)
       list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_full_training_only_srcs})
     elseif(WIN32 OR NOT onnxruntime_USE_NCCL)
       # NCCL is not support in Windows build
-      file(GLOB_RECURSE onnxruntime_cuda_nccl_op_srcs "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/*.cc")
+      file(GLOB_RECURSE onnxruntime_cuda_nccl_op_srcs
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
+      )
       list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_nccl_op_srcs})
     endif()
   endif()
@@ -1591,8 +1599,11 @@ if (onnxruntime_USE_ROCM)
 
     # NCCL is not support in Windows build
     if (WIN32 OR NOT onnxruntime_USE_NCCL)
-      file(GLOB_RECURSE ITEMS_TO_REMOVE "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/collective/*.cc")
-      list(REMOVE_ITEM onnxruntime_rocm_generated_training_ops_cc_srcs ${ITEMS_TO_REMOVE})
+      list(REMOVE_ITEM onnxruntime_rocm_generated_training_ops_cc_srcs
+      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/collective/nccl_common.cc"
+      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/collective/nccl_kernels.cc"
+      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/collective/megatron.cc"
+      )
     endif()
 
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_rocm_training_ops_cc_srcs} ${onnxruntime_rocm_training_ops_cu_srcs})
