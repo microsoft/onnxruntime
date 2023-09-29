@@ -73,7 +73,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
 void InferenceModel(const std::string& model_data, const char* log_id,
                     std::unique_ptr<IExecutionProvider> execution_provider,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
-                    std::vector<std::string>& output_names, std::vector<OrtValue>& output_vals) {
+                    std::vector<OrtValue>& output_vals) {
   SessionOptions so;
   so.session_logid = log_id;
   RunOptions run_options;
@@ -102,14 +102,12 @@ void InferenceModel(const std::string& model_data, const char* log_id,
   }
 
   const auto& outputs = graph.GetOutputs();
+  std::vector<std::string> output_names;
 
-  // fetch all outputs if necessary.
-  if (output_names.empty()) {
-    output_names.reserve(outputs.size());
-    for (const auto* node_arg : outputs) {
-      if (node_arg->Exists()) {
-        output_names.push_back(node_arg->Name());
-      }
+  output_names.reserve(outputs.size());
+  for (const auto* node_arg : outputs) {
+    if (node_arg->Exists()) {
+      output_names.push_back(node_arg->Name());
     }
   }
 

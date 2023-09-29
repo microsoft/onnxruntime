@@ -2497,10 +2497,15 @@ TEST(QDQTransformerTests, Clip) {
                       epsilon);
   };
 
+  constexpr int16_t int16_min = std::numeric_limits<int16_t>::min();
+  constexpr uint16_t uint16_min = std::numeric_limits<uint16_t>::min();
+
   std::vector<int> opsets{12, 18, 19};
   for (auto opset : opsets) {
     test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset);        // [0, 6]
     test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset, true);  // [0, 6] contrib qdq
+    test_case(9.15541313801785e-5f, int16_min, 0, opset, true);                // [0, 6] contrib 16-bit qdq
+    test_case(0.0009f, int16_min, 1, opset, true);                             // [0, 58.98] contrib 16-bit qdq
     test_case(.02f, static_cast<int8_t>(-128), 0, opset);                      // [0, 5.1]
     test_case(.02f, static_cast<int8_t>(-128), 0, opset, true);                // [0, 5.1] contrib qdq
     test_case(.03f, static_cast<int8_t>(-128), 1, opset);                      // [0, 7.65]
@@ -2513,6 +2518,8 @@ TEST(QDQTransformerTests, Clip) {
     test_case(.04f, static_cast<int8_t>(-97), 1, opset, true);                 // [-1.24, 8.96] contrib qdq
     test_case(.02352941176f, static_cast<uint8_t>(0), 0, opset);               // [0, 6]
     test_case(.02352941176f, static_cast<uint8_t>(0), 0, opset, true);         // [0, 6] contrib qdq
+    test_case(9.15541313801785e-5f, uint16_min, 0, opset, true);               // [0, 6] contrib 16-bit qdq
+    test_case(0.0009f, uint16_min, 1, opset, true);                            // [0, 58.98] contrib 16-bit qdq
     test_case(.02f, static_cast<uint8_t>(0), 0, opset);                        // [0, 5.1]
     test_case(.02f, static_cast<uint8_t>(0), 0, opset, true);                  // [0, 5.1] contrib qdq
     test_case(.03f, static_cast<uint8_t>(0), 1, opset);                        // [0, 7.65]
@@ -3078,12 +3085,12 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
                       check_graph,
                       TransformerLevel::Default,
                       TransformerLevel::Level1,
-                      18);  // disable TransposeOptimizer for simplicity
+                      18);
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Default,
                       TransformerLevel::Level1,
-                      19);  // disable TransposeOptimizer for simplicity
+                      19);
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1}, false /*use_contrib_qdq*/);

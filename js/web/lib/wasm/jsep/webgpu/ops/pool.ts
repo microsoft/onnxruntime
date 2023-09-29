@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -21,9 +20,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   }
   if (inputs[0].dims.length !== 4) {
     throw new Error('Pool ops supports 2-D inputs only for now.');
-  }
-  if (inputs[0].dataType !== DataType.float) {
-    throw new Error('Invalid input type.');
   }
 };
 
@@ -248,7 +244,7 @@ const createAveragePoolProgramInfo =
           const kernelSize = ShapeUtil.size(adjustedAttributes.kernelShape);
 
           const x = inputVariable('x', input.dataType, input.dims);
-          const dataType = 'f32';
+          const dataType = x.type.value;
 
           const op1 = 'value += x_val;';
           let op2 = '';

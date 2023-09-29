@@ -27,6 +27,10 @@ static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
 static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+static constexpr uint32_t min_ort_version_with_compute_v2_support = 17;
+#endif
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv9()
 #else
@@ -424,7 +428,8 @@ struct CustomOpKernel : OpKernel {
       ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
     }
 
-    if (op_.version > 15 && op_.KernelCompute == 0) {
+    if (op_.version >= min_ort_version_with_compute_v2_support &&
+        op_.CreateKernelV2) {
       op_kernel_ = nullptr;
       Ort::ThrowOnError(
           op_.CreateKernelV2(
@@ -443,13 +448,14 @@ struct CustomOpKernel : OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    if (op_.version > 15 && op_.KernelCompute == 0) {
+    if (op_.version >= min_ort_version_with_compute_v2_support &&
+        op_.KernelComputeV2) {
       auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
       return ToStatus(status_ptr);
+    } else {
+      op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
+      return Status::OK();
     }
-
-    op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
-    return Status::OK();
   }
 
  private:
