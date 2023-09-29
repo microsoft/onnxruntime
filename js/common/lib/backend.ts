@@ -29,7 +29,7 @@ interface SessionHandler {
 /**
  * Represent a handler instance of an inference session.
  *
- * @internal
+ * @ignore
  */
 export interface InferenceSessionHandler extends SessionHandler {
   startProfiling(): void;
@@ -42,20 +42,15 @@ export interface InferenceSessionHandler extends SessionHandler {
 /**
  * Represent a handler instance of a training inference session.
  *
- * @internal
+ * @ignore
  */
 export interface TrainingSessionHandler extends SessionHandler {
-  dispose(): Promise<void>;
-
-  readonly inputNames: readonly string[];
-  readonly outputNames: readonly string[];
-
   runTrainStep(
       feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
 
-  loadParametersBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): Promise<void>;
-  getContiguousParameters(trainableOnly: boolean): Promise<ArrayBufferLike>;
+  loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void>;
+  getContiguousParameters(trainableOnly: boolean): Promise<Uint8Array>;
 }
 
 /**

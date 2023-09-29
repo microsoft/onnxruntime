@@ -27,7 +27,7 @@ export interface TrainingSession {
    * @param feeds - Representation of the model input. See type description of `InferenceSession.InputType` for
    detail.
    * @param options - Optional. A set of options that controls the behavior of model training.
-   * @returns A promise that resolves to an error code
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding values.
    */
   runTrainStep(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions):
       Promise<InferenceSession.ReturnType>;
@@ -55,7 +55,7 @@ export interface TrainingSession {
    * @param buffer - buffer containing parameters
    * @param trainableOnly - True if trainable parameters only to be modified, false otherwise.
    */
-  loadParametersBuffer(buffer: ArrayBufferLike, trainableOnly: boolean): Promise<void>;
+  loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void>;
 
   /**
    * Copies from the TrainingSession parameters to a buffer.
@@ -63,7 +63,7 @@ export interface TrainingSession {
    * @param trainableOnly - True if trainable parameters only to be copied, false othrwise.
    * @returns A promise that resolves to a buffer of the requested parameters.
    */
-  getContiguousParameters(trainableOnly: boolean): Promise<ArrayBufferLike>;
+  getContiguousParameters(trainableOnly: boolean): Promise<Uint8Array>;
   // #endregion
 
   // #region release()
