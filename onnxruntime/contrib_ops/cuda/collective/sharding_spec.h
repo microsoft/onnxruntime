@@ -36,26 +36,31 @@ class DeviceMesh {
   //     columns along mesh axis 0, the
   //     corresponding sharding spec is a string "S[1]S[0]".
   //     If that 2-D tensor's value is np.array([[5, 6], [7, 8]]),
-  //     GPU 0/1/2/3 owns 5/7/6/8.
-  //     Visualization of sharding rows and then columns with 2-D mesh:
-  //     - GPU: [[0, 1], [2, 3]], Value: [[5, 6], [7, 8]]
-  //     (Split GPU mesh along axis 1 and tensor along axis 0)
-  //     - GPU: [[0], [2]], Value: [[5, 6]]
-  //       GPU: [[1], [3]], Value: [[7, 8]]
-  //     (Split GPU mesh along axis 0 and tensor along axis 1)
-  //     - GPU: [[0]], Value: [[5]]
-  //     - GPU: [[2]], Value: [[6]]
-  //     - GPU: [[1]], Value: [[7]]
-  //     - GPU: [[3]], Value: [[8]]
+  //     GPU 0/1/2/3 owns 5/7/6/8.  Below is a visualization the sharding
+  //     proccess.
+  //     - Start with a 2-D device mesh [[0, 1], [2, 3]] and
+  //       a 2-D tensor [[5, 6], [7, 8]]
+  //       - GPU: [[0, 1], [2, 3]], Tensor: [[5, 6], [7, 8]]
+  //     - Split GPU mesh along axis 1 and tensor along
+  //       axis 0 for "S[1]" in "S[1]S[0]"
+  //       - GPU: [[0], [2]], Tensor: [[5, 6]]
+  //         GPU: [[1], [3]], Tensor: [[7, 8]]
+  //     - Split GPU mesh along axis 0 and tensor along
+  //       axis 1 for "S[0]" in "S[1]S[0]"
+  //       - GPU: [[0]], Tensor: [[5]]
+  //       - GPU: [[2]], Tensor: [[6]]
+  //       - GPU: [[1]], Tensor: [[7]]
+  //       - GPU: [[3]], Tensor: [[8]]
 
   // Actual shape of device mesh represented by `device_mesh_elements`.
   std::vector<int64_t> device_mesh_shape;
   // Flattened device mesh.
   std::vector<int64_t> device_mesh_elements;
-  // Helper to debug and generate error message.
+  // Helper to debug and generate error message; e.g.,
+  // "DeviceMesh{Shape: [2,2,], Elements: [0,1,2,3,]}".
   std::string to_string() const {
     std::ostringstream os;
-    os << "DeviceMesh { Shape: [";
+    os << "DeviceMesh{Shape: [";
     for (const auto& shape : device_mesh_shape)
       os << shape << ",";
     os << "], Elements: [";
@@ -101,8 +106,33 @@ class AxisPartitionSpec {
 };
 
 class TensorPartitionSpec {
+  // [Device Mesh and Tensor Sharding for Tensor Parallel]
+  // TensorPartitionSpec holds a collection of AxisPartitionSpec and an
+  // associated DeviceMesh. It is responsible for determining how a tensor
+  // should be partitioned across a device mesh.
+  //
+  // Example 1: RS[0]
+  // In this scenario, `axis_specs` would contain two `AxisPartitionSpec` objects.
+  // - The first object is a Replica, denoting that the first axis of the tensor is
+  //   not sharded but is instead replicated.
+  // - The second object is a Shard along the 0-th axis of the device mesh. It denotes
+  //   that the second axis of the tensor is sharded along the first axis of the
+  //   device mesh.
+  //
+  // Example 2: S[0]RR
+  // In this scenario, `axis_specs` would contain three `AxisPartitionSpec` objects.
+  // - The first object is a Shard along the 0-th axis of the device mesh, indicating
+  //   that the first axis of the tensor is sharded along the first axis of the
+  //   device mesh.
+  // - The second and third objects are Replicas, indicating that the second and third
+  //   axes of the tensor are not sharded but are instead replicated.
  public:
+  // axis_specs[i]: AxisPartitionSpec for tensor axis i. For a 2-D tensor,
+  //                axis_specs[0] is for row axis and axis_specs[1] is for
+  //                column axis. axis_specs[i].device_mesh_axis = j means that
+  //                tensor axis i is sharded along device mesh axis j.
   std::vector<AxisPartitionSpec> axis_specs;
+  // device_mesh: DeviceMesh for sharding the associated tensor.
   DeviceMesh device_mesh;
   static TensorPartitionSpec Create(
       const std::vector<AxisPartitionSpec>& axis_specs, const DeviceMesh& device_mesh) {
