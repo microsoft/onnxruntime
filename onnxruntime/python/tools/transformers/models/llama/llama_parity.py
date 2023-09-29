@@ -15,7 +15,7 @@ logger = logging.getLogger("")
 def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: LlamaForCausalLM):
     # Dummy values for parity
     batch_size, sequence_length = 2, 8
-    device = torch.device("cpu")
+    device = torch.device("cpu" if args.execution_provider == "cpu" else "cuda")
 
     # Run inference with PyTorch
     inputs = (
@@ -114,6 +114,7 @@ def main(argv: List[str] = []):  # noqa: B006
     logger.info(f"Arguments: {args}")
 
     # Load model and config
+    device = torch.device("cpu" if args.execution_provider == "cpu" else "cuda")
     use_auth_token = args.torch_model_directory == os.path.join(".")
     location = args.model_name if use_auth_token else args.torch_model_directory
 
@@ -123,7 +124,7 @@ def main(argv: List[str] = []):  # noqa: B006
         torch_dtype=(torch.float16 if args.precision == "fp16" else torch.float32),
         use_auth_token=use_auth_token,
         use_cache=True,
-    )
+    ).to(device)
 
     verify_parity(args, config, llama)
 

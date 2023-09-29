@@ -136,7 +136,7 @@ def process_log_file(device_id, log_file, base_results):
 
     load_audio_latency_s, load_audio_throughput_s = None, None
     feat_ext_latency_s, feat_ext_throughput_s = None, None
-    latency_s, per_token_latency_s, per_token_latency_ms = None, None, None
+    token_length, latency_s, per_token_latency_s, per_token_latency_ms = None, None, None, None
     throughput, memory = None, None
 
     # Detect metrics

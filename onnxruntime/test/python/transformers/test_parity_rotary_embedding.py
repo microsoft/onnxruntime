@@ -132,6 +132,7 @@ class LlamaMSRotaryEmbedding(nn.Module):
         cos: torch.Tensor,
         sin: torch.Tensor,
         pos: int,
+        interleaved: bool,
     ):
         # Dimension of x is [batch_size, seq_len, n_heads, head_dim]
         rot_dim = 2 * cos.shape[3]
@@ -139,8 +140,13 @@ class LlamaMSRotaryEmbedding(nn.Module):
         # Dolly requires partial rotation
         x_rot = x[:, :, :, :rot_dim]
 
-        x1 = x_rot[:, :, :, 0::2]
-        x2 = x_rot[:, :, :, 1::2]
+        if interleaved:
+            x1 = x_rot[:, :, :, 0::2]
+            x2 = x_rot[:, :, :, 1::2]
+        else:
+            half = x_rot.shape[-1] // 2
+            x1 = x[:, :, :, 0:half]
+            x2 = x[:, :, :, half : 2 * half]
 
         seq_len = x.shape[1]
         cos_x = cos[:, pos : pos + seq_len, :, :]
@@ -149,19 +155,16 @@ class LlamaMSRotaryEmbedding(nn.Module):
         real = cos_x * x1 - sin_x * x2
         imag = sin_x * x1 + cos_x * x2
 
-        x1_cos = cos_x * x1
-        x2_cos = cos_x * x2
-
-        x1_sin = sin_x * x1
-        x2_sin = sin_x * x2
-
-        x_rot[:, :, :, 0::2] = real
-        x_rot[:, :, :, 1::2] = imag
+        if interleaved:
+            x_rot[:, :, :, 0::2] = real
+            x_rot[:, :, :, 1::2] = imag
+        else:
+            x_rot = torch.cat((real, imag), dim=-1)
 
         return torch.cat((x_rot, x[:, :, :, rot_dim:]), dim=-1)
 
-    def forward(self, x, cos, sin, pos):
-        return self.rotate_tensor(x, cos, sin, pos)
+    def forward(self, x, cos, sin, pos, interleaved):
+        return self.rotate_tensor(x, cos, sin, pos, interleaved)
 
 
 class TestLlamaRotaryEmbedding(unittest.TestCase):
@@ -170,7 +173,7 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         self.llama_hf = LlamaHFRotaryEmbedding(self.config.head_size, self.config.max_sequence_length)
         self.llama_ms = LlamaMSRotaryEmbedding(self.config.hidden_size, self.config.num_heads, self.config.max_sequence_length)
 
-    def create_onnx_graph(self, x_shape, pos_shape, cos, sin):
+    def create_onnx_graph(self, x_shape, pos_shape, cos, sin, interleaved):
         inputs = [
             helper.make_tensor_value_info(
                 name="input",
@@ -210,6 +213,7 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
                 op_type="RotaryEmbedding",
                 inputs=["input", "position_ids", "cos_cache", "sin_cache"],
                 outputs=["output"],
+                interleaved=interleaved,
                 name="RotaryEmbedding_0",
                 domain="com.microsoft",
             ),
@@ -226,29 +230,40 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[opset_import])
         return model.SerializeToString()
 
-    # def test_hf_rotary(self):
-    #     x_bnsh = torch.randn(self.config.batch_size, self.config.num_heads, self.config.sequence_length, self.config.head_size)
-    #     cos_hf, sin_hf = self.llama_hf.get_cos_sin_cache(self.config.sequence_length)
-    #     pos_hf = torch.stack([torch.arange(0, self.config.sequence_length) for _ in range(self.config.batch_size)])
-    #     output_hf = self.llama_hf(x_bnsh, cos_hf, sin_hf, pos_hf)
+    def test_hf_rotary_and_msft_rotary(self):
+        x_bnsh = torch.randn(self.config.batch_size, self.config.num_heads, self.config.sequence_length, self.config.head_size)
+        cos_hf, sin_hf = self.llama_hf.get_cos_sin_cache(self.config.sequence_length)
+        pos_hf = torch.stack([torch.arange(0, self.config.sequence_length) for _ in range(self.config.batch_size)])
+        output_hf = self.llama_hf(x_bnsh, cos_hf, sin_hf, pos_hf)  # output is BxNxSxH
 
-    #     self.assertTrue(torch.allclose(output_hf, output_ort))
+        x_bsnh = x_bnsh.transpose(1, 2)
+        x_bsd = deepcopy(x_bsnh)  # deepcopy to avoid changes made by self.llama_ms forward pass
+        cos_ms, sin_ms = self.llama_ms.get_cos_sin_cache()
+        pos_ms = 0
+        output_ms = self.llama_ms(deepcopy(x_bsnh), cos_ms, sin_ms, pos_ms, interleaved=False).detach().cpu().numpy()  # output is BxSxNxH
 
-    def test_msft_prompt_rotary(self):
+        # Compare caches as Mx(H/2)
+        self.assertTrue(torch.allclose(self.llama_hf.cos_cached.squeeze()[:, :(self.config.head_size // 2)], cos_ms.squeeze()))
+        self.assertTrue(torch.allclose(self.llama_hf.sin_cached.squeeze()[:, :(self.config.head_size // 2)], sin_ms.squeeze()))
+
+        # Compare outputs as BxSxNxH
+        self.assertTrue(np.allclose(output_hf.transpose(1,2).detach().cpu().numpy(), output_ms))
+
+    def test_msft_prompt_rotary_interleaved(self):
         if "CUDAExecutionProvider" not in ort.get_available_providers():
             return
-        
+
         # Calculated this way to match the data in rotary_embedding_op_test.cc
         x_bnsh = torch.randn(self.config.batch_size, self.config.num_heads, self.config.sequence_length, self.config.head_size)
         x_bsnh = x_bnsh.transpose(1, 2)
         x_bsd = deepcopy(x_bsnh)  # deepcopy to avoid changes made by self.llama_ms forward pass
         cos_ms, sin_ms = self.llama_ms.get_cos_sin_cache()
         pos_ms = 0
-        output_ms = self.llama_ms(deepcopy(x_bsnh), cos_ms, sin_ms, pos_ms).detach().cpu().numpy()
+        output_ms = self.llama_ms(deepcopy(x_bsnh), cos_ms, sin_ms, pos_ms, interleaved=True).detach().cpu().numpy()
 
         x_bsd = x_bsd.reshape(self.config.batch_size, self.config.sequence_length, self.config.hidden_size)
         pos_ms = torch.tensor([pos_ms])
-        onnx_graph = self.create_onnx_graph(x_bsd.shape, pos_ms.shape, cos_ms, sin_ms)
+        onnx_graph = self.create_onnx_graph(x_bsd.shape, pos_ms.shape, cos_ms, sin_ms, interleaved=True)
         sess = ort.InferenceSession(onnx_graph, providers=["CUDAExecutionProvider"])
         inputs_ort = {
             "input": x_bsd.detach().cpu().numpy(),
@@ -257,10 +272,11 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         output_ort = sess.run(None, inputs_ort)[0]
         output_ort = output_ort.reshape((self.config.batch_size, self.config.sequence_length, self.config.num_heads, self.config.head_size))
 
+        # Compare inputs/outputs as BxSxNxH
         self.assertTrue(np.allclose(x_bsnh.flatten(), x_bsd.flatten()))
         self.assertTrue(np.allclose(output_ms.flatten(), output_ort.flatten()))
 
-    def test_msft_new_pos_id_rotary(self):
+    def test_msft_token_rotary(self):
         if "CUDAExecutionProvider" not in ort.get_available_providers():
             return
         
@@ -270,11 +286,11 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         x_bsd = deepcopy(x_bsnh)  # deepcopy to avoid changes made by self.llama_ms forward pass
         cos_ms, sin_ms = self.llama_ms.get_cos_sin_cache()
         pos_ms = 2
-        output_ms = self.llama_ms(deepcopy(x_bsnh), cos_ms, sin_ms, pos_ms).detach().cpu().numpy()
+        output_ms = self.llama_ms(deepcopy(x_bsnh), cos_ms, sin_ms, pos_ms, interleaved=True).detach().cpu().numpy()
 
         x_bsd = x_bsd.reshape(self.config.batch_size, self.config.sequence_length, self.config.hidden_size)
         pos_ms = torch.tensor([pos_ms])
-        onnx_graph = self.create_onnx_graph(x_bsd.shape, pos_ms.shape, cos_ms, sin_ms)
+        onnx_graph = self.create_onnx_graph(x_bsd.shape, pos_ms.shape, cos_ms, sin_ms, interleaved=True)
         sess = ort.InferenceSession(onnx_graph, providers=["CUDAExecutionProvider"])
         inputs_ort = {
             "input": x_bsd.detach().cpu().numpy(),
@@ -283,9 +299,58 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         output_ort = sess.run(None, inputs_ort)[0]
         output_ort = output_ort.reshape((self.config.batch_size, self.config.sequence_length, self.config.num_heads, self.config.head_size))
 
+        # Compare inputs/outputs as BxSxNxH
         self.assertTrue(np.allclose(x_bsnh.flatten(), x_bsd.flatten()))
         self.assertTrue(np.allclose(output_ms.flatten(), output_ort.flatten()))
 
+    def test_hf_prompt_rotary(self):
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            return
+
+        x_bnsh = torch.randn(self.config.batch_size, self.config.num_heads, self.config.sequence_length, self.config.head_size)
+        cos_hf, sin_hf = self.llama_hf.get_cos_sin_cache(self.config.sequence_length)
+        pos_hf = torch.stack([torch.arange(0, self.config.sequence_length) for _ in range(self.config.batch_size)])
+        output_hf = self.llama_hf(x_bnsh, cos_hf, sin_hf, pos_hf)
+
+        x_bsnh = x_bnsh.transpose(1, 2)
+        x_bsd = x_bsnh.reshape(self.config.batch_size, self.config.sequence_length, self.config.hidden_size)
+        cos_ms, sin_ms = self.llama_ms.get_cos_sin_cache()
+        pos_ms = torch.tensor([0])
+        onnx_graph = self.create_onnx_graph(x_bsd.shape, pos_ms.shape, cos_ms, sin_ms, interleaved=False)
+        sess = ort.InferenceSession(onnx_graph, providers=["CUDAExecutionProvider"])
+        inputs_ort = {
+            "input": x_bsd.detach().cpu().numpy(),
+            "position_ids": pos_ms.detach().cpu().numpy(),
+        }
+        output_ort = sess.run(None, inputs_ort)[0]
+        output_ort = output_ort.reshape((self.config.batch_size, self.config.sequence_length, self.config.num_heads, self.config.head_size))
+
+        # Compare outputs as BxSxNxH
+        self.assertTrue(np.allclose(output_hf.transpose(1,2).detach().cpu().numpy(), output_ort))
+
+    def test_hf_prompt_rotary_pos_ids(self):
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            return
+
+        x_bnsh = torch.randn(self.config.batch_size, self.config.num_heads, self.config.sequence_length, self.config.head_size)
+        cos_hf, sin_hf = self.llama_hf.get_cos_sin_cache(self.config.sequence_length)
+        pos_ids = torch.stack([torch.arange(0, self.config.sequence_length) for _ in range(self.config.batch_size)])
+        output_hf = self.llama_hf(x_bnsh, cos_hf, sin_hf, pos_ids)
+
+        x_bsnh = x_bnsh.transpose(1, 2)
+        x_bsd = x_bsnh.reshape(self.config.batch_size, self.config.sequence_length, self.config.hidden_size)
+        cos_ms, sin_ms = self.llama_ms.get_cos_sin_cache()
+        onnx_graph = self.create_onnx_graph(x_bsd.shape, pos_ids.shape, cos_ms, sin_ms, interleaved=False)
+        sess = ort.InferenceSession(onnx_graph, providers=["CUDAExecutionProvider"])
+        inputs_ort = {
+            "input": x_bsd.detach().cpu().numpy(),
+            "position_ids": pos_ids.detach().cpu().numpy(),
+        }
+        output_ort = sess.run(None, inputs_ort)[0]
+        output_ort = output_ort.reshape((self.config.batch_size, self.config.sequence_length, self.config.num_heads, self.config.head_size))
+
+        # Compare outputs as BxSxNxH
+        self.assertTrue(np.allclose(output_hf.transpose(1,2).detach().cpu().numpy(), output_ort))
 
 if __name__ == "__main__":
     unittest.main()

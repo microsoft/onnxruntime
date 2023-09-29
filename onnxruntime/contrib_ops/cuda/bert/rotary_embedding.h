@@ -19,6 +19,7 @@ class RotaryEmbedding final : public CudaKernel {
 
  protected:
   float scale;
+  bool interleaved;
 };
 
 }  // namespace cuda

@@ -157,8 +157,8 @@ class FusionSimplifiedLayerNormalization(Fusion):
             return
 
         self.nodes_to_remove.extend(sim_ln_nodes[:-1] if not starts_with_graph_input else sim_ln_nodes)
-        if not extra_mul:
-            self.nodes_to_remove.append(node)
+        # if not extra_mul:
+        self.nodes_to_remove.append(node)
 
         # logger.info(f"Node inputs: {root_input}, {node.input[layernorm_weight_index]}")
         # logger.info(f"Node outputs: {node.output[0]}")

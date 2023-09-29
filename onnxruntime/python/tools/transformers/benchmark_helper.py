@@ -598,7 +598,7 @@ def measure_memory(is_gpu, func, monitor_type="cuda"):
     memory_before_test = monitor.measure_cpu_usage()
 
     with ThreadPoolExecutor() as executor:
-        monitor = MemoryMonitor()
+        monitor = memory_monitor_type()
         mem_thread = executor.submit(monitor.measure_cpu_usage)
         try:
             fn_thread = executor.submit(func)

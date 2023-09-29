@@ -87,7 +87,7 @@ class FusionRotaryAttention(FusionAttention):
         return mha_node
 
 
-    def check_runtime_shape_paths(
+    def check_runtime_shape_paths_for_function(
         self,
         reshape_qkv_2,  # Reshape after Transpose
         reshape_qkv_1,  # Reshape before Transpose
@@ -221,30 +221,133 @@ class FusionRotaryAttention(FusionAttention):
         return True
 
 
+    def check_runtime_shape_paths_for_nodes(
+        self,
+        reshape_qkv,  # Final reshape before o_proj MatMul
+        reshape_q,    # Reshape before q_proj MatMul
+        reshape_k,    # Reshape before k_proj MatMul
+        reshape_v,    # Reshape before v_proj MatMul
+        root_input,   # Root input to attention subgraph
+    ):
+        # Check #1: check paths for qkv nodes
+        concat_qkv_path = self.model.match_parent_path(reshape_qkv, ["Concat"], [1])
+        if concat_qkv_path is None:
+            return False
+        concat_qkv = concat_qkv_path[0]
+
+        reshape_qkv_path_1 = self.model.match_parent_path(concat_qkv, ["Unsqueeze", "Gather", "Shape"], [0, 0, 0])
+        reshape_qkv_path_2 = self.model.match_parent_path(concat_qkv, ["Unsqueeze", "Gather", "Shape"], [1, 0, 0])
+        if reshape_qkv_path_1 is None or reshape_qkv_path_2 is None:
+            return False
+
+        _, gather_1, shape_1 = reshape_qkv_path_1
+        _, gather_2, shape_2 = reshape_qkv_path_2
+
+        # Check root_input --> Shape --> Gather connection
+        if shape_1.input[0] != root_input or shape_2.input[0] != root_input:
+            return False
+
+
+        # Check #2: check paths for v nodes
+        concat_v_path = self.model.match_parent_path(reshape_v, ["Concat"], [1])
+        if concat_v_path is None:
+            return False
+        concat_v = concat_v_path[0]
+
+        reshape_v_path_1 = self.model.match_parent_path(concat_v, ["Unsqueeze", "Gather", "Shape"], [0, 0, 0])
+        reshape_v_path_2 = self.model.match_parent_path(concat_v, ["Unsqueeze", "Gather", "Shape"], [1, 0, 0])
+        if reshape_v_path_1 is None or reshape_v_path_2 is None:
+            return False
+
+        # Check Gather --> Unsqueeze --> Concat --> Reshape connection
+        if reshape_v_path_1[1].name != gather_1.name or reshape_v_path_2[1].name != gather_2.name:
+            return False
+
+
+        # Check #3: check paths for k nodes
+        concat_k_path = self.model.match_parent_path(reshape_k, ["Concat"], [1])
+        if concat_k_path is None:
+            return False
+        concat_k = concat_k_path[0]
+
+        reshape_k_path_1 = self.model.match_parent_path(concat_k, ["Unsqueeze", "Gather", "Shape"], [0, 0, 0])
+        reshape_k_path_2 = self.model.match_parent_path(concat_k, ["Unsqueeze", "Gather", "Shape"], [1, 0, 0])
+        if reshape_k_path_1 is None or reshape_k_path_2 is None:
+            return False
+
+        # Check Gather --> Unsqueeze --> Concat --> Reshape connection
+        if reshape_k_path_1[1].name != gather_1.name or reshape_k_path_2[1].name != gather_2.name:
+            return False
+
+
+        # Check #4: check paths for q nodes
+        concat_q_path = self.model.match_parent_path(reshape_q, ["Concat"], [1])
+        if concat_q_path is None:
+            return False
+        concat_q = concat_q_path[0]
+
+        reshape_q_path_1 = self.model.match_parent_path(concat_q, ["Unsqueeze", "Gather", "Shape"], [0, 0, 0])
+        reshape_q_path_2 = self.model.match_parent_path(concat_q, ["Unsqueeze", "Gather", "Shape"], [1, 0, 0])
+        if reshape_q_path_1 is None or reshape_q_path_2 is None:
+            return False
+
+        # Check Gather --> Unsqueeze --> Concat --> Reshape connection
+        if reshape_q_path_1[1].name != gather_1.name or reshape_q_path_2[1].name != gather_2.name:
+            return False
+
+        return True
+
+
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
         if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
             return
 
-        # logger.info(f"Normalize node is {normalize_node.name}")
-        qkv_nodes = self.model.match_parent_path(
+        # qkv_nodes_1 is for LLaMA-2 Microsoft
+        # qkv_nodes_2 is for LLaMA-2 Hugging Face
+        qkv_nodes = None
+        qkv_nodes_1 = self.model.match_parent_path(
             normalize_node,
             ["MatMul", "Reshape", "Transpose", "Reshape", "MatMul"],
             [1, 0, 0, 0, 0],
         )
-        if qkv_nodes is not None:
-            _, reshape_qkv_2, transpose_qkv, reshape_qkv_1, matmul_qkv = qkv_nodes
+        qkv_nodes_2 = self.model.match_parent_path(
+            normalize_node,
+            ["MatMul", "Reshape", "Transpose", "MatMul"],
+            [1, 0, 0, 0],
+        )
+        if qkv_nodes_1 is not None:
+            _, reshape_qkv_2, _, reshape_qkv_1, matmul_qkv = qkv_nodes_1
+            qkv_nodes = qkv_nodes_1
+        elif qkv_nodes_2 is not None:
+            _, reshape_qkv, _, matmul_qkv = qkv_nodes_2
+            qkv_nodes = qkv_nodes_2
         else:
             logger.debug("fuse_rotary_attention: failed to match qkv nodes")
             return
 
+        # v_nodes_1 is for LLaMA-2 Microsoft
+        # v_nodes_3 is for LLaMA-2 Hugging Face
         past_v, present_v, past_seq_len = "", "", ""
-        v_nodes = self.model.match_parent_path(
+        v_nodes = None
+        v_nodes_1 = self.model.match_parent_path(
             matmul_qkv,
             ["Reshape", "Transpose", "Concat", "Transpose", "Reshape", "MatMul"],
             [1, 0, 0, 1, 0, 0],
         )
-        if v_nodes is not None:
-            reshape_v_2, _, concat_v, _, reshape_v_1, matmul_v = v_nodes
+        v_nodes_2 = self.model.match_parent_path(
+            matmul_qkv,
+            ["Concat", "Transpose", "Reshape", "MatMul"],
+            [1, 1, 0, 0],
+        )
+        v_nodes_3 = self.model.match_parent_path(
+            matmul_qkv,
+            ["Transpose", "Reshape", "MatMul"],
+            [1, 0, 0],
+        )
+        if v_nodes_1 is not None:
+            reshape_v_2, _, concat_v, _, reshape_v_1, matmul_v = v_nodes_1
+            v_nodes = v_nodes_1
+
             concat_v_path = self.model.match_parent_path(
                 concat_v,
                 ["Slice", "Unsqueeze"],
@@ -257,6 +360,15 @@ class FusionRotaryAttention(FusionAttention):
             past_v = concat_v_path[0].input[0]
             past_seq_len = concat_v_path[-1].input[0]
             present_v = concat_v.output[0]
+        elif v_nodes_2 is not None:
+            concat_v, transpose_v, reshape_v, matmul_v = v_nodes_2
+            v_nodes = v_nodes_2
+            past_v = concat_v.input[0]
+            present_v = concat_v.output[0]
+        elif v_nodes_3 is not None:
+            transpose_v, reshape_v, matmul_v = v_nodes_3
+            v_nodes = v_nodes_3
+            present_v = transpose_v.output[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match v path")
             return
@@ -273,6 +385,10 @@ class FusionRotaryAttention(FusionAttention):
             logger.debug("fuse_rotary_attention: failed to match qk nodes")
             return
 
+        # attn_mask_nodes_1, attn_mask_nodes_2 are for LLaMA-2 Microsoft's 3D attention mask
+        # attn_mask_nodes_3, attn_mask_nodes_4 are for LLaMA-2 Hugging Face's 2D attention mask
+        attn_mask = ""
+        attn_mask_nodes = None
         attn_mask_nodes_1 = self.model.match_parent_path(
             add_qk,
             ["Concat", "Slice", "Slice"],
@@ -283,25 +399,66 @@ class FusionRotaryAttention(FusionAttention):
             ["Cast", "Concat", "Slice", "Slice"],
             [1, 0, 0, 0],
         )
-        attn_mask = ""
+        attn_mask_nodes_3 = self.model.match_parent_path(
+            add_qk,
+            ["Add", "Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
+            [1, 0, 2, 1, 0, 0, 0],
+        )
+        attn_mask_nodes_4 = self.model.match_parent_path(
+            add_qk,
+            ["Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
+            [1, 2, 1, 0, 0, 0],
+        )
         if attn_mask_nodes_1 is not None:
             _, slice_mask_1, slice_mask_2 = attn_mask_nodes_1
+            attn_mask_nodes = attn_mask_nodes_1
             attn_mask = slice_mask_1.output[0]
         elif attn_mask_nodes_2 is not None:
             _, _, slice_mask_1, slice_mask_2 = attn_mask_nodes_2
+            attn_mask_nodes = attn_mask_nodes_2
             attn_mask = slice_mask_1.output[0]
+        elif attn_mask_nodes_3 is not None:
+            # Either send 2D attention mask directly or reshape from (B,1,S,T) to (B,N,S,T) using 4D helper in fusion_attention.py
+            attn_mask_nodes = attn_mask_nodes_3
+            attn_mask = attn_mask_nodes_3[-1].input[0]
+        elif attn_mask_nodes_4 is not None:
+            # Either send 2D attention mask directly or reshape from (B,1,S,T) to (B,N,S,T) using 4D helper in fusion_attention.py
+            attn_mask_nodes = attn_mask_nodes_4
+            attn_mask = attn_mask_nodes_4[-1].input[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match attention mask nodes")
             return
 
+        if attn_mask_nodes == attn_mask_nodes_3 or attn_mask_nodes == attn_mask_nodes_4:
+            # Convert mask input from int64 to int32 for MHA
+            for i, graph_input in enumerate(self.model.model.graph.input):
+                if graph_input.name == "attention_mask" and graph_input.type.tensor_type.elem_type == TensorProto.INT64:
+                    graph_input.type.tensor_type.elem_type = TensorProto.INT32
+                    break
+
+        # k_nodes_1 is for LLaMA-2 Microsoft
+        # k_nodes_2 is for LLaMA-2 Hugging Face
         past_k, present_k = "", ""
-        k_nodes = self.model.match_parent_path(
+        k_nodes = None
+        k_nodes_1 = self.model.match_parent_path(
             matmul_qk,
             ["Reshape", "Transpose", "Concat", "Transpose", "RotaryEmbedding", "MatMul"],
             [1, 0, 0, 1, 0, 0],
         )
-        if k_nodes is not None:
-            reshape_k_2, _, concat_k, _, rotary_k, matmul_k = k_nodes
+        k_nodes_2 = self.model.match_parent_path(
+            matmul_qk,
+            ["Transpose", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
+            [1, 0, 0, 0, 0],
+        )
+        k_nodes_3 = self.model.match_parent_path(
+            matmul_qk,
+            ["Transpose", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
+            [1, 0, 1, 0, 0, 0],
+        )
+        if k_nodes_1 is not None:
+            reshape_k_2, _, concat_k, _, rotary_k, matmul_k = k_nodes_1
+            k_nodes = k_nodes_1
+
             concat_k_path = self.model.match_parent_path(
                 concat_k,
                 ["Slice", "Unsqueeze"],
@@ -316,17 +473,38 @@ class FusionRotaryAttention(FusionAttention):
             present_k = concat_k.output[0]
 
             assert past_seq_len == shared_past_seq_len
+        elif k_nodes_2 is not None:
+            _, rotary_k, _, reshape_k, matmul_k = k_nodes_2
+            k_nodes = k_nodes_2
+            present_k = rotary_k.output[0]
+        elif k_nodes_3 is not None:
+            _, concat_k, rotary_k, _, reshape_k, matmul_k = k_nodes_3
+            k_nodes = k_nodes_3
+            past_k = concat_k.input[0]
+            present_k = concat_k.output[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match k nodes")
             return
 
-        q_nodes = self.model.match_parent_path(
+        # q_nodes_1 is for LLaMA-2 Microsoft
+        # q_nodes_2 is for LLaMA-2 Hugging Face
+        q_nodes = None
+        q_nodes_1 = self.model.match_parent_path(
             matmul_qk,
             ["Reshape", "Transpose", "RotaryEmbedding", "MatMul"],
             [0, 0, 0, 0],
         )
-        if q_nodes is not None:
-            reshape_q_2, _, rotary_q, matmul_q = q_nodes
+        q_nodes_2 = self.model.match_parent_path(
+            matmul_qk,
+            ["RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
+            [0, 0, 0, 0],
+        )
+        if q_nodes_1 is not None:
+            reshape_q_2, _, rotary_q, matmul_q = q_nodes_1
+            q_nodes = q_nodes_1
+        elif q_nodes_2 is not None:
+            rotary_q, _, reshape_q, matmul_q = q_nodes_2
+            q_nodes = q_nodes_2
         else:
             logger.debug("fuse_rotary_attention: failed to match q nodes")
             return
@@ -335,22 +513,46 @@ class FusionRotaryAttention(FusionAttention):
             logger.debug("fuse_rotary_attention: failed to find the same root_input for q, k, v paths")
             return
 
-        if not self.check_runtime_shape_paths(
-            reshape_qkv_2,
-            reshape_qkv_1,
-            reshape_q_2,
-            reshape_k_2,
-            reshape_v_2,
-            reshape_v_1,
-            add_qk,
-            matmul_q.input[0],
-        ):
-            logger.debug("fuse_rotary_attention: failed to verify runtime shape paths")
-            return
+        root_output = ""
+        if qkv_nodes == qkv_nodes_1:
+            if not self.check_runtime_shape_paths_for_function(
+                reshape_qkv_2,
+                reshape_qkv_1,
+                reshape_q_2,
+                reshape_k_2,
+                reshape_v_2,
+                reshape_v_1,
+                add_qk,
+                matmul_q.input[0],
+            ):
+                logger.debug("fuse_rotary_attention: failed to verify runtime shape paths")
+                return
+            root_output = reshape_qkv_2.output[0]
+        
+        elif qkv_nodes == qkv_nodes_2:
+            if not self.check_runtime_shape_paths_for_nodes(
+                reshape_qkv,
+                reshape_q,
+                reshape_k,
+                reshape_v,
+                matmul_q.input[0],
+            ):
+                logger.debug("fuse_rotary_attention: failed to verify runtime shape paths")
+                return
+            root_output = reshape_qkv.output[0]
+
+            # Rename inputs of rotary_q/k so it connects with output of matmul_q/k
+            # Before: MatMul --> Reshape --> Transpose --> RotaryEmbedding
+            # After: MatMul --> RotaryEmbedding
+            rotary_q.input[0] = matmul_q.output[0]
+            rotary_k.input[0] = matmul_k.output[0]
+
+            # Rename current output of rotary_k (present_key) so it doesn't match output of MHA (present_key)
+            rotary_k.output[0] = rotary_k.name + "_output_0"
 
         new_node = self.create_mha_node(
             matmul_q.input[0],
-            reshape_qkv_2.output[0],
+            root_output,
             rotary_q,
             rotary_k,
             matmul_v,
@@ -368,10 +570,26 @@ class FusionRotaryAttention(FusionAttention):
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
         self.nodes_to_remove.extend(qkv_nodes[1:])
-        self.nodes_to_remove.extend(v_nodes[:-2])
+        self.nodes_to_remove.extend(v_nodes[:-1])
         self.nodes_to_remove.extend(qk_nodes)
-        self.nodes_to_remove.extend(k_nodes[:-2])
-        self.nodes_to_remove.extend(q_nodes[:-2])
+
+        if k_nodes == k_nodes_1:
+            self.nodes_to_remove.extend(k_nodes[:-2])
+        elif k_nodes == k_nodes_2:
+            self.nodes_to_remove.append(k_nodes[0])
+            self.nodes_to_remove.append(k_nodes[2])
+            self.nodes_to_remove.append(k_nodes[3])
+        elif k_nodes == k_nodes_3:
+            self.nodes_to_remove.append(k_nodes[0])
+            self.nodes_to_remove.append(k_nodes[1])
+            self.nodes_to_remove.append(k_nodes[3])
+            self.nodes_to_remove.append(k_nodes[4])
+
+        if q_nodes == q_nodes_1:
+            self.nodes_to_remove.extend(q_nodes[:-2])
+        elif q_nodes == q_nodes_2:
+            self.nodes_to_remove.append(q_nodes[1])
+            self.nodes_to_remove.append(q_nodes[2])
 
         self.prune_graph = True
 
@@ -379,7 +597,7 @@ class FusionRotaryAttention(FusionAttention):
 class FusionRotaryEmbeddings(Fusion):
     def __init__(self, model: OnnxModel):
         self.base_name = "RotaryEmbedding"
-        super().__init__(model, self.base_name, [self.base_name, self.base_name + ".1"])
+        super().__init__(model, self.base_name, [self.base_name, self.base_name + ".1", "Add"])
 
     # The RotaryEmbedding function can have multiple extraneous constant outputs even though the function is supposed to produce only one output.
     # This is a byproduct of a potential CSE bug when using `export_modules_as_functions` in the TorchScript exporter.
@@ -409,7 +627,7 @@ class FusionRotaryEmbeddings(Fusion):
 
         return extra_outputs
 
-    def create_rotary_embeddings(self, node: NodeProto):
+    def create_rotary_embeddings_from_function(self, node: NodeProto):
         rotary_emb_node_name = self.model.create_node_name(self.base_name)
 
         matmul_path = self.model.match_parent_path(
@@ -420,7 +638,7 @@ class FusionRotaryEmbeddings(Fusion):
         if matmul_path is not None:
             reshape_node, matmul_node = matmul_path
         else:
-            logger.debug(f"fuse_rotary_embeddings: failed to match MatMul")
+            logger.debug("fuse_rotary_embeddings: failed to match MatMul")
             return
 
         rotary_emb_inputs = [
@@ -472,6 +690,7 @@ class FusionRotaryEmbeddings(Fusion):
             inputs=rotary_emb_inputs,
             outputs=rotary_emb_outputs,
             name=rotary_emb_node_name,
+            interleaved=True,
         )
         rotary_emb_node.domain = "com.microsoft"
 
@@ -479,33 +698,283 @@ class FusionRotaryEmbeddings(Fusion):
 
         return rotary_emb_node
 
-    # Node is "RotaryEmbedding nn.Module" exported as a function
-    # (e.g. export_modules_as_functions={RotaryEmbedding} in torch.onnx.export)
+    def create_rotary_embeddings_from_nodes(
+        self,
+        root_input: str,
+        position_ids: str,
+        cos_slice: str,
+        sin_slice: str,
+        output: str,
+    ):
+        rotary_emb_node_name = self.model.create_node_name(self.base_name)
+
+        # matmul_path = self.model.match_parent_path(
+        #     transpose_node,
+        #     ["Reshape", "MatMul"],
+        #     [0, 0],
+        # )
+        # if matmul_path is not None:
+        #     reshape_node, matmul_node = matmul_path
+        # else:
+        #     logger.debug("fuse_rotary_embeddings: failed to match MatMul")
+        #     return
+
+        # Convert cos_cache and sin_cache from node attributes to model initializers
+        cos_cache_node = list(filter(lambda constant: constant.output[0] == cos_slice, self.model.model.graph.node))
+        sin_cache_node = list(filter(lambda constant: constant.output[0] == sin_slice, self.model.model.graph.node))
+        cos_cache_name, sin_cache_name = "cos_cache", "sin_cache"
+
+        if len(cos_cache_node) == 1 and len(sin_cache_node) == 1 and self.model.get_initializer(cos_cache_name) is None and self.model.get_initializer(sin_cache_name) is None:
+            cos_cache = numpy_helper.to_array(cos_cache_node[0].attribute[0].t).squeeze()
+            sin_cache = numpy_helper.to_array(sin_cache_node[0].attribute[0].t).squeeze()
+
+            # Reshape cos/sin cache from (M, H) to (M, H/2)
+            head_size = cos_cache.shape[1]
+            cos_cache = cos_cache[:, :(head_size // 2)]
+            sin_cache = sin_cache[:, :(head_size // 2)]
+
+            cos_cache_tensor = helper.make_tensor(
+                name=cos_cache_name,
+                data_type=TensorProto.FLOAT,
+                dims=list(cos_cache.shape),
+                vals=cos_cache.flatten().tolist(),
+            )
+            self.model.add_initializer(cos_cache_tensor, self.this_graph_name)
+            sin_cache_tensor = helper.make_tensor(
+                name=sin_cache_name,
+                data_type=TensorProto.FLOAT,
+                dims=list(sin_cache.shape),
+                vals=sin_cache.flatten().tolist(),
+            )
+            self.model.add_initializer(sin_cache_tensor, self.this_graph_name)
+
+            self.nodes_to_remove.extend([cos_cache_node[0], sin_cache_node[0]])
+
+        rotary_emb_node = helper.make_node(
+            self.base_name,
+            inputs=[root_input, position_ids, cos_cache_name, sin_cache_name],
+            outputs=[output],
+            name=rotary_emb_node_name,
+        )
+        rotary_emb_node.domain = "com.microsoft"
+        return rotary_emb_node
+
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        if self.base_name not in node.op_type:
+        # Node is either RotaryEmbedding function or Add
+        if self.base_name not in node.op_type and node.op_type != "Add":
             return
 
-        # Verify that function has the correct inputs
-        if len(node.input) not in {4, 5} or node.input[1] not in {"pos", "pos_id", "position_id", "pos_ids", "position_ids"}:
-            logger.debug("fuse_rotary_embeddings: failed to verify inputs for RotaryEmbedding function")
-            return
+        # Check if node is "RotaryEmbedding nn.Module" exported as a function
+        # (e.g. export_modules_as_functions={RotaryEmbedding} in torch.onnx.export)
+        rotary_emb_node = None
+        if node.op_type != "Add":
+            # Verify that function has the correct inputs
+            if len(node.input) not in {4, 5} or node.input[1] not in {"pos", "pos_id", "position_id", "pos_ids", "position_ids"}:
+                logger.debug("fuse_rotary_embeddings: failed to verify inputs for RotaryEmbedding function")
+                return
 
-        rotary_emb_node = self.create_rotary_embeddings(node)
-        if rotary_emb_node is None:
-            logger.debug("fuse_rotary_embeddings: failed to create RotaryEmbedding node")
-            return
+            rotary_emb_node = self.create_rotary_embeddings_from_function(node)
+            if rotary_emb_node is None:
+                logger.debug("fuse_rotary_embeddings: failed to create RotaryEmbedding node")
+                return
+
+            # Remove RotaryEmbedding function
+            self.nodes_to_remove.append(node)
+
+            # Remove RotaryEmbedding function's shape inference stored in value_info
+            # The new shape will be calculated during symbolic shape inference
+            old_shape_infer = list(filter(lambda node: node.name == rotary_emb_node.output[0], self.model.model.graph.value_info))
+            assert len(old_shape_infer) == 1
+            self.model.model.graph.value_info.remove(old_shape_infer[0])
+
+        else:
+            # Rotary embeddings are defined using the below functions:
+            #
+            # def rotate_half(x):
+            #     """Rotates half the hidden dims of the input."""
+            #     x1 = x[..., : x.shape[-1] // 2]
+            #     x2 = x[..., x.shape[-1] // 2 :]
+            #     return torch.cat((-x2, x1), dim=-1)
+            #
+            # def apply_rope(x, cos, sin, position_ids):
+            #     cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
+            #     sin = sin.squeeze(1).squeeze(0)  # [seq_len, dim]
+            #     cos = cos[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
+            #     sin = sin[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
+            #     x_embed = (x * cos) + (rotate_half(x) * sin)
+            #     return x_embed
+
+            # Check paths for rotate_half(x)
+            rotate_half_x2_path_1 = self.model.match_parent_path(
+                node,
+                ["Mul", "Concat", "Neg", "Slice", "Transpose"],
+                [1, 0, 0, 0, 0],
+            )
+            rotate_half_x2_path_2 = self.model.match_parent_path(
+                node,
+                ["Mul", "Concat", "Neg", "Slice", "Unsqueeze", "Div", "Gather", "Shape", "Transpose"],
+                [1, 0, 0, 0, 1, 0, 0, 0, 0],
+            )
+            if rotate_half_x2_path_1 is None or rotate_half_x2_path_2 is None:
+                logger.debug("fuse_rotary_embeddings: failed to match x2 in rotate_half")
+                return
+
+            rotate_half_x1_path_1 = self.model.match_parent_path(
+                node,
+                ["Mul", "Concat", "Slice", "Transpose"],
+                [1, 0, 1, 0],
+            )
+            rotate_half_x1_path_2 = self.model.match_parent_path(
+                node,
+                ["Mul", "Concat", "Slice", "Unsqueeze", "Div", "Gather", "Shape", "Transpose"],
+                [1, 0, 1, 2, 0, 0, 0, 0],
+            )
+            if rotate_half_x1_path_1 is None or rotate_half_x1_path_2 is None:
+                logger.debug("fuse_rotary_embeddings: failed to match x1 in rotate_half")
+                return
+
+            if (
+                rotate_half_x1_path_1[-1].name != rotate_half_x1_path_2[-1].name
+                or rotate_half_x2_path_1[-1].name != rotate_half_x2_path_2[-1].name
+                or rotate_half_x1_path_1[-1].name != rotate_half_x2_path_1[-1].name
+                or rotate_half_x1_path_2[-1].name != rotate_half_x2_path_2[-1].name
+            ):
+                logger.debug("fuse_rotary_embeddings: failed to match common input in rotate_half")
+                return
+
+            # Check path for x
+            x_path = self.model.match_parent_path(
+                node,
+                ["Mul", "Transpose"],
+                [0, 0],
+            )
+            if x_path is None:
+                logger.debug("fuse_rotary_embeddings: failed to match x in rotate_half")
+                return
+
+            # Check path for sin
+            sin_path, sin_cache = None, ""
+            sin_path_1 = self.model.match_parent_path(
+                node,
+                ["Mul", "Unsqueeze", "Gather", "Squeeze", "Squeeze", "Slice", "Unsqueeze", "Gather", "Shape"],
+                [1, 1, 0, 0, 0, 0, 2, 0, 0],
+            )
+            sin_path_2 = self.model.match_parent_path(
+                node,
+                ["Mul", "Unsqueeze", "Gather", "Squeeze", "Squeeze", "Slice", "Unsqueeze", "Add"],
+                [1, 1, 0, 0, 0, 0, 2, 0],
+            )
+            if sin_path_1 is not None:
+                sin_path = sin_path_1
+                sin_cache = sin_path[-4].input[0]
+            elif sin_path_2 is not None:
+                sin_path = sin_path_2
+                sin_cache = sin_path[-3].input[0]
+            else:
+                logger.debug("fuse_rotary_embeddings: failed to match sin path in apply_rope")
+                return
+
+            # Check path for cos
+            cos_path, cos_cache = None, ""
+            cos_path_1 = self.model.match_parent_path(
+                node,
+                ["Mul", "Unsqueeze", "Gather", "Squeeze", "Squeeze", "Slice", "Unsqueeze", "Gather", "Shape"],
+                [0, 1, 0, 0, 0, 0, 2, 0, 0],
+            )
+            cos_path_2 = self.model.match_parent_path(
+                node,
+                ["Mul", "Unsqueeze", "Gather", "Squeeze", "Squeeze", "Slice", "Unsqueeze", "Add"],
+                [0, 1, 0, 0, 0, 0, 2, 0],
+            )
+            if cos_path_1 is not None:
+                cos_path = cos_path_1
+                cos_cache = cos_path[-4].input[0]
+            elif cos_path_2 is not None:
+                cos_path = cos_path_2
+                cos_cache = cos_path[-3].input[0]
+            else:
+                logger.debug("fuse_rotary_embeddings: failed to match sin path in apply_rope")
+                return
+
+            # Check path for position ids
+            position_ids_from_sin_path = self.model.match_parent_path(
+                sin_path[2],
+                ["Reshape"],
+                [1],
+            )
+            position_ids_from_cos_path = self.model.match_parent_path(
+                cos_path[2],
+                ["Reshape"],
+                [1],
+            )
+            if (
+                position_ids_from_sin_path is None
+                or position_ids_from_cos_path is None
+                or position_ids_from_sin_path[0].name != position_ids_from_cos_path[0].name
+            ):
+                logger.debug("fuse_rotary_embeddings: failed to match position ids path in apply_rope")
+                return
+
+            past_seq_len_path, curr_seq_len_path = None, None
+            if sin_path == sin_path_1 and cos_path == cos_path_1:
+                if sin_path[-2].name != cos_path[-2].name or sin_path[-1].name != cos_path[-1].name:
+                    logger.debug("fuse_rotary_embeddings: failed to match common Gather node and Shape node in sin cache and cos cache")
+                    return
+            elif sin_path == sin_path_2 and cos_path == cos_path_2:
+                if sin_path[-1].name != cos_path[-1].name:
+                    logger.debug("fuse_rotary_embeddings: failed to match common Add node in sin cache and cos cache")
+                    return
+                # Match past sequence length path: past_key --> Shape --> Gather --> Add 
+                past_seq_len_path = self.model.match_parent_path(
+                    sin_path[-1],
+                    ["Gather", "Shape"],
+                    [1, 0],
+                )
+                # Match current sequence length path: transpose_k --> Shape --> Gather --> Add
+                curr_seq_len_path = self.model.match_parent_path(
+                    sin_path[-1],
+                    ["Gather", "Shape", "Transpose"],
+                    [0, 0, 0],
+                )
+                if (
+                    past_seq_len_path is None
+                    or curr_seq_len_path is None
+                    or self.model.find_graph_input(past_seq_len_path[-1].input[0]) is None
+                    or curr_seq_len_path[-1].op_type != "Transpose"
+                ):
+                    logger.debug("fuse_rotary_embeddings: failed to match past_seq_len and curr_seq_len paths")
+                    return
+
+            position_ids = position_ids_from_cos_path[0].input[0]
+
+            rotary_emb_node = self.create_rotary_embeddings_from_nodes(
+                rotate_half_x1_path_1[-1].output[0],
+                position_ids,
+                cos_cache,
+                sin_cache,
+                node.output[0],
+            )
+            if rotary_emb_node is None:
+                logger.debug("fuse_rotary_embeddings: failed to create RotaryEmbedding node")
+                return
+
+            # Remove rotary embedding nodes
+            self.nodes_to_remove.append(node)
+            self.nodes_to_remove.extend(rotate_half_x1_path_1[:-1])
+            self.nodes_to_remove.extend(rotate_half_x1_path_2[:-1])
+            self.nodes_to_remove.extend(rotate_half_x2_path_1[:-1])
+            self.nodes_to_remove.extend(rotate_half_x2_path_2[:-1])
+            self.nodes_to_remove.extend(x_path[:-1])
+            self.nodes_to_remove.extend(sin_path) # if past_seq_len == "" else sin_path[:-1])
+            self.nodes_to_remove.extend(cos_path) # if past_seq_len == "" else sin_path[:-1])
+            self.nodes_to_remove.extend(position_ids_from_sin_path[:-1])
+            self.nodes_to_remove.extend(position_ids_from_cos_path[:-1])
+
+            if past_seq_len_path != None and curr_seq_len_path != None:
+                self.nodes_to_remove.extend(past_seq_len_path)
+                self.nodes_to_remove.extend(curr_seq_len_path[:-1])
 
         self.increase_counter(self.base_name)
-
         self.node_name_to_graph_name[rotary_emb_node.name] = self.this_graph_name
         self.nodes_to_add.append(rotary_emb_node)
-
-        # Remove RotaryEmbedding function
-        self.nodes_to_remove.append(node)
         self.prune_graph = True
-
-        # Remove RotaryEmbedding function's shape inference stored in value_info
-        # The new shape will be calculated during symbolic shape inference
-        old_shape_infer = list(filter(lambda node: node.name == rotary_emb_node.output[0], self.model.model.graph.value_info))
-        assert len(old_shape_infer) == 1
-        self.model.model.graph.value_info.remove(old_shape_infer[0])

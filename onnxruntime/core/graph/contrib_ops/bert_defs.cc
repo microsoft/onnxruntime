@@ -1006,9 +1006,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Custom scale will be used if specified. Default value is 1.0",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("interleaved",
+              "Rotate using interleaved pattern. Default value is 0 (False).",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
-               "3D tensor with shape (batch_size, sequence_length, hidden_size), 4D tensor of shape (batch_size, sequence_length, num_heads, head_size), or 4D tensor of shape (batch_size, num_heads, sequence_length, head_size)",
+               "3D tensor with shape (batch_size, sequence_length, hidden_size)",
                "T")
         .Input(1,
                "position_ids",
@@ -1016,15 +1020,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(2,
                "cos_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2) or shape (sequence_length, head_size). ",
+               "2D tensor with shape (max_sequence_length, head_size / 2).",
                "T")
         .Input(3,
                "sin_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2) or shape (sequence_length, head_size). ",
+               "2D tensor with shape (max_sequence_length, head_size / 2).",
                "T")
         .Output(0,
                 "output",
-                "3D tensor with shape (batch_size, sequence_length, hidden_size), 4D tensor of shape (batch_size, sequence_length, num_heads, head_size), or 4D tensor of shape (batch_size, num_heads, sequence_length, head_size)",
+                "3D tensor with shape (batch_size, sequence_length, hidden_size)",
                 "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")

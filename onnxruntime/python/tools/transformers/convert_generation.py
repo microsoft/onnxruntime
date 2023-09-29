@@ -1272,6 +1272,30 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
+def replace_mha_with_gqa(model: ModelProto):
+    # Replace MultiHeadAttention with GroupQueryAttention
+    for i, node in enumerate(model.graph.node):
+        if node.op_type == "MultiHeadAttention":
+            gqa_node = onnx.helper.make_node(
+                "GroupQueryAttention",
+                inputs=[
+                    node.input[0],
+                    node.input[1],
+                    node.input[2],
+                    node.input[6],
+                    node.input[7],
+                ],
+                outputs=node.output,
+                name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
+                domain="com.microsoft",
+                num_heads=node.attribute[0].i,
+                kv_num_heads=node.attribute[0].i,
+                is_past_bsnh=0,
+            )
+            model.graph.node[i] = gqa_node
+    return model
+
+
 def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphProto):
     input_self_past_0 = 1
     # w/wo attention mask, w/wo hidden_state

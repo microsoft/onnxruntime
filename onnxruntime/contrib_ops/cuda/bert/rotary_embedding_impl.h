@@ -21,7 +21,9 @@ Status LaunchRotaryEmbeddingKernel(
     const int sequence_length,
     const int num_heads,
     const int head_size,
-    const int model_format,
+    const int max_sequence_length,
+    const int position_ids_format,
+    const bool interleaved,
     const int max_threads_per_block);
 
 }  // namespace cuda

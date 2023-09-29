@@ -23,10 +23,9 @@ namespace cuda {
       T,                                                                \
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
-          .InputMemoryType(OrtMemTypeCPUInput, 1)                       \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()), \
-      RotaryEmbedding<T>);                                        
+      RotaryEmbedding<T>);   
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
@@ -34,6 +33,7 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template<typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info) {
   scale = info.GetAttrOrDefault<float>("scale", 1.0);
+  interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
 }
 
 template <typename T>
@@ -53,7 +53,7 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, input->Shape());
 
   if (parameters.sequence_length > parameters.max_sequence_length) {
-    // Launch update_cos_sin_cache kernel
+    // Launch update_cos_sin_cache kernel with scale
     ORT_NOT_IMPLEMENTED("Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported");
   }
 
@@ -71,7 +71,9 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
     parameters.sequence_length,
     parameters.num_heads,
     parameters.head_size,
-    parameters.model_format,
+    parameters.max_sequence_length,
+    parameters.position_ids_format,
+    interleaved,
     device_prop.maxThreadsPerBlock
   );
 
