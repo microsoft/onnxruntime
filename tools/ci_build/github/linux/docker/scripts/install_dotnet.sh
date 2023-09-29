@@ -2,7 +2,8 @@
 set -e -x
 
 if [ -f /etc/redhat-release ]; then
-    yum install -y dotnet-sdk-6.0
+  rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
+  yum install -y dotnet-sdk-6.0
 elif [ -f /etc/os-release ]; then
   # Get Ubuntu version
   declare repo_version=$(if command -v lsb_release &> /dev/null; then lsb_release -r -s; else grep -oP '(?<=^VERSION_ID=).+' /etc/os-release | tr -d '"'; fi)
