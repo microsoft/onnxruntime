@@ -8,40 +8,41 @@ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
                N is number of attention heads, H is head size, and W=N*H
                M is mask_index tensor, P is optional past tensor 
 
-     M               A  B  C                     P    // M, A, B, C and P are Inputs
-     |                \ |  /                     |
-     |                 Gemm                      |   
-     |                / |   \                    |
-     |               /  |    \                 /   \
-     |              /   |     \               /     \
-     |          Slice  Slice  Slice        Slice    Slice
-     |            |     |       |             |       |
-     |            |     |       |             |       |
-     |      Identity Identity Identity    Identity   Identity     // The identities are used to transpose NCHW -> NHCW while
-     |            |     |       |        /           /            // keeping the GEMM strides as NCHW to better target metacommands
-     |            |     |       |      /           /
-     |            |     |       |    /           /
-     |            |     |       |  /           /
-     |            |     |       |/           /
-     |            |     |      /|          /
-     |            |     |    /  |        /
-     |            |     |  /    |      /
-     |            |     | /     |    /
-     |            |   Concat   Concat
+     // M, A, B, C and P are Inputs
+     
+     M               A  B  C
+     |                \ |  /
+     |                 Gemm
+     |                / |   \
+     |               /  |    \
+     |              /   |     \
+     |          Slice  Slice  Slice
      |            |     |       |
      |            |     |       |
-     ----------------- MHA -----
-                      / | \
-                    /   |   \
-                  /     |     \
-                /       |       \
-             Output1  presentK   presentV                      
-                         \       /
-                          \     /
-                           \   /
-                          Concat
-                             |
-                          Output2 (present)
+     |      Identity Identity Identity   // The identities are used to transpose NCHW -> NHCW while
+     |            |     |       |       // keeping the GEMM strides as NCHW to better target metacommands
+     |            |     |       |
+     |            |     |       |        P
+     |            |     |       |       / \
+     |            |     |       |      /   \
+     |            |     |       |  Slice   Slice
+     |            |     |       |     |      |
+     |            |     |       |     |      |
+     |            |     |       |     |      |
+     --------------------------MHA -----------
+                              / | \
+                             /  |   \
+                            /   |     \
+                           /    |       \
+                          /     |         \
+                         /      |           \
+                     Output1  presentKey   presentValue
+                                 \       /
+                                  \     /
+                                   \   /
+                                  Concat
+                                     |
+                                  Output2 (present)
 
  This kernel creates a DML_GRAPH, as mentioned above.
  For reference, refer to this Doc:

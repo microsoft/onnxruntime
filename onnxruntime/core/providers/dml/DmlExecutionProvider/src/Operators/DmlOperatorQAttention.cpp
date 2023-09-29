@@ -8,7 +8,9 @@ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
                N is number of attention heads, H is head size, and W=N*H
                M is mask_index tensor
 
-     M               A  B      C    // M, A, B, and C are Inputs
+// M, A, B, C and P are Inputs
+
+     M               A  B      C
      |               |  |     /
      |             MatMulIntToFloat
      |                / |   \
@@ -20,10 +22,27 @@ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
      |      Identity Identity Identity // The identities are used to transpose NCHW -> NHCW while
      |            |     |       |      // keeping the GEMM strides as NCHW to better target metacommands
      |            |     |       |
-     ----------------- MHA -----
-                        |
-                        |
-                      Output  // Final output
+     |            |     |       |        P
+     |            |     |       |       / \
+     |            |     |       |      /   \
+     |            |     |       |  Slice   Slice
+     |            |     |       |     |      |
+     |            |     |       |     |      |
+     |            |     |       |     |      |
+     --------------------------MHA -----------
+                              / | \
+                             /  |   \
+                            /   |     \
+                           /    |       \
+                          /     |         \
+                         /      |           \
+                     Output1  presentKey   presentValue
+                                 \       /
+                                  \     /
+                                   \   /
+                                  Concat
+                                     |
+                                  Output2 (present)
 
  This kernel creates a DML_GRAPH, as mentioned above.
  For reference, refer to this Doc:
