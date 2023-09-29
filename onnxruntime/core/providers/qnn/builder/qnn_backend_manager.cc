@@ -496,14 +496,16 @@ Status QnnBackendManager::ValidateWithContextFile(const std::string& model_name,
   std::string model_name_from_ctx_cache("");
   std::string model_description_from_ctx_cache("");
   std::string graph_partition_name_from_ctx_cache("");
+  std::string cache_source("");
   ORT_RETURN_IF_ERROR(qnn_cache_model_handler->GetMetadataFromEpEngineCacheModel(context_cache_path_,
                                                                                  model_name_from_ctx_cache,
                                                                                  model_description_from_ctx_cache,
                                                                                  graph_partition_name_from_ctx_cache,
+                                                                                 cache_source,
                                                                                  *logger_));
 
-  // The EPCache node doesn't have graph partition name, so it is generated from QNN toolchain not from ORT
-  if (graph_partition_name_from_ctx_cache.empty()) {
+  // The source attribute from the skeleton onnx file indicate whether it's generated from QNN toolchain or ORT
+  if (cache_source != kQnnExecutionProvider) {
     return Status::OK();
   }
 

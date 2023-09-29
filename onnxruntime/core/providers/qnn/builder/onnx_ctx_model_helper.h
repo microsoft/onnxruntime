@@ -78,6 +78,7 @@ class QnnCacheModelHandler {
                                            std::string& model_name,
                                            std::string& model_description,
                                            std::string& graph_partition_name,
+                                           std::string& cache_source,
                                            const logging::Logger& logger);
 
  private:
@@ -86,6 +87,7 @@ class QnnCacheModelHandler {
   std::string model_name_ = "";
   std::string model_description_ = "";
   std::string graph_partition_name_ = "";
+  std::string cache_source_ = "";
 };  // QnnCacheModelHandler
 
 }  // namespace qnn

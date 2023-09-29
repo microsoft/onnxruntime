@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
+#include "core/graph/constants.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -64,6 +65,7 @@ Status GenerateCtxCacheOnnxModle(const std::string& model_name, const std::strin
   ep_node.AddAttribute("ep_engine_cache", cache_payload);
   ep_node.AddAttribute("ep_sdk_version", sdk_build_version);
   ep_node.AddAttribute("partition_name", graph_name);
+  ep_node.AddAttribute("source", kQnnExecutionProvider);
 
   ORT_RETURN_IF_ERROR(graph.Resolve());
 
@@ -95,6 +97,7 @@ Status QnnCacheModelHandler::GetMetadataFromEpEngineCacheModel(const std::string
                                                                std::string& model_name,
                                                                std::string& model_description,
                                                                std::string& graph_partition_name,
+                                                               std::string& cache_source,
                                                                const logging::Logger& logger) {
   if (!is_metadata_ready_) {
     using namespace onnxruntime;
@@ -106,11 +109,13 @@ Status QnnCacheModelHandler::GetMetadataFromEpEngineCacheModel(const std::string
     model_name_ = graph.Name();
     model_description_ = graph.Description();
     graph_partition_name_ = node_helper.Get("partition_name", "");
+    cache_source_ = node_helper.Get("source", "");
     is_metadata_ready_ = true;
   }
   model_name = model_name_;
   model_description = model_description_;
   graph_partition_name = graph_partition_name_;
+  cache_source = cache_source_;
 
   return Status::OK();
 }

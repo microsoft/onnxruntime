@@ -2859,6 +2859,11 @@ void RegisterContribSchemas() {
           "(Optional) partitioned graph name.",
           AttributeProto::STRING,
           OPTIONAL_VALUE)
+      .Attr(
+          "source",
+          "(Optional) the source used to generate the engine/context cache file. Ort EP or native SDK tool chain",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
       .Attr("notes", "(Optional) Some notes for the model", AttributeProto::STRING, OPTIONAL_VALUE)
       .AllowUncheckedAttributes()
       .Input(
