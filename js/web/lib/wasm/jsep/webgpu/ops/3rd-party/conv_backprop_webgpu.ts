@@ -197,14 +197,14 @@ const createConvTranspose2DOpProgramShaderSource =
                 continue;
               }
               let idyC: u32 = u32(dyC);
-
+              var inputChannel = groupId * ${inputChannelsPerGroup};
               for (var d2: u32 = 0; d2 < ${inputChannelsPerGroup}; d2 = d2 + 1) {
-                let inputChannel = groupId * ${inputChannelsPerGroup} + d2;
                 let xValue = ${
           isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'inputChannel') :
                            dy.get('batch', 'inputChannel', 'idyR', 'idyC')};
                 let wValue = ${w.get('inputChannel', 'wOutChannel', 'u32(wRPerm)', 'u32(wCPerm)')};
                 dotProd = dotProd + xValue * wValue;
+                inputChannel = inputChannel + 1;
               }
             }
           }

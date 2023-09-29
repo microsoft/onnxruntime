@@ -108,6 +108,23 @@ class ConvTranspose : public JsKernel {
     }
   }
 
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* /* prepacked_weights */) override {
+    is_packed = false;
+
+    if (input_idx == 1) {
+      // Only handle the common case of conv2D
+      if (tensor.Shape().NumDimensions() != 4 || tensor.SizeInBytes() == 0) {
+        return Status::OK();
+      }
+
+      w_is_const_ = true;
+    }
+
+    return Status::OK();
+  }
+
  protected:
   ConvTransposeAttributes conv_transpose_attrs_;
   bool w_is_const_;
