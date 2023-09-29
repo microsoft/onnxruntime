@@ -8,6 +8,7 @@
 #include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
+#include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 
 namespace onnxruntime {
 

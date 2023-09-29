@@ -1,0 +1,76 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
+
+namespace onnxruntime {
+namespace qnn {
+
+Status CreateNodeArgs(const std::vector<std::string>& names,
+                      const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
+                      std::vector<NodeArg*>& node_args,
+                      onnxruntime::Graph& graph) {
+  using namespace ONNX_NAMESPACE;
+  for (int i = 0; i < names.size(); ++i) {
+    std::string name = names[i];
+    ORT_RETURN_IF(tensor_info_table.find(name) == tensor_info_table.end(), "Tensor name: ", name, " not found in tensor_info_table");
+    const OnnxTensorInfo& tensor_info = tensor_info_table.at(name);
+    TypeProto tensor_type;
+    tensor_type.mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
+    for (int j = 0; j < tensor_info.shape_.size(); ++j) {
+      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);
+    }
+    auto& input_arg = graph.GetOrCreateNodeArg(name, &tensor_type);
+    node_args.push_back(&input_arg);
+  }
+  return Status::OK();
+}
+
+Status GenerateCtxCacheOnnxModle(const std::string& model_name, const std::string& graph_name,
+                                 const std::vector<std::string>& input_names,
+                                 const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info,
+                                 const std::vector<std::string>& output_names,
+                                 const std::unordered_map<std::string, OnnxTensorInfo>& outputs_info,
+                                 const std::string& model_description,
+                                 const std::string& sdk_build_version,
+                                 const std::string file_path,
+                                 unsigned char* buffer,
+                                 uint64_t buffer_size,
+                                 const logging::Logger& logger) {
+  std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
+  Model model(model_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              {}, logger);
+  auto& graph = model.MainGraph();
+  graph.SetDescription(model_description);
+
+  onnxruntime::Version model_version = 5;
+  model.SetModelVersion(model_version);
+
+  using namespace ONNX_NAMESPACE;
+  std::vector<NodeArg*> inputs;
+  std::vector<NodeArg*> outputs;
+  ORT_RETURN_IF_ERROR(CreateNodeArgs(input_names, inputs_info, inputs, graph));
+  ORT_RETURN_IF_ERROR(CreateNodeArgs(output_names, outputs_info, outputs, graph));
+
+  auto& ep_node = graph.AddNode(graph_name,
+                                "EPCache",
+                                "Onnx Qnn context binary cache for graph partition: " + graph_name,
+                                inputs,
+                                outputs,
+                                nullptr,
+                                kMSDomain);
+
+  std::string cache_payload(buffer, buffer + buffer_size);
+  ep_node.AddAttribute("ep_engine_cache", cache_payload);
+  ep_node.AddAttribute("ep_sdk_version", sdk_build_version);
+  ep_node.AddAttribute("partition_name", graph_name);
+
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+
+  ORT_RETURN_IF_ERROR(Model::Save(model, file_path));
+
+  return Status::OK();
+}
+
+}  // namespace qnn
+}  // namespace onnxruntime

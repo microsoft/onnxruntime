@@ -16,8 +16,7 @@
 #include "core/common/gsl.h"
 #include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
-
-#include "core/graph/model.h"
+#include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -369,26 +368,6 @@ Status WriteInt16ToBinaryFile(std::ofstream& of_stream, uint16_t value) {
   return Status::OK();
 }
 
-Status CreateNodeArgs(const std::vector<std::string>& names,
-                      const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
-                      std::vector<NodeArg*>& node_args,
-                      onnxruntime::Graph& graph) {
-  using namespace ONNX_NAMESPACE;
-  for (int i = 0; i < names.size(); ++i) {
-    std::string name = names[i];
-    ORT_RETURN_IF(tensor_info_table.find(name) == tensor_info_table.end(), "Tensor name: ", name, " not found in tensor_info_table");
-    const OnnxTensorInfo& tensor_info = tensor_info_table.at(name);
-    TypeProto tensor_type;
-    tensor_type.mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
-    for (int j = 0; j < tensor_info.shape_.size(); ++j) {
-      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);
-    }
-    auto& input_arg = graph.GetOrCreateNodeArg(name, &tensor_type);
-    node_args.push_back(&input_arg);
-  }
-  return Status::OK();
-}
-
 Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const std::string& graph_name,
                                          const std::vector<std::string>& input_names,
                                          const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info,
@@ -429,31 +408,9 @@ Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const st
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Context written buffer exceeds allocated buffer size.");
   }
 
-  std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
-  Model model(model_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-              {}, *logger_);
-  auto& graph = model.MainGraph();
-  graph.SetDescription(model_description_);
-
-  onnxruntime::Version model_version = 5;
-  model.SetModelVersion(model_version);
-  
-  using namespace ONNX_NAMESPACE;
-  std::vector<NodeArg*> inputs;
-  std::vector<NodeArg*> outputs;
-  ORT_RETURN_IF_ERROR(CreateNodeArgs(input_names, inputs_info, inputs, graph));
-  ORT_RETURN_IF_ERROR(CreateNodeArgs(output_names, outputs_info, outputs, graph));
-
-  auto& ep_node = graph.AddNode(graph_name, "EPCache", "Onnx Qnn context binary cache for graph partition: " + graph_name, inputs, outputs, nullptr, kMSDomain);
-  unsigned char* buffer = context_buffer.get();
-  std::string cache_payload(buffer, buffer + written_buffer_size);
-  ep_node.AddAttribute("ep_engine_cache", cache_payload);
-  ep_node.AddAttribute("ep_sdk_version", sdk_build_version_);
-  ep_node.AddAttribute("partition_name", graph_name);
-
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-
-  ORT_RETURN_IF_ERROR(Model::Save(model, context_cache_path_));
+  ORT_RETURN_IF_ERROR(GenerateCtxCacheOnnxModle(model_name, graph_name, input_names, inputs_info, output_names,
+                                                outputs_info, model_description_, sdk_build_version_, context_cache_path_,
+                                                context_buffer.get(), written_buffer_size, *logger_));
 
   LOGS(*logger_, VERBOSE) << "Dump QNN Context completed.";
   return Status::OK();
