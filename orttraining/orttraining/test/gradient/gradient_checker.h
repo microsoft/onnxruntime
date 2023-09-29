@@ -17,11 +17,11 @@ limitations under the License.
 
 #pragma once
 #include "test/providers/provider_test_utils.h"
-#include "orttraining/core/session/training_session.h"
 #include "orttraining/test/gradient/gradient_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
+using training::OpDef;
 
 // TODO: This class currently assumes the inputs share types and the outputs share a type.
 // However there are cases like MaxPool and Gather where this is not true.
