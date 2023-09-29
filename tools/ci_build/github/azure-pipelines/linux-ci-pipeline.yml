@@ -85,11 +85,7 @@ stages:
                       set -ex; \
                       ccache -s; \
                       /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-<<<<<<< HEAD
-                        --build_dir /build --cmake_generator Ninja \
-=======
                         --build_dir /build --cmake_generator 'Ninja' \
->>>>>>> ede339f304 (Move dotnet build and test into docker in Linux CPU CI (#17417))
                         --config Debug Release \
                         --skip_submodule_sync \
                         --build_shared_lib \
