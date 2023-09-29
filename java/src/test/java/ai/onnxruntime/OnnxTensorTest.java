@@ -92,10 +92,12 @@ public class OnnxTensorTest {
   public void testBufferCreation() throws OrtException {
     OrtEnvironment env = OrtEnvironment.getEnvironment();
 
+    // Test creating a value from an array
+    // Arrays result in tensors allocated by ORT, so they do not have a backing java.nio.Buffer
     float[] arrValues = new float[] {0, 1, 2, 3, 4};
     try (OnnxTensor t = OnnxTensor.createTensor(env, arrValues)) {
       // array creation isn't backed by buffers
-      Assertions.assertFalse(t.isCopy());
+      Assertions.assertFalse(t.ownsBuffer());
       Assertions.assertFalse(t.getBufferRef().isPresent());
       FloatBuffer buf = t.getFloatBuffer();
       float[] output = new float[arrValues.length];
@@ -107,12 +109,16 @@ public class OnnxTensorTest {
       Assertions.assertArrayEquals(arrValues, output);
     }
 
+    // Test creating a value from a non-direct byte buffer
+    // Non-direct byte buffers are allocated on the Java heap and must be copied into off-heap
+    // direct byte buffers
+    // which can be directly passed to ORT
     FloatBuffer nonDirectBuffer = FloatBuffer.allocate(5);
     nonDirectBuffer.put(arrValues);
     nonDirectBuffer.rewind();
     try (OnnxTensor t = OnnxTensor.createTensor(env, nonDirectBuffer, new long[] {1, 5})) {
       // non-direct buffers trigger a copy
-      Assertions.assertTrue(t.isCopy());
+      Assertions.assertTrue(t.ownsBuffer());
       // tensors backed by buffers can get the buffer ref back out
       Assertions.assertTrue(t.getBufferRef().isPresent());
       FloatBuffer buf = t.getFloatBuffer();
@@ -132,13 +138,15 @@ public class OnnxTensorTest {
       Assertions.assertEquals(25, output[0]);
     }
 
+    // Test creating a value from a direct byte buffer
+    // Direct byte buffers can be passed into ORT without additional copies or processing
     FloatBuffer directBuffer =
         ByteBuffer.allocateDirect(5 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
     directBuffer.put(arrValues);
     directBuffer.rewind();
     try (OnnxTensor t = OnnxTensor.createTensor(env, directBuffer, new long[] {1, 5})) {
       // direct buffers don't trigger a copy
-      Assertions.assertFalse(t.isCopy());
+      Assertions.assertFalse(t.ownsBuffer());
       // tensors backed by buffers can get the buffer ref back out
       Assertions.assertTrue(t.getBufferRef().isPresent());
       FloatBuffer buf = t.getFloatBuffer();

@@ -27,31 +27,35 @@ public class OnnxTensor extends OnnxTensorLike {
    */
   private final Buffer buffer;
 
-  /** Denotes if the OnnxTensor made a copy of the buffer (i.e. it may have the only reference). */
-  private final boolean isCopy;
+  /**
+   * Denotes if the OnnxTensor made a copy of the buffer on construction (i.e. it may have the only
+   * reference).
+   */
+  private final boolean ownsBuffer;
 
   OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info) {
     this(nativeHandle, allocatorHandle, info, null, false);
   }
 
   OnnxTensor(
-      long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer, boolean isCopy) {
+      long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer, boolean ownsBuffer) {
     super(nativeHandle, allocatorHandle, info);
     this.buffer = buffer;
-    this.isCopy = isCopy;
+    this.ownsBuffer = ownsBuffer;
   }
 
   /**
-   * Returns true if the buffer in this OnnxTensor is a copy of the user supplied buffer, false if
-   * the tensor either isn't backed by a buffer, or is backed by a user supplied direct buffer.
+   * Returns true if the buffer in this OnnxTensor was created on construction of this tensor, i.e.,
+   * it is a copy of a user supplied buffer or array and may hold the only reference to that buffer.
    *
-   * <p>A consequence of being a copy is that users cannot mutate the state of this buffer without
-   * first getting the reference via {@link #getBufferRef()} (if available).
+   * <p>When this is true the backing buffer was copied from the user input, so users cannot mutate
+   * the state of this buffer without first getting the reference via {@link #getBufferRef()}.
    *
-   * @return True if the buffer in this OnnxTensor is a copy of a user buffer.
+   * @return True if the buffer in this OnnxTensor was allocated by it on construction (i.e., it is
+   *     a copy of a user buffer.)
    */
-  public boolean isCopy() {
-    return this.isCopy;
+  public boolean ownsBuffer() {
+    return this.ownsBuffer;
   }
 
   /**
@@ -65,6 +69,8 @@ public class OnnxTensor extends OnnxTensorLike {
    *
    * <p>Note: the tensor could refer to a contiguous range of elements in this buffer, not the whole
    * buffer. It is up to the user to manage this information by respecting the position and limit.
+   * As a consequence, accessing this reference should be considered problematic when multiple
+   * threads hold references to the buffer.
    *
    * @return A reference to the buffer.
    */
