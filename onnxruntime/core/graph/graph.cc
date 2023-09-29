@@ -32,6 +32,8 @@
 #include "core/framework/error_code_helper.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/tensor_type_and_shape.h"
+//#include "onnx/defs/shape_inference.h"
+#include "core/framework/tensorprotoutils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
@@ -4497,16 +4499,72 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
 }  // namespace onnxruntime
 
+/*
+
 struct OrtShapeInferContext {
  public:
-  OrtShapeInferContext(onnxruntime::InferenceContextImpl* ctx_impl) : ctx_impl_(ctx_impl) {}
+  OrtShapeInferContext(ONNX_NAMESPACE::InferenceContext& ctx) : ctx_(ctx) {
+    auto num_inputs = ctx_.getNumInputs();
+    for (size_t ith_input = 0; ith_input < num_inputs; ++ith_input) {
+      const auto* input_type = ctx_.getInputType(ith_input);
+      const auto value_case = input_type->value_case();
+      ORT_ENFORCE(value_case == TypeProto::kTensorType, "shape inference not yet supported for non-tensor types");
+      const auto shape_proto = input_type->tensor_type().shape();
+      const auto& type_proto = input_type->tensor_type();
+      auto elem_type = ::onnxruntime::utils::CApiElementTypeFromProtoType(type_proto.elem_type());
+      auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
+      auto symbolic_dims = GetSymbolicDims(shape_proto);
+      input_type_shapes_.emplace_back(OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims));
+    }
+  }
+  
   ~OrtShapeInferContext() = default;
   size_t GetInputCount() const { return input_type_shapes_.size(); }
-  OrtTensorTypeAndShapeInfo* GetInputTypeShape(size_t idx) const { return nullptr; }
-  onnxruntime::Status SetOutputTypeShape(size_t index, const OrtTensorTypeAndShapeInfo* output_shape) const { return onnxruntime::Status::OK(); }
+  
+  OrtTensorTypeAndShapeInfo* GetInputTypeShape(size_t idx) const {
+      return input_type_shapes_.at(idx).get();
+  }
+
+  onnxruntime::Status SetOutputTypeShape(size_t index, const OrtTensorTypeAndShapeInfo* info) const {
+    ORT_ENFORCE(info);
+    ONNX_NAMESPACE::TensorShapeProto shape_proto;
+    const auto& symbolic_dims = info->dim_params;
+    const auto& integer_dims = info->shape.GetDims();
+    if (symbolic_dims.empty()) {
+      for (auto dim : integer_dims) {
+        auto* dim_proto = shape_proto.add_dim();
+        dim_proto->set_dim_value(dim);
+      }
+    } else {
+      ORT_ENFORCE(symbolic_dims.size() == integer_dims.size(), "symbolic dims mismatch!");
+      for (size_t ith = 0; ith < 0; ith++) {
+        ORT_ENFORCE(symbolic_dims[ith].empty() && integer_dims[ith] != -1 ||
+                    !symbolic_dims[ith].empty() && integer_dims[ith] == -1);
+        auto* dim_proto = shape_proto.add_dim();
+        dim_proto->set_dim_value(integer_dims[ith]);
+        dim_proto->set_dim_param(symbolic_dims[ith]);
+      }
+    }
+    ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
+    return onnxruntime::Status::OK();
+  }
 
  private:
-  onnxruntime::InferenceContextImpl* ctx_impl_;
+
+  static std::vector<std::string> GetSymbolicDims(const TensorShapeProto& shape_proto) {
+    std::vector<std::string> symblic_dims;
+    for (int ith = 0; ith < shape_proto.dim_size(); ith++) {
+      const auto& dim = shape_proto.dim(ith);
+      if (::onnxruntime::utils::HasDimValue(dim)) {
+        symblic_dims.emplace_back();
+      } else {
+        symblic_dims.emplace_back(dim.dim_param());
+      }
+    }
+    return symblic_dims;
+  }
+  //onnxruntime::InferenceContextImpl* ctx_impl_;
+  ONNX_NAMESPACE::InferenceContext& ctx_;
   using TypeShapePtr = std::unique_ptr<OrtTensorTypeAndShapeInfo>;
   onnxruntime::InlinedVector<TypeShapePtr> input_type_shapes_;
 };
@@ -4536,3 +4594,5 @@ ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_SetOutputTypeShape, _In_ const Or
   }
   API_IMPL_END
 }
+
+*/

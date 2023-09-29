@@ -2716,6 +2716,7 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::ShapeInferContext_GetInputCount,
     &OrtApis::ShapeInferContext_GetInputTypeShape,
     &OrtApis::ShapeInferContext_SetOutputTypeShape,
+    &OrtApis::SetSymbolicDimensions,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

@@ -929,7 +929,96 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
 };  // struct OrtLiteCustomFunc
 
 struct ShapeInferContext {
-  ShapeInferContext(OrtShapeInferContext*){}
+  struct SymblicInteger {
+    SymblicInteger(int64_t i) : i_(i), is_int_(true){};
+    SymblicInteger(const char* s) : s_(s), is_int_(false){};
+    SymblicInteger(const SymblicInteger&) = default;
+    SymblicInteger(SymblicInteger&&) = default;
+    SymblicInteger& operator=(const SymblicInteger&) = default;
+    SymblicInteger& operator=(SymblicInteger&&) = default;
+
+    bool IsInt() const { return is_int_; }
+    int64_t AsInt() const { return i_; }
+    const char* AsSym() const { return s_; }
+
+   private:
+    union {
+      int64_t i_;
+      const char* s_;
+    };
+    bool is_int_;
+  };
+
+  using Shape = std::vector<SymblicInteger>;
+
+  ShapeInferContext(const OrtApi* ort_api,
+                    OrtShapeInferContext* ctx) : ort_api_(ort_api), ctx_(ctx) {
+    size_t input_count = 0;
+    Ort::ThrowOnError(ort_api_->ShapeInferContext_GetInputCount(ctx_, &input_count));
+    for (size_t ith_input = 0; ith_input < input_count; ++ith_input) {
+      OrtTensorTypeAndShapeInfo* info{};
+      Ort::ThrowOnError(ort_api_->ShapeInferContext_GetInputTypeShape(ctx, ith_input, &info));
+      TensorTypeAndShapeInfo type_shape_info(info);
+      auto integer_shape = type_shape_info.GetShape();
+      std::vector<const char*> symbolic_shape(integer_shape.size(), {});
+      type_shape_info.GetSymbolicDimensions(&symbolic_shape[0], integer_shape.size());
+      Shape shape;
+      for (size_t ith = 0; ith < integer_shape.size(); ++ith) {
+        if (integer_shape[ith] == -1) {
+          if (!symbolic_shape[ith]) {
+            ORT_CXX_API_THROW("symbolic dim expected!", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+          }
+          shape.emplace_back(symbolic_shape[ith]);
+        } else {
+          shape.emplace_back(integer_shape[ith]);
+        }
+      }
+      input_shapes_.push_back(std::move(shape));
+    }
+  }
+
+  const Shape& GetInputShape(size_t indice) {
+    return input_shapes_.at(indice);
+  }
+
+  size_t GetInputCount() const {
+    return input_shapes_.size();
+  }
+
+  Status SetOnputShape(size_t indice, const Shape& shape) {
+    OrtTensorTypeAndShapeInfo* info = {};
+    ThrowOnError(ort_api_->CreateTensorTypeAndShapeInfo(&info));
+
+    using InfoPtr = std::unique_ptr<OrtTensorTypeAndShapeInfo, std::function<void(OrtTensorTypeAndShapeInfo*)>>;
+
+    InfoPtr info_ptr(info, [this](OrtTensorTypeAndShapeInfo* obj) {
+      ort_api_->ReleaseTensorTypeAndShapeInfo(obj);
+    });
+    
+    std::vector<int64_t> integer_dims;
+    std::vector<const char*> symbolic_dims;
+
+    for (const auto dim : shape) {
+      if (dim.IsInt()) {
+        integer_dims.push_back(dim.IsInt());
+        symbolic_dims.push_back("");
+      } else {
+        integer_dims.push_back(-1);
+        symbolic_dims.push_back(dim.AsSym());
+      }
+    }
+
+    ThrowOnError(ort_api_->SetDimensions(info, integer_dims.data(), integer_dims.size()));
+    ThrowOnError(ort_api_->SetSymbolicDimensions(info, symbolic_dims.data(), symbolic_dims.size()));
+    ThrowOnError(ort_api_->ShapeInferContext_SetOutputTypeShape(ctx_, indice, info));
+
+    return Status{nullptr};
+  }
+
+ private:
+  const OrtApi* ort_api_;
+  OrtShapeInferContext* ctx_;
+  std::vector<Shape> input_shapes_;
 };
 
 /////////////////////////// OrtLiteCustomStruct ///////////////////////////
@@ -963,6 +1052,7 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
     size_t num_output_{};
     std::unique_ptr<CustomOp> custom_op_;
     std::string ep_{};
+    const OrtApi* ort_api_{};
   };
 
   OrtLiteCustomStruct(const char* op_name,
@@ -977,6 +1067,7 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
       kernel->custom_op_ = std::make_unique<CustomOp>(ort_api, info);
       auto self = static_cast<const OrtLiteCustomStruct*>(this_);
       kernel->ep_ = self->execution_provider_;
+      kernel->ort_api_ = ort_api;
       return reinterpret_cast<void*>(kernel.release());
     };
 
@@ -1012,8 +1103,8 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
   template <typename C>
   decltype(&C::InferOutputShape) SetShapeInfer(decltype(&C::InferOutputShape)) {
     OrtCustomOp::InferOutputShape = [](void* op_kernel, OrtShapeInferContext* ort_ctx) -> OrtStatusPtr {
-      ShapeInferContext ctx(ort_ctx);
       auto kernel = reinterpret_cast<Kernel*>(op_kernel);
+      ShapeInferContext ctx(kernel->ort_api_, ort_ctx);
       return kernel->custom_op_->InferOutputShape(ctx);
     };
     return {};
