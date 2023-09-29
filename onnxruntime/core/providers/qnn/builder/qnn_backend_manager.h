@@ -75,7 +75,9 @@ class QnnBackendManager {
                         const std::vector<std::string>& output_names,
                         const std::unordered_map<std::string, OnnxTensorInfo>& outputs_info);
 
-  Status LoadCachedQnnContext(QnnModel& qnn_model);
+  Status LoadCachedQnnCtxFromOnnxModel(const std::string& ep_engine_cache,
+                                       QnnModel& qnn_model,
+                                       bool& loaded_from_cache);
 
   Status GetMetadataFromOrtContextFile();
 
@@ -139,6 +141,10 @@ class QnnBackendManager {
                                 const std::string& model_description,
                                 const onnxruntime::PathString& model_pathstring);
 
+  bool GetIsContextCacheFileExists() const {
+    return ctx_file_exists_;
+  }
+
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
@@ -176,6 +182,8 @@ class QnnBackendManager {
     ret.push_back(nullptr);
     return ret;
   }
+
+  Status LoadCachedQnnContextFromBuffer(const std::string& buffer, QnnModel& qnn_model);
 
  private:
   const std::string backend_path_;

@@ -345,13 +345,13 @@ bool QnnBackendManager::IsContextCacheFileExists(const std::string& customer_con
                                                  const std::string& model_description,
                                                  const onnxruntime::PathString& model_pathstring) {
   // Avoid duplicate work
-  if (!context_cache_path_.empty()) {
+  if (ctx_file_exists_) {
     return ctx_file_exists_;
   }
   model_description_ = model_description;
   // Use user provided context cache file path if exist, otherwise try model_file.onnx_ctx.onnx by default
   if (customer_context_cache_path.empty()) {
-    context_cache_path_ = PathToUTF8String(model_pathstring) + "_ctx.onnx";
+    context_cache_path_ = PathToUTF8String(model_pathstring) + "_qnn_ctx.onnx";
   } else {
     context_cache_path_ = customer_context_cache_path;
   }
@@ -376,7 +376,7 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
   using namespace ONNX_NAMESPACE;
   for (int i = 0; i < names.size(); ++i) {
     std::string name = names[i];
-    ORT_RETURN_IF(tensor_info_table.find(name) == tensor_info_table.end(), "Input name: ", name, " not exist in tensor_info_table");
+    ORT_RETURN_IF(tensor_info_table.find(name) == tensor_info_table.end(), "Tensor name: ", name, " not found in tensor_info_table");
     const OnnxTensorInfo& tensor_info = tensor_info_table.at(name);
     TypeProto tensor_type;
     tensor_type.mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
@@ -459,34 +459,24 @@ Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const st
   return Status::OK();
 }
 
-Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
+Status QnnBackendManager::LoadCachedQnnCtxFromOnnxModel(const std::string& ep_engine_cache,
+                                                        QnnModel& qnn_model,
+                                                        bool& loaded_from_cache) {
+  loaded_from_cache = false;
+
+  if (!ep_engine_cache.empty()) {
+    ORT_RETURN_IF_ERROR(LoadCachedQnnContextFromBuffer(ep_engine_cache, qnn_model));
+    loaded_from_cache = true;
+  }
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::LoadCachedQnnContextFromBuffer(const std::string& buffer, QnnModel& qnn_model) {
   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree;
   ORT_RETURN_IF(result, "Failed to get valid function pointer.");
-
-  ORT_RETURN_IF(!ctx_file_exists_, "Qnn context binary file not exist for some reason!");
-
-  uint64_t buffer_size{0};
-  std::ifstream cache_file(context_cache_path_.c_str(), std::ifstream::binary);
-  ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
-  cache_file.seekg(0, cache_file.end);
-  buffer_size = cache_file.tellg();
-  ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
-  cache_file.seekg(0, cache_file.beg);
-  // Skip Ort generated metadata
-  if (ort_generated_ctx_cache_) {
-    cache_file.seekg(ort_ctx_metadata_length_);
-    buffer_size -= ort_ctx_metadata_length_;
-  }
-
-  std::unique_ptr<unsigned char[]> buffer = std::make_unique<unsigned char[]>(buffer_size);
-  ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
-
-  // Load file into buffer
-  const auto& read_result = cache_file.read(reinterpret_cast<char*>(buffer.get()), buffer_size);
-  cache_file.close();
-  ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
 
   QnnSystemContext_Handle_t sys_ctx_handle = nullptr;
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
@@ -495,8 +485,8 @@ Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size{0};
   rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
-                                                     static_cast<void*>(buffer.get()),
-                                                     buffer_size,
+                                                     static_cast<void*>(const_cast<char*>(buffer.c_str())),
+                                                     static_cast<uint64_t>(buffer.length()),
                                                      &binary_info,
                                                      &binary_info_size);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary info.");
@@ -523,8 +513,8 @@ Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                               device_handle_,
                                               (const QnnContext_Config_t**)&context_config_,
-                                              static_cast<void*>(buffer.get()),
-                                              buffer_size,
+                                              static_cast<void*>(const_cast<char*>(buffer.c_str())),
+                                              static_cast<uint64_t>(buffer.length()),
                                               &context_,
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
