@@ -277,7 +277,7 @@ Status FuncSlice(
   ORT_RETURN_IF_ERROR(SliceImpl(
       cuda_kernel->Stream(ctx),
       input->DataType()->Size(),
-      input_dimensions.size(),
+      gsl::narrow_cast<int32_t>(input_dimensions.size()),
       starts_buffer,
       steps_buffer,
       input_strides,
