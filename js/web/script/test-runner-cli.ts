@@ -257,7 +257,7 @@ async function main() {
       times?: number): Test.ModelTest {
     if (times === 0) {
       npmlog.verbose('TestRunnerCli.Init.Model', `Skip test data from folder: ${testDataRootFolder}`);
-      return {name: path.basename(testDataRootFolder), backend, modelUrl: '', cases: []};
+      return {name: path.basename(testDataRootFolder), backend, modelUrl: '', cases: [], ioBinding: args.ioBindingMode};
     }
 
     let modelUrl: string|null = null;
@@ -323,6 +323,16 @@ async function main() {
       }
     }
 
+    let ioBinding: Test.IOBindingMode;
+    if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+      npmlog.warn(
+          'TestRunnerCli.Init.Model', `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`);
+      ioBinding = 'none';
+    } else {
+      ioBinding = args.ioBindingMode;
+    }
+
+
     npmlog.verbose('TestRunnerCli.Init.Model', 'Finished preparing test data.');
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
     npmlog.verbose('TestRunnerCli.Init.Model', ` Model file: ${modelUrl}`);
@@ -330,7 +340,7 @@ async function main() {
     npmlog.verbose('TestRunnerCli.Init.Model', ` Test set(s): ${cases.length} (${caseCount})`);
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
 
-    return {name: path.basename(testDataRootFolder), platformCondition, modelUrl, backend, cases};
+    return {name: path.basename(testDataRootFolder), platformCondition, modelUrl, backend, cases, ioBinding};
   }
 
   function tryLocateModelTestFolder(searchPattern: string): string {
@@ -390,6 +400,13 @@ async function main() {
       for (const test of tests) {
         test.backend = backend;
         test.opset = test.opset || {domain: '', version: MAX_OPSET_VERSION};
+        if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+          npmlog.warn(
+              'TestRunnerCli.Init.Op', `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`);
+          test.ioBinding = 'none';
+        } else {
+          test.ioBinding = args.ioBindingMode;
+        }
       }
       npmlog.verbose('TestRunnerCli.Init.Op', 'Finished preparing test data.');
       npmlog.verbose('TestRunnerCli.Init.Op', '===============================================================');

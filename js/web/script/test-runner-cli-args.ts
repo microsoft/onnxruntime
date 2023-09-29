@@ -51,6 +51,10 @@ Options:
  -P[=<...>], --perf[=<...>]    Generate performance number. Cannot be used with flag --debug.
                                  This flag can be used with a number as value, specifying the total count of test cases to run. The test cases may be used multiple times. Default value is 10.
  -c, --file-cache              Enable file cache.
+ -i=<...>, --io-binding=<...>  Specify the IO binding testing type. Should be one of the following:
+                                 none          (default)
+                                 gpu-tensor      use pre-allocated GPU tensors for inputs and outputs
+                                 gpu-location    use pre-allocated GPU tensors for inputs and set preferredOutputLocation to 'gpu-buffer'
 
 *** Session Options ***
  -u=<...>, --optimized-model-file-path=<...>        Specify whether to dump the optimized model.
@@ -109,6 +113,7 @@ export declare namespace TestRunnerCliArgs {
   type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'xnnpack'|'webnn';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
   type BundleMode = 'prod'|'dev'|'perf';
+  type IOBindingMode = 'none'|'gpu-tensor'|'gpu-location';
 }
 
 export interface TestRunnerCliArgs {
@@ -139,6 +144,8 @@ export interface TestRunnerCliArgs {
    * perf   | /test/ort.perf.js     | /test/test-main.ts   | (none)             | production
    */
   bundleMode: TestRunnerCliArgs.BundleMode;
+
+  ioBindingMode: TestRunnerCliArgs.IOBindingMode;
 
   logConfig: Test.Config['log'];
 
@@ -416,6 +423,13 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logConfig.push({category: 'TestRunner.Perf', config: {minimalSeverity: 'verbose'}});
   }
 
+  // Option: -i=<...>, --io-binding=<...>
+  const ioBindingArg = args['io-binding'] || args.i;
+  const ioBindingMode = (typeof ioBindingArg !== 'string') ? 'none' : ioBindingArg;
+  if (['none', 'gpu-tensor', 'gpu-location'].indexOf(ioBindingMode) === -1) {
+    throw new Error(`not supported io binding mode ${ioBindingMode}`);
+  }
+
   // Option: -u, --optimized-model-file-path
   const optimizedModelFilePath = args['optimized-model-file-path'] || args.u || undefined;
   if (typeof optimizedModelFilePath !== 'undefined' && typeof optimizedModelFilePath !== 'string') {
@@ -455,6 +469,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   npmlog.verbose('TestRunnerCli.Init', ` Env:               ${env}`);
   npmlog.verbose('TestRunnerCli.Init', ` Debug:             ${debug}`);
   npmlog.verbose('TestRunnerCli.Init', ` Backend:           ${backend}`);
+  npmlog.verbose('TestRunnerCli.Init', ` IO Binding Mode:   ${ioBindingMode}`);
   npmlog.verbose('TestRunnerCli.Init', 'Parsing commandline arguments... DONE');
 
   return {
@@ -467,6 +482,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logConfig,
     profile,
     times: perf ? times : undefined,
+    ioBindingMode: ioBindingMode as TestRunnerCliArgs['ioBindingMode'],
     optimizedModelFilePath,
     graphOptimizationLevel: graphOptimizationLevel as TestRunnerCliArgs['graphOptimizationLevel'],
     fileCache,

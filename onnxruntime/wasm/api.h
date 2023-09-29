@@ -15,6 +15,9 @@
 struct OrtSession;
 using ort_session_handle_t = OrtSession*;
 
+struct OrtIoBinding;
+using ort_io_binding_handle_t = OrtIoBinding*;
+
 struct OrtSessionOptions;
 using ort_session_options_handle_t = OrtSessionOptions*;
 
@@ -164,9 +167,10 @@ void EMSCRIPTEN_KEEPALIVE OrtFree(void* ptr);
  * @param data_length size of the buffer 'data' in bytes.
  * @param dims a pointer to an array of dims. the array should contain (dims_length) element(s).
  * @param dims_length the length of the tensor's dimension
+ * @param data_location specify the memory location of the tensor data. 0 for CPU, 1 for GPU buffer.
  * @returns a tensor handle. Caller must release it after use by calling OrtReleaseTensor().
  */
-ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length);
+ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length, int data_location);
 
 /**
  * get type, shape info and data of the specified tensor.
@@ -215,6 +219,58 @@ int EMSCRIPTEN_KEEPALIVE OrtAddRunConfigEntry(ort_run_options_handle_t run_optio
  * release the specified ORT run options.
  */
 void EMSCRIPTEN_KEEPALIVE OrtReleaseRunOptions(ort_run_options_handle_t run_options);
+
+/**
+ * create an instance of ORT IO binding.
+ */
+ort_io_binding_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateBinding(ort_session_handle_t session);
+
+/**
+ * bind an input tensor to the IO binding instance. A cross device copy will be performed if necessary.
+ * @param io_binding handle of the IO binding
+ * @param name name of the input
+ * @param input handle of the input tensor
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtBindInput(ort_io_binding_handle_t io_binding,
+                                      const char* name,
+                                      ort_tensor_handle_t input);
+
+/**
+ * bind an output tensor or location to the IO binding instance.
+ * @param io_binding handle of the IO binding
+ * @param name name of the output
+ * @param output handle of the output tensor. nullptr for output location binding.
+ * @param output_location specify the memory location of the output tensor data.
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtBindOutput(ort_io_binding_handle_t io_binding,
+                                       const char* name,
+                                       ort_tensor_handle_t output,
+                                       int output_location);
+
+/**
+ * clear all bound outputs.
+ */
+void EMSCRIPTEN_KEEPALIVE OrtClearBoundOutputs(ort_io_binding_handle_t io_binding);
+
+/**
+ * release the specified ORT IO binding.
+ */
+void EMSCRIPTEN_KEEPALIVE OrtReleaseBinding(ort_io_binding_handle_t io_binding);
+
+/**
+ * inference the model.
+ * @param session handle of the specified session
+ * @param io_binding handle of the IO binding
+ * @param run_options handle of the run options
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtRunWithBinding(ort_session_handle_t session,
+                                           ort_io_binding_handle_t io_binding,
+                                           size_t output_count,
+                                           ort_tensor_handle_t* outputs,
+                                           ort_run_options_handle_t run_options);
 
 /**
  * inference the model.
