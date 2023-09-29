@@ -17,6 +17,16 @@ namespace cuda {
 
 #if defined(ORT_USE_NCCL)
 
+void ValidateAxisIndex(const int64_t axis, const int64_t rank) {
+  int64_t adjusted_axis = axis;
+  if (axis < 0) {
+    adjusted_axis = axis + rank;
+  } else {
+    adjusted_axis = axis;
+  }
+  ORT_ENFORCE(adjusted_axis >= 0 && adjusted_axis < rank, "axis,", axis, ", should be in [", -rank, ",", rank, ").");
+}
+
 DeviceMesh CreateDeviceMesh(
     std::vector<int64_t> device_mesh_shape,
     std::vector<int64_t> device_mesh_elements) {

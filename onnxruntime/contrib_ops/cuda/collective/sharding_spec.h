@@ -4,6 +4,7 @@
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
 
+#include <iostream>
 #include <sstream>
 #include <vector>
 
@@ -54,11 +55,13 @@ class DeviceMesh {
 
   // Actual shape of device mesh represented by `device_mesh_elements`.
   std::vector<int64_t> device_mesh_shape;
+
   // Flattened device mesh.
   std::vector<int64_t> device_mesh_elements;
+
   // Helper to debug and generate error message; e.g.,
   // "DeviceMesh{Shape: [2,2,], Elements: [0,1,2,3,]}".
-  std::string to_string() const {
+  std::string ToString() const {
     std::ostringstream os;
     os << "DeviceMesh{Shape: [";
     for (const auto& shape : device_mesh_shape)
@@ -68,6 +71,11 @@ class DeviceMesh {
       os << element << ",";
     os << "]}";
     return os.str();
+  }
+
+  // Call this in GDB to visualize the mesh.
+  void Print() const {
+    std::cout << ToString() << std::endl;
   }
 };
 
@@ -82,28 +90,54 @@ class AxisPartitionSpec {
   // - AxisPartitionSpec(Condition::Replica, -1)
   // - AxisPartitionSpec(Condition::Shard, 0)
  public:
+  // Status of a tensor axis.
+  // A tensor axis can be either sharded or replicated
+  // along a device mesh axis.
   enum class Condition { Replica,
                          Shard };
+
   // This field tells if a tensor axis is sharded or not.
   Condition cond;
+
   // If a tensor axis is sharded, this field tells which device
   // mesh axis to distribute the shards along.
   // If a tensor axis is not sharded, this field is ignored.
   int device_mesh_axis;
+
+  // A helper to construct a replica spec for a tensor axis.
   static AxisPartitionSpec CreateReplica() {
     return AxisPartitionSpec(Condition::Replica, -1);
   }
+
+  // A helper to construct a sharding spec for a tensor axis.
+  // This tensor axis is sharded along `device_mesh_axis` in device mesh.
   static AxisPartitionSpec CreateShard(int device_mesh_axis) {
     return AxisPartitionSpec(Condition::Shard, device_mesh_axis);
   }
+
+  // A normal ctor.
+  // TODO(wechi): Consider to hide it and revise the `public` members/functions
+  // exposed to the user.
   AxisPartitionSpec(Condition cond_, int device_mesh_axis_) : device_mesh_axis(device_mesh_axis_), cond(cond_) {}
-  std::string to_string() const {
+
+  // Helper to debug and generate error message; e.g.,
+  // "RS[0]".
+  std::string ToString() const {
     std::ostringstream os;
     os << (cond == Condition::Replica ? "R" : "S");
     if (cond == Condition::Shard) os << "[" << device_mesh_axis << "]";
     return os.str();
   }
+
+  // Call this in GDB to visualize the spec.
+  void Print() const {
+    std::cout << ToString() << std::endl;
+  }
 };
+
+// Return true if `axis` is a valid axis index for a tensor of rank `rank`.
+// Negative `axis` is allowed (e.g., -1 for the last axis).
+void ValidateAxisIndex(const int64_t axis, const int64_t rank);
 
 class TensorPartitionSpec {
   // [Device Mesh and Tensor Sharding for Tensor Parallel]
@@ -132,8 +166,12 @@ class TensorPartitionSpec {
   //                column axis. axis_specs[i].device_mesh_axis = j means that
   //                tensor axis i is sharded along device mesh axis j.
   std::vector<AxisPartitionSpec> axis_specs;
+
   // device_mesh: DeviceMesh for sharding the associated tensor.
+  // Read [Device Mesh and Tensor Sharding for Tensor Parallel] in DeviceMesh's comment.
   DeviceMesh device_mesh;
+
+  // Replacement of ctor.
   static TensorPartitionSpec Create(
       const std::vector<AxisPartitionSpec>& axis_specs, const DeviceMesh& device_mesh) {
     TensorPartitionSpec spec;
@@ -141,37 +179,60 @@ class TensorPartitionSpec {
     spec.device_mesh = device_mesh;
     return spec;
   }
+
+  // Copy-construct `spec` but with all tensor axes replicated.
+  // The new spec have the same number of axis specs and the same device mesh.
   static TensorPartitionSpec CreateAllReplica(
       const TensorPartitionSpec& spec) {
     TensorPartitionSpec new_spec = spec;
     new_spec.axis_specs[spec.GetPartitionAxis()] = AxisPartitionSpec::CreateReplica();
     return new_spec;
   }
-  std::string to_string() const {
+
+  // TODO(wechi): Create a halper to copy-construct a new spec with different sharding axis.
+  // static TensorPartitionSpec CreateReshard(
+  //     const TensorPartitionSpec& spec, int64_t new_shard_axis) {
+  // }
+
+  // Helper to debug and generate error message; e.g.,
+  // "TensorPartitionSpec{RS[0], Device Mesh: DeviceMesh{Shape: [4,], Elements: [0,1,2,3,]}}".
+  std::string ToString() const {
     std::ostringstream os;
-    os << "TensorPartitionSpec { ";
+    os << "TensorPartitionSpec{";
     for (const auto& spec : axis_specs)
-      os << spec.to_string();
-    os << ", Device Mesh: " << device_mesh.to_string() << " }";
+      os << spec.ToString();
+    os << ", DeviceMesh: " << device_mesh.ToString() << "}";
     return os.str();
   }
 
+  // Call this in GDB to visualize the spec.
+  void Print() const {
+    std::cout << ToString() << std::endl;
+  }
+
+  // Return true if at least one tensor axis is sharded.
+  // Otherwise, return false.
   bool HasShard() const {
     for (const auto& spec : axis_specs)
       if (spec.cond == AxisPartitionSpec::Condition::Shard) return true;
     return false;
   }
 
+  // Return true if no tensor axis is sharded.
+  // Otherwise, return false.
   bool HasNoShard() const {
     return !HasShard();
   }
 
+  // Return true if the only sharded tensor axis is `axis`.
+  // Otherwise, return false.
   bool OnlyShardAxis(int64_t axis) const {
+    ValidateAxisIndex(axis, Rank());
     if (axis < 0) {
-      axis += axis_specs.size();
+      axis += Rank();
     }
     bool answer = true;
-    for (int64_t i = 0; i < gsl::narrow<int64_t>(axis_specs.size()); ++i) {
+    for (int64_t i = 0; i < Rank(); ++i) {
       if (i == axis && axis_specs[i].cond != AxisPartitionSpec::Condition::Shard) {
         answer = false;
       } else if (i != axis && axis_specs[i].cond == AxisPartitionSpec::Condition::Shard) {
@@ -180,22 +241,44 @@ class TensorPartitionSpec {
     }
     return answer;
   }
+
+  // Rank of the owing tensor of this spec.
   int64_t Rank() const {
     return gsl::narrow<int64_t>(axis_specs.size());
   }
 
+  // Return the number of sharded tensor axes.
+  // Currently we only support one sharded tensor axis, so
+  // we may assert the returned value is 1 in related APIs.
+  int64_t CountShardingAxes() const {
+    int64_t count = 0;
+    for (const auto& spec : axis_specs)
+      if (spec.cond == AxisPartitionSpec::Condition::Shard) count++;
+    return count;
+  }
+
+  // Return the AxisPartitionSpec for `axis`-th tensor axis.
   const AxisPartitionSpec& GetAxisSpec(int64_t axis) const {
+    ValidateAxisIndex(axis, Rank());
     if (axis < 0) {
-      axis += axis_specs.size();
+      axis += Rank();
     }
     return axis_specs.at(axis);
   }
 
+  // Get the first sharded tensor axis' sharding spec.
   const AxisPartitionSpec& GetPartitionAxisSpec() const {
+    // TODO: support multiple sharding axes.
+    ORT_ENFORCE(CountShardingAxes() == 1, "TensorPartitionSpec must have exactly one sharding axis.");
     return GetAxisSpec(GetPartitionAxis());
   }
 
+  // Get the first sharded tensor axis' index.
+  // E.g., spec "RS[0]" should return 1, spec "S[0]R" should return 0, spec "RR" should return -1.
+  // Returned value -1 means no sharded tensor axis.
   int64_t GetPartitionAxis() const {
+    // TODO: support multiple sharding axes.
+    ORT_ENFORCE(CountShardingAxes() == 1, "TensorPartitionSpec must have exactly one sharding axis.");
     for (int64_t i = 0; i < gsl::narrow<int64_t>(axis_specs.size()); ++i) {
       if (axis_specs[i].cond == AxisPartitionSpec::Condition::Shard) {
         return i;
@@ -204,7 +287,12 @@ class TensorPartitionSpec {
     return -1;
   }
 
+  // Similarly to GetPartitionAxis(), but returns the negative index of the first sharded tensor axis.
+  // E.g., spec "RS[0]" should return -1, spec "S[0]R" should return -2, and spec "RR" should return 0.
+  // Returned value 0 means no sharded tensor axis.
   int64_t GetNegativePartitionAxis() const {
+    // TODO: support multiple sharding axes.
+    ORT_ENFORCE(CountShardingAxes() == 1, "TensorPartitionSpec must have exactly one sharding axis.");
     for (int64_t i = 0; i < gsl::narrow<int64_t>(axis_specs.size()); ++i) {
       if (axis_specs[i].cond == AxisPartitionSpec::Condition::Shard) {
         return i - axis_specs.size();
@@ -213,7 +301,11 @@ class TensorPartitionSpec {
     return 0;
   }
 
+  // Return the number of shards along the first sharded tensor axis.
+  // This value matches the number of devices along the associated mesh axis.
+  // Return 1 if there is no sharding.
   int64_t GetPartitionCount(int64_t axis) const {
+    ValidateAxisIndex(axis, Rank());
     auto axis_spec = GetAxisSpec(axis);
     if (axis_spec.cond == AxisPartitionSpec::Condition::Replica) {
       return 1;
@@ -238,17 +330,41 @@ TensorPartitionSpec CreateTensorShardSpec(
     int64_t shard_axis,
     int64_t tensor_rank);
 
+// Return the shape of the original tensor before sharding.
+// E.g., assume tensor shard's shape is [5, 7] and sharding spec is "S[0]R"
+// with 1-D device mesh [0, 1, 2].
+// This function returns [15, 7].
+//
+// `shard_shape`: the shape of a shard.
+// `spec`: the sharding spec of the original tensor.
 TensorShape ComputeOriginShape(const TensorShape& shard_shape, const TensorPartitionSpec& spec);
 
+// Return the shape of a shard.
+// E.g., assume tensor's shape is [15, 7] and sharding spec is "S[0]R"
+// with 1-D device mesh [0, 1, 2].
+// This function returns [5, 7].
+//
+// `shape`: the shape of the original tensor.
+// `spec`: the sharding spec of the original tensor.
 TensorShape ComputeShardShape(const TensorShape& shape, const TensorPartitionSpec& spec);
 
+// Similarly to ComputeShardShape(), but takes a shard axis and counts of all tensor shards
+// instead of a spec.
 TensorShape ComputeShardShape(const TensorShape source_shape, int64_t shard_axis, int64_t shard_count);
 
+// Prepend 1's to `shape` to make `left` and `right` have the same rank.
+// E.g., if `left` is [3, 7] and `right` is [5, 6, 7], this function returns [1, 3, 7] and [5, 6, 7].
 std::tuple<TensorShape, TensorShape> NormalizeShapes(const TensorShape& left, const TensorShape& right);
 
+// Prepend `R` (aks replicating axis) to `spec` to make `left` and `right` have the same rank.
+// E.g., if `left` is S[0]R and `right` is `RRR`, this function returns `RS[0]R` and `RRR`.
 std::tuple<TensorPartitionSpec, TensorPartitionSpec> NormalizeTensorPartitionSpecs(
     const TensorPartitionSpec& left, const TensorPartitionSpec& right);
 
+// Return true if `shape` can be sharded according to `spec`.
+// Otherwise, return false.
+// Note that an axis is shardable along a device mesh axis only if
+// the dimension of the axis is divisible by the number of devices along the device mesh axis.
 bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec);
 
 #endif
