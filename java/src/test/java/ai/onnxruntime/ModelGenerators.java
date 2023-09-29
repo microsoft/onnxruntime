@@ -182,6 +182,102 @@ public final class ModelGenerators {
     }
   }
 
+  public void generateThreeOutputMatmul() throws IOException {
+    OnnxMl.GraphProto.Builder graph = OnnxMl.GraphProto.newBuilder();
+    graph.setName("ort-test-three-matmul");
+
+    // Add placeholders
+    OnnxMl.ValueInfoProto.Builder input = OnnxMl.ValueInfoProto.newBuilder();
+    input.setName("input");
+    OnnxMl.TypeProto inputType =
+        buildTensorTypeNode(
+            new long[] {-1, 4},
+            new String[] {"batch_size", null},
+            OnnxMl.TensorProto.DataType.FLOAT);
+    input.setType(inputType);
+    graph.addInput(input);
+    OnnxMl.ValueInfoProto.Builder outputA = OnnxMl.ValueInfoProto.newBuilder();
+    outputA.setName("output-0");
+    OnnxMl.TypeProto outputType =
+        buildTensorTypeNode(
+            new long[] {-1, 4},
+            new String[] {"batch_size", null},
+            OnnxMl.TensorProto.DataType.FLOAT);
+    outputA.setType(outputType);
+    graph.addOutput(outputA);
+    OnnxMl.ValueInfoProto.Builder outputB = OnnxMl.ValueInfoProto.newBuilder();
+    outputB.setName("output-1");
+    outputB.setType(outputType);
+    graph.addOutput(outputB);
+    OnnxMl.ValueInfoProto.Builder outputC = OnnxMl.ValueInfoProto.newBuilder();
+    outputC.setName("output-2");
+    outputC.setType(outputType);
+    graph.addOutput(outputC);
+
+    // Add initializers
+    OnnxMl.TensorProto.Builder tensor = OnnxMl.TensorProto.newBuilder();
+    tensor.addDims(4);
+    tensor.addDims(4);
+    Float[] floats =
+        new Float[] {1f, 2f, 3f, 4f, 5f, 6f, 7f, 8f, 9f, 10f, 11f, 12f, 13f, 14f, 15f, 16f};
+    tensor.addAllFloatData(Arrays.asList(floats));
+    tensor.setDataType(OnnxMl.TensorProto.DataType.FLOAT.getNumber());
+    tensor.setName("tensor");
+    graph.addInitializer(tensor);
+    OnnxMl.TensorProto.Builder addInit = OnnxMl.TensorProto.newBuilder();
+    addInit.addDims(4);
+    Float[] addFloats = new Float[] {1f, 2f, 3f, 4f};
+    addInit.addAllFloatData(Arrays.asList(addFloats));
+    addInit.setDataType(OnnxMl.TensorProto.DataType.FLOAT.getNumber());
+    addInit.setName("add-init");
+    graph.addInitializer(addInit);
+
+    // Add operations
+    OnnxMl.NodeProto.Builder matmul = OnnxMl.NodeProto.newBuilder();
+    matmul.setName("matmul-0");
+    matmul.setOpType("MatMul");
+    matmul.addInput("input");
+    matmul.addInput("tensor");
+    matmul.addOutput("matmul-output");
+    graph.addNode(matmul);
+
+    OnnxMl.NodeProto.Builder id = OnnxMl.NodeProto.newBuilder();
+    id.setName("id-1");
+    id.setOpType("Identity");
+    id.addInput("matmul-output");
+    id.addOutput("output-0");
+    graph.addNode(id);
+
+    OnnxMl.NodeProto.Builder add = OnnxMl.NodeProto.newBuilder();
+    add.setName("add-2");
+    add.setOpType("Add");
+    add.addInput("matmul-output");
+    add.addInput("add-init");
+    add.addOutput("output-1");
+    graph.addNode(add);
+
+    OnnxMl.NodeProto.Builder log = OnnxMl.NodeProto.newBuilder();
+    log.setName("log-3");
+    log.setOpType("Log");
+    log.addInput("matmul-output");
+    log.addOutput("output-2");
+    graph.addNode(log);
+
+    // Build model
+    OnnxMl.ModelProto.Builder model = OnnxMl.ModelProto.newBuilder();
+    model.setGraph(graph);
+    model.setDocString("ORT three output matmul test");
+    model.setModelVersion(0);
+    model.setIrVersion(8);
+    model.setDomain("ai.onnxruntime.test");
+    model.addOpsetImport(OnnxMl.OperatorSetIdProto.newBuilder().setVersion(18).build());
+    try (OutputStream os =
+        Files.newOutputStream(
+            Paths.get("src", "test", "resources", "java-three-output-matmul.onnx"))) {
+      model.build().writeTo(os);
+    }
+  }
+
   private static void genCast(
       String name,
       OnnxMl.TensorProto.DataType inputDataType,
