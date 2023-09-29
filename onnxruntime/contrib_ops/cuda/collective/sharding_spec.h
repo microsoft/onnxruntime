@@ -17,7 +17,7 @@ namespace cuda {
 
 class DeviceMesh {
  public:
-  // [Device Mesh and Tensor Sharding]
+  // [Device Mesh and Tensor Sharding for Tensor Parallel]
   // Device mesh is a tensor of device indices.
   // A tensor can then be partitioned along specific mesh axes.
   //
@@ -67,10 +67,23 @@ class DeviceMesh {
 };
 
 class AxisPartitionSpec {
+  // [Device Mesh and Tensor Sharding for Tensor Parallel]
+  // This class is the in-memory representation of
+  //  1. if a tensor is sharded or not (aka replica), and
+  //  2. which tensor axis is shard by which device mesh axis.
+  // Let's consider sharding 2-D tensor along column axis on
+  // device mesh [0, 1] as an example.
+  // The required sharding spec RS[0] can be represented by
+  // - AxisPartitionSpec(Condition::Replica, -1)
+  // - AxisPartitionSpec(Condition::Shard, 0)
  public:
   enum class Condition { Replica,
                          Shard };
+  // This field tells if a tensor axis is sharded or not.
   Condition cond;
+  // If a tensor axis is sharded, this field tells which device
+  // mesh axis to distribute the shards along.
+  // If a tensor axis is not sharded, this field is ignored.
   int device_mesh_axis;
   static AxisPartitionSpec CreateReplica() {
     return AxisPartitionSpec(Condition::Replica, -1);
