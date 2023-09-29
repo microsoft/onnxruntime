@@ -22,6 +22,7 @@ namespace onnxruntime {
 namespace qnn {
 
 class QnnModel;
+class QnnCacheModelHandler;
 
 class QnnBackendManager {
  public:
@@ -79,9 +80,9 @@ class QnnBackendManager {
                                        QnnModel& qnn_model,
                                        bool& loaded_from_cache);
 
-  Status GetMetadataFromOrtContextFile();
-
-  Status ValidateWithContextFile(const std::string& model_name, const std::string& graph_name);
+  Status ValidateWithContextFile(const std::string& model_name,
+                                 const std::string& graph_name,
+                                 qnn::QnnCacheModelHandler* qnn_cache_model_handler);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
@@ -209,9 +210,6 @@ class QnnBackendManager {
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_ = 0;
   HtpPerformanceMode htp_performance_mode_;
-  std::string model_name_from_ctx_cache_ = "";
-  std::string graph_name_from_ctx_cache_ = "";
-  std::string model_description_from_ctx_cache_ = "";
   std::string model_description_ = "";
   std::string context_cache_path_ = "";
   std::string sdk_build_version_ = "";

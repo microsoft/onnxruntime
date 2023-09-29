@@ -32,6 +32,13 @@ Status GenerateCtxCacheOnnxModle(const std::string& model_name, const std::strin
                                  uint64_t buffer_size,
                                  const logging::Logger& logger);
 
+Status GetEpEngineCacheFromModel(const std::string& onnx_model_path,
+                                 std::string& ep_engine_cache,
+                                 const logging::Logger& logger);
+
+Status GetEpEngineCacheFromGraph(const onnxruntime::GraphViewer& graph_viewer,
+                                 std::string& ep_engine_cache);
+
 class QnnCacheModelHandler {
  public:
   QnnCacheModelHandler() {
@@ -67,29 +74,19 @@ class QnnCacheModelHandler {
     return Status::OK();
   }
 
- private:
-  Status GetEpEngineCacheFromModel(const std::string& onnx_model_path,
-                                   std::string& ep_engine_cache,
-                                   const logging::Logger& logger) const {
-    using namespace onnxruntime;
-    std::shared_ptr<Model> model;
-    ORT_RETURN_IF_ERROR(Model::Load(ToPathString(onnx_model_path), model, {}, logger));
-    const auto& graph = model->MainGraph();
-    ORT_RETURN_IF_ERROR(GetEpEngineCacheFromGraph(GraphViewer(graph), ep_engine_cache));
-
-    return Status::OK();
-  }
-
-  Status GetEpEngineCacheFromGraph(const onnxruntime::GraphViewer& graph_viewer, std::string& ep_engine_cache) const {
-    const auto& node = graph_viewer.Nodes().begin();
-    NodeAttrHelper node_helper(*node);
-    ep_engine_cache = node_helper.Get("ep_engine_cache", ep_engine_cache);
-    return Status::OK();
-  }
+  Status GetMetadataFromEpEngineCacheModel(const std::string& onnx_model_path,
+                                           std::string& model_name,
+                                           std::string& model_description,
+                                           std::string& graph_partition_name,
+                                           const logging::Logger& logger);
 
  private:
   bool is_qnn_ctx_model_ = false;
-}; // QnnCacheModelHandler
+  bool is_metadata_ready_ = false;
+  std::string model_name_ = "";
+  std::string model_description_ = "";
+  std::string graph_partition_name_ = "";
+};  // QnnCacheModelHandler
 
 }  // namespace qnn
 }  // namespace onnxruntime

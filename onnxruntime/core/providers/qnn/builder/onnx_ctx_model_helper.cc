@@ -72,5 +72,48 @@ Status GenerateCtxCacheOnnxModle(const std::string& model_name, const std::strin
   return Status::OK();
 }
 
+Status GetEpEngineCacheFromModel(const std::string& onnx_model_path,
+                                 std::string& ep_engine_cache,
+                                 const logging::Logger& logger) {
+  using namespace onnxruntime;
+  std::shared_ptr<Model> model;
+  ORT_RETURN_IF_ERROR(Model::Load(ToPathString(onnx_model_path), model, {}, logger));
+  const auto& graph = model->MainGraph();
+  ORT_RETURN_IF_ERROR(GetEpEngineCacheFromGraph(GraphViewer(graph), ep_engine_cache));
+
+  return Status::OK();
+}
+
+Status GetEpEngineCacheFromGraph(const onnxruntime::GraphViewer& graph_viewer, std::string& ep_engine_cache) {
+  const auto& node = graph_viewer.Nodes().begin();
+  NodeAttrHelper node_helper(*node);
+  ep_engine_cache = node_helper.Get("ep_engine_cache", ep_engine_cache);
+  return Status::OK();
+}
+
+Status QnnCacheModelHandler::GetMetadataFromEpEngineCacheModel(const std::string& onnx_model_path,
+                                                               std::string& model_name,
+                                                               std::string& model_description,
+                                                               std::string& graph_partition_name,
+                                                               const logging::Logger& logger) {
+  if (!is_metadata_ready_) {
+    using namespace onnxruntime;
+    std::shared_ptr<Model> model;
+    ORT_RETURN_IF_ERROR(Model::Load(ToPathString(onnx_model_path), model, {}, logger));
+    const auto& graph = GraphViewer(model->MainGraph());
+    const auto& node = graph.Nodes().begin();
+    NodeAttrHelper node_helper(*node);
+    model_name_ = graph.Name();
+    model_description_ = graph.Description();
+    graph_partition_name_ = node_helper.Get("partition_name", "");
+    is_metadata_ready_ = true;
+  }
+  model_name = model_name_;
+  model_description = model_description_;
+  graph_partition_name = graph_partition_name_;
+
+  return Status::OK();
+}
+
 }  // namespace qnn
 }  // namespace onnxruntime

@@ -361,15 +361,9 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const size_t num_of_partitions = result.size();
 
   if (!is_qnn_ctx_model && load_from_cached_context && 1 == num_of_partitions) {
-    std::string partitioned_graph_name = result[0]->sub_graph->GetMetaDef()->name;
-    if (1 == num_of_supported_nodes) {
-      const auto& node = graph_viewer.Nodes().begin();
-      NodeAttrHelper node_helper(*node);
-      partitioned_graph_name = node_helper.Get("partition_name", "");
-    }
-
     rt = qnn_backend_manager_->ValidateWithContextFile(GetFileNameFromModelPath(graph_viewer.ModelPath()),
-                                                       partitioned_graph_name);
+                                                       result[0]->sub_graph->GetMetaDef()->name,
+                                                       qnn_cache_model_handler_.get());
     if (Status::OK() != rt) {
       LOGS(logger, ERROR) << "QNN failed to validate context cache metadata: " << rt.ErrorMessage();
       return result;
@@ -464,6 +458,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                    qnn_backend_manager_->GetIsContextCacheFileExists(),
                                                                    ep_engine_cache,
                                                                    logger));
+    qnn_cache_model_handler_.reset();
     ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnCtxFromOnnxModel(ep_engine_cache,
                                                                             *(qnn_model.get()),
                                                                             loaded_from_cache));
