@@ -45,10 +45,10 @@ ENV LANG C.UTF-8
 WORKDIR /stage
 
 # Cmake
-ENV CMAKE_VERSION=3.26.3
+ENV CMAKE_VERSION=3.27.3
 RUN cd /usr/local && \
     wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
-    tar -zxf /usr/local/cmake-3.26.3-Linux-x86_64.tar.gz --strip=1 -C /usr
+    tar -zxf /usr/local/cmake-3.27.3-Linux-x86_64.tar.gz --strip=1 -C /usr
 
 # ccache
 RUN mkdir -p /tmp/ccache && \

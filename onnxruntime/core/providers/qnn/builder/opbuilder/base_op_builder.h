@@ -120,6 +120,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Sub", QNN_OP_ELEMENT_WISE_SUBTRACT},
         {"Tanh", QNN_OP_TANH},
         {"Transpose", QNN_OP_TRANSPOSE},
+        {"GridSample", QNN_OP_GRID_SAMPLE},
 
         {"DequantizeLinear", QNN_OP_DEQUANTIZE},
         {"QuantizeLinear", QNN_OP_QUANTIZE},
@@ -140,6 +141,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"GlobalAveragePool", QNN_OP_POOL_AVG_2D},
         {"AveragePool", QNN_OP_POOL_AVG_2D},
         {"MaxPool", QNN_OP_POOL_MAX_2D},
+        {"GlobalMaxPool", QNN_OP_POOL_MAX_2D},
 
         {"Reshape", QNN_OP_RESHAPE},
         {"Resize", QNN_OP_RESIZE},
@@ -160,7 +162,9 @@ class BaseOpBuilder : public IOpBuilder {
         {"BatchNormalization", QNN_OP_BATCHNORM},
         {"LayerNormalization", QNN_OP_LAYER_NORM},
 
-        {"LRN", QNN_OP_LRN}};
+        {"LRN", QNN_OP_LRN},
+
+        {"Pad", QNN_OP_PAD}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;

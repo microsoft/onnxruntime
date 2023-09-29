@@ -444,7 +444,7 @@ function Install-Abseil {
     .Description
     The Install-UTF8-Range function installs Google's utf8_range library from source.
     utf8_range depends on Abseil.
-	
+
     .PARAMETER cmake_path
     The full path of cmake.exe
 
@@ -604,14 +604,17 @@ function Install-ONNX {
     pushd .
 
     Write-Host "Uninstalling onnx and ignore errors if there is any..."
-    python.exe -m pip uninstall -y onnx -qq
+    [string[]]$pip_args ="-m", "pip", "uninstall", "-y", "onnx", "-qq"
+    &"python.exe" $pip_args
+    if ($lastExitCode -ne 0) {
+      exit $lastExitCode
+    }
     
     Write-Host "Installing python packages..."
-    $p = Start-Process -NoNewWindow -Wait -PassThru -FilePath "python.exe" -ArgumentList "-m", "pip", "install", "--disable-pip-version-check", "setuptools", "wheel", "numpy", "protobuf==$protobuf_version"
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "Install dependent python wheels failed. Exitcode: $exitCode"
-        exit $exitCode
+    [string[]]$pip_args = "-m", "pip", "install", "-qq", "--disable-pip-version-check", "setuptools>=68.2.2", "wheel", "numpy", "protobuf==$protobuf_version"
+    &"python.exe" $pip_args
+    if ($lastExitCode -ne 0) {
+      exit $lastExitCode
     }
 
     $url=Get-DownloadURL -name onnx -src_root $src_root

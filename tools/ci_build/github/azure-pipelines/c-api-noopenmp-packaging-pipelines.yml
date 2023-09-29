@@ -147,9 +147,9 @@ stages:
     - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/cpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x64/default/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-centos7"
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimecuda11centosbuild
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
@@ -183,6 +183,8 @@ stages:
       artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
       buildJava: true
       buildJavaOption: '--build_java'
+      buildNodejs: true
+      buildNodejsOption: '--build_nodejs'
 
 #CUDA without tensorrt
 - template: templates/win-ci.yml
@@ -195,7 +197,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
+    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -211,11 +213,77 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+
+# ROCm
+- stage: Linux_C_API_Packaging_ROCm_x64
+  dependsOn: []
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    timeoutInMinutes: 120
+    pool: onnxruntime-Ubuntu2004-AMD-CPU
+    variables:
+      RocmVersion: '5.6'
+    steps:
+    - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
+      submodules: recursive
+    - checkout: manylinux                      # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/manylinux, for get-docker-image-steps.yml
+      submodules: false
+
+    # get-docker-image-steps.yml will move the $(Build.SourcesDirectory)/manylinux into $(Build.SourcesDirectory)/onnxruntime,
+    # then rename $(Build.SourcesDirectory)/onnxruntime as $(Build.SourcesDirectory)
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: >-
+          --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+          --build-arg BUILD_UID=$(id -u)
+          --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
+          --build-arg ROCM_VERSION=$(RocmVersion)
+          --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
+          --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin:
+          --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+        Repository: onnxruntimetrainingrocmbuild-rocm$(RocmVersion)
+
+    - template: templates/set-version-number-variables-step.yml
+
+    - task: Bash@3
+      displayName: 'Build'
+      inputs:
+        targetType: filePath
+        filePath: tools/ci_build/github/linux/build_rocm_c_api_package.sh
+        arguments: >-
+          -S $(Build.SourcesDirectory)
+          -B $(Build.BinariesDirectory)
+          -V $(RocmVersion)
+          -I onnxruntimetrainingrocmbuild-rocm$(RocmVersion)
+          -P python3.10
+
+    - script: |
+       set -e -x
+       mkdir $(Build.ArtifactStagingDirectory)/testdata
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts for CustomOp'  # libcustom_op_library.so from cpu build is built with fp8, ROCm does not support it.
+
+    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+        buildConfig: 'Release'
+        artifactName: 'onnxruntime-linux-x64-rocm-$(OnnxRuntimeVersion)'
+        artifactNameNoVersionString: 'onnxruntime-linux-x64-rocm'
+        libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
+    - template: templates/clean-agent-build-directory-step.yml
 
 - stage: Jar_Packaging_GPU
   dependsOn:
@@ -356,19 +424,32 @@ stages:
     - checkout: self
       submodules: false
     - template: templates/set-version-number-variables-step.yml
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Final Jar'
-      inputs:
-        buildType: 'current'
-        artifactName: 'onnxruntime-java-gpu'
-        targetPath: '$(Build.BinariesDirectory)/final-jar'
 
-    - task: Bash@3
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Final Jar'
+        ArtifactName: onnxruntime-java-gpu
+        TargetPath: '$(Build.BinariesDirectory)/final-jar'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
+        Context: tools/ci_build/github/linux/docker/
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimeubi8packagestest
+        UpdateDepsTxt: false
+
+    - bash: |
+        docker run --rm \
+          --gpus all \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume /data/models:/build/models:ro \
+          onnxruntimeubi8packagestest \
+          /bin/bash /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -r /build -v $(OnnxRuntimeVersion)
       displayName: 'Test'
-      inputs:
-        targetType: filePath
-        filePath: 'tools/ci_build/github/linux/java_linux_final_test.sh'
-        arguments: '-r $(Build.BinariesDirectory) -v $(OnnxRuntimeVersion)'
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters:
@@ -407,13 +488,13 @@ stages:
         Steps:
         - script: |
             tools/ci_build/get_docker_image.py \
-              --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_8_tensorrt8_6 \
+              --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11_8_tensorrt8_6 \
               --context tools/ci_build/github/linux/docker \
-              --docker-build-args "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )" \
+              --docker-build-args "--network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/usr/local/cuda/bin --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/usr --build-arg BUILD_UID=$( id -u ) --build-arg BUILD_UID=$( id -u )" \
               --container-registry onnxruntimebuildcache \
               --multiple_repos \
               --repository onnxruntimecuda118xtrt86build
-          displayName: "Get onnxruntimecuda118xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_8_tensorrt8_6"
+          displayName: "Get onnxruntimecuda118xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11_8_tensorrt8_6"
           workingDirectory: $(Build.SourcesDirectory)/onnxruntime
         ContainerRegistry: onnxruntimebuildcache
 
@@ -464,7 +545,7 @@ stages:
       displayName: 'Test C API application for GPU package'
       inputs:
         script: |
-          docker run --gpus all -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
+          docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
           --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda118xtrt86build \
           /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
@@ -772,6 +853,225 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
+- stage: NuGet_Packaging_ROCm
+  dependsOn:
+  - Setup
+  - Linux_C_API_Packaging_ROCm_x64
+  condition: succeeded()
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
+    # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
+    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    variables:
+      breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+      ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+
+    steps:
+    - checkout: self
+      submodules: true
+      fetchDepth: 1
+
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - NuGet'
+        ArtifactName: 'onnxruntime-linux-x64-rocm'
+        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - task: PowerShell@2
+      displayName: 'Reconstruct Build Directory'
+      inputs:
+        targetType: inline
+        script: |
+          Get-ChildItem $(Build.BinariesDirectory)\nuget-artifact -Filter *.tgz | % {
+            # *.tar will be created after *.tgz is extracted
+            $cmd = "7z.exe x $($_.FullName) -y -o$(Build.BinariesDirectory)\nuget-artifact"
+            Write-Output $cmd
+            Invoke-Expression -Command $cmd
+          }
+
+          Get-ChildItem $(Build.BinariesDirectory)\nuget-artifact -Filter *.tar | % {
+            $cmd = "7z.exe x $($_.FullName) -y -o$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts"
+            Write-Output $cmd
+            Invoke-Expression -Command $cmd
+          }
+
+          $ort_dirs = Get-ChildItem -Path $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-* -Directory
+          foreach ($ort_dir in $ort_dirs)
+          {
+            $dirname = Split-Path -Path $ort_dir -Leaf
+            $dirname = $dirname.SubString(0, $dirname.LastIndexOf('-'))
+            Write-Output "Renaming $ort_dir to $dirname"
+            Rename-Item -Path $ort_dir -NewName $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\$dirname
+          }
+
+          Copy-Item -Path $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-rocm\lib\* -Destination $(Build.BinariesDirectory)\RelWithDebInfo
+
+    - script: |
+       tree /F
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Inspect Build Binaries Directory'
+
+    - script: |
+       mklink /D /J models C:\local\models
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Create models link'
+
+    - task: NuGetToolInstaller@0
+      displayName: Use Nuget 6.2.1
+      inputs:
+        versionSpec: 6.2.1
+
+    - task: PowerShell@2
+      displayName: Build .NET 6 targets using dotnet
+      inputs:
+        targetType: 'inline'
+        # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
+        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
+        # which is inconsistent with the msbuild output path for the pre-.net6 targets
+        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
+        # and makes it harder to do the packing
+        #
+        # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
+        script: |
+          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj `
+            -p:SelectedTargets=Net6 `
+            /p:Net6Targets=net6.0 `
+            -p:Configuration=RelWithDebInfo `
+            -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" `
+            -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm" `
+            -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} `
+            -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: MSBuild@1
+      displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        platform: 'Any CPU'
+        configuration: RelWithDebInfo
+        msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: MSBuild@1
+      displayName: 'Build C# for pre-.net6 targets'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        configuration: RelWithDebInfo
+        platform: 'Any CPU'
+        msbuildArguments: >
+          -p:SelectedTargets=PreNet6
+          -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
+          -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"
+          -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+          -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+          -p:IsLinuxBuild=true
+          -p:IsWindowsBuild=false
+          -p:IsMacOSBuild=false
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - template: templates/win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+        DisplayName: 'ESRP - Sign C# dlls'
+        DoEsrp: ${{ parameters.DoEsrp }}
+
+    - task: MSBuild@1
+      displayName: Update projects.assets.json with combined list of all target frameworks
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
+        platform: 'Any CPU'
+        configuration: RelWithDebInfo
+        msbuildArguments: '-t:restore -p:SelectedTargets=All -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: MSBuild@1
+      displayName: 'Build Nuget Packages'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        configuration: RelWithDebInfo
+        platform: 'Any CPU'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: CopyFiles@2
+      displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        Contents: '*.snupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        Contents: '*.nupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+        Contents: '*.nupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - template: templates/esrp_nuget.yml
+      parameters:
+        DisplayName: 'ESRP - sign NuGet package'
+        FolderPath: '$(Build.ArtifactStagingDirectory)'
+        DoEsrp: ${{ parameters.DoEsrp }}
+
+    - template: templates/validate-package.yml
+      parameters:
+        PackageType: 'nuget'
+        PackagePath: '$(Build.ArtifactStagingDirectory)'
+        PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
+        PlatformsSupported: 'linux-x64'
+        VerifyNugetSigning: false
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline NuGet Artifact'
+      inputs:
+        artifactName: 'drop-signed-nuget-ROCm'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
+    - task: MSBuild@1
+      displayName: 'Clean C#'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        platform: 'Any CPU'
+        configuration: RelWithDebInfo
+        msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: RoslynAnalyzers@2
+      displayName: 'Run Roslyn Analyzers'
+      inputs:
+        userProvideBuildInfo: msBuildInfo
+        msBuildCommandline: >
+          "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe"
+          $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln
+          -p:configuration="RelWithDebInfo"
+          -p:Platform="Any CPU"
+          -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
+          -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm
+          -p:IsLinuxBuild=true
+          -p:IsWindowsBuild=false
+          -p:IsMacOSBuild=false
+      condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool : 'onnxruntime-Win2022-GPU-T4'
@@ -789,13 +1089,23 @@ stages:
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool: AMD-GPU
+    ArtifactSuffix: 'ROCm'
+    StageSuffix: 'ROCm'
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime.ROCm'
+    SpecificArtifact: ${{ parameters.specificArtifact }}
+    CustomOpArtifactName: 'onnxruntime-linux-x64-rocm'
+    BuildId: ${{ parameters.BuildId }}
+
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
     AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-nuget-dml'
     StageName: 'Windows_CI_GPU_DML_Dev'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --build_nodejs --cmake_generator "Visual Studio 17 2022"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
     EnvSetupScript: 'setup_env.bat'
@@ -841,7 +1151,7 @@ stages:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm64-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_arm64'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --build_nodejs --cmake_generator "Visual Studio 17 2022"
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm64'
@@ -873,6 +1183,7 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
+    BuildNodejs: 'false'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\

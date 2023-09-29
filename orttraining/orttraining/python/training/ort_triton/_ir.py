@@ -5,7 +5,7 @@
 
 from abc import abstractmethod
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import sympy
@@ -184,13 +184,24 @@ class ComputeNode(IRNode):
     Each operator is represented as a ComputeNode.
     """
 
-    def __init__(self, op_type: str, inputs: List[TensorArg], outputs: List[TensorArg]):
+    def __init__(
+        self,
+        op_type: str,
+        inputs: List[TensorArg],
+        outputs: List[TensorArg],
+        attributes: Dict[str, Any] = {},  # noqa: B006
+    ):
         super().__init__(inputs, outputs)
         self._op_type: str = op_type
+        self._attributes: Dict[str, Any] = attributes
 
     @property
     def op_type(self):
         return self._op_type
+
+    @property
+    def attributes(self):
+        return self._attributes
 
 
 class ReduceNode(ComputeNode):

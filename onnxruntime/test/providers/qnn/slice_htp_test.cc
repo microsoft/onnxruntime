@@ -16,51 +16,6 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Function that builds a model with a Slice operator.
-template <typename DataType>
-GetTestModelFn BuildSliceTestCase(const TestInputDef<DataType>& data_def,
-                                  const TestInputDef<int64_t>& starts_def,
-                                  const TestInputDef<int64_t>& ends_def,
-                                  const TestInputDef<int64_t>& axes_def,
-                                  const TestInputDef<int64_t>& steps_def) {
-  return [data_def, starts_def, ends_def, axes_def, steps_def](ModelTestBuilder& builder) {
-    NodeArg* data = MakeTestInput(builder, data_def);
-    NodeArg* starts = MakeTestInput(builder, starts_def);
-    NodeArg* ends = MakeTestInput(builder, ends_def);
-    NodeArg* axes = MakeTestInput(builder, axes_def);
-    NodeArg* steps = MakeTestInput(builder, steps_def);
-
-    NodeArg* output = builder.MakeOutput();
-    builder.AddNode("Slice", {data, starts, ends, axes, steps}, {output});
-  };
-}
-
-// Function that builds a QDQ model with a Slice operator.
-template <typename QuantType>
-static GetTestQDQModelFn<QuantType> BuildQDQSliceTestCase(const TestInputDef<float>& data_def,
-                                                          const TestInputDef<int64_t>& starts_def,
-                                                          const TestInputDef<int64_t>& ends_def,
-                                                          const TestInputDef<int64_t>& axes_def,
-                                                          const TestInputDef<int64_t>& steps_def) {
-  return [data_def, starts_def, ends_def, axes_def, steps_def](ModelTestBuilder& builder,
-                                                               std::vector<QuantParams<QuantType>>& output_qparams) {
-    NodeArg* data = MakeTestInput(builder, data_def);
-    QuantParams<QuantType> data_qparams = GetTestInputQuantParams(data_def);
-    NodeArg* data_qdq = AddQDQNodePair(builder, data, data_qparams.scale, data_qparams.zero_point);
-
-    NodeArg* starts = MakeTestInput(builder, starts_def);
-    NodeArg* ends = MakeTestInput(builder, ends_def);
-    NodeArg* axes = MakeTestInput(builder, axes_def);
-    NodeArg* steps = MakeTestInput(builder, steps_def);
-
-    auto* slice_output = builder.MakeIntermediate();
-    builder.AddNode("Slice", {data_qdq, starts, ends, axes, steps}, {slice_output});
-
-    // Add output -> Q -> output_u8
-    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, slice_output, output_qparams[0].scale, output_qparams[0].zero_point);
-  };
-}
-
 /**
  * Runs an Slice model on the QNN HTP backend. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
@@ -86,13 +41,14 @@ static void RunSliceQDQTest(const TestInputDef<float>& data_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  // Runs model with DQ-> Slice -> Q and compares the outputs of the CPU and QNN EPs.
-  TestQDQModelAccuracy(BuildSliceTestCase<float>(data_def, starts_def, ends_def, axes_def, steps_def),
-                       BuildQDQSliceTestCase<QuantType>(data_def, starts_def, ends_def, axes_def, steps_def),
+  const std::vector<TestInputDef<float>> f32_inputs = {data_def};
+  const std::vector<TestInputDef<int64_t>> int64_inputs = {starts_def, ends_def, axes_def, steps_def};
+
+  TestQDQModelAccuracy(BuildOpTestCase<float, int64_t>("Slice", f32_inputs, int64_inputs, {}),
+                       BuildQDQOpTestCase<QuantType, int64_t>("Slice", f32_inputs, int64_inputs, {}),
                        provider_options,
                        18,
-                       expected_ep_assignment,
-                       1e-5f);
+                       expected_ep_assignment);
 }
 
 /**
@@ -119,12 +75,12 @@ static void RunSliceNonQDQOnHTP(const TestInputDef<DataType>& data_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
-
-  RunQnnModelTest(BuildSliceTestCase<DataType>(data_def, starts_def, ends_def, axes_def, steps_def),
+  auto f32_model_builder = BuildOpTestCase<DataType, int64_t>("Slice", {data_def},
+                                                              {starts_def, ends_def, axes_def, steps_def}, {});
+  RunQnnModelTest(f32_model_builder,
                   provider_options,
                   13,
-                  expected_ep_assignment,
-                  1e-5f);
+                  expected_ep_assignment);
 }
 
 // Check that QNN compiles DQ -> Slice -> Q as a single unit.

@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
@@ -21,11 +20,6 @@ export const transposeProgramMetadata = {
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 1) {
     throw new Error('Transpose requires 1 input.');
-  }
-
-  if (inputs[0].dataType !== DataType.float && inputs[0].dataType !== DataType.int32 &&
-      inputs[0].dataType !== DataType.uint32) {
-    throw new Error('Transpose only support float, int32, and uint32 data types');
   }
 };
 

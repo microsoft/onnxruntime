@@ -376,6 +376,16 @@ def call_python_backward_function(
             result = backward_function(*wrapped_args)
 
             # Extract results as DLPack tensor list.
+            if isinstance(result, torch.Tensor):
+                result = [result]
+            elif isinstance(result, (tuple, list)):
+                result = list(result)
+            else:
+                raise wrap_exception(
+                    ORTModuleIOError,
+                    TypeError(f"ORTModule does not support the following model output type {type(result)}."),
+                )
+
             wrapped_returned_args = wrap_all_outputs(result)
 
             torch_interop_utils.unregister_grad_fn(id(ctx))

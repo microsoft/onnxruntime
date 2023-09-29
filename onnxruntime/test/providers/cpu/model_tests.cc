@@ -1141,11 +1141,15 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32
     ORT_STRING_VIEW model_test_root_path = ORT_TSTR("..\\models");
+    // thus, only the root path should be mounted.
+    ORT_STRING_VIEW model_zoo_path = ORT_TSTR("..\\models\\zoo");
 #else
     ORT_STRING_VIEW model_test_root_path = ORT_TSTR("../models");
+    ORT_STRING_VIEW model_zoo_path = ORT_TSTR("../models/zoo");
 #endif
     for (auto p : kvp.second) {
       paths.push_back(ConcatPathComponent(model_test_root_path, p));
+      paths.push_back(ConcatPathComponent(model_zoo_path, p));
     }
 #endif
 
@@ -1176,6 +1180,12 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                     ORT_TSTR("bvlc_alexnet"),
                                                     ORT_TSTR("bvlc_reference_caffenet"),
                                                     ORT_TSTR("coreml_VGG16_ImageNet"),
+                                                    ORT_TSTR("VGG 16-fp32"),
+                                                    ORT_TSTR("VGG 19-caffe2"),
+                                                    ORT_TSTR("VGG 19-bn"),
+                                                    ORT_TSTR("VGG 16-bn"),
+                                                    ORT_TSTR("VGG 19"),
+                                                    ORT_TSTR("VGG 16"),
                                                     ORT_TSTR("faster_rcnn"),
                                                     ORT_TSTR("GPT2"),
                                                     ORT_TSTR("GPT2_LM_HEAD"),

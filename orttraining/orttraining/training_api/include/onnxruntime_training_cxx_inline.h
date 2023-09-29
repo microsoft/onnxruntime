@@ -68,7 +68,7 @@ inline std::vector<Value> TrainingSession::EvalStep(const std::vector<Value>& in
   RunOptions run_options;
   ThrowOnError(GetTrainingApi().EvalStep(
       p_, run_options, input_values.size(), ort_input_values,
-      training_model_output_count_, ort_output_values));
+      eval_model_output_count_, ort_output_values));
 
   return output_values;
 }
@@ -277,6 +277,18 @@ inline Property CheckpointState::GetProperty(const std::string& property_name) {
   }
 
   return property;
+}
+
+inline void CheckpointState::UpdateParameter(const std::string& parameter_name, const Value& parameter) {
+  ThrowOnError(GetTrainingApi().UpdateParameter(p_, parameter_name.c_str(), parameter));
+}
+
+inline Value CheckpointState::GetParameter(const std::string& parameter_name) {
+  AllocatorWithDefaultOptions allocator;
+  OrtValue* parameter;
+  ThrowOnError(GetTrainingApi().GetParameter(p_, parameter_name.c_str(), allocator, &parameter));
+
+  return Value{parameter};
 }
 
 }  // namespace Ort

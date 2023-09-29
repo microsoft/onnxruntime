@@ -15,7 +15,8 @@ c) BUILD_CONFIG=${OPTARG};;
 esac
 done
 
-cd $BUILD_BINARIESDIRECTORY
+export PATH=/opt/python/cp38-cp38/bin:$PATH
+cd /build
 files=(whl/*.whl)
 FILE_NAME="${files[0]}"
 FILE_NAME=$(basename $FILE_NAME)
@@ -23,7 +24,7 @@ PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
 
 echo "Package name:$PYTHON_PACKAGE_NAME"
 
-BUILD_ARGS="--build_dir $BUILD_BINARIESDIRECTORY --config $BUILD_CONFIG --test --skip_submodule_sync --parallel --enable_lto --build_wheel "
+BUILD_ARGS="--build_dir /build --config $BUILD_CONFIG --test --skip_submodule_sync --parallel --enable_lto --build_wheel "
 
 ARCH=$(uname -m)
 
@@ -35,19 +36,15 @@ if [ $BUILD_DEVICE == "GPU" ]; then
     BUILD_ARGS="$BUILD_ARGS --use_cuda --use_tensorrt --cuda_version=11.8 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8"
 fi
 # We assume the machine doesn't have gcc and python development header files, so we don't build onnxruntime from source
-sudo rm -rf /build /onnxruntime_src
-sudo ln -s $BUILD_SOURCESDIRECTORY /onnxruntime_src
-python3 -m pip uninstall -y $PYTHON_PACKAGE_NAME ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
+python3 -m pip install --upgrade pip
 # Install the packages that are needed for installing the onnxruntime python package
-python3 -m pip install -r $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/requirements.txt
+python3 -m pip install -r /build/$BUILD_CONFIG/requirements.txt
 # Install the packages that are needed for running test scripts
-# Install the latest ONNX release which may contain not fixed bugs. However, it is what most people use.
-python3 -m pip install onnx pytest
+python3 -m pip install pytest
 # The "--no-index" flag is crucial. The local whl folder is just an additional source. Pypi's doc says "there is no 
 # ordering in the locations that are searched" if we don't disable the default one with "--no-index"
-python3 -m pip install --no-index --find-links $BUILD_BINARIESDIRECTORY/whl $PYTHON_PACKAGE_NAME
-ln -s /data/models $BUILD_BINARIESDIRECTORY
-cd $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG
+python3 -m pip install --no-index --find-links /build/whl $PYTHON_PACKAGE_NAME
+cd /build/$BUILD_CONFIG
 # Restore file permissions
 xargs -a perms.txt chmod a+x
-python3 $BUILD_SOURCESDIRECTORY/tools/ci_build/build.py $BUILD_ARGS --ctest_path ''
+python3 /onnxruntime_src/tools/ci_build/build.py $BUILD_ARGS --ctest_path ''
