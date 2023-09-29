@@ -729,6 +729,7 @@ if (onnxruntime_USE_TENSORRT)
     onnxruntime_fetchcontent_makeavailable(onnx_tensorrt)
     include_directories(${onnx_tensorrt_SOURCE_DIR})
     set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
+    set(CUDA_INCLUDE_DIR ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}) # onnx-tensorrt repo needs this variable to build
     if ( CMAKE_COMPILER_IS_GNUCC )
       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
     endif()
@@ -1696,6 +1697,8 @@ if (onnxruntime_USE_ROCM)
       device_gemm_instance
       device_gemm_add_fastgelu_instance
       device_gemm_fastgelu_instance
+      device_gemm_splitk_instance
+      device_gemm_streamk_instance
       device_batched_gemm_instance
       device_softmax_instance
     )
@@ -1747,7 +1750,7 @@ if (onnxruntime_USE_TVM)
 
   target_include_directories(onnxruntime_providers_tvm PRIVATE
           ${TVM_INCLUDES}
-          ${PYTHON_INLCUDE_DIRS})
+          ${PYTHON_INCLUDE_DIRS})
   onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
   add_dependencies(onnxruntime_providers_tvm ${onnxruntime_EXTERNAL_DEPENDENCIES})

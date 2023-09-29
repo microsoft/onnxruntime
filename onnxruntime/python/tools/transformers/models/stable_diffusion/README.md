@@ -154,6 +154,12 @@ curl https://raw.githubusercontent.com/huggingface/diffusers/v0.15.1/scripts/con
 python convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path  ./sd_v1_5/fp32
 ```
 
+For SDXL, use optimum to export the model:
+```
+pip install optimum diffusers onnx onnxruntime-gpu
+optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task stable-diffusion-xl ./sd_xl_base_onnx
+```
+
 ### Optimize ONNX Pipeline
 
 Example to optimize the exported float32 ONNX models, and save to float16 models:
@@ -161,7 +167,10 @@ Example to optimize the exported float32 ONNX models, and save to float16 models
 python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd_v1_5/fp32 -o ./sd_v1_5/fp16 --float16
 ```
 
-If you installed ONNX Runtime v1.14, some optimizations (packed QKV and BiasAdd) will be disabled automatically since they are not available in v1.14.
+For SDXL model, it is recommended to use a machine with 32 GB or more memory to optimize.
+```
+python optimize_pipeline.py -i ./sd_xl_base_onnx -o ./sd_xl_base_fp16 --float16
+```
 
 ### Run Benchmark
 
@@ -384,8 +393,7 @@ Some kernels are enabled by MIOpen. We hereby thank for the AMD developers' coll
 
 There are other optimizations might improve the performance or reduce memory footprint:
 * Export the whole pipeline into a single ONNX model. Currently, there are multiple ONNX models (CLIP, VAE and U-Net etc). Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator. The end result is more efficient and less memory footprint.
-* For Stable Diffusion 2.1, we disable TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention using Triton compiler to improve performance.
+* For Stable Diffusion 2.1, we disable TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention in Windows to improve performance.
 * Reduce GPU memory footprint by actively deleting buffers for intermediate results.
-* Attention fusion in CLIP
 * Safety Checker Optimization
 * Leverage FP8 in latest GPU
