@@ -17,8 +17,42 @@ namespace cuda {
 
 class DeviceMesh {
  public:
+  // [Device Mesh and Tensor Sharding]
+  // Device mesh is a tensor of device indices.
+  // A tensor can then be partitioned along specific mesh axes.
+  //
+  // Assume we have 4 GPUs indexed by 0, 1, 2, and 3.
+  // Let's consider some examples.
+  //  1. 1D device mesh [0, 1, 2, 3]. In this case,
+  //     device_mesh_shape is [4] and device_mesh_elements
+  //     is [0, 1, 2, 3].
+  //     If we want to shard a 2-D tensor along its axis 1, the
+  //     corresponding sharding spec is a string "RS[0]".
+  //  2. 2D device mesh [[0, 1], [2, 3]]. In this case,
+  //     device_mesh_shape is [2, 2] and device_mesh_elements
+  //     is [0, 1, 2, 3].
+  //     If we want to shard a 2-D tensor's
+  //     rows along mesh axis 1 and
+  //     columns along mesh axis 0, the
+  //     corresponding sharding spec is a string "S[1]S[0]".
+  //     If that 2-D tensor's value is np.array([[5, 6], [7, 8]]),
+  //     GPU 0/1/2/3 owns 5/7/6/8.
+  //     Visualization of sharding rows and then columns with 2-D mesh:
+  //     - GPU: [[0, 1], [2, 3]], Value: [[5, 6], [7, 8]]
+  //     (Split GPU mesh along axis 1 and tensor along axis 0)
+  //     - GPU: [[0], [2]], Value: [[5, 6]]
+  //       GPU: [[1], [3]], Value: [[7, 8]]
+  //     (Split GPU mesh along axis 0 and tensor along axis 1)
+  //     - GPU: [[0]], Value: [[5]]
+  //     - GPU: [[2]], Value: [[6]]
+  //     - GPU: [[1]], Value: [[7]]
+  //     - GPU: [[3]], Value: [[8]]
+
+  // Actual shape of device mesh represented by `device_mesh_elements`.
   std::vector<int64_t> device_mesh_shape;
+  // Flattened device mesh.
   std::vector<int64_t> device_mesh_elements;
+  // Helper to debug and generate error message.
   std::string to_string() const {
     std::ostringstream os;
     os << "DeviceMesh { Shape: [";
