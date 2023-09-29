@@ -30,11 +30,11 @@ typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(const QnnSystemI
 
 constexpr const char* QNN_PROVIDER = "ORTQNNEP";
 
-static inline Qnn_Version_t GetQnnInterfaceVersion(const QnnInterface_t* qnn_interface) {
+static Qnn_Version_t GetQnnInterfaceVersion(const QnnInterface_t* qnn_interface) {
   return qnn_interface->apiVersion.coreApiVersion;
 }
 
-static inline Qnn_Version_t GetQnnInterfaceVersion(const QnnSystemInterface_t* qnn_interface) {
+static Qnn_Version_t GetQnnInterfaceVersion(const QnnSystemInterface_t* qnn_interface) {
   return qnn_interface->systemApiVersion;
 }
 
