@@ -155,6 +155,7 @@ class ORTBertPretrainTest(unittest.TestCase):
         )
         return ORTBertPretrainTest._create_model_with_opsets(graph_def)
 
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
     @parameterized.expand(
         [
             (np.float32, TensorProto.FLOAT),
@@ -193,6 +194,7 @@ class ORTBertPretrainTest(unittest.TestCase):
             outputs[0], size * input, err_msg=f"{rank}: AllGather ({np_elem_type}, {elem_type}): results mismatch"
         )
 
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
     @parameterized.expand(
         [
             (np.float32, TensorProto.FLOAT, TensorProto.FLOAT),
@@ -231,6 +233,7 @@ class ORTBertPretrainTest(unittest.TestCase):
             err_msg=f"{rank}: AllGather (axis0) ({np_elem_type}, {elem_type}, {communication_elem_type}): results mismatch",
         )
 
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
     def test_all_gather_bool(self):
         model = self._create_allgather_ut_model((4,), 0, TensorProto.INT64, TensorProto.INT64)
         rank, _ = self._get_rank_size()
@@ -250,6 +253,7 @@ class ORTBertPretrainTest(unittest.TestCase):
 
         np.testing.assert_allclose(y, y_expected, err_msg=f"{rank}: AllGather (bool): results mismatch")
 
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
     def test_all_gather_axis1(self):
         model = self._create_allgather_ut_model((128, 128), 1)
         rank, size = self._get_rank_size()
@@ -268,6 +272,7 @@ class ORTBertPretrainTest(unittest.TestCase):
 
         np.testing.assert_allclose(outputs[0], expected_output, err_msg=f"{rank}: AllGather (axis1): results mismatch")
 
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
     @parameterized.expand(
         [
             (np.float32, TensorProto.FLOAT, TensorProto.FLOAT),
@@ -349,6 +354,7 @@ class ORTBertPretrainTest(unittest.TestCase):
             err_msg=f"{rank}: AllToAll ({np_elem_type}, {elem_type}, {communication_elem_type}): results mismatch",
         )
 
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
     def test_all_to_all_bool(self):
         rank, _ = self._get_rank_size()
 
