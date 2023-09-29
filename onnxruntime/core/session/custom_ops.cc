@@ -694,7 +694,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
   if (op->version >= min_ort_version_with_shape_inference && op->InferOutputShape) {
     schema.TypeAndShapeInferenceFunction([op](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
       OrtShapeInferContext ctx(infer_ctx);
-      op->InferOutputShape(const_cast<OrtCustomOp*>(op), &ctx);
+      op->InferOutputShape(&ctx);
     });
   }
   return schema;

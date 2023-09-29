@@ -3201,12 +3201,12 @@ struct Merge {
     strings_out->SetStringOutput(string_pool, {static_cast<int64_t>(string_pool.size())});
     return Ort::Status(nullptr);
   }
-  Ort::Status InferOutputShape(Ort::Custom::ShapeInferContext& ctx) {
+  static Ort::Status InferOutputShape(Ort::Custom::ShapeInferContext& ctx) {
     auto input_count = ctx.GetInputCount();
     if (input_count != 2) {
       return Ort::Status("input count should be 2", OrtErrorCode::ORT_INVALID_ARGUMENT);
     }
-    auto first_input_shape = ctx.GetInputShape(0);
+    const auto& first_input_shape = ctx.GetInputShape(0);
     ctx.SetOnputShape(0, first_input_shape);
     return Ort::Status(nullptr);
   }

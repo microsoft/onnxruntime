@@ -929,13 +929,13 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
 };  // struct OrtLiteCustomFunc
 
 struct ShapeInferContext {
-  struct SymblicInteger {
-    SymblicInteger(int64_t i) : i_(i), is_int_(true){};
-    SymblicInteger(const char* s) : s_(s), is_int_(false){};
-    SymblicInteger(const SymblicInteger&) = default;
-    SymblicInteger(SymblicInteger&&) = default;
-    SymblicInteger& operator=(const SymblicInteger&) = default;
-    SymblicInteger& operator=(SymblicInteger&&) = default;
+  struct SymbolicInteger {
+    SymbolicInteger(int64_t i) : i_(i), is_int_(true){};
+    SymbolicInteger(const char* s) : s_(s), is_int_(false){};
+    SymbolicInteger(const SymbolicInteger&) = default;
+    SymbolicInteger(SymbolicInteger&&) = default;
+    SymbolicInteger& operator=(const SymbolicInteger&) = default;
+    SymbolicInteger& operator=(SymbolicInteger&&) = default;
 
     bool IsInt() const { return is_int_; }
     int64_t AsInt() const { return i_; }
@@ -949,7 +949,7 @@ struct ShapeInferContext {
     bool is_int_;
   };
 
-  using Shape = std::vector<SymblicInteger>;
+  using Shape = std::vector<SymbolicInteger>;
 
   ShapeInferContext(const OrtApi* ort_api,
                     OrtShapeInferContext* ctx) : ort_api_(ort_api), ctx_(ctx) {
@@ -1102,10 +1102,9 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
 
   template <typename C>
   decltype(&C::InferOutputShape) SetShapeInfer(decltype(&C::InferOutputShape)) {
-    OrtCustomOp::InferOutputShape = [](void* op_kernel, OrtShapeInferContext* ort_ctx) -> OrtStatusPtr {
-      auto kernel = reinterpret_cast<Kernel*>(op_kernel);
-      ShapeInferContext ctx(kernel->ort_api_, ort_ctx);
-      return kernel->custom_op_->InferOutputShape(ctx);
+    OrtCustomOp::InferOutputShape = [](OrtShapeInferContext* ort_ctx) -> OrtStatusPtr {
+      ShapeInferContext ctx(&GetApi(), ort_ctx);
+      return C::InferOutputShape(ctx);
     };
     return {};
   }

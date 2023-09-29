@@ -4515,7 +4515,7 @@ struct OrtCustomOp {
   // Perform the computation step.
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
 
-  OrtStatusPtr(ORT_API_CALL* InferOutputShape)(_In_ void* op_kernel, _In_ OrtShapeInferContext*);
+  OrtStatusPtr(ORT_API_CALL* InferOutputShape)(_In_ OrtShapeInferContext*);
 };
 
 /*
