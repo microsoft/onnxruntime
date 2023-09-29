@@ -98,7 +98,6 @@ jobs:
       cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
       ./emsdk install 3.1.44 ccache-git-emscripten-64bit
       ./emsdk activate 3.1.44 ccache-git-emscripten-64bit
-      ln -s $(Build.SourcesDirectory)/cmake/external/emsdk/ccache/git-emscripten_64bit/bin/ccache /usr/local/bin/ccache
     displayName: 'emsdk install and activate ccache for emscripten'
     condition: eq('${{ parameters.WithCache }}', 'true')
 
