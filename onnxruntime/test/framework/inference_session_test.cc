@@ -920,6 +920,8 @@ TEST(InferenceSessionTests, UseUserSpecifiedLoggingFunctionInSession) {
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
   RunModel(session_object, run_options);
+
+// vlog output is disabled in release builds
 #ifndef NDEBUG
   bool have_log_entry_with_vlog_session_msg =
       (std::find_if(log_msgs.begin(), log_msgs.end(),

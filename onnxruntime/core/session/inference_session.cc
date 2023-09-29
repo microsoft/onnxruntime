@@ -13,7 +13,6 @@
 
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
-#include "core/common/logging/isink.h"
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
@@ -57,6 +56,7 @@
 #include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 #include "core/session/environment.h"
+#include "core/session/user_logging_sink.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -312,24 +312,6 @@ logging::Severity GetSeverity(const SessionOptions& session_options) {
   }
   return severity;
 }
-
-class UserLoggingSink : public logging::ISink {
- public:
-  UserLoggingSink(OrtLoggingFunction logging_function, void* logger_param)
-      : logging_function_(logging_function), logger_param_(logger_param) {
-  }
-
-  void SendImpl(const logging::Timestamp& /*timestamp*/, const std::string& logger_id,
-                const logging::Capture& message) override {
-    std::string s = message.Location().ToString();
-    logging_function_(logger_param_, static_cast<OrtLoggingLevel>(message.Severity()), message.Category(),
-                      logger_id.c_str(), s.c_str(), message.Message().c_str());
-  }
-
- private:
-  OrtLoggingFunction logging_function_;
-  void* logger_param_;
-};
 
 void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
                                          const Environment& session_env) {

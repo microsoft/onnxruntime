@@ -143,14 +143,10 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionLogId, _In_ OrtSessionOptions* options, c
   return nullptr;
 }
 
-///< logging function to use for session output
-ORT_API_STATUS_IMPL(OrtApis::SetUserLoggingFunction, _In_ OrtSessionOptions* options, OrtLoggingFunction user_logging_function) {
+///< logging function and optional logging param to use for session output
+ORT_API_STATUS_IMPL(OrtApis::SetUserLoggingFunction, _In_ OrtSessionOptions* options,
+                    _In_ OrtLoggingFunction user_logging_function, _In_opt_ void* user_logging_param) {
   options->value.user_logging_function = user_logging_function;
-  return nullptr;
-}
-
-///< logger param for user logging function
-ORT_API_STATUS_IMPL(OrtApis::SetUserLoggingParam, _In_ OrtSessionOptions* options, void* user_logging_param) {
   options->value.user_logging_param = user_logging_param;
   return nullptr;
 }
