@@ -100,7 +100,7 @@ class EdgeShapes
 public:
     EdgeShapes() = default;
 
-    EdgeShapes(size_t count) : m_shapes(count) {}
+    EdgeShapes(size_t count) : m_shapes(count), m_dynamicDimNames(count) {}
 
     const std::vector<uint32_t>& GetShape(size_t edgeIndex) const
     {
@@ -112,12 +112,25 @@ public:
         return m_shapes[edgeIndex];
     }
 
+    const std::vector<std::string>& GetDynamicDimNames(size_t edgeIndex) const
+    {
+        return m_dynamicDimNames[edgeIndex];
+    }
+
+    std::vector<std::string>& GetMutableDynamicDimNames(size_t edgeIndex)
+    {
+        return m_dynamicDimNames[edgeIndex];
+    }
+
     size_t EdgeCount() const { return m_shapes.size(); }
 
     void Reset(size_t edge_count)
     {
         m_shapes.clear();
         m_shapes.resize(edge_count);
+
+        m_dynamicDimNames.clear();
+        m_dynamicDimNames.resize(edge_count);
     }
 
     bool operator!=(const EdgeShapes& other) const noexcept
@@ -127,6 +140,7 @@ public:
 
  private:
     std::vector<std::vector<uint32_t>> m_shapes;
+    std::vector<std::vector<std::string>> m_dynamicDimNames;
 };
 
 // Base class for ABI objects which may be "Closed", at which point calls will predictably

@@ -2906,7 +2906,8 @@ namespace Windows::AI::MachineLearning::Adapter
 
     bool TryGetStaticShapeIfTensor(
         const onnx::TypeProto* inputProto,
-        std::vector<uint32_t>& shapeDims)
+        std::vector<uint32_t>& shapeDims,
+        std::vector<std::string>& dynamicDimNames)
     {
         // Skip this input if it is not valid.
         if (inputProto == nullptr)
@@ -2928,15 +2929,23 @@ namespace Windows::AI::MachineLearning::Adapter
 
         const auto& shape = tensorType.shape();
         shapeDims.resize(shape.dim_size());
+        dynamicDimNames.resize(shape.dim_size());
 
         for (uint32_t dimIndex = 0; dimIndex < static_cast<uint32_t>(shape.dim_size()); ++dimIndex)
         {
-            if (!shape.dim(dimIndex).has_dim_value())
+            if (shape.dim(dimIndex).has_dim_param() && shape.dim(dimIndex).dim_param() == "max_seq_len")
+            {
+                shapeDims[dimIndex] = 1337;
+                dynamicDimNames[dimIndex] = "max_seq_len";
+            }
+            else if (shape.dim(dimIndex).has_dim_value())
+            {
+                shapeDims[dimIndex] = gsl::narrow<uint32_t>(shape.dim(dimIndex).dim_value());
+            }
+            else
             {
                 return false;
             }
-
-            shapeDims[dimIndex] = gsl::narrow<uint32_t>(shape.dim(dimIndex).dim_value());
         }
 
         return true;
@@ -2952,7 +2961,7 @@ namespace Windows::AI::MachineLearning::Adapter
         for (size_t inputIndex = 0; inputIndex < inputShapes.EdgeCount(); ++inputIndex)
         {
             const onnx::TypeProto* inputProto = info.GetInputType(inputIndex);
-            if (!TryGetStaticShapeIfTensor(inputProto, inputShapes.GetMutableShape(inputIndex)))
+            if (!TryGetStaticShapeIfTensor(inputProto, inputShapes.GetMutableShape(inputIndex), inputShapes.GetMutableDynamicDimNames(inputIndex)))
             {
                 return false;
             }
@@ -2971,7 +2980,7 @@ namespace Windows::AI::MachineLearning::Adapter
         for (size_t outputIndex = 0; outputIndex < outputShapes.EdgeCount(); ++outputIndex)
         {
             const onnx::TypeProto* outputProto = info.GetOutputType(outputIndex);
-            if (!TryGetStaticShapeIfTensor(outputProto, outputShapes.GetMutableShape(outputIndex)))
+            if (!TryGetStaticShapeIfTensor(outputProto, outputShapes.GetMutableShape(outputIndex), outputShapes.GetMutableDynamicDimNames(outputIndex)))
             {
                 return false;
             }
