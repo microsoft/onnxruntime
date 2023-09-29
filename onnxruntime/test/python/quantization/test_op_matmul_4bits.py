@@ -18,7 +18,7 @@ from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_
 from onnxruntime.quantization import matmul_4bits_quantizer, quant_utils
 
 
-class TestOpMatMulFpQ4(unittest.TestCase):
+class TestOpMatMul4Bits(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         #cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_matmulfpq4.")
@@ -114,7 +114,7 @@ class TestOpMatMulFpQ4(unittest.TestCase):
         block_size: int,
         is_symmetric: bool,
     ):
-        model_int4_path = str(Path(self._tmp_model_dir.name).joinpath(f"matmul4bits_{block_size}_{is_symmetric}.onnx").absolute())
+        model_int4_path = str(Path(self._tmp_model_dir.name).joinpath(f"MatMulNBits_{block_size}_{is_symmetric}.onnx").absolute())
 
         # Quantize fp32 model to int4 model
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
@@ -122,7 +122,7 @@ class TestOpMatMulFpQ4(unittest.TestCase):
         quant.process()
         quant.model.save_model_to_file(model_int4_path, False)
 
-        quant_nodes = {"MatMulWithCompressWeight": 1}
+        quant_nodes = {"MatMulNBits": 1}
         check_op_type_count(self, model_int4_path, **quant_nodes)
 
         data_reader.rewind()

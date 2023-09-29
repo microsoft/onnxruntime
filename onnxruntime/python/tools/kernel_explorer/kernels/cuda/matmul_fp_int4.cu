@@ -64,7 +64,7 @@ class MatrixFloatInt4 : public IKernelExplorer {
   }
 
   void Run() override {
-    contrib::cuda::TryMatMul4BitsWeight<T>(
+    contrib::cuda::TryMatMul4Bits<T>(
         params_.output_,
         params_.a_,
         params_.b_,

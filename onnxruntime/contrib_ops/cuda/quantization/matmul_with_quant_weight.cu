@@ -124,7 +124,7 @@ __global__ void MatMulFloatInt4Kernel(
 }
 
 template <class T>
-bool TryMatMul4BitsWeight(
+bool TryMatMul4Bits(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
@@ -161,7 +161,7 @@ bool TryMatMul4BitsWeight(
   return true;
 }
 
-template bool TryMatMul4BitsWeight<float>(
+template bool TryMatMul4Bits<float>(
     float* output,
     const float* a_data,
     const uint8_t* b_data_quant,
@@ -173,7 +173,7 @@ template bool TryMatMul4BitsWeight<float>(
     int block_size,
     cudaStream_t stream);
 
-template bool TryMatMul4BitsWeight<half>(
+template bool TryMatMul4Bits<half>(
     half* output,
     const half* a_data,
     const uint8_t* b_data_quant,
