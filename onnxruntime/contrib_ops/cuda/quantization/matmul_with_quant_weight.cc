@@ -20,9 +20,9 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 template <typename T>
-class MatMulWithCompressWeight final : public CudaKernel {
+class MatMulNBits final : public CudaKernel {
  public:
-  MatMulWithCompressWeight(const OpKernelInfo& info) : CudaKernel(info) {
+  MatMulNBits(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("K", &K_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
@@ -39,7 +39,7 @@ class MatMulWithCompressWeight final : public CudaKernel {
 };
 
 template <typename T>
-Status MatMulWithCompressWeight<T>::ComputeInternal(OpKernelContext* ctx) const {
+Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = ctx->Input<Tensor>(1);
   const Tensor* scales = ctx->Input<Tensor>(2);
@@ -65,7 +65,7 @@ Status MatMulWithCompressWeight<T>::ComputeInternal(OpKernelContext* ctx) const 
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0) return Status::OK();
 
-  bool is_4bit_done = TryMatMul4BitsWeight(
+  bool is_4bit_done = TryMatMul4Bits(
       reinterpret_cast<CudaT*>(Y->MutableData<T>()),
       reinterpret_cast<const CudaT*>(a_data),
       blob_data,
@@ -122,7 +122,7 @@ Status MatMulWithCompressWeight<T>::ComputeInternal(OpKernelContext* ctx) const 
 }
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MatMulWithCompressWeight,
+    MatMulNBits,
     kMSDomain,
     1,
     float,
@@ -130,10 +130,10 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
-    MatMulWithCompressWeight<float>);
+    MatMulNBits<float>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MatMulWithCompressWeight,
+    MatMulNBits,
     kMSDomain,
     1,
     MLFloat16,
@@ -141,7 +141,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
-    MatMulWithCompressWeight<MLFloat16>);
+    MatMulNBits<MLFloat16>);
 
 }  // namespace cuda
 }  // namespace contrib

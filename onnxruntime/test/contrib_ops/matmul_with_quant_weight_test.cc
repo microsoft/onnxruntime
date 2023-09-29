@@ -90,7 +90,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     }
   }
 
-  OpTester test("MatMulWithCompressWeight", 1, kMSDomain);
+  OpTester test("MatMulNBits", 1, kMSDomain);
   test.AddAttribute<int64_t>("K", K);
   test.AddAttribute<int64_t>("N", N);
   test.AddAttribute<int64_t>("block_size", block_size);
@@ -123,7 +123,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   }
 }
 
-TEST(MatMulWithCompressWeight, Float32) {
+TEST(MatMulNBits, Float32) {
   for (auto M : {1, 2, 100}) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
@@ -137,7 +137,7 @@ TEST(MatMulWithCompressWeight, Float32) {
 }
 
 #if defined(USE_CUDA)
-TEST(MatMulWithCompressWeight, Float16) {
+TEST(MatMulNBits, Float16) {
   for (auto M : {1, 2, 100}) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {

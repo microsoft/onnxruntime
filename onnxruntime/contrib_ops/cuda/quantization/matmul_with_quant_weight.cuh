@@ -9,7 +9,7 @@ namespace contrib {
 namespace cuda {
 
 template <class T>
-bool TryMatMul4BitsWeight(
+bool TryMatMul4Bits(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,

@@ -34,7 +34,7 @@ namespace py = pybind11;
 using namespace onnxruntime;
 
 template <typename T>
-void QuantizeMatMul4BitsBlockwise(
+void QuantizeMatMulNBitsBlockwise(
     py::array_t<uint8_t> dst,          // shape: [ N, block_per_K, block_blob_size ]
     py::array_t<T> src,                // shape: [K, N]
     py::array_t<T> scale,              // shape: [N, block_per_K]
@@ -65,8 +65,8 @@ void QuantizeMatMul4BitsBlockwise(
 }
 
 void CreateQuantPybindModule(py::module& m) {
-  m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<float>);
-  m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<MLFloat16>);
+  m.def("quantize_matmul_4bits", &QuantizeMatMulNBitsBlockwise<float>);
+  m.def("quantize_matmul_4bits", &QuantizeMatMulNBitsBlockwise<MLFloat16>);
 }
 
 }  // namespace python

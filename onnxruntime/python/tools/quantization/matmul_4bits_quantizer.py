@@ -115,7 +115,7 @@ class MatMul4BitsQuantizer:
         kwargs["block_size"] = self.block_size
 
         matmul_q4_node = onnx.helper.make_node(
-            "MatMulWithCompressWeight",
+            "MatMulNBits",
             inputs=input_names,
             outputs=[node.output[0]],
             name=node.name + "_Q4" if node.name else "",

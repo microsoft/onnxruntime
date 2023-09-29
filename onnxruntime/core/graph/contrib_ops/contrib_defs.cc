@@ -3004,16 +3004,16 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
         }
       });
 
-  static const char* MatMulWithCompressWeight_ver1_doc = R"DOC(
-MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6).It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
+  static const char* MatMulNBits_ver1_doc = R"DOC(
+MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7).It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
 1. Input B is a 2D constant Matrix.
 2. Input B is quantized with x bits in which x is specified by attribute 'bits'.
 In addition, it has scales and zero_points which are used for quantization.
 Let's assume shape of matrix B is KxN. It is quantized blockwisely along dimension 0 with block size specified by attribute block_size.
 We store the quantized block as one unit. For B[K][N] with type float32/float16, quantized B will be quantized and stored in a 3D tensor with shape:
-- dim_0 = N
-- dim_1 = (K + block_size - 1) / block_size
-- dim_2 = block_size * bits / 8
+- n_cols = N
+- n_blocks_per_col = (K + block_size - 1) / block_size
+- blob_size = block_size / 8 * bits
 
 For a block storage blob:
 struct Blob {
@@ -3022,15 +3022,26 @@ struct Blob {
   uint8 four_bits[(bits & 0x4) * 4 * block_size / 8];
 }
 
-scales shape: [dim_0, dim_1]
-zero_points shape: [dim_0, dim_1]
+B:
+  - shape: [n_cols, n_blocks_per_col, blob_size]
+  - type: uint8_t
+scales:
+  - shape: [n_cols, n_blocks_per_col]
+  - type: float32 or float16. Same as input A
+zero_points
+  - shape: [n_cols, (n_blocks_per_col * 4 + 4) / 8] for nbits <= 4 and [n_cols, n_blocks_per_col] for nbits > 4
+  - type: uint8_t
 
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulWithCompressWeight)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
+<<<<<<< HEAD
       .SetDoc(MatMulWithCompressWeight_ver1_doc)
+=======
+      .SetDoc(MatMulNBits_ver1_doc)
+>>>>>>> change matmul 4bits name
       .Attr("K", "size of each input feature", AttributeProto::INT)
       .Attr("N", "size of each output feature", AttributeProto::INT)
       .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)

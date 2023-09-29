@@ -19,9 +19,9 @@
 namespace onnxruntime {
 namespace contrib {
 
-class MatMulWithCompressWeight final : public OpKernel {
+class MatMulNBits final : public OpKernel {
  public:
-  MatMulWithCompressWeight(const OpKernelInfo& info) : OpKernel(info) {
+  MatMulNBits(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("K", &K_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
@@ -37,7 +37,7 @@ class MatMulWithCompressWeight final : public OpKernel {
   int64_t nbits_;
 };
 
-Status MatMulWithCompressWeight::Compute(OpKernelContext* ctx) const {
+Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   const Tensor* a = ctx->Input<Tensor>(0);
@@ -109,14 +109,14 @@ Status MatMulWithCompressWeight::Compute(OpKernelContext* ctx) const {
 }
 
 ONNX_OPERATOR_KERNEL_EX(
-    MatMulWithCompressWeight,
+    MatMulNBits,
     kMSDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
-    MatMulWithCompressWeight);
+    MatMulNBits);
 
 }  // namespace contrib
 }  // namespace onnxruntime
