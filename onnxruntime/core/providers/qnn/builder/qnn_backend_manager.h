@@ -155,11 +155,11 @@ class QnnBackendManager {
   }
 
   template <typename F, class T>
-  Status GetQnnInterfaceProviders(const char* lib_path,
-                                  const char* interface_provider_name,
-                                  void** backend_lib_handle,
-                                  T*** interface_providers,
-                                  uint32_t& num_providers);
+  Status GetQnnInterfaceProvider(const char* lib_path,
+                                 const char* interface_provider_name,
+                                 void** backend_lib_handle,
+                                 Qnn_Version_t req_version,
+                                 T** interface_provider);
 
   bool IsDevicePropertySupported();
 

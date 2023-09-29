@@ -30,12 +30,20 @@ typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(const QnnSystemI
 
 constexpr const char* QNN_PROVIDER = "ORTQNNEP";
 
+static inline Qnn_Version_t GetQnnInterfaceVersion(const QnnInterface_t* qnn_interface) {
+  return qnn_interface->apiVersion.coreApiVersion;
+}
+
+static inline Qnn_Version_t GetQnnInterfaceVersion(const QnnSystemInterface_t* qnn_interface) {
+  return qnn_interface->systemApiVersion;
+}
+
 template <typename F, class T>
-Status QnnBackendManager::GetQnnInterfaceProviders(const char* lib_path,
-                                                   const char* interface_provider_name,
-                                                   void** backend_lib_handle,
-                                                   T*** interface_providers,
-                                                   uint32_t& num_providers) {
+Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
+                                                  const char* interface_provider_name,
+                                                  void** backend_lib_handle,
+                                                  Qnn_Version_t req_version,
+                                                  T** interface_provider) {
   std::string error_msg;
   *backend_lib_handle = LoadLib(lib_path,
                                 static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
@@ -47,9 +55,28 @@ Status QnnBackendManager::GetQnnInterfaceProviders(const char* lib_path,
   GetInterfaceProviders = ResolveSymbol<F>(*backend_lib_handle, interface_provider_name, *logger_);
   ORT_RETURN_IF(nullptr == GetInterfaceProviders, "Failed to get QNN providers!");
 
-  auto result = GetInterfaceProviders((const T***)interface_providers, &num_providers);
+  T** interface_providers{nullptr};
+  uint32_t num_providers{0};
+
+  auto result = GetInterfaceProviders((const T***)&interface_providers, &num_providers);
   ORT_RETURN_IF((QNN_SUCCESS != result || nullptr == *interface_providers || 0 == num_providers),
                 "Failed to get QNN providers.");
+
+  bool found_valid_interface{false};
+  for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
+    Qnn_Version_t interface_version = GetQnnInterfaceVersion(interface_providers[pIdx]);
+
+    LOGS_DEFAULT(VERBOSE) << lib_path << " interface version: " << interface_version.major << "."
+                          << interface_version.minor;
+
+    if (req_version.major == interface_version.major && req_version.minor <= interface_version.minor) {
+      found_valid_interface = true;
+      *interface_provider = interface_providers[pIdx];
+      break;
+    }
+  }
+
+  ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid interface for ", lib_path);
 
   return Status::OK();
 }
@@ -76,38 +103,23 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
 }
 
 Status QnnBackendManager::LoadBackend() {
-  QnnInterface_t** interface_providers{nullptr};
-  uint32_t num_providers{0};
-  auto rt = GetQnnInterfaceProviders<QnnInterfaceGetProvidersFn_t,
-                                     QnnInterface_t>(backend_path_.c_str(),
-                                                     "QnnInterface_getProviders",
-                                                     &backend_lib_handle_,
-                                                     &interface_providers,
-                                                     num_providers);
+  QnnInterface_t* interface_provider{nullptr};
+  auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
+                                    QnnInterface_t>(backend_path_.c_str(),
+                                                    "QnnInterface_getProviders",
+                                                    &backend_lib_handle_,
+                                                    {QNN_API_VERSION_MAJOR, QNN_API_VERSION_MINOR},
+                                                    &interface_provider);
   ORT_RETURN_IF_ERROR(rt);
+  Qnn_Version_t interface_version = GetQnnInterfaceVersion(interface_provider);
+  qnn_interface_ = interface_provider->QNN_INTERFACE_VER_NAME;
+  auto backend_id = interface_provider->backendId;
+  SetQnnBackendType(backend_id);
 
-  bool found_valid_interface{false};
-  LOGS_DEFAULT(VERBOSE) << "QNN_API_VERSION_MAJOR: " << QNN_API_VERSION_MAJOR
-                        << " QNN_API_VERSION_MINOR: " << QNN_API_VERSION_MINOR;
-  for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
-    LOGS_DEFAULT(VERBOSE) << "interface_providers major: " << interface_providers[pIdx]->apiVersion.coreApiVersion.major
-                          << " interface_providers minor: " << interface_providers[pIdx]->apiVersion.coreApiVersion.minor;
-    if (QNN_API_VERSION_MAJOR == interface_providers[pIdx]->apiVersion.coreApiVersion.major &&
-        QNN_API_VERSION_MINOR <= interface_providers[pIdx]->apiVersion.coreApiVersion.minor) {
-      found_valid_interface = true;
-      qnn_interface_ = interface_providers[pIdx]->QNN_INTERFACE_VER_NAME;
-      auto backend_id = interface_providers[pIdx]->backendId;
-      SetQnnBackendType(backend_id);
-
-      LOGS_DEFAULT(INFO) << "Found valid interface, version: " << QNN_API_VERSION_MAJOR
-                         << "." << QNN_API_VERSION_MINOR
-                         << " backend provider name: " << interface_providers[pIdx]->providerName
-                         << " backend id: " << backend_id;
-      break;
-    }
-  }
-
-  ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid interface.");
+  LOGS_DEFAULT(INFO) << "Found valid interface, version: " << interface_version.major
+                     << "." << interface_version.minor
+                     << " backend provider name: " << interface_provider->providerName
+                     << " backend id: " << backend_id;
 
   return Status::OK();
 }
@@ -120,34 +132,20 @@ Status QnnBackendManager::LoadQnnSystemLib() {
 #endif  // #ifdef _WIN32
   std::filesystem::path lib_file_path(backend_path_.c_str());
   std::string sys_file_path(lib_file_path.remove_filename().string() + system_lib_file);
-  QnnSystemInterface_t** system_interface_providers{nullptr};
-  uint32_t num_providers = 0;
-  auto rt = GetQnnInterfaceProviders<QnnSystemInterfaceGetProvidersFn_t,
-                                     QnnSystemInterface_t>(sys_file_path.c_str(),
-                                                           "QnnSystemInterface_getProviders",
-                                                           &system_lib_handle_,
-                                                           &system_interface_providers,
-                                                           num_providers);
+  QnnSystemInterface_t* system_interface_provider{nullptr};
+  auto rt = GetQnnInterfaceProvider<QnnSystemInterfaceGetProvidersFn_t,
+                                    QnnSystemInterface_t>(sys_file_path.c_str(),
+                                                          "QnnSystemInterface_getProviders",
+                                                          &system_lib_handle_,
+                                                          {QNN_SYSTEM_API_VERSION_MAJOR, QNN_SYSTEM_API_VERSION_MINOR},
+                                                          &system_interface_provider);
   ORT_RETURN_IF_ERROR(rt);
+  Qnn_Version_t system_interface_version = GetQnnInterfaceVersion(system_interface_provider);
+  qnn_sys_interface_ = system_interface_provider->QNN_SYSTEM_INTERFACE_VER_NAME;
 
-  bool found_valid_interface{false};
-  for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
-    LOGS_DEFAULT(VERBOSE) << "system_interface_providers major: " << system_interface_providers[pIdx]->systemApiVersion.major
-                          << " system_interface_providers minor: " << system_interface_providers[pIdx]->systemApiVersion.minor;
-    int64_t systems_version_major = static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.major);
-    int64_t systems_version_minor = static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.minor);
-    if (systems_version_major == QNN_SYSTEM_API_VERSION_MAJOR &&
-        systems_version_minor >= QNN_SYSTEM_API_VERSION_MINOR) {
-      found_valid_interface = true;
-      qnn_sys_interface_ = system_interface_providers[pIdx]->QNN_SYSTEM_INTERFACE_VER_NAME;
-      LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << QNN_API_VERSION_MAJOR
-                         << "." << QNN_API_VERSION_MINOR
-                         << " backend provider name: " << system_interface_providers[pIdx]->providerName;
-      break;
-    }
-  }
-
-  ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid system interface.");
+  LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << system_interface_version.major
+                     << "." << system_interface_version.minor
+                     << " backend provider name: " << system_interface_provider->providerName;
 
   return Status::OK();
 }
