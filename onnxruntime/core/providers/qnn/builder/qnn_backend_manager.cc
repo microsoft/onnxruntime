@@ -67,9 +67,15 @@ Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
     Qnn_Version_t interface_version = GetQnnInterfaceVersion(interface_providers[pIdx]);
 
     LOGS_DEFAULT(VERBOSE) << lib_path << " interface version: " << interface_version.major << "."
-                          << interface_version.minor;
+                          << interface_version.minor << "." << interface_version.patch;
 
-    if (req_version.major == interface_version.major && req_version.minor <= interface_version.minor) {
+    bool patch_version_ok = (req_version.minor < interface_version.minor) ||
+                            (req_version.minor == interface_version.minor &&
+                             req_version.patch <= interface_version.patch);
+
+    if (req_version.major == interface_version.major &&
+        req_version.minor <= interface_version.minor &&
+        patch_version_ok) {
       found_valid_interface = true;
       *interface_provider = interface_providers[pIdx];
       break;
@@ -108,7 +114,9 @@ Status QnnBackendManager::LoadBackend() {
                                     QnnInterface_t>(backend_path_.c_str(),
                                                     "QnnInterface_getProviders",
                                                     &backend_lib_handle_,
-                                                    {QNN_API_VERSION_MAJOR, QNN_API_VERSION_MINOR},
+                                                    {QNN_API_VERSION_MAJOR,
+                                                     QNN_API_VERSION_MINOR,
+                                                     QNN_API_VERSION_PATCH},
                                                     &backend_interface_provider);
   ORT_RETURN_IF_ERROR(rt);
   qnn_interface_ = backend_interface_provider->QNN_INTERFACE_VER_NAME;
@@ -117,7 +125,7 @@ Status QnnBackendManager::LoadBackend() {
 
   Qnn_Version_t backend_interface_version = GetQnnInterfaceVersion(backend_interface_provider);
   LOGS_DEFAULT(INFO) << "Found valid interface, version: " << backend_interface_version.major
-                     << "." << backend_interface_version.minor
+                     << "." << backend_interface_version.minor << "." << backend_interface_version.patch
                      << " backend provider name: " << backend_interface_provider->providerName
                      << " backend id: " << backend_id;
 
@@ -151,7 +159,9 @@ Status QnnBackendManager::LoadQnnSaverBackend() {
                                     QnnInterface_t>(backend_path_.c_str(),
                                                     "QnnInterface_getProviders",
                                                     &backend_lib_handle,
-                                                    {QNN_API_VERSION_MAJOR, QNN_API_VERSION_MINOR},
+                                                    {QNN_API_VERSION_MAJOR,
+                                                     QNN_API_VERSION_MINOR,
+                                                     QNN_API_VERSION_PATCH},
                                                     &backend_interface_provider);
   ORT_RETURN_IF_ERROR(rt);
 
@@ -165,7 +175,9 @@ Status QnnBackendManager::LoadQnnSaverBackend() {
                                           QnnInterface_t>(qnn_saver_path_.c_str(),
                                                           "QnnInterface_getProviders",
                                                           &backend_lib_handle_,  // NOTE: QNN Saver library handle is set
-                                                          {QNN_API_VERSION_MAJOR, QNN_API_VERSION_MINOR},
+                                                          {QNN_API_VERSION_MAJOR,
+                                                           QNN_API_VERSION_MINOR,
+                                                           QNN_API_VERSION_PATCH},
                                                           &saver_interface_provider);
   ORT_RETURN_IF_ERROR(saver_rt);
   qnn_interface_ = saver_interface_provider->QNN_INTERFACE_VER_NAME;  // NOTE: QNN Saver will provide the interfaces
@@ -174,13 +186,13 @@ Status QnnBackendManager::LoadQnnSaverBackend() {
   Qnn_Version_t saver_interface_version = GetQnnInterfaceVersion(saver_interface_provider);
 
   LOGS_DEFAULT(INFO) << "Using QNN Saver version: " << saver_interface_version.major << "."
-                     << saver_interface_version.minor
+                     << saver_interface_version.minor << "." << saver_interface_version.patch
                      << " provider name : " << saver_interface_provider->providerName;
 
   LOGS_DEFAULT(INFO) << "Intended backend provider name: " << backend_interface_provider->providerName
                      << " backend id: " << backend_id
                      << " interface version: " << backend_interface_version.major
-                     << "." << backend_interface_version.minor;
+                     << "." << backend_interface_version.minor << "." << backend_interface_version.patch;
 
   return Status::OK();
 }
@@ -199,7 +211,9 @@ Status QnnBackendManager::LoadQnnSystemLib() {
                                     QnnSystemInterface_t>(sys_file_path.c_str(),
                                                           "QnnSystemInterface_getProviders",
                                                           &system_lib_handle_,
-                                                          {QNN_SYSTEM_API_VERSION_MAJOR, QNN_SYSTEM_API_VERSION_MINOR},
+                                                          {QNN_SYSTEM_API_VERSION_MAJOR,
+                                                           QNN_SYSTEM_API_VERSION_MINOR,
+                                                           QNN_SYSTEM_API_VERSION_PATCH},
                                                           &system_interface_provider);
   ORT_RETURN_IF_ERROR(rt);
   Qnn_Version_t system_interface_version = GetQnnInterfaceVersion(system_interface_provider);
