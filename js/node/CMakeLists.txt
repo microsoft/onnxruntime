@@ -106,7 +106,7 @@ if (WIN32)
       ${dist_folder}
     )
   endif ()
-  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     add_custom_command(
       TARGET onnxruntime_binding POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy

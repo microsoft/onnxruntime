@@ -8,11 +8,11 @@ parameters:
   displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
   type: boolean
   default: true
-  
+
 - name: artifactName
   type: string
   default: ''
-  
+
 steps:
   - ${{ if eq(parameters.DoEsrp, true) }}:
     - template: win-esrp-dll.yml
@@ -24,5 +24,5 @@ steps:
 
   - task: PublishPipelineArtifact@1
     inputs:
-      targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}\onnxruntime_binding.node' 
+      targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}\'
       artifactName: '${{parameters.artifactName}}'
