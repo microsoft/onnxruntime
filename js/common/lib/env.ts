@@ -9,6 +9,7 @@ export declare namespace Env {
     'ort-wasm.wasm'?: string;
     'ort-wasm-threaded.wasm'?: string;
     'ort-wasm-simd.wasm'?: string;
+    'ort-training-wasm-simd.wasm'?: string;
     'ort-wasm-simd-threaded.wasm'?: string;
     /* eslint-enable @typescript-eslint/naming-convention */
   };

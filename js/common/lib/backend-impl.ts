@@ -26,7 +26,7 @@ const backendsSortedByPriority: string[] = [];
  * @ignore
  */
 export const registerBackend = (name: string, backend: Backend, priority: number): void => {
-  if (backend && typeof backend.init === 'function' && typeof backend.createSessionHandler === 'function') {
+  if (backend && typeof backend.init === 'function' && typeof backend.createInferenceSessionHandler === 'function') {
     const currentBackend = backends.get(name);
     if (currentBackend === undefined) {
       backends.set(name, {backend, priority});
