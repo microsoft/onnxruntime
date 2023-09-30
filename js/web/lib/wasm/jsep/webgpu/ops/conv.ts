@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {PoolConvUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -92,15 +91,6 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvAttribute
   // (the first 2 dims are batch_size and channels)
   if (attributes.kernelShape.length !== 0 && attributes.kernelShape.length !== inputs[1].dims.length - 2) {
     throw new Error('invalid kernel shape');
-  }
-
-  // TODO : Need to add support for float64
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('Conv input(X,W) should be float tensor');
-  }
-
-  if (inputs.length === 3 && inputs[2].dataType !== DataType.float) {
-    throw new Error('Conv input(bias) should be float tensor');
   }
 };
 

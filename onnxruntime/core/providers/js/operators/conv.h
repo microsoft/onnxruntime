@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace js {
 
-template <typename T, bool is_channels_last>
+template <bool is_channels_last>
 class Conv : public JsKernel {
  public:
   Conv(const OpKernelInfo& info) : JsKernel(info), conv_attrs_(info), w_is_const_(false) {
