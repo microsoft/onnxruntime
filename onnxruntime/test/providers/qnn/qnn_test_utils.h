@@ -233,7 +233,7 @@ void InferenceModel(const std::string& model_data, const char* log_id,
  * 1. All QNN API calls will succeed.
  * 2. Inference output returns dummy data.
  *
- * Because output from QNN Saver is always overwritten, it is recommended to run individual unit tests via the
+ * Because output files from QNN Saver are always overwritten, it is recommended to run individual unit tests via the
  * --gtest_filter command-line option. Ex: --gtest_filter=QnnHTPBackendTests.Resize_DownSample_Linear_AlignCorners
  *
  * \param qnn_options QNN EP provider options that may be modified to enable QNN Saver.
