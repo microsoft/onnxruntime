@@ -42,18 +42,18 @@ export default class App extends React.PureComponent<{}, State> {
         const modelPath = await MNIST.getLocalModelPath();
 
         // test creating session with path
-        console.log("Creating with path");
+        console.log('Creating with path');
         const pathSession: InferenceSession = await InferenceSession.create(modelPath);
         pathSession.release();
 
         // and with bytes
-        console.log("Creating with bytes");
+        console.log('Creating with bytes');
         const base64Str = await readFile(modelPath, 'base64');
-        const bytes = Buffer.from(base64Str, "base64");
+        const bytes = Buffer.from(base64Str, 'base64');
         const session: InferenceSession = await InferenceSession.create(bytes);
         this.setState({ session });
 
-        console.log("Test session created");
+        console.log('Test session created');
         void await this.infer();
       } catch (err) {
         console.log(err.message);
