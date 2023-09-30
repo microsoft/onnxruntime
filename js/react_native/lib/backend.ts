@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, SessionHandler, Tensor,} from 'onnxruntime-common';
+import {Backend, InferenceSession, InferenceSessionHandler, SessionHandler, Tensor} from 'onnxruntime-common';
 import {Platform} from 'react-native';
 
 import {binding, Binding, JSIBlob, jsiHelper} from './binding';
@@ -43,7 +43,7 @@ const normalizePath = (path: string): string => {
   return path;
 };
 
-class OnnxruntimeSessionHandler implements SessionHandler {
+class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   #inferenceSession: Binding.InferenceSession;
   #key: string;
 
@@ -165,8 +165,8 @@ class OnnxruntimeBackend implements Backend {
     return Promise.resolve();
   }
 
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<SessionHandler> {
+  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+      Promise<InferenceSessionHandler> {
     const handler = new OnnxruntimeSessionHandler(pathOrBuffer);
     await handler.loadModel(options || {});
     return handler;
