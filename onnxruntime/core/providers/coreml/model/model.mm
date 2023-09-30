@@ -170,12 +170,12 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
   return Status::OK();
 }
 
-bool IsArrayContiguous(MLMultiArray *array) {
-    int64_t batch_stride = [array.strides[0] longLongValue];
-    const auto *shape = array.shape;
-    int64_t batch_elems=1;
-    for (int i=1; i<[shape count]; i++) batch_elems *= [shape[i] longLongValue];
-    return batch_stride == batch_elems;
+bool IsArrayContiguous(MLMultiArray* array) {
+  int64_t batch_stride = [array.strides[0] longLongValue];
+  const auto* shape = array.shape;
+  int64_t batch_elems = 1;
+  for (int i = 1; i < [shape count]; i++) batch_elems *= [shape[i] longLongValue];
+  return batch_stride == batch_elems;
 }
 }  // namespace
 
@@ -333,10 +333,12 @@ NS_ASSUME_NONNULL_BEGIN
         }
 
         ORT_RETURN_IF_NOT(IsArrayContiguous(data),
-                            "Non-contiguous output MLMultiArray is not currently supported");
-        __block const void* model_output_buffer=nil;
-        [data getBytesWithHandler:^(const void *bytes, NSInteger size) {
-            model_output_buffer = bytes;
+                          "Non-contiguous output MLMultiArray is not currently supported");
+        __block const void* model_output_buffer = nil;
+        __block int64_t coreml_buffer_size = 0;
+        [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
+          model_output_buffer = bytes;
+          coreml_buffer_size = size;
         }];
 
         if (model_output_buffer == nullptr) {
@@ -347,11 +349,13 @@ NS_ASSUME_NONNULL_BEGIN
         switch (onnx_data_type) {
           case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
             const auto output_data_byte_size = num_elements * sizeof(float);
+            ORT_RETURN_IF_NOT(coreml_buffer_size == output_data_byte_size, "CoreML output buffer size and expected output size differ");
             memcpy(output_buffer, model_output_buffer, output_data_byte_size);
             break;
           }
           case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
             const auto output_data_byte_size = num_elements * sizeof(int32_t);
+            ORT_RETURN_IF_NOT(coreml_buffer_size == output_data_byte_size, "CoreML output buffer size and expected output size differ");
             memcpy(output_buffer, model_output_buffer, output_data_byte_size);
             break;
           }
@@ -361,7 +365,7 @@ NS_ASSUME_NONNULL_BEGIN
           case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
             ORT_RETURN_IF_NOT(data.dataType == MLMultiArrayDataTypeInt32,
                               "CoreML output data type is not MLMultiArrayDataTypeInt32");
-
+            ORT_RETURN_IF_NOT(coreml_buffer_size == num_elements * sizeof(int32_t), "CoreML output buffer size and expected output size differ");
             const auto model_output_span = gsl::span{static_cast<const int32_t*>(model_output_buffer), num_elements};
             const auto output_span = gsl::span{static_cast<int64_t*>(output_buffer), num_elements};
             std::transform(model_output_span.begin(), model_output_span.end(), output_span.begin(),
