@@ -595,7 +595,8 @@ class InferenceSession {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
-
+  void SetLoggingManager(const SessionOptions& session_options,
+                         const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
 
@@ -698,7 +699,10 @@ class InferenceSession {
   SessionOptions session_options_;
 
   /// Logging manager if provided.
-  logging::LoggingManager* const logging_manager_;
+  logging::LoggingManager* logging_manager_;
+
+  /// User specified logging mgr; logging_manager_ is simply the ptr in this unique_ptr when available
+  std::unique_ptr<logging::LoggingManager> user_logging_manager_;
 
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
   std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
