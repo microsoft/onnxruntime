@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
@@ -200,15 +199,6 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
   // as with kernelShape, must have same number of spatial dims as input
   if (attributes.outputShape.length !== 0 && attributes.outputShape.length !== inputs[0].dims.length - 2) {
     throw new Error('invalid output shape');
-  }
-
-  // TODO : Need to add support for float64
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('ConvTranspose input(X,W) should be float tensor');
-  }
-
-  if (inputs.length === 3 && inputs[2].dataType !== DataType.float) {
-    throw new Error('ConvTranspose input(bias) should be float tensor');
   }
 };
 
