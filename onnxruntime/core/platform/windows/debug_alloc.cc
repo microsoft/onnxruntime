@@ -225,6 +225,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
         string.find("re2::RE2::Init") == std::string::npos &&
         string.find("dynamic initializer for 'FLAGS_") == std::string::npos &&
         string.find("AbslFlagDefaultGenForgtest_") == std::string::npos &&
+        string.find("AbslFlagDefaultGenForundefok::Gen") == std::string::npos &&
         string.find("::SetProgramUsageMessage") == std::string::npos &&
         string.find("testing::internal::ParseGoogleTestFlagsOnly") == std::string::npos &&
         string.find("testing::internal::Mutex::ThreadSafeLazyInit") == std::string::npos &&
