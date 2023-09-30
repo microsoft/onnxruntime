@@ -58,6 +58,8 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options) {
     qnn_options["qnn_saver_path"] = "libQnnSaver.so";
 #endif  // defined(_WIN32)
   }
+#else
+  ORT_UNUSED_PARAMETER(qnn_options);
 #endif  // !defined(NDEBUG)
 }
 
