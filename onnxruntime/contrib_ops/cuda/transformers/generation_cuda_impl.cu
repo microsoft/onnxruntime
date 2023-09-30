@@ -1316,60 +1316,32 @@ template void BufferExpansionKernelLauncher(const int32_t* input,
                                             cudaStream_t stream);
 
 template <typename T>
-__global__ void CopyCacheToStagingKernel(const std::uintptr_t* in_out_address_buffer,
-                                         T* past_states_staging_buffer,
-                                         int batch_size,
-                                         int num_heads,
-                                         int max_length,
-                                         int equv_head_size) {
-  const int p = blockIdx.x;
-  const int b = blockIdx.y / num_heads;
-  const int n = blockIdx.y % num_heads;
-  const int s = blockIdx.z;
-  const int h = threadIdx.x;
-
-  if (h >= equv_head_size) {
-    return;
-  }
-
-  const int in_offset = ((b * num_heads + n) * max_length + s) * equv_head_size + h;
-  const int out_offset = in_offset + p * batch_size * num_heads * max_length * equv_head_size;
-
-  T* past = (T*)(in_out_address_buffer[p]);
-  past_states_staging_buffer[out_offset] = past[in_offset];
-}
-
-template <typename T>
 __global__ void ReorderPastStatesKernel(std::uintptr_t* in_out_address_buffer,
                                         const T* past_states_staging_buffer,
                                         int batch_size,
                                         int num_heads,
                                         int max_length,
-                                        int head_size,
-                                        int chunk_size) {
+                                        int chunked_head_size,
+                                        int equv_chunk_size) {
   //[B, N, max_length, H2(head_size/chunk_size), chunk_size] -> [B, N, H2(head_size/chunk_size), max_length, chunk_size]
   const int p = blockIdx.x;
   const int b = blockIdx.y / num_heads;
   const int n = blockIdx.y % num_heads;
   const int s = blockIdx.z;
-  const int h2 = threadIdx.x / chunk_size;
-  const int c = threadIdx.x % chunk_size;
+  const int h2 = threadIdx.x;
+  const int c = threadIdx.y;
 
-  if (h2 >= head_size / chunk_size) {
-    return;
-  }
-
-  const int in_offset = p * batch_size * num_heads * max_length * head_size +
-                        b * num_heads * max_length * head_size +
-                        n * max_length * head_size +
-                        s * head_size +
-                        h2 * chunk_size +
+  const int in_offset = p * batch_size * num_heads * max_length * chunked_head_size * equv_chunk_size +
+                        b * num_heads * max_length * chunked_head_size * equv_chunk_size +
+                        n * max_length * chunked_head_size * equv_chunk_size +
+                        s * chunked_head_size * equv_chunk_size +
+                        h2 * equv_chunk_size +
                         c;
 
-  const int out_offset = b * num_heads * max_length * head_size +
-                         n * max_length * head_size +
-                         h2 * max_length * chunk_size +
-                         s * chunk_size +
+  const int out_offset = b * num_heads * max_length * chunked_head_size * equv_chunk_size +
+                         n * max_length * chunked_head_size * equv_chunk_size +
+                         h2 * max_length * equv_chunk_size +
+                         s * equv_chunk_size +
                          c;
 
   T* past = (T*)(in_out_address_buffer[p]);
@@ -1386,37 +1358,25 @@ void ReorderPastStatesKernelLauncher(std::uintptr_t* in_out_address_buffer,
                                      int total_past_num,
                                      cudaStream_t stream) {
   const dim3 grid(total_past_num, batch_size * num_heads, max_length);
-  const dim3 block(256);
+  const dim3 block(head_size / chunk_size, chunk_size / 4);
   if (chunk_size == 4) {
     // float
-    CopyCacheToStagingKernel<<<grid, block, 0, stream>>>(in_out_address_buffer,
-                                                         reinterpret_cast<float4*>(past_states_staging_buffer),
-                                                         batch_size,
-                                                         num_heads,
-                                                         max_length,
-                                                         head_size/4);
     ReorderPastStatesKernel<<<grid, block, 0, stream>>>(in_out_address_buffer,
-                                                        reinterpret_cast<float*>(past_states_staging_buffer),
+                                                        reinterpret_cast<float4*>(past_states_staging_buffer),
                                                         batch_size,
                                                         num_heads,
                                                         max_length,
-                                                        head_size,
-                                                        chunk_size);
+                                                        head_size / chunk_size,
+                                                        chunk_size / 4);
   } else if (chunk_size == 8) {
     // half
-    CopyCacheToStagingKernel<<<grid, block, 0, stream>>>(in_out_address_buffer,
-                                                         reinterpret_cast<Half4*>(past_states_staging_buffer),
-                                                         batch_size,
-                                                         num_heads,
-                                                         max_length,
-                                                         head_size/4);
     ReorderPastStatesKernel<<<grid, block, 0, stream>>>(in_out_address_buffer,
-                                                        reinterpret_cast<half*>(past_states_staging_buffer),
+                                                        reinterpret_cast<Half4*>(past_states_staging_buffer),
                                                         batch_size,
                                                         num_heads,
                                                         max_length,
-                                                        head_size,
-                                                        chunk_size);
+                                                        head_size / chunk_size,
+                                                        chunk_size / 4);
   } else {
     // throw not support error
     ORT_THROW("ReorderPastStatesKernelLauncher only support float or half");

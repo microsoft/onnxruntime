@@ -75,11 +75,19 @@ Status ReorderPastState(
   size_t head_size = packed_past ? past_state_dims[4] : past_state_dims[3];
   size_t total_past_num = past_state_vector.size();
 
-  void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
+  char* past_state_staging_buffer = reinterpret_cast<char*>(past_state_staging.MutableDataRaw());
 
   std::vector<uintptr_t> past_state_address_buffer_h(total_past_num);
   std::transform(past_state_vector.begin(), past_state_vector.end(), past_state_address_buffer_h.begin(),
                  [](Tensor* tensor) -> uintptr_t { return reinterpret_cast<uintptr_t>(tensor->MutableDataRaw()); });
+
+  size_t type_size = past_state.DataType()->Size();
+  size_t past_state_size = packed_past ? past_state.SizeInBytes() / 2 : past_state.SizeInBytes();
+  for (size_t i = 0; i < total_past_num; ++i) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer + i * past_state_size,
+                                         past_state_vector[i]->DataRaw(), past_state_size,
+                                         cudaMemcpyDeviceToDevice, cuda_stream));
+  }
 
   uintptr_t* past_state_address_buffer_d = past_state_address_buffer.data();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_address_buffer_d,
@@ -87,11 +95,11 @@ Status ReorderPastState(
                                        total_past_num * sizeof(uintptr_t),
                                        cudaMemcpyHostToDevice, cuda_stream));
 
-  size_t chunk_size = static_cast<size_t>(16 / past_state.DataType()->Size());
+  size_t chunk_size = static_cast<size_t>(16 / type_size);
 
   // [B, N, max_length, head_size] -> [B, N, head_size / x, max_length, x]
   cuda::ReorderPastStatesKernelLauncher(reinterpret_cast<uintptr_t*>(past_state_address_buffer_d),
-                                        past_state_staging_buffer,
+                                        reinterpret_cast<void*>(past_state_staging_buffer),
                                         static_cast<int>(batch_size),
                                         static_cast<int>(num_heads),
                                         static_cast<int>(max_length),
