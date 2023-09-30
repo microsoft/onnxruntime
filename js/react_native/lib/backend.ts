@@ -66,12 +66,14 @@ class OnnxruntimeSessionHandler implements SessionHandler {
       let results: Binding.ModelLoadInfoType;
       // load a model
       if (typeof this.#pathOrBuffer === 'string') {
+        // load model from model path
         results = await this.#inferenceSession.loadModel(normalizePath(this.#pathOrBuffer), options);
       } else {
+        // load model from buffer
         if (!this.#inferenceSession.loadModelFromBlob) {
           throw new Error('Native module method "loadModelFromBlob" is not defined');
         }
-        const modelBlob = jsiHelper.storeArrayBuffer(this.#pathOrBuffer);
+        const modelBlob = jsiHelper.storeArrayBuffer(this.#pathOrBuffer.buffer);
         results = await this.#inferenceSession.loadModelFromBlob(modelBlob, options);
       }
       // resolve promise if onnxruntime session is successfully created
