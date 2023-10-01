@@ -21,12 +21,11 @@
 # --------------------------------------------------------------------------
 
 import argparse
-import os
 
 import torch
 from cuda import cudart
 from diffusion_models import PipelineInfo
-from engine_builder import EngineType, get_engine_type
+from engine_builder import EngineType, get_engine_paths, get_engine_type
 from pipeline_img2img_xl import Img2ImgXLPipeline
 from pipeline_txt2img_xl import Txt2ImgXLPipeline
 
@@ -196,14 +195,9 @@ if __name__ == "__main__":
         )
 
     def init_pipeline(pipeline_class, pipeline_info, engine_type):
-        short_name = pipeline_info.short_name()
-        work_dir = args.work_dir or engine_type.name
-
-        onnx_dir = os.path.join(work_dir, short_name, "onnx")
-        engine_dir = os.path.join(work_dir, short_name, f"engine_{batch_size}_{image_height}_{image_width}")
-        output_dir = os.path.join(work_dir, short_name, "output")
-        framework_model_dir = os.path.join(work_dir, "torch_model")
-        timing_cache = os.path.join(work_dir, "timing_cache")
+        onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
+            args.work_dir, pipeline_info, engine_type
+        )
 
         # Initialize demo
         pipeline = pipeline_class(

@@ -76,7 +76,10 @@ class EngineBuilder:
         return model_name
 
     def get_onnx_path(self, model_name, onnx_dir, opt=True):
-        onnx_model_dir = os.path.join(onnx_dir, self.get_cached_model_name(model_name) + (".opt" if opt else ""))
+        engine_name = self.engine_type.name.lower()
+        onnx_model_dir = os.path.join(
+            onnx_dir, self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "")
+        )
         os.makedirs(onnx_model_dir, exist_ok=True)
         return os.path.join(onnx_model_dir, "model.onnx")
 
@@ -157,3 +160,25 @@ class EngineBuilder:
             images = self.run_engine("vae", {"latent": latents})["images"]
 
         return images
+
+
+def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, engine_sub_dir=True):
+    root_dir = work_dir or "."
+
+    short_name = pipeline_info.short_name()
+    engine_name = engine_type.name.lower()
+
+    if engine_sub_dir:
+        onnx_dir = os.path.join(root_dir, engine_type.name, short_name, "onnx")
+        engine_dir = os.path.join(root_dir, engine_type.name, short_name, "engine")
+        output_dir = os.path.join(root_dir, engine_type.name, short_name, "output")
+        timing_cache = os.path.join(root_dir, engine_type.name, "timing_cache")
+    else:
+        onnx_dir = os.path.join(root_dir, short_name, "onnx")
+        engine_dir = os.path.join(root_dir, short_name, engine_name)
+        output_dir = os.path.join(root_dir, short_name, "output")
+        timing_cache = os.path.join(root_dir, "timing_cache")
+
+    framework_model_dir = os.path.join(root_dir, "torch_model")
+
+    return onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache

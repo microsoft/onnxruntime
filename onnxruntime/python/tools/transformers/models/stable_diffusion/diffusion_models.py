@@ -234,7 +234,7 @@ class BaseModel:
         return self.model
 
     def from_pretrained(self, model_class, framework_model_dir, hf_token, subfolder, **kwargs):
-        model_dir = os.path.join(framework_model_dir, self.pipeline_info.version, self.pipeline_info.name(), subfolder)
+        model_dir = os.path.join(framework_model_dir, self.pipeline_info.name(), subfolder)
 
         if not os.path.exists(model_dir):
             model = model_class.from_pretrained(
@@ -712,7 +712,7 @@ class VAE(BaseModel):
         )
 
     def load_model(self, framework_model_dir, hf_token: Optional[str] = None, subfolder: str = "vae_decoder"):
-        model_dir = os.path.join(framework_model_dir, self.pipeline_info.version, self.pipeline_info.name(), subfolder)
+        model_dir = os.path.join(framework_model_dir, self.pipeline_info.name(), subfolder)
         if not os.path.exists(model_dir):
             vae = AutoencoderKL.from_pretrained(
                 self.pipeline_info.name(),
@@ -772,7 +772,7 @@ class VAE(BaseModel):
 
 
 def get_tokenizer(pipeline_info: PipelineInfo, framework_model_dir, hf_token, subfolder="tokenizer"):
-    tokenizer_dir = os.path.join(framework_model_dir, pipeline_info.version, pipeline_info.name(), subfolder)
+    tokenizer_dir = os.path.join(framework_model_dir, pipeline_info.name(), subfolder)
 
     if not os.path.exists(tokenizer_dir):
         model = CLIPTokenizer.from_pretrained(
@@ -821,7 +821,7 @@ class VAEEncoder(BaseModel):
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
         self.check_dims(batch_size, image_height, image_width)
-        
+
         (
             min_batch,
             max_batch,

@@ -182,7 +182,7 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
             engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
             if not self.has_engine_file(engine_path):
                 onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
-                onnx_opt_path = self.get_onnx_path(model_name, onnx_dir)
+                onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
                 if not os.path.exists(onnx_opt_path):
                     if not os.path.exists(onnx_path):
                         logger.info(f"Exporting model: {onnx_path}")
@@ -223,7 +223,7 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
             )
 
             engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
-            onnx_opt_path = self.get_onnx_path(model_name, onnx_dir)
+            onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
 
             if not self.has_engine_file(engine_path):
                 logger.info(

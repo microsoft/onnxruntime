@@ -59,7 +59,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
         guidance=5.0,
         seed=None,
         warmup=False,
-        return_type="latents",
+        return_type="images",
     ):
         assert len(prompt) == len(negative_prompt)
 
@@ -127,7 +127,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
             if not warmup:
                 print("SD-XL Base Pipeline")
                 self.print_summary(e2e_tic, e2e_toc, batch_size)
-                if return_type == "image":
+                if return_type == "images":
                     self.save_images(images, "txt2img-xl", prompt)
 
             return images, (e2e_toc - e2e_tic) * 1000.0
@@ -142,7 +142,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
         guidance=5.0,
         seed=None,
         warmup=False,
-        return_type="latents",
+        return_type="images",
     ):
         """
         Run the diffusion pipeline.
@@ -165,7 +165,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
             warmup (bool):
                 Indicate if this is a warmup run.
             return_type (str):
-                It can be "latents" or "image".
+                It can be "latents" or "images".
         """
 
         if self.is_backend_tensorrt():

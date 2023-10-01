@@ -172,7 +172,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         guidance=5.0,
         seed=None,
         warmup=False,
-        return_type="image",
+        return_type="images",
     ):
         """
         Run the diffusion pipeline.
@@ -197,7 +197,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
             warmup (bool):
                 Indicate if this is a warmup run.
             return_type (str):
-                It can be "latents" or "image".
+                It can be "latents" or "images".
         """
 
         if self.is_backend_tensorrt():

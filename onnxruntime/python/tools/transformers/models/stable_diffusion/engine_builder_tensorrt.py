@@ -329,7 +329,7 @@ class TensorrtEngineBuilder(EngineBuilder):
         super().load_resources(image_height, image_width, batch_size)
 
         self.stream = _cuda_assert(cudart.cudaStreamCreate())
-        
+
     def teardown(self):
         super().teardown()
 
@@ -417,7 +417,7 @@ class TensorrtEngineBuilder(EngineBuilder):
             engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
             if force_export or force_build or not os.path.exists(engine_path):
                 onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
-                onnx_opt_path = self.get_onnx_path(model_name, onnx_dir)
+                onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
                 if force_export or not os.path.exists(onnx_opt_path):
                     if force_export or not os.path.exists(onnx_path):
                         print(f"Exporting model: {onnx_path}")
@@ -457,7 +457,7 @@ class TensorrtEngineBuilder(EngineBuilder):
             )
             engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
             engine = TensorrtEngine(engine_path)
-            onnx_opt_path = self.get_onnx_path(model_name, onnx_dir)
+            onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
 
             if force_build or not os.path.exists(engine.engine_path):
                 engine.build(
@@ -484,7 +484,7 @@ class TensorrtEngineBuilder(EngineBuilder):
                 continue
             self.engines[model_name].load()
             if onnx_refit_dir:
-                onnx_refit_path = self.get_onnx_path(model_name, onnx_refit_dir)
+                onnx_refit_path = self.get_onnx_path(model_name, onnx_refit_dir, opt=True)
                 if os.path.exists(onnx_refit_path):
                     self.engines[model_name].refit(onnx_opt_path, onnx_refit_path)
 

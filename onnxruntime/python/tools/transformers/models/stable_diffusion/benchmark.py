@@ -650,14 +650,11 @@ def run_ort_trt_static(
     pipeline_info = PipelineInfo(version)
     short_name = pipeline_info.short_name()
 
-    from engine_builder import EngineType
+    from engine_builder import EngineType, get_engine_paths
     from pipeline_txt2img import Txt2ImgPipeline
 
     engine_type = EngineType.ORT_TRT
-    onnx_dir = os.path.join(work_dir, engine_type.name, short_name, "onnx")
-    engine_dir = os.path.join(work_dir, engine_type.name, short_name, f"engine_{batch_size}_{height}_{width}")
-    output_dir = os.path.join(work_dir, engine_type.name, short_name, "output")
-    framework_model_dir = os.path.join(work_dir, engine_type.name, "torch_model")
+    onnx_dir, engine_dir, output_dir, framework_model_dir, _ = get_engine_paths(work_dir, pipeline_info, engine_type)
 
     # Initialize pipeline
     pipeline = Txt2ImgPipeline(
@@ -793,17 +790,14 @@ def run_tensorrt_static(
     from diffusion_models import PipelineInfo
 
     pipeline_info = PipelineInfo(version)
-    short_name = pipeline_info.short_name()
 
-    from engine_builder import EngineType
+    from engine_builder import EngineType, get_engine_paths
     from pipeline_txt2img import Txt2ImgPipeline
 
     engine_type = EngineType.TRT
-    onnx_dir = os.path.join(work_dir, engine_type.name, short_name, "onnx")
-    engine_dir = os.path.join(work_dir, engine_type.name, short_name, f"engine_{batch_size}_{height}_{width}")
-    output_dir = os.path.join(work_dir, engine_type.name, short_name, "output")
-    framework_model_dir = os.path.join(work_dir, engine_type.name, "torch_model")
-    timing_cache = os.path.join(work_dir, engine_type.name, "timing_cache")
+    onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
+        work_dir, pipeline_info, engine_type
+    )
 
     # Initialize pipeline
     pipeline = Txt2ImgPipeline(
@@ -948,16 +942,14 @@ def run_tensorrt_static_xl(
     assert batch_size <= max_batch_size
 
     from diffusion_models import PipelineInfo
-    from engine_builder import EngineType
+    from engine_builder import EngineType, get_engine_paths
 
     def init_pipeline(pipeline_class, pipeline_info):
-        short_name = pipeline_info.short_name()
         engine_type = EngineType.TRT
-        onnx_dir = os.path.join(work_dir, engine_type.name, short_name, "onnx")
-        engine_dir = os.path.join(work_dir, engine_type.name, short_name, f"engine_{batch_size}_{height}_{width}")
-        output_dir = os.path.join(work_dir, engine_type.name, short_name, "output")
-        framework_model_dir = os.path.join(work_dir, engine_type.name, "torch_model")
-        timing_cache = os.path.join(work_dir, engine_type.name, "timing_cache")
+
+        onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
+            work_dir, pipeline_info, engine_type
+        )
 
         # Initialize pipeline
         pipeline = pipeline_class(
@@ -1127,15 +1119,14 @@ def run_ort_trt_xl(
 
     assert batch_size <= max_batch_size
 
-    from engine_builder import EngineType
+    from engine_builder import EngineType, get_engine_paths
 
     def init_pipeline(pipeline_class, pipeline_info):
-        short_name = pipeline_info.short_name()
         engine_type = EngineType.ORT_TRT
-        onnx_dir = os.path.join(work_dir, engine_type.name, short_name, "onnx")
-        engine_dir = os.path.join(work_dir, engine_type.name, short_name, f"engine_{batch_size}_{height}_{width}")
-        output_dir = os.path.join(work_dir, engine_type.name, short_name, "output")
-        framework_model_dir = os.path.join(work_dir, engine_type.name, "torch_model")
+
+        onnx_dir, engine_dir, output_dir, framework_model_dir, _ = get_engine_paths(
+            work_dir, pipeline_info, engine_type
+        )
 
         # Initialize pipeline
         pipeline = pipeline_class(

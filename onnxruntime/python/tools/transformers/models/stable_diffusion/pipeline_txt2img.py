@@ -100,7 +100,7 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
         guidance=7.5,
         seed=None,
         warmup=False,
-        return_type="latents",
+        return_type="images",
     ):
         """
         Run the diffusion pipeline.
