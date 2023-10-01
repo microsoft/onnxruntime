@@ -2055,6 +2055,7 @@ struct KernelContext {
   void* GetGPUComputeStream() const;
   Logger GetLogger() const;
   OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
+  OrtKernelContext* GetOrtKernelContext() const { return ctx_; }
 
  private:
   OrtKernelContext* ctx_;

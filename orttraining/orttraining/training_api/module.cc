@@ -119,6 +119,61 @@ Status TransformModelInputsForInference(Graph& inference_graph,
 #endif
 }  // namespace
 
+Status Parameter::CopyTo(const DataTransferManager* data_transfer_manager, OrtValue& data) const {
+  ORT_ENFORCE(data.IsAllocated(), "Given parameter data is not allocated. Cannot copy the checkpoint parameter to it.");
+  ORT_ENFORCE(data.IsTensor(), "Parameter data should be of tensor type.");
+  ORT_ENFORCE(data.Get<Tensor>().Shape() == data_.Get<Tensor>().Shape(),
+              "Parameter data shape mismatch. Expected: ", data_.Get<Tensor>().Shape().ToString(),
+              ", Got: ", data.Get<Tensor>().Shape().ToString());
+#ifdef ENABLE_STRIDED_TENSORS
+  auto data_strides = data.Get<Tensor>().Strides();
+  auto param_strides = data_.Get<Tensor>().Strides();
+  ORT_ENFORCE(data_strides.size() == param_strides.size(),
+              "Parameter data stride mismatch. Expected strides of size: ", param_strides.size(),
+              ", Got: ", data_strides.size());
+  ORT_ENFORCE(std::equal(data_strides.begin(), data_strides.end(), param_strides.begin()),
+              "Parameter data stride value mismatch.");
+#endif
+  ORT_ENFORCE(data.Get<Tensor>().DataType() == data_.Get<Tensor>().DataType(),
+              "Parameter data type mismatch. Expected: ", data_.Get<Tensor>().DataType(),
+              ", Got: ", data.Get<Tensor>().DataType());
+  ORT_ENFORCE(data_transfer_manager != nullptr,
+              "Data transfer manager must be provided to copy data to the parameter. "
+              "Please create the TrainingSession before trying to update the parameter.");
+
+  ORT_THROW_IF_ERROR(data_transfer_manager->CopyTensor(data_.Get<Tensor>(), *data.GetMutable<Tensor>()));
+
+  return Status::OK();
+}
+
+Status Parameter::CopyFrom(const DataTransferManager* data_transfer_manager, const OrtValue& data) {
+  ORT_ENFORCE(data_.IsAllocated(),
+              "The checkpoint parameter is not allocated. Cannot copy the given parameter data to it.");
+  ORT_ENFORCE(data.IsTensor(), "Parameter data should be of tensor type.");
+  ORT_ENFORCE(data.Get<Tensor>().Shape() == data_.Get<Tensor>().Shape(),
+              "Parameter data shape mismatch. Expected: ", data_.Get<Tensor>().Shape().ToString(),
+              ", Got: ", data.Get<Tensor>().Shape().ToString());
+#ifdef ENABLE_STRIDED_TENSORS
+  auto data_strides = data.Get<Tensor>().Strides();
+  auto param_strides = data_.Get<Tensor>().Strides();
+  ORT_ENFORCE(data_strides.size() == param_strides.size(),
+              "Parameter data stride mismatch. Expected strides of size: ", param_strides.size(),
+              ", Got: ", data_strides.size());
+  ORT_ENFORCE(std::equal(data_strides.begin(), data_strides.end(), param_strides.begin()),
+              "Parameter data stride value mismatch.");
+#endif
+  ORT_ENFORCE(data.Get<Tensor>().DataType() == data_.Get<Tensor>().DataType(),
+              "Parameter data type mismatch. Expected: ", data_.Get<Tensor>().DataType(),
+              ", Got: ", data.Get<Tensor>().DataType());
+  ORT_ENFORCE(data_transfer_manager != nullptr,
+              "Data transfer manager must be provided to copy data to the parameter. "
+              "Please create the TrainingSession before trying to update the parameter.");
+
+  ORT_THROW_IF_ERROR(data_transfer_manager->CopyTensor(data.Get<Tensor>(), *data_.GetMutable<Tensor>()));
+
+  return Status::OK();
+}
+
 Status Parameter::SetGrad(const std::string& gradient_name, const OrtValue& param_grad) {
   // assert param is allocated
   ORT_ENFORCE(data_.IsAllocated(), "Parameter data should be allocated before allocating gradient.");
@@ -332,6 +387,10 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
     eval_model_path_ = std::get<std::optional<std::string>>(model_identifiers.eval_model);
   }
+}
+
+Module::~Module() {
+  state_->module_checkpoint_state.train_session_data_transfer_mgr = nullptr;
 }
 
 size_t Module::GetTrainingModelOutputCount() const noexcept {
