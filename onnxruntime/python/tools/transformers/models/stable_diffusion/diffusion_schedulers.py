@@ -535,7 +535,7 @@ class UniPCMultistepScheduler:
         this_model_output: torch.FloatTensor,
         this_timestep: int,
         last_sample: torch.FloatTensor,
-        this_sample: torch.FloatTensor,
+        # this_sample: torch.FloatTensor,
         order: int,
     ) -> torch.FloatTensor:
         timestep_list = self.timestep_list
@@ -544,7 +544,7 @@ class UniPCMultistepScheduler:
         s0, t = timestep_list[-1], this_timestep
         m0 = model_output_list[-1]
         x = last_sample
-        x_t = this_sample
+        # x_t = this_sample
         model_t = this_model_output
 
         lambda_t, lambda_s0 = self.lambda_t[t], self.lambda_t[s0]
@@ -649,7 +649,7 @@ class UniPCMultistepScheduler:
                 this_model_output=model_output_convert,
                 this_timestep=timestep,
                 last_sample=self.last_sample,
-                this_sample=sample,
+                # this_sample=sample,
                 order=self.this_order,
             )
 
