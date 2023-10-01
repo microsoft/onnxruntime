@@ -82,10 +82,13 @@ class TrtOptimizer:
 
 
 class PipelineInfo:
-    def __init__(self, version: str, is_inpaint: bool = False, is_sd_xl_refiner: bool = False):
+    def __init__(
+        self, version: str, is_inpaint: bool = False, is_sd_xl_refiner: bool = False, use_vae_in_xl_base=False
+    ):
         self.version = version
         self._is_inpaint = is_inpaint
         self._is_sd_xl_refiner = is_sd_xl_refiner
+        self._use_vae_in_xl_base = use_vae_in_xl_base
 
         if is_sd_xl_refiner:
             assert self.is_sd_xl()
@@ -107,7 +110,7 @@ class PipelineInfo:
 
     def stages(self) -> List[str]:
         if self.is_sd_xl_base():
-            return ["clip", "clip2", "unetxl"]
+            return ["clip", "clip2", "unetxl"] + (["vae"] if self._use_vae_in_xl_base else [])
 
         if self.is_sd_xl_refiner():
             return ["clip2", "unetxl", "vae"]
@@ -817,7 +820,8 @@ class VAEEncoder(BaseModel):
         return {"images": {0: "B", 2: "8H", 3: "8W"}, "latent": {0: "B", 2: "H", 3: "W"}}
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
-        latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
+        self.check_dims(batch_size, image_height, image_width)
+        
         (
             min_batch,
             max_batch,

@@ -139,11 +139,22 @@ def parse_arguments():
         "--build-all-tactics", action="store_true", help="Build TensorRT engines using all tactic sources."
     )
 
+    # Pipeline options
+    parser.add_argument(
+        "--enable-refiner", action="store_true", help="Enable refiner and run both base and refiner pipeline."
+    )
+
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_arguments()
+
+    if (args.build_dynamic_batch or args.build_dynamic_shape) and not args.disable_cuda_graph:
+        print("[I] CUDA Graph is disabled since dynamic input shape is configured.")
+        args.disable_cuda_graph = True
+
+    print(args)
 
     # Process prompt
     if not isinstance(args.prompt, list):
@@ -184,12 +195,6 @@ if __name__ == "__main__":
             f"Batch size {len(prompt)} is larger than allowed {max_batch_size}. If dynamic shape is used, then maximum batch size is 4"
         )
 
-    use_cuda_graph = not args.disable_cuda_graph
-    if use_cuda_graph and (args.build_dynamic_batch or args.build_dynamic_shape):
-        raise ValueError(
-            "Using CUDA graph requires static dimensions. Do not specify `--build-dynamic-batch` and do not specify `--build-dynamic-shape`"
-        )
-
     def init_pipeline(pipeline_class, pipeline_info, engine_type):
         short_name = pipeline_info.short_name()
         work_dir = args.work_dir or engine_type.name
@@ -209,7 +214,7 @@ if __name__ == "__main__":
             verbose=False,
             nvtx_profile=args.nvtx_profile,
             max_batch_size=max_batch_size,
-            use_cuda_graph=use_cuda_graph,
+            use_cuda_graph=not args.disable_cuda_graph,
             framework_model_dir=framework_model_dir,
             engine_type=engine_type,
         )
@@ -256,22 +261,30 @@ if __name__ == "__main__":
 
         return pipeline
 
-    base_info = PipelineInfo(args.version)
+    base_info = PipelineInfo(args.version, use_vae_in_xl_base=not args.enable_refiner)
     base = init_pipeline(Txt2ImgXLPipeline, base_info, engine_type)
 
-    refiner_info = PipelineInfo(args.version, is_sd_xl_refiner=True)
-    refiner = init_pipeline(Img2ImgXLPipeline, refiner_info, engine_type)
+    if args.enable_refiner:
+        refiner_info = PipelineInfo(args.version, is_sd_xl_refiner=True)
+        refiner = init_pipeline(Img2ImgXLPipeline, refiner_info, engine_type)
 
-    if engine_type == EngineType.TRT:
-        max_device_memory = max(base.backend.max_device_memory(), refiner.backend.max_device_memory())
-        _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
-        base.backend.activate_engines(shared_device_memory)
-        refiner.backend.activate_engines(shared_device_memory)
+        if engine_type == EngineType.TRT:
+            max_device_memory = max(base.backend.max_device_memory(), refiner.backend.max_device_memory())
+            _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
+            base.backend.activate_engines(shared_device_memory)
+            refiner.backend.activate_engines(shared_device_memory)
 
-    base.load_resources(image_height, image_width, batch_size)
-    refiner.load_resources(image_height, image_width, batch_size)
+        base.load_resources(image_height, image_width, batch_size)
+        refiner.load_resources(image_height, image_width, batch_size)
+    else:
+        if engine_type == EngineType.TRT:
+            max_device_memory = max(base.backend.max_device_memory(), base.backend.max_device_memory())
+            _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
+            base.backend.activate_engines(shared_device_memory)
 
-    def run_sd_xl_inference(warmup=False):
+        base.load_resources(image_height, image_width, batch_size)
+
+    def run_sd_xl_inference(enable_refiner: bool, warmup=False):
         images, time_base = base.run(
             prompt,
             negative_prompt,
@@ -281,31 +294,44 @@ if __name__ == "__main__":
             denoising_steps=args.denoising_steps,
             guidance=args.guidance,
             seed=args.seed,
-            return_type="latents",
+            return_type="latents" if enable_refiner else "images",
         )
-        images, time_refiner = refiner.run(
-            prompt, negative_prompt, images, image_height, image_width, warmup=warmup, seed=args.seed
-        )
-        return images, time_base + time_refiner
 
-    if use_cuda_graph:
+        if enable_refiner:
+            images, time_refiner = refiner.run(
+                prompt,
+                negative_prompt,
+                images,
+                image_height,
+                image_width,
+                warmup=warmup,
+                denoising_steps=args.denoising_steps,
+                guidance=args.guidance,
+                seed=args.seed,
+            )
+            return images, time_base + time_refiner
+        else:
+            return images, time_base
+
+    if not args.disable_cuda_graph:
         # inference once to get cuda graph
-        images, _ = run_sd_xl_inference(warmup=True)
+        images, _ = run_sd_xl_inference(args.enable_refiner, warmup=True)
 
     print("[I] Warming up ..")
     for _ in range(args.num_warmup_runs):
-        images, _ = run_sd_xl_inference(warmup=True)
+        images, _ = run_sd_xl_inference(args.enable_refiner, warmup=True)
 
     print("[I] Running StableDiffusion XL pipeline")
     if args.nvtx_profile:
         cudart.cudaProfilerStart()
-    images, pipeline_time = run_sd_xl_inference(warmup=False)
+    images, pipeline_time = run_sd_xl_inference(args.enable_refiner, warmup=False)
     if args.nvtx_profile:
         cudart.cudaProfilerStop()
 
-    print("|------------|--------------|")
-    print("| {:^10} | {:>9.2f} ms |".format("e2e", pipeline_time))
-    print("|------------|--------------|")
-
     base.teardown()
-    refiner.teardown()
+
+    if args.enable_refiner:
+        print("|------------|--------------|")
+        print("| {:^10} | {:>9.2f} ms |".format("e2e", pipeline_time))
+        print("|------------|--------------|")
+        refiner.teardown()

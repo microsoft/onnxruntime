@@ -328,8 +328,8 @@ class TensorrtEngineBuilder(EngineBuilder):
     def load_resources(self, image_height, image_width, batch_size):
         super().load_resources(image_height, image_width, batch_size)
 
-        err, self.stream = cudart.cudaStreamCreate()
-
+        self.stream = _cuda_assert(cudart.cudaStreamCreate())
+        
     def teardown(self):
         super().teardown()
 
@@ -457,7 +457,6 @@ class TensorrtEngineBuilder(EngineBuilder):
             )
             engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
             engine = TensorrtEngine(engine_path)
-            onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
             onnx_opt_path = self.get_onnx_path(model_name, onnx_dir)
 
             if force_build or not os.path.exists(engine.engine_path):
