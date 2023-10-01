@@ -148,6 +148,10 @@ struct SessionOptions {
   std::shared_ptr<LibraryHandles> custom_op_libs;
   void AddCustomOpLibraryHandle(PathString library_name, void* library_handle);
 #endif
+
+  // User specified logging func and param
+  OrtLoggingFunction user_logging_function = nullptr;
+  void* user_logging_param = nullptr;
 };
 
 }  // namespace onnxruntime

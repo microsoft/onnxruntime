@@ -491,4 +491,6 @@ ORT_API_STATUS_IMPL(GetTensorRTProviderOptionsByName, _In_ const OrtTensorRTProv
 ORT_API_STATUS_IMPL(UpdateCUDAProviderOptionsWithValue, _Inout_ OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _In_ void* value);
 ORT_API_STATUS_IMPL(GetCUDAProviderOptionsByName, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _Outptr_ void** ptr);
 ORT_API_STATUS_IMPL(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resource_version, _In_ int resource_id, _Outptr_ void** stream);
+ORT_API_STATUS_IMPL(SetUserLoggingFunction, _Inout_ OrtSessionOptions* options,
+                    _In_ OrtLoggingFunction user_logging_function, _In_opt_ void* user_logging_param);
 }  // namespace OrtApis
