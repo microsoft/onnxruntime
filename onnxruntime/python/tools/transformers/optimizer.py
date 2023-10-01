@@ -144,7 +144,9 @@ def optimize_by_onnxruntime(
     if disabled_optimizers:
         kwargs["disabled_optimizers"] = disabled_optimizers
 
-    if use_gpu and provider is not None:
+    if not use_gpu:
+        providers = ["CPUExecutionProvider"]
+    elif provider is not None:
         if provider == "dml":
             providers = ["DmlExecutionProvider"]
         elif provider == "rocm":
@@ -160,16 +162,13 @@ def optimize_by_onnxruntime(
 
         providers.append("CPUExecutionProvider")
     else:
-        if not use_gpu:
-            providers = ["CPUExecutionProvider"]
-        else:
-            providers = []
+        providers = []
 
-            if torch_version.hip:
-                providers.append("MIGraphXExecutionProvider")
-                providers.append("ROCMExecutionProvider")
-            else:
-                providers.append("CUDAExecutionProvider")
+        if torch_version.hip:
+            providers.append("MIGraphXExecutionProvider")
+            providers.append("ROCMExecutionProvider")
+        else:
+            providers.append("CUDAExecutionProvider")
 
     onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers, **kwargs)
 
