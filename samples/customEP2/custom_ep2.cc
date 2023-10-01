@@ -31,6 +31,24 @@ void MyRelu(const Ort::Custom::Tensor<float>& X, Ort::Custom::Tensor<float>& Y) 
   std::cout<<"In MyRelu()\n";
 }
 
+void MyMax(const Ort::Custom::Variadic& inputs, Ort::Custom::Tensor<float>& output) {
+  const auto& shape = inputs[0]->Shape();
+  const float* raw_input0 = reinterpret_cast<const float*>(inputs[0]->DataRaw());
+  auto raw = output.Allocate(shape);
+  auto num_elements = inputs[0]->NumberOfElement();
+  for (int64_t i = 0; i < num_elements; i++) raw[i] = raw_input0[i];
+
+  for (size_t ith_input = 1; ith_input < inputs.Size(); ++ith_input) {
+    const auto& input = inputs[ith_input];
+    const float* raw_input = reinterpret_cast<const float*>(input->DataRaw());
+    num_elements = input->NumberOfElement();
+    for (int64_t jth_elem = 0; jth_elem < num_elements; ++jth_elem) {
+      raw[jth_elem] = std::max(raw[jth_elem], raw_input[jth_elem]);
+    }
+  }
+  std::cout<<"In MyMax()\n";
+}
+
 struct CustomCPUAllocator : public OrtAllocator {
   CustomCPUAllocator() {
     mem_info = new OrtMemoryInfo("", OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
@@ -60,7 +78,9 @@ private:
 CustomEp2::CustomEp2(const CustomEp2Info& info) : info_{info} {
     type_ = "customEp2";
     std::unique_ptr<Ort::Custom::ExternalKernelDef> p(Ort::Custom::CreateExternalKernelDef("Relu", type_.c_str(), MyRelu, "ai.onnx", 14));
+    std::unique_ptr<Ort::Custom::ExternalKernelDef> pp(Ort::Custom::CreateExternalKernelDef("Max", type_.c_str(), MyMax, "ai.onnx", 13));
     kernel_definitions_.push_back(std::move(p));
+    kernel_definitions_.push_back(std::move(pp));
 
     allocators_.push_back(std::make_unique<CustomCPUAllocator>().release());  // TODO: release resource
 }
