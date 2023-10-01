@@ -858,7 +858,9 @@ def create_calibrator(
         symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
         moving_average = False if "moving_average" not in extra_options else extra_options["moving_average"]
         averaging_constant = 0.01 if "averaging_constant" not in extra_options else extra_options["averaging_constant"]
-        max_intermediate_outputs = None if "max_intermediate_outputs" not in extra_options else extra_options["max_intermediate_outputs"]
+        max_intermediate_outputs = (
+            None if "max_intermediate_outputs" not in extra_options else extra_options["max_intermediate_outputs"]
+        )
         calibrator = MinMaxCalibrater(
             model,
             op_types_to_calibrate,
