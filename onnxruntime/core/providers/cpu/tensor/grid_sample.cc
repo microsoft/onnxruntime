@@ -243,10 +243,6 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
                 } else if (mode_ == Cubic) {
                   int64_t x0 = static_cast<int64_t>(std::floor(x)) - 1;  // top-left corner of the bbox
                   int64_t y0 = static_cast<int64_t>(std::floor(y)) - 1;
-                  if (out_of_bound) {
-                    std::cout << "x0: " << x0 << std::endl;
-                    std::cout << "y0: " << y0 << std::endl;
-                  }
 
                   T p[4][4] = {};  // [H][W]
                   for (int64_t h = 0; h < 4; h++) {
