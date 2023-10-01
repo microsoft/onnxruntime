@@ -22,11 +22,11 @@ for opset_version in [16, 20]:
                         continue
 
                     # Create a random input tensor with the specified dimensions
-                    input_shape = (N,) + (C,) + (((D,) + (H,) + (W,)) if ndim == 5 else ((H,) + (W,)))
+                    input_shape = (N,) + (C,) + (((D, H, W)) if ndim == 5 else ((H, W)))
                     input_tensor = torch.randn(*input_shape)
 
                     # Create a random grid tensor with the specified dimensions
-                    grid_shape = (N,) + (((D,) + (H,) + (W,)) if ndim == 5 else ((H,) + (W,))) + (ndim - 2,)
+                    grid_shape = (N,) + (((D, H, W)) if ndim == 5 else ((H, W))) + (ndim - 2,)
 
                     # Between -1.2 to + 1.2
                     grid_tensor = torch.rand(*grid_shape) * 2.4 - 1.2
@@ -43,9 +43,9 @@ for opset_version in [16, 20]:
                     Y_data_str = "{" + ", ".join([f"{x:.6f}f" for x in output_tensor.numpy().flatten()]) + "}"
 
                     onnx_mode = mode
-                    if opset_version >= 20:                    
+                    if opset_version >= 20:
                         if mode == "bilinear":
-                            onnx_mode ="linear"
+                            onnx_mode = "linear"
                         elif mode == "bicubic":
                             onnx_mode = "cubic"
 
@@ -53,9 +53,9 @@ for opset_version in [16, 20]:
 
                     test_name = f"test_grid_sample_{opset_version}_{ndim}D_{mode}_{padding_mode}_{'align_corners' if align_corners else 'no_align_corners'}"
                     print(f"TEST(GridsampleTest, {test_name}) {{")
-                    print(f"OpTester test(\"GridSample\", {opset_version});")
-                    print(f"std::string mode = \"{onnx_mode}\";")
-                    print(f"std::string padding_mode = \"{padding_mode}\";")
+                    print(f'OpTester test("GridSample", {opset_version});')
+                    print(f'std::string mode = "{onnx_mode}";')
+                    print(f'std::string padding_mode = "{padding_mode}";')
                     print(f"int64_t align_corners = {onnx_align_corners};")
                     print(f"std::initializer_list<int64_t> X_shape {{ {', '.join(map(str, input_shape))} }};")
                     print(f"std::initializer_list<float> X_data { X_data_str };")
@@ -64,12 +64,12 @@ for opset_version in [16, 20]:
                     print(f"std::initializer_list<int64_t> Y_shape {{ {', '.join(map(str, Y_shape))} }};")
                     print(f"std::initializer_list<float> Y_data { Y_data_str };")
 
-                    print(f"test.AddInput<float>(\"X\", X_shape, X_data);")
-                    print(f"test.AddInput<float>(\"Grid\", Grid_shape, Grid_data);")
-                    print(f"test.AddAttribute(\"mode\", mode);")
-                    print(f"test.AddAttribute(\"padding_mode\", padding_mode);")
-                    print(f"test.AddAttribute(\"align_corners\", align_corners);")
-                    print(f"test.AddOutput<float>(\"Y\", Y_shape, Y_data);")
-                    print(f"test.Run();")
-                    print(f"}}")
+                    print('test.AddInput<float>("X", X_shape, X_data);')
+                    print('test.AddInput<float>("Grid", Grid_shape, Grid_data);')
+                    print('test.AddAttribute("mode", mode);')
+                    print('test.AddAttribute("padding_mode", padding_mode);')
+                    print('test.AddAttribute("align_corners", align_corners);')
+                    print('test.AddOutput<float>("Y", Y_shape, Y_data);')
+                    print("test.Run();")
+                    print("}")
                     print("\n")
