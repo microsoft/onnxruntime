@@ -97,7 +97,7 @@ def optimize_by_onnxruntime(
         use_gpu
         and provider is None
         and set(onnxruntime.get_available_providers()).isdisjoint(
-            ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider", "DmlExecutionProvider"]
+            ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
         )
     ):
         logger.error("There is no gpu for onnxruntime to do optimization.")
@@ -170,7 +170,6 @@ def optimize_by_onnxruntime(
                 providers.append("ROCMExecutionProvider")
             else:
                 providers.append("CUDAExecutionProvider")
-                providers.append("DmlExecutionProvider")
 
     onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers, **kwargs)
 
