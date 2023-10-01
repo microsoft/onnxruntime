@@ -960,6 +960,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 19, Sh
 
 // Opset 20
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 20, ConstantOfShape);
+// class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 20, AffineGrid);
 
 // !!PLEASE READ BELOW!! Following that, add new entries above this comment
 
@@ -2389,6 +2390,8 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
 
     // Opset 20
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 20, ConstantOfShape)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 20, AffineGrid)>,
+  };
   };
 
   for (auto& function_table_entry : function_table) {
