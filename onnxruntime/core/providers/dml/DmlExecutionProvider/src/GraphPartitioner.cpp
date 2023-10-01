@@ -151,6 +151,7 @@ namespace Dml
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap,
         _Inout_ std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& dmlNodePropertyMap,
         _Inout_ std::unordered_set<std::string>& requiredInitializerMap,
+        bool allowDmlGraphDynamicShapes,
         _Out_ bool* isDmlGraphNode
         )
     {
@@ -192,16 +193,28 @@ namespace Dml
                     requiredInitializerMap.insert(inputName);
                 }
 
-                std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
-                if (requiredCpuInputsConstant &&
-                    TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
-                    !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes, internalRegInfo->requiredConstantCpuInputs) &&
-                    TryGetStaticOutputShapes(node, graphNodeProperty.first->second.outputShapes) &&
-                    !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
-                    (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
+                if (allowDmlGraphDynamicShapes)
                 {
-                    *isDmlGraphNode = true;
-                    graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
+                    std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
+                    if (requiredCpuInputsConstant && (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
+                    {
+                        *isDmlGraphNode = true;
+                        graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
+                    }
+                }
+                else
+                {
+                    std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
+                    if (requiredCpuInputsConstant &&
+                        TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
+                        !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes, internalRegInfo->requiredConstantCpuInputs) &&
+                        TryGetStaticOutputShapes(node, graphNodeProperty.first->second.outputShapes) &&
+                        !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
+                        (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
+                    {
+                        *isDmlGraphNode = true;
+                        graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
+                    }
                 }
             }
         }
@@ -380,7 +393,8 @@ namespace Dml
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
         gsl::span<const onnxruntime::NodeIndex> additionalSplittingNodes,
-        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputs)
+        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputs,
+        bool allowDmlGraphDynamicShapes)
     {
         // Nodes are uniquely identified by the name of their first output argument
         std::vector<std::unique_ptr<GraphPartition>> partitions;
@@ -443,6 +457,7 @@ namespace Dml
                     &nodeNameToPartitionMap,
                     graphNodePropertyMap,
                     requiredInitializerMap,
+                    allowDmlGraphDynamicShapes,
                     /*out*/ &isDmlGraphNode
                 );
             }

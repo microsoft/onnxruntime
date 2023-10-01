@@ -97,7 +97,8 @@ namespace Dml
                 graphNodePropertyMap,
                 requiredInitializerMap,
                 additionalSplittingNodes,
-                implicitInputDefs);
+                implicitInputDefs,
+                false);
 
             // Reset the splitting nodes for the current iteration
             additionalSplittingNodes.clear();

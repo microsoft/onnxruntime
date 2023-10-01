@@ -51,5 +51,6 @@ namespace Dml
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
         gsl::span<const onnxruntime::NodeIndex> additionalSplittingNodes,
-        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputs);
+        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputs,
+        bool allowDmlGraphDynamicShapes);
 } // namespace Dml
