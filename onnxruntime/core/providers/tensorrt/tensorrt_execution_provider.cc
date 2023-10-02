@@ -2998,7 +2998,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         CaptureBegin();
       }
 
-      if (sync_stream_before_enqueue)
+      if (sync_stream_before_enqueue) {
         cudaStreamSynchronize(stream);
       }
 
