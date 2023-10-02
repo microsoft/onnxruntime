@@ -253,7 +253,7 @@ def run_tflops_test(dtype=torch.float16, repeats: int = 100):
     mean_bsnh_lat = 0
     mean_bnsh_lat = 0
     num_trials = 0
-    share_buffer = True
+    share_buffer = False
     random.seed(69)
     for b in [1, 3, 8, 16]:
         for s_q, s_kv in [(1, 128), (128, 256), (512, 512), (128, 1024), (1, 2048)]:

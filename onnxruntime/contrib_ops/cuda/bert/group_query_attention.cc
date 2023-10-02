@@ -92,18 +92,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> present_dims;
-  if (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH) {
-    present_dims = {
-        parameters.batch_size, parameters.present_sequence_length, parameters.kv_num_heads, parameters.head_size};
-  } else {  // BNSH
-    present_dims = {
-        parameters.batch_size, parameters.kv_num_heads, parameters.present_sequence_length, parameters.head_size};
-  }
-  TensorShape present_shape(present_dims);
-  Tensor* present_key = context->Output(1, present_shape);
-  Tensor* present_value = context->Output(2, present_shape);
-
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
                              onnxruntime::flash::is_supported(device_prop,
@@ -149,8 +137,37 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto seqlens_k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
-  // only kernel implemented for gqa right now
-  ORT_ENFORCE(use_flash_attention);
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  int sm = (device_prop.major * 10) + device_prop.minor;
+  bool use_memory_efficient_attention =
+      !use_flash_attention &&
+      !disable_memory_efficient_attention_ &&
+      (parameters.head_size & 7) == 0 &&
+      // (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
+      has_memory_efficient_attention(sm, sizeof(T) == 2);
+  // allocate buffers
+  if (use_memory_efficient_attention) {
+    if (num_heads != kv_num_heads || past_kv_format != AttentionQkvFormat::Q_K_V_BSNH) {
+
+    }
+    // TODO(aciddelgado): need to make scratch buffer for memeff
+  }
+#else
+  constexpr bool use_memory_efficient_attention = false;
+#endif
+
+  // TODO(aciddelgado): when efficient attention, this must use ungrouped kv num heads
+  std::vector<int64_t> present_dims;
+  if (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH) {
+    present_dims = {
+        parameters.batch_size, parameters.present_sequence_length, parameters.kv_num_heads, parameters.head_size};
+  } else {  // BNSH
+    present_dims = {
+        parameters.batch_size, parameters.kv_num_heads, parameters.present_sequence_length, parameters.head_size};
+  }
+  TensorShape present_shape(present_dims);
+  Tensor* present_key = context->Output(1, present_shape);
+  Tensor* present_value = context->Output(2, present_shape);
 
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = reinterpret_cast<const CudaT*>(key->Data<T>());
@@ -161,6 +178,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
   data.use_flash_attention = use_flash_attention;
+  data.use_memory_efficient_attention = use_memory_efficient_attention;
   if (softmax_lse_buffer != nullptr) {
     data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
   }
