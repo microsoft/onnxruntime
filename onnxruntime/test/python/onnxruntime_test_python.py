@@ -80,11 +80,7 @@ class TestInferenceSession(unittest.TestCase):
             so.log_severity_level = 1
             so.logid = "TestModelSerialization"
             so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
-            onnxrt.InferenceSession(
-                get_name("mul_1.onnx"),
-                sess_options=so,
-                providers=["CPUExecutionProvider"],
-            )
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so)
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             os.remove(so.optimized_model_filepath)
         except Fail as onnxruntime_error:
