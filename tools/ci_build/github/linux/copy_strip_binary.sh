@@ -48,6 +48,7 @@ fi
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_c_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_cxx_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_cxx_inline.h  $BINARY_DIR/$ARTIFACT_NAME/include
+cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_float16.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/providers/cpu/cpu_provider_factory.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h  $BINARY_DIR/$ARTIFACT_NAME/include

@@ -67,6 +67,13 @@ export declare namespace InferenceSession {
     interOpNumThreads?: number;
 
     /**
+     * The free dimension override.
+     *
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
+     */
+    freeDimensionOverrides?: {readonly [dimensionName: string]: number};
+
+    /**
      * The optimization level.
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend

@@ -318,4 +318,106 @@ TEST(TrainingCApiTest, LoadModelsFromBufferThrows) {
                 testing::HasSubstr("Training Session Creation failed. Train model data cannot be NULL."));
   }
 }
+
+TEST(TrainingCApiTest, GetParameter) {
+  auto model_uri = MODEL_FOLDER "training_model.onnx";
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, model_uri);
+
+  Ort::Value parameter = checkpoint_state.GetParameter("fc1.weight");
+  auto tensor_info = parameter.GetTensorTypeAndShapeInfo();
+  auto shape = tensor_info.GetShape();
+  ASSERT_EQ(shape.size(), 2U);
+  ASSERT_EQ(shape.front(), static_cast<int64_t>(500));
+  ASSERT_EQ(shape.back(), static_cast<int64_t>(784));
+}
+
+TEST(TrainingCApiTest, UpdateParameter) {
+  auto model_uri = MODEL_FOLDER "training_model.onnx";
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, model_uri);
+
+  Ort::Value parameter = checkpoint_state.GetParameter("fc1.weight");
+  auto tensor_info = parameter.GetTensorTypeAndShapeInfo();
+  auto shape = tensor_info.GetShape();
+  ASSERT_EQ(shape.size(), 2U);
+  ASSERT_EQ(shape.front(), static_cast<int64_t>(500));
+  ASSERT_EQ(shape.back(), static_cast<int64_t>(784));
+
+  OrtValue* updated_param_value = std::make_unique<OrtValue>().release();
+  GenerateRandomInput(std::array<int64_t, 2>{500, 784}, *updated_param_value);
+  Ort::Value updated_parameter{updated_param_value};
+  checkpoint_state.UpdateParameter("fc1.weight", updated_parameter);
+
+  Ort::Value current_parameter = checkpoint_state.GetParameter("fc1.weight");
+  gsl::span actual = gsl::span(current_parameter.GetTensorMutableData<float>(),
+                               current_parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  gsl::span expected = gsl::span(updated_parameter.GetTensorMutableData<float>(),
+                                 updated_parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  gsl::span not_expected = gsl::span(parameter.GetTensorMutableData<float>(),
+                                     parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  ASSERT_EQ(actual, expected);
+  ASSERT_NE(actual, not_expected);
+
+  checkpoint_state.UpdateParameter("fc1.weight", parameter);
+  current_parameter = checkpoint_state.GetParameter("fc1.weight");
+  actual = gsl::span(current_parameter.GetTensorMutableData<float>(),
+                     current_parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  expected = gsl::span(parameter.GetTensorMutableData<float>(),
+                       parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  not_expected = gsl::span(updated_parameter.GetTensorMutableData<float>(),
+                           updated_parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  ASSERT_EQ(actual, expected);
+  ASSERT_NE(actual, not_expected);
+}
+
+#ifdef USE_CUDA
+TEST(TrainingCApiTest, UpdateParameterDifferentDevices) {
+  auto model_uri = MODEL_FOLDER "training_model.onnx";
+
+  Ort::Env env;
+  Ort::SessionOptions session_options;
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, session_options, checkpoint_state, model_uri);
+
+  Ort::Value parameter = checkpoint_state.GetParameter("fc1.weight");
+  auto tensor_info = parameter.GetTensorTypeAndShapeInfo();
+  auto shape = tensor_info.GetShape();
+  ASSERT_EQ(shape.size(), 2U);
+  ASSERT_EQ(shape.front(), static_cast<int64_t>(500));
+  ASSERT_EQ(shape.back(), static_cast<int64_t>(784));
+
+  OrtValue* updated_param_value = std::make_unique<OrtValue>().release();
+  GenerateRandomInput(std::array<int64_t, 2>{500, 784}, *updated_param_value);
+  Ort::Value updated_parameter{updated_param_value};
+  checkpoint_state.UpdateParameter("fc1.weight", updated_parameter);
+
+  Ort::Value current_parameter = checkpoint_state.GetParameter("fc1.weight");
+  gsl::span actual = gsl::span(current_parameter.GetTensorMutableData<float>(),
+                               current_parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  gsl::span expected = gsl::span(updated_parameter.GetTensorMutableData<float>(),
+                                 updated_parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  gsl::span not_expected = gsl::span(parameter.GetTensorMutableData<float>(),
+                                     parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  ASSERT_EQ(actual, expected);
+  ASSERT_NE(actual, not_expected);
+
+  checkpoint_state.UpdateParameter("fc1.weight", parameter);
+  current_parameter = checkpoint_state.GetParameter("fc1.weight");
+  actual = gsl::span(current_parameter.GetTensorMutableData<float>(),
+                     current_parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  expected = gsl::span(parameter.GetTensorMutableData<float>(),
+                       parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  not_expected = gsl::span(updated_parameter.GetTensorMutableData<float>(),
+                           updated_parameter.GetTensorTypeAndShapeInfo().GetElementCount());
+  ASSERT_EQ(actual, expected);
+  ASSERT_NE(actual, not_expected);
+}
+#endif
+
 }  // namespace onnxruntime::training::test
