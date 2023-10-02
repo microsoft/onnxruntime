@@ -349,13 +349,15 @@ NS_ASSUME_NONNULL_BEGIN
         switch (onnx_data_type) {
           case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
             const auto output_data_byte_size = num_elements * sizeof(float);
-            ORT_RETURN_IF_NOT(coreml_buffer_size == output_data_byte_size, "CoreML output buffer size and expected output size differ");
+            ORT_RETURN_IF_NOT(coreml_buffer_size == output_data_byte_size,
+                              "CoreML output buffer size and expected output size differ");
             memcpy(output_buffer, model_output_buffer, output_data_byte_size);
             break;
           }
           case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
             const auto output_data_byte_size = num_elements * sizeof(int32_t);
-            ORT_RETURN_IF_NOT(coreml_buffer_size == output_data_byte_size, "CoreML output buffer size and expected output size differ");
+            ORT_RETURN_IF_NOT(coreml_buffer_size == output_data_byte_size,
+                              "CoreML output buffer size and expected output size differ");
             memcpy(output_buffer, model_output_buffer, output_data_byte_size);
             break;
           }
@@ -365,7 +367,8 @@ NS_ASSUME_NONNULL_BEGIN
           case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
             ORT_RETURN_IF_NOT(data.dataType == MLMultiArrayDataTypeInt32,
                               "CoreML output data type is not MLMultiArrayDataTypeInt32");
-            ORT_RETURN_IF_NOT(coreml_buffer_size == num_elements * sizeof(int32_t), "CoreML output buffer size and expected output size differ");
+            ORT_RETURN_IF_NOT(coreml_buffer_size == num_elements * sizeof(int32_t),
+                              "CoreML output buffer size and expected output size differ");
             const auto model_output_span = gsl::span{static_cast<const int32_t*>(model_output_buffer), num_elements};
             const auto output_span = gsl::span{static_cast<int64_t*>(output_buffer), num_elements};
             std::transform(model_output_span.begin(), model_output_span.end(), output_span.begin(),
