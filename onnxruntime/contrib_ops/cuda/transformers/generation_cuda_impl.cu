@@ -1315,6 +1315,70 @@ template void BufferExpansionKernelLauncher(const int32_t* input,
                                             int chunk_size,
                                             cudaStream_t stream);
 
+template <typename T>
+__global__ void ReorderPastStatesKernel(T* out_buffer,
+                                        const T* in_buffer,
+                                        int batch_size,
+                                        int num_heads,
+                                        int max_length,
+                                        int chunked_head_size,
+                                        int equv_chunk_size) {
+  //[B, N, max_length, H2(head_size/chunk_size), chunk_size] -> [B, N, H2(head_size/chunk_size), max_length, chunk_size]
+  const int b = blockIdx.x;
+  const int n = blockIdx.y;
+  const int s = blockIdx.z;
+  const int h2 = threadIdx.x;
+  const int c = threadIdx.y;
+
+  const int in_offset = b * num_heads * max_length * chunked_head_size * equv_chunk_size +
+                        n * max_length * chunked_head_size * equv_chunk_size +
+                        s * chunked_head_size * equv_chunk_size +
+                        h2 * equv_chunk_size +
+                        c;
+
+  const int out_offset = b * num_heads * max_length * chunked_head_size * equv_chunk_size +
+                         n * max_length * chunked_head_size * equv_chunk_size +
+                         h2 * max_length * equv_chunk_size +
+                         s * equv_chunk_size +
+                         c;
+
+  out_buffer[out_offset] = in_buffer[in_offset];
+}
+
+void ReorderPastStatesKernelLauncher(void* out_buffer,
+                                     const void* in_buffer,
+                                     int batch_size,
+                                     int num_heads,
+                                     int max_length,
+                                     int head_size,
+                                     int chunk_size,
+                                     cudaStream_t stream) {
+  const dim3 grid(batch_size, num_heads, max_length);
+  const dim3 block(head_size / chunk_size, chunk_size / 4);
+  if (chunk_size == 4) {
+    // float
+    ReorderPastStatesKernel<<<grid, block, 0, stream>>>(reinterpret_cast<float4*>(out_buffer),
+                                                        reinterpret_cast<const float4*>(in_buffer),
+                                                        batch_size,
+                                                        num_heads,
+                                                        max_length,
+                                                        head_size / chunk_size,
+                                                        chunk_size / 4);
+  } else if (chunk_size == 8) {
+    // half
+    ReorderPastStatesKernel<<<grid, block, 0, stream>>>(reinterpret_cast<Half4*>(out_buffer),
+                                                        reinterpret_cast<const Half4*>(in_buffer),
+                                                        batch_size,
+                                                        num_heads,
+                                                        max_length,
+                                                        head_size / chunk_size,
+                                                        chunk_size / 4);
+  } else {
+    // throw not support error
+    ORT_THROW("ReorderPastStatesKernelLauncher only support float or half");
+  }
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
