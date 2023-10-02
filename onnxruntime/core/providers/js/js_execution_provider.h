@@ -48,10 +48,7 @@ class JsExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
-  DataLayout GetPreferredLayout() const override {
-    printf("### JsExecutionProvider::GetPreferredLayout() called. returns %d\n", (int)(preferred_data_layout_));
-    return preferred_data_layout_;
-  }
+  DataLayout GetPreferredLayout() const override { return preferred_data_layout_; }
 
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
 
