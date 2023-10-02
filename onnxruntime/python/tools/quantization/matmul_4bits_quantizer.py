@@ -91,7 +91,6 @@ class MatMul4BitsQuantizer:
         packed, scales, zero_points = self.int4_block_quant(B_array)
         B_quant = onnx.numpy_helper.from_array(packed)  # noqa: N806
         B_quant.name = B.name + "_Q4"
-        Bs_graph.initializer.remove(B)
         for input in Bs_graph.input:
             if input.name == inputB:
                 Bs_graph.input.remove(input)
@@ -179,6 +178,7 @@ class MatMul4BitsQuantizer:
             opset_import.extend([onnx.helper.make_opsetid("com.microsoft", 1)])
 
         self._process_subgraph(graph_stack)
+        self.model.clean_initializers()
 
 
 def parse_args():
@@ -222,7 +222,7 @@ if __name__ == "__main__":
         logger.error(f"file {output_model_path} already exists")
         raise Exception(f"file {output_model_path} already exists")
 
-    model = load_model_with_shape_infer(Path(input_model_path))
+    model = onnx.load(input_model_path)
     quant = MatMul4BitsQuantizer(model, args.block_size, args.symmetric, nodes_to_exclude = args.nodes_to_exclude)
     quant.process()
     quant.model.save_model_to_file(output_model_path, True)
