@@ -731,6 +731,7 @@ class FusionAttention(Fusion):
         present_v: str = "",
         scale: Optional[float] = None,
         causal: bool = False,
+        has_relative_pos_bias: bool = False,
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
@@ -900,13 +901,17 @@ class FusionAttention(Fusion):
                 past_kv = self.concat_kv(past_k, past_v)
                 attention_inputs.append(past_kv)
 
-            if add_qk_str is not None:
+            if add_qk_str is not None and has_relative_pos_bias is None:
                 mask_output_name = self.reshape_add_qk(add_qk_str)
 
                 # Add attention mask to attention node
                 if not past_exists:
                     attention_inputs.append("")
                 attention_inputs.append(mask_output_name)
+            elif add_qk_str is not None and has_relative_pos_bias is not None:
+                if not past_exists:
+                    attention_inputs.append("")
+                attention_inputs.append(add_qk_str)
 
             attention_outputs = [output]
             if present_k and present_v:
@@ -1040,12 +1045,14 @@ class FusionAttention(Fusion):
         is_distill = False
         is_distill_add = False
         is_no_mask_attention = False
+        has_rel_pos_bias = False
         qk_paths = {
             "path1": (["Softmax", "Add", "Div", "MatMul"], [0, 0, None, 0]),
             "path2": (["Softmax", "Add", "Mul", "MatMul"], [0, 0, None, 0]),
             "path3": (["Softmax", "Where", "MatMul", "Div"], [0, 0, 2, 0]),
             "path4": (["Softmax", "Add", "Where", "MatMul"], [0, 0, 0, 2]),
             "path5": (["Softmax", "Div", "MatMul"], [0, 0, 0]),
+            "path6": (["Softmax", "Add", "Add", "Div", "MatMul"], [0, 0, None, 0, 0]),
         }
 
         qk_nodes = None
@@ -1059,6 +1066,8 @@ class FusionAttention(Fusion):
                 is_distill_add = True
             if k == "path5":
                 is_no_mask_attention = True
+            if k == "path6":
+                has_rel_pos_bias = True
             break
 
         if qk_nodes is None:
@@ -1068,12 +1077,15 @@ class FusionAttention(Fusion):
         add_qk = None
         matmul_qk = None
         where_qk = None
+        add_rel_bias_qk = None
         if is_distill:
             (_, where_qk, matmul_qk, _) = qk_nodes
         elif is_distill_add:
             (_, add_qk, where_qk, matmul_qk) = qk_nodes
         elif is_no_mask_attention:
             (_, _, matmul_qk) = qk_nodes
+        elif has_rel_pos_bias:
+            (_, add_qk, add_rel_bias_qk, div_qk, matmul_qk) = qk_nodes
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
@@ -1133,6 +1145,13 @@ class FusionAttention(Fusion):
                     return
         elif is_no_mask_attention:
             pass
+        elif has_rel_pos_bias:
+            mask_nodes = self.model.match_parent_path(
+                add_qk,
+                ["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
+                [None, 0, 1, 0, 0],
+            )
+            add_qk_str = add_rel_bias_qk.input[1]
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk,
@@ -1182,6 +1201,7 @@ class FusionAttention(Fusion):
                 root_input,
                 attention_last_node.output[0],
                 add_qk_str,
+                has_relative_pos_bias=has_rel_pos_bias,
             )
             if new_node is None:
                 return
