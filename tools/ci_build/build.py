@@ -1840,13 +1840,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     [sys.executable, "onnxruntime_test_python_symbolic_shape_infer.py"], cwd=cwd, dll_path=dll_path
                 )
 
-            # For CUDA enabled builds test IOBinding feature
-            if args.use_cuda:
-                # We need to have Torch installed to test the IOBinding feature
-                # which currently uses Torch's allocator to allocate GPU memory for testing
+            # For CUDA or DML enabled builds test IOBinding feature
+            if args.use_cuda or args.use_dml:
                 log.info("Testing IOBinding feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
+            if args.use_cuda:
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
 
@@ -2056,7 +2055,7 @@ def build_nuget_package(
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
-            "Currently csharp builds and nuget package creation is only supportted on Windows and Linux platforms."
+            "Currently csharp builds and nuget package creation is only supported on Windows and Linux platforms."
         )
 
     csharp_build_dir = os.path.join(source_dir, "csharp")

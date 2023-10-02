@@ -56,10 +56,6 @@ stages:
         clean: true
         submodules: none
 
-      - task: NodeTool@0
-        inputs:
-          versionSpec: '16.x'
-
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.8'
@@ -141,77 +137,39 @@ stages:
               "
         displayName: 'Dotnet build C# sln and Test'
 
-      - task: CmdLine@2
-        displayName: 'Install python deps'
-        inputs:
-          script: |
-             set -e -x
-             python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
-             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-             # Test ORT with the latest ONNX release.
-             sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
-             python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-             mkdir $(Build.BinariesDirectory)/requirements_torch_cpu/
-             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-             python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+              /bin/bash -c "
+                set -ex; \
+                /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Release && \
+                /bin/bash /onnxruntime_src/tools/scripts/symbolic_shape_infer_test.sh /build
+              "
+        displayName: 'Run Release tests and symbolic shape infer test'
 
-      - task: CmdLine@2
-        displayName: 'Install Release python package'
-        inputs:
-          script: |
-             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-             python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-
-      - task: PythonScript@0
-        displayName: 'Run Release unit tests'
-        inputs:
-           scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
-           workingDirectory: $(Build.BinariesDirectory)/Release
-           arguments: >-
-              --build_dir $(Build.BinariesDirectory)
-              --cmake_generator Ninja
-              --config Release
-              --test
-              --skip_submodule_sync
-              --build_shared_lib
-              --parallel
-              --build_wheel
-              --enable_onnx_tests
-              --enable_transformers_tool_test
-              --ctest_path ""
-
-      - task: CmdLine@2
-        displayName: 'Install Debug python package'
-        inputs:
-          script: |
-             set -e -x
-             rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
-             python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
-             python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
-
-      - task: PythonScript@0
-        displayName: 'Run Debug unit tests'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
-          workingDirectory: $(Build.BinariesDirectory)/Debug
-          arguments: >-
-              --build_dir $(Build.BinariesDirectory)
-              --cmake_generator Ninja
-              --config Debug
-              --test
-              --skip_submodule_sync
-              --build_shared_lib
-              --parallel
-              --build_wheel
-              --enable_onnx_tests
-              --enable_transformers_tool_test
-              --ctest_path ""
-
-      - task: PythonScript@0
-        displayName: 'Symbolic shape infer'
-        inputs:
-          scriptPath: $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
-          workingDirectory: $(Build.BinariesDirectory)/Release
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+                /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Debug
+        displayName: 'Run Debug tests'
 
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'
@@ -220,7 +178,6 @@ stages:
           searchFolder: '$(Build.BinariesDirectory)'
           testRunTitle: 'Unit Test Run'
         condition: succeededOrFailed()
-
 
 - stage: arm64_build
   dependsOn: []
@@ -239,8 +196,11 @@ stages:
 - stage: arm64_test
   dependsOn: ['arm64_build']
   jobs:
-  - template: templates/py-packaging-linux-test.yml
+  - template: templates/py-packaging-linux-test-cpu.yml
     parameters:
       arch: 'aarch64'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-      device: 'CPU'
+      base_image: 'arm64v8/almalinux:8'
+      devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
+      ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
+      prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'

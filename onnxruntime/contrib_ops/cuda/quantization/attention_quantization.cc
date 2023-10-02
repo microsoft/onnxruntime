@@ -195,28 +195,21 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
-  data.bias = nullptr;  // bias has been added
-  data.query = nullptr;
-  data.key = nullptr;
-  data.value = nullptr;
-  data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
-  data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
-  data.past = (nullptr == past_tensor) ? nullptr : reinterpret_cast<const CudaT*>(past_tensor->Data<T>());
-  data.past_key = nullptr;
-  data.past_value = nullptr;
-  data.relative_position_bias = nullptr;  // add_qk is not supported in quantized attention
+  if (nullptr != mask_index) {
+    data.mask_index = mask_index->Data<int>();
+    data.mask_index_dims = mask_index->Shape().GetDims();
+  }
+
+  if (nullptr != past_tensor) {
+    data.past = reinterpret_cast<const CudaT*>(past_tensor->Data<T>());
+  }
+
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
-  data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
-  data.present_key = nullptr;
-  data.present_value = nullptr;
-  data.fused_runner = fused_runner;
-  data.fused_cross_attention_kernel = nullptr;
-  data.use_flash_attention = use_flash_attention;
-  data.use_memory_efficient_attention = use_memory_efficient_attention;
-  data.cumulated_sequence_length_q_cache = nullptr;
-  data.cumulated_sequence_length_kv_cache = nullptr;
+  if (nullptr != present) {
+    data.present = reinterpret_cast<CudaT*>(present->MutableData<T>());
+  }
 
   return QkvToContext<CudaT>(GetDeviceProp(), cublas, context->GetComputeStream(), parameters, data);
 }
