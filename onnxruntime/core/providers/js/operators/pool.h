@@ -41,7 +41,7 @@ namespace js {
 #define GLOBAL_POOL_ATTRIBUTES_JS_OBJ_MAPPING ({"format" : $1 ? "NHWC" : "NCHW"})
 #define GLOBAL_POOL_ATTRIBUTES_PARAM_LIST static_cast<int32_t>(is_channels_last)
 
-template <typename T, typename PoolType, bool is_channels_last>
+template <typename PoolType, bool is_channels_last>
 class Pool : public JsKernel, public PoolBase {
  public:
   Pool(const OpKernelInfo& info) : JsKernel(info), PoolBase(info) {
@@ -65,10 +65,10 @@ class Pool : public JsKernel, public PoolBase {
   }
 };
 
-template <typename T, bool is_channels_last>
-class Pool<T, MaxPool<8>, is_channels_last> final : public Pool<T, MaxPool<1>, is_channels_last> {
+template <bool is_channels_last>
+class Pool<MaxPool<8>, is_channels_last> final : public Pool<MaxPool<1>, is_channels_last> {
  public:
-  Pool(const OpKernelInfo& info) : Pool<T, MaxPool<1>, is_channels_last>(info) {}
+  Pool(const OpKernelInfo& info) : Pool<MaxPool<1>, is_channels_last>(info) {}
 };
 
 }  // namespace js
