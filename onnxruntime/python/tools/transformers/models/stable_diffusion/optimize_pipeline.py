@@ -169,6 +169,7 @@ def _optimize_sd_pipeline(
                 optimize_by_onnxruntime(
                     str(tmp_model_path),
                     use_gpu=True,
+                    provider=args.provider,
                     optimized_model_path=str(ort_optimized_model_path),
                     save_as_external_data=use_external_data_format,
                 )
