@@ -690,7 +690,7 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
   provider_options["qnn_context_cache_enable"] = "1";
-  const std::string context_binary_file = "./qnn_context_binary_test.bin";
+  const std::string context_binary_file = "./qnn_context_binary_test.onnx";
   provider_options["qnn_context_cache_path"] = context_binary_file;
 
   const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
