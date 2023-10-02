@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#pragma once
 
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
 
 #include <sstream>
 #include <vector>
-
-#pragma once
 
 namespace onnxruntime {
 namespace contrib {

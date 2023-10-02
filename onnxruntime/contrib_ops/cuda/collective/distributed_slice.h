@@ -1,5 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#pragma once
+
+#include "sharding_spec.h"
 #include "nccl_kernels.h"
 
 #include <algorithm>
@@ -9,8 +12,6 @@
 #include <nccl.h>
 #include <sstream>
 
-#pragma once
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -18,9 +19,9 @@ namespace cuda {
 #if defined(ORT_USE_NCCL)
 
 template <typename T>
-class DistributedMatMul final : public DistributedKernel {
+class DistributedSliice final : public DistributedKernel {
  public:
-  explicit DistributedMatMul(const OpKernelInfo& info);
+  explicit DistributedSliice(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
