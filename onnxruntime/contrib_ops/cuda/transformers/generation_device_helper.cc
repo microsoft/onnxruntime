@@ -72,17 +72,17 @@ Status ReorderPastState(
   size_t num_heads = packed_past ? past_state_dims[2] : past_state_dims[1];
   size_t max_length = packed_past ? past_state_dims[3] : past_state_dims[2];
   size_t head_size = packed_past ? past_state_dims[4] : past_state_dims[3];
-  std::cout << "75: " << std::endl;
+
   // Copy the 'K' values into the temp staging buffer
   size_t past_state_size = packed_past ? past_state.SizeInBytes() / 2 : past_state.SizeInBytes();
   void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state_size,
                                        cudaMemcpyDeviceToDevice, cuda_stream));
-  std::cout << "81: " << std::endl;
+
   // Now consider the original 'K' values to be of shape [B, N, max_length, head_size / x, x] and transpose it into
   // [B, N, head_size / x, max_length, x], where x = 16 / sizeof(T)
   int64_t chunk_size = static_cast<int64_t>(16 / past_state.DataType()->Size());
-  std::cout << "chunk_size: " << chunk_size << std::endl;
+
   cuda::ReorderPastStatesKernelLauncher(past_state.MutableDataRaw(),
                                         past_state_staging_buffer,
                                         static_cast<int>(batch_size),
@@ -91,8 +91,6 @@ Status ReorderPastState(
                                         static_cast<int>(head_size),
                                         static_cast<int>(chunk_size),
                                         cuda_stream); 
-  cudaDeviceSynchronize();
-  std::cout << "reordered past state kernel done" << std::endl;
 
   return Status::OK();
 }

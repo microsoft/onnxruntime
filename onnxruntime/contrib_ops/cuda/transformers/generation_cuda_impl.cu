@@ -1326,23 +1326,25 @@ __global__ void ReorderPastStatesKernel(T* out_buffer,
   //[B, N, max_length, H2(head_size/chunk_size), chunk_size] -> [B, N, H2(head_size/chunk_size), max_length, chunk_size]
   const int b = blockIdx.x;
   const int n = blockIdx.y;
-  const int s = blockIdx.z;
-  const int h2 = threadIdx.x;
-  const int c = threadIdx.y;
+  const int s = blockIdx.z * 32 + threadIdx.x;
+  const int h2 = threadIdx.y;
+  const int c = threadIdx.z;
 
-  const int in_offset = b * num_heads * max_length * chunked_head_size * equv_chunk_size +
-                        n * max_length * chunked_head_size * equv_chunk_size +
-                        s * chunked_head_size * equv_chunk_size +
-                        h2 * equv_chunk_size +
-                        c;
+  if (s < max_length) {
+    const int in_offset = b * num_heads * max_length * chunked_head_size * equv_chunk_size +
+                          n * max_length * chunked_head_size * equv_chunk_size +
+                          s * chunked_head_size * equv_chunk_size +
+                          h2 * equv_chunk_size +
+                          c;
 
-  const int out_offset = b * num_heads * max_length * chunked_head_size * equv_chunk_size +
-                         n * max_length * chunked_head_size * equv_chunk_size +
-                         h2 * max_length * equv_chunk_size +
-                         s * equv_chunk_size +
-                         c;
+    const int out_offset = b * num_heads * max_length * chunked_head_size * equv_chunk_size +
+                           n * max_length * chunked_head_size * equv_chunk_size +
+                           h2 * max_length * equv_chunk_size +
+                           s * equv_chunk_size +
+                           c;
 
-  out_buffer[out_offset] = in_buffer[in_offset];
+    out_buffer[out_offset] = in_buffer[in_offset];
+  }
 }
 
 void ReorderPastStatesKernelLauncher(void* out_buffer,
@@ -1353,8 +1355,8 @@ void ReorderPastStatesKernelLauncher(void* out_buffer,
                                      int head_size,
                                      int chunk_size,
                                      cudaStream_t stream) {
-  const dim3 grid(batch_size, num_heads, max_length);
-  const dim3 block(head_size / chunk_size, chunk_size / 4);
+  const dim3 grid(batch_size, num_heads, (max_length + 31) / 32);
+  const dim3 block(32, head_size / chunk_size, chunk_size / 4);
   if (chunk_size == 4) {
     // float
     ReorderPastStatesKernel<<<grid, block, 0, stream>>>(reinterpret_cast<float4*>(out_buffer),
