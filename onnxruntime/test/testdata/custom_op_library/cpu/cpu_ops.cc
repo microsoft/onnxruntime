@@ -11,21 +11,40 @@ using namespace Ort::Custom;
 
 namespace Cpu {
 
-Ort::Status KernelOne(const Ort::Custom::Tensor<float>& X,
+struct KernelOne {
+  KernelOne(const OrtApi*, const OrtKernelInfo*) {}
+
+  Ort::Status Compute(const Ort::Custom::Tensor<float>& X,
                       const Ort::Custom::Tensor<float>& Y,
                       Ort::Custom::Tensor<float>& Z) {
-  if (X.NumberOfElement() != Y.NumberOfElement()) {
-    return Ort::Status("x and y has different number of elements", OrtErrorCode::ORT_INVALID_ARGUMENT);
+    if (X.NumberOfElement() != Y.NumberOfElement()) {
+      return Ort::Status("x and y has different number of elements", OrtErrorCode::ORT_INVALID_ARGUMENT);
+    }
+    auto x_shape = X.Shape();
+    auto x_raw = X.Data();
+    auto y_raw = Y.Data();
+    auto z_raw = Z.Allocate(x_shape);
+    for (int64_t i = 0; i < Z.NumberOfElement(); ++i) {
+      z_raw[i] = x_raw[i] + y_raw[i];
+    }
+    return Ort::Status{nullptr};
   }
-  auto x_shape = X.Shape();
-  auto x_raw = X.Data();
-  auto y_raw = Y.Data();
-  auto z_raw = Z.Allocate(x_shape);
-  for (int64_t i = 0; i < Z.NumberOfElement(); ++i) {
-    z_raw[i] = x_raw[i] + y_raw[i];
+
+  static Ort::Status InferOutputShape(Ort::Custom::ShapeInferContext& ctx) {
+    auto input_count = ctx.GetInputCount();
+    if (input_count != 2) {
+      return Ort::Status("input count should be 2", OrtErrorCode::ORT_INVALID_ARGUMENT);
+    }
+    Ort::Custom::ShapeInferContext::Shape shape_3_5 = {{3}, {5}};
+    if (ctx.GetInputShape(0) == shape_3_5 &&
+        ctx.GetInputShape(1) == shape_3_5) {
+      ctx.SetOutputShape(0, shape_3_5);
+    } else {
+      return Ort::Status("input shape mismatch", OrtErrorCode::ORT_INVALID_ARGUMENT);
+    }
+    return Ort::Status{nullptr};
   }
-  return Ort::Status{nullptr};
-}
+};
 
 // lite custom op as a function
 void KernelTwo(const Ort::Custom::Tensor<float>& X,
@@ -207,7 +226,7 @@ Ort::Status CopyTensorArrayCombined(const Ort::Custom::Tensor<float>& first_inpu
 }
 
 void RegisterOps(Ort::CustomOpDomain& domain) {
-  static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CPUExecutionProvider", KernelOne)};
+  static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp<KernelOne>("CustomOpOne", "CPUExecutionProvider")};
   static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", "CPUExecutionProvider", KernelTwo)};
   static const std::unique_ptr<OrtLiteCustomOp> c_MulTopOpFloat{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<float>)};
   static const std::unique_ptr<OrtLiteCustomOp> c_MulTopOpInt32{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<int32_t>)};

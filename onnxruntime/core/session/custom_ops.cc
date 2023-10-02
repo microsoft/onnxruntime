@@ -51,7 +51,7 @@ struct OrtShapeInferContext {
       auto elem_type = ::onnxruntime::utils::CApiElementTypeFromProtoType(type_proto.elem_type());
       auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
       auto symbolic_dims = GetSymbolicDims(shape_proto);
-      input_type_shapes_.emplace_back(OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims));
+      input_type_shapes_.emplace_back(OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims).release());
     }
   }
 
@@ -73,10 +73,8 @@ struct OrtShapeInferContext {
         dim_proto->set_dim_value(dim);
       }
     } else {
-      ORT_ENFORCE(symbolic_dims.size() == integer_dims.size(), "symbolic dims mismatch!");
-      for (size_t ith = 0; ith < 0; ith++) {
-        ORT_ENFORCE(symbolic_dims[ith].empty() && integer_dims[ith] != -1 ||
-                    !symbolic_dims[ith].empty() && integer_dims[ith] == -1);
+      ORT_ENFORCE(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
+      for (size_t ith = 0; ith < symbolic_dims.size(); ith++) {
         auto* dim_proto = shape_proto.add_dim();
         dim_proto->set_dim_value(integer_dims[ith]);
         dim_proto->set_dim_param(symbolic_dims[ith]);
@@ -99,7 +97,6 @@ struct OrtShapeInferContext {
     }
     return symblic_dims;
   }
-  // onnxruntime::InferenceContextImpl* ctx_impl_;
   ONNX_NAMESPACE::InferenceContext& ctx_;
   using TypeShapePtr = std::unique_ptr<OrtTensorTypeAndShapeInfo>;
   onnxruntime::InlinedVector<TypeShapePtr> input_type_shapes_;
