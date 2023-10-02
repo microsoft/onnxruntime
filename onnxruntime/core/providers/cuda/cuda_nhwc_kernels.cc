@@ -12,6 +12,9 @@
 namespace onnxruntime {
 namespace cuda {
 
+// When adding new supported NHWC operations make sure to also integrate them into: ConvertNodeLayout
+// in onnxruntime/core/optimizer/layout_transformation/layout_transformation.cc
+
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSInternalNHWCDomain, 7, 8, float, BatchNormalization);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSInternalNHWCDomain, 7, 8, MLFloat16, BatchNormalization);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMSInternalNHWCDomain, 9, 13, float, BatchNormalization);

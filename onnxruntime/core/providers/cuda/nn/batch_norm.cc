@@ -98,7 +98,7 @@ Status BatchNorm<T, NHWC>::ComputeInternal(OpKernelContext* p_op_kernel_context)
     ORT_RETURN_IF_ERROR(bn_tensor_desc.Set(data_desc, cudnn_batch_norm_mode_));
 
     // Convert the scale, B, mean, var to float
-    const int64_t C = x_shape.GetDims()[1];
+    const int64_t C = x_shape.GetDims()[NHWC ? 3 :  1];
     auto f_scale = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
     auto f_B = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
     auto f_mean = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());

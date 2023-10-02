@@ -35,9 +35,9 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 bool disable_rocm = false,
                 bool use_float16 = false,
                 bool weight_is_initializer = false) {
-  bool enable_cuda = HasCudaEnvironment(0) && !disable_cuda;
+  bool enable_cuda = HasCudaEnvironment(0) && !use_float16 && !disable_cuda;
+  // Only ROCm EP supports float16.
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get()) && !disable_rocm;
-  // Only ROCm EP and CUDA EP supports float16.
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
 
   if (enable_cuda || enable_rocm || enable_cpu) {
@@ -160,48 +160,6 @@ TEST(FusedConvTest, Conv2D_Relu) {
   vector<int64_t> Y_shape = {1, 2, 2, 2};
   auto expected_vals = {12.0f, 16.0f, 24.0f, 28.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   RunConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-}
-
-TEST(FusedConvTest, Conv2D_Sigmoid) {
-  ConvOpAndTestAttributes attrs = {
-      "",                           // auto_pad
-      vector<int64_t>{1, 1},        // dilations
-      1,                            // group
-      vector<int64_t>{2, 2},        // kernel_shape
-      vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1},        // strides
-      "Sigmoid"                     // activation
-  };
-
-  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
-  vector<int64_t> X_shape = {1, 1, 3, 3};
-  constexpr float v = 0.125f;
-  vector<float> W = {v, v, v, v, -v, -v, -v, -v};
-  vector<int64_t> W_shape = {2, 1, 2, 2};
-  vector<int64_t> Y_shape = {1, 2, 2, 2};
-  auto expected_vals = {0.6854f, 0.7462f, 0.8427f, 0.8785f, 0.3082f, 0.2482f, 0.1534f, 0.1183f};
-  RunConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true, false, true);
-}
-
-TEST(FusedConvTest, Conv2D_Tanh) {
-  ConvOpAndTestAttributes attrs = {
-      "",                           // auto_pad
-      vector<int64_t>{1, 1},        // dilations
-      1,                            // group
-      vector<int64_t>{2, 2},        // kernel_shape
-      vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1},        // strides
-      "Tanh"                        // activation
-  };
-
-  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
-  vector<int64_t> X_shape = {1, 1, 3, 3};
-  constexpr float v = 0.075f;
-  vector<float> W = {v, v, v, v, -v, -v, -v, -v};
-  vector<int64_t> W_shape = {2, 1, 2, 2};
-  vector<int64_t> Y_shape = {1, 2, 2, 2};
-  auto expected_vals = {0.6881f, 0.8159f, 0.9407f, 0.9670f, -0.8023f, -0.8864f, -0.9644f, -0.9803f};
-  RunConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true, false, true);
 }
 
 TEST(FusedConvTest, Conv2D_Bias_Relu) {

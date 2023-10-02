@@ -45,8 +45,7 @@ bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
 }
 
 bool ConvFusionDataTypeCheck(const Node& conv_node) {
-  // TODO(hasesh): The CPU EP only support float type for the Conv+Activation
-  // and CUDA EP only supports float and half type for the Conv+Activation
+  // TODO(hasesh): The CPU and CUDA EP only support float type for the Conv+Activation
   // and the Conv+Add+Relu fusions.
   // Assess the support level for the other compatible EPs and if they also
   // only support float, remove the EP check altogether.
