@@ -49,6 +49,12 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
 };
 
+const COPYRIGHT_HEADER = `/*!
+ * ONNX Runtime Web v${require('../package.json').version}
+ * Copyright (c) Microsoft Corporation. All rights reserved.
+ * Licensed under the MIT License.
+ */`;
+
 interface OrtBuildOptions {
   isProduction?: boolean;
   isNode?: boolean;
@@ -63,6 +69,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
     metafile: !!DEBUG,
     absWorkingDir: SOURCE_ROOT_FOLDER,
     bundle: true,
+    banner: {js: COPYRIGHT_HEADER},
     ...options
   });
   if (DEBUG) {
