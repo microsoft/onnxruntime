@@ -283,11 +283,6 @@ namespace DmlGraphFusionHelper
         DML_PREVIEW_OPERATOR_FIRST = 0xC0000000,
     };
 
-    enum DML_GRAPH_NODE_TYPE_PREVIEW
-    { 
-        DML_GRAPH_NODE_TYPE_CONSTANT_DATA = 0xCC000000,  
-    }; 
-
     struct DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW 
     { 
         const BYTE* data;
@@ -324,7 +319,8 @@ namespace DmlGraphFusionHelper
                 nodeInfo.name.data()
                 };
 
-                dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{(DML_GRAPH_NODE_TYPE) DML_GRAPH_NODE_TYPE_CONSTANT_DATA, &dmlConstantGraphNodes[i]};
+                // TODO: Change as new header is ingested
+                dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{(DML_GRAPH_NODE_TYPE) 2, &dmlConstantGraphNodes[i]};
             }
         }
 
