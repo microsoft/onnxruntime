@@ -12,13 +12,13 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
                       std::vector<NodeArg*>& node_args,
                       onnxruntime::Graph& graph) {
   using namespace ONNX_NAMESPACE;
-  for (int i = 0; i < names.size(); ++i) {
+  for (size_t i = 0; i < names.size(); ++i) {
     std::string name = names[i];
     ORT_RETURN_IF(tensor_info_table.find(name) == tensor_info_table.end(), "Tensor name: ", name, " not found in tensor_info_table");
     const OnnxTensorInfo& tensor_info = tensor_info_table.at(name);
     TypeProto tensor_type;
     tensor_type.mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
-    for (int j = 0; j < tensor_info.shape_.size(); ++j) {
+    for (size_t j = 0; j < tensor_info.shape_.size(); ++j) {
       tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);
     }
     auto& input_arg = graph.GetOrCreateNodeArg(name, &tensor_type);

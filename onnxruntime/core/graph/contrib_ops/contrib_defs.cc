@@ -2847,7 +2847,7 @@ void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(EPCache)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("Onnx node for QNN.")
+      .SetDoc("Onnx node for EP engine or context chache.")
       .Attr("ep_engine_cache", "payload of the execution provider engine/context cache file.", AttributeProto::STRING)
       .Attr(
           "ep_sdk_version",
