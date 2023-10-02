@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {readFile} from 'node:fs/promises';
-import {env, InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common';
+import {env, InferenceSession, InferenceSessionHandler, SessionHandler, Tensor} from 'onnxruntime-common';
 
 import {SerializableModeldata, TensorMetadata} from './proxy-messages';
 import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, releaseSession, run} from './proxy-wrapper';
@@ -39,7 +39,7 @@ const decodeTensorMetadata = (tensor: TensorMetadata): Tensor => {
   }
 };
 
-export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
+export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHandler {
   private sessionId: number;
 
   inputNames: string[];
