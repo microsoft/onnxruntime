@@ -161,13 +161,12 @@ Status QkvToContext(
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
-  AttentionQkvFormat qkv_format = parameters.qkv_format;
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(head_size)) : parameters.scale;
   if (data.use_flash_attention) {
-    assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    assert(parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
     assert(parameters.num_heads % parameters.kv_num_heads == 0);
 
     void* query = reinterpret_cast<void*>(const_cast<T*>(data.query));
