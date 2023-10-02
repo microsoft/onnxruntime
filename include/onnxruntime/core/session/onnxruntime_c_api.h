@@ -746,6 +746,8 @@ struct OrtApi {
 
   /** \brief Create an OrtEnv
    *
+   * \note Invoking this function will return the same instance of the environment as that returned by a previous call
+   * to another env creation function; all arguments to this function will be ignored.
    * \param[in] log_severity_level The log severity level.
    * \param[in] logid The log identifier.
    * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
@@ -756,17 +758,20 @@ struct OrtApi {
 
   /** \brief Create an OrtEnv
    *
+   * \note Invoking this function will return the same instance of the environment as that returned by a previous call
+   * to another env creation function; all arguments to this function will be ignored. If you want to provide your
+   * own logging function, consider setting it using the SetUserLoggingFunction API instead.
    * \param[in] logging_function A pointer to a logging function.
    * \param[in] logger_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
-   *                         `logging_function`.
+   *                         `logging_function`. This parameter is optional.
    * \param[in] log_severity_level The log severity level.
    * \param[in] logid The log identifier.
    * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
-                  OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnvWithCustomLogger, _In_ OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
+                  _In_ OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /** \brief Enable Telemetry
    *
@@ -4415,13 +4420,58 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
 
+  /** \brief Set user logging function
+   *
+   *  By default the logger created by the CreateEnv* functions is used to create the session logger as well.
+   *  This function allows a user to override this default session logger with a logger of their own choosing. This way
+   *  the user doesn't have to create a separate environment with a custom logger. This addresses the problem when
+   *  the user already created an env but now wants to use a different logger for a specific session (for debugging or
+   *  other reasons).
+   *
+   * \param[in] options
+   * \param[in] user_logging_function A pointer to a logging function.
+   * \param[in] user_logging_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
+   *                         `user_logging_function`. This parameter is optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SetUserLoggingFunction, _Inout_ OrtSessionOptions* options,
+                  _In_ OrtLoggingFunction user_logging_function, _In_opt_ void* user_logging_param);
 
-  // todo - doc
+  /**
+   * Get number of input from OrtShapeInferContext
+   * 
+   * \param[in] context
+   * \param[out] out The number of inputs
+   */
   ORT_API2_STATUS(ShapeInferContext_GetInputCount, _In_ const OrtShapeInferContext* context, _Out_ size_t* out);
-  // todo - return const ... *?
+
+  /**
+   * Get type and shape info of an input
+   *
+   * \param[in] context
+   * \param[in] index The index of the input
+   * \param[out] info Type shape info of the input
+   */
   ORT_API2_STATUS(ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info);
-  // customer needs to manage the lifetime of info
+
+  /**
+   * Set type and shape info of an ouput
+   *
+   * \param[in] context
+   * \param[in] index The index of the ouput
+   * \param[out] info Type shape info of the output
+   */
   ORT_API2_STATUS(ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /**
+   * Set symbolic shape to type shape info
+   * \param[in] context
+   * \param[in] dim_params Symbolic strings
+   * \param[in] dim_params_length Number of strings
+   */
   ORT_API2_STATUS(SetSymbolicDimensions, _In_ OrtTensorTypeAndShapeInfo* info, _In_ const char* dim_params[], _In_ size_t dim_params_length);
 };
 
