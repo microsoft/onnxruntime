@@ -90,7 +90,8 @@ export const makeMatMulPackedVec4Source =
             workPerThread[0]} must be 4.`);
       }
       return `
-var<workgroup> mm_Asub : array<array<vec${innerElementSize}<${type}>, ${tileAWidth / innerElementSize}>, ${tileAHight}>;
+var<workgroup> mm_Asub : array<array<vec${innerElementSize}<${type}>, ${tileAWidth / innerElementSize}>, ${
+          tileAHight}>;
 var<workgroup> mm_Bsub : array<array<vec4<${type}>, ${tileBOuter / workPerThread[0]}>, ${tileInner}>;
 
 const rowPerThread = ${workPerThread[1]};
