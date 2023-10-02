@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 set -e -o -x
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 TARGET_FOLDER="/datadrive/ARM"
