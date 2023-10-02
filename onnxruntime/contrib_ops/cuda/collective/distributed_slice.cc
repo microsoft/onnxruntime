@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 // Distributed computation.
-#include "sharding.h"
 #include "distributed_slice.h"
 #include "mpi_include.h"
 
@@ -13,18 +12,17 @@
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 #if defined(ORT_USE_NCCL)
 template <typename T, typename Tind>
-DistributedSliice<T>::DistributedSliice(const OpKernelInfo& info) : DistributedKernel(info) {
+DistributedSlice<T, Tind>::DistributedSlice(const OpKernelInfo& info) : DistributedKernel(info) {
 }
 
 template <typename T, typename Tind>
-Status DistributedSliice<T>::ComputeInternal(OpKernelContext* context) const {
+Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) const {
   const auto tensor_shard_data = context->Input<Tensor>(0);
   const auto tensor_shard_starts = context->Input<Tensor>(1);
   const auto tensor_shard_ends = context->Input<Tensor>(2);
@@ -37,41 +35,49 @@ Status DistributedSliice<T>::ComputeInternal(OpKernelContext* context) const {
   if (spec_starts.HasShard() || spec_ends.HasShard())
     ORT_THROW("Not supported yet.");
 
-  TensorShapeVector input_starts;
-  TensorShapeVector input_ends;
+  std::vector<int64_t> input_starts;
+  std::vector<int64_t> input_ends;
   auto starts_data = tensor_shard_starts->DataAsSpan<Tind>();
-  std::copy(starts_data.begin(), starts_data.end(), std::back_inserter(input_starts));
+  input_starts.resize(starts_data.size());
+  std::copy(starts_data.begin(), starts_data.end(), input_starts.begin());
   auto ends_data = tensor_shard_ends->DataAsSpan<Tind>();
-  std::copy(ends_data.begin(), ends_data.end(), std::back_inserter(input_ends));
+  input_ends.resize(ends_data.size());
+  std::copy(ends_data.begin(), ends_data.end(), input_ends.begin());
 
   const auto tensor_shard_axes = context->Input<Tensor>(3);
   const TensorPartitionSpec& spec_axes = input_shard_specs_[3];
 
-  TensorShapeVector input_axes;
+  std::vector<int64_t> input_axes;
 
   if (spec_axes.HasShard()){
-    auto tmp_spec_axes = CreateAllReplica(spec_axes);
-    auto tensor_axes = ReshardTensor(this, context, spec_axes, tmp_spec_axes, nccl_->Rank(), tensor_shard_axes);
+    auto tmp_spec_axes = TensorPartitionSpec::CreateAllReplica(spec_axes);
+    std::unique_ptr<Tensor> tensor_axes = ReshardTensor(this, context, spec_axes, tmp_spec_axes, nccl_->Rank(), tensor_shard_axes);
     auto axes_data = tensor_axes->DataAsSpan<Tind>();
-    std::copy(axes_data.begin(), axes_data.end(), std::back_inserter(input_axes));
+    input_axes.resize(axes_data.size());
+    std::copy(axes_data.begin(), axes_data.end(), input_axes.begin());
   } else if (tensor_shard_axes){
     auto axes_data = tensor_shard_axes->DataAsSpan<Tind>();
-    std::copy(axes_data.begin(), axes_data.end(), std::back_inserter(input_axes));
+    input_axes.resize(axes_data.size());
+    std::copy(axes_data.begin(), axes_data.end(), input_axes.begin());
   }
 
+  std::vector<int64_t> input_steps;
   const auto tensor_shard_steps = context->Input<Tensor>(4);
-  const TensorPartitionSpec& spec_steps = input_shard_specs_[4];
-  if (spec_steps.HasShard())
-    ORT_THROW("Not supported yet.");
+  if (tensor_shard_steps){
+    const TensorPartitionSpec& spec_steps = input_shard_specs_[4];
+    if (spec_steps.HasShard())
+        ORT_THROW("Not supported yet.");
 
-  TensorShapeVector input_steps;
-  auto steps_data = tensor_shard_steps->DataAsSpan<Tind>();
-  std::copy(steps_data.begin(), steps_data.end(), std::back_inserter(input_steps));
+    auto steps_data = tensor_shard_steps->DataAsSpan<Tind>();
+    input_steps.resize(steps_data.size());
+    std::copy(steps_data.begin(), steps_data.end(), input_steps.begin());
+  }
+
 
   if (spec_data.GetPartitionAxis() != -1 &&
       std::find(input_axes.begin(), input_axes.end(), spec_data.GetPartitionAxis()) != input_axes.end()){
     // shard on slice axes, reshard first
-    auto tmp_spec_data = CreateAllReplica(spec_data);
+    auto tmp_spec_data = TensorPartitionSpec::CreateAllReplica(spec_data);
     auto tensor_data = ReshardTensor(this, context, spec_data, tmp_spec_data, nccl_->Rank(), tensor_shard_data);
 
     const auto& input_shape = tensor_data->Shape();
@@ -79,9 +85,8 @@ Status DistributedSliice<T>::ComputeInternal(OpKernelContext* context) const {
     if (input_dimensions.empty()) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
 
     SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
-    TensorShape output_shape(compute_metadata.output_dims_);
-
     ORT_RETURN_IF_ERROR(SliceBase::PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
+    TensorShape output_shape(compute_metadata.output_dims_);
 
     if (spec_Y.HasNoShard()){
       ORT_RETURN_IF_ERROR(FuncSlice(this,
@@ -97,24 +102,24 @@ Status DistributedSliice<T>::ComputeInternal(OpKernelContext* context) const {
     }
   } else{
     if (spec_Y.GetPartitionAxis() == spec_data.GetPartitionAxis()){
-      const auto& input_shape = tensor_data->Shape();
+      const auto& input_shape = tensor_shard_data->Shape();
       const auto input_dimensions = input_shape.GetDims();
       if (input_dimensions.empty()) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
 
       SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
+      ORT_RETURN_IF_ERROR(SliceBase::PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
       TensorShape output_shape(compute_metadata.output_dims_);
 
-      ORT_RETURN_IF_ERROR(SliceBase::PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
       ORT_RETURN_IF_ERROR(FuncSlice(this,
                                     context,
-                                    tensor_shard_data.get(),
+                                    tensor_shard_data,
                                     input_starts,
                                     input_ends,
                                     input_axes,
                                     input_steps,
                                     context->Output(0, output_shape)));
     } else{
-      ORT_THROW("Not Implemented yet.")
+      ORT_THROW("Not Implemented yet.");
     }
   }
 
@@ -122,28 +127,34 @@ Status DistributedSliice<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    DistributedSliice,
+    DistributedSlice,
     kMSDomain,
     1,
     float,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .AllocateInputsContiguously()
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .InputMemoryType(OrtMemTypeCPUInput, 4)
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
-    DistributedSliice<float, int64_t>);
+    DistributedSlice<float, int64_t>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    DistributedSliice,
+    DistributedSlice,
     kMSDomain,
     1,
     MLFloat16,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .AllocateInputsContiguously()
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .InputMemoryType(OrtMemTypeCPUInput, 4)
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
         .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
-    DistributedSliice<MLFloat16, int64_t>);
+    DistributedSlice<MLFloat16, int64_t>);
 
 #endif
 

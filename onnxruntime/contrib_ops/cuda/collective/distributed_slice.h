@@ -2,9 +2,6 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "sharding_spec.h"
-#include "nccl_kernels.h"
-
 #include <algorithm>
 #include <tuple>
 #include <optional>
@@ -12,16 +9,18 @@
 #include <nccl.h>
 #include <sstream>
 
+#include "sharding.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 #if defined(ORT_USE_NCCL)
 
-template <typename T>
-class DistributedSliice final : public DistributedKernel {
+template <typename T, typename Tind>
+class DistributedSlice final : public DistributedKernel {
  public:
-  explicit DistributedSliice(const OpKernelInfo& info);
+  explicit DistributedSlice(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };

@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "nccl_kernels.h"
+#include "sharding.h"
 
 #include <algorithm>
 #include <tuple>

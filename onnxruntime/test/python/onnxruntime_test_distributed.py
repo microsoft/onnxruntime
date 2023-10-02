@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 import onnxscript
 from mpi4py import MPI
-from onnxscript import FLOAT
+from onnxscript import FLOAT, INT64
 
 import onnxruntime as ort
 
@@ -312,6 +312,50 @@ class TestDistributedMatMul(unittest.TestCase):
         expected = np.matmul(tensor_x, tensor_w)
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
+    def test_slice_sr_axis1(self):
+        @onnxscript.script()
+        def slice_sr_axis1(tensor_x: FLOAT,
+                           tensor_starts: INT64,
+                           tensor_ends: INT64,
+                           tensor_axes: INT64) -> FLOAT:
+            return MICROSOFT_OPSET.DistributedSlice(
+                tensor_x,
+                tensor_starts,
+                tensor_ends,
+                tensor_axes,
+                device_mesh_shape=[2],
+                device_mesh_elements=[0, 1],
+                input_shard_specs=["S[0]R", "R", "R", "R", "R"],
+                output_shard_specs=["S[0]R"],
+            )
+
+        rank = comm.Get_rank()
+        # Shape [2, 4]
+        tensor_x = np.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=np.float32)
+        tensor_starts = np.array([0], dtype=np.int64)
+        tensor_ends = np.array([2], dtype=np.int64)
+        tensor_axes = np.array([1], dtype=np.int64)
+
+        onnx_model = slice_sr_axis1.to_model_proto(
+            input_types=[FLOAT[1, 4], INT64[1], INT64[1], INT64[1]],
+            output_types=[FLOAT[1, 2]],
+        )
+
+        sess = ort.InferenceSession(
+            onnx_model.SerializeToString(),
+            providers=["CUDAExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}],
+        )
+
+        tensor_shard_x = shard_tensor(tensor_x, rank=rank, axis=0, num_shards=2)
+
+        result = sess.run(None, {"tensor_x": tensor_shard_x,
+                                 "tensor_starts" : tensor_starts,
+                                 "tensor_ends" : tensor_ends,
+                                 "tensor_axes" : tensor_axes})
+
+        expected = tensor_shard_x[:, 0:2]
+        np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
 if __name__ == "__main__":
     unittest.main()

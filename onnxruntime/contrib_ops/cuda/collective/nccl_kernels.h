@@ -12,7 +12,6 @@
 #include <string>
 #include <nccl.h>
 #include <sstream>
-#include "sharding_spec.h"
 #endif
 
 namespace onnxruntime {
@@ -111,17 +110,6 @@ std::unique_ptr<Tensor> FuncAllGather(
     const Tensor* input,
     const int64_t group_size,
     const int64_t axis);
-
-
-template <typename T>
-class DistributedKernel final : public NcclKernel {
- public:
-  explicit DistributedKernel(const OpKernelInfo& info);
-
- protected:
-  std::vector<TensorPartitionSpec> input_shard_specs_;
-  std::vector<TensorPartitionSpec> output_shard_specs_;
-};
 
 }  // namespace cuda
 }  // namespace contrib
