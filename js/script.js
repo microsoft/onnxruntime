@@ -24,6 +24,7 @@ var ot_opts = {
     ot_architecture: 'ot_X64',
     ot_language: '',
     ot_hardwareAcceleration: '',
+    ot_build: ''
 };
 
 var os = $(".os > .r-option");
@@ -39,6 +40,7 @@ var ot_scenario = $(".ot_scenario > .r-option");
 var ot_architecture = $(".ot_architecture > .r-option");
 var ot_language = $(".ot_language > .r-option");
 var ot_hardwareAcceleration = $(".ot_hardwareAcceleration > .r-option");
+var ot_build = $(".ot_build > .r-option");
 
 var supported = true;
 var ot_defaultSelection = true;
@@ -81,6 +83,14 @@ ot_scenario.on("click", function () {
 ot_scenario.on("keypress keyup", function (event) {
     if (checkKeyPress(event)) {
         ot_selectedOption(ot_scenario, this, "ot_scenario");
+    }
+});
+ot_build.on("click", function () {
+    ot_selectedOption(ot_build, this, "ot_build");
+});
+ot_build.on("keypress keyup", function (event) {
+    if (checkKeyPress(event)) {
+        ot_selectedOption(ot_build, this, "ot_build");
     }
 });
 architecture.on("click", function () {
@@ -140,7 +150,7 @@ ot_hardwareAcceleration.on("keypress keyup", function (event) {
 //     var ot_userOsOption = document.getElementById(ot_opts.ot_os);
 //     if (userOsOption) {
 //         selectedOption(os, userOsOption, "os");
-        
+
 //     }
 //     if (ot_userOsOption) {
 //         ot_selectedOption(ot_os, ot_userOsOption, "ot_os");
@@ -162,7 +172,7 @@ ot_hardwareAcceleration.on("keypress keyup", function (event) {
 
 // determine os based on location hash
 // function getAnchorSelectedOS() {
-//     var anchor = location.hash; 
+//     var anchor = location.hash;
 //     var ANCHOR_REGEX = /^#[^ ]+$/;
 //     // Look for anchor in the href
 //     if (!ANCHOR_REGEX.test(anchor)) {
@@ -183,14 +193,9 @@ function checkValidity(){
     var current_lang = opts['language'];
     var current_arch = opts['architecture'];
     var current_hw = opts['hardwareAcceleration'];
-    
-    // console.log("current: "+current_os);
-    // console.log("current: "+current_arch);
-    // console.log("current: "+current_lang);
-    // console.log("current: "+current_hw);
 
     var valid = Object.getOwnPropertyNames(validCombos);
-  
+
     //os section
     for(var i =0; i<os.length; i++){
         //disable other selections once item in category selected
@@ -202,11 +207,11 @@ function checkValidity(){
         for(var k=0; k<valid.length;k++){
             if(valid[k].indexOf(os[i].id)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
                 isvalidcombo=true;
-                break;       
+                break;
             }
         }
         if(isvalidcombo==false && os[i].id!=current_os){
-            $(os[i]).addClass("gray"); 
+            $(os[i]).addClass("gray");
         }
     }
 
@@ -216,16 +221,16 @@ function checkValidity(){
             //  if(language[i].id!=current_lang && current_lang!=''){
             //     $(language[i]).addClass("gray");
             //      continue;
-            //   }   
+            //   }
             var isvalidcombo=false;
             for(var k=0; k<valid.length;k++){
                 if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(language[i].id)!=-1 && valid[k].indexOf(current_hw)!=-1){
                     isvalidcombo=true;
-                    break;       
+                    break;
                 }
             }
             if(isvalidcombo==false && language[i].id!=current_lang){
-                $(language[i]).addClass("gray"); 
+                $(language[i]).addClass("gray");
             }
         }
 
@@ -240,11 +245,11 @@ function checkValidity(){
         for(var k=0; k<valid.length;k++){
             if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(architecture[i].id)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
                 isvalidcombo=true;
-                break;       
+                break;
             }
         }
         if(isvalidcombo==false && architecture[i].id!=current_arch){
-            $(architecture[i]).addClass("gray"); 
+            $(architecture[i]).addClass("gray");
         }
     }
 
@@ -256,23 +261,22 @@ function checkValidity(){
         //       continue;
         // }
             var isvalidcombo=false;
-    
+
 
             //go thru all valid options
             for(var k=0; k<valid.length;k++){
-   
+
                 if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(hardwareAcceleration[i].id)!=-1){
                     isvalidcombo=true;
-                    break;       
+                    break;
                 }
 
             }
 
             if(isvalidcombo==false && hardwareAcceleration[i].id!=current_hw){
-                // console.log(hardwareAcceleration[i]);
-                $(hardwareAcceleration[i]).addClass("gray"); 
+                $(hardwareAcceleration[i]).addClass("gray");
             }
-        } 
+        }
 }
 
 function ot_checkValidity(){
@@ -281,31 +285,21 @@ function ot_checkValidity(){
     var current_lang = ot_opts['ot_language'];
     var current_arch = ot_opts['ot_architecture'];
     var current_hw = ot_opts['ot_hardwareAcceleration'];
-    
-    // console.log("current: "+current_os);
-    // console.log("current: "+current_arch);
-    // console.log("current: "+current_lang);
-    // console.log("current: "+current_hw);
+    var current_build = ot_opts['ot_build'];
 
-    
     var valid = Object.getOwnPropertyNames(ot_validCombos);
 
     // scenario section
     for(var i =0; i<ot_scenario.length; i++){
-        //disable other selections once item in category selected
-        // if(ot_os[i].id!=current_os && current_os!=''){
-        //     $(ot_os[i]).addClass("gray");
-        //     continue;
-        // }
         var isvalidcombo=false;
         for(var k=0; k<valid.length;k++){
-            if(valid[k].indexOf(ot_scenario[i].id)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+            if(valid[k].indexOf(ot_scenario[i].id)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1 && valid[k].indexOf(current_build)!=-1){
                 isvalidcombo=true;
-                break;       
+                break;
             }
         }
         if(isvalidcombo==false && ot_scenario[i].id!=current_scenario){
-            $(ot_scenario[i]).addClass("gray"); 
+            $(ot_scenario[i]).addClass("gray");
         }
     }
 
@@ -318,13 +312,13 @@ function ot_checkValidity(){
         // }
         var isvalidcombo=false;
         for(var k=0; k<valid.length;k++){
-            if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(ot_os[i].id)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+            if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(ot_os[i].id)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1 && valid[k].indexOf(current_build)!=-1){
                 isvalidcombo=true;
-                break;       
+                break;
             }
         }
         if(isvalidcombo==false && ot_os[i].id!=current_os){
-            $(ot_os[i]).addClass("gray"); 
+            $(ot_os[i]).addClass("gray");
         }
     }
 
@@ -334,16 +328,16 @@ function ot_checkValidity(){
             //  if(ot_language[i].id!=current_lang && current_lang!=''){
             //     $(ot_language[i]).addClass("gray");
             //      continue;
-            //   }   
+            //   }
             var isvalidcombo=false;
             for(var k=0; k<valid.length;k++){
-                if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(ot_language[i].id)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(ot_language[i].id)!=-1 && valid[k].indexOf(current_hw)!=-1 && valid[k].indexOf(current_build)!=-1){
                     isvalidcombo=true;
-                    break;       
+                    break;
                 }
             }
             if(isvalidcombo==false && ot_language[i].id!=current_lang){
-                $(ot_language[i]).addClass("gray"); 
+                $(ot_language[i]).addClass("gray");
             }
         }
 
@@ -356,13 +350,13 @@ function ot_checkValidity(){
         // }
         var isvalidcombo=false;
         for(var k=0; k<valid.length;k++){
-            if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(ot_architecture[i].id)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+            if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(ot_architecture[i].id)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1 && valid[k].indexOf(current_build)!=-1){
                 isvalidcombo=true;
-                break;       
+                break;
             }
         }
         if(isvalidcombo==false && ot_architecture[i].id!=current_arch){
-            $(ot_architecture[i]).addClass("gray"); 
+            $(ot_architecture[i]).addClass("gray");
         }
     }
 
@@ -375,22 +369,36 @@ function ot_checkValidity(){
         // }
             var isvalidcombo=false;
             for(var k=0; k<valid.length;k++){
-                if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(ot_hardwareAcceleration[i].id)!=-1){
+                if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(ot_hardwareAcceleration[i].id)!=-1 && valid[k].indexOf(current_build)!=-1){
                     isvalidcombo=true;
-                    break;       
+                    break;
                 }
             }
-            
+
             if(isvalidcombo==false && ot_hardwareAcceleration[i].id!=current_hw){
-                $(ot_hardwareAcceleration[i]).addClass("gray"); 
+                $(ot_hardwareAcceleration[i]).addClass("gray");
             }
-        } 
+        }
+
+    // build section
+    for(var i =0; i<ot_build.length; i++){
+        var isvalidcombo=false;
+        for(var k=0; k<valid.length;k++){
+            if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1 && valid[k].indexOf(ot_build[i].id)!=-1){
+                isvalidcombo=true;
+                break;
+            }
+        }
+        if(isvalidcombo==false && ot_build[i].id!=current_build){
+            $(ot_build[i]).addClass("gray");
+        }
+    }
 }
 
 
 
 function mark_unsupported(selection, training){
-    
+
     if(training==true){
         for(var i = 0; i<selection.length; i++){
             if(selection[i].id.indexOf('ot_') != -1){
@@ -409,7 +417,7 @@ function mark_unsupported(selection, training){
 }
 
 function selectedOption(option, selection, category) {
-    //allow deselect   
+    //allow deselect
    if(selection.id==opts[category]){
        $(selection).removeClass("selected");
        $(selection).removeClass("unsupported");
@@ -428,7 +436,7 @@ function selectedOption(option, selection, category) {
 
    //get list of supported combos
    var isSupported = commandMessage(buildMatcher());
- 
+
    //mark unsupported for selected elements
    if (isSupported==false){
        mark_unsupported(all_selected, false);
@@ -468,7 +476,7 @@ function ot_selectedOption(option, selection, category) {
 
     var all_selected = document.getElementsByClassName('selected r-option');
     var isSupported = ot_commandMessage(ot_buildMatcher());
-  
+
     //mark unsupported combos
     if (isSupported==false){
         mark_unsupported(all_selected, true);
@@ -479,7 +487,7 @@ function ot_selectedOption(option, selection, category) {
         }
     }
 
-    ot_checkValidity();  
+    ot_checkValidity();
 
         //if full selection is valid, don't gray out other options
         if(ot_opts['scenario']!="" && ot_opts['os']!="" && ot_opts['architecture']!="" && ot_opts['hardwareAcceleration']!="" && ot_opts['language']!="" && isSupported==true){
@@ -501,7 +509,7 @@ function resetOptions(){
     for(var i=0; i<hardwareAcceleration.length;i++){
       $(hardwareAcceleration[i]).removeClass("gray");
     }
-  
+
   }
 
   function ot_resetOptions(){
@@ -519,6 +527,9 @@ function resetOptions(){
     }
     for(var i=0; i<ot_hardwareAcceleration.length;i++){
       $(ot_hardwareAcceleration[i]).removeClass("gray");
+    }
+    for(var i=0; i<ot_build.length;i++){
+      $(ot_build[i]).removeClass("gray");
     }
     ot_defaultSelection = false;
   }
@@ -548,9 +559,9 @@ function buildMatcher() {
         "," +
         opts.architecture +
         "," +
-        opts.hardwareAcceleration 
+        opts.hardwareAcceleration
     );
-    
+
 }
 
 function ot_buildMatcher() {
@@ -563,90 +574,138 @@ function ot_buildMatcher() {
         "," +
         ot_opts.ot_architecture +
         "," +
-        ot_opts.ot_hardwareAcceleration 
+        ot_opts.ot_hardwareAcceleration +
+        "," +
+        ot_opts.ot_build
     );
 }
 
 var ot_validCombos = {
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_stable":
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure",
 
-    "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_nightly":
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure",
 
-    "ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
-    
-    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_stable":
+    "pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
-    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_nightly":
+    "pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
-    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
 
-    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
 
-    "ot_windows,ot_on_device,ot_c,ot_X64,ot_CPU":
-    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_stable":
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training",
 
-    "ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
-    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_nightly":
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training",
 
-    "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CPU":
-    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
-
-    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CPU":
+    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable":
     "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
-    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
-    "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-    
-    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CPU":
+    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable":
     "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
 
-    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CUDA":
+    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
-    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-    
-    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CUDA":
+    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
-    "ot_windows,ot_on_device,ot_c,ot_X64,ot_CUDA":
+    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
-    "ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA":
-    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-    
-    "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CUDA":
+    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable":
+    "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
+
+    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
+
+    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_stable":
     "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
 
-    "ot_android,ot_on_device,ot_c,ot_X64,ot_CPU":
+    "ot_windows,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_windows,ot_on_device,ot_c,ot_X64,ot_CUDA118,ot_stable":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA118,ot_stable":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CUDA118,ot_stable":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_android,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable":
     "Follow installation instructions from&nbsp;<a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
 
-    "ot_android,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
+    "ot_android,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable":
     "Follow installation instructions from&nbsp;<a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
-    
-    "ot_android,ot_on_device,ot_java,ot_X64,ot_CPU":
+
+    "ot_android,ot_on_device,ot_java,ot_X64,ot_CPU,ot_stable":
     "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-training-android</a> using Maven/Gradle and refer to the instructions <a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here.</a>",
+
+    "ot_android,ot_on_device,ot_c,ot_X64,ot_CPU,ot_nightly":
+        "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
+
+    "ot_android,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_nightly":
+        "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
+
+    "ot_android,ot_on_device,ot_java,ot_X64,ot_CPU,ot_nightly":
+        "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
+
+    "ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable":
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu",
+
+    "ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly":
+    "python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu",
+
+    "ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU,ot_stable":
+        "Add 'onnxruntime-training-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+    "ot_ios,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable":
+        "Add 'onnxruntime-training-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+    "ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable":
+        "Add 'onnxruntime-training-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+    "ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU,ot_nightly":
+        "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
+
+    "ot_ios,ot_on_device,ot_c,ot_X64,ot_CPU,ot_nightly":
+        "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
+
+    "ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_nightly":
+        "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
 };
 
 function ot_commandMessage(key) {
     $("#ot_command").removeClass("valid");
     $("#ot_command").removeClass("invalid");
 
-    if(ot_opts['ot_os']=='' || ot_opts['ot_scenario'] == '' || ot_opts['ot_architecture'] == '' || ot_opts['ot_language']=='' || ot_opts['ot_hardwareAcceleration'] == ''){
-        // console.log(ot_opts);
+    if(ot_opts['ot_os']=='' || ot_opts['ot_scenario'] == '' || ot_opts['ot_architecture'] == '' || ot_opts['ot_language']=='' || ot_opts['ot_hardwareAcceleration'] == '' || ot_opts['ot_build'] == ''){
         $("#ot_command span").html(
             "Please select a combination of resources"
-        ) 
+        )
     }
     else if (!ot_validCombos.hasOwnProperty(key)) {
         $("#ot_command span").html(
             "This combination is not supported. De-select to make another selection."
-        ) 
+        )
         $("#ot_command").addClass("invalid");
         return false;
     }
@@ -656,25 +715,10 @@ function ot_commandMessage(key) {
         return true;
     }
 
-    // //console.log('key- '+key);
-    //  var ot_object = {
-    //     "ot_linux,ot_ORTModule,ot_X64,ot_CUDA10":
-    //         "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
-
-    //     "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA10":
-    //         "Coming Soon",
-    //  };
-    //  if (!ot_object.hasOwnProperty(key)) {
-    //     $("#ot_command span").html(
-    //         "Coming Soon"
-    //     );
-    // } else {
-    //     $("#ot_command span").html(ot_object[key]);
-    // }
 }
 
 var validCombos = {
-       
+
     "windows,C-API,X64,CUDA":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
@@ -689,7 +733,7 @@ var validCombos = {
 
     "linux,Python,ARM64,CUDA":
         "For Jetpack 4.4+, follow installation instructions from <a href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
-    
+
     "linux,C-API,X64,CUDA":
         "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
@@ -719,31 +763,31 @@ var validCombos = {
 
     "windows,C-API,ARM32,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-    
+
     "windows,C++,ARM32,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-    
+
     "windows,C#,ARM32,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-    
+
     "windows,C-API,ARM64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-     
+
     "windows,C++,ARM64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-    
+
     "windows,C#,ARM64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-    
+
     "windows,C++,X64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-    
+
     "windows,C++,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-    
+
     "windows,C#,X64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-        
+
     "windows,C#,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
@@ -783,7 +827,7 @@ var validCombos = {
     "windows,C-API,X64,DNNL":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-    "windows,C++,X64,DNNL": 
+    "windows,C++,X64,DNNL":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
     "windows,C#,X64,DNNL":
@@ -792,7 +836,7 @@ var validCombos = {
     "windows,Python,X64,DNNL":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-    "linux,C-API,X64,DNNL": 
+    "linux,C-API,X64,DNNL":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
     "linux,C++,X64,DNNL":
@@ -801,7 +845,7 @@ var validCombos = {
     "linux,C#,X64,DNNL":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-    "linux,Python,X64,DNNL": 
+    "linux,Python,X64,DNNL":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
     "linux,Python,X64,TVM":
@@ -812,10 +856,10 @@ var validCombos = {
 
     "linux,Python,ARM32,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-        
+
     "linux,Python,ARM64,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-        
+
     "windows,Python,X64,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
 
@@ -824,10 +868,10 @@ var validCombos = {
 
     "windows,Python,ARM32,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-        
+
     "windows,Python,ARM64,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-        
+
     "linux,C-API,X64,OpenVINO":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
@@ -884,7 +928,7 @@ var validCombos = {
 
     "windows,C-API,X86,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-    
+
     "windows,C++,X86,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
 
@@ -893,65 +937,65 @@ var validCombos = {
 
     "windows,Python,X86,DirectML":
     "Follow build instructions from <a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-    
+
     "windows,C-API,X64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-        
+
     "windows,C++,X64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-    
+
     "windows,C#,X64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-    
+
     "windows,Python,X64,DirectML":
         "pip install onnxruntime-directml",
-    
+
     "windows,C-API,ARM64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-        
+
     "windows,C++,ARM64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-    
+
     "windows,C#,ARM64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-    
+
     "windows,Python,ARM64,DirectML":
         "Follow build instructions from <a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-    
+
     "linux,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
-        
+
     "linux,Java,X64,CUDA":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-        
+
     "mac,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
 
     //javascript
     "linux,JS,X64,DefaultCPU":
         "npm install onnxruntime-node",
-    
+
     "mac,JS,X64,DefaultCPU":
         "npm install onnxruntime-node",
 
     "windows,JS,X64,DefaultCPU":
         "npm install onnxruntime-node",
-    
+
     "web,JS,,":
         "npm install onnxruntime-web",
-    
+
     "android,JS,ARM64,DefaultCPU":
         "npm install onnxruntime-react-native",
-    
+
     "android,JS,X64,DefaultCPU":
         "npm install onnxruntime-react-native",
-    
+
     "android,JS,X86,DefaultCPU":
         "npm install onnxruntime-react-native",
-    
+
     "ios,JS,ARM64,DefaultCPU":
         "npm install onnxruntime-react-native",
-    
+
     "windows,WinRT,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
 
@@ -996,55 +1040,55 @@ var validCombos = {
 
     "linux,Java,X64,OpenVINO":
         "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-    
+
     "android,C-API,ARM64,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-    
+
     "android,C++,ARM64,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-    
+
     "android,Java,ARM64,NNAPI":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "android,C-API,X86,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-    
+
     "android,C++,X86,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-    
+
     "android,C#,X86,NNAPI":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-    
+
     "android,Java,X64,NNAPI":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "android,C-API,X64,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-    
+
     "android,C++,X64,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-    
+
     "android,C#,X64,NNAPI":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
 
     "android,Java,X86,NNAPI":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "android,C-API,ARM32,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-    
+
     "android,C++,ARM32,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
 
     "android,C#,ARM32,NNAPI":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-    
+
     "android,Java,ARM32,NNAPI":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "android,C-API,ARM64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-    
+
     "android,C++,ARM64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
 
@@ -1053,73 +1097,73 @@ var validCombos = {
 
     "android,C-API,ARM32,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-    
+
     "android,C++,ARM32,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
 
     "android,C#,ARM32,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-    
+
     "android,Java,ARM32,DefaultCPU":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
 
     "android,C-API,X86,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-    
+
     "android,C++,X86,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
 
     "android,C#,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-    
+
     "android,Java,X86,DefaultCPU":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "android,C-API,X64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-    
+
     "android,C++,X64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-    
+
     "android,C#,X64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
 
     "android,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "android,C#,ARM64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-    
+
     "android,C#,ARM64,NNAPI":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
- 
+
     "ios,C-API,ARM64,DefaultCPU":
         "Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "ios,C++,ARM64,DefaultCPU":
         "Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "ios,C-API,ARM64,CoreML":
         "Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "ios,C++,ARM64,CoreML":
         "Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "ios,objectivec,ARM64,DefaultCPU":
         "Add 'onnxruntime-objc' or 'onnxruntime-mobile-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "ios,objectivec,ARM64,CoreML":
         "Add 'onnxruntime-objc' or 'onnxruntime-mobile-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-    
+
     "ios,C#,ARM64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-    
+
     "ios,C#,ARM64,CoreML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
- 
+
     "windows,Python,X64,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-    
+
     "windows,C++,X64,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
 
@@ -1128,67 +1172,67 @@ var validCombos = {
 
     "linux,Python,ARM64,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-    
+
     "linux,Python,X64,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
-    
+
     "linux,C-API,X64,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
-    
+
     "linux,C++,X64,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
-    
+
     "linux,Python,X64,ROCm":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
-    
+
     "linux,C-API,X64,ROCm":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
-    
+
     "linux,C++,X64,ROCm":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
 
     "linux,Python,ARM64,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-    
+
     "linux,C-API,ARM64,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-    
+
     "linux,C++,ARM64,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-    
+
     "linux,Python,ARM32,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-    
+
     "linux,C-API,ARM32,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-    
+
     "linux,C++,ARM32,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-    
+
     "linux,Python,ARM64,ArmNN":
         "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-    
+
     "linux,C-API,ARM64,ArmNN":
         "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-    
+
     "linux,C++,ARM64,ArmNN":
         "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-    
+
     "linux,Python,ARM32,ArmNN":
         "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-    
+
     "linux,C-API,ARM32,ArmNN":
         "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-    
+
     "linux,C++,ARM32,ArmNN":
         "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-    
+
     "linux,Python,ARM64,RockchipNPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
-    
+
     "linux,C-API,ARM64,RockchipNPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
-    
+
     "linux,C++,ARM64,RockchipNPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
 
@@ -1204,13 +1248,13 @@ var validCombos = {
 
     "mac,Java,ARM64,CoreML":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
-    
+
     "mac,C-API,ARM64,CoreML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
     "mac,Python,ARM64,DefaultCPU":
         "pip install onnxruntime",
-    
+
     "mac,Python,ARM64,DefaultCPU":
         "pip install onnxruntime",
 
@@ -1229,10 +1273,10 @@ var validCombos = {
     //power
     "linux,C-API,Power,DefaultCPU":
         "Follow build instructions from <a href='https://onnxruntime.ai/docs/build/inferencing.html#build-instructions' target='_blank'>here</a>",
-    
+
     "linux,C++,Power,DefaultCPU":
         "Follow build instructions from <a href='https://onnxruntime.ai/docs/build/inferencing.html#build-instructions' target='_blank'>here</a>",
-    
+
     "linux,Python,Power,DefaultCPU":
         "pip install onnxruntime-powerpc64le",
 
@@ -1242,7 +1286,7 @@ var validCombos = {
 
     "windows,C++,ARM64,QNN":
     "View installation instructions <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
-    
+
     "windows,C#,ARM64,QNN":
     "View installation instructions <a href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
@@ -1322,32 +1366,29 @@ var validCombos = {
 };
 
 function commandMessage(key) {
-   // console.log('key- '.key);
 
    $("#command").removeClass("valid");
    $("#command").removeClass("invalid");
 
     if(opts['os']=='web' && opts['language']=='JS' &&validCombos.hasOwnProperty(key)){
         $("#command span").html(validCombos[key]);
-        // console.log(element);
         $("#command").addClass("valid");
         return true;
     }
     else if(opts['os']=='' || opts['architecture'] == '' || opts['language']=='' || opts['hardwareAcceleration'] == ''){
-         
+
          $("#command span").html(
            "Please select a combination of resources"
-        )             
+        )
     }
     else if (!validCombos.hasOwnProperty(key)) {
         $("#command span").html(
             "This combination is not supported. De-select to make another selection."
-        ) 
+        )
         $("#command").addClass("invalid");
         return false;
     } else {
         $("#command span").html(validCombos[key]);
-        // console.log(element);
         $("#command").addClass("valid");
         return true;
     }
@@ -1428,7 +1469,7 @@ function getImage(node) {
 }
 
 function setRadioButton(node, state) {
-    
+
     var image = getImage(node);
     if (state == 'true') {
         node.setAttribute('aria-selected', 'true');
@@ -1459,7 +1500,7 @@ function clickRadioGroup(event) {
 }
 
 function keyDownRadioGroup(event) {
-    
+
     var type = event.type;
     var next = false;
     if (type === "keydown") {
@@ -1510,17 +1551,17 @@ function blurRadioButton(event) {
       var tabpan = $("#" + tabpanid);
       $("div[role='tabpanel']:not(tabpan)").attr("aria-hidden", "true");
       $("div[role='tabpanel']:not(tabpan)").addClass("hidden");
-  
+
       tabpan.removeClass("hidden");
       tabpan.attr("aria-hidden", "false");
     });
-  
+
     $(".tbl_tablist li[role='tab']").keydown(function (ev) {
       if (ev.which == 13) {
         $(this).click();
       }
     });
-  
+
     //This adds keyboard function that pressing an arrow left or arrow right from the tabs toggel the tabs.
     $(".tbl_tablist li[role='tab']").keydown(function (ev) {
       if (ev.which == 39 || ev.which == 37) {
@@ -1528,12 +1569,12 @@ function blurRadioButton(event) {
         if (selected == "true") {
           $("li[aria-selected='false']").attr("aria-selected", "true").focus();
           $(this).attr("aria-selected", "false");
-  
+
           var tabpanid = $("li[aria-selected='true']").attr("aria-controls");
           var tabpan = $("#" + tabpanid);
           $("div[role='tabpanel']:not(tabpan)").attr("aria-hidden", "true");
           $("div[role='tabpanel']:not(tabpan)").addClass("hidden");
-  
+
           tabpan.attr("aria-hidden", "false");
           tabpan.removeClass("hidden");
         }
@@ -1574,27 +1615,27 @@ function blurRadioButton(event) {
 
       $(function() {
         var tabs = $(".custom-tab");
-      
+
         // For each individual tab DIV, set class and aria role attributes, and hide it
         $(tabs).find(".tab-content > div.tab-pane").attr({
           "class": "tabPanel",
           "role": "tabpanel",
           "aria-hidden": "true"
         }).hide();
-      
+
         // Get the list of tab links
-        var tabsList = tabs.find("ul:first").attr({    
+        var tabsList = tabs.find("ul:first").attr({
           "role": "tablist"
         });
-      
+
         // For each item in the tabs list...
         $(tabsList).find("li > a").each(
           function(a) {
             var tab = $(this);
-      
+
             // Create a unique id using the tab link's href
             var tabId = "tab-" + tab.attr("href").slice(1);
-      
+
             // Assign tab id, aria and tabindex attributes to the tab control, but do not remove the href
             tab.attr({
               "id": tabId,
@@ -1602,28 +1643,28 @@ function blurRadioButton(event) {
               "aria-selected": "false",
             //   "tabindex": "-1"
             }).parent().attr("role", "presentation");
-      
+
             // Assign aria attribute to the relevant tab panel
             $(tabs).find(".tabPanel").eq(a).attr("aria-labelledby", tabId);
-      
+
             // Set the click event for each tab link
             tab.click(
               function(e) {
                 // Prevent default click event
                 e.preventDefault();
-      
+
                 // Change state of previously selected tabList item
                 $(tabsList).find("> li.active").removeClass("active").find("> a").attr({
                   "aria-selected": "false",
                 //   "tabindex": "-1"
                 });
-      
+
                 // Hide previously selected tabPanel
                 $(tabs).find(".tabPanel:visible").attr("aria-hidden", "true").hide();
-      
+
                 // Show newly selected tabPanel
                 $(tabs).find(".tabPanel").eq(tab.parent().index()).attr("aria-hidden", "false").show();
-      
+
                 // Set state of newly selected tab list item
                 tab.attr({
                   "aria-selected": "true",
@@ -1634,7 +1675,7 @@ function blurRadioButton(event) {
             );
           }
         );
-      
+
         // Set keydown events on tabList item for navigating tabs
         $(tabsList).delegate("a", "keydown",
           function(e) {
@@ -1659,10 +1700,10 @@ function blurRadioButton(event) {
             }
           }
         );
-      
+
         // Show the first tabPanel
         $(tabs).find(".tabPanel:first").attr("aria-hidden", "false").show();
-      
+
         // Set state for the first tabsList li
         $(tabsList).find("li:first").addClass("active").find(" > a").attr({
           "aria-selected": "true",

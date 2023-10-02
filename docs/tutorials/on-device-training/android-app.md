@@ -1,7 +1,9 @@
 ---
-title: On-Device Training
-nav_order: 11
-parent: Tutorials
+title: Building an Android Application
+description: Building an Android Application using ONNX Runtime's On-Device Training solution.
+parent: On-Device Training
+grand_parent: Tutorials
+nav_order: 1
 ---
 
 # On-Device Training: Building an Android Application
@@ -10,7 +12,7 @@ In this tutorial, we will explore how to build an Android application that incor
 
 Here is what the application will look like at the end of this tutorial:
 
-<img src="../../images/on-device-training-application-prediction-tom.jpg"  width="30%" height="30%">
+<img src="../../../images/on-device-training-application-prediction-tom.jpg"  width="30%" height="30%">
 
 ## Introduction
 
@@ -103,7 +105,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
 3. <a name="op3"></a>Generate the training artifacts.
 
-   We will use the `CrossEntropyLoss` loss and the `AdamW` optimizer for this tutorial. More details around artifact generation can be found [here](../../docs/api/python/on_device_training/training_artifacts.html).
+   We will use the `CrossEntropyLoss` loss and the `AdamW` optimizer for this tutorial. More details around artifact generation can be found [here](../../../docs/api/python/on_device_training/training_artifacts.html).
 
     ```python
    from onnxruntime.training import artifacts
@@ -127,7 +129,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 1. <a name="tp1"></a>Setting up the project in Android Studio
 
    a. Open Android Studio and click `New Project`
-   ![Android Studio Setup - New Project](../../images/on-device-training-android-studio-setup.png)
+   ![Android Studio Setup - New Project](../../../images/on-device-training-android-studio-setup.png)
 
    b. Click on `Native C++` -> `Next`. Fill out the `New Project` details as follows:
 
@@ -137,11 +139,11 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
       Click `Next`.
 
-   ![Android Studio Setup - Project Name](../../images/on-device-training-android-studio-project-name.png)
+   ![Android Studio Setup - Project Name](../../../images/on-device-training-android-studio-project-name.png)
 
    c. Select the `C++17` toolchain -> `Finish`
 
-   ![Android Studio Setup - Project C++ ToolChain](../../images/on-device-training-android-studio-toolchain.png)
+   ![Android Studio Setup - Project C++ ToolChain](../../../images/on-device-training-android-studio-toolchain.png)
 
    d. That's it! The Android Studio project has been set up. You should now be able to see the Android Studio editor with some boiler plate code.
 
@@ -149,7 +151,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    a. Create two new folders called `lib` and `include\onnxruntime` under the cpp directory in the Android Studio project.
 
-   ![lib and include folder](../../images/on-device-training-lib-include.png)
+   ![lib and include folder](../../../images/on-device-training-lib-include.png)
 
    b. Head over to [Maven Central](https://central.sonatype.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android/). Go to `Versions`->`Browse`-> and download the `onnxruntime-training-android` archive package (aar file).
 
@@ -274,7 +276,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    The left pane of the project should look like this:
 
-   ![Project Assets](../../images/on-device-training-project-assets.png)
+   ![Project Assets](../../../images/on-device-training-project-assets.png)
 
 4. <a name="tp4"></a>Interfacing with ONNX Runtime - C++ Code
 
@@ -789,7 +791,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    b. Launching the application on the device should look like this:
 
-   <img src="../../images/on-device-training-application-landing-page.jpg"  width="30%" height="30%">
+   <img src="../../../images/on-device-training-application-landing-page.jpg"  width="30%" height="30%">
 
 2. <a name="tp8"></a>Training with a pre-loaded dataset - Animals
 
@@ -803,7 +805,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    e. Use any animal image from your library for inferencing now.
 
-   <img src="../../images/on-device-training-application-prediction-cow.jpg"  width="30%" height="30%">
+   <img src="../../../images/on-device-training-application-prediction-cow.jpg"  width="30%" height="30%">
 
    As can be seen from the image above, the model correctly predicted `Cow`.
 
@@ -823,7 +825,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    g. That's it!. Hopefully the application classified the image correctly.
 
-   <img src="../../images/on-device-training-application-prediction-tom.jpg"  width="30%" height="30%">
+   <img src="../../../images/on-device-training-application-prediction-tom.jpg"  width="30%" height="30%">
 
 
 ## Conclusion

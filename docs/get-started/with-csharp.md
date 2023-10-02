@@ -16,7 +16,7 @@ nav_order: 4
 ## Install the Nuget Packages with the .NET CLI
 
 ```bash
-dotnet add package Microsoft.ML.OnnxRuntime --version 1.2.0
+dotnet add package Microsoft.ML.OnnxRuntime --version 1.16.0
 dotnet add package System.Numerics.Tensors --version 0.1.0
 ```
 
@@ -42,28 +42,82 @@ This is an [Azure Function](https://azure.microsoft.com/services/functions/) exa
 
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             dynamic data = JsonConvert.DeserializeObject(requestBody);
-            review = review ?? data?.review;
+            review ??= data.review;
+            Debug.Assert(!string.IsNullOrEmpty(review), "Expecting a string with a content");
 
             // Get path to model to create inference session.
-            var modelPath = "./model.onnx";
-
-            // create input tensor (nlp example)
-            var inputTensor = new DenseTensor<string>(new string[] { review }, new int[] { 1, 1 });
-
-            // Create input data for session.
-            var input = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<string>("input", inputTensor) };
+            const string modelPath = "./model.onnx";
 
             // Create an InferenceSession from the Model Path.
-            var session = new InferenceSession(modelPath);
+            // Creating and loading sessions are expensive per request.
+            // They better be cached
+            using var session = new InferenceSession(modelPath);
 
-            // Run session and send input data in to get inference output. Call ToList then get the Last item. Then use the AsEnumerable extension method to return the Value result as an Enumerable of NamedOnnxValue.
-            var output = session.Run(input).ToList().Last().AsEnumerable<NamedOnnxValue>();
+            // create input tensor (nlp example)
+            using var inputOrtValue = OrtValue.CreateTensorWithEmptyStrings(OrtAllocator.DefaultInstance, new long[] { 1, 1 });
+            inputOrtValue.StringTensorSetElementAt(review, 0);
 
-            // From the Enumerable output create the inferenceResult by getting the First value and using the AsDictionary extension method of the NamedOnnxValue.
-            var inferenceResult = output.First().AsDictionary<string, float>();
+            // Create input data for session. Request all outputs in this case.
+            var inputs = new Dictionary<string, OrtValue>
+            {
+                { "input", inputOrtValue }
+            };
+
+            using var runOptions = new RunOptions();
+
+            // We are getting a sequence of maps as output. We are interested in the first element (map) of the sequence.
+            // That result is a Sequence of Maps, and we only need the first map from there.
+            using var outputs = session.Run(runOptions, inputs, session.OutputNames);
+            Debug.Assert(outputs.Count > 0, "Expecting some output");
+
+            // We want the last output, which is the sequence of maps
+            var lastOutput = outputs[outputs.Count - 1];
+
+            // Optional code to check the output type
+            {
+                var outputTypeInfo = lastOutput.GetTypeInfo();
+                Debug.Assert(outputTypeInfo.OnnxType == OnnxValueType.ONNX_TYPE_SEQUENCE, "Expecting a sequence");
+
+                var sequenceTypeInfo = outputTypeInfo.SequenceTypeInfo;
+                Debug.Assert(sequenceTypeInfo.ElementType.OnnxType == OnnxValueType.ONNX_TYPE_MAP, "Expecting a sequence of maps");
+            }
+
+            var elementsNum = lastOutput.GetValueCount();
+            Debug.Assert(elementsNum > 0, "Expecting a non empty sequence");
+
+            // Get the first map in sequence
+            using var firstMap = lastOutput.GetValue(0, OrtAllocator.DefaultInstance);
+
+            // Optional code just checking
+            {
+                // Maps always have two elements, keys and values
+                // We are expecting this to be a map of strings to floats
+                var mapTypeInfo = firstMap.GetTypeInfo().MapTypeInfo;
+                Debug.Assert(mapTypeInfo.KeyType == TensorElementType.String, "Expecting keys to be strings");
+                Debug.Assert(mapTypeInfo.ValueType.OnnxType == OnnxValueType.ONNX_TYPE_TENSOR, "Values are in the tensor");
+                Debug.Assert(mapTypeInfo.ValueType.TensorTypeAndShapeInfo.ElementDataType == TensorElementType.Float, "Result map value is float");
+            }
+
+            var inferenceResult = new Dictionary<string, float>();
+            // Let use the visitor to read map keys and values
+            // Here keys and values are represented with the same number of corresponding entries
+            // string -> float
+            firstMap.ProcessMap((keys, values) => {
+                // Access native buffer directly
+                var valuesSpan = values.GetTensorDataAsSpan<float>();
+
+                var entryCount = (int)keys.GetTensorTypeAndShape().ElementCount;
+                inferenceResult.EnsureCapacity(entryCount);
+                for (int i = 0; i < entryCount; ++i)
+                {
+                    inferenceResult.Add(keys.GetStringElement(i), valuesSpan[i]);
+                }
+            }, OrtAllocator.DefaultInstance);
+
 
             // Return the inference result as json.
             return new JsonResult(inferenceResult);
+
         }
 ```
 ## Reuse input/output tensor buffers
@@ -73,46 +127,80 @@ In some scenarios, you may want to reuse input/output tensors. This often happen
 ### Chaining: Feed model A's output(s) as input(s) to model B
 
 ```cs
-InferenceSession session1, session2;  // let's say 2 sessions are initialized
+using Microsoft.ML.OnnxRuntime.Tensors;
+using Microsoft.ML.OnnxRuntime;
 
-Tensor<long> input = new DenseTensor<long>(new[] { 1, inputDimension });  // let's say data is fed into the Tensor objects
-var inputs1 = new List<NamedOnnxValue>()
-              {
-                  NamedOnnxValue.CreateFromTensor("name1", input)
-              };
-// session1 inference
-using (var outputs1 = session1.Run(inputs1))
+namespace Samples
 {
-    // get intermediate value
-    var input2 = outputs1.First();
-    
-    // modify the name of the ONNX value
-    input2.Name = "name2";
-
-    // create input list for session2
-    var inputs2 = new List<NamedOnnxValue>() { input2 };
-
-    // session2 inference
-    using (var results = session2.Run(inputs2))
+    class FeedModelAToModelB
     {
-        // manipulate the results
+        static void Program()
+        {
+            const string modelAPath = "./modelA.onnx";
+            const string modelBPath = "./modelB.onnx";
+            using InferenceSession session1 = new InferenceSession(modelAPath);
+            using InferenceSession session2 = new InferenceSession(modelBPath);
+
+            // Illustration only
+            float[] inputData = { 1, 2, 3, 4 };
+            long[] inputShape = { 1, 4 };
+
+            using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
+
+            // Create input data for session. Request all outputs in this case.
+            var inputs1 = new Dictionary<string, OrtValue>
+            {
+                { "input", inputOrtValue }
+            };
+
+            using var runOptions = new RunOptions();
+
+            // session1 inference
+            using (var outputs1 = session1.Run(runOptions, inputs1, session1.OutputNames))
+            {
+                // get intermediate value
+                var outputToFeed = outputs1.First();
+
+                // modify the name of the ONNX value
+                // create input list for session2
+                var inputs2 = new Dictionary<string, OrtValue>
+                {
+                    { "inputNameForModelB", outputToFeed }
+                };
+
+                // session2 inference
+                using (var results = session2.Run(runOptions, inputs2, session2.OutputNames))
+                {
+                    // manipulate the results
+                }
+            }
+        }
     }
 }
+
 ```
 ### Multiple inference runs with fixed sized input(s) and output(s)
 
-If the model have fixed sized inputs and outputs of numeric tensors, you can use "FixedBufferOnnxValue" to accelerate the inference speed. By using "FixedBufferOnnxValue", the container objects only need to be allocated/disposed one time during multiple InferenceSession.Run() calls. This avoids some overhead which may be beneficial for smaller models where the time is noticeable in the overall running time.
+If the model have fixed sized inputs and outputs of numeric tensors,
+use the preferable **OrtValue** and its API to accelerate the inference speed and minimize data transfer.
+**OrtValue** class makes it possible to reuse the underlying buffer for the input and output tensors.
+It pins the managed buffers and makes use of them for inference. It also provides direct access
+to the native buffers for outputs. You can also preallocate `OrtValue` for outputs or create it on top
+of the existing buffers.
+This avoids some overhead which may be beneficial for smaller models
+where the time is noticeable in the overall running time.
 
-<!-- FIXME!: This test is no longer in the repo. Needs to be fixed. -->
-<!-- An example can be found at `TestReusingFixedBufferOnnxValueNonStringTypeMultiInferences()`:
-* [Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047](https://github.com/microsoft/onnxruntime/blob/main/csharp/test/Microsoft.ML.OnnxRuntime.Tests.Common/InferenceTest.cs#L1047) -->
+Keep in mind that **OrtValue** class, like many other classes in Onnruntime C# API is **IDisposable**.
+It needs to be properly disposed to either unpin the managed buffers or release the native buffers
+to avoid memory leaks.
 
 ## Running on GPU (Optional)
 If using the GPU package, simply use the appropriate SessionOptions when creating an InferenceSession.
 
 ```cs
 int gpuDeviceId = 0; // The GPU device ID to execute on
-var session = new InferenceSession("model.onnx", SessionOptions.MakeSessionOptionWithCudaProvider(gpuDeviceId));
+using var gpuSessionOptoins = SessionOptions.MakeSessionOptionWithCudaProvider(gpuDeviceId);
+using var session = new InferenceSession("model.onnx", gpuSessionOptoins);
 ```
 # ONNX Runtime C# API
 {: .no_toc }

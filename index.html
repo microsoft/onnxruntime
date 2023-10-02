@@ -625,7 +625,7 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 											<div class="col-md-3 r-heading">
 												<h3 id="ot_selectOS">Platform</h3>
 												<p id="ot_decriptionOS" class="sr-only">
-													Platform list contains three items
+													Platform list contains five items
 												</p>
 											</div>
 											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
@@ -641,8 +641,16 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 														<span>Windows</span>
 													</div>
 													<div class="col r-option" role="option" tabindex="0"
+														aria-selected="true" id="ot_mac">
+														<span>Mac</span>
+													</div>
+													<div class="col r-option" role="option" tabindex="0"
 														aria-selected="true" id="ot_android">
 														<span>Android</span>
+													</div>
+													<div class="col r-option" role="option" tabindex="0"
+														aria-selected="true" id="ot_ios">
+														<span>iOS</span>
 													</div>
 												</div>
 											</div>
@@ -652,7 +660,7 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 											<div class="col-md-3 r-heading">
 												<h3 id="ot_selectLanguage">API</h3>
 												<p id="ot_decriptionLanguage" class="sr-only">
-													API list contains five items
+													API list contains six items
 												</p>
 											</div>
 											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
@@ -679,6 +687,10 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 														aria-selected="true" id="ot_java">
 														<span>Java</span>
 													</div>
+													<div class="col r-option" role="option" tabindex="0"
+														aria-selected="true" id="ot_objc">
+														<span>Obj-C</span>
+													</div>
 												</div>
 											</div>
 										</div>
@@ -697,8 +709,8 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 												aria-describedby="ot_decriptionHardwareAcceleration">
 												<div class="row ot_hardwareAcceleration">
 													<div class="col r-option version" role="option" tabindex="0"
-														aria-selected="true" id="ot_CUDA">
-														<span><abbr>CUDA</abbr></span>
+														aria-selected="true" id="ot_CUDA118">
+														<span><abbr>CUDA 11.8</abbr></span>
 													</div>
 													<div class="col r-option version" role="option" tabindex="-1"
 														aria-selected="false" id="ot_ROCm">
@@ -707,6 +719,29 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 													<div class="col r-option version" role="option" tabindex="-1"
 														aria-selected="false" id="ot_CPU">
 														<span><abbr>CPU</abbr></span>
+													</div>
+												</div>
+											</div>
+										</div>
+
+										<div class="row r-wrap mb-1 mb-md-0 mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 id="ot_selectBuild">Build</h3>
+												<p id="ot_decriptionBuild" class="sr-only">
+													Build list contains two items
+												</p>
+											</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
+												id="ot_listbox-4" aria-labelledby="ot_selectBuild"
+												aria-describedby="ot_decriptionBuild">
+												<div class="row ot_build">
+													<div class="col r-option version" role="option" tabindex="0"
+														aria-selected="true" id="ot_stable">
+														<span><abbr>Stable</abbr></span>
+													</div>
+													<div class="col r-option version" role="option" tabindex="-1"
+														aria-selected="true" id="ot_nightly">
+														<span><abbr>Preview (Nightly)</abbr></span>
 													</div>
 												</div>
 											</div>
@@ -889,6 +924,13 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 							<div class="row blue-title-columns">
 								<div class="col-4 col-md-2 mb-4 mb-md-0">
 									<div class="customer-logo text-center">
+										<a href="community.html#deezer"><img
+												src="./images/logos/deezer-logo.png"
+												alt="Deezer logo" /></a>
+									</div>
+								</div>
+								<div class="col-4 col-md-2 mb-4 mb-md-0">
+									<div class="customer-logo text-center">
 										<a href="community.html#hugging-face"><img
 												src="./images/logos/huggingface-logo.png" alt="Hugging Face logo" /></a>
 									</div>
@@ -916,13 +958,6 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 										<a href="community.html#intelligenza-etica"><img
 												src="./images/logos/intelligenza-etica-logo.png"
 												alt="Intelligenza Etica logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#visual-studio"><img
-												src="./images/logos/visual-studio-logo.png"
-												alt="Visual Studio logo" /></a>
 									</div>
 								</div>
 							</div>
