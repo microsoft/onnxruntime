@@ -7,33 +7,28 @@
 #include "conv_transpose.h"
 namespace onnxruntime {
 namespace js {
-#define REGISTER_KERNEL_TYPED(T)                                                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      ConvTranspose,                                                                       \
-      kMSInternalNHWCDomain,                                                               \
-      11,                                                                                  \
-      T,                                                                                   \
-      kJsExecutionProvider,                                                                \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T, true>);                                                             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      ConvTranspose,                                                                       \
-      kOnnxDomain,                                                                         \
-      11,                                                                                  \
-      T,                                                                                   \
-      kJsExecutionProvider,                                                                \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T, false>);                                                            \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      ConvTranspose,                                                                       \
-      kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
-      T,                                                                                   \
-      kJsExecutionProvider,                                                                \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T, false>);
 
-REGISTER_KERNEL_TYPED(float)
+ONNX_OPERATOR_KERNEL_EX(
+    ConvTranspose,
+    kMSInternalNHWCDomain,
+    11,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
+    ConvTranspose<true>);
+ONNX_OPERATOR_KERNEL_EX(
+    ConvTranspose,
+    kOnnxDomain,
+    11,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
+    ConvTranspose<false>);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    ConvTranspose,
+    kOnnxDomain,
+    1, 10,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
+    ConvTranspose<false>);
 
 }  // namespace js
 }  // namespace onnxruntime
