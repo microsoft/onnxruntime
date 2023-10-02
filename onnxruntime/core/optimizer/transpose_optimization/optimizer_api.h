@@ -242,6 +242,12 @@ class NodeRef {
   /// <returns>since version or default value -1</returns>
   virtual int SinceVersion() const = 0;
 
+  /// <summary>
+  /// Get the unique id of the node.
+  /// </summary>
+  /// <returns>Id</returns>
+  virtual int64_t Id() const = 0;
+
   virtual ~NodeRef(){};
 };
 
@@ -442,7 +448,7 @@ class GraphRef {
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 19;
+constexpr int64_t kMaxSupportedOpset = 20;
 
 // enum of results that a CostCheckFn can return.
 enum class CostCheckResult {

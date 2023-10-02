@@ -135,38 +135,34 @@ void CPUIDInfo::ArmLinuxInit() {
     LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
     return;
   }
+  is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
+  has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+  has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
+  const uint32_t core_cnt = cpuinfo_get_cores_count();
+  core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
+  is_armv8_narrow_ld_.resize(core_cnt, false);
+  for (uint32_t c = 0; c < core_cnt; c++) {
+    const struct cpuinfo_processor* proc = cpuinfo_get_processor(c);
+    if (proc == nullptr) {
+      continue;
+    }
+    const struct cpuinfo_core* corep = proc->core;
+    if (corep == nullptr) {
+      continue;
+    }
+    auto coreid = proc->linux_id;
+    auto uarch = corep->uarch;
+    core_uarchs_[coreid] = uarch;
+    if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
+        uarch == cpuinfo_uarch_cortex_a55) {
+      is_armv8_narrow_ld_[coreid] = true;
+    }
+  }
 #else
   pytorch_cpuinfo_init_ = false;
+  has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
+  has_fp16_ |= has_arm_neon_dot_;
 #endif
-
-  if (pytorch_cpuinfo_init_) {
-    is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
-    has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
-    has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
-    const uint32_t core_cnt = cpuinfo_get_cores_count();
-    core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
-    is_armv8_narrow_ld_.resize(core_cnt, false);
-    for (uint32_t c = 0; c < core_cnt; c++) {
-      const struct cpuinfo_processor* proc = cpuinfo_get_processor(c);
-      if (proc == nullptr) {
-        continue;
-      }
-      const struct cpuinfo_core* corep = proc->core;
-      if (corep == nullptr) {
-        continue;
-      }
-      auto coreid = proc->linux_id;
-      auto uarch = corep->uarch;
-      core_uarchs_[coreid] = uarch;
-      if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
-          uarch == cpuinfo_uarch_cortex_a55) {
-        is_armv8_narrow_ld_[coreid] = true;
-      }
-    }
-  } else {
-    has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
-    has_fp16_ |= has_arm_neon_dot_;
-  }
 }
 
 #elif defined(_WIN32)
