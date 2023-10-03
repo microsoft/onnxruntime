@@ -16,6 +16,8 @@ const COMMENTS: Record<string, string> = {
   'Reshape': 'no GPU kernel',
   'Shape': 'no GPU kernel; an ORT warning is generated - need to fix',
   'Resize': 'CoordinateTransformMode align_corners is not supported with downsampling',
+  'Attention': 'need implementing mask and past/present',
+  'MultiHeadAttention': 'need implementing mask and past/present',
 };
 
 /* eslint-disable max-len */
