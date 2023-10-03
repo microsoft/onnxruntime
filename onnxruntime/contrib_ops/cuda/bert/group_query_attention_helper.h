@@ -23,12 +23,13 @@ Status CheckInputs(const T* query,
                    const T* past_seq_len,
                    bool is_past_bsnh,
                    float scale) {
-  //     past_key                   : (B, S*, N_k, H) or (B, N_k, S*, H)
-  //     past_value                 : (B, S*, N_k, H) or (B, N_k, S*, H)
+  // Note: Here S* is max_sequence_length, S- is past_sequence_length, S+ is kv_sequence_length
+  //     past_key                   : (B, S*, N_k, H) or (B, N_k, S*, H) or (B, S-, N_k, H) or (B, N_k, S-, H)
+  //     past_value                 : (B, S*, N_k, H) or (B, N_k, S*, H) or (B, S-, N_k, H) or (B, N_k, S-, H)
   // no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
-  //     key              (K)       : (B, L, D_kv) or (B, N_k, S*, H)
-  //     value            (V)       : (B, L, D_kv) or (B, N_k, S*, H)
+  //     key              (K)       : (B, S+, D_kv)
+  //     value            (V)       : (B, S+, D_kv)
 
   AttentionQkvFormat qkv_format = Q_K_V_BSNH;
   AttentionQkvFormat past_kv_format = Q_K_V_BSNH;
@@ -84,7 +85,8 @@ Status CheckInputs(const T* query,
       past_kv_format = Q_K_V_BNSH;
       if (past_key_dims[2] != past_value_dims[2]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "BNSH Input 'past_key' and 'past_value' should have same dimension 2 (max sequence length), got ",
+                               "BNSH Input 'past_key' and 'past_value' should have same dimension 2 (max sequence"
+                               "length or past sequence length), got ",
                                past_key_dims[1]);
       }
       if (past_key_dims[1] != kv_num_heads) {
@@ -95,14 +97,15 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'past_value' shall have kv_num_heads");
       }
-      // We assume all sequence in past kv are left-padded to max sequence length
+      // We assume all sequence in past kv are left-padded to max or past sequence length
       max_sequence_length = static_cast<int>(past_key_dims[2]);
       // BSNH
     } else {
       past_kv_format = Q_K_V_BSNH;
       if (past_key_dims[1] != past_value_dims[1]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "BSNH Input 'past_key' and 'past_value' should have same dimension 1 (max sequence length), got ",
+                               "BNSH Input 'past_key' and 'past_value' should have same dimension 1 (max sequence"
+                               "length or past sequence length), got ",
                                past_key_dims[1]);
       }
       if (past_key_dims[2] != kv_num_heads) {
@@ -113,7 +116,7 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'past_value' shall have kv_num_heads");
       }
-      // We assume all sequence in past kv are left-padded to max sequence length
+      // We assume all sequence in past kv are left-padded to max or past sequence length
       max_sequence_length = static_cast<int>(past_key_dims[1]);
     }
 
@@ -185,7 +188,7 @@ Status CheckInputs(const T* query,
                            "Missing value tensor.");
   }
 
-  // When kv-cache, we take past_seq_len as an argument... otherwise we use size of past kv.
+  // When kv-cache, we take past_seq_len as an argument... otherwise we use sequence length of past kv directly.
   int32_t past_sequence_length = 0;
   int present_sequence_length = 0;
   if (past_seq_len != nullptr) {
@@ -196,7 +199,7 @@ Status CheckInputs(const T* query,
     past_sequence_length = *((*past_seq_len).template Data<int32_t>());
     present_sequence_length = max_sequence_length;
   } else if (past_key != nullptr) {
-    past_sequence_length = max_sequence_length;  // length of past_key tensor
+    past_sequence_length = max_sequence_length;  // this is the length of past_key tensor
     present_sequence_length = past_sequence_length + kv_sequence_length;
   }
 

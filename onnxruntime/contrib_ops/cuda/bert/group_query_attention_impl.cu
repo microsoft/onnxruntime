@@ -125,12 +125,12 @@ __global__ void ConcatNewToPastKVLarge(const int new_seqlen,
   const int past_seqlen = present_seqlen - new_seqlen;
 
   while (h < H) {
-  int out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
+    int out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
     if (s < past_seqlen) {
       const int past_batch_stride = past_seqlen * num_heads * H;
       const int past_head_stride = is_bsnh ? H : past_seqlen * H;
       const int in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
-    present_kv[out_offset] = past_kv[in_offset];
+      present_kv[out_offset] = past_kv[in_offset];
     } else if (s < present_seqlen) {
       const int new_batch_stride = new_seqlen * num_heads * H;
       const int new_row_stride = num_heads * H;
@@ -138,7 +138,6 @@ __global__ void ConcatNewToPastKVLarge(const int new_seqlen,
       const int in_offset = b * new_batch_stride + (s - past_seqlen) * new_row_stride + n * new_head_stride + h;
       present_kv[out_offset] = new_kv[in_offset];
     }
-
     h += thread_stride;
   }
 }
@@ -490,7 +489,6 @@ Status EfficientAttention(
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
-  AttentionQkvFormat qkv_format = parameters.qkv_format;
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
 
   const void* query = data.query;
@@ -557,7 +555,6 @@ Status QkvToContext(
     GroupQueryAttentionData<T>& data) {
 
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
-  // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(head_size)) : parameters.scale;
 
 #if USE_FLASH_ATTENTION
@@ -572,134 +569,10 @@ Status QkvToContext(
   }
 #endif
 
-// #if USE_FLASH_ATTENTION
-//   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
-//   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
-//   const int batch_size = parameters.batch_size;
-//   const int sequence_length = parameters.sequence_length;
-//   const int kv_sequence_length = parameters.kv_sequence_length;
-//   const int present_sequence_length = parameters.present_sequence_length;
-//   const int num_heads = parameters.num_heads;
-//   const int kv_num_heads = parameters.kv_num_heads;
-//   const int head_size = parameters.head_size;
-//   AttentionQkvFormat qkv_format = parameters.qkv_format;
-//   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
-
-//   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
-//   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(head_size)) : parameters.scale;
-//   if (data.use_flash_attention) {
-//     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
-//     assert(parameters.num_heads % parameters.kv_num_heads == 0);
-
-//     void* query = reinterpret_cast<void*>(const_cast<T*>(data.query));
-//     void* key = reinterpret_cast<void*>(const_cast<T*>(data.key));
-//     void* value = reinterpret_cast<void*>(const_cast<T*>(data.value));
-
-//     bool is_causal = parameters.is_unidirectional;
-
-//     if (data.past_key == nullptr && data.present_key == nullptr) {
-//       ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
-//           device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
-//           parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, head_size,
-//           parameters.sequence_length, parameters.kv_sequence_length, scale, is_causal, parameters.num_splits,
-//           reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum)));
-
-//     } else if (data.past_key == data.present_key) {
-//       // Assume past and present kv share buffer.
-//       assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
-//       assert(parameters.past_sequence_length >= 0);
-//       assert(data.past_value != nullptr);
-
-//       void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
-//       void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
-
-//       // Launch kernel to copy seqlen
-//       int thr_per_blk = 256;
-//       int blk_in_grid = ceil( float(batch_size) / thr_per_blk );
-//       repeat_seqlen<<< blk_in_grid, thr_per_blk, 0, stream >>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
-
-//       DUMP_TENSOR_INIT();
-//       DUMP_TENSOR("seqlens_k", data.seqlens_k, 1, batch_size);
-
-//       bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
-//       ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
-//           device_prop, stream, query, present_key, present_value, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
-//           reinterpret_cast<void*>(data.seqlens_k), batch_size, num_heads, kv_num_heads,
-//           head_size, sequence_length, present_sequence_length, kv_sequence_length,
-//           scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
-//           reinterpret_cast<void*>(data.out_accum)));
-
-//     } else if (data.present_key != nullptr && (data.past_key != nullptr || kv_sequence_length == present_sequence_length)) {
-//       assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
-//       // Note that Flash Attention kv-caching operates in place on a buffer... therefore this path is inneficient
-//       // TODO(aciddelgado): this only works for head_size % 4 == 0
-//       const int H = head_size / 4;
-//       if (H * kv_num_heads <= max_threads_per_block) {
-//         const dim3 grid(present_sequence_length, batch_size, 1);
-//         const dim3 block(H, kv_num_heads, 1);
-//         ConcatNewToPastKV<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-//                                                                 reinterpret_cast<const float2*>(data.past_key),
-//                                                                 reinterpret_cast<const float2*>(data.key),
-//                                                                 reinterpret_cast<float2*>(data.present_key),
-//                                                                 past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-//         ConcatNewToPastKV<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-//                                                                 reinterpret_cast<const float2*>(data.past_value),
-//                                                                 reinterpret_cast<const float2*>(data.value),
-//                                                                 reinterpret_cast<float2*>(data.present_value),
-//                                                                 past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-//       } else {
-//         const dim3 grid(present_sequence_length, batch_size, 1);
-//         const dim3 block(max_threads_per_block / kv_num_heads, kv_num_heads, 1);
-//         ConcatNewToPastKVLarge<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-//                                                                      H,
-//                                                                      reinterpret_cast<const float2*>(data.past_key),
-//                                                                      reinterpret_cast<const float2*>(data.key),
-//                                                                      reinterpret_cast<float2*>(data.present_key),
-//                                                                      past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-//         ConcatNewToPastKVLarge<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-//                                                                      H,
-//                                                                      reinterpret_cast<const float2*>(data.past_value),
-//                                                                      reinterpret_cast<const float2*>(data.value),
-//                                                                      reinterpret_cast<float2*>(data.present_value),
-//                                                                      past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-//       }
-
-//       void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
-//       void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
-
-//       // Launch kernel to copy seqlen
-//       int thr_per_blk = 256;
-//       int blk_in_grid = ceil( float(batch_size) / thr_per_blk );
-//       repeat_seqlen<<< blk_in_grid, thr_per_blk, 0, stream >>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
-
-//       bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
-//       ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
-//             device_prop, stream, query, present_key, present_value, data.output, reinterpret_cast<void*>(data.softmax_lse),
-//             batch_size, num_heads, kv_num_heads, head_size,
-//             sequence_length, present_sequence_length, scale, is_causal, parameters.num_splits,
-//             reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum), past_bsnh));
-//     }
-
-//     DUMP_TENSOR_INIT();
-//     DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
-
-//     return Status::OK();
-//   }
-// #endif
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Group Query Attention not implemented yet.");
 }
 
-// Template Instantiation
-// template struct AttentionData<float>;
-
 template struct GroupQueryAttentionData<half>;
-
-// template Status QkvToContext<float>(
-//     const cudaDeviceProp& device_prop,
-//     cublasHandle_t& cublas,
-//     Stream* ort_stream,
-//     contrib::AttentionParameters& parameters,
-//     AttentionData<float>& data);
 
 template Status QkvToContext<half>(
     const cudaDeviceProp& device_prop,
