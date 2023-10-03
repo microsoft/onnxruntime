@@ -142,7 +142,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
                             ? bi * params.hidden_size + hi * head_size
                             : bi * (3 * params.hidden_size) + hi * head_size;
 
-  const size_t bi_total_seq_length = bi * params.total_sequence_length;
+  //const size_t bi_total_seq_length = bi * params.total_sequence_length;
 
   const size_t bi_max_seq_length = bi * params.max_sequence_length;
 
@@ -344,28 +344,58 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
-  for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
+  // The keys loaded from the key cache.
+  K_vec_k k_vec[2][K_VECS_PER_THREAD];
 
-    // The keys loaded from the key cache.
-    K_vec_k k_vec[K_VECS_PER_THREAD];
-    if (ti < tlength) {
+  if (ko < tlength) {
+    if (has_beams) {
+      const int beam_offset = beam_indices[ko] * params.num_heads * params.max_sequence_length * head_size;
+
+#pragma unroll
+      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        int jj = ii * params.max_sequence_length + ko;
+
+        k_vec[1][ii] = vec_conversion<K_vec_k, K_vec_m>(
+            (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
+      }
+    } else {
+#pragma unroll
+      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        int jj = ii * params.max_sequence_length + ko;
+
+        k_vec[1][ii] = vec_conversion<K_vec_k, K_vec_m>(
+            (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
+      }
+    }
+  }
+
+  for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
+    //bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
+
+    bool is_masked = false;
+    
+    // Load current data
+    k_vec[0] = k_vec[1];
+
+    // Load next data
+    int next_ti = (ti + K_PER_ITER); 
+    if (next_ti < tlength) {
       if (has_beams) {
-        const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
+        const int beam_offset = beam_indices[next_ti] * params.num_heads * params.max_sequence_length * head_size;
 
 #pragma unroll
         for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-          int jj = ii * params.max_sequence_length + ti;
+          int jj = ii * params.max_sequence_length + next_ti;
 
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
+          k_vec[1][ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
         }
       } else {
 #pragma unroll
         for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-          int jj = ii * params.max_sequence_length + ti;
+          int jj = ii * params.max_sequence_length + next_ti;
 
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
+          k_vec[1][ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
         }
       }
@@ -373,7 +403,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     // Perform the dot product and normalize qk.
     // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
-    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
+    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec[0]) * inv_sqrt_dh;
 
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to
