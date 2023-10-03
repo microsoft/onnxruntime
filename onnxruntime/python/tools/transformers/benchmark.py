@@ -779,9 +779,9 @@ def main():
         logger.error("fp16 is for GPU only")
         return
 
-    if args.precision == Precision.INT8 and args.use_gpu:
-        logger.error("int8 is for CPU only")
-        return
+    #if args.precision == Precision.INT8 and args.use_gpu:
+    #    logger.error("int8 is for CPU only")
+    #    return
 
     if len(args.models) == 1 and MODELS[args.models[0]][3] in ["vit", "swim"]:
         args.sequence_lengths = [""]
