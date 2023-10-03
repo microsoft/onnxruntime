@@ -144,6 +144,7 @@ def _optimize_sd_pipeline(
             opt_level=0,
             optimization_options=fusion_options,
             use_gpu=True,
+            provider=args.provider,
         )
 
         if float16:
@@ -168,6 +169,7 @@ def _optimize_sd_pipeline(
                 optimize_by_onnxruntime(
                     str(tmp_model_path),
                     use_gpu=True,
+                    provider=args.provider,
                     optimized_model_path=str(ort_optimized_model_path),
                     save_as_external_data=use_external_data_format,
                 )
@@ -323,6 +325,14 @@ def parse_arguments(argv: Optional[List[str]] = None):
         "If not specified, use same format as original model by default. ",
     )
     parser.set_defaults(use_external_data_format=None)
+
+    parser.add_argument(
+        "--provider",
+        required=False,
+        type=str,
+        default=None,
+        help="Execution provider to use.",
+    )
 
     FusionOptions.add_arguments(parser)
 
