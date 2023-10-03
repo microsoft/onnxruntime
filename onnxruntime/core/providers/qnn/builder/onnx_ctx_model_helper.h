@@ -14,6 +14,7 @@
 
 namespace onnxruntime {
 namespace qnn {
+static const std::string EPCONTEXT_OP = "EPContext";
 
 Status CreateNodeArgs(const std::vector<std::string>& names,
                       const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
@@ -49,8 +50,8 @@ class QnnCacheModelHandler {
     if (is_qnn_ctx_model_) {
       return is_qnn_ctx_model_;
     }
-    // It's a Onnx model with Qnn context cache binary if it only has a node with EPCache type
-    if (graph_viewer.NumberOfNodes() == 1 && graph_viewer.Nodes().begin()->OpType() == "EPCache") {
+    // It's an Onnx model with Qnn context cache binary if it only has a node with EPContext type
+    if (graph_viewer.NumberOfNodes() == 1 && graph_viewer.Nodes().begin()->OpType() == EPCONTEXT_OP) {
       is_qnn_ctx_model_ = true;
     }
     return is_qnn_ctx_model_;

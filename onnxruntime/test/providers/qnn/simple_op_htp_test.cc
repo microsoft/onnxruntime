@@ -707,12 +707,22 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
   // Make sure the Qnn context cache binary file is generated
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
 
-  // 2nd run will load and run from Qnn context cache binary file
+  // 2nd run QDQ model + Qnn context cache model
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
                        BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
                        provider_options,
                        14,
                        ExpectedEPNodeAssignment::All);
+
+  // 3rd run directly load and run from Qnn context cache model
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All,
+                       1e-4f,
+                       logging::Severity::kERROR,
+                       context_binary_file);
 }
 
 TEST_F(QnnHTPBackendTests, QuantAccuracyTest) {

@@ -2844,10 +2844,10 @@ void RegisterContribSchemas() {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(EPCache)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(EPContext)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("Onnx node for EP engine or context chache.")
+      .SetDoc("Onnx node for EP engine or context cache.")
       .Attr("ep_engine_cache", "payload of the execution provider engine/context cache file.", AttributeProto::STRING)
       .Attr(
           "ep_sdk_version",

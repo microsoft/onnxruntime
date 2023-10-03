@@ -54,7 +54,7 @@ Status GenerateCtxCacheOnnxModle(const std::string& model_name, const std::strin
   ORT_RETURN_IF_ERROR(CreateNodeArgs(output_names, outputs_info, outputs, graph));
 
   auto& ep_node = graph.AddNode(graph_name,
-                                "EPCache",
+                                EPCONTEXT_OP,
                                 "Onnx Qnn context binary cache for graph partition: " + graph_name,
                                 inputs,
                                 outputs,

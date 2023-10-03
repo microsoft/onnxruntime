@@ -15,8 +15,6 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 
-#include "core/graph/model.h"
-
 namespace onnxruntime {
 namespace qnn {
 
