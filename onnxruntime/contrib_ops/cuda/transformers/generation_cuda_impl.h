@@ -213,7 +213,6 @@ void BufferExpansionKernelLauncher(const T* input,
                                    int chunk_size,
                                    cudaStream_t stream);
 
-
 void ReorderPastStatesKernelLauncher(void* out_buffer,
                                      const void* in_buffer,
                                      int batch_size,

@@ -90,7 +90,7 @@ Status ReorderPastState(
                                         static_cast<int>(max_length),
                                         static_cast<int>(head_size),
                                         static_cast<int>(chunk_size),
-                                        cuda_stream); 
+                                        cuda_stream);
 
   return Status::OK();
 }
