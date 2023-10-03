@@ -2206,6 +2206,7 @@ struct CustomOpBase : OrtCustomOp {
         static_cast<TKernel*>(op_kernel)->Compute(context);
       };
     }
+    OrtCustomOp::InferOutputShape = nullptr;
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
