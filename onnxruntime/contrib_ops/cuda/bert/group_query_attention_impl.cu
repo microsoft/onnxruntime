@@ -122,12 +122,12 @@ __global__ void ConcatNewToPastKVLarge(const int new_seqlen,
   const int past_seqlen = present_seqlen - new_seqlen;
 
   while (h < H) {
-  int out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
+    int out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
     if (s < past_seqlen) {
       const int past_batch_stride = past_seqlen * num_heads * H;
       const int past_head_stride = is_bsnh ? H : past_seqlen * H;
       const int in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
-    present_kv[out_offset] = past_kv[in_offset];
+      present_kv[out_offset] = past_kv[in_offset];
     } else if (s < present_seqlen) {
       const int new_batch_stride = new_seqlen * num_heads * H;
       const int new_row_stride = num_heads * H;
@@ -135,7 +135,6 @@ __global__ void ConcatNewToPastKVLarge(const int new_seqlen,
       const int in_offset = b * new_batch_stride + (s - past_seqlen) * new_row_stride + n * new_head_stride + h;
       present_kv[out_offset] = new_kv[in_offset];
     }
-
     h += thread_stride;
   }
 }
@@ -162,7 +161,6 @@ Status QkvToContext(
   const int head_size = parameters.head_size;
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
 
-  // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(head_size)) : parameters.scale;
   if (data.use_flash_attention) {
     assert(parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
@@ -209,7 +207,9 @@ Status QkvToContext(
     } else if (data.present_key != nullptr && (data.past_key != nullptr || kv_sequence_length == present_sequence_length)) {
       assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
       // Note that Flash Attention kv-caching operates in place on a buffer... therefore this path is inneficient
-      // TODO(aciddelgado): this only works for head_size % 4 == 0
+      if (head_size % 4 != 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "requires head_size be divisible by 4");
+      }
       const int H = head_size / 4;
       if (H * kv_num_heads <= max_threads_per_block) {
         const dim3 grid(present_sequence_length, batch_size, 1);
@@ -266,17 +266,7 @@ Status QkvToContext(
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Group Query Attention not implemented yet.");
 }
 
-// Template Instantiation
-// template struct AttentionData<float>;
-
 template struct GroupQueryAttentionData<half>;
-
-// template Status QkvToContext<float>(
-//     const cudaDeviceProp& device_prop,
-//     cublasHandle_t& cublas,
-//     Stream* ort_stream,
-//     contrib::AttentionParameters& parameters,
-//     AttentionData<float>& data);
 
 template Status QkvToContext<half>(
     const cudaDeviceProp& device_prop,
