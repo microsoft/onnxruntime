@@ -239,7 +239,14 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
       }
 
       float total_weight_inv = total_weight == 0.0f ? 1.f : 1.0f / total_weight;
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4189)
+#endif
       auto* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
       for (x = 0; x < xmax_cut - xmin_cut; x++) {
         scale_buffer[x] *= total_weight_inv;
 
