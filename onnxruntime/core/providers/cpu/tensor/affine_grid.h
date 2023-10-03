@@ -10,18 +10,18 @@ namespace onnxruntime {
 
 template <typename T>
 class AffineGrid final : public OpKernel {
-public:
- AffineGrid(const OpKernelInfo& info) : OpKernel(info) {
-   int64_t align_corners = info.GetAttrOrDefault<int64_t>("align_corners", 0);
-   align_corners_ = (align_corners != 0);
- }
+ public:
+  AffineGrid(const OpKernelInfo& info) : OpKernel(info) {
+    int64_t align_corners = info.GetAttrOrDefault<int64_t>("align_corners", 0);
+    align_corners_ = (align_corners != 0);
+  }
 
- Status Compute(OpKernelContext* context) const override;
+  Status Compute(OpKernelContext* context) const override;
 
-private:
- bool align_corners_;
- int64_t dtype_;
- int64_t k_;
+ private:
+  bool align_corners_;
+  int64_t dtype_;
+  int64_t k_;
 };
 
 }  // namespace onnxruntime

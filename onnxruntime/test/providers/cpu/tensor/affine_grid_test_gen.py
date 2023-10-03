@@ -21,7 +21,7 @@ if args.dim is None or args.dim == 2:
         for angle, translation, scale in zip(angles, translations, scales):
             for size in sizes:
                 theta = np.array([], dtype=np.float32)
-                for _n in range(size[0]):
+                for _ in range(size[0]):
                     angle_radian = (angle / 180.0) * np.pi
                     theta = np.append(
                         theta,
@@ -68,28 +68,27 @@ if args.dim is None or args.dim == 3:
         for angle, translation, scale in zip(angles, translations, scales):
             for size in sizes:
                 theta = np.array([], dtype=np.float32)
-                for _n in range(size[0]):
+                for _ in range(size[0]):
                     angle_radian_x = (angle[0] / 180.0) * np.pi
                     angle_radian_y = (angle[1] / 180.0) * np.pi
-                    rotMatrix_x = np.array(
+                    rot_matrix_x = np.array(
                         [
                             [1, 0, 0],
                             [0, np.cos(angle_radian_x), -np.sin(angle_radian_x)],
                             [0, np.sin(angle_radian_x), np.cos(angle_radian_x)],
                         ]
                     )
-                    rotMatrix_y = np.array(
+                    rot_matrix_y = np.array(
                         [
                             [np.cos(angle_radian_y), 0, np.sin(angle_radian_y)],
                             [0, 1, 0],
                             [-np.sin(angle_radian_y), 0, np.cos(angle_radian_y)],
                         ]
                     )
-                    rotMatrix = np.matmul(rotMatrix_x, rotMatrix_y)
-                    rotMatrix = rotMatrix * scale.reshape(3, 1)
-                    translation = np.reshape(translation, (3, 1))
-                    rotMatrix = np.append(rotMatrix, translation, axis=1)
-                    theta = np.append(theta, rotMatrix.flatten())
+                    rot_matrix = np.matmul(rot_matrix_x, rot_matrix_y)
+                    rot_matrix = rot_matrix * scale.reshape(3, 1)
+                    rot_matrix = np.append(rot_matrix, np.reshape(translation, (3, 1)), axis=1)
+                    theta = np.append(theta, rot_matrix.flatten())
                 theta = theta.reshape(size[0], 3, 4)
                 theta = torch.Tensor(theta)
                 grid = affine_grid(theta, size, align_corners=align_corners)
