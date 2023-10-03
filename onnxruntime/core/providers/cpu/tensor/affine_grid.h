@@ -20,8 +20,6 @@ class AffineGrid final : public OpKernel {
 
  private:
   bool align_corners_;
-  int64_t dtype_;
-  int64_t k_;
 };
 
 }  // namespace onnxruntime

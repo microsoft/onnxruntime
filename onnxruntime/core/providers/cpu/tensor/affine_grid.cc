@@ -24,8 +24,10 @@ namespace onnxruntime {
       AffineGrid<T>);
 
 REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(double)
 
-void generate_base_grid_2d(int64_t H, int64_t W, bool align_corners, Eigen::Matrix<float, Eigen::Dynamic, 2>& base_grid) {
+template <typename T>
+void generate_base_grid_2d(int64_t H, int64_t W, bool align_corners, Eigen::Matrix<T, Eigen::Dynamic, 2>& base_grid) {
   Eigen::VectorXf row_vec = Eigen::VectorXf::LinSpaced(static_cast<Eigen::Index>(W), -1, 1);
   if (!align_corners) {
     row_vec = row_vec * (W - 1) / W;
@@ -43,7 +45,8 @@ void generate_base_grid_2d(int64_t H, int64_t W, bool align_corners, Eigen::Matr
   }
 }
 
-void generate_base_grid_3d(int64_t D, int64_t H, int64_t W, bool align_corners, Eigen::Matrix<float, Eigen::Dynamic, 3>& base_grid) {
+template <typename T>
+void generate_base_grid_3d(int64_t D, int64_t H, int64_t W, bool align_corners, Eigen::Matrix<T, Eigen::Dynamic, 3>& base_grid) {
   Eigen::VectorXf row_vec = Eigen::VectorXf::LinSpaced(static_cast<Eigen::Index>(W), -1, 1);
   if (!align_corners) {
     row_vec = row_vec * (W - 1) / W;
@@ -85,19 +88,19 @@ struct AffineGridGenerator2D {
 
 template <typename T>
 struct AffineGridGenerator3D {
-  void operator()(const Tensor* theta, const Eigen::Matrix<float, 3, Eigen::Dynamic>& base_grid_transposed, int64_t batch_num, int64_t D, int64_t H, int64_t W, Tensor* grid) {
+  void operator()(const Tensor* theta, const Eigen::Matrix<T, 3, Eigen::Dynamic>& base_grid_transposed, int64_t batch_num, int64_t D, int64_t H, int64_t W, Tensor* grid) {
     const Eigen::StorageOptions option = Eigen::RowMajor;
     auto theta_batch_offset = batch_num * 3 * 4;
-    const float* theta_data = theta->Data<float>() + theta_batch_offset;
-    const Eigen::Matrix<float, 3, 3, option> theta_R{
+    const T* theta_data = theta->Data<T>() + theta_batch_offset;
+    const Eigen::Matrix<T, 3, 3, option> theta_R{
         {theta_data[0], theta_data[1], theta_data[2]},
         {theta_data[4], theta_data[5], theta_data[6]},
         {theta_data[8], theta_data[9], theta_data[10]}};
-    const Eigen::Array<float, 3, 1> theta_T(theta_data[3], theta_data[7], theta_data[11]);
+    const Eigen::Array<T, 3, 1> theta_T(theta_data[3], theta_data[7], theta_data[11]);
 
     auto grid_batch_offset = batch_num * D * H * W * 3;
-    float* grid_data = grid->MutableData<float>() + grid_batch_offset;
-    Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, 3, option>> grid_matrix(grid_data, narrow<size_t>(D * H * W), 3);
+    T* grid_data = grid->MutableData<T>() + grid_batch_offset;
+    Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 3, option>> grid_matrix(grid_data, narrow<size_t>(D * H * W), 3);
     grid_matrix = ((theta_R * base_grid_transposed).array().colwise() + theta_T).matrix().transpose();
   }
 };
@@ -121,12 +124,12 @@ Status AffineGrid<T>::Compute(OpKernelContext* context) const {
     TensorShape grid_shape{N, H, W, 2};
     auto grid = context->Output(0, grid_shape);
 
-    Eigen::Matrix<float, Eigen::Dynamic, 2> base_grid;
+    Eigen::Matrix<T, Eigen::Dynamic, 2> base_grid;
     generate_base_grid_2d(H, W, align_corners_, base_grid);
-    Eigen::Matrix<float, 2, Eigen::Dynamic> base_grid_transposed = base_grid.transpose();
+    Eigen::Matrix<T, 2, Eigen::Dynamic> base_grid_transposed = base_grid.transpose();
 
     std::function<void(ptrdiff_t)> fn = [elem_type, theta, base_grid_transposed, H, W, grid](ptrdiff_t batch_num) {
-      utils::MLTypeCallDispatcher<float> t_disp(elem_type);
+      utils::MLTypeCallDispatcher<T> t_disp(elem_type);
       t_disp.Invoke<AffineGridGenerator2D>(theta, base_grid_transposed, batch_num, H, W, grid);
     };
 
@@ -137,12 +140,12 @@ Status AffineGrid<T>::Compute(OpKernelContext* context) const {
     TensorShape grid_shape{N, D, H, W, 3};
     auto grid = context->Output(0, grid_shape);
 
-    Eigen::Matrix<float, Eigen::Dynamic, 3> base_grid;
+    Eigen::Matrix<T, Eigen::Dynamic, 3> base_grid;
     generate_base_grid_3d(D, H, W, align_corners_, base_grid);
-    Eigen::Matrix<float, 3, Eigen::Dynamic> base_grid_transposed = base_grid.transpose();
+    Eigen::Matrix<T, 3, Eigen::Dynamic> base_grid_transposed = base_grid.transpose();
 
     std::function<void(ptrdiff_t)> fn = [elem_type, theta, base_grid_transposed, D, H, W, grid](ptrdiff_t batch_num) {
-      utils::MLTypeCallDispatcher<float> t_disp(elem_type);
+      utils::MLTypeCallDispatcher<T> t_disp(elem_type);
       t_disp.Invoke<AffineGridGenerator3D>(theta, base_grid_transposed, batch_num, D, H, W, grid);
     };
 
