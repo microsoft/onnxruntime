@@ -501,6 +501,8 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                     EdgeShapes outputShapes;
                     InferAndVerifyOutputSizes(node, &defaultAttributesCapture, shapeInferrerCapture.Get(), constantCpuInputCapture, constantInputGetter, nullptr, outputShapes);
 
+                    graphNodeCreateInfo->outputShapes = outputShapes;
+
                     // Create the kernel while allowing input shape and output shape queries according to options
                     ComPtr<DmlGraphOpKernelInfoWrapper> kernelInfoWrapper = wil::MakeOrThrow<DmlGraphOpKernelInfoWrapper>(
                             &protoHelper,

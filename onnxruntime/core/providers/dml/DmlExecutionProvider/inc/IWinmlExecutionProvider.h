@@ -9,6 +9,7 @@
 #include <optional>
 
 #include "core/framework/op_kernel.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlEdgeShapes.h"
 
 struct AbstractOperatorDesc;
 interface IMLOperatorTensor;
@@ -86,6 +87,7 @@ namespace Windows::AI::MachineLearning::Adapter
         std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
+        EdgeShapes outputShapes;
     };
 
     using GraphNodeFactory = std::function<void(

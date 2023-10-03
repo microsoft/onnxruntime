@@ -9,8 +9,14 @@ namespace Dml
 {
     onnxruntime::OpKernel* CreateRuntimeFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
-        const onnxruntime::Graph& graph,
-        const onnxruntime::IndexedSubGraph& indexedSubGraph,
-        std::unordered_map<std::string, GraphNodeProperties>&& partitionNodePropsMap
+        std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
+        const onnxruntime::Path& modelPath,
+        std::shared_ptr<std::vector<std::vector<std::string>>> inputDimParams,
+        std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
+        std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
+        std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,
+        std::vector<std::shared_ptr<onnxruntime::NodeArg>>&& intermediateNodeArgs,
+        std::unordered_map<std::string, GraphNodeProperties>&& partitionNodePropsMap,
+        std::vector<ONNX_NAMESPACE::TensorProto>&& ownedInitializers
     );
 } // namespace Dml

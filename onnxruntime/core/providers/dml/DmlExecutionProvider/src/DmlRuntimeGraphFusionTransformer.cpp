@@ -15,6 +15,15 @@
 
 namespace Dml
 {
+    namespace
+    {
+        struct CompiledPartitionInfo
+        {
+            std::shared_ptr<onnxruntime::IndexedSubGraph> indexedSubGraph;
+            std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> isInitializerTransferable;
+        };
+    }
+
     DmlRuntimeGraphFusionTransformer::DmlRuntimeGraphFusionTransformer(
         const std::string& name,
         const onnxruntime::IExecutionProvider* provider
@@ -91,7 +100,7 @@ namespace Dml
         additionalSplittingNodes.clear();
 
         // Reset the compiled operators for the current iteration
-        std::vector<std::shared_ptr<onnxruntime::IndexedSubGraph>> indexedSubGraphs(partitions.size());
+        std::vector<std::shared_ptr<CompiledPartitionInfo>> compiledPartitionInfos(partitions.size());
 
         // Create a map between each initialized tensor and the partition(s) it is part of.
         auto initializerPartitionMap = DmlRuntimeGraphFusionHelper::GetInitializerToPartitionMap(graphViewer, partitions);
@@ -113,22 +122,35 @@ namespace Dml
                 std::string partitionKernelPrefix = std::to_string(m_providerImpl->GetPartitionKernelPrefixVal()) + "_";
                 m_providerImpl->IncreasePartitionKernelPrefixVal();
 
-                indexedSubGraphs[partitionIndex] = std::make_shared<onnxruntime::IndexedSubGraph>(
+                // populate isInitializerTransferable
+                for (const auto& input : partition->GetInputs())
+                {
+                    const onnx::TensorProto* tensor = nullptr;
+                    if (graph.GetInitializedTensor(input, tensor) && requiredInitializerMap.find(input) != requiredInitializerMap.end())
+                    {
+                        isInitializerTransferable[input] = {tensor, false};
+                    }
+                }
+
+                compiledPartitionInfos[partitionIndex] = std::make_shared<CompiledPartitionInfo>();
+                compiledPartitionInfos[partitionIndex]->indexedSubGraph = std::make_shared<onnxruntime::IndexedSubGraph>(
                     DmlRuntimeGraphFusionHelper::CreateIndexedSubGraph(partition.get(), partitionIndex, partitionKernelPrefix));
+                compiledPartitionInfos[partitionIndex]->isInitializerTransferable = std::move(isInitializerTransferable);
             }
         }
 
-        for (auto&& indexedSubGraph : indexedSubGraphs)
+        for (auto&& compiledPartitionInfo : compiledPartitionInfos)
         {
             // Null compiled operators were not DML partitions
-            if (indexedSubGraph)
+            if (compiledPartitionInfo)
             {
                 DmlRuntimeGraphFusionHelper::RegisterKernel(
                     graph,
                     m_providerImpl->GetKernelRegistry().get(),
                     m_providerImpl,
                     graphNodePropertyMap,
-                    std::move(indexedSubGraph));
+                    std::move(compiledPartitionInfo->indexedSubGraph),
+                    std::move(compiledPartitionInfo->isInitializerTransferable));
             }
         }
 

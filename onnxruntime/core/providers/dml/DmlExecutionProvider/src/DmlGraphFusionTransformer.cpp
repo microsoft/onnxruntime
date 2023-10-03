@@ -15,6 +15,18 @@
 
 namespace Dml
 {
+    namespace
+    {
+        struct CompiledPartitionInfo
+        {
+            Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledOperator;
+            onnxruntime::IndexedSubGraph indexedSubGraph;
+            std::vector<uint8_t> isInputsUploadedByDmlEP;
+            GraphDescBuilder::GraphDesc graphDesc;
+            std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> isInitializerTransferable;
+        };
+    }
+
     DmlGraphFusionTransformer::DmlGraphFusionTransformer(
         const std::string& name,
         const onnxruntime::IExecutionProvider* provider
@@ -23,15 +35,6 @@ namespace Dml
          m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl())
     {
     }
-
-    struct CompiledPartitionInfo
-    {
-        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledOperator;
-        onnxruntime::IndexedSubGraph indexedSubGraph;
-        std::vector<uint8_t> isInputsUploadedByDmlEP;
-        GraphDescBuilder::GraphDesc graphDesc;
-        std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> isInitializerTransferable;
-    };
 
     onnxruntime::common::Status DmlGraphFusionTransformer::ApplyImpl(
         onnxruntime::Graph& graph,
@@ -191,17 +194,48 @@ namespace Dml
                         std::move(graphNodePropertyMap));
 
                     // Convert partitionONNXGraph into DML EP GraphDesc
+                    auto modelPath = graph.ModelPath();
+
+                    const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph.GetMetaDef()->inputs;
+                    const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph.GetMetaDef()->outputs;
+
+                    std::vector<const onnxruntime::Node*> subgraphNodes;
+                    subgraphNodes.reserve(indexedSubGraph.nodes.size());
+
+                    std::vector<const onnxruntime::NodeArg*> subgraphInputs;
+                    subgraphInputs.reserve(subGraphInputArgNames.size());
+
+                    std::vector<const onnxruntime::NodeArg*> subgraphOutputs;
+                    subgraphOutputs.reserve(subGraphOutputArgNames.size());
+
+                    for (size_t sortedNodeIndex : indexedSubGraph.nodes)
+                    {
+                        subgraphNodes.push_back(graph.GetNode(sortedNodeIndex));
+                    }
+
+                    for (const std::string& graphInputName : subGraphInputArgNames)
+                    {
+                        subgraphInputs.push_back(graph.GetNodeArg(graphInputName));
+                    }
+
+                    for (const std::string& graphOutputName : subGraphOutputArgNames)
+                    {
+                        subgraphOutputs.push_back(graph.GetNodeArg(graphOutputName));
+                    }
+
                     ComPtr<IDMLDevice> device;
                     ORT_THROW_IF_FAILED(m_providerImpl->GetDmlDevice(device.GetAddressOf()));
                     GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
                         isInputsUploadedByDmlEP.data(),
                         isInputsUploadedByDmlEP.size(),
                         isInitializerTransferable,
-                        graph,
-                        indexedSubGraph,
                         partitionNodePropsMap,
                         device.Get(),
-                        m_providerImpl);
+                        m_providerImpl,
+                        modelPath,
+                        subgraphNodes,
+                        subgraphInputs,
+                        subgraphOutputs);
 
                     // Compile the operator
                     auto compiledPartition = DmlGraphFusionHelper::TryCreateCompiledOperator(
