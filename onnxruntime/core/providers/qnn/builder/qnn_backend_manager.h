@@ -214,10 +214,7 @@ class QnnBackendManager {
   std::string context_cache_path_ = "";
   std::string sdk_build_version_ = "";
   bool ctx_file_exists_ = false;
-  bool ctx_metadata_tried_ = false;
-  bool ort_generated_ctx_cache_ = false;
   bool get_capability_round_2_ = false;
-  uint16_t ort_ctx_metadata_length_ = 0;
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif

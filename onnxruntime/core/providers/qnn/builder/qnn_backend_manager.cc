@@ -29,8 +29,6 @@ typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn_t)(const QnnInterface_t**
 typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(const QnnSystemInterface_t*** providerList,
                                                                 uint32_t* numProviders);
 
-constexpr const char* QNN_PROVIDER = "ORTQNNEP";
-
 template <typename F, class T>
 Status QnnBackendManager::GetQnnInterfaceProviders(const char* lib_path,
                                                    const char* interface_provider_name,
