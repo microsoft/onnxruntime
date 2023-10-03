@@ -8,6 +8,7 @@ from transformers import LlamaConfig
 # Get position_ids from attention_mask
 def get_position_ids(attention_mask: torch.Tensor, use_past_kv: bool):
     position_ids = attention_mask.long().cumsum(-1) - 1
+    position_ids.masked_fill_(attention_mask == 0, 1)
     if use_past_kv:
         position_ids = position_ids[:, -1].unsqueeze(-1)
     return position_ids
@@ -66,7 +67,7 @@ def get_sample_with_past_kv_inputs(
 def get_sample_past_kv_inputs(
     config: LlamaConfig, device: torch.device, batch_size: int, past_seq_len: int, use_fp16: bool
 ):
-    num_heads, head_size = config.num_attention_heads, config.hidden_size // config.num_attention_heads
+    num_heads, head_size = config.num_key_value_heads, config.hidden_size // config.num_key_value_heads
     torch_dtype = torch.float16 if use_fp16 else torch.float32
     past_kv = [
         (

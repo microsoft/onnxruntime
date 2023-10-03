@@ -128,9 +128,9 @@ class LlamaMSRotaryEmbedding(nn.Module):
 
     def rotate_tensor(
         self,
-        x: torch.Tensor,
-        cos: torch.Tensor,
-        sin: torch.Tensor,
+        x: torch.Tensor,    # BxSxNxH
+        cos: torch.Tensor,  # 1xSx1x(H/2)
+        sin: torch.Tensor,  # 1xSx1x(H/2)
         pos: int,
         interleaved: bool,
     ):
@@ -152,6 +152,10 @@ class LlamaMSRotaryEmbedding(nn.Module):
         cos_x = cos[:, pos : pos + seq_len, :, :]
         sin_x = sin[:, pos : pos + seq_len, :, :]
 
+        # cos_x: (1, S, 1, H/2)
+        # sin_x: (1, S, 1, H/2)
+        # x1: (B, S, N, H/2)
+        # x2: (B, S, N, H/2)
         real = cos_x * x1 - sin_x * x2
         imag = sin_x * x1 + cos_x * x2
 
@@ -230,7 +234,8 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[opset_import])
         return model.SerializeToString()
 
-    def test_hf_rotary_and_msft_rotary(self):
+    # HF rotary == MSFT rotary non-interleaved
+    def test_hf_rotary_and_msft_rotary_noninterleaved(self):
         x_bnsh = torch.randn(self.config.batch_size, self.config.num_heads, self.config.sequence_length, self.config.head_size)
         cos_hf, sin_hf = self.llama_hf.get_cos_sin_cache(self.config.sequence_length)
         pos_hf = torch.stack([torch.arange(0, self.config.sequence_length) for _ in range(self.config.batch_size)])
@@ -249,6 +254,7 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         # Compare outputs as BxSxNxH
         self.assertTrue(np.allclose(output_hf.transpose(1,2).detach().cpu().numpy(), output_ms))
 
+    # Prompt step, interleaved = true, pos ids shape = (1)
     def test_msft_prompt_rotary_interleaved(self):
         if "CUDAExecutionProvider" not in ort.get_available_providers():
             return
@@ -276,7 +282,8 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         self.assertTrue(np.allclose(x_bsnh.flatten(), x_bsd.flatten()))
         self.assertTrue(np.allclose(output_ms.flatten(), output_ort.flatten()))
 
-    def test_msft_token_rotary(self):
+    # Token generation step, interleaved = true, pos ids shape = (1)
+    def test_msft_token_rotary_interleaved(self):
         if "CUDAExecutionProvider" not in ort.get_available_providers():
             return
         
@@ -303,7 +310,8 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         self.assertTrue(np.allclose(x_bsnh.flatten(), x_bsd.flatten()))
         self.assertTrue(np.allclose(output_ms.flatten(), output_ort.flatten()))
 
-    def test_hf_prompt_rotary(self):
+    # Prompt step, interleaved = false, pos ids shape = (1)
+    def test_hf_prompt_rotary_one_pos_id(self):
         if "CUDAExecutionProvider" not in ort.get_available_providers():
             return
 
@@ -328,14 +336,15 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         # Compare outputs as BxSxNxH
         self.assertTrue(np.allclose(output_hf.transpose(1,2).detach().cpu().numpy(), output_ort))
 
-    def test_hf_prompt_rotary_pos_ids(self):
+    # Prompt step, interleaved = false, pos ids shape = (batch_size, sequence_length)
+    def test_hf_prompt_rotary_batched_pos_ids(self):
         if "CUDAExecutionProvider" not in ort.get_available_providers():
             return
 
         x_bnsh = torch.randn(self.config.batch_size, self.config.num_heads, self.config.sequence_length, self.config.head_size)
         cos_hf, sin_hf = self.llama_hf.get_cos_sin_cache(self.config.sequence_length)
         pos_ids = torch.stack([torch.arange(0, self.config.sequence_length) for _ in range(self.config.batch_size)])
-        output_hf = self.llama_hf(x_bnsh, cos_hf, sin_hf, pos_ids)
+        output_hf = self.llama_hf(x_bnsh, cos_hf, sin_hf, pos_ids)  # output is BxNxSxH
 
         x_bsnh = x_bnsh.transpose(1, 2)
         x_bsd = x_bsnh.reshape(self.config.batch_size, self.config.sequence_length, self.config.hidden_size)
@@ -351,6 +360,25 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
 
         # Compare outputs as BxSxNxH
         self.assertTrue(np.allclose(output_hf.transpose(1,2).detach().cpu().numpy(), output_ort))
+
+    # Prompt step, interleaved = false, pos ids shape = (batch_size, sequence_length)
+    def test_msft_prompt_rotary_nointerleaved(self):
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            return
+
+        x_bnsh = torch.randn(self.config.batch_size, self.config.num_heads, self.config.sequence_length, self.config.head_size)
+        cos_hf, sin_hf = self.llama_hf.get_cos_sin_cache(self.config.sequence_length)
+        pos_hf = torch.stack([torch.arange(0, self.config.sequence_length) for _ in range(self.config.batch_size)])
+        output_hf = self.llama_hf(x_bnsh, cos_hf, sin_hf, pos_hf)  # output is BxNxSxH
+
+        x_bsnh = x_bnsh.transpose(1, 2)
+        x_bsd = x_bsnh.reshape(self.config.batch_size, self.config.sequence_length, self.config.hidden_size)
+        cos_ms, sin_ms = self.llama_ms.get_cos_sin_cache()
+        pos_ms = torch.tensor([0])
+        output_ms = self.llama_ms(deepcopy(x_bsnh), cos_ms, sin_ms, pos_ms, interleaved=False).detach().cpu().numpy()
+
+        # Compare outputs as BxSxNxH
+        self.assertTrue(np.allclose(output_hf.transpose(1,2).detach().cpu().numpy(), output_ms))
 
 if __name__ == "__main__":
     unittest.main()

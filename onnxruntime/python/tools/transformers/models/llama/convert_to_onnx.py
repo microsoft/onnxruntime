@@ -302,6 +302,15 @@ def get_args():
     )
 
     parser.add_argument(
+        "-id",
+        "--device-id",
+        required=False,
+        type=str,
+        default="0",
+        help="Device ID for GPUs",
+    )
+
+    parser.add_argument(
         "-q",
         "--quantization_method",
         default="",
@@ -568,7 +577,7 @@ def main():
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
         if "fp16" in filename:
-            parity_cmd.extend(["--execution_provider", "cuda"])
+            parity_cmd.extend(["--execution_provider", "cuda", "--device-id", args.device_id])
         parity_check(parity_cmd)
 
 

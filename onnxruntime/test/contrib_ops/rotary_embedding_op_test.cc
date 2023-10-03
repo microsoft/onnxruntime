@@ -119,6 +119,7 @@ static void RunTests(const std::vector<float>& input_data,
     }
 }
 
+// Prompt step, interleaved = true, pos ids shape = (1)
 TEST(RotaryEmbeddingTest, RotaryEmbeddingInterleaved_Prompt_SmallData_LlamaMSFT) {
     int batch_size = 1;
     int sequence_length = 3;
@@ -136,14 +137,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbeddingInterleaved_Prompt_SmallData_LlamaMSFT)
 
     std::vector<int64_t> position_ids = {0};
 
-    // std::vector<float> cos_cache = {
-    //     1.0000f,  1.0000f,  0.5403f,  0.9999f,  -0.4161f,  0.9998f
-    // };
-
-    // std::vector<float> sin_cache = {
-    //     0.0000f,  0.0000f,  0.8415f,  0.0100f,  0.9093f,  0.0200f
-    // };
-
     std::vector<float> cos_cache = {
       1.0000f,  1.0000f,  0.5403f,  0.9999f, -0.4161f,  0.9998f, -0.9900f,  0.9996f,
       -0.6536f,  0.9992f,  0.2837f,  0.9988f,  0.9602f,  0.9982f,  0.7539f,  0.9976f
@@ -155,9 +148,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbeddingInterleaved_Prompt_SmallData_LlamaMSFT)
     };
 
     std::vector<float> output_data = {
-      // -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f,
-      // -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f,
-      // -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f, -1.0000f
       -1.0408f,  0.9166f, -1.3042f, -1.1097f, -0.1320f, -0.2751f, -0.2350f,  0.0937f,
       -1.6411f, -0.3948f, -1.0561f, -0.1294f,  0.6460f, -1.2937f, -0.1822f,  0.6972f,
       -0.2751f, -1.0178f, -1.1212f, -0.1143f, -0.3694f, -0.9235f,  0.1840f,  0.6180f
@@ -178,6 +168,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbeddingInterleaved_Prompt_SmallData_LlamaMSFT)
              interleaved);
 }
 
+// Prompt step, interleaved = true, pos ids shape = (1)
 TEST(RotaryEmbeddingTest, RotaryEmbeddingInterleaved_Prompt_LargeData_LlamaMSFT) {
     int batch_size = 2;
     int sequence_length = 8;
@@ -382,6 +373,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbeddingInterleaved_Prompt_LargeData_LlamaMSFT)
              interleaved);
 }
 
+// Prompt step, interleaved = false, pos ids shape = (1)
 TEST(RotaryEmbeddingTest, RotaryEmbeddingNotInterleaved_Prompt_LargeData_LlamaMSFT) {
     int batch_size = 2;
     int sequence_length = 8;
@@ -584,6 +576,58 @@ TEST(RotaryEmbeddingTest, RotaryEmbeddingNotInterleaved_Prompt_LargeData_LlamaMS
              num_heads,
              max_sequence_length,
              interleaved);
+}
+
+TEST(RotaryEmbeddingTest, RotaryEmbeddingNotInterleaved_Prompt_SmallData_LlamaMSFT) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int num_heads = 3;
+  int head_size = 6;
+  int hidden_size = num_heads * head_size;
+  int max_sequence_length = 4;
+  int64_t interleaved = 0;  // false
+
+  std::vector<float> input_data = {
+        -1.0408f,  0.9166f, -1.3042f, -1.1097f, -1.2188f,  1.1676f,  1.0076f, -0.7529f,
+        -0.2250f, -0.4327f, -1.5071f, -0.4586f, -0.8663f, -0.2656f,  0.1665f,  0.7911f,
+        -0.9320f, -0.8579f, -1.0574f, -0.1188f, -0.9078f,  0.3452f, -0.5713f, -0.2351f,
+        -0.8480f,  0.5266f, -1.2944f, -0.0243f, -0.2354f, -0.7087f, -0.9647f, -0.0991f,
+        -0.2994f, -0.0650f, -1.5720f, -1.3211f
+  };
+
+  std::vector<int64_t> position_ids = {0, 1};
+
+  std::vector<float> cos_cache = {
+     1.0000f,  1.0000f,  1.0000f,  0.5403f,  0.9989f,  1.0000f, -0.4161f,  0.9957f,
+     1.0000f, -0.9900f,  0.9903f,  1.0000f
+  };
+
+  std::vector<float> sin_cache = {
+      0.0000f, 0.0000f, 0.0000f, 0.8415f, 0.0464f, 0.0022f, 0.9093f, 0.0927f, 0.0043f,
+      0.1411f, 0.1388f, 0.0065f
+  };
+
+  std::vector<float> output_data = {
+    -1.0408f,  0.9166f, -1.3042f, -1.1097f, -1.2188f,  1.1676f,  1.0076f, -0.7529f,
+    -0.2250f, -0.4327f, -1.5071f, -0.4586f, -0.8663f, -0.2656f,  0.1665f,  0.7911f,
+    -0.9320f, -0.8579f, -0.8618f, -0.0922f, -0.9073f, -0.7032f, -0.5762f, -0.2371f,
+    -0.4377f,  0.5370f, -1.2929f, -0.7267f, -0.2107f, -0.7115f, -0.4666f, -0.0261f,
+    -0.2965f, -0.8469f, -1.5749f, -1.3217f
+  };
+
+  RunTests(input_data,
+           position_ids,
+           cos_cache,
+           sin_cache,
+           output_data,
+           epsilon_,
+           batch_size,
+           sequence_length,
+           hidden_size,
+           head_size,
+           num_heads,
+           max_sequence_length,
+           interleaved);
 }
 
 // TEST(RotaryEmbeddingTest, RotaryEmbedding_PerToken_LlamaMSFT) {

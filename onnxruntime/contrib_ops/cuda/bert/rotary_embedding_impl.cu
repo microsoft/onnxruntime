@@ -45,8 +45,8 @@ __global__ void RotaryEmbeddingBSNH(T* output,                   // BxSxNxH
 
   // Cache is (M, H/2)
   const int half_head_size = head_size / 2;
-  const int position_id = (position_ids_format == 0) ? static_cast<int>(position_ids[0]) : static_cast<int>(position_ids[b * sequence_length]);
-  const int cache_offset = (position_id + s) * half_head_size;
+  const int position_id = (position_ids_format == 0) ? static_cast<int>(position_ids[0]) : static_cast<int>(position_ids[b * sequence_length + s]);
+  const int cache_offset = (position_ids_format == 0) ? (position_id + s) * half_head_size : position_id * half_head_size;
   const T* cos_data = cos_cache + cache_offset;
   const T* sin_data = sin_cache + cache_offset;
 
@@ -58,8 +58,9 @@ __global__ void RotaryEmbeddingBSNH(T* output,                   // BxSxNxH
     output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
   } else {
     const int cache_idx = i % half_head_size;
-    const T sign = (i < half_head_size) ? -1 : 1;
+    // const T sign = (i < half_head_size) ? -1 : 1;
     const int j = (i + half_head_size) % head_size;
+    const T sign = (j >= half_head_size) ? -1 : 1;
 
     output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
   }

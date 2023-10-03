@@ -15,14 +15,13 @@ logger = logging.getLogger("")
 def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: LlamaForCausalLM):
     # Dummy values for parity
     batch_size, sequence_length = 2, 8
-    device = torch.device("cpu" if args.execution_provider == "cpu" else "cuda")
 
     # Run inference with PyTorch
     inputs = (
-        get_sample_inputs(config, device, batch_size, sequence_length, return_dict=True)
+        get_sample_inputs(config, args.device, batch_size, sequence_length, return_dict=True)
         if not args.use_past_kv
         else get_sample_with_past_kv_inputs(
-            config, device, batch_size, sequence_length, use_fp16=(args.precision == "fp16"), return_dict=True
+            config, args.device, batch_size, sequence_length, use_fp16=(args.precision == "fp16"), return_dict=True
         )
     )
     pt_outputs = pt_model(**inputs).logits.detach().cpu().numpy()
@@ -34,6 +33,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
         args.execution_provider != "cpu",  # use_gpu
         provider=args.execution_provider,
         verbose=args.verbose,
+        provider_options={} if args.execution_provider == "cpu" else {"device_id": args.device_id},
     )
     ort_outputs = ort_model.run(None, inputs)[0]
 
@@ -81,6 +81,15 @@ def get_args(argv: List[str]):
     )
 
     parser.add_argument(
+        "-id",
+        "--device-id",
+        required=False,
+        type=str,
+        default="0",
+        help="Device ID for GPUs",
+    )
+
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -114,7 +123,8 @@ def main(argv: List[str] = []):  # noqa: B006
     logger.info(f"Arguments: {args}")
 
     # Load model and config
-    device = torch.device("cpu" if args.execution_provider == "cpu" else "cuda")
+    setattr(args, "device_name", "cpu" if args.execution_provider == "cpu" else f"cuda:{args.device_id}")  # noqa: B010
+    setattr(args, "device", torch.device(args.device_name))  # noqa: B010
     use_auth_token = args.torch_model_directory == os.path.join(".")
     location = args.model_name if use_auth_token else args.torch_model_directory
 
@@ -124,10 +134,13 @@ def main(argv: List[str] = []):  # noqa: B006
         torch_dtype=(torch.float16 if args.precision == "fp16" else torch.float32),
         use_auth_token=use_auth_token,
         use_cache=True,
-    ).to(device)
+    ).to(args.device)
 
     verify_parity(args, config, llama)
 
 
 if __name__ == "__main__":
+    seed = 2
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     main()
