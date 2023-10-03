@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <utility>
+
 #ifdef _WIN32
 #include <windows.h>
 #include <psapi.h>
@@ -30,11 +32,11 @@ class QnnBackendManager {
                     uint32_t rpc_control_latency,
                     HtpPerformanceMode htp_performance_mode,
                     std::string qnn_saver_path = "")
-      : backend_path_(backend_path),
+      : backend_path_(std::move(backend_path)),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
         htp_performance_mode_(htp_performance_mode),
-        qnn_saver_path_(qnn_saver_path) {
+        qnn_saver_path_(std::move(qnn_saver_path)) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
