@@ -37,8 +37,8 @@ class Attention : public JsKernel, AttentionBase {
                                static_cast<int32_t>(scale_),
                                static_cast<int32_t>(do_rotary_),
                                static_cast<int32_t>(qkv_hidden_sizes_.size()),
-                               reinterpret_cast<uintptr_t>((qkv_sizes.size() > 0) ? qkv_sizes.data() : nullptr) >> 2),
-        static_cast<int32_t>(past_present_share_buffer_);
+                               reinterpret_cast<uintptr_t>((qkv_sizes.size() > 0) ? qkv_sizes.data() : nullptr) >> 2,
+                               static_cast<int32_t>(past_present_share_buffer_));
   }
 };
 
