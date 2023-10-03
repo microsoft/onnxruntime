@@ -446,14 +446,6 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(
             providers, provider_options, available_providers
         )
-        if not providers and len(available_providers) > 1:
-            self.disable_fallback()
-            raise ValueError(
-                f"This ORT build has {available_providers} enabled. "
-                "Since ORT 1.9, you are required to explicitly set "
-                "the providers parameter when instantiating InferenceSession. For example, "
-                f"onnxruntime.InferenceSession(..., providers={available_providers}, ...)"
-            )
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
