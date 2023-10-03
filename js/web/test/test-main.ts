@@ -57,6 +57,9 @@ if (options.globalEnvFlags) {
   if (flags.webgpu?.profilingMode !== undefined) {
     ort.env.webgpu.profilingMode = flags.webgpu.profilingMode;
   }
+  if (flags.webgpu?.validateInputContent !== undefined) {
+    ort.env.webgpu.validateInputContent = flags.webgpu.validateInputContent;
+  }
 }
 
 // Set logging configuration
