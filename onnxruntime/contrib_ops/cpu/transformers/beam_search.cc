@@ -217,7 +217,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
           update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>,
           create_beam_scorer_func_};
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
@@ -240,7 +240,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           device_copy_int32_func_,
           update_gpt_feeds_fp16_func_,
           create_beam_scorer_func_};
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
@@ -271,7 +271,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
           expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
           create_beam_scorer_func_};
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
@@ -293,7 +293,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           expand_buffer_float_func_,
           expand_buffer_float16_func_,
           create_beam_scorer_func_};
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
@@ -320,7 +320,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
           expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
           create_beam_scorer_func_};
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
@@ -341,7 +341,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           expand_buffer_float_func_,
           expand_buffer_float16_func_,
           create_beam_scorer_func_};
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());

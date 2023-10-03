@@ -46,7 +46,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
         update_feeds_func_(update_feeds_func),
         create_beam_scorer_func_(create_beam_scorer_func) {}
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   Status InitializeCuda(
       const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
       const void* cuda_device_prop,
@@ -100,7 +100,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
   GenerationDeviceHelper::CreateGptInputsFunc create_inputs_func_;
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
 #endif
   GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
@@ -336,7 +336,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     // Increase sequence length after a new token is generated.
     ++current_length;
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
     // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
     // contains DecoderMaskedSelfAttention nodes
     if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_attention_) {

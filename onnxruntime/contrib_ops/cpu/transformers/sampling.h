@@ -57,7 +57,7 @@ class Sampling : public IControlFlowKernel {
     init_greedy_state_fp16_func_ = init_greedy_state_fp16_func;
   }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   void SetDeviceHelpers_Cuda(const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func) {
     reorder_past_state_func_ = reorder_past_state_func;
   }
@@ -70,7 +70,7 @@ class Sampling : public IControlFlowKernel {
     update_gpt_feeds_fp16_func_ = update_gpt_feeds_fp16_func;
   }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   const void* gpu_device_prop_ = nullptr;
   int gpu_device_arch_ = 0;
 #endif
@@ -87,7 +87,7 @@ class Sampling : public IControlFlowKernel {
   GenerationDeviceHelper::InitGreedyStateFunc<float> init_greedy_state_func_;
   GenerationDeviceHelper::InitGreedyStateFunc<MLFloat16> init_greedy_state_fp16_func_;
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
 #endif
 

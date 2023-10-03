@@ -50,11 +50,16 @@ TEST(GreedySearchTest, GptGreedySearchFp16_VocabPadded) {
   const char* input_names[] = {"input_ids", "max_length", "min_length", "repetition_penalty"};
   const char* const output_names[] = {"sequences"};
 
+#ifdef USE_CUDA
   constexpr int min_cuda_architecture = 530;
-  if (HasCudaEnvironment(min_cuda_architecture)) {
+  if (!HasCudaEnvironment(min_cuda_architecture)) return;
+#endif
+  {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#elif USE_ROCM
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
 #endif
 
     // The following model was obtained by padding the vocabulary size in testdata/transformers/tiny_gpt2_beamsearch_fp16.onnx
@@ -117,11 +122,16 @@ TEST(GreedySearchTest, GptGreedySearchFp32) {
   const char* input_names[] = {"input_ids", "max_length", "min_length", "repetition_penalty"};
   const char* const output_names[] = {"sequences"};
 
+#ifdef USE_CUDA
   constexpr int min_cuda_architecture = 530;
-  if (HasCudaEnvironment(min_cuda_architecture)) {
+  if (!HasCudaEnvironment(min_cuda_architecture)) return;
+#endif
+  {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#elif USE_ROCM
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
 #endif
 
     Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_greedysearch_with_init_decoder.onnx"), session_options);
