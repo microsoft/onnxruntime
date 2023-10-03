@@ -116,11 +116,9 @@ const computeMean =
       const WG = 64;
       // we will store channel scale and channel shift in [2, components] matrix
       // or in vec2 when components == 1
-      const outputType = components === 1 ? `vec2f` : `mat2x${components}f`;
-      const sumCastType = components === 1 ? `f32` : `vec${components}f`;
-      const setOutputValue = (var1: string, var2: string) => {
-        return `${outputType}(${var1}, ${var2})`;
-      };
+      const outputType = components === 1 ? 'vec2f' : `mat2x${components}f`;
+      const sumCastType = components === 1 ? 'f32' : `vec${components}f`;
+      const setOutputValue = (var1: string, var2: string) => `${outputType}(${var1}, ${var2})`;
       const unitsOfWork = n * c / components;
       const wgSize = Math.ceil(h / WG);
 
@@ -227,7 +225,7 @@ const createInstanceNormNHWCProgramInfo =
       const outputHelper = outputVariable('output', inputs[0].dataType, outputShape, components);
 
       const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-      const scaleType = components === 1 ? `vec2f` : `mat2x${components}f`;
+      const scaleType = components === 1 ? 'vec2f' : `mat2x${components}f`;
       const scaleCastType = components === 1 ? dataType : `vec${components}<${dataType}>`;
       // first compute mean
       const channelScaleShift = computeMean(context, inputs[0], inputs[1], inputs[2], N, H, C, attributes.epsilon);
