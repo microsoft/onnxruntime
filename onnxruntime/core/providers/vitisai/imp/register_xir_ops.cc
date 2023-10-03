@@ -34,9 +34,12 @@ static void xir_shape_infer(ONNX_NAMESPACE::InferenceContext& ctx) {
     updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT64);
   } else if (data_type->s() == "int1") {
     updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+  } else if (data_type->s() == "bfloat16") {
+    updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BFLOAT16);
+  } else if (data_type->s() == "float16") {
+    updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::FLOAT16);
   } else {
-    std::cerr << "not supported data_type " << data_type->s();
-    abort();
+    vai_assert(false, ", not supported data_type: " + data_type->s());
   }
   if (shape != nullptr) {
     for (auto i = 0; i < shape->ints_size(); ++i) {
