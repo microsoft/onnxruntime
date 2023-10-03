@@ -373,12 +373,14 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     //bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
 
     bool is_masked = false;
-    
+
     // Load current data
-    k_vec[0] = k_vec[1];
+    for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+      k_vec[0][ii] = k_vec[1][ii];
+    }
 
     // Load next data
-    int next_ti = (ti + K_PER_ITER); 
+    int next_ti = (ti + K_PER_ITER);
     if (next_ti < tlength) {
       if (has_beams) {
         const int beam_offset = beam_indices[next_ti] * params.num_heads * params.max_sequence_length * head_size;
