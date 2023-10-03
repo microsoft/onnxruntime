@@ -475,6 +475,44 @@ TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank5Unsupported) {
                              ExpectedEPNodeAssignment::None);
 }
 
+TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13_Rank5Supported) {
+  GetTestModelFn model_fn = [](ModelTestBuilder& builder) {
+    // input (u8) -> DQ ->
+    NodeArg* quant_input = builder.MakeInput<uint8_t>({1, 3, 4, 4, 2}, 0, 255);
+    NodeArg* input_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(quant_input, 1.0f, 0, input_dq);  // scale = 1.0, zp = 0
+
+    // -> ReduceOp (e.g., ReduceSum) ->
+    std::vector<NodeArg*> reduce_op_inputs;
+    reduce_op_inputs.push_back(input_dq);
+
+    std::vector<int64_t> axes = {0, 1, 2, 3, 4};
+    reduce_op_inputs.push_back(builder.MakeInitializer({static_cast<int64_t>(axes.size())}, axes));
+
+    auto* op_output = builder.MakeIntermediate();
+    Node& reduce_sum_node = builder.AddNode("ReduceSum", reduce_op_inputs, {op_output});
+    reduce_sum_node.AddAttribute("keepdims", static_cast<int64_t>(true));
+    reduce_sum_node.AddAttribute("noop_with_empty_axes", static_cast<int64_t>(false));
+
+    // Q -> output (u8)
+    NodeArg* output = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<uint8_t>(op_output, 1.0f, 0, output);  // scale = 1.0, zp = 0
+  };
+
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  RunQnnModelTest(model_fn,
+                  provider_options,
+                  13,  // opset
+                  ExpectedEPNodeAssignment::All, 1e-4f, logging::Severity::kVERBOSE);
+}
+
 //
 // ReduceMax
 //
