@@ -42,7 +42,6 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/attention_impl.h"
 
 using namespace onnxruntime::cuda;
-using namespace onnxruntime::contrib::attention_softmax_cuda;
 
 namespace onnxruntime {
 namespace contrib {
