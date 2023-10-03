@@ -223,7 +223,6 @@ void InferenceModel(const std::string& model_data, const char* log_id,
 /**
  * If the ORT_UNIT_TEST_ENABLE_QNN_SAVER environment variable is enabled (set to 1), this function modifies
  * the QNN EP provider options to enable the QNN Saver backend, which dumps QNN API calls (and weights) to disk.
- * QNN EP currently only supports QNN Saver in debug builds.
  *
  * - saver_output/saver_output.c: C file containing all QNN API calls.
  * - saver_output/params.bin: binary file containing all input/output/parameter tensor data provided during tensor

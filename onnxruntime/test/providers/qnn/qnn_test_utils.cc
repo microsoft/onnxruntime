@@ -9,9 +9,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
 
-#ifndef NDEBUG
 #include "core/platform/env_var_utils.h"
-#endif
 #include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph.h"
@@ -45,7 +43,6 @@ std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_
 }
 
 void TryEnableQNNSaver(ProviderOptions& qnn_options) {
-#ifndef NDEBUG
   // Allow dumping QNN API calls to file by setting an environment variable that enables the QNN Saver backend.
   constexpr auto kEnableQNNSaverEnvironmentVariableName = "ORT_UNIT_TEST_ENABLE_QNN_SAVER";
   static std::optional<int> enable_qnn_saver = onnxruntime::ParseEnvironmentVariable<int>(
@@ -58,9 +55,6 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options) {
     qnn_options["qnn_saver_path"] = "libQnnSaver.so";
 #endif  // defined(_WIN32)
   }
-#else
-  ORT_UNUSED_PARAMETER(qnn_options);
-#endif  // !defined(NDEBUG)
 }
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,

@@ -133,7 +133,6 @@ Status QnnBackendManager::LoadBackend() {
   return Status::OK();
 }
 
-#ifndef NDEBUG
 // Loads the intended backend (e.g., HTP, CPU, etc) to get its type, and then
 // sets QNN Saver as the active backend. QNN op builders will still see the intended backend (e.g., HTP)
 // as the backend type to ensure they emit the expected QNN API calls.
@@ -197,7 +196,6 @@ Status QnnBackendManager::LoadQnnSaverBackend() {
 
   return Status::OK();
 }
-#endif  // !defined(NDEBUG)
 
 Status QnnBackendManager::LoadQnnSystemLib() {
 #ifdef _WIN32
@@ -718,15 +716,12 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_
     return Status::OK();
   }
 
-#ifndef NDEBUG
   if (qnn_saver_path_.empty()) {
     ORT_RETURN_IF_ERROR(LoadBackend());
   } else {
     ORT_RETURN_IF_ERROR(LoadQnnSaverBackend());
   }
-#else
-  ORT_RETURN_IF_ERROR(LoadBackend());
-#endif
+
   LOGS(logger, VERBOSE) << "LoadBackend succeed.";
 
   if (load_from_cached_context) {

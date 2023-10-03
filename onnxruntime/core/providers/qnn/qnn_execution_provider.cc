@@ -131,8 +131,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     ParseHtpPerformanceMode(htp_performance_mode_pos->second);
   }
 
-#ifndef NDEBUG
-  // Enable use of QNN Saver only in debug builds.
+  // Enable use of QNN Saver if the user provides a path the QNN Saver backend library.
   static const std::string QNN_SAVER_PATH_KEY = "qnn_saver_path";
   std::string qnn_saver_path = "";
   auto qnn_saver_path_pos = runtime_options_.find(QNN_SAVER_PATH_KEY);
@@ -140,18 +139,13 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     qnn_saver_path = qnn_saver_path_pos->second;
     LOGS_DEFAULT(VERBOSE) << "User specified QNN Saver path: " << qnn_saver_path;
   }
-#endif
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       backend_path_,
       profiling_level_,
       rpc_control_latency_,
-      htp_performance_mode_
-#ifndef NDEBUG
-      ,
-      qnn_saver_path
-#endif
-  );
+      htp_performance_mode_,
+      qnn_saver_path);
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
