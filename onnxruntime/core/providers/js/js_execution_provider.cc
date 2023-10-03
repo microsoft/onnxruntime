@@ -634,6 +634,7 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& kernel_lookup) const {
   InlinedVector<NodeIndex> candidates;
+  InlinedVector<NodeIndex> tenative_candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr)
@@ -651,8 +652,11 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
       continue;
     }
     candidates.push_back(node.Index());
+    if(node.Domain() != 'com.ms.internal.nhwc'){
+      tenative_candidates.push_back(node.Index());
+    }
   }
-  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, candidates);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tenative_candidates);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)
