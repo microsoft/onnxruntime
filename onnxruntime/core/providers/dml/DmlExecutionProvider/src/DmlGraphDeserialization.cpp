@@ -34,7 +34,7 @@ template <typename EdgeType> void PopulateEdges(
     for (flatbuffers::uoffset_t edgeIndex = 0; edgeIndex < edgeNames->size(); edgeIndex++)
     {
         const flatbuffers::String* edgeName = edgeNames->Get(edgeIndex);
-        if (edgeName->size() == 0)
+                if (edgeName->size() == 0)
         {
             continue;
         }
@@ -55,12 +55,13 @@ template <typename EdgeType> void PopulateEdges(
                 edge.GraphOutputIndex = edgeNameToIndexMap.at(edgeName->string_view());
                 edge.FromNodeIndex = nodeIndex;
                 edge.FromNodeOutputIndex = edgeIndex;
+                intermediateEdgeToNodeIndexMap[edgeName->string_view()] = {nodeIndex, edgeIndex};
             }
 
             edges.push_back(edge);
         }
         // edge is intermediate edge
-        else 
+        else
         {
             if constexpr (std::is_same_v<EdgeType, DmlInputSerializedGraphEdge>)
             {
@@ -129,9 +130,9 @@ OperatorFieldVariant CreateActivation(
             }
             case DML_SCHEMA_FIELD_KIND_ATTRIBUTE:
             {
-                const dml::ir::operatorFieldTypes::AttributeDesc* attributeDesc = 
+                const dml::ir::operatorFieldTypes::AttributeDesc* attributeDesc =
                     attributeIndex >= activationDesc->attributes()->size() ?
-                    nullptr : 
+                    nullptr :
                     activationDesc->attributes()->Get(attributeIndex++);
                 field = CreateAttribute(schemaField, attributeDesc);
                 break;
@@ -164,14 +165,14 @@ OperatorFieldVariant CreateAttribute(
     {
         case DML_SCHEMA_FIELD_TYPE_OPERATOR_DESC:
         {
-            return attributeDesc != nullptr && attributeDesc->val_as_Activation() != nullptr ?  
-                CreateActivation(attributeDesc->val_as_Activation()) : 
+            return attributeDesc != nullptr && attributeDesc->val_as_Activation() != nullptr ?
+                CreateActivation(attributeDesc->val_as_Activation()) :
                 OperatorFieldTypes::FusedActivationOperatorDesc();
         }
         case DML_SCHEMA_FIELD_TYPE_OPERATOR_DESC_ARRAY:
         {
-            return attributeDesc != nullptr && attributeDesc->val_as_ActivationArray() != nullptr ?  
-                CreateActivations(attributeDesc->val_as_ActivationArray()) : 
+            return attributeDesc != nullptr && attributeDesc->val_as_ActivationArray() != nullptr ?
+                CreateActivations(attributeDesc->val_as_ActivationArray()) :
                 OperatorFieldTypes::FusedActivationOperatorDescArray();
         }
         case DML_SCHEMA_FIELD_TYPE_UINT:
@@ -236,7 +237,7 @@ OperatorFieldVariant CreateAttribute(
                 data = std::vector<float>(attributeDesc->val_as_FloatArray()->data()->begin(), attributeDesc->val_as_FloatArray()->data()->end());
             }
             return data;
-        }	
+        }
         case DML_SCHEMA_FIELD_TYPE_SCALE_BIAS:
         {
             OperatorFieldTypes::ScaleBias scaleBias;
@@ -292,20 +293,20 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
     DML_OPERATOR_TYPE type = ApiTraits::StringifyHelpers::FromString<DML_OPERATOR_TYPE>(flatbufferOperatorNodeDesc->type()->c_str());
     const DML_OPERATOR_SCHEMA& schema = SchemaHelpers::GetSchema(type);
     std::vector<OperatorField> operatorFields(schema.FieldCount);
-    
+
     auto inputNameItr = nodeInputNames->begin();
     uint32_t inputTensorDescIndex = 0;
-    
+
     uint32_t outputTensorDescIndex = 0;
     auto outputNameItr = nodeOutputNames->begin();
 
     uint32_t attributeIndex = 0;
-    
+
 
     for (uint32_t fieldIndex = 0; fieldIndex < schema.FieldCount; fieldIndex++)
     {
         const DML_SCHEMA_FIELD* schemaField = &schema.Fields[fieldIndex];
-        
+
         OperatorFieldVariant field;
         switch (schemaField->Kind)
         {
@@ -333,7 +334,7 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
                         const flatbuffers::String* inputName = *inputNameItr;
                         inputNameItr++;
                         bool isConstantTensor = !constantInputs.empty() && constantInputs.find(inputName->c_str()) != constantInputs.end();
-                        
+
                         const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->inputs()->Get(inputTensorDescIndex++);
                         tensors.push_back(CreateBufferTensorDesc(tensorDesc, isConstantTensor).value());
                     }
@@ -371,9 +372,9 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
             }
             case DML_SCHEMA_FIELD_KIND_ATTRIBUTE:
             {
-                const dml::ir::operatorFieldTypes::AttributeDesc* attributeDesc = 
+                const dml::ir::operatorFieldTypes::AttributeDesc* attributeDesc =
                     attributeIndex >= flatbufferOperatorNodeDesc->attributes()->size() ?
-                    nullptr : 
+                    nullptr :
                     flatbufferOperatorNodeDesc->attributes()->Get(attributeIndex++);
                 field = CreateAttribute(schemaField, attributeDesc);
                 break;
@@ -391,12 +392,12 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
     /*out*/ std::vector<std::unique_ptr<std::byte[]>>& rawData)
 {
     const dml::ir::DmlGraphDesc* flatbufferGraphDesc = dml::ir::GetDmlGraphDesc(flatbufferGraphDescBlob);
-    
+
     std::unordered_map<std::string_view, uint32_t> graphInputEdgeToIndexMap;
     std::unordered_map<std::string_view, uint32_t> graphOutputEdgeToIndexMap;
     ConvertToUnorderedMap(flatbufferGraphDesc->graphInputNames(), graphInputEdgeToIndexMap);
     ConvertToUnorderedMap(flatbufferGraphDesc->graphOutputNames(), graphOutputEdgeToIndexMap);
-    
+
     std::unordered_map<std::string_view, NodeIndex> intermediateEdgeToNodeIndexMap;
     std::unordered_set<std::string_view> constantInputs;
 
@@ -436,7 +437,7 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
             }
             else if (flatbufferConstantNode->data_type() == dml::ir::ConstantNodeDescDetail_ConstantRawData)
             {
-                
+
                 uint32_t rawDataSize = flatbufferConstantNode->data_as_ConstantRawData()->data()->size();
                 rawData.push_back(std::make_unique<std::byte[]>(rawDataSize));
                 std::transform(
@@ -479,5 +480,5 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
     graphDesc.IntermediateEdges = std::move(intermediateEdges);
     graphDesc.OutputEdges = std::move(outputEdges);
     graphDesc.Nodes = std::move(nodes);
-    return graphDesc;	
+    return graphDesc;
 }

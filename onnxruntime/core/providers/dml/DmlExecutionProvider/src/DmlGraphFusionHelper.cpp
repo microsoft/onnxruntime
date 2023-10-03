@@ -482,6 +482,17 @@ namespace DmlGraphFusionHelper
             L".bin";
         WriteToFile(modelName, partitionName, buffer.data(), buffer.size());
 
+        std::vector<std::unique_ptr<std::byte[]>> rawData;
+        DmlSerializedGraphDesc serializedDesc = DeserializeDmlGraph(buffer.data(), rawData);
+        GraphDescBuilder::GraphDesc castedSerialzedDesc = {};
+        castedSerialzedDesc.InputCount = serializedDesc.InputCount;
+        castedSerialzedDesc.InputEdges = std::move(serializedDesc.InputEdges);
+        castedSerialzedDesc.IntermediateEdges = std::move(serializedDesc.IntermediateEdges);
+        castedSerialzedDesc.Nodes = std::move(serializedDesc.Nodes);
+        castedSerialzedDesc.OutputCount = serializedDesc.OutputCount;
+        castedSerialzedDesc.OutputEdges = std::move(serializedDesc.OutputEdges);
+        castedSerialzedDesc.reuseCommandList = serializedDmlGraphDesc.reuseCommandList;
+
         // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
         StackAllocator<1024> allocator; // Used for converting DmlSerializedGraphDesc to DML_GRAPH_DESC
         DML_GRAPH_DESC dmlGraphDesc = {};
@@ -491,7 +502,7 @@ namespace DmlGraphFusionHelper
         std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges;
         std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges;
         ConvertGraphDesc<1024>(
-            serializedDmlGraphDesc,
+            castedSerialzedDesc,
             fusedNodeInputCount,
             dmlGraphDesc,
             device.Get(),
