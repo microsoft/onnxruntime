@@ -1316,6 +1316,7 @@ template void BufferExpansionKernelLauncher(const int32_t* input,
                                             cudaStream_t stream);
 
 constexpr unsigned int kTileSize = 32;
+constexpr unsigned int kSeqTileSize = 16;
 
 template <typename T>
 __global__ void ReorderPastStatesKernel(T* out_buffer,
@@ -1326,11 +1327,11 @@ __global__ void ReorderPastStatesKernel(T* out_buffer,
                                         int chunked_head_size,
                                         int equv_chunk_size) {
   //[B, N, max_length, H2(head_size/chunk_size), chunk_size] -> [B, N, H2(head_size/chunk_size), max_length, chunk_size]
-  __shared__ T tile[kTileSize][kTileSize + 1];
+  __shared__ T tile[kSeqTileSize][kTileSize + 1];
 
   const int b = blockIdx.x;
   const int n = blockIdx.y;
-  const int s = blockIdx.z * 16 + threadIdx.x;
+  const int s = blockIdx.z * kSeqTileSize + threadIdx.x;
   const int h2 = threadIdx.y;
   const int c = threadIdx.z;
 
@@ -1365,24 +1366,25 @@ void ReorderPastStatesKernelLauncher(void* out_buffer,
                                      int head_size,
                                      int chunk_size,
                                      cudaStream_t stream) {
-  const dim3 grid(batch_size, num_heads, (max_length + 15) / 16);
-  const dim3 block(16, head_size / chunk_size, chunk_size / 4);
+  const int chunked_head_size = head_size / chunk_size;
+  const dim3 block(16, chunked_head_size, chunk_size / 4);
+  const dim3 grid(batch_size, num_heads, (max_length + blockDim.x - 1) / blockDim.x);
   if (chunk_size == 4) {
     ReorderPastStatesKernel<<<grid, block, 0, stream>>>(reinterpret_cast<float4*>(out_buffer),
                                                         reinterpret_cast<const float4*>(in_buffer),
                                                         batch_size,
                                                         num_heads,
                                                         max_length,
-                                                        head_size / chunk_size,
-                                                        chunk_size / 4);
+                                                        chunked_head_size,
+                                                        blockDim.z);
   } else if (chunk_size == 8) {
     ReorderPastStatesKernel<<<grid, block, 0, stream>>>(reinterpret_cast<Half4*>(out_buffer),
                                                         reinterpret_cast<const Half4*>(in_buffer),
                                                         batch_size,
                                                         num_heads,
                                                         max_length,
-                                                        head_size / chunk_size,
-                                                        chunk_size / 4);
+                                                        chunked_head_size,
+                                                        blockDim.z);
   } else {
     ORT_THROW("ReorderPastStatesKernelLauncher only support float or half");
   }
