@@ -104,9 +104,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   static const std::string BACKEND_PATH = "backend_path";
   auto backend_path_pos = runtime_options_.find(BACKEND_PATH);
 
+  std::string backend_path;
   if (backend_path_pos != runtime_options_.end()) {
-    backend_path_ = backend_path_pos->second;
-    LOGS_DEFAULT(VERBOSE) << "Backend path: " << backend_path_;
+    backend_path = backend_path_pos->second;
+    LOGS_DEFAULT(VERBOSE) << "Backend path: " << backend_path;
   } else {
     LOGS_DEFAULT(ERROR) << "No backend path provided.";
   }
@@ -133,7 +134,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   // Enable use of QNN Saver if the user provides a path the QNN Saver backend library.
   static const std::string QNN_SAVER_PATH_KEY = "qnn_saver_path";
-  std::string qnn_saver_path = "";
+  std::string qnn_saver_path;
   auto qnn_saver_path_pos = runtime_options_.find(QNN_SAVER_PATH_KEY);
   if (qnn_saver_path_pos != runtime_options_.end()) {
     qnn_saver_path = qnn_saver_path_pos->second;
@@ -141,11 +142,11 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
-      backend_path_,
+      std::move(backend_path),
       profiling_level_,
       rpc_control_latency_,
       htp_performance_mode_,
-      qnn_saver_path);
+      std::move(qnn_saver_path));
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,

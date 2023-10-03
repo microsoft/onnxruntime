@@ -27,11 +27,11 @@ class QnnModel;
 
 class QnnBackendManager {
  public:
-  QnnBackendManager(std::string backend_path,
+  QnnBackendManager(std::string&& backend_path,
                     ProfilingLevel profiling_level,
                     uint32_t rpc_control_latency,
                     HtpPerformanceMode htp_performance_mode,
-                    std::string qnn_saver_path = "")
+                    std::string&& qnn_saver_path)
       : backend_path_(std::move(backend_path)),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
