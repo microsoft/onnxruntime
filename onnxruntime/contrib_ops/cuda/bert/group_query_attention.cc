@@ -6,6 +6,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_helper.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 // #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 // #include "contrib_ops/cpu/utils/console_dumper.h"
@@ -146,17 +147,24 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       // (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2);
   // allocate buffers
-  if (use_memory_efficient_attention) {
-    if (num_heads != kv_num_heads || past_kv_format != AttentionQkvFormat::Q_K_V_BSNH) {
-
-    }
-    // TODO(aciddelgado): need to make scratch buffer for memeff
+  size_t present_kv_bytes = 0;
+  if (use_memory_efficient_attention && (num_heads != kv_num_heads || past_kv_format != AttentionQkvFormat::Q_K_V_BSNH)) {
+    present_kv_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.present_sequence_length * parameters.head_size);
   }
+  size_t fmha_buffer_bytes = 0;
+  if (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float))) {
+    fmha_buffer_bytes = (parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size * sizeof(float));
+  }
+  auto present_k_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
+  auto present_v_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
+  auto fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, context->GetComputeStream());
 #else
   constexpr bool use_memory_efficient_attention = false;
+  auto present_k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
+  auto present_v_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
+  auto fmha_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
 #endif
 
-  // TODO(aciddelgado): when efficient attention, this must use ungrouped kv num heads
   std::vector<int64_t> present_dims;
   if (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH) {
     present_dims = {
@@ -190,6 +198,13 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
   if (seqlens_k_buffer != nullptr) {
     data.seqlens_k = reinterpret_cast<int*>(seqlens_k_buffer.get());
+  }
+  if (present_k_buffer != nullptr) {
+    data.present_k = present_k_buffer;
+    data.present_v = present_v_buffer;
+  }
+  if (fmha_buffer != nullptr) {
+    data.fmha_buffer = fmha_buffer;
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
