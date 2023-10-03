@@ -2998,13 +2998,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         CaptureBegin();
       }
 
-      if (sync_stream_before_enqueue) {
-        cudaStreamSynchronize(stream);
-      }
-
       // Run TRT inference
       if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
+      }
+
+      if (sync_stream_before_enqueue) {
+        cudaStreamSynchronize(stream);
       }
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
