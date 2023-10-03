@@ -96,3 +96,4 @@ Do not modify directly.*
 | Tile | ai.onnx(6-12,13+) |  |
 | Transpose | ai.onnx(1-12,13+) | need perf optimization |
 | Unsqueeze | ai.onnx(1-10,11-12,13+) |  |
+| Where | ai.onnx(9-15,16+) |  |
