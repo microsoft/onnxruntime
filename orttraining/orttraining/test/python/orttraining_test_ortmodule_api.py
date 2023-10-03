@@ -1781,7 +1781,9 @@ def test_resize_grad_correctness_bilinear_2d(interpolate_size_scale, align_corne
             super().__init__()
 
         def forward(self, input):
-            return torch.nn.functional.interpolate(input, align_corners=align_corners, mode="bilinear", **interpolate_size_scale)
+            return torch.nn.functional.interpolate(
+                input, align_corners=align_corners, mode="bilinear", **interpolate_size_scale
+            )
 
     device = "cuda"
     pt_model = _NeuralNetUpsampleBilinear().to(device)

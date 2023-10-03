@@ -88,9 +88,9 @@ TEST(ResizeGradTest, ResizeGradWithSizesAndAlignCorners) {
   std::vector<float> X(32, 1.0f);
   std::vector<int64_t> X_shape = {1, 2, 4, 4};
 
-  std::vector<float> dX({2.9388f, 3.9184f, 3.9184f, 2.9388f, 3.9184f, 5.2245f, 5.2245f, 3.9184,
-                         3.9184f, 5.2245f, 5.2245f, 3.9184f, 2.9388f, 3.9184f, 3.9184f, 2.9388,
-                         2.9388f, 3.9184f, 3.9184f, 2.9388f, 3.9184f, 5.2245f, 5.2245f, 3.9184,
+  std::vector<float> dX({2.9388f, 3.9184f, 3.9184f, 2.9388f, 3.9184f, 5.2245f, 5.2245f, 3.9184f,
+                         3.9184f, 5.2245f, 5.2245f, 3.9184f, 2.9388f, 3.9184f, 3.9184f, 2.9388f,
+                         2.9388f, 3.9184f, 3.9184f, 2.9388f, 3.9184f, 5.2245f, 5.2245f, 3.9184f,
                          3.9184f, 5.2245f, 5.2245f, 3.9184f, 2.9388f, 3.9184f, 3.9184f, 2.9388f});
   std::vector<int64_t> dX_shape = X_shape;
 
@@ -116,9 +116,9 @@ TEST(ResizeGradTest, ResizeGradWithScales) {
   std::vector<float> X(32, 1.0f);
   std::vector<int64_t> X_shape = {1, 2, 4, 4};
 
-  std::vector<float> dX({2.7128f, 2.9550f, 2.7612f, 1.4533f, 2.9550f, 3.2189f, 3.0078f, 1.5830,
-                         2.7612f, 3.0078f, 2.8106f, 1.4792f, 1.4533f, 1.5830f, 1.4792f, 0.7785,
-                         2.7128f, 2.9550f, 2.7612f, 1.4533f, 2.9550f, 3.2189f, 3.0078f, 1.5830,
+  std::vector<float> dX({2.7128f, 2.9550f, 2.7612f, 1.4533f, 2.9550f, 3.2189f, 3.0078f, 1.5830f,
+                         2.7612f, 3.0078f, 2.8106f, 1.4792f, 1.4533f, 1.5830f, 1.4792f, 0.7785f,
+                         2.7128f, 2.9550f, 2.7612f, 1.4533f, 2.9550f, 3.2189f, 3.0078f, 1.5830f,
                          2.7612f, 3.0078f, 2.8106f, 1.4792f, 1.4533f, 1.5830f, 1.4792f, 0.7785f});
   std::vector<int64_t> dX_shape = X_shape;
 
@@ -150,9 +150,9 @@ TEST(ResizeGradTest, ResizeGradWithScalesHalf) {
   ConvertFloatToMLFloat16(X.data(), X_half.data(), static_cast<int>(X.size()));
   std::vector<int64_t> X_shape = {1, 2, 4, 4};
 
-  std::vector<float> dX({2.7128f, 2.9550f, 2.7612f, 1.4533f, 2.9550f, 3.2189f, 3.0078f, 1.5830,
-                         2.7612f, 3.0078f, 2.8106f, 1.4792f, 1.4533f, 1.5830f, 1.4792f, 0.7785,
-                         2.7128f, 2.9550f, 2.7612f, 1.4533f, 2.9550f, 3.2189f, 3.0078f, 1.5830,
+  std::vector<float> dX({2.7128f, 2.9550f, 2.7612f, 1.4533f, 2.9550f, 3.2189f, 3.0078f, 1.5830f,
+                         2.7612f, 3.0078f, 2.8106f, 1.4792f, 1.4533f, 1.5830f, 1.4792f, 0.7785f,
+                         2.7128f, 2.9550f, 2.7612f, 1.4533f, 2.9550f, 3.2189f, 3.0078f, 1.5830f,
                          2.7612f, 3.0078f, 2.8106f, 1.4792f, 1.4533f, 1.5830f, 1.4792f, 0.7785f});
   std::vector<MLFloat16> dX_half(dX.size());
   ConvertFloatToMLFloat16(dX.data(), dX_half.data(), static_cast<int>(dX.size()));
@@ -182,9 +182,9 @@ TEST(ResizeGradTest, ResizeGradWithScalesAndAlignCorners) {
   std::vector<float> X(32, 1.0f);
   std::vector<int64_t> X_shape = {1, 2, 4, 4};
 
-  std::vector<float> dX({1.9600f, 2.2400f, 2.2400f, 1.9600f, 2.2400f, 2.5600f, 2.5600f, 2.2400,
-                         2.2400f, 2.5600f, 2.5600f, 2.2400f, 1.9600f, 2.2400f, 2.2400f, 1.9600,
-                         1.9600f, 2.2400f, 2.2400f, 1.9600f, 2.2400f, 2.5600f, 2.5600f, 2.2400,
+  std::vector<float> dX({1.9600f, 2.2400f, 2.2400f, 1.9600f, 2.2400f, 2.5600f, 2.5600f, 2.2400f,
+                         2.2400f, 2.5600f, 2.5600f, 2.2400f, 1.9600f, 2.2400f, 2.2400f, 1.9600f,
+                         1.9600f, 2.2400f, 2.2400f, 1.9600f, 2.2400f, 2.5600f, 2.5600f, 2.2400f,
                          2.2400f, 2.5600f, 2.5600f, 2.2400f, 1.9600f, 2.2400f, 2.2400f, 1.9600f});
   std::vector<int64_t> dX_shape = X_shape;
 
