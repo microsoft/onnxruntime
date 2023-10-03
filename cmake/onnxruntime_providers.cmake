@@ -460,13 +460,17 @@ if (onnxruntime_USE_CUDA)
   if (onnxruntime_REDUCED_OPS_BUILD)
     substitute_op_reduction_srcs(onnxruntime_providers_cuda_src)
   endif()
-  # cuda_provider_interface.cc is removed from the object target: onnxruntime_providers_cuda_obj and
-  # add to the lib onnxruntime_providers_cuda separatedly.
-  # onnxruntime_providers_cuda_ut can share all the object files with onnxruntime_providers_cuda except cuda_provider_interface.cc.
-  set(cuda_provider_interface_src ${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_provider_interface.cc)
-  list(REMOVE_ITEM onnxruntime_providers_cuda_src ${cuda_provider_interface_src})
-  onnxruntime_add_object_library(onnxruntime_providers_cuda_obj ${onnxruntime_providers_cuda_src})
-  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${cuda_provider_interface_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
+    # cuda_provider_interface.cc is removed from the object target: onnxruntime_providers_cuda_obj and
+    # add to the lib onnxruntime_providers_cuda separatedly.
+    # onnxruntime_providers_cuda_ut can share all the object files with onnxruntime_providers_cuda except cuda_provider_interface.cc.
+    set(cuda_provider_interface_src ${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_provider_interface.cc)
+    list(REMOVE_ITEM onnxruntime_providers_cuda_src ${cuda_provider_interface_src})
+    onnxruntime_add_object_library(onnxruntime_providers_cuda_obj ${onnxruntime_providers_cuda_src})
+    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${cuda_provider_interface_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  else()
+    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
+  endif()
   # config_cuda_provider_shared_module can be used to config onnxruntime_providers_cuda_obj, onnxruntime_providers_cuda & onnxruntime_providers_cuda_ut.
   # This function guarantees that all 3 targets have the same configurations.
   function(config_cuda_provider_shared_module target)
@@ -600,7 +604,9 @@ if (onnxruntime_USE_CUDA)
       target_compile_definitions(${target} PRIVATE ENABLE_ATEN)
     endif()
   endfunction()
-  config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
+  if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
+    config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
+  endif()
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
 
   install(TARGETS onnxruntime_providers_cuda

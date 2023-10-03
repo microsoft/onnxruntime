@@ -143,6 +143,14 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionLogId, _In_ OrtSessionOptions* options, c
   return nullptr;
 }
 
+///< logging function and optional logging param to use for session output
+ORT_API_STATUS_IMPL(OrtApis::SetUserLoggingFunction, _In_ OrtSessionOptions* options,
+                    _In_ OrtLoggingFunction user_logging_function, _In_opt_ void* user_logging_param) {
+  options->value.user_logging_function = user_logging_function;
+  options->value.user_logging_param = user_logging_param;
+  return nullptr;
+}
+
 ///< applies to session load, initialization, etc
 ORT_API_STATUS_IMPL(OrtApis::SetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, int session_log_verbosity_level) {
   options->value.session_log_verbosity_level = session_log_verbosity_level;

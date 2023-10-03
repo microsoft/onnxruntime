@@ -9,6 +9,7 @@ export declare namespace Env {
     'ort-wasm.wasm'?: string;
     'ort-wasm-threaded.wasm'?: string;
     'ort-wasm-simd.wasm'?: string;
+    'ort-training-wasm-simd.wasm'?: string;
     'ort-wasm-simd-threaded.wasm'?: string;
     /* eslint-enable @typescript-eslint/naming-convention */
   };
@@ -105,6 +106,12 @@ export declare namespace Env {
      * see comments on {@link GpuBufferType} for more details about why not use types defined in "@webgpu/types".
      */
     readonly device: unknown;
+    /**
+     * Set or get whether validate input content.
+     *
+     * @defaultValue `false`
+     */
+    validateInputContent?: boolean;
   }
 }
 
