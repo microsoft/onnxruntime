@@ -38,10 +38,6 @@ namespace Dml
             }
         }
 
-        // Create and compile the operator.
-        ComPtr<IDMLOperator> dmlOperator;
-        ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
-
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
         ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
 
@@ -87,6 +83,10 @@ namespace Dml
         }
         else
         {
+            // Create and compile the operator.
+            ComPtr<IDMLOperator> dmlOperator;
+            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
+
             DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
             ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), executionFlags, IID_PPV_ARGS(&m_compiledOperator)));
 
@@ -792,8 +792,18 @@ namespace Dml
         graphDesc.NodeCount = operatorGraphDesc.nodeCount;
         for (size_t i = 0; i < graphDesc.NodeCount; ++i)
         {
+            DML_OPERATOR_DESC opDesc = *operatorGraphDesc.nodesAsOpDesc[i];
+            
+            // TODO: Change as new header is ingested
+            if (opDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING)
+                opDesc.Type = (DML_OPERATOR_TYPE) 169;
+                
+            // TODO: Change as new header is ingested
+            if (opDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT)
+                opDesc.Type = (DML_OPERATOR_TYPE) 170;
+
             // Create the operator.
-            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(operatorGraphDesc.nodesAsOpDesc[i], IID_PPV_ARGS(&dmlOperators[i])));
+            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&opDesc, IID_PPV_ARGS(&dmlOperators[i])));
             dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{dmlOperators[i].Get()};
             dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
         }

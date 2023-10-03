@@ -405,6 +405,15 @@ namespace Dml::GraphDescBuilder
                     auto& opDesc = graphNodeCreateInfo.nodesAsOperatorDesc[i];
 
                     DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc(*opDesc, &allocator);
+
+                    // TODO: Change as new header is ingested
+                    if (dmlDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING)
+                        dmlDesc.Type = (DML_OPERATOR_TYPE) 169;
+                
+                    // TODO: Change as new header is ingested
+                    if (dmlDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT)
+                        dmlDesc.Type = (DML_OPERATOR_TYPE) 170;
+
                     ComPtr<IDMLOperator> op;
                     ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
                     allocator.Reset();
