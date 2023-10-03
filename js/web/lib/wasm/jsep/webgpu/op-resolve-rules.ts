@@ -3,6 +3,8 @@
 
 import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
 import {attention, parseAttentionAttributes} from './ops/attention';
+import {biasAdd} from './ops/bias-add';
+import {biasSplitGelu} from './ops/bias-split-gelu';
 import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
@@ -18,6 +20,7 @@ import {matMul} from './ops/matmul';
 import {multiHeadAttention, parseMultiHeadAttentionAttributes} from './ops/multi-head-attentiion';
 import {pad, parsePadAttributes} from './ops/pad';
 import * as pool from './ops/pool';
+import {range} from './ops/range';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
 import {parseSkipLayerNormAttributes, skipLayerNorm} from './ops/skip-layer-norm';
@@ -47,6 +50,8 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Attention', [attention, parseAttentionAttributes]],
   // TODO: support new attributes for AveragePool-10
   ['AveragePool', [pool.averagePool, pool.parseAveragePoolAttributes]],
+  ['BiasAdd', [biasAdd]],
+  ['BiasSplitGelu', [biasSplitGelu]],
   ['Cast', [unaryOps.cast, unaryOps.parseCastAttributes]],
   ['Ceil', [unaryOps.ceil]],
   ['ClipV10', [unaryOps.clipV10]],
@@ -87,6 +92,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Not', [unaryOps.not]],
   ['Pad', [pad, parsePadAttributes]],
   ['Pow', [binaryOps.pow]],
+  ['Range', [range]],
   ['Reciprocal', [unaryOps.reciprocal]],
   ['ReduceMin', [reduceMin, parseReduceAttributes]],
   ['ReduceMean', [reduceMean, parseReduceAttributes]],
