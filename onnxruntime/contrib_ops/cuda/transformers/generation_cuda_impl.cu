@@ -1368,7 +1368,7 @@ void ReorderPastStatesKernelLauncher(void* out_buffer,
                                      cudaStream_t stream) {
   const int chunked_head_size = head_size / chunk_size;
   const dim3 block(16, chunked_head_size, chunk_size / 4);
-  const dim3 grid(batch_size, num_heads, (max_length + blockDim.x - 1) / blockDim.x);
+  const dim3 grid(batch_size, num_heads, (max_length + block.x - 1) / block.x);
   if (chunk_size == 4) {
     ReorderPastStatesKernel<<<grid, block, 0, stream>>>(reinterpret_cast<float4*>(out_buffer),
                                                         reinterpret_cast<const float4*>(in_buffer),
@@ -1376,7 +1376,7 @@ void ReorderPastStatesKernelLauncher(void* out_buffer,
                                                         num_heads,
                                                         max_length,
                                                         chunked_head_size,
-                                                        blockDim.z);
+                                                        block.z);
   } else if (chunk_size == 8) {
     ReorderPastStatesKernel<<<grid, block, 0, stream>>>(reinterpret_cast<Half4*>(out_buffer),
                                                         reinterpret_cast<const Half4*>(in_buffer),
@@ -1384,7 +1384,7 @@ void ReorderPastStatesKernelLauncher(void* out_buffer,
                                                         num_heads,
                                                         max_length,
                                                         chunked_head_size,
-                                                        blockDim.z);
+                                                        block.z);
   } else {
     ORT_THROW("ReorderPastStatesKernelLauncher only support float or half");
   }
