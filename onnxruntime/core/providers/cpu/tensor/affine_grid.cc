@@ -71,7 +71,7 @@ void generate_base_grid_3d(int64_t D, int64_t H, int64_t W, bool align_corners, 
 }
 
 template <typename T>
-void affine_grid_generator_2d (const Tensor* theta, const Eigen::Matrix<T, 2, Eigen::Dynamic>& base_grid_transposed, int64_t batch_num, int64_t H, int64_t W, Tensor* grid) {
+void affine_grid_generator_2d(const Tensor* theta, const Eigen::Matrix<T, 2, Eigen::Dynamic>& base_grid_transposed, int64_t batch_num, int64_t H, int64_t W, Tensor* grid) {
   const Eigen::StorageOptions option = Eigen::RowMajor;
   auto theta_batch_offset = batch_num * 2 * 3;
   const T* theta_data = theta->Data<T>() + theta_batch_offset;
@@ -85,7 +85,7 @@ void affine_grid_generator_2d (const Tensor* theta, const Eigen::Matrix<T, 2, Ei
 }
 
 template <typename T>
-void affine_grid_generator_3d (const Tensor* theta, const Eigen::Matrix<T, 3, Eigen::Dynamic>& base_grid_transposed, int64_t batch_num, int64_t D, int64_t H, int64_t W, Tensor* grid) {
+void affine_grid_generator_3d(const Tensor* theta, const Eigen::Matrix<T, 3, Eigen::Dynamic>& base_grid_transposed, int64_t batch_num, int64_t D, int64_t H, int64_t W, Tensor* grid) {
   const Eigen::StorageOptions option = Eigen::RowMajor;
   auto theta_batch_offset = batch_num * 3 * 4;
   const T* theta_data = theta->Data<T>() + theta_batch_offset;
