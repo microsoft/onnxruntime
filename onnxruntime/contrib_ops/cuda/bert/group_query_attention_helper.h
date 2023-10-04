@@ -195,7 +195,7 @@ Status CheckInputs(const Tensor* query,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "past_sequence_length tensor must be of one element when using past kv.");
     }
-    if (past_sequence_length.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    if (past_seq_len->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
       past_sequence_length = *((*past_seq_len).template Data<int32_t>());
     } else {
       past_sequence_length = static_cast<int32_t>(*((*past_seq_len).template Data<int64_t>()));
