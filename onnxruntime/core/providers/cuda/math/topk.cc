@@ -61,11 +61,12 @@ TopK<inputk>::TopK(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 #define IS_PRIM_TYPE(T) utils::IsPrimitiveDataType<T>(prim_type)
-#define TOPKIMPL(T) TopKImpl<T>(this, ctx->GetComputeStream(), tensor_X->Data<T>(), \
-                                static_cast<T*>(tensor_V->MutableDataRaw()),        \
-                                static_cast<int64_t*>(tensor_I->MutableDataRaw()),  \
-                                elem_nums_cuda,                                     \
-                                elem_nums.size(),                                   \
+#define TOPKIMPL(T) TopKImpl<T>(this, use_deterministic_compute,                   \
+                                ctx->GetComputeStream(), tensor_X->Data<T>(),      \
+                                static_cast<T*>(tensor_V->MutableDataRaw()),       \
+                                static_cast<int64_t*>(tensor_I->MutableDataRaw()), \
+                                elem_nums_cuda,                                    \
+                                elem_nums.size(),                                  \
                                 axis, K_, largest_, sorted_, N, dimension)
 
 template <bool inputk>
@@ -106,11 +107,14 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for TopK operator");
   }
 
+  bool use_deterministic_compute = ctx->GetUseDeterministicCompute();
+
   if (IS_PRIM_TYPE(int32_t)) return TOPKIMPL(int32_t);
   if (IS_PRIM_TYPE(int64_t)) return TOPKIMPL(int64_t);
   if (IS_PRIM_TYPE(MLFloat16)) return TOPKIMPL(MLFloat16);
   if (IS_PRIM_TYPE(float)) return TOPKIMPL(float);
   if (IS_PRIM_TYPE(double)) return TOPKIMPL(double);
+
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for TopK operator");
 }
 

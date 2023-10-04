@@ -7,10 +7,11 @@
 #include <vector>
 #include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
+#include "core/framework/config_options.h"
+#include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
-#include "core/framework/config_options.h"
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/library_handles.h"
@@ -147,6 +148,10 @@ struct SessionOptions {
   std::shared_ptr<LibraryHandles> custom_op_libs;
   void AddCustomOpLibraryHandle(PathString library_name, void* library_handle);
 #endif
+
+  // User specified logging func and param
+  OrtLoggingFunction user_logging_function = nullptr;
+  void* user_logging_param = nullptr;
 };
 
 }  // namespace onnxruntime

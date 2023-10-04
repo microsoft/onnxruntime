@@ -26,7 +26,7 @@ class Node;
 
 #include "core/common/basic_types.h"
 #include "core/common/profiler_common.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/framework_provider_common.h"
@@ -76,18 +76,6 @@ class IExecutionProvider {
 
  public:
   virtual ~IExecutionProvider() = default;
-
-  /**
-     Get all IAllocators for <*this> execution provider.
-  */
-  const std::vector<AllocatorPtr>& GetAllocators() const {
-    return allocator_list_;
-  }
-
-  /**
-   * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
-   */
-  virtual AllocatorPtr GetAllocator(OrtMemType mem_type) const;
 
   /**
    * Returns a data transfer object that implements methods to copy to and
@@ -234,9 +222,6 @@ class IExecutionProvider {
   */
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
 
-  void InsertAllocator(AllocatorPtr allocator);
-  void ReplaceAllocator(AllocatorPtr allocator);
-
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
     // GraphViewer that filters the full graph to the nodes that are covered by 'node'
@@ -302,12 +287,6 @@ class IExecutionProvider {
    */
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;
 
-  /**
-     Register allocators for EP, potentially re-using existing allocators for a device from allocator_manager.
-     If the EP implements this it should generally delay creating any allocators until this is called.
-  */
-  virtual void RegisterAllocator(AllocatorManager& /*allocator_manager*/);
-
   virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
     return {};
   }
@@ -318,7 +297,7 @@ class IExecutionProvider {
     return DataLayout::NCHW;
   }
 
-  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/) const {}
+  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, AllocatorMap&) const {}
 
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */
@@ -341,21 +320,17 @@ class IExecutionProvider {
     return default_device_;
   };
 
+  /**
+   * Create Preferred allocators for the current Execution Provider
+   * This function is a stateless function which creates new instances of Allocator, without storing them in EP.
+   */
+  virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
+
  private:
   const std::string type_;
 
-  // allocator lookup is done by combining the device id and OrtMemType.
-  // there's also an implicit connection to the underlying OrtDevice involved that is dependent on the EP.
-  // e.g. for a CPU based EP, 'default' memory is a CPU device, and for a GPU based EP 'default' memory is a
-  // GPU device.
-  using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
-  AllocatorMap allocators_;
-
   // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
-  // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
-  // contains the same instances as allocators_
-  std::vector<AllocatorPtr> allocator_list_;
 
   // helper to generate ids that are unique to model and deterministic, even if the execution provider is shared across
   // multiple sessions.

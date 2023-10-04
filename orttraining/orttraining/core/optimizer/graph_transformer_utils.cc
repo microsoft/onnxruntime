@@ -53,21 +53,21 @@
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
+#include "orttraining/core/optimizer/gru_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/lstm_replacement.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
+#include "orttraining/core/optimizer/scaled_sum_fusion.h"
 #include "orttraining/core/optimizer/shape_optimizer.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
-
-// Only enabled in full training build. Not in on device training builds
-#ifdef ENABLE_TRAINING
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape.h"
+#include "core/optimizer/pre_shape_node_elimination.h"
+#include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
-#endif
 
 namespace onnxruntime {
 namespace training {
@@ -96,6 +96,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ExpandElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<CastElimination>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<PreShapeNodeElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NoopElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DivMulFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<EliminateDropout>()));
@@ -104,6 +105,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NotWhereFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<LSTMReplacement>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GRUReplacement>()));
 
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
@@ -135,10 +137,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<QDQFusion>(compatible_eps));
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-      // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
+      // We are supposed to use the execution provider as an indicator,
+      //  but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<IsInfReduceSumFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<ScaledSumFusion>(compatible_eps));
 #endif
 
       if (config.enable_gelu_approximation) {
@@ -173,14 +177,18 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
                                                                      cuda_execution_provider));
       }
 
-#ifdef ENABLE_TRAINING
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
                                                                               config.sparse_label_input_names));
-      }
+#if defined(USE_CUDA) || defined(USE_ROCM)
+        // Put this under CUDA/ROCM guard as it depends on PadAndUnflatten CUDA/ROCM kernel.
+        // Once we have a CPU kernel for PadAndUnflatten, we can remove the guard.
+        transformers.emplace_back(std::make_unique<PaddingElimination>(compatible_eps,
+                                                                       config.sparse_embedding_input_names));
 #endif
+      }
 
     } break;
 

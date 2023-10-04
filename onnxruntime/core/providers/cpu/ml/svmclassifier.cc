@@ -47,7 +47,7 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   class_count_ = 0;
   for (size_t i = 0; i < vectors_per_class_.size(); i++) {
     starting_vector_.push_back(vector_count_);
-    vector_count_ += vectors_per_class_[i];
+    vector_count_ += narrow<ptrdiff_t>(vectors_per_class_[i]);
   }
 
   using_strings_ = false;

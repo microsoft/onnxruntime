@@ -30,30 +30,32 @@ class GPUTensorToDX12TextureTelemetryEvent {
   GPUTensorToDX12TextureTelemetryEvent(const ImageTensorDescription& tensorDesc) {
     runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
-        winml_trace_logging_provider,
-        "GPUTensorToDX12TextureStart",
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
-        TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
-        TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
-        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
-        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+      winml_trace_logging_provider,
+      "GPUTensorToDX12TextureStart",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
+      TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
+      TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES)
+    );
   }
   ~GPUTensorToDX12TextureTelemetryEvent() {
     TraceLoggingWrite(
-        winml_trace_logging_provider,
-        "GPUTensorToDX12TextureStop",
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingHexInt32(S_OK, "HRESULT"),
-        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
-        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+      winml_trace_logging_provider,
+      "GPUTensorToDX12TextureStop",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TraceLoggingHexInt32(S_OK, "HRESULT"),
+      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES)
+    );
   }
 
-private:
+ private:
   int runtime_session_id_;
 };
 
@@ -62,30 +64,32 @@ class ConvertGPUTensorToSoftwareBitmapTelemetryEvent {
   ConvertGPUTensorToSoftwareBitmapTelemetryEvent(const ImageTensorDescription& tensorDesc) {
     runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
-        winml_trace_logging_provider,
-        "ConvertGPUTensorToSoftwareBitmapStart",
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
-        TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
-        TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
-        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
-        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+      winml_trace_logging_provider,
+      "ConvertGPUTensorToSoftwareBitmapStart",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
+      TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
+      TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES)
+    );
   }
   ~ConvertGPUTensorToSoftwareBitmapTelemetryEvent() {
     TraceLoggingWrite(
-        winml_trace_logging_provider,
-        "ConvertGPUTensorToSoftwareBitmapStop",
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingHexInt32(S_OK, "HRESULT"),
-        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
-        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+      winml_trace_logging_provider,
+      "ConvertGPUTensorToSoftwareBitmapStop",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TraceLoggingHexInt32(S_OK, "HRESULT"),
+      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES)
+    );
   }
 
-private:
+ private:
   int runtime_session_id_;
 };
 
@@ -94,39 +98,42 @@ class ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent {
   ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent(const ImageTensorDescription& tensorDesc) {
     runtime_session_id_ = telemetry_helper.GetRuntimeSessionId();
     TraceLoggingWrite(
-        winml_trace_logging_provider,
-        "ConvertCPUTensorToVideoFrameWithSoftwareBitmapStart",
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
-        TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
-        TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
-        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
-        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+      winml_trace_logging_provider,
+      "ConvertCPUTensorToVideoFrameWithSoftwareBitmapStart",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TraceLoggingHexInt32(tensorDesc.channelType, "Type"),
+      TraceLoggingInt64(tensorDesc.sizes[2], "Height"),
+      TraceLoggingInt64(tensorDesc.sizes[3], "Width"),
+      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES)
+    );
   }
   ~ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent() {
     TraceLoggingWrite(
-        winml_trace_logging_provider,
-        "ConvertCPUTensorToVideoFrameWithSoftwareBitmapStop",
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-        TraceLoggingHexInt32(S_OK, "HRESULT"),
-        TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
-        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-        TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+      winml_trace_logging_provider,
+      "ConvertCPUTensorToVideoFrameWithSoftwareBitmapStop",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TraceLoggingHexInt32(S_OK, "HRESULT"),
+      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES)
+    );
   }
 
-private:
+ private:
   int runtime_session_id_;
 };
 
 void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
-    _In_ UINT32 batchIdx,
-    _In_ winml::LearningModelSession& session,
-    _In_ ID3D12Resource* pInputTensor,
-    _In_ const _winml::ImageTensorDescription& tensorDesc,
-    _Inout_ wm::VideoFrame& destVideoFrame) {
+  _In_ UINT32 batchIdx,
+  _In_ winml::LearningModelSession& session,
+  _In_ ID3D12Resource* pInputTensor,
+  _In_ const _winml::ImageTensorDescription& tensorDesc,
+  _Inout_ wm::VideoFrame& destVideoFrame
+) {
   CWinMLAutoLock lock(&lock_);
 
   auto spDevice = session.Device().as<winmlp::LearningModelDevice>();
@@ -136,17 +143,19 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
   wgi::SoftwareBitmap softwareBitmap = destVideoFrame.SoftwareBitmap();
 
   if (softwareBitmap) {
-   ConvertGPUTensorToSoftwareBitmap(batchIdx, pInputTensor, *pDeviceCache, tensorDesc, softwareBitmap);
+    ConvertGPUTensorToSoftwareBitmap(batchIdx, pInputTensor, *pDeviceCache, tensorDesc, softwareBitmap);
   } else if (spDestDirect3DSurface) {
     bool isUAVSupportedFormat = _winmli::FormatSupportedForUAV(
-        pDeviceCache->GetD3D12Device(),
-        _winmli::GetDXGIFormatFromDirectXPixelFormat(spDestDirect3DSurface.Description().Format));
+      pDeviceCache->GetD3D12Device(),
+      _winmli::GetDXGIFormatFromDirectXPixelFormat(spDestDirect3DSurface.Description().Format)
+    );
 
     // UAV support for formats is device dependent
     if (!isUAVSupportedFormat) {
       ConvertDX12TensorToUnsupportedVideoFrameFormat(batchIdx, pInputTensor, *pDeviceCache, tensorDesc, destVideoFrame);
     } else {
-      ComPtr<ID3D11Texture2D> spVideoFrameTexture = _winmli::GetTextureFromDirect3DSurface(destVideoFrame.Direct3DSurface());
+      ComPtr<ID3D11Texture2D> spVideoFrameTexture =
+        _winmli::GetTextureFromDirect3DSurface(destVideoFrame.Direct3DSurface());
 
       D3D11_TEXTURE2D_DESC videoFrameTextureDesc;
       spVideoFrameTexture->GetDesc(&videoFrameTextureDesc);
@@ -160,7 +169,9 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
         } else {
           D3D12_RESOURCE_DESC cachedTextureDesc = output_resource_->GetDesc();
 
-          if (cachedTextureDesc.Width != videoFrameTextureDesc.Width || cachedTextureDesc.Height != videoFrameTextureDesc.Height || cachedTextureDesc.Format != videoFrameTextureDesc.Format) {
+          if (cachedTextureDesc.Width != videoFrameTextureDesc.Width ||
+                        cachedTextureDesc.Height != videoFrameTextureDesc.Height ||
+                        cachedTextureDesc.Format != videoFrameTextureDesc.Format) {
             // The dimensions or format don't match, so we need to re-create our texture
             output_resource_ = CreateShareableD3D12Texture(videoFrameTextureDesc, pDeviceCache->GetD3D12Device());
             D3D11_cached_texture_ = ShareD3D12Texture(output_resource_.Get(), pDeviceCache->GetD3D11Device());
@@ -185,14 +196,23 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
         UINT comPtrSize = static_cast<UINT>(sizeof(spSharedD3D11Texture.GetAddressOf()));
         UINT handleSize = static_cast<UINT>(sizeof(sharedHandle));
 
-        if ((FAILED(spVideoFrameTexture->GetPrivateData(_d3d11TextureGUID, &comPtrSize, spSharedD3D11Texture.GetAddressOf())) || !spSharedD3D11Texture.Get()) || (FAILED(spVideoFrameTexture->GetPrivateData(_handleGUID, &handleSize, &sharedHandle)) || sharedHandle != shared_handle_)) {
+        if ((FAILED(spVideoFrameTexture->GetPrivateData(
+                         _d3d11TextureGUID, &comPtrSize, spSharedD3D11Texture.GetAddressOf()
+                     )) ||
+                     !spSharedD3D11Texture.Get()) ||
+                    (FAILED(spVideoFrameTexture->GetPrivateData(_handleGUID, &handleSize, &sharedHandle)) ||
+                     sharedHandle != shared_handle_)) {
           // Create a new shared texture that we cache on the video frame texture
           output_resource_ = CreateShareableD3D12Texture(videoFrameTextureDesc, pDeviceCache->GetD3D12Device());
           spSharedD3D11Texture = ShareD3D12Texture(output_resource_.Get(), spTextureDevice.Get());
 
           // Cache the shared texture on the video frame texture in order to tie their lifetime together
-          WINML_THROW_IF_FAILED(spVideoFrameTexture->SetPrivateDataInterface(_d3d11TextureGUID, spSharedD3D11Texture.Get()));
-          WINML_THROW_IF_FAILED(spVideoFrameTexture->SetPrivateData(_handleGUID, sizeof(shared_handle_), &shared_handle_));
+          WINML_THROW_IF_FAILED(
+            spVideoFrameTexture->SetPrivateDataInterface(_d3d11TextureGUID, spSharedD3D11Texture.Get())
+          );
+          WINML_THROW_IF_FAILED(
+            spVideoFrameTexture->SetPrivateData(_handleGUID, sizeof(shared_handle_), &shared_handle_)
+          );
         }
 
         // Detensorize
@@ -212,12 +232,12 @@ void TensorToVideoFrameConverter::DX12TensorToVideoFrame(
 }
 
 ComPtr<ID3D12Resource> TensorToVideoFrameConverter::CreateShareableD3D12Texture(
-    const D3D11_TEXTURE2D_DESC& d3d11Desc,
-    ID3D12Device* d3d12Device) {
-  D3D12_HEAP_PROPERTIES heapProps {};
+  const D3D11_TEXTURE2D_DESC& d3d11Desc, ID3D12Device* d3d12Device
+) {
+  D3D12_HEAP_PROPERTIES heapProps{};
   heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
 
-  D3D12_RESOURCE_DESC resDesc {};
+  D3D12_RESOURCE_DESC resDesc{};
   resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
   resDesc.Width = d3d11Desc.Width;
   resDesc.Height = d3d11Desc.Height;
@@ -230,36 +250,37 @@ ComPtr<ID3D12Resource> TensorToVideoFrameConverter::CreateShareableD3D12Texture(
 
   ComPtr<ID3D12Resource> d3d12Resource;
   WINML_THROW_IF_FAILED(d3d12Device->CreateCommittedResource(
-    &heapProps,
-    D3D12_HEAP_FLAG_SHARED,
-    &resDesc,
-    D3D12_RESOURCE_STATE_COPY_DEST,
-    nullptr,
-    IID_PPV_ARGS(&d3d12Resource)));
+    &heapProps, D3D12_HEAP_FLAG_SHARED, &resDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&d3d12Resource)
+  ));
 
   return d3d12Resource;
 }
 
 void TensorToVideoFrameConverter::ConvertDX12TensorToUnsupportedVideoFrameFormat(
-    _In_ UINT32 batchIdx,
-    _In_ ID3D12Resource* pInputTensor,
-    _In_ _winml::D3DDeviceCache& device_cache,
-    _In_ const ImageTensorDescription& tensorDesc,
-    _Inout_ wm::VideoFrame& unsupportedVideoFrame) {
+  _In_ UINT32 batchIdx,
+  _In_ ID3D12Resource* pInputTensor,
+  _In_ _winml::D3DDeviceCache& device_cache,
+  _In_ const ImageTensorDescription& tensorDesc,
+  _Inout_ wm::VideoFrame& unsupportedVideoFrame
+) {
   assert(pInputTensor != nullptr);
 
   // Find the first supported format and convert to it
   auto supportedFormatIter = std::find_if(
-      _winmli::supportedWinMLFormats.begin(),
-      _winmli::supportedWinMLFormats.end(),
-      [&device_cache](DXGI_FORMAT format) { return _winmli::FormatSupportedForUAV(device_cache.GetD3D12Device(), format); });
+    _winmli::supportedWinMLFormats.begin(),
+    _winmli::supportedWinMLFormats.end(),
+    [&device_cache](DXGI_FORMAT format) {
+      return _winmli::FormatSupportedForUAV(device_cache.GetD3D12Device(), format);
+    }
+  );
 
   WINML_THROW_HR_IF_FALSE_MSG(
-      E_INVALIDARG,
-      supportedFormatIter != _winmli::supportedWinMLFormats.end(),
-      "Detensorization for this format is unsupported on the current device.");
+    E_INVALIDARG,
+    supportedFormatIter != _winmli::supportedWinMLFormats.end(),
+    "Detensorization for this format is unsupported on the current device."
+  );
 
-  D3D11_TEXTURE2D_DESC supportedDesc {};
+  D3D11_TEXTURE2D_DESC supportedDesc{};
   supportedDesc.Width = unsupportedVideoFrame.Direct3DSurface().Description().Width;
   supportedDesc.Height = unsupportedVideoFrame.Direct3DSurface().Description().Height;
   supportedDesc.MipLevels = 1;
@@ -269,7 +290,8 @@ void TensorToVideoFrameConverter::ConvertDX12TensorToUnsupportedVideoFrameFormat
   supportedDesc.SampleDesc.Quality = 0;
   supportedDesc.Usage = D3D11_USAGE_DEFAULT;
 
-  ComPtr<ID3D11Texture2D> unsupportedTexture = _winmli::GetTextureFromDirect3DSurface(unsupportedVideoFrame.Direct3DSurface());
+  ComPtr<ID3D11Texture2D> unsupportedTexture =
+    _winmli::GetTextureFromDirect3DSurface(unsupportedVideoFrame.Direct3DSurface());
 
   ComPtr<ID3D11Device> d3d11Device;
   unsupportedTexture->GetDevice(&d3d11Device);
@@ -284,7 +306,9 @@ void TensorToVideoFrameConverter::ConvertDX12TensorToUnsupportedVideoFrameFormat
   WINML_THROW_IF_FAILED(CreateDirect3D11SurfaceFromDXGISurface(dxgiSurface.Get(), &inspectableSurface));
 
   wgdx::Direct3D11::IDirect3DSurface surface;
-  WINML_THROW_IF_FAILED(inspectableSurface->QueryInterface(winrt::guid_of<decltype(surface)>(), reinterpret_cast<void**>(winrt::put_abi(surface))));
+  WINML_THROW_IF_FAILED(inspectableSurface->QueryInterface(
+    winrt::guid_of<decltype(surface)>(), reinterpret_cast<void**>(winrt::put_abi(surface))
+  ));
   converted_video_frame_ = wm::VideoFrame::CreateWithDirect3D11Surface(surface);
 
   // Detensorize
@@ -297,35 +321,37 @@ void TensorToVideoFrameConverter::ConvertDX12TensorToUnsupportedVideoFrameFormat
   converted_video_frame_.CopyToAsync(unsupportedVideoFrame).get();
 }
 
-ComPtr<ID3D11Texture2D> TensorToVideoFrameConverter::ShareD3D12Texture(ID3D12Resource* pResource, ID3D11Device* pDevice)
-{
-    assert(pResource != nullptr);
-    assert(pDevice != nullptr);
+ComPtr<ID3D11Texture2D> TensorToVideoFrameConverter::ShareD3D12Texture(
+  ID3D12Resource* pResource, ID3D11Device* pDevice
+) {
+  assert(pResource != nullptr);
+  assert(pDevice != nullptr);
 
-    ComPtr<ID3D12Device> d3d12Device;
-    WINML_THROW_IF_FAILED(pResource->GetDevice(IID_PPV_ARGS(&d3d12Device)));
+  ComPtr<ID3D12Device> d3d12Device;
+  WINML_THROW_IF_FAILED(pResource->GetDevice(IID_PPV_ARGS(&d3d12Device)));
 
-    HANDLE hSharedTexture;
-    WINML_THROW_IF_FAILED(d3d12Device->CreateSharedHandle(pResource, nullptr, GENERIC_ALL, nullptr, &hSharedTexture));
+  HANDLE hSharedTexture;
+  WINML_THROW_IF_FAILED(d3d12Device->CreateSharedHandle(pResource, nullptr, GENERIC_ALL, nullptr, &hSharedTexture));
 
-    ComPtr<ID3D11Device1> device1;
-    WINML_THROW_IF_FAILED(pDevice->QueryInterface(IID_PPV_ARGS(&device1)));
+  ComPtr<ID3D11Device1> device1;
+  WINML_THROW_IF_FAILED(pDevice->QueryInterface(IID_PPV_ARGS(&device1)));
 
-    wil::unique_handle safeHandle(hSharedTexture);
+  wil::unique_handle safeHandle(hSharedTexture);
 
-    ComPtr<ID3D11Texture2D> d3d11Texture;
-    WINML_THROW_IF_FAILED(device1->OpenSharedResource1(safeHandle.get(), IID_PPV_ARGS(&d3d11Texture)));
+  ComPtr<ID3D11Texture2D> d3d11Texture;
+  WINML_THROW_IF_FAILED(device1->OpenSharedResource1(safeHandle.get(), IID_PPV_ARGS(&d3d11Texture)));
 
-    shared_handle_ = safeHandle.get();
+  shared_handle_ = safeHandle.get();
 
-    return d3d11Texture;
+  return d3d11Texture;
 }
 
 void TensorToVideoFrameConverter::SoftwareTensorToVideoFrame(
-    _In_ winml::LearningModelSession& session,
-    _In_ BYTE* pCPUTensorToConvert,
-    _In_ ImageTensorDescription tensorDesc,
-    _Inout_ wm::VideoFrame& pDestVideoFrame) {
+  _In_ winml::LearningModelSession& session,
+  _In_ BYTE* pCPUTensorToConvert,
+  _In_ ImageTensorDescription tensorDesc,
+  _Inout_ wm::VideoFrame& pDestVideoFrame
+) {
   CWinMLAutoLock lock(&lock_);
   wm::IVideoFrame spTensorFrame;
   UINT32 outputWidth = 0;
@@ -334,12 +360,7 @@ void TensorToVideoFrameConverter::SoftwareTensorToVideoFrame(
   UINT32 tensorHeight = static_cast<UINT32>(tensorDesc.sizes[2]);
   UINT32 tensorWidth = static_cast<UINT32>(tensorDesc.sizes[3]);
   // create a bitmap bounds for the whole image/tensor
-  wgi::BitmapBounds inputBounds =
-      {
-          0,
-          0,
-          tensorWidth,
-          tensorHeight};
+  wgi::BitmapBounds inputBounds = {0, 0, tensorWidth, tensorHeight};
 
   wgi::SoftwareBitmap spOutputSoftwareBitmap = pDestVideoFrame.SoftwareBitmap();
   wgdx::Direct3D11::IDirect3DSurface spOutputSurface = pDestVideoFrame.Direct3DSurface();
@@ -358,11 +379,13 @@ void TensorToVideoFrameConverter::SoftwareTensorToVideoFrame(
     outputHeight = description.Height;
   }
 
-  if (_winmli::NeedsVideoFrameConversion(pDestVideoFrame, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight)) {
-    if (converted_video_frame_ == nullptr ||
-        _winmli::NeedsVideoFrameConversion(converted_video_frame_, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight)) {
+  if (_winmli::NeedsVideoFrameConversion(
+        pDestVideoFrame, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight
+      )) {
+    if (converted_video_frame_ == nullptr || _winmli::NeedsVideoFrameConversion(converted_video_frame_, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight)) {
       converted_video_frame_ = wm::VideoFrame::CreateWithSoftwareBitmap(
-          wgi::SoftwareBitmap(wgi::BitmapPixelFormat::Bgra8, tensorWidth, tensorHeight));
+        wgi::SoftwareBitmap(wgi::BitmapPixelFormat::Bgra8, tensorWidth, tensorHeight)
+      );
     }
 
     spTensorFrame = converted_video_frame_;
@@ -371,27 +394,22 @@ void TensorToVideoFrameConverter::SoftwareTensorToVideoFrame(
     converted_video_frame_ = nullptr;
   }
   auto bitmap = spTensorFrame.SoftwareBitmap();
-  ConvertCPUTensorToSoftwareBitmap(
-      pCPUTensorToConvert,
-      tensorDesc,
-      bitmap);
+  ConvertCPUTensorToSoftwareBitmap(pCPUTensorToConvert, tensorDesc, bitmap);
 
   if (converted_video_frame_) {
     _winmli::ConvertVideoFrameToVideoFrame(
-        converted_video_frame_,
-        inputBounds,
-        outputWidth,
-        outputHeight,
-        pDestVideoFrame);
+      converted_video_frame_, inputBounds, outputWidth, outputHeight, pDestVideoFrame
+    );
   }
 }
 
 void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
-    _In_ UINT32 batchIdx,
-    _In_ ID3D12Resource* pInputResource,
-    _In_ _winml::D3DDeviceCache& device_cache,
-    _In_ const ImageTensorDescription& tensorDesc,
-    _Inout_ ID3D12Resource* pOutputResource) {
+  _In_ UINT32 batchIdx,
+  _In_ ID3D12Resource* pInputResource,
+  _In_ _winml::D3DDeviceCache& device_cache,
+  _In_ const ImageTensorDescription& tensorDesc,
+  _Inout_ ID3D12Resource* pOutputResource
+) {
   assert(pInputResource != nullptr);
   assert(pOutputResource != nullptr);
 
@@ -410,26 +428,68 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   }
 
   WINML_THROW_HR_IF_FALSE_MSG(
-      E_INVALIDARG,
-      outputDesc.Format == DXGI_FORMAT_B8G8R8A8_UNORM || outputDesc.Format == DXGI_FORMAT_R8G8B8A8_UNORM || outputDesc.Format == DXGI_FORMAT_R8_UNORM,
-      "Format was output image %d. Output image format must be Bgra8, Rgba8 or Gray8.",
-      outputDesc.Format);
+    E_INVALIDARG,
+    outputDesc.Format == DXGI_FORMAT_B8G8R8A8_UNORM || outputDesc.Format == DXGI_FORMAT_R8G8B8A8_UNORM ||
+      outputDesc.Format == DXGI_FORMAT_R8_UNORM,
+    "Format was output image %d. Output image format must be Bgra8, Rgba8 or Gray8.",
+    outputDesc.Format
+  );
 
   // Validate input description
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, inputDesc.Height != 0, "Invalid input image height provided. Height is set to zero.");
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, inputDesc.Width != 0, "Invalid input image height provided. Height is set to zero.");
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG, inputDesc.Height != 0, "Invalid input image height provided. Height is set to zero."
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG, inputDesc.Width != 0, "Invalid input image height provided. Height is set to zero."
+  );
 
   // Validate output description
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, outputDesc.Height != 0, "Invalid input image height provided. Height is set to zero.");
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, outputDesc.Width != 0, "Invalid input image height provided. Height is set to zero.");
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG, outputDesc.Height != 0, "Invalid input image height provided. Height is set to zero."
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG, outputDesc.Width != 0, "Invalid input image height provided. Height is set to zero."
+  );
 
   // Validate Tensor description
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.dataType == kImageTensorDataTypeFloat32 || tensorDesc.dataType == kImageTensorDataTypeFloat16, "Target tensor description must either be kImageTensorDataTypeFloat32, or kImageTensorDataTypeFloat16. %d was supplied.", tensorDesc.dataType);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeRGB8 || tensorDesc.sizes[1] == 3, "Target tensor description expects kImageTensorChannelTypeRGB8, but has %lld channels specified instead of 3.", tensorDesc.sizes[1]);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeBGR8 || tensorDesc.sizes[1] == 3, "Target tensor description expects kImageTensorChannelTypeBGR8, but has %lld channels specified instead of 3.", tensorDesc.sizes[1]);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeGRAY8 || tensorDesc.sizes[1] == 1, "Target tensor description expects kImageTensorChannelTypeGRAY8, but has %lld channels specified instead of 1.", tensorDesc.sizes[1]);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[2] == outputDesc.Height, "Target tensor height (%lld) does not match input height (%lu).", tensorDesc.sizes[2], outputDesc.Height);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[3] == (UINT)outputDesc.Width, "Target tensor width (%lld) does not match input width (%lu).", tensorDesc.sizes[3], (UINT)outputDesc.Width);
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.dataType == kImageTensorDataTypeFloat32 || tensorDesc.dataType == kImageTensorDataTypeFloat16,
+    "Target tensor description must either be kImageTensorDataTypeFloat32, or kImageTensorDataTypeFloat16. %d was supplied.",
+    tensorDesc.dataType
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.channelType != kImageTensorChannelTypeRGB8 || tensorDesc.sizes[1] == 3,
+    "Target tensor description expects kImageTensorChannelTypeRGB8, but has %lld channels specified instead of 3.",
+    tensorDesc.sizes[1]
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.channelType != kImageTensorChannelTypeBGR8 || tensorDesc.sizes[1] == 3,
+    "Target tensor description expects kImageTensorChannelTypeBGR8, but has %lld channels specified instead of 3.",
+    tensorDesc.sizes[1]
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.channelType != kImageTensorChannelTypeGRAY8 || tensorDesc.sizes[1] == 1,
+    "Target tensor description expects kImageTensorChannelTypeGRAY8, but has %lld channels specified instead of 1.",
+    tensorDesc.sizes[1]
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.sizes[2] == outputDesc.Height,
+    "Target tensor height (%lld) does not match input height (%lu).",
+    tensorDesc.sizes[2],
+    outputDesc.Height
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.sizes[3] == (UINT)outputDesc.Width,
+    "Target tensor width (%lld) does not match input width (%lu).",
+    tensorDesc.sizes[3],
+    (UINT)outputDesc.Width
+  );
 
   // Create descriptor heaps
   UINT srvUavDescriptorSize = spDx12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -438,14 +498,16 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   D3D12_RESOURCE_DESC outputResourceDesc = output_resource_->GetDesc();
   outputResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
-  if (!UAV_resource_ || outputDesc.Format != UAV_resource_->GetDesc().Format || outputDesc.Width != UAV_resource_->GetDesc().Width || outputDesc.Height != UAV_resource_->GetDesc().Height) {
+  if (!UAV_resource_ || outputDesc.Format != UAV_resource_->GetDesc().Format ||
+        outputDesc.Width != UAV_resource_->GetDesc().Width || outputDesc.Height != UAV_resource_->GetDesc().Height) {
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-        D3D12_HEAP_FLAG_NONE,
-        &outputResourceDesc,
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        nullptr,
-        IID_PPV_ARGS(&UAV_resource_)));
+      &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+      D3D12_HEAP_FLAG_NONE,
+      &outputResourceDesc,
+      D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+      nullptr,
+      IID_PPV_ARGS(&UAV_resource_)
+    ));
   }
 
   if (descriptor_heap_ == nullptr) {
@@ -461,13 +523,17 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   // Create SRV and UAV for input and output respectively
   {
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = CreateSRVDescriptor(batchIdx, inputDesc, tensorDesc);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(descriptor_heap_->GetCPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(
+      descriptor_heap_->GetCPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize
+    );
     spDx12Device->CreateShaderResourceView(pInputResource, &srvDesc, srvHandle);
 
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.Format = outputResourceDesc.Format;
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(descriptor_heap_->GetCPUDescriptorHandleForHeapStart(), UavBufferIdx, srvUavDescriptorSize);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(
+      descriptor_heap_->GetCPUDescriptorHandleForHeapStart(), UavBufferIdx, srvUavDescriptorSize
+    );
     spDx12Device->CreateUnorderedAccessView(UAV_resource_.Get(), nullptr, &uavDesc, uavHandle);
   }
 
@@ -483,8 +549,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   PipelineStateCacheFormat formatFrom = PipelineStateCacheFormat::kBGR8;
   if (tensorDesc.channelType == kImageTensorChannelTypeRGB8) {
     formatFrom = PipelineStateCacheFormat::kRGB8;
-  } else if (inputDesc.Format == DXGI_FORMAT_R8_UNORM ||
-             tensorDesc.channelType == kImageTensorChannelTypeGRAY8) {
+  } else if (inputDesc.Format == DXGI_FORMAT_R8_UNORM || tensorDesc.channelType == kImageTensorChannelTypeGRAY8) {
     formatFrom = PipelineStateCacheFormat::kGRAY8;
   }
 
@@ -497,7 +562,8 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   }
 
   root_signature_ = device_cache.GetDetensorizeRootSignature();
-  pipeline_state_ = device_cache.GetCachedPipelineState(type, formatFrom, formatTo, PipelineStateCacheOperation::kDetensorize);
+  pipeline_state_ =
+    device_cache.GetCachedPipelineState(type, formatFrom, formatTo, PipelineStateCacheOperation::kDetensorize);
 
   ResetCommandList(device_cache);
 
@@ -509,13 +575,16 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     command_list_->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
     // This code currently re-uses the same decriptors each execution, which is unsafe if previous executions are in flight.
-    if (fence_completion_value_ > 0)
-    {
-        device_cache.WaitForFenceValue(fence_completion_value_);
+    if (fence_completion_value_ > 0) {
+      device_cache.WaitForFenceValue(fence_completion_value_);
     }
 
-    CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize);
-    CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), UavBufferIdx, srvUavDescriptorSize);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
+      descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize
+    );
+    CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(
+      descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), UavBufferIdx, srvUavDescriptorSize
+    );
     {
       ConstantBufferCS constantBufferCS = {};
       constantBufferCS.height = static_cast<UINT>(tensorDesc.sizes[2]);
@@ -528,14 +597,34 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     auto dispatchWidth = static_cast<UINT>((tensorDesc.sizes[3] - 1) / 16 + 1);
     auto dispatchHeight = static_cast<UINT>((tensorDesc.sizes[2] - 1) / 4 + 1);
 
-    command_list_->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pInputResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+    command_list_->ResourceBarrier(
+      1,
+      &CD3DX12_RESOURCE_BARRIER::Transition(
+        pInputResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+      )
+    );
     command_list_->Dispatch(dispatchWidth, dispatchHeight, 1);
-    command_list_->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pInputResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+    command_list_->ResourceBarrier(
+      1,
+      &CD3DX12_RESOURCE_BARRIER::Transition(
+        pInputResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+      )
+    );
 
     // Copy the UAV data to the output resource after detensorization
-    command_list_->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(UAV_resource_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE));
+    command_list_->ResourceBarrier(
+      1,
+      &CD3DX12_RESOURCE_BARRIER::Transition(
+        UAV_resource_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE
+      )
+    );
     command_list_->CopyResource(pOutputResource, UAV_resource_.Get());
-    command_list_->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(UAV_resource_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+    command_list_->ResourceBarrier(
+      1,
+      &CD3DX12_RESOURCE_BARRIER::Transition(
+        UAV_resource_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+      )
+    );
 
     WINML_THROW_IF_FAILED(command_list_->Close());
     ID3D12CommandList* pComputeToGPUCLs[] = {command_list_.Get()};
@@ -545,11 +634,12 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
 }
 
 void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
-    _In_ UINT32 batchIdx,
-    _In_ ID3D12Resource* pInputTensor,
-    _In_ _winml::D3DDeviceCache& device_cache,
-    _In_ const ImageTensorDescription& tensorDesc,
-    _Inout_ wgi::SoftwareBitmap& softwareBitmap) {
+  _In_ UINT32 batchIdx,
+  _In_ ID3D12Resource* pInputTensor,
+  _In_ _winml::D3DDeviceCache& device_cache,
+  _In_ const ImageTensorDescription& tensorDesc,
+  _Inout_ wgi::SoftwareBitmap& softwareBitmap
+) {
   assert(pInputTensor != nullptr);
   assert(softwareBitmap != nullptr);
 
@@ -561,25 +651,35 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   }
 
   uint32_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
-  uint32_t singleVideoFramebufferSize = static_cast<uint32_t>(tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize);
+  uint32_t singleVideoFramebufferSize =
+    static_cast<uint32_t>(tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize);
 
   // TODO: Make an allocator for readback heaps
   if (!readback_heap_ || readback_heap_->GetDesc().Width < singleVideoFramebufferSize) {
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(singleVideoFramebufferSize),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&readback_heap_)));
+      &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
+      D3D12_HEAP_FLAG_NONE,
+      &CD3DX12_RESOURCE_DESC::Buffer(singleVideoFramebufferSize),
+      D3D12_RESOURCE_STATE_COPY_DEST,
+      nullptr,
+      IID_PPV_ARGS(&readback_heap_)
+    ));
   }
 
   ResetCommandList(device_cache);
 
-  auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pInputTensor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+    pInputTensor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE
+  );
   command_list_->ResourceBarrier(1, &barrier);
 
-  command_list_->CopyBufferRegion(readback_heap_.Get(), 0, pInputTensor, static_cast<uint64_t>(singleVideoFramebufferSize) * batchIdx, singleVideoFramebufferSize);
+  command_list_->CopyBufferRegion(
+    readback_heap_.Get(),
+    0,
+    pInputTensor,
+    static_cast<uint64_t>(singleVideoFramebufferSize) * batchIdx,
+    singleVideoFramebufferSize
+  );
 
   WINML_THROW_IF_FAILED(command_list_->Close());
   ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};
@@ -598,26 +698,30 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
 }
 
 void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
-    _In_ ID3D12Resource* input_tensor,
-    _In_ size_t buffer_size_in_bytes,
-    _In_ _winml::D3DDeviceCache& device_cache,
-    _Inout_ const std::vector<wss::IBuffer>& buffers) {
+  _In_ ID3D12Resource* input_tensor,
+  _In_ size_t buffer_size_in_bytes,
+  _In_ _winml::D3DDeviceCache& device_cache,
+  _Inout_ const std::vector<wss::IBuffer>& buffers
+) {
   assert(input_tensor != nullptr);
 
   // TODO: Make an allocator for readback heaps
   if (!readback_heap_ || readback_heap_->GetDesc().Width < buffer_size_in_bytes) {
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(buffer_size_in_bytes),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&readback_heap_)));
+      &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
+      D3D12_HEAP_FLAG_NONE,
+      &CD3DX12_RESOURCE_DESC::Buffer(buffer_size_in_bytes),
+      D3D12_RESOURCE_STATE_COPY_DEST,
+      nullptr,
+      IID_PPV_ARGS(&readback_heap_)
+    ));
   }
 
   ResetCommandList(device_cache);
 
-  auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(input_tensor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+    input_tensor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE
+  );
   command_list_->ResourceBarrier(1, &barrier);
   command_list_->CopyBufferRegion(readback_heap_.Get(), 0, input_tensor, 0, buffer_size_in_bytes);
 
@@ -629,27 +733,28 @@ void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
   device_cache.SyncD3D12ToCPU();
 
   byte* readback_buffer = nullptr;
-  WINML_THROW_IF_FAILED(readback_heap_->Map(0, &CD3DX12_RANGE(0, buffer_size_in_bytes), reinterpret_cast<void**>(&readback_buffer)));
+  WINML_THROW_IF_FAILED(
+    readback_heap_->Map(0, &CD3DX12_RANGE(0, buffer_size_in_bytes), reinterpret_cast<void**>(&readback_buffer))
+  );
   auto readback_buffer_span = gsl::span<byte>(readback_buffer, buffer_size_in_bytes);
   _winml::StoreSpanIntoDisjointBuffers(
-      buffers.size(),
-      [&](size_t i) {
-        byte* buffer_start = nullptr;
-        auto byte_access = buffers[i].as<Windows::Storage::Streams::IBufferByteAccess>();
-        byte_access->Buffer(&buffer_start);
-        return gsl::span<byte>(buffer_start, static_cast<size_t>(buffers[i].Capacity()));
-      },
-      readback_buffer_span);
+    buffers.size(),
+    [&](size_t i) {
+      byte* buffer_start = nullptr;
+      auto byte_access = buffers[i].as<Windows::Storage::Streams::IBufferByteAccess>();
+      byte_access->Buffer(&buffer_start);
+      return gsl::span<byte>(buffer_start, static_cast<size_t>(buffers[i].Capacity()));
+    },
+    readback_buffer_span
+  );
 
   readback_heap_->Unmap(0, &CD3DX12_RANGE(0, 0));
 }
 
 D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor(
-    const UINT32 batchIdx,
-    const D3D12_RESOURCE_DESC& resourceDesc,
-    const _winml::ImageTensorDescription& desc) {
-  UINT uiTensorElementSize =
-      desc.dataType == kImageTensorDataTypeFloat32 ? sizeof(UINT) : sizeof(uint16_t);
+  const UINT32 batchIdx, const D3D12_RESOURCE_DESC& resourceDesc, const _winml::ImageTensorDescription& desc
+) {
+  UINT uiTensorElementSize = desc.dataType == kImageTensorDataTypeFloat32 ? sizeof(UINT) : sizeof(uint16_t);
 
   D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
   srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -672,19 +777,18 @@ D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor
     srvDesc.Buffer.StructureByteStride = 0;
   } else {
     WINML_THROW_HR_IF_FALSE_MSG(
-        E_INVALIDARG,
-        false,
-        "Tensorization conversion is only supported to kImageTensorDataTypeFloat32, or kImageTensorDataTypeFloat16.");
+      E_INVALIDARG,
+      false,
+      "Tensorization conversion is only supported to kImageTensorDataTypeFloat32, or kImageTensorDataTypeFloat16."
+    );
   }
 
   return srvDesc;
 }
 
 void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
-    _In_ void* pCPUTensor,
-    _In_ const ImageTensorDescription& tensorDesc,
-    _Inout_ wgi::SoftwareBitmap& softwareBitmap) {
-
+  _In_ void* pCPUTensor, _In_ const ImageTensorDescription& tensorDesc, _Inout_ wgi::SoftwareBitmap& softwareBitmap
+) {
   // we're inside a lock from the caller of this function, so it's ok to use this static
   static EventTimer eventTimer;
   std::optional<ConvertCPUTensorToVideoFrameWithSoftwareBitmapTelemetryEvent> telemetryLogger;
@@ -698,27 +802,61 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
 
   // Validate input description
   WINML_THROW_HR_IF_FALSE_MSG(
-      E_INVALIDARG,
-      format == wgi::BitmapPixelFormat::Bgra8 || format == wgi::BitmapPixelFormat::Rgba8 || format == wgi::BitmapPixelFormat::Gray8,
-      "Format was input image %d. Input image format must Bgra8, Rgba8 or Gray8.",
-      format);
+    E_INVALIDARG,
+    format == wgi::BitmapPixelFormat::Bgra8 || format == wgi::BitmapPixelFormat::Rgba8 ||
+      format == wgi::BitmapPixelFormat::Gray8,
+    "Format was input image %d. Input image format must Bgra8, Rgba8 or Gray8.",
+    format
+  );
   WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, height > 0, "Output input image height provided. Height is set to zero.");
   WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, width > 0, "Output input image width provided. Width is set to zero.");
 
   // Validate Tensor description
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.dataType == kImageTensorDataTypeFloat32 || tensorDesc.dataType == kImageTensorDataTypeFloat16, "Target tensor description must either be kImageTensorDataTypeFloat32, or kImageTensorDataTypeFloat16. %d was supplied.", tensorDesc.dataType);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeRGB8 || tensorDesc.sizes[1] == 3, "Target tensor description expects kImageTensorChannelTypeRGB8, but has %lld channels specified instead of 3.", tensorDesc.sizes[1]);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeBGR8 || tensorDesc.sizes[1] == 3, "Target tensor description expects kImageTensorChannelTypeBGR8, but has %lld channels specified instead of 3.", tensorDesc.sizes[1]);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.channelType != kImageTensorChannelTypeGRAY8 || tensorDesc.sizes[1] == 1, "Target tensor description expects kImageTensorChannelTypeGRAY8, but has %lld channels specified instead of 1.", tensorDesc.sizes[1]);
   WINML_THROW_HR_IF_FALSE_MSG(
-      E_INVALIDARG,
-      tensorDesc.channelType == kImageTensorChannelTypeGRAY8 ||
-          tensorDesc.channelType == kImageTensorChannelTypeBGR8 ||
-          tensorDesc.channelType == kImageTensorChannelTypeRGB8,
-      "Target tensor description expects kImageTensorChannelTypeGRAY8, kImageTensorChannelTypeBGR8, or kImageTensorChannelTypeRGB8 but has %d was specified.",
-      tensorDesc.channelType);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[2] == (UINT)height, "Target tensor height (%lld) does not match input height (%lu).", tensorDesc.sizes[2], (UINT)height);
-  WINML_THROW_HR_IF_FALSE_MSG(E_INVALIDARG, tensorDesc.sizes[3] == (UINT)width, "Target tensor width (%lld) does not match input width (%lu).", tensorDesc.sizes[3], (UINT)width);
+    E_INVALIDARG,
+    tensorDesc.dataType == kImageTensorDataTypeFloat32 || tensorDesc.dataType == kImageTensorDataTypeFloat16,
+    "Target tensor description must either be kImageTensorDataTypeFloat32, or kImageTensorDataTypeFloat16. %d was supplied.",
+    tensorDesc.dataType
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.channelType != kImageTensorChannelTypeRGB8 || tensorDesc.sizes[1] == 3,
+    "Target tensor description expects kImageTensorChannelTypeRGB8, but has %lld channels specified instead of 3.",
+    tensorDesc.sizes[1]
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.channelType != kImageTensorChannelTypeBGR8 || tensorDesc.sizes[1] == 3,
+    "Target tensor description expects kImageTensorChannelTypeBGR8, but has %lld channels specified instead of 3.",
+    tensorDesc.sizes[1]
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.channelType != kImageTensorChannelTypeGRAY8 || tensorDesc.sizes[1] == 1,
+    "Target tensor description expects kImageTensorChannelTypeGRAY8, but has %lld channels specified instead of 1.",
+    tensorDesc.sizes[1]
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.channelType == kImageTensorChannelTypeGRAY8 || tensorDesc.channelType == kImageTensorChannelTypeBGR8 ||
+      tensorDesc.channelType == kImageTensorChannelTypeRGB8,
+    "Target tensor description expects kImageTensorChannelTypeGRAY8, kImageTensorChannelTypeBGR8, or kImageTensorChannelTypeRGB8 but has %d was specified.",
+    tensorDesc.channelType
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.sizes[2] == (UINT)height,
+    "Target tensor height (%lld) does not match input height (%lu).",
+    tensorDesc.sizes[2],
+    (UINT)height
+  );
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    tensorDesc.sizes[3] == (UINT)width,
+    "Target tensor width (%lld) does not match input width (%lu).",
+    tensorDesc.sizes[3],
+    (UINT)width
+  );
 
   // get the byte buffer out of a softwarebitmap
   BYTE* pData = nullptr;
@@ -736,13 +874,14 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
   if (tensorDesc.dataType == kImageTensorDataTypeFloat32) {
     WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<float>(
       tensorDesc.channelType,
-      targetChannelType, 
-      tensorDesc.pixelRange, 
+      targetChannelType,
+      tensorDesc.pixelRange,
       static_cast<float*>(pCPUTensor),
-      bufferWidth, 
+      bufferWidth,
       height,
       width,
-      pData));
+      pData
+    ));
   } else if (tensorDesc.dataType == kImageTensorDataTypeFloat16) {
     WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<DirectX::PackedVector::HALF>(
       tensorDesc.channelType,
@@ -752,6 +891,7 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
       bufferWidth,
       height,
       width,
-      pData));
+      pData
+    ));
   }
 }

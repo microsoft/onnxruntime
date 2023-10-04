@@ -211,6 +211,15 @@ struct ProviderHostCPU {
   virtual bool contrib__IsATenOperatorExecutorInitialized() = 0;
   virtual Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) = 0;
 #endif
+
+#ifdef ENABLE_TRITON
+  virtual Status contrib__TritonOp__Compute(const contrib::TritonOp* p, OpKernelContext* context) = 0;
+  virtual bool contrib__IsTritonOpExecutorInitialized() = 0;
+  virtual Status contrib__ExecuteTritonOpByFuncName(
+      OpKernelContext* p_ctx, const std::string& func_name, size_t input_count, size_t output_count,
+      const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) = 0;
+#endif
+
 #endif
 };
 
@@ -288,6 +297,18 @@ inline Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const
 }
 }  // namespace contrib
 #endif  // ENABLE_TRAINING
+
+#ifdef ENABLE_TRITON
+namespace contrib {
+inline bool IsTritonOpExecutorInitialized() { return g_host_cpu.contrib__IsTritonOpExecutorInitialized(); }
+inline Status ExecuteTritonOpByFuncName(OpKernelContext* p_ctx, const std::string& func_name, size_t input_count,
+                                        size_t output_count,
+                                        const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) {
+  return g_host_cpu.contrib__ExecuteTritonOpByFuncName(p_ctx, func_name, input_count, output_count, kwargs);
+}
+}  // namespace contrib
+#endif  // ENABLE_TRITON
+
 #endif  // USE_CUDA || USE_ROCM
 #endif
 

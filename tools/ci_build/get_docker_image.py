@@ -86,7 +86,7 @@ def main():
         manylinux_build_scripts_folder = Path(args.manylinux_src) / "docker" / "build_scripts"
         dest = Path(args.context) / "build_scripts"
         if dest.exists():
-            log.info(f"Deleting: {str(dest)}")
+            log.info(f"Deleting: {dest!s}")
             shutil.rmtree(str(dest))
         shutil.copytree(str(manylinux_build_scripts_folder), str(dest))
         src_entrypoint_file = str(Path(args.manylinux_src) / "docker" / "manylinux-entrypoint")

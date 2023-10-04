@@ -174,15 +174,15 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
     OrtValue ml_value;
 
     for (const auto& key : MOMENTS_PREFIXES) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, values, &ml_value);
+      CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, values, &ml_value);
       per_weight_states.insert(std::make_pair(key, std::move(ml_value)));
     }
     if (optimizer_op_name == k_adam_optimizer_op_name) {
-      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, uc_value, &ml_value);
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, uc_value, &ml_value);
       per_weight_states.insert(std::make_pair(ADAM_UC_PREFIX, std::move(ml_value)));
     } else if (optimizer_op_name == k_lamb_optimizer_op_name) {
       // add "Step" for lamb
-      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, uc_value, &ml_value);
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, uc_value, &ml_value);
       shared_states.insert(std::make_pair(LAMB_STEP_TENSOR_NAME, std::move(ml_value)));
       config.shared_optimizer_states = std::move(shared_states);
     }

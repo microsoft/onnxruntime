@@ -26,7 +26,14 @@ interface ModelLoadInfo {
 }
 
 /**
- * Tensor type for react native, which doesn't allow ArrayBuffer, so data will be encoded as Base64 string.
+ * JSIBlob is a blob object that exchange ArrayBuffer by OnnxruntimeJSIHelper.
+ */
+export type JSIBlob = {
+  blobId: string; offset: number; size: number;
+};
+
+/**
+ * Tensor type for react native, which doesn't allow ArrayBuffer in native bridge, so data will be stored as JSIBlob.
  */
 interface EncodedTensor {
   /**
@@ -38,10 +45,10 @@ interface EncodedTensor {
    */
   readonly type: string;
   /**
-   * the Base64 encoded string of the buffer data of the tensor.
-   * if data is string array, it won't be encoded as Base64 string.
+   * the JSIBlob object of the buffer data of the tensor.
+   * if data is string array, it won't be stored as JSIBlob.
    */
-  readonly data: string|string[];
+  readonly data: JSIBlob|string[];
 }
 
 /**
@@ -64,11 +71,41 @@ export declare namespace Binding {
 
   interface InferenceSession {
     loadModel(modelPath: string, options: SessionOptions): Promise<ModelLoadInfoType>;
-    loadModelFromBase64EncodedBuffer?(buffer: string, options: SessionOptions): Promise<ModelLoadInfoType>;
+    loadModelFromBlob?(blob: JSIBlob, options: SessionOptions): Promise<ModelLoadInfoType>;
+    dispose(key: string): Promise<void>;
     run(key: string, feeds: FeedsType, fetches: FetchesType, options: RunOptions): Promise<ReturnType>;
   }
 }
 
 // export native binding
-const {Onnxruntime} = NativeModules;
+const {Onnxruntime, OnnxruntimeJSIHelper} = NativeModules;
 export const binding = Onnxruntime as Binding.InferenceSession;
+
+// install JSI helper global functions
+OnnxruntimeJSIHelper.install();
+
+declare global {
+  // eslint-disable-next-line no-var
+  var jsiOnnxruntimeStoreArrayBuffer: ((buffer: ArrayBuffer) => JSIBlob)|undefined;
+  // eslint-disable-next-line no-var
+  var jsiOnnxruntimeResolveArrayBuffer: ((blob: JSIBlob) => ArrayBuffer)|undefined;
+}
+
+export const jsiHelper = {
+  storeArrayBuffer: globalThis.jsiOnnxruntimeStoreArrayBuffer || (() => {
+                      throw new Error(
+                          'jsiOnnxruntimeStoreArrayBuffer is not found, ' +
+                          'please make sure OnnxruntimeJSIHelper installation is successful.');
+                    }),
+  resolveArrayBuffer: globalThis.jsiOnnxruntimeResolveArrayBuffer || (() => {
+                        throw new Error(
+                            'jsiOnnxruntimeResolveArrayBuffer is not found, ' +
+                            'please make sure OnnxruntimeJSIHelper installation is successful.');
+                      }),
+};
+
+// Remove global functions after installation
+{
+  delete globalThis.jsiOnnxruntimeStoreArrayBuffer;
+  delete globalThis.jsiOnnxruntimeResolveArrayBuffer;
+}

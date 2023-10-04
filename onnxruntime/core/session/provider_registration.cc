@@ -10,6 +10,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
+#include "core/providers/openvino/openvino_provider_factory_creator.h"
 
 using namespace onnxruntime;
 
@@ -72,6 +73,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #else
     status = create_not_supported_status();
 #endif
+  } else if (strcmp(provider_name, "OpenVINO") == 0) {
+#if defined(USE_OPENVINO)
+    options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options));
+#else
+    status = create_not_supported_status();
+#endif
   } else if (strcmp(provider_name, "SNPE") == 0) {
 #if defined(USE_SNPE)
     options->provider_factories.push_back(SNPEProviderFactoryCreator::Create(provider_options));
@@ -102,6 +109,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "JS") == 0) {
 #if defined(USE_JSEP)
+    std::string preferred_layout;
+    if (options->value.config_options.TryGetConfigEntry("preferredLayout", preferred_layout)) {
+      provider_options["preferred_layout"] = preferred_layout;
+    }
     options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();
@@ -115,7 +126,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Unknown provider name. Currently supported values are 'SNPE', 'XNNPACK', and 'AZURE'");
+                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' and 'AZURE'");
   }
 
   return status;
@@ -220,6 +231,26 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAP
   return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptionsWithValue,
+                    _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateNotEnabledStatus("CUDA");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsByName,
+                    _In_ const OrtCUDAProviderOptionsV2* cuda_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateNotEnabledStatus("CUDA");
+}
+
 ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
 }
@@ -285,6 +316,26 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString,
                     _Outptr_ char** ptr) {
   ORT_UNUSED_PARAMETER(tensorrt_options);
   ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateNotEnabledStatus("TensorRT");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _In_ void* value) {
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
+  ORT_UNUSED_PARAMETER(value);
+  return CreateNotEnabledStatus("TensorRT");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
+                    _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_ const char* key,
+                    _Outptr_ void** ptr) {
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(key);
   ORT_UNUSED_PARAMETER(ptr);
   return CreateNotEnabledStatus("TensorRT");
 }

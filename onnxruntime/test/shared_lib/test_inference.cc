@@ -15,6 +15,7 @@
 #include "gmock/gmock.h"
 
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -47,9 +48,9 @@ constexpr size_t countof(T (&)[N]) { return N; }
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
-template <typename OutT>
+template <typename OutT, typename InT = float, typename InputT = Input>
 void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
-                const std::vector<Input>& inputs,
+                const std::vector<InputT>& inputs,
                 const char* output_name,
                 const std::vector<int64_t>& dims_y,
                 const std::vector<OutT>& values_y,
@@ -59,8 +60,8 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
     ort_inputs.emplace_back(
-        Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()),
-                                        inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
+        Ort::Value::CreateTensor<InT>(allocator->Info(allocator), const_cast<InT*>(inputs[i].values.data()),
+                                      inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
   }
 
   std::vector<Ort::Value> ort_outputs;
@@ -89,9 +90,9 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   }
 }
 
-template <typename OutT>
+template <typename OutT, typename InT = float, typename InputT = Input>
 static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
-                          const std::vector<Input>& inputs,
+                          const std::vector<InputT>& inputs,
                           const char* output_name,
                           const std::vector<int64_t>& expected_dims_y,
                           const std::vector<OutT>& expected_values_y,
@@ -120,7 +121,13 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     dnnl_options.use_arena = 1;
     dnnl_options.threadpool_args = nullptr;
     session_options.AppendExecutionProvider_Dnnl(dnnl_options);
-    std::cout << "Running simple inference with dnnl provider" << std::endl;
+#else
+    return;
+#endif
+  } else if (provider_type == 3) {
+#ifdef USE_ROCM
+    OrtROCMProviderOptions rocm_options;
+    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     return;
 #endif
@@ -144,26 +151,26 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
     // without preallocated output tensor
-    RunSession<OutT>(default_allocator.get(),
-                     session,
-                     inputs,
-                     output_name,
-                     expected_dims_y,
-                     expected_values_y,
-                     nullptr);
+    RunSession<OutT, InT, InputT>(default_allocator.get(),
+                                  session,
+                                  inputs,
+                                  output_name,
+                                  expected_dims_y,
+                                  expected_values_y,
+                                  nullptr);
     // with preallocated output tensor
-    Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(),
-                                                         expected_dims_y.data(), expected_dims_y.size());
+    Ort::Value value_y = Ort::Value::CreateTensor<OutT>(default_allocator.get(),
+                                                        expected_dims_y.data(), expected_dims_y.size());
 
     // test it twice
     for (int i = 0; i != 2; ++i)
-      RunSession<OutT>(default_allocator.get(),
-                       session,
-                       inputs,
-                       output_name,
-                       expected_dims_y,
-                       expected_values_y,
-                       &value_y);
+      RunSession<OutT, InT, InputT>(default_allocator.get(),
+                                    session,
+                                    inputs,
+                                    output_name,
+                                    expected_dims_y,
+                                    expected_values_y,
+                                    &value_y);
   }
 }
 
@@ -177,6 +184,11 @@ static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequen
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_COPY_TENSOR_ARRAY_2 = TSTR("testdata/custom_op_library/copy_2_inputs_2_outputs.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_COPY_TENSOR_ARRAY_3 = TSTR("testdata/custom_op_library/copy_3_inputs_3_outputs.onnx");
+#if !defined(DISABLE_FLOAT8_TYPES)
+static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI = TSTR("testdata/custom_op_library/custom_op_test_float8.onnx");
+#endif
 #if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 static constexpr PATH_TYPE CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI = TSTR(
     "testdata/custom_op_openvino_wrapper_library/custom_op_mnist_ov_wrapper.onnx");
@@ -1387,11 +1399,113 @@ TEST(CApiTest, test_custom_op_library) {
 #ifdef USE_CUDA
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 1, nullptr, lib_name.c_str());
+#elif USE_ROCM
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 3, nullptr, lib_name.c_str());
 #else
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 0, nullptr, lib_name.c_str());
 #endif
 }
+
+// It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
+#if defined(__ANDROID__)
+TEST(CApiTest, test_custom_op_library_copy_variadic) {
+// To accomodate a reduced op build pipeline
+#elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
+TEST(CApiTest, test_custom_op_library_copy_variadic) {
+#else
+TEST(CApiTest, test_custom_op_library_copy_variadic) {
+#endif
+  std::cout << "Running inference using custom op shared library" << std::endl;
+
+  std::vector<Input> inputs(2);
+  inputs[0].name = "input_0";
+  inputs[0].dims = {15};
+  inputs[0].values = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
+                      6.6f, 7.7f, 8.8f, 9.9f, 10.0f,
+                      11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
+  inputs[1].name = "input_1";
+  inputs[1].dims = {15};
+  inputs[1].values = {15.5f, 14.4f, 13.3f, 12.2f, 11.1f,
+                      10.0f, 9.9f, 8.8f, 7.7f, 6.6f,
+                      5.5f, 4.4f, 3.3f, 2.2f, 1.1f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {15};
+  std::vector<float> expected_values_y = inputs[1].values;
+
+  onnxruntime::PathString lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_library.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_library.dylib");
+#else
+  lib_name = ORT_TSTR("./libcustom_op_library.so");
+#endif
+
+  TestInference<float>(*ort_env, CUSTOM_OP_LIBRARY_COPY_TENSOR_ARRAY_2,
+                       inputs, "output_1", expected_dims_y,
+                       expected_values_y, 0, nullptr, lib_name.c_str());
+
+  inputs.push_back({});
+  inputs[2].name = "input_2";
+  inputs[2].dims = {15};
+  inputs[2].values = {6.6f, 7.7f, 8.8f, 9.9f, 10.0f,
+                      1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
+                      11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
+
+  expected_values_y = inputs[2].values;
+  TestInference<float>(*ort_env, CUSTOM_OP_LIBRARY_COPY_TENSOR_ARRAY_3,
+                       inputs, "output_2", expected_dims_y,
+                       expected_values_y, 0, nullptr, lib_name.c_str());
+}
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+struct InputF8 {
+  const char* name = nullptr;
+  std::vector<int64_t> dims;
+  std::vector<Ort::Float8E4M3FN_t> values;
+};
+
+// See test test_custom_op_library_float8.
+#if defined(__ANDROID__)
+TEST(CApiTest, DISABLED_test_custom_op_library_float8) {
+#elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
+TEST(CApiTest, DISABLED_test_custom_op_library_float8) {
+#else
+TEST(CApiTest, test_custom_op_library_float8) {
+#endif
+  std::cout << "Running inference using custom op shared library" << std::endl;
+
+  std::vector<InputF8> inputs(2);
+  inputs[0].name = "X";
+  inputs[0].dims = {2};
+  inputs[0].values = {0, 1};
+  inputs[1].name = "Y";
+  inputs[1].dims = {2};
+  inputs[1].values = {3, 4};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {2};
+  std::vector<Ort::Float8E4M3FN_t> expected_values_y = {0, 1};
+
+  onnxruntime::PathString lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_library.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_library.dylib");
+#else
+  lib_name = ORT_TSTR("./libcustom_op_library.so");
+#endif
+
+  TestInference<Ort::Float8E4M3FN_t, Ort::Float8E4M3FN_t, InputF8>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI, inputs,
+                                                                   "Z", expected_dims_y,
+                                                                   expected_values_y, 0, nullptr, lib_name.c_str());
+}
+
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #if defined(__ANDROID__)
@@ -1744,10 +1858,25 @@ TEST(CApiTest, io_binding_cuda) {
 }
 #endif
 
-#if defined(USE_CUDA)
-TEST(CApiTest, cuda_graph) {
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
+TEST(CApiTest, basic_cuda_graph) {
   const auto& api = Ort::GetApi();
+  Ort::SessionOptions session_options;
 
+#if defined(USE_TENSORRT)
+  // Enable cuda graph in TRT provider option.
+  OrtTensorRTProviderOptionsV2* trt_options;
+  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
+  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
+      rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+  std::vector<const char*> keys{"trt_cuda_graph_enable"};
+  std::vector<const char*> values{"1"};
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
+
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_trt_options.get()) == nullptr);
+#else
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
@@ -1757,12 +1886,11 @@ TEST(CApiTest, cuda_graph) {
   std::vector<const char*> values{"1"};
   ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
 
-  Ort::SessionOptions session_options;
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_cuda_options.get()) == nullptr);
+#endif
 
-  // Create IoBinding for inputs and outputs.
   Ort::Session session(*ort_env, MODEL_URI, session_options);
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 
@@ -1791,6 +1919,7 @@ TEST(CApiTest, cuda_graph) {
   Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
                                                 expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
+  // Create IoBinding for inputs and outputs.
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
@@ -1822,11 +1951,37 @@ TEST(CApiTest, cuda_graph) {
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
 }
+
+#ifndef REDUCED_OPS_BUILD
+// The following test uses some ops not supported in the reduced ops build
+TEST(CApiTest, cuda_graph_with_shape_nodes) {
+  const auto& api = Ort::GetApi();
+
+  // Enable cuda graph in cuda provider option.
+  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+  ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
+  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
+      rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+  std::vector<const char*> keys{"enable_cuda_graph"};
+  std::vector<const char*> values{"1"};
+  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+
+  Ort::SessionOptions session_options;
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_cuda_options.get()) == nullptr);
+
+  // Successful loading of the ONNX model with shape nodes with cuda graph feature enabled
+  Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
+}
+
+#endif
+
 #endif
 
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
-  int64_t expected_len = 2;
+  constexpr int64_t expected_len = 2;
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
@@ -1835,8 +1990,8 @@ TEST(CApiTest, create_tensor) {
   Ort::ThrowOnError(Ort::GetApi().FillStringTensor(tensor, s, expected_len));
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
 
-  int64_t len = shape_info.GetElementCount();
-  ASSERT_EQ(len, expected_len);
+  const auto len = shape_info.GetElementCount();
+  ASSERT_EQ(len, static_cast<size_t>(expected_len));
   std::vector<int64_t> shape_array(len);
 
   size_t data_len = tensor.GetStringTensorDataLength();
@@ -1847,20 +2002,20 @@ TEST(CApiTest, create_tensor) {
 
 TEST(CApiTest, fill_string_tensor) {
   const char* s[] = {"abc", "kmp"};
-  int64_t expected_len = 2;
+  constexpr int64_t expected_len = 2;
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
-  for (int64_t i = 0; i < expected_len; i++) {
+  for (size_t i = 0; i < expected_len; i++) {
     tensor.FillStringTensorElement(s[i], i);
   }
 
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
 
-  int64_t len = shape_info.GetElementCount();
-  ASSERT_EQ(len, expected_len);
+  const auto len = shape_info.GetElementCount();
+  ASSERT_EQ(len, static_cast<size_t>(expected_len));
 }
 
 TEST(CApiTest, fill_string_tensor_directly) {
@@ -1871,16 +2026,16 @@ TEST(CApiTest, fill_string_tensor_directly) {
   Ort::Value tensor = Ort::Value::CreateTensor(&default_allocator, &expected_len, 1U,
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
-  for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
+  for (size_t i = 0; i < expected_len; i++) {
     auto* buffer = tensor.GetResizedStringTensorElementBuffer(i, s[i].size());
     memcpy(buffer, s[i].data(), s[i].size());
   }
 
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
-  int64_t len = shape_info.GetElementCount();
-  ASSERT_EQ(len, expected_len);
+  const auto len = shape_info.GetElementCount();
+  ASSERT_EQ(len, static_cast<size_t>(expected_len));
 
-  for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
+  for (size_t i = 0; i < expected_len; i++) {
     auto element = tensor.GetStringTensorElement(i);
     ASSERT_EQ(s[i], element);
   }
@@ -1888,8 +2043,8 @@ TEST(CApiTest, fill_string_tensor_directly) {
 
 TEST(CApiTest, get_string_tensor_element) {
   const char* s[] = {"abc", "kmp"};
-  int64_t expected_len = 2;
-  int64_t element_index = 0;
+  constexpr int64_t expected_len = 2;
+  constexpr int64_t element_index = 0;
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
@@ -1931,47 +2086,116 @@ TEST(CApiTest, create_tensor_with_data_float16) {
   // Example with C++. However, what we are feeding underneath is really
   // a continuous buffer of uint16_t
   // Use 3rd party libraries such as Eigen to convert floats and doubles to float16 types.
-  Ort::Float16_t values[] = {15360, 16384, 16896, 17408, 17664};  // 1.f, 2.f, 3.f, 4.f, 5.f
-  constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
+  constexpr float values[] = {1.f, 2.f, 3.f, 4.f, 5.f};
+  constexpr size_t values_length = std::size(values);
+  constexpr uint16_t expected_values[values_length] = {15360, 16384, 16896, 17408, 17664};
 
-  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
+  std::vector<Ort::Float16_t> fp16_values;
+  fp16_values.reserve(values_length);
+  std::transform(std::begin(values), std::end(values), std::back_inserter(fp16_values),
+                 [](float fl) { return Ort::Float16_t(fl); });
+
+  for (size_t i = 0; i < values_length; ++i) {
+    ASSERT_EQ(expected_values[i], fp16_values[i].val);
+  }
+
+  constexpr int64_t dims = static_cast<int64_t>(values_length);
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  Ort::Value tensor = Ort::Value::CreateTensor<Ort::Float16_t>(info, values, values_length, dims.data(), dims.size());
+  Ort::Value tensor = Ort::Value::CreateTensor<Ort::Float16_t>(info, fp16_values.data(), values_length, &dims, 1u);
   const auto* new_pointer = tensor.GetTensorData<Ort::Float16_t>();
-  ASSERT_EQ(new_pointer, values);
+
+  ASSERT_EQ(new_pointer, fp16_values.data());
   auto type_info = tensor.GetTypeInfo();
   auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  const auto element_count = tensor_info.GetElementCount();
+  ASSERT_EQ(values_length, element_count);
   ASSERT_NE(tensor_info, nullptr);
   ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
   ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
 
-  Ort::Float16_t value_at_1 = tensor.At<Ort::Float16_t>({1});
-  ASSERT_EQ(values[1], value_at_1);
+  const Ort::Float16_t& value_at_1 = tensor.At<Ort::Float16_t>({1});
+  ASSERT_EQ(expected_values[1], value_at_1.val);
+
+  std::vector<float> output_values;
+  output_values.reserve(values_length);
+  const auto data_span = gsl::make_span(tensor.GetTensorData<Ort::Float16_t>(), element_count);
+  std::transform(data_span.begin(), data_span.end(), std::back_inserter(output_values),
+                 [](const Ort::Float16_t& fp16) { return static_cast<float>(fp16); });
+
+  for (size_t i = 0; i < values_length; ++i) {
+    ASSERT_NEAR(values[i], output_values[i], 1e-3);
+  }
 }
 
 TEST(CApiTest, create_tensor_with_data_bfloat16) {
   // Example with C++. However, what we are feeding underneath is really
   // a continuous buffer of uint16_t
   // Conversion from float to bfloat16 is simple. Strip off half of the bytes from float.
-  Ort::BFloat16_t values[] = {16256, 16384, 16448, 16512, 16544};  // 1.f, 2.f, 3.f, 4.f, 5.f
+  constexpr float values[] = {1.f, 2.f, 3.f, 4.f, 5.f};
+  constexpr size_t values_length = std::size(values);
+  constexpr uint16_t expected_values[] = {16256, 16384, 16448, 16512, 16544};  // 1.f, 2.f, 3.f, 4.f, 5.f
+
+  constexpr int64_t dims = static_cast<int64_t>(values_length);
+
+  std::vector<Ort::BFloat16_t> b16_values;
+  b16_values.reserve(values_length);
+  std::transform(std::begin(values), std::end(values), std::back_inserter(b16_values),
+                 [](float fl) { return Ort::BFloat16_t(fl); });
+
+  for (size_t i = 0; i < values_length; ++i) {
+    ASSERT_EQ(expected_values[i], b16_values[i].val);
+  }
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Value tensor = Ort::Value::CreateTensor<Ort::BFloat16_t>(info, b16_values.data(), values_length, &dims, 1u);
+  const auto* new_pointer = tensor.GetTensorData<Ort::BFloat16_t>();
+  ASSERT_EQ(new_pointer, b16_values.data());
+  auto type_info = tensor.GetTypeInfo();
+  const auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  const auto element_count = tensor_info.GetElementCount();
+  ASSERT_NE(tensor_info, nullptr);
+  ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
+  ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16);
+
+  const Ort::BFloat16_t& value_at_1 = tensor.At<Ort::BFloat16_t>({1});
+  ASSERT_EQ(expected_values[1], value_at_1.val);
+
+  std::vector<float> output_values;
+  output_values.reserve(values_length);
+  const auto data_span = gsl::make_span(tensor.GetTensorData<Ort::BFloat16_t>(), element_count);
+  std::transform(data_span.begin(), data_span.end(), std::back_inserter(output_values),
+                 [](const Ort::BFloat16_t& b16) { return static_cast<float>(b16); });
+
+  for (size_t i = 0; i < values_length; ++i) {
+    ASSERT_NEAR(values[i], output_values[i], 1e-3);
+  }
+}
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+TEST(CApiTest, create_tensor_with_data_float8) {
+  Ort::Float8E4M3FN_t values[] = {0, 1, 2, 3, 4};
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
   std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  Ort::Value tensor = Ort::Value::CreateTensor<Ort::BFloat16_t>(info, values, values_length, dims.data(), dims.size());
-  const auto* new_pointer = tensor.GetTensorData<Ort::BFloat16_t>();
+  Ort::Value tensor = Ort::Value::CreateTensor<Ort::Float8E4M3FN_t>(info, values, values_length, dims.data(), dims.size());
+  const auto* new_pointer = tensor.GetTensorData<Ort::Float8E4M3FN_t>();
   ASSERT_EQ(new_pointer, values);
   auto type_info = tensor.GetTypeInfo();
   auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
   ASSERT_NE(tensor_info, nullptr);
   ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
-  ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16);
+  ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN);
 
-  Ort::BFloat16_t value_at_1 = tensor.At<Ort::BFloat16_t>({1});
+  Ort::Float8E4M3FN_t value_at_1 = tensor.At<Ort::Float8E4M3FN_t>({1});
   ASSERT_EQ(values[1], value_at_1);
 }
+
+#endif
 
 TEST(CApiTest, access_tensor_data_elements) {
   /**
@@ -2221,7 +2445,6 @@ TEST(CApiTest, get_version_string_cpp) {
 TEST(CApiTest, get_build_info_string) {
   auto build_info_string = Ort::GetBuildInfoString();
   ASSERT_FALSE(build_info_string.empty());
-  ASSERT_EQ(build_info_string, std::string(ORT_BUILD_INFO));
 }
 
 TEST(CApiTest, TestSharedAllocators) {
@@ -2349,6 +2572,53 @@ TEST(CApiTest, TestSharedAllocators) {
     // Ensure that there was no leak
     custom_allocator.LeakCheck();
   }
+#ifdef USE_CUDA
+  {
+    OrtMemoryInfo* cuda_meminfo = nullptr;
+    ASSERT_TRUE(api.CreateMemoryInfo("Cuda", OrtArenaAllocator, 0, OrtMemTypeDefault, &cuda_meminfo) == nullptr);
+    std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(cuda_meminfo, api.ReleaseMemoryInfo);
+
+    OrtArenaCfg* arena_cfg = nullptr;
+    ASSERT_TRUE(api.CreateArenaCfg(0, -1, -1, -1, &arena_cfg) == nullptr);
+    std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
+
+    std::vector<const char*> keys, values;
+    ASSERT_TRUE(api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0) == nullptr);
+
+    // Test that duplicates are handled
+    std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(
+        api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0),
+        api.ReleaseStatus);
+    ASSERT_FALSE(status_releaser.get() == nullptr);
+
+    {
+      // create session 1
+      Ort::SessionOptions cuda_session_options;
+      cuda_session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+      cuda_session_options.AppendExecutionProvider_CUDA(OrtCUDAProviderOptions{});
+      Ort::Session session1(*ort_env, MODEL_URI, cuda_session_options);
+      RunSession<float>(allocator_for_input_memory_allocation.get(),
+                        session1,
+                        inputs,
+                        "Y",
+                        expected_dims_y,
+                        expected_values_y,
+                        nullptr);
+
+      // create session 2
+      Ort::Session session2(*ort_env, MODEL_URI, cuda_session_options);
+      RunSession<float>(allocator_for_input_memory_allocation.get(),
+                        session2,
+                        inputs,
+                        "Y",
+                        expected_dims_y,
+                        expected_values_y,
+                        nullptr);
+    }
+
+    ASSERT_TRUE(api.UnregisterAllocator(env_ptr, cuda_meminfo) == nullptr);
+  }
+#endif
 }
 
 TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
@@ -2398,7 +2668,7 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
   ASSERT_TRUE(model_file_stream.good());
 
   model_file_stream.seekg(0, std::ios::end);
-  size_t size = model_file_stream.tellg();
+  const auto size = onnxruntime::narrow<size_t>(model_file_stream.tellg());
   model_file_stream.seekg(0, std::ios::beg);
   std::vector<char> file_contents(size, 0);
   model_file_stream.read(&file_contents[0], size);
@@ -2548,12 +2818,21 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
   ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
   std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
 
+  // Only test updating provider option with user provided compute stream
+  cudaStream_t compute_stream = nullptr;
+  void* user_compute_stream = nullptr;
+  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptionsWithValue(rel_trt_options.get(), "user_compute_stream", compute_stream) == nullptr);
+  ASSERT_TRUE(api.GetTensorRTProviderOptionsByName(rel_trt_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
+  ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
+  cudaStreamDestroy(compute_stream);
+
   const char* engine_cache_path = "./trt_engine_folder";
 
-  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable",
+  std::vector<const char*> keys{"device_id", "has_user_compute_stream", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable",
                                 "trt_engine_cache_path", option_name.c_str()};
 
-  std::vector<const char*> values{"0", "1", "0", "1",
+  std::vector<const char*> values{"0", "0", "1", "0", "1",
                                   engine_cache_path, option_value.c_str()};
 
   ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
@@ -2607,7 +2886,7 @@ INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
 
 #ifdef USE_CUDA
 
-// This test uses CreateCUDAProviderOptions/UpdateCUDAProviderOptions APIs to configure and create a CUDA Execution Provider instance
+// This test uses CreateCUDAProviderOptions/UpdateCUDAProviderOptions/UpdateCUDAProviderOptionsWithValue APIs to configure and create a CUDA Execution Provider instance
 TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   const auto& api = Ort::GetApi();
 
@@ -2615,12 +2894,21 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
   std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
 
+  // Only test updating OrtCUDAProviderOptionsV2 instance with user provided compute stream not running the inference
+  cudaStream_t compute_stream = nullptr;
+  void* user_compute_stream = nullptr;
+  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  ASSERT_TRUE(api.UpdateCUDAProviderOptionsWithValue(rel_cuda_options.get(), "user_compute_stream", compute_stream) == nullptr);
+  ASSERT_TRUE(api.GetCUDAProviderOptionsByName(rel_cuda_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
+  ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
+  cudaStreamDestroy(compute_stream);
+
   std::vector<const char*> keys{
-      "device_id", "gpu_mem_limit", "arena_extend_strategy",
+      "device_id", "has_user_compute_stream", "gpu_mem_limit", "arena_extend_strategy",
       "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
 
   std::vector<const char*> values{
-      "0", "1024", "kSameAsRequested",
+      "0", "0", "1024", "kSameAsRequested",
       "DEFAULT", "1", "1"};
 
   ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 6) == nullptr);
@@ -2893,9 +3181,12 @@ struct Merge {
     ORT_ENFORCE(ort_api->KernelInfoGetAttribute_int64(info, "reverse", &reverse) == nullptr);
     reverse_ = reverse != 0;
   }
-  void Compute(const Ort::Custom::Tensor<std::string_view>& strings_in,
-               std::string_view string_in,
-               Ort::Custom::Tensor<std::string>* strings_out) {
+  Ort::Status Compute(const Ort::Custom::Tensor<std::string_view>& strings_in,
+                      std::string_view string_in,
+                      Ort::Custom::Tensor<std::string>* strings_out) {
+    if (strings_in.NumberOfElement() == 0) {
+      return Ort::Status("the 1st input must have more than one string!", OrtErrorCode::ORT_INVALID_ARGUMENT);
+    }
     std::vector<std::string> string_pool;
     for (const auto& s : strings_in.Data()) {
       string_pool.emplace_back(s.data(), s.size());
@@ -2908,6 +3199,7 @@ struct Merge {
       std::reverse(string_pool.begin(), string_pool.end());
     }
     strings_out->SetStringOutput(string_pool, {static_cast<int64_t>(string_pool.size())});
+    return Ort::Status(nullptr);
   }
   bool reverse_ = false;
 };
@@ -2983,8 +3275,10 @@ TEST(LiteCustomOpTest, MissingOptional) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
   Ort::Value input_tensors[] = {
-      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, vector_1_dim[0], vector_1_dim, 1),
-      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, vector_2_dim[0], vector_2_dim, 1)};
+      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, gsl::narrow_cast<size_t>(vector_1_dim[0]),
+                                      vector_1_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, gsl::narrow_cast<size_t>(vector_2_dim[0]),
+                                      vector_2_dim, 1)};
 
   Ort::RunOptions run_options;
   auto output_tensors = session.Run(run_options, input_names, input_tensors, 2, output_names, 1);
@@ -3021,9 +3315,12 @@ TEST(LiteCustomOpTest, HasOptional) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
   Ort::Value input_tensors[] = {
-      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, vector_1_dim[0], vector_1_dim, 1),
-      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, vector_2_dim[0], vector_2_dim, 1),
-      Ort::Value::CreateTensor<float>(memory_info, vector_3_value, vector_3_dim[0], vector_3_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, gsl::narrow_cast<size_t>(vector_1_dim[0]),
+                                      vector_1_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, gsl::narrow_cast<size_t>(vector_2_dim[0]),
+                                      vector_2_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_3_value, gsl::narrow_cast<size_t>(vector_3_dim[0]),
+                                      vector_3_dim, 1),
   };
 
   Ort::RunOptions run_options;
@@ -3056,8 +3353,8 @@ TEST(MultiKernelSingleSchemaTest, valid) {
       Ort::Value::CreateTensor<float>(memory_info, x_value, 10, x_dim, 1),
   };
 
-  Ort::RunOptions run_optoins;
-  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 1, output_names, 2);
+  Ort::RunOptions run_options;
+  auto output_tensors = session.Run(run_options, input_names, input_tensors, 1, output_names, 2);
   ASSERT_TRUE(*output_tensors[1].GetTensorData<int32_t>() == 72);
 }
 
@@ -3135,3 +3432,80 @@ TEST(MultiKernelSingleSchemaTest, DuplicateKernel) {
 }
 
 #endif
+
+static std::thread::id caller_tid = std::this_thread::get_id();
+static std::atomic_bool atomic_wait{false};
+
+void CallbackSucceed(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status_ptr) {
+  auto callee_tid = std::this_thread::get_id();
+  EXPECT_NE(*(reinterpret_cast<std::thread::id*>(user_data)), callee_tid);
+  Ort::Status status(status_ptr);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_EQ(num_outputs, 1UL);
+  Ort::Value output_value(outputs[0]);
+  EXPECT_EQ(output_value.At<float>({1, 0}), 9.f);
+  output_value.release();
+  atomic_wait.store(true);
+}
+
+TEST(CApiTest, RunAsync) {
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(2);
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  const char* input_names[] = {"X"};
+  float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  int64_t x_dim[] = {3, 2};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[1] = {
+      Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 2),
+  };
+
+  const char* output_names[] = {"Y"};
+  Ort::RunOptions run_options;
+  Ort::Value output_values[1] = {Ort::Value{nullptr}};
+
+  EXPECT_NO_THROW(session.RunAsync(run_options,
+                                   input_names,
+                                   input_tensors,
+                                   1,
+                                   output_names,
+                                   output_values,
+                                   1,
+                                   CallbackSucceed,
+                                   &caller_tid));
+
+  std::chrono::duration<double, std::milli> dur{100};
+  // timeout in about 10 secs
+  for (int i = 0; i < 100 && !atomic_wait.load(); ++i) {
+    std::this_thread::sleep_for(dur);
+  }
+
+  EXPECT_EQ(atomic_wait.load(), true);
+}
+
+void CallbackFail(void*, OrtValue**, size_t, OrtStatusPtr) {
+  EXPECT_TRUE(false);  // the callback is not supposed to be invoked
+}
+
+TEST(CApiTest, RunAsyncFail) {
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);  // This will cause RunAsync fail
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  const char* input_names[] = {"X"};
+  float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  int64_t x_dim[] = {3, 2};
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[1] = {
+      Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 2),
+  };
+  Ort::Value output_values[1] = {Ort::Value{nullptr}};
+  const char* output_names[] = {"Y"};
+
+  Ort::RunOptions run_options;
+  EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
+}

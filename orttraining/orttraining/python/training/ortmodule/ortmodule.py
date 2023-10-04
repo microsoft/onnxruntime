@@ -3,16 +3,16 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 # isort: skip_file
-# Import ordering is important in this module to aviod circular dependencies
-import logging
+# Import ordering is important in this module to avoid circular dependencies
+
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
-from .debug_options import DebugOptions
+from .options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
-from ._logger import ortmodule_loglevel_to_python_loglevel
+from ._logger import configure_ortmodule_logger
 from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
@@ -53,8 +53,7 @@ class ORTModule(torch.nn.Module):
         if not debug_options:
             debug_options = DebugOptions()
 
-        self._logger = logging.getLogger(__name__)
-        self._logger.setLevel(ortmodule_loglevel_to_python_loglevel(debug_options.logging.log_level))
+        self._logger = configure_ortmodule_logger(debug_options.logging.log_level)
 
         # Fallback settings
         self._fallback_manager = _FallbackManager(
@@ -77,7 +76,9 @@ class ORTModule(torch.nn.Module):
 
             # Support contrib OPs
             pytorch_export_contrib_ops.register()
-            CustomOpSymbolicRegistry.register_all()
+            CustomOpSymbolicRegistry.register_all(
+                self._torch_module._execution_manager(module.training)._runtime_options.onnx_opset_version
+            )
             CustomGradientRegistry.register_all()
 
             # Warn user if there are name collisions between user model's and ORTModule attributes
@@ -320,7 +321,9 @@ class ORTModule(torch.nn.Module):
 
         # Re-register contrib OPs
         pytorch_export_contrib_ops.register()
-        CustomOpSymbolicRegistry.register_all()
+        CustomOpSymbolicRegistry.register_all(
+            self._torch_module._execution_manager(self.module.training)._runtime_options.onnx_opset_version
+        )
         CustomGradientRegistry.register_all()
 
         # Re-initialize the ORTModule forward method

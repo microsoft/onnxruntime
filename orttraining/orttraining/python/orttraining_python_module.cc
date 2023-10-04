@@ -15,6 +15,12 @@ namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
 
+#if defined(USE_MPI) && defined(ORT_USE_NCCL)
+static constexpr bool HAS_COLLECTIVE_OPS = true;
+#else
+static constexpr bool HAS_COLLECTIVE_OPS = false;
+#endif
+
 using namespace onnxruntime::logging;
 
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
@@ -273,15 +279,8 @@ std::unique_ptr<IExecutionProvider> CreateTrainingEP(
     const SessionOptions& session_options,
     const std::string& provider_type,
     const ProviderOptionsMap& provider_options_map) {
-  auto provider = CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
-  // The CPU provider instance created by the factory doesn't create allocators by default. The session registers
-  // the allocators to allow sharing. However, in some training scenarios (particularly eager mode), no session is
-  // created but it (eager mode) relies on the allocator in the CPU provider. Hence the need to call RegisterAllocator.
-  if (provider_type == kCpuExecutionProvider) {
-    AllocatorManager mgr;  // temporary only to call RegisterAllocator
-    provider->RegisterAllocator(mgr);
-  }
-  return provider;
+  // TODO(leca): REVIEW: No allocators are initialized
+  return CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
 }
 
 std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::string& provider_type,
@@ -367,6 +366,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
         GetTrainingEnv().ClearExecutionProviderInstances();
       },
       "Clean the execution provider instances used in ort training module.");
+
+  m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });
 
   // See documentation for class TrainingEnvInitialzer earlier in this module
   // for an explanation as to why this is needed.

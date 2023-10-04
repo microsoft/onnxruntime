@@ -39,8 +39,20 @@ namespace test {
 template <typename T>
 struct IsTypeQuantLinearCompatible : utils::IsByteType<T> {};
 
+template <>
+struct IsTypeQuantLinearCompatible<int16_t> : std::true_type {};
+
+template <>
+struct IsTypeQuantLinearCompatible<uint16_t> : std::true_type {};
+
 template <typename T>
 struct IsTypeDequantLinearCompatible : utils::IsByteType<T> {};
+
+template <>
+struct IsTypeDequantLinearCompatible<int16_t> : std::true_type {};
+
+template <>
+struct IsTypeDequantLinearCompatible<uint16_t> : std::true_type {};
 
 template <>
 struct IsTypeDequantLinearCompatible<int32_t> : std::true_type {};
@@ -66,7 +78,7 @@ class ModelTestBuilder {
     }
 
     OrtValue input_value;
-    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+    CreateMLValue<T>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                      shape,
                      data,
                      &input_value);
@@ -219,6 +231,15 @@ class ModelTestBuilder {
     return &graph_.GetOrCreateNodeArg(name, nullptr);
   }
 
+  NodeArg* MakeRandInitializerBool(const std::vector<int64_t>& shape) {
+    std::vector<uint8_t> data_uint8 = rand_gen_.Uniform<uint8_t>(shape, 0, 1);
+    std::vector<bool> data;
+    for (uint8_t x : data_uint8) {
+      data.push_back(x != 0);
+    }
+    return MakeInitializerBool(shape, data);
+  }
+
   template <typename T>
   NodeArg* MakeInitializer(const std::vector<int64_t>& shape, T min, T max) {
     return MakeInitializer<T>(shape, rand_gen_.Uniform<T>(shape, min, max));
@@ -267,23 +288,27 @@ class ModelTestBuilder {
   AddQuantizeLinearNode(NodeArg* input_arg,
                         float input_scale,
                         T input_zero_point,
-                        NodeArg* output_arg) {
+                        NodeArg* output_arg,
+                        bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));
     input_args.push_back(MakeScalarInitializer<T>(input_zero_point));
 
-    return AddNode("QuantizeLinear", input_args, {output_arg});
+    std::string domain = use_ms_domain ? kMSDomain : "";
+    return AddNode("QuantizeLinear", input_args, {output_arg}, domain);
   }
 
   Node& AddQuantizeLinearNode(NodeArg* input_arg,
                               float input_scale,
-                              NodeArg* output_arg) {
+                              NodeArg* output_arg,
+                              bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));
 
-    return AddNode("QuantizeLinear", input_args, {output_arg});
+    std::string domain = use_ms_domain ? kMSDomain : "";
+    return AddNode("QuantizeLinear", input_args, {output_arg}, domain);
   }
 
   template <typename T>
@@ -291,23 +316,27 @@ class ModelTestBuilder {
   AddDequantizeLinearNode(NodeArg* input_arg,
                           float input_scale,
                           T input_zero_point,
-                          NodeArg* output_arg) {
+                          NodeArg* output_arg,
+                          bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));
     input_args.push_back(MakeScalarInitializer<T>(input_zero_point));
 
-    return AddNode("DequantizeLinear", input_args, {output_arg});
+    std::string domain = use_ms_domain ? kMSDomain : "";
+    return AddNode("DequantizeLinear", input_args, {output_arg}, domain);
   }
 
   Node& AddDequantizeLinearNode(NodeArg* input_arg,
                                 float input_scale,
-                                NodeArg* output_arg) {
+                                NodeArg* output_arg,
+                                bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));
 
-    return AddNode("DequantizeLinear", input_args, {output_arg});
+    std::string domain = use_ms_domain ? kMSDomain : "";
+    return AddNode("DequantizeLinear", input_args, {output_arg}, domain);
   }
 
   template <typename TWeight>
@@ -417,7 +446,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
                        TransformerLevel baseline_level,
                        TransformerLevel target_level,
-                       const std::vector<int64_t>& opset_versions,
+                       const std::vector<int>& opset_versions,
                        double per_sample_tolerance = 0.0,
                        double relative_per_sample_tolerance = 0.0,
                        std::unique_ptr<GraphTransformer> transformer = nullptr,  // must be null in this case.
@@ -454,7 +483,7 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
  * @param post_graph_checker The graph checker function after applying the transformer
  */
 Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
-                            const std::vector<int64_t>& opset_versions,
+                            const std::vector<int>& opset_versions,
                             const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
                             TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
                             const std::function<Status(Graph&)>& post_graph_checker);

@@ -12,7 +12,6 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/logging/sinks/cerr_sink.h"
-#include "core/framework/allocatormgr.h"
 #include "core/session/environment.h"
 #include "core/framework/ort_value.h"
 #include "core/session/inference_session.h"
@@ -71,6 +70,18 @@ bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
 AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id);
 
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer();
+
+#endif
+
+#ifdef USE_DML
+
+AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id);
+
+void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes);
+
+void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction();
 
 #endif
 

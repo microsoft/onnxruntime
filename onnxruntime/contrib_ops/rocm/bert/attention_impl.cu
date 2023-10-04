@@ -30,6 +30,7 @@ limitations under the License.
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/rocm/bert/attention_impl.h"
 #include "contrib_ops/rocm/bert/attention_softmax.h"
+#include "contrib_ops/rocm/bert/decoder_attention_impl.h"
 
 using namespace onnxruntime::rocm;
 
@@ -79,7 +80,7 @@ inline int3 Get2DMaskStrides(int total_sequence_length) {
 }
 
 Status ClassifyAttentionMode(
-    const std::string& op,
+    AttentionType attn_type,
     RocmAttentionParameters* attn,
     const std::vector<const Tensor*>& qkv,
     const std::vector<const Tensor*>& past,
@@ -91,7 +92,7 @@ Status ClassifyAttentionMode(
   auto hint = MakeString(num_qkv, " qkv inputs, ", num_past, " past inputs and ", num_present, " present inputs");
   LOGS_DEFAULT(VERBOSE) << hint;
 
-  if (op == "Attention") {
+  if (attn_type == kAttention) {
     ORT_ENFORCE(num_qkv == 0);
     if (num_past == 0 && num_present == 0) {
       attn->mode = QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE;
@@ -113,7 +114,7 @@ Status ClassifyAttentionMode(
         return Status::OK();
       }
     }
-  } else if (op == "MultiHeadAttention") {
+  } else if (attn_type == kMultiHeadAttention || attn_type == kDecoderMaskedMultiHeadAttention) {
     if (num_qkv == 3 && num_past == 0 && num_present == 0) {
       if (attn->qkv_format == Q_K_V_BSNH) {
         attn->mode = BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE;
@@ -121,6 +122,24 @@ Status ClassifyAttentionMode(
       } else if (attn->pass_past_in_kv) {
         attn->mode = BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE;
         return Status::OK();
+      }
+    } else if (num_qkv == 3 && num_past == 0 && num_present == 2) {
+      if (attn->past_present_share_buffer == false) {
+        if (attn->qkv_format == Q_K_V_BSNH) {
+          attn->mode = BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH;
+          return Status::OK();
+        } else if (attn->pass_past_in_kv) {
+          attn->mode = BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH;
+          return Status::OK();
+        }
+      } else {
+        if (attn->qkv_format == Q_K_V_BSNH) {
+          attn->mode = BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH;
+          return Status::OK();
+        } else if (attn->pass_past_in_kv) {
+          attn->mode = BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH;
+          return Status::OK();
+        }
       }
     } else if (num_qkv == 3 && num_past == 2 && num_present == 2) {
       if (attn->past_present_share_buffer == false) {
@@ -154,7 +173,7 @@ Status ClassifyAttentionMode(
   }
   return ORT_MAKE_STATUS(
       ONNXRUNTIME, INVALID_ARGUMENT,
-      "Unsupported AttentionMode for ", op, ". Got qkv format ", attn->qkv_format,
+      "Unsupported AttentionMode for ", attn_type, ". Got qkv format ", attn->qkv_format,
       ". Got ", hint);
 }
 
@@ -162,7 +181,7 @@ template <typename T>
 Status DecoderQkvToContext(
     const hipDeviceProp_t& prop,
     RocmTuningContext* tuning_ctx,
-    hipStream_t stream,
+    Stream* ort_stream,
     rocblas_handle& rocblas,
     const size_t element_size,
     const int batch_size,
@@ -193,6 +212,7 @@ Status DecoderQkvToContext(
   const int v_buffer_offset = (sequence_length + kv_sequence_length) * BHN;
 
   T* temp_qkv_buffer = workspace_buffer;
+  auto stream = static_cast<hipStream_t>(ort_stream->GetHandle());
 
   const T* q = qkv_buffer;
   // transpose q and copy them to qkv_buffer
@@ -264,7 +284,7 @@ Status DecoderQkvToContext(
   const int strideB = sequence_length * head_size;
   if (use_past && static_kv) {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, stream, rocblas,
+        tuning_ctx, ort_stream, rocblas,
         blas::BlasOp::Trans, blas::BlasOp::NonTrans,
         kv_sequence_length, sequence_length, head_size,
         /*alpha=*/rsqrt_head_size,
@@ -275,7 +295,7 @@ Status DecoderQkvToContext(
         BN));
   } else {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, stream, rocblas,
+        tuning_ctx, ort_stream, rocblas,
         blas::BlasOp::Trans, blas::BlasOp::NonTrans,
         kv_sequence_length, sequence_length, head_size,
         /*alpha=*/rsqrt_head_size,
@@ -289,7 +309,7 @@ Status DecoderQkvToContext(
   if (has_key_padding_mask) {
     int3 strides = Get2DMaskStrides(kv_sequence_length);
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(
-        stream, kv_sequence_length, sequence_length, batch_size, num_heads,
+        ort_stream, kv_sequence_length, sequence_length, batch_size, num_heads,
         strides, nullptr, key_padding_mask, nullptr, scratch1, scratch2,
         false, 1.0f, false, nullptr, mask_filter_value));
   } else {
@@ -300,7 +320,7 @@ Status DecoderQkvToContext(
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (use_past && static_kv) {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, stream, rocblas,
+        tuning_ctx, ort_stream, rocblas,
         blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
         head_size, sequence_length, kv_sequence_length,
         /*alpha=*/1.0f,
@@ -311,7 +331,7 @@ Status DecoderQkvToContext(
         BN));
   } else {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, stream, rocblas,
+        tuning_ctx, ort_stream, rocblas,
         blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
         head_size, sequence_length, kv_sequence_length,
         /*alpha=*/1.0f,
@@ -330,7 +350,7 @@ Status DecoderQkvToContext(
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,
     RocmTuningContext* tuning_ctx,
-    hipStream_t stream,
+    Stream* stream,
     rocblas_handle& rocblas,
     const size_t element_size,
     const int batch_size,

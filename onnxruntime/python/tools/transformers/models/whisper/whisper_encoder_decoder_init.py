@@ -6,7 +6,6 @@
 
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional
@@ -14,16 +13,14 @@ from typing import List, Optional
 import numpy
 import onnx
 import torch
+from models.t5.past_helper import PastKeyValuesHelper
+from onnx_model import OnnxModel
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import WhisperConfig
 from whisper_decoder import WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderInputs
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from models.t5.past_helper import PastKeyValuesHelper  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +32,13 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         self,
         encoder: torch.nn.Module,
         decoder: torch.nn.Module,
-        lm_head: torch.nn.Module,
         config: WhisperConfig,
         decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
         self.config = config
         self.whisper_encoder = WhisperEncoder(encoder, config)
-        self.whisper_decoder_init = WhisperDecoderInit(decoder, lm_head, config, decoder_start_token_id)
+        self.whisper_decoder_init = WhisperDecoderInit(decoder, config, decoder_start_token_id)
 
     def forward(
         self,

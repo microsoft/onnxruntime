@@ -383,7 +383,7 @@ void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, c
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     // Only one output, and mean of output values are near attribute mean.
     ASSERT_EQ(fetches.size(), 1u);
-    const auto& output_tensor = FetchTensor(fetches[0]);
+    const auto& output_tensor = fetches[0].Get<Tensor>();
     if (output_dtype == TensorProto_DataType::TensorProto_DataType_FLOAT) {
       auto output_span = output_tensor.DataAsSpan<float>();
       float sum = std::accumulate(output_span.begin(), output_span.end(), 0.f);
@@ -476,7 +476,7 @@ void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, c
     // Only one output. Each value in output tensoer is between low and high.
     // Mean of output values are near attribute mean of low and high.
     ASSERT_EQ(fetches.size(), 1u);
-    const auto& output_tensor = FetchTensor(fetches[0]);
+    const auto& output_tensor = fetches[0].Get<Tensor>();
     if (output_dtype == TensorProto_DataType::TensorProto_DataType_FLOAT) {
       auto output_span = output_tensor.DataAsSpan<float>();
       for (auto value : output_span) {

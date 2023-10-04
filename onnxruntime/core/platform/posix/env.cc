@@ -193,22 +193,6 @@ class PosixThread : public EnvThread {
       }
 
       size_t stack_size = thread_options.stack_size;
-#if defined(__wasm__)
-      // emscripten 3.1.37 has a bug which does not take build flags 'STACK_SIZE' or 'DEFAULT_PTHREAD_STACK_SIZE'.
-      // the pthread stack size will always be 64kB, which is insufficient to run some kernels.
-      // we set the stack_size to a bigger value
-      //
-      // https://github.com/emscripten-core/emscripten/issues/19302
-      //
-      // TODO: once this issue is fixed by emscripten's new release, remove this code.
-      //       future changes to DEFAULT_PTHREAD_STACK_SIZE will be in the following files
-      //       - cmake/onnxruntime_unittests.cmake (target onnxruntime_test_all)
-      //       - cmake/onnxruntime_webassembly.cmake (target onnxruntime_webassembly)
-      //
-      if (stack_size == 0) {
-        stack_size = 131072;
-      }
-#endif
       if (stack_size > 0) {
         s = pthread_attr_setstacksize(&attr, stack_size);
         if (s != 0) {
@@ -351,11 +335,12 @@ class PosixEnv : public Env {
       sleep_time.tv_nsec = 0;
 
       if (micros >= OneMillion) {
-        sleep_time.tv_sec = std::min<int64_t>(micros / OneMillion, std::numeric_limits<time_t>::max());
+        sleep_time.tv_sec = static_cast<time_t>(std::min<int64_t>(micros / OneMillion,
+                                                                  std::numeric_limits<time_t>::max()));
         micros -= static_cast<int64_t>(sleep_time.tv_sec) * OneMillion;
       }
       if (micros < OneMillion) {
-        sleep_time.tv_nsec = 1000 * micros;
+        sleep_time.tv_nsec = static_cast<decltype(timespec::tv_nsec)>(1000 * micros);
         micros = 0;
       }
       while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) {
@@ -457,9 +442,9 @@ class PosixEnv : public Env {
       return Status::OK();
     }
 
-    static const long page_size = sysconf(_SC_PAGESIZE);
+    static const size_t page_size = narrow<size_t>(sysconf(_SC_PAGESIZE));
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
-    const size_t mapped_length = length + offset_to_page;
+    const size_t mapped_length = length + static_cast<size_t>(offset_to_page);
     const FileOffsetType mapped_offset = offset - offset_to_page;
     void* const mapped_base =
         mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), mapped_offset);

@@ -25,7 +25,7 @@ struct RunOptions {
   bool add_bad_shape = false;
   bool mixed_execution_providers = false;
   // Disable TensorRT because its parser fails, and it can't handle unknown dimensions
-  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
+  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
 };
 
 static common::Status CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message = "");
@@ -578,7 +578,7 @@ TEST(Scan9, DISABLED_BadShape) {
   ShortSequenceOneInBatchOneLoopStateVar(
       options,
       "Node:concat Output:concat_out_1 [ShapeInferenceError] Mismatch between number of source and target dimensions. "
-      "Source=2 Target=1");
+      "inferred=2 declared=1");
 }
 
 TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVar) {

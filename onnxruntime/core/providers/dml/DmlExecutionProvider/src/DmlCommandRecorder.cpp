@@ -10,7 +10,7 @@ using namespace Dml;
 
 DmlCommandRecorder::DmlCommandRecorder(
     ID3D12Device* d3dDevice,
-    IDMLDevice* dmlDevice, 
+    IDMLDevice* dmlDevice,
     std::shared_ptr<CommandQueue> commandQueue)
     : m_queue(std::move(commandQueue)),
       m_d3dDevice(d3dDevice),
@@ -61,7 +61,7 @@ void DmlCommandRecorder::InitializeOperator(
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
+        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize));
         if (!tempResourceHandle)
         {
             ORT_THROW_HR(E_OUTOFMEMORY);
@@ -137,7 +137,7 @@ void DmlCommandRecorder::ExecuteOperator(
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
+        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize));
         if (!tempResourceHandle)
         {
             ORT_THROW_HR(E_OUTOFMEMORY);
@@ -183,7 +183,7 @@ void DmlCommandRecorder::CopyBufferRegion(
     m_currentCommandList->CopyBufferRegion(dstBuffer, dstOffset, srcBuffer, srcOffset, byteCount);
     m_operationsRecordedInCurrentCommandList = true;
 }
-    
+
 void DmlCommandRecorder::FillBufferWithPattern(
     ID3D12Resource* dstBuffer,
     gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */)
@@ -250,11 +250,11 @@ void DmlCommandRecorder::ExecuteCommandList(
     _Outptr_ ID3D12Fence** fence,
     _Out_ uint64_t* completionValue
     )
-{    
+{
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
 
     if (m_operationsRecordedInCurrentCommandList)
-    {            
+    {
         m_pendingCommandLists.push_back(m_currentCommandList.Get());
         m_pendingCommandListsCacheable.push_back(true);
     }
@@ -290,16 +290,16 @@ void DmlCommandRecorder::ExecuteCommandList(
 }
 
 ComPtr<ID3D12GraphicsCommandList> DmlCommandRecorder::GetCommandList()
-{ 
+{
     // Assume operations are added by the caller after this returns
-    m_operationsRecordedInCurrentCommandList = true; 
-    return m_currentCommandList; 
+    m_operationsRecordedInCurrentCommandList = true;
+    return m_currentCommandList;
 }
 
 void DmlCommandRecorder::ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers)
 {
     m_currentCommandList->ResourceBarrier(gsl::narrow_cast<uint32_t>(barriers.size()), barriers.data());
-    m_operationsRecordedInCurrentCommandList = true; 
+    m_operationsRecordedInCurrentCommandList = true;
 }
 
 void DmlCommandRecorder::AddUAVBarrier()
@@ -307,7 +307,7 @@ void DmlCommandRecorder::AddUAVBarrier()
     #pragma warning(suppress: 6387)
     auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
     m_currentCommandList->ResourceBarrier(1, &barrier);
-    m_operationsRecordedInCurrentCommandList = true; 
+    m_operationsRecordedInCurrentCommandList = true;
 }
 
 void DmlCommandRecorder::Open()
@@ -323,7 +323,7 @@ void DmlCommandRecorder::Open()
             m_queue->GetType(),
             allocator,
             nullptr,
-            IID_GRAPHICS_PPV_ARGS(m_currentCommandList.ReleaseAndGetAddressOf())));   
+            IID_GRAPHICS_PPV_ARGS(m_currentCommandList.ReleaseAndGetAddressOf())));
     }
     else
     {
@@ -338,7 +338,7 @@ void DmlCommandRecorder::CloseAndExecute()
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
 
     if (m_operationsRecordedInCurrentCommandList)
-    {            
+    {
         m_pendingCommandLists.push_back(m_currentCommandList.Get());
         m_pendingCommandListsCacheable.push_back(true);
     }

@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {PoolConvUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
@@ -10,6 +9,7 @@ import {ComputeContext} from '../types';
 import {createGroupedConvProgramInfoLoader} from './conv-grouped';
 import {createConv2DMatMulProgramInfoLoader} from './conv2d-mm';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
+import {createMatmulProgramInfoLoader} from './matmul';
 import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
 
 export const calculateOutputShape =
@@ -92,15 +92,6 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvAttribute
   if (attributes.kernelShape.length !== 0 && attributes.kernelShape.length !== inputs[1].dims.length - 2) {
     throw new Error('invalid kernel shape');
   }
-
-  // TODO : Need to add support for float64
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('Conv input(X,W) should be float tensor');
-  }
-
-  if (inputs.length === 3 && inputs[2].dataType !== DataType.float) {
-    throw new Error('Conv input(bias) should be float tensor');
-  }
 };
 
 const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
@@ -146,6 +137,10 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   const hasBias = inputs.length === 3;
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
   const isChannelsLast = attributes.format === 'NHWC';
+  if (!isChannelsLast || attributes.group !== 1) {
+    context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
+    return;
+  }
 
   // const batchSize = context.inputs[0].dims[0];
   const inputHeight = inputs[0].dims[isChannelsLast ? 1 : 2];
@@ -160,21 +155,38 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   const outHeight = outputShape[isChannelsLast ? 1 : 2];
   const outWidth = outputShape[isChannelsLast ? 2 : 3];
   const outChannels = outputShape[isChannelsLast ? 3 : 1];
+  const batch = outputShape[0];
 
   const sameSize =
       isChannelsLast && weightHeight === inputHeight && weightWidth === inputWidth && attributes.autoPad === 'VALID';
   if (sameSize ||
       (weightHeight === 1 && weightWidth === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1 &&
-       attributes.strides[0] === 1 && attributes.strides[1] === 1 &&
-       (attributes.autoPad === 'SAME_UPPER' || attributes.autoPad === 'SAME_LOWER' ||
-        attributes.autoPad === 'VALID'))) {
-    // TODO: implement conv2dByMatMul()
-    context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
-    return;
-  }
+       attributes.strides[0] === 1 && attributes.strides[1] === 1 && attributes.pads[0] === 0 &&
+       attributes.pads[1] === 0)) {
+    // conv2dByMatMul
+    const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
+        context.compute(
+            {
+              ...transposeProgramMetadata,
+              cacheHint: weightTransposeAttribute.cacheKey,
+              get: () => createTransposeProgramInfo(inputs[1], weightTransposeAttribute.perm)
+            },
+            {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
+    if (attributes.wIsConst && !context.kernelCustomData.wT) {
+      context.kernelCustomData.wT = transposedWeight;
+    }
 
-  if (!isChannelsLast || attributes.group !== 1) {
-    context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
+    const matmulInputs = [];
+    matmulInputs.push(inputs[0].reshape([batch, inputHeight * inputWidth, inputChannels]));
+    matmulInputs.push(transposedWeight.reshape([1, inputChannels, outChannels]));
+    if (hasBias) {
+      matmulInputs.push(inputs[2]);
+    }
+    const matmulOutputShape = [batch, outHeight * outWidth, outChannels];
+    context.compute(
+        createMatmulProgramInfoLoader(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape),
+        {inputs: matmulInputs});
+
     return;
   }
 
@@ -187,7 +199,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   const sequentialAccessByThreads = /* backend.adapterInfo.isIntel() */ true;
 
   // STEP.1: transpose weight
-  const transposedWeight = (context.customData.wT as TensorView | undefined) ??
+  const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
       context.compute(
           {
             ...transposeProgramMetadata,
@@ -195,8 +207,8 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
             get: () => createTransposeProgramInfo(inputs[1], weightTransposeAttribute.perm)
           },
           {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
-  if (attributes.wIsConst && !context.customData.wT) {
-    context.customData.wT = transposedWeight;
+  if (attributes.wIsConst && !context.kernelCustomData.wT) {
+    context.kernelCustomData.wT = transposedWeight;
   }
 
   // STEP.2: prepare reshaped inputs

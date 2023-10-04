@@ -416,9 +416,7 @@ Status LoopImpl::Initialize() {
   auto condition_rank = subgraph_inputs[1]->Shape()->dim_size();
 
   // these need to be on CPU
-  auto cpu_allocator = session_state_.GetExecutionProviders()
-                           .Get(onnxruntime::kCpuExecutionProvider)
-                           ->GetAllocator(OrtMemTypeDefault);
+  auto cpu_allocator = session_state_.GetAllocator(session_state_.GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider)->GetOrtDeviceByMemType(OrtMemTypeDefault));
   iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator, 0, iter_num_rank != 0);
   condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator, condition_, condition_rank != 0);
 

@@ -180,7 +180,7 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, I
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     const int32_t* val = init_const.data<int32_t>();
     data.reserve(data.size() + gsl::narrow<size_t>(init_const.size()));
-    for (int64_t i = 0; i < init_const.size(); i++) {
+    for (size_t i = 0; i < init_const.size(); i++) {
       data.push_back(static_cast<int64_t>(val[i]));
     }
   } else {
@@ -274,8 +274,15 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
 constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike",
                                                     "RandomNormalLike", "Multinomial"};
 
+// List of deterministic MS domain operators. Currently used for constant folding and common subexpression elimination.
+//
+// TODO(adrianlizarraga): Investigate converting to lists of *non-deterministic* MS domain operators to be consistent
+// with the above ONNX list. With the current approach, only MS domain Q/DQ operators
+// (plus ShrunkenGather for training) are considered deterministic.
 #ifdef ENABLE_TRAINING_OPS
-constexpr std::array kMSDomainDeterministicOps{"ShrunkenGather"};
+constexpr std::array kMSDomainDeterministicOps{"ShrunkenGather", "QuantizeLinear", "DequantizeLinear"};
+#else
+constexpr std::array kMSDomainDeterministicOps{"QuantizeLinear", "DequantizeLinear"};
 #endif
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
@@ -283,12 +290,12 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op) 
     auto iter = std::find(kOnnxDomainNonDeterministicOps.begin(), kOnnxDomainNonDeterministicOps.end(), op);
     return iter == kOnnxDomainNonDeterministicOps.end();
   }
-#ifdef ENABLE_TRAINING_OPS
+
   if (domain.compare(kMSDomain) == 0) {
     auto iter = std::find(kMSDomainDeterministicOps.begin(), kMSDomainDeterministicOps.end(), op);
     return iter != kMSDomainDeterministicOps.end();
   }
-#endif
+
   // Unknown domain. Assume the op is not deterministic.
   return false;
 }

@@ -5,8 +5,10 @@
 #include "LearningModelSessionOptions.h"
 
 namespace WINMLP {
-LearningModelSessionOptions::LearningModelSessionOptions(const LearningModelSessionOptions& options) : batch_size_override_(options.batch_size_override_),
-                                                                                                       close_model_on_session_creation_(options.close_model_on_session_creation_) {}
+LearningModelSessionOptions::LearningModelSessionOptions(const LearningModelSessionOptions& options)
+  : batch_size_override_(options.batch_size_override_),
+    close_model_on_session_creation_(options.close_model_on_session_creation_) {
+}
 
 uint32_t LearningModelSessionOptions::BatchSizeOverride() {
   return batch_size_override_;
@@ -52,4 +54,13 @@ STDMETHODIMP LearningModelSessionOptions::SetIntraOpThreadSpinning(boolean allow
   telemetry_helper.SetIntraOpThreadSpinning(allowSpinning != 0);
   return S_OK;
 }
+
+const gsl::span<const winrt::hstring> LearningModelSessionOptions::GetCustomOpLibraryPaths() noexcept {
+  return custom_ops_lib_paths_;
+}
+
+void LearningModelSessionOptions::RegisterCustomOpsLibrary(const winrt::hstring& path) noexcept {
+  custom_ops_lib_paths_.push_back(path);
+}
+
 }  // namespace WINMLP

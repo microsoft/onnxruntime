@@ -220,7 +220,7 @@ def load_dataset(args):
 
     # Load the dataset into a pandas dataframe.
     df = pd.read_csv(
-        os.path.join(args.data_dir, "in_domain_train.tsv"),
+        os.path.join(args.data_dir if os.path.exists(args.data_dir) else "cola_public/raw", "in_domain_train.tsv"),
         delimiter="\t",
         header=None,
         names=["sentence_source", "label", "label_notes", "sentence"],

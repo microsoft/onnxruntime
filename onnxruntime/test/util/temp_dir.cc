@@ -9,21 +9,36 @@
 
 namespace onnxruntime {
 namespace test {
+namespace {
+void CreateOrDeleteDirectory(const PathString& path, bool create, bool throw_on_fail = true) {
+  const auto status = create ? Env::Default().CreateFolder(path) : Env::Default().DeleteFolder(path);
+  EXPECT_TRUE(status.IsOK()) << "Failed to " << (create ? "create" : "delete") << "temporary directory " << path;
 
-TemporaryDirectory::TemporaryDirectory(const PathString& path)
+  if (throw_on_fail) {
+    ORT_ENFORCE(status.IsOK());
+  }
+}
+}  // namespace
+
+TemporaryDirectory::TemporaryDirectory(const PathString& path, bool delete_if_exists)
     : path_{path} {
   // EXPECT and throw to fail even if anyone is catching exceptions
   const bool exists = Env::Default().FolderExists(path_);
-  EXPECT_TRUE(!exists) << "Temporary directory " << path_ << " already exists.";
-  ORT_ENFORCE(!exists);
-  const auto status = Env::Default().CreateFolder(path_);
-  EXPECT_TRUE(status.IsOK()) << "Failed to create temporary directory " << path_ << ": " << status.ErrorMessage();
-  ORT_ENFORCE(status.IsOK());
+  if (exists) {
+    if (!delete_if_exists) {
+      EXPECT_FALSE(exists) << "Temporary directory " << path_ << " already exists.";
+      ORT_ENFORCE(!exists);
+    }
+
+    CreateOrDeleteDirectory(path_, /* create */ false);
+  }
+
+  CreateOrDeleteDirectory(path_, /* create*/ true);
 }
 
 TemporaryDirectory::~TemporaryDirectory() {
-  const auto status = Env::Default().DeleteFolder(path_);
-  EXPECT_TRUE(status.IsOK()) << "Failed to delete temporary directory " << path_ << ": " << status.ErrorMessage();
+  // don't throw in dtor
+  CreateOrDeleteDirectory(path_, /* create */ false, /* throw_on_fail */ false);
 }
 
 }  // namespace test

@@ -1,0 +1,12 @@
+# Install appcenter CLI
+
+parameters:
+- name: appcenterVersion
+  type: string
+  default: "2.13.7"
+
+steps:
+- bash: |
+    set -e -x
+    npm install -g appcenter-cli@${{ parameters.appcenterVersion }}
+  displayName: Install appcenter CLI ${{ parameters.appcenterVersion }}

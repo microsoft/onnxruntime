@@ -25,14 +25,16 @@ class QnnModel;
 
 class QnnBackendManager {
  public:
-  QnnBackendManager(std::string backend_path,
+  QnnBackendManager(std::string&& backend_path,
                     ProfilingLevel profiling_level,
                     uint32_t rpc_control_latency,
-                    HtpPerformanceMode htp_performance_mode)
+                    HtpPerformanceMode htp_performance_mode,
+                    std::string&& qnn_saver_path)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
-        htp_performance_mode_(htp_performance_mode) {
+        htp_performance_mode_(htp_performance_mode),
+        qnn_saver_path_(qnn_saver_path) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -69,13 +71,11 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status DumpQnnContext(const onnxruntime::PathString& context_cache_pathstring,
-                        const std::string& model_name,
-                        const std::string& graph_name);
+  Status DumpQnnContext(const std::string& model_name, const std::string& graph_name);
 
-  Status LoadCachedQnnContext(const onnxruntime::PathString& context_cache_pathstring, QnnModel& qnn_model);
+  Status LoadCachedQnnContext(QnnModel& qnn_model);
 
-  Status GetMetadataFromOrtContextFile(const onnxruntime::PathString& model_path);
+  Status GetMetadataFromOrtContextFile();
 
   Status ValidateWithContextFile(const std::string& model_name, const std::string& graph_name);
 
@@ -130,13 +130,19 @@ class QnnBackendManager {
   Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id);
   Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id);
 
-  // NPU backend requires quantized model
-  bool IsNpuBackend() { return is_npu_backend_; }
+  void SetQnnBackendType(uint32_t backend_id);
+  QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
+
+  bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
+                                const std::string& model_description,
+                                const onnxruntime::PathString& model_pathstring);
 
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
   Status LoadQnnSystemLib();
+
+  Status LoadQnnSaverBackend();
 
   Status UnloadLib(void* handle);
 
@@ -153,11 +159,11 @@ class QnnBackendManager {
   }
 
   template <typename F, class T>
-  Status GetQnnInterfaceProviders(const char* lib_path,
-                                  const char* interface_provider_name,
-                                  void** backend_lib_handle,
-                                  T*** interface_providers,
-                                  uint32_t& num_providers);
+  Status GetQnnInterfaceProvider(const char* lib_path,
+                                 const char* interface_provider_name,
+                                 void** backend_lib_handle,
+                                 Qnn_Version_t req_version,
+                                 T** interface_provider);
 
   bool IsDevicePropertySupported();
 
@@ -190,13 +196,17 @@ class QnnBackendManager {
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   // NPU backend requires quantized model
-  bool is_npu_backend_ = false;
+  QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_ = 0;
   HtpPerformanceMode htp_performance_mode_;
   std::string model_name_from_ctx_cache_ = "";
   std::string graph_name_from_ctx_cache_ = "";
+  std::string model_description_from_ctx_cache_ = "";
+  std::string model_description_ = "";
+  std::string context_cache_path_ = "";
+  bool ctx_file_exists_ = false;
   bool ctx_metadata_tried_ = false;
   bool ort_generated_ctx_cache_ = false;
   bool get_capability_round_2_ = false;
@@ -204,6 +214,7 @@ class QnnBackendManager {
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
+  const std::string qnn_saver_path_;
 };
 
 }  // namespace qnn

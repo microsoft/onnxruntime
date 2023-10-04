@@ -147,7 +147,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.Memory" Version="4.5.3" IncludeAssets="None" />
+    <PackageReference Include="System.Memory" Version="4.5.5" IncludeAssets="None" />
     <NativeReference Condition=" '$(Platform)' == 'iPhoneSimulator' And Exists('$(OnnxNativeFrameworkPathSimulator)') " Include="$(OnnxNativeFrameworkPathSimulator)">
       <Kind>Framework</Kind>
       <ForceLoad>True</ForceLoad>

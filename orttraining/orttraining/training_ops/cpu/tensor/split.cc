@@ -26,15 +26,15 @@ Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs
                                  std::vector<int64_t>& split_sizes) {
   auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
-  int64_t axis_value = axis;
-  axis = HandleNegativeAxis(axis_value, num_dimensions);  // handle negative and enforce axis is valid
-  const int64_t split_dim_size = input_dims[axis];
+  const int64_t original_axis_value = axis;
+  axis = HandleNegativeAxis(original_axis_value, num_dimensions);  // handle negative and enforce axis is valid
+  const int64_t split_dim_size = input_dims[gsl::narrow_cast<size_t>(axis)];
 
-  before_dims = narrow<int>(input_shape.SizeToDimension(axis));
-  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(axis));
+  before_dims = narrow<int>(input_shape.SizeToDimension(gsl::narrow_cast<size_t>(axis)));
+  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1  // we multiply by this value so must be 1 not 0
-                                   : narrow<int>(input_shape.SizeFromDimension(axis + 1));
+                                   : narrow<int>(input_shape.SizeFromDimension(gsl::narrow_cast<size_t>(axis) + 1));
 
   std::vector<int64_t> split_sizes_values(split_sizes);
   split_sizes.clear();
@@ -44,7 +44,7 @@ Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs
     // equal split based on number of outputs
     if (split_dim_size % static_cast<size_t>(num_outputs) != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input cannot be split evenly on selected axis. Input shape=", input_shape,
-                             " Axis=", axis_value, " NumOutputs=", num_outputs);
+                             " Axis=", original_axis_value, " NumOutputs=", num_outputs);
     }
 
     // populate split_sizes with the same size for each output
@@ -52,7 +52,7 @@ Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs
   } else {
     if (split_sizes_values.size() != static_cast<size_t>(num_outputs) || split_size_sum != split_dim_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Cannot split using values in 'split' input. Axis=", axis_value,
+                             "Cannot split using values in 'split' input. Axis=", original_axis_value,
                              " Input shape=", input_shape,
                              " NumOutputs=", num_outputs,
                              " Num entries in 'split' (must equal number of outputs) was ", split_sizes_values.size(),
@@ -127,7 +127,7 @@ Status SplitTraining::ComputeImpl(OpKernelContext& context, const Tensor& input)
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on
     auto split_size = narrow<int>(split_sizes[i]);
-    output_dimensions[axis] = split_size;
+    output_dimensions[gsl::narrow_cast<size_t>(axis)] = split_size;
 
     Tensor* output = context.Output(i, TensorShape{output_dimensions});
     T* output_data = output->template MutableData<T>();

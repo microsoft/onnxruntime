@@ -17,8 +17,9 @@
  * @packageDocumentation
  */
 
-export * from './backend';
-export * from './env';
-export * from './inference-session';
-export * from './tensor';
-export * from './onnx-value';
+export * from './backend.js';
+export * from './env.js';
+export * from './inference-session.js';
+export * from './tensor.js';
+export * from './onnx-value.js';
+export * from './training-session.js';

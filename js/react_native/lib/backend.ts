@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Buffer} from 'buffer';
-import {Backend, InferenceSession, SessionHandler, Tensor,} from 'onnxruntime-common';
+import {Backend, InferenceSession, InferenceSessionHandler, SessionHandler, Tensor} from 'onnxruntime-common';
 import {Platform} from 'react-native';
 
-import {binding, Binding} from './binding';
+import {binding, Binding, JSIBlob, jsiHelper} from './binding';
 
 type SupportedTypedArray = Exclude<Tensor.DataType, string[]>;
 
@@ -44,7 +43,7 @@ const normalizePath = (path: string): string => {
   return path;
 };
 
-class OnnxruntimeSessionHandler implements SessionHandler {
+class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   #inferenceSession: Binding.InferenceSession;
   #key: string;
 
@@ -67,13 +66,15 @@ class OnnxruntimeSessionHandler implements SessionHandler {
       let results: Binding.ModelLoadInfoType;
       // load a model
       if (typeof this.#pathOrBuffer === 'string') {
+        // load model from model path
         results = await this.#inferenceSession.loadModel(normalizePath(this.#pathOrBuffer), options);
       } else {
-        if (!this.#inferenceSession.loadModelFromBase64EncodedBuffer) {
-          throw new Error('Native module method "loadModelFromBase64EncodedBuffer" is not defined');
+        // load model from buffer
+        if (!this.#inferenceSession.loadModelFromBlob) {
+          throw new Error('Native module method "loadModelFromBlob" is not defined');
         }
-        const modelInBase64String = Buffer.from(this.#pathOrBuffer).toString('base64');
-        results = await this.#inferenceSession.loadModelFromBase64EncodedBuffer(modelInBase64String, options);
+        const modelBlob = jsiHelper.storeArrayBuffer(this.#pathOrBuffer.buffer);
+        results = await this.#inferenceSession.loadModelFromBlob(modelBlob, options);
       }
       // resolve promise if onnxruntime session is successfully created
       this.#key = results.key;
@@ -85,7 +86,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
   }
 
   async dispose(): Promise<void> {
-    return Promise.resolve();
+    return this.#inferenceSession.dispose(this.#key);
   }
 
   startProfiling(): void {
@@ -113,18 +114,18 @@ class OnnxruntimeSessionHandler implements SessionHandler {
     return output;
   }
 
+
   encodeFeedsType(feeds: SessionHandler.FeedsType): Binding.FeedsType {
     const returnValue: {[name: string]: Binding.EncodedTensorType} = {};
     for (const key in feeds) {
       if (Object.hasOwnProperty.call(feeds, key)) {
-        let data: string|string[];
+        let data: JSIBlob|string[];
 
         if (Array.isArray(feeds[key].data)) {
           data = feeds[key].data as string[];
         } else {
-          // Base64-encode tensor data
           const buffer = (feeds[key].data as SupportedTypedArray).buffer;
-          data = Buffer.from(buffer, 0, buffer.byteLength).toString('base64');
+          data = jsiHelper.storeArrayBuffer(buffer);
         }
 
         returnValue[key] = {
@@ -146,9 +147,9 @@ class OnnxruntimeSessionHandler implements SessionHandler {
         if (Array.isArray(results[key].data)) {
           tensorData = results[key].data as string[];
         } else {
-          const buffer: Buffer = Buffer.from(results[key].data as string, 'base64');
+          const buffer = jsiHelper.resolveArrayBuffer(results[key].data as JSIBlob) as SupportedTypedArray;
           const typedArray = tensorTypeToTypedArray(results[key].type as Tensor.Type);
-          tensorData = new typedArray(buffer.buffer, buffer.byteOffset, buffer.length / typedArray.BYTES_PER_ELEMENT);
+          tensorData = new typedArray(buffer, buffer.byteOffset, buffer.byteLength / typedArray.BYTES_PER_ELEMENT);
         }
 
         returnValue[key] = new Tensor(results[key].type as Tensor.Type, tensorData, results[key].dims);
@@ -164,8 +165,8 @@ class OnnxruntimeBackend implements Backend {
     return Promise.resolve();
   }
 
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<SessionHandler> {
+  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+      Promise<InferenceSessionHandler> {
     const handler = new OnnxruntimeSessionHandler(pathOrBuffer);
     await handler.loadModel(options || {});
     return handler;

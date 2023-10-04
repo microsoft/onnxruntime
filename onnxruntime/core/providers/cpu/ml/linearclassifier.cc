@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/linearclassifier.h"
+#include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm.h"
 
 namespace onnxruntime {
@@ -34,7 +35,7 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
     ORT_ENFORCE(!coefficients_.empty());
 
   using_strings_ = !classlabels_strings_.empty();
-  class_count_ = static_cast<int64_t>(intercepts_.size());
+  class_count_ = static_cast<ptrdiff_t>(intercepts_.size());
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts
@@ -45,7 +46,7 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
 // intercepts_: [num_targets]
 // scores: X * coefficients_^T + intercepts_: [num_batches, num_targets]
 void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
-                                   int64_t num_batches, int64_t num_features, int64_t num_targets,
+                                   ptrdiff_t num_batches, ptrdiff_t num_features, ptrdiff_t num_targets,
                                    const std::vector<float>& coefficients,
                                    const std::vector<float>& intercepts,
                                    Tensor& labels_output, Tensor& scores_output,
@@ -139,8 +140,10 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
                   "Input shape needs to be at least a single dimension.");
   }
 
-  int64_t num_batches = input_shape.NumDimensions() == 1 ? 1 : input_shape[0];
-  int64_t num_features = input_shape.NumDimensions() == 1 ? input_shape[0] : input_shape[1];
+  ptrdiff_t num_batches = input_shape.NumDimensions() == 1 ? 1 : narrow<ptrdiff_t>(input_shape[0]);
+  ptrdiff_t num_features = input_shape.NumDimensions() == 1 ? narrow<ptrdiff_t>(
+                                                                  input_shape[0])
+                                                            : narrow<ptrdiff_t>(input_shape[1]);
 
   Tensor* Y = ctx->Output(0, {num_batches});
 

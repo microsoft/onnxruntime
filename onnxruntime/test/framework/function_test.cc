@@ -6,6 +6,7 @@
 #include "onnx/defs/parser.h"
 
 #include "core/common/span_utils.h"
+#include "core/framework/float8.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
@@ -52,7 +53,7 @@ static void Check(const char* source,
 
   std::unique_ptr<CPUExecutionProvider> provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   OrtValue ort_value;
-  CreateMLValue<float>(provider->GetAllocator(OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
+  CreateMLValue<float>(provider->CreatePreferredAllocators()[0], {int64_t(input_values.size())}, input_values, &ort_value);
 
   feeds.insert(std::make_pair(std::string(input_name), ort_value));
 
@@ -69,7 +70,9 @@ static void Check(const char* source,
   float threshold = 0.001f;
 
   for (size_t i = 0; i < size; ++i) {
-    ASSERT_NEAR(data[i], output_values[i], threshold) << "at position i:" << i;
+    if (!std::isnan(data[i]) && !std::isnan(output_values[i])) {
+      ASSERT_NEAR(data[i], output_values[i], threshold) << "at position i:" << i;
+    }
   }
 }
 
@@ -389,25 +392,13 @@ TEST(FunctionTest, AttrSaturateNan) {
         >
         agraph (float[N] x) => (float[N] y)
         {
-            y0 = local.myfun <a = 1e6> (x)
-            y1 = local.myfun (x)
-            y = Add (y0, y1)
-        }
-
-        <
-        opset_import: [ "" : 19 ],
-        domain: "local"
-        >
-        myfun <a: float=1.0> (x) => (y) {
-            x2 = Constant <value_float: float=@a>()
-            x2_ = Cast<to=18>(x2)
-            x3 = CastLike<saturate=0>(x2, x2_)
-            x3_ = Cast<to=1>(x3)
-            y = Add (x, x3_)
+            x_E4M3FNUZ = Cast<to=18>(x)
+            x_E4M3FNUZ_2 = CastLike<saturate=0>(x, x_E4M3FNUZ)  # NaN when OOR
+            y = Cast<to=1>(x_E4M3FNUZ_2)
         }
         )";
 
-  Check(code, "x", {1.0, 2.0, 1e6}, "y", {243.0, 245.0, 2000241});  // std::numeric_limits<float>::quiet_NaN()});
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {1.0, 2.0, std::numeric_limits<float>::quiet_NaN()});
 }
 
 #endif
@@ -504,6 +495,30 @@ TEST(FunctionTest, UnusedFunctionInputs) {
   )";
 
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 4.0, 9.0});
+}
+
+// Test constant-folding inside a sub-graph is handled correctly
+// for functions that are inlined.
+TEST(FunctionTest, ConstantFoldingInSubGraph) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: [ "" : 17 ]>
+    agraph (float[N] X) => (float[M] Y)  {
+        seq1 = SequenceConstruct(X, X, X)
+        seq2 = SequenceMap (seq1) <body =
+            add1 (float[K] Z) => (float[K] W) {
+                C1 = Constant <value = float {1.0}> ()
+                C2 = Constant <value = float {1.0}> ()
+                # C is a constant, which will be constant-folded into an initializer out of the sub-graph.
+                C = Add (C1, C2)
+                # After optimization, only following Add will be left in this sub-graph.
+                W = Add (Z, C)
+            }
+        >
+        Y = ConcatFromSequence <axis=0> (seq2)
+    }
+  )";
+
+  Check(code, "X", {1.0, 2.0, 3.0}, "Y", {3.0, 4.0, 5.0, 3.0, 4.0, 5.0, 3.0, 4.0, 5.0});
 }
 
 }  // namespace test

@@ -637,7 +637,7 @@ class GloballyAllowedTypesOpTypeImplFilter(OpTypeImplFilterInterface):
     Operator implementation filter which uses globally allowed types.
     """
 
-    _valid_allowed_types = set(FbsTypeInfo.tensordatatype_to_string.values())
+    _valid_allowed_types = set(FbsTypeInfo.tensordatatype_to_string.values())  # noqa: RUF012
 
     def __init__(self, globally_allowed_types: typing.Set[str]):
         self._operator_processors = _create_operator_type_usage_processors()

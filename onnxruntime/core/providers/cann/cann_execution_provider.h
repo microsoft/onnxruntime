@@ -10,7 +10,6 @@
 #include <unordered_map>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
@@ -35,22 +34,6 @@ class CANNExecutionProvider : public IExecutionProvider {
   virtual ~CANNExecutionProvider();
 
   Status OnRunStart() override;
-
-  template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
-  }
-
-  template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBufferOnCANNPinned(size_t count_or_bytes) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeCPU), count_or_bytes);
-  }
 
   template <typename T>
   Status Fill(Tensor* y, void* addr, aclrtStream stream) const {
@@ -83,12 +66,13 @@ class CANNExecutionProvider : public IExecutionProvider {
 
   static AllocatorPtr CreateCannAllocator(OrtDevice::DeviceId device_id, size_t npu_mem_limit,
                                           ArenaExtendStrategy arena_extend_strategy,
-                                          OrtArenaCfg* arena_cfg);
-  void RegisterAllocator(AllocatorManager& allocator_manager) override;
+                                          OrtArenaCfg* default_memory_arena_cfg);
 
-  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const override;
 
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   CANNExecutionProviderInfo info_;

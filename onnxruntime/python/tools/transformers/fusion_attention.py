@@ -84,6 +84,7 @@ class AttentionMask:
                         data_type=TensorProto.INT64,
                         dims=[1],
                         vals=[1],
+                        raw=False,
                     )
                 )
             mask_index_node = helper.make_node(
@@ -112,6 +113,7 @@ class FusionAttention(Fusion):
         num_heads: int,
         attention_mask: AttentionMask,
         use_multi_head_attention: bool = False,
+        disable_multi_head_attention_bias: bool = False,
         search_op_types: List[str] = ["SkipLayerNormalization", "LayerNormalization"],  # noqa: B006
     ):
         attention_op_name = "MultiHeadAttention" if use_multi_head_attention else "Attention"
@@ -120,6 +122,7 @@ class FusionAttention(Fusion):
         self.num_heads = num_heads
         self.attention_mask = attention_mask
         self.use_multi_head_attention = use_multi_head_attention
+        self.disable_multi_head_attention_bias = disable_multi_head_attention_bias
         self.mask_filter_value = None
 
         # Flags to show warning only once
@@ -201,7 +204,7 @@ class FusionAttention(Fusion):
     def get_add_qk_str(self, add_qk: NodeProto):
         shape_infer = self.model.infer_runtime_shape(update=True)
         if shape_infer is None:
-            return
+            return None
 
         input_0_shape = shape_infer.get_edge_shape(add_qk.input[0])
         input_1_shape = shape_infer.get_edge_shape(add_qk.input[1])
@@ -404,6 +407,36 @@ class FusionAttention(Fusion):
 
         return past_k_transpose, past_v_transpose
 
+    def create_combined_qkv_bias(
+        self,
+        q_add: NodeProto,
+        k_add: Union[NodeProto, None],
+        v_add: Union[NodeProto, None],
+        name_prefix: str,
+    ) -> Union[NodeProto, None]:
+        q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
+        qb = NumpyHelper.to_array(q_bias)
+        kb = np.zeros_like(qb)
+        vb = np.zeros_like(qb)
+        if k_add is not None:
+            k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
+            kb = NumpyHelper.to_array(k_bias)
+        if v_add is not None:
+            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
+            vb = NumpyHelper.to_array(v_bias)
+
+        qkv_bias = np.stack((qb, kb, vb), axis=0)
+        qkv_bias_dim = 3 * np.prod(qb.shape)
+
+        bias_name = name_prefix + "_qkv_bias"
+        self.add_initializer(
+            name=bias_name,
+            data_type=q_bias.data_type,
+            dims=[qkv_bias_dim],
+            vals=qkv_bias,
+        )
+        return bias_name
+
     def create_packed_qkv_matmul_node(
         self,
         q_matmul: NodeProto,
@@ -449,13 +482,13 @@ class FusionAttention(Fusion):
 
         qkv_weight = np.stack((qw, kw, vw), axis=1).reshape((d, 3 * d))
         qkv_weight_name = matmul_node_name + "_qkv_weight"
-        weight = helper.make_tensor(
+
+        self.add_initializer(
             name=qkv_weight_name,
-            data_type=TensorProto.FLOAT,
+            data_type=q_weight.data_type,
             dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
-            vals=qkv_weight.flatten().tolist(),
+            vals=qkv_weight,
         )
-        self.model.add_initializer(weight, self.this_graph_name)
 
         # Created packed QKV MatMul with output (B, S, 3*D)
         # Output is of the form:
@@ -476,25 +509,19 @@ class FusionAttention(Fusion):
         )
         self.node_name_to_graph_name[matmul_node_name] = self.this_graph_name
 
+        qkv_nodes = [qkv_matmul]
+
         # Create Slice nodes to access Q, K, V
         q_slice_name = matmul_node_name + "_q_start_index"
-        q_start_tensor = helper.make_tensor(name=q_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[0])
+        self.add_initializer(name=q_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[0], raw=False)
         k_slice_name = matmul_node_name + "_k_start_index"
-        k_start_tensor = helper.make_tensor(name=k_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[d])
+        self.add_initializer(name=k_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[d], raw=False)
         v_slice_name = matmul_node_name + "_v_start_index"
-        v_start_tensor = helper.make_tensor(name=v_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[2 * d])
+        self.add_initializer(name=v_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[2 * d], raw=False)
         end_of_qkv_name = matmul_node_name + "_end_of_qkv_index"
-        end_of_qkv_tensor = helper.make_tensor(
-            name=end_of_qkv_name, data_type=TensorProto.INT64, dims=[1], vals=[3 * d]
-        )
+        self.add_initializer(name=end_of_qkv_name, data_type=TensorProto.INT64, dims=[1], vals=[3 * d], raw=False)
         qkv_last_axis_name = matmul_node_name + "_qkv_last_axis"
-        qkv_axis_tensor = helper.make_tensor(name=qkv_last_axis_name, data_type=TensorProto.INT64, dims=[1], vals=[-1])
-
-        self.model.add_initializer(q_start_tensor, self.this_graph_name)
-        self.model.add_initializer(k_start_tensor, self.this_graph_name)
-        self.model.add_initializer(v_start_tensor, self.this_graph_name)
-        self.model.add_initializer(end_of_qkv_tensor, self.this_graph_name)
-        self.model.add_initializer(qkv_axis_tensor, self.this_graph_name)
+        self.add_initializer(name=qkv_last_axis_name, data_type=TensorProto.INT64, dims=[1], vals=[-1], raw=False)
 
         q_slice_output = matmul_node_name + "_q_out"
         q_slice = helper.make_node(
@@ -521,9 +548,37 @@ class FusionAttention(Fusion):
         )
         self.node_name_to_graph_name[v_slice.name] = self.this_graph_name
 
+        q_output = q_slice
+        k_output = k_slice
+        v_output = v_slice
+        qkv_nodes.extend([q_slice, k_slice, v_slice])
+
+        if self.disable_multi_head_attention_bias:
+            if q_add is not None:
+                initializer_input = 1 if self.model.get_initializer(q_add.input[1]) else 0
+                if np.any(NumpyHelper.to_array(self.model.get_initializer(q_add.input[initializer_input]))):
+                    q_add.input[1 - initializer_input] = q_slice_output
+                    q_output = q_add
+                    qkv_nodes.append(q_add)
+                    self.node_name_to_graph_name[q_add.name] = self.this_graph_name
+            if k_add is not None:
+                initializer_input = 1 if self.model.get_initializer(k_add.input[1]) else 0
+                if np.any(NumpyHelper.to_array(self.model.get_initializer(k_add.input[initializer_input]))):
+                    k_add.input[1 - initializer_input] = k_slice_output
+                    k_output = k_add
+                    qkv_nodes.append(k_add)
+                    self.node_name_to_graph_name[k_add.name] = self.this_graph_name
+            if v_add is not None:
+                initializer_input = 1 if self.model.get_initializer(v_add.input[1]) else 0
+                if np.any(NumpyHelper.to_array(self.model.get_initializer(v_add.input[initializer_input]))):
+                    v_add.input[1 - initializer_input] = v_slice_output
+                    v_output = v_add
+                    qkv_nodes.append(v_add)
+                    self.node_name_to_graph_name[v_add.name] = self.this_graph_name
+
         # Add nodes to graph
-        self.nodes_to_add.extend([qkv_matmul, q_slice, k_slice, v_slice])
-        return q_slice, k_slice, v_slice
+        self.nodes_to_add.extend(qkv_nodes)
+        return q_output, k_output, v_output
 
     def create_multihead_attention_node(
         self,
@@ -588,47 +643,29 @@ class FusionAttention(Fusion):
             )
             mha_inputs.extend([q_slice.output[0], k_slice.output[0], v_slice.output[0]])
         elif type(k_matmul) == NodeProto and type(v_matmul) == NodeProto:
-            mha_inputs.extend([q_matmul.output[0], k_matmul.output[0], v_matmul.output[0]])
+            if self.disable_multi_head_attention_bias:
+                mha_inputs.extend([q_add.output[0], k_matmul.output[0], v_add.output[0]])
+            else:
+                mha_inputs.extend([q_matmul.output[0], k_matmul.output[0], v_matmul.output[0]])
         elif (
             type(k_matmul) == str
             and type(v_matmul) == str
             and k_matmul in graph_input_names
             and v_matmul in graph_input_names
         ):
-            mha_inputs.extend([q_matmul.output[0], k_matmul, v_matmul])
+            if self.disable_multi_head_attention_bias:
+                mha_inputs.extend([q_add.output[0], k_matmul, v_matmul])
+            else:
+                mha_inputs.extend([q_matmul.output[0], k_matmul, v_matmul])
         else:
             return None
 
-        # Create combined Q/K/V bias
-        q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
-        qb = NumpyHelper.to_array(q_bias)
-        kb = np.zeros_like(qb)
-        vb = np.zeros_like(qb)
-        if k_add is not None:
-            k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
-            kb = NumpyHelper.to_array(k_bias)
-        if v_add is not None:
-            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
-            vb = NumpyHelper.to_array(v_bias)
-
-        qkv_bias = np.stack((qb, kb, vb), axis=0)
-        qkv_bias_dim = 3 * np.prod(qb.shape)
-
-        bias_name = mha_node_name + "_qkv_bias"
-        bias = helper.make_tensor(
-            name=bias_name,
-            data_type=TensorProto.FLOAT,
-            dims=[qkv_bias_dim],
-            vals=qkv_bias.flatten().tolist(),
-        )
-
-        # Convert bias to FP16 if model is using FP16
-        if q_bias.data_type == 10:
-            bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
-        self.model.add_initializer(bias, self.this_graph_name)
-
         # Add bias to inputs for MHA
-        mha_inputs.append(bias_name)
+        if not self.disable_multi_head_attention_bias:
+            bias_name = self.create_combined_qkv_bias(q_add, k_add, v_add, mha_node_name)
+            mha_inputs.append(bias_name)
+        else:
+            mha_inputs.append("")
 
         # Add optional inputs for MHA
         if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
@@ -668,6 +705,7 @@ class FusionAttention(Fusion):
         present_k: str = "",
         present_v: str = "",
         scale: Optional[float] = None,
+        causal: bool = False,
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
@@ -688,6 +726,8 @@ class FusionAttention(Fusion):
             past_v (str): name of input for past V value
             present_k (str): name of output to store present K value
             present_v (str): name of output to store present V value
+            scale: scale before softmax
+            causal: whether it is uni-directional mask.
 
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
@@ -772,7 +812,6 @@ class FusionAttention(Fusion):
             assert q_bias_shape == k_bias_shape == qw_out_size
             assert v_bias_shape == vw_out_size
 
-            qkv_bias_dim = 0
             if is_qkv_diff_dims:
                 qkv_bias = np.concatenate((qb, kb, vb), axis=0)
                 qkv_bias_dim = q_bias_shape + k_bias_shape + v_bias_shape
@@ -783,33 +822,24 @@ class FusionAttention(Fusion):
         attention_node_name = self.model.create_node_name("Attention")
 
         if not self.use_multi_head_attention:
-            weight = helper.make_tensor(
+            self.add_initializer(
                 name=attention_node_name + "_qkv_weight",
-                data_type=TensorProto.FLOAT,
+                data_type=q_weight.data_type,
                 dims=[qw_in_size, qkv_weight_dim],
-                vals=qkv_weight.flatten().tolist(),
+                vals=qkv_weight,
             )
 
-            # Sometimes weights and bias are stored in fp16
-            if q_weight.data_type == 10:
-                weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
-            self.model.add_initializer(weight, self.this_graph_name)
-
-        bias = None
         if has_bias:
-            bias = helper.make_tensor(
+            self.add_initializer(
                 name=attention_node_name + "_qkv_bias",
-                data_type=TensorProto.FLOAT,
+                data_type=q_bias.data_type,
                 dims=[qkv_bias_dim],
-                vals=qkv_bias.flatten().tolist(),
+                vals=qkv_bias,
             )
-            if q_bias.data_type == 10:
-                bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
-            self.model.add_initializer(bias, self.this_graph_name)
 
         # For MultiHeadAttention operator, use separated inputs for query, key and value, and no weights.
         if self.use_multi_head_attention:
-            if add_qk_str is not None:
+            if add_qk_str:
                 logger.debug("MultiHeadAttention does not support relative_position_bias: cannot fuse the attention.")
                 return None
 
@@ -845,7 +875,7 @@ class FusionAttention(Fusion):
                 past_kv = self.concat_kv(past_k, past_v)
                 attention_inputs.append(past_kv)
 
-            if add_qk_str is not None:
+            if add_qk_str:
                 # Convert 4d mask from (B,1,M,M) to (B,N,M,M)
                 # B = batch size, M = max sequence length, N = num heads
                 concat_node_name = self.model.create_node_name("Concat")
@@ -881,6 +911,9 @@ class FusionAttention(Fusion):
 
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+
+        if causal:
+            attention_node.attribute.extend([helper.make_attribute("unidirectional", 1)])
 
         if scale is not None:
             attention_node.attribute.extend([helper.make_attribute("scale", scale)])
@@ -1115,6 +1148,13 @@ class FusionAttention(Fusion):
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
             q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
+            if q_num_heads <= 0 or q_hidden_size <= 0:
+                logger.warning(
+                    "Failed to detect num_heads and hidden_size for Attention fusion. "
+                    "Please specify those parameters in argument."
+                )
+                return
+
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
             new_node = self.create_attention_node(
@@ -1140,14 +1180,15 @@ class FusionAttention(Fusion):
             if einsum_node is not None:
                 unique_index = einsum_node.input[0]
                 new_edge = "edge_modified_" + unique_index
-                shape_tensor = helper.make_tensor(
+
+                shape_tensor = self.add_initializer(
                     name="shape_modified_tensor" + unique_index,
                     data_type=TensorProto.INT64,
                     dims=[4],
-                    vals=np.int64([0, 0, q_num_heads, int(q_hidden_size / q_num_heads)]).tobytes(),
-                    raw=True,
+                    vals=np.int64([0, 0, q_num_heads, int(q_hidden_size / q_num_heads)]),
+                    raw=False,
                 )
-                self.model.add_initializer(shape_tensor, self.this_graph_name)
+
                 self.model.add_node(
                     helper.make_node(
                         "Reshape",

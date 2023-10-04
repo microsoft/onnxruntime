@@ -74,6 +74,19 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultUnsuccessful(ortValue, err);
 }
 
+- (void)testInitTensorWithStringDataSucceeds {
+  NSArray<NSString*>* stringData = @[ @"ONNX Runtime", @"is", @"the", @"best", @"AI", @"Framework" ];
+  NSError* err = nil;
+  ORTValue* stringValue = [[ORTValue alloc] initWithTensorStringData:stringData shape:@[ @3, @2 ] error:&err];
+  ORTAssertNullableResultSuccessful(stringValue, err);
+
+  NSArray<NSString*>* returnedStringData = [stringValue tensorStringDataWithError:&err];
+  ORTAssertNullableResultSuccessful(returnedStringData, err);
+
+  XCTAssertEqual([stringData count], [returnedStringData count]);
+  XCTAssertTrue([stringData isEqualToArray:returnedStringData]);
+}
+
 @end
 
 NS_ASSUME_NONNULL_END

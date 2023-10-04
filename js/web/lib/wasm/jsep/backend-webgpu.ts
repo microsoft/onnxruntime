@@ -1,32 +1,32 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env} from 'onnxruntime-common';
+import {Env, Tensor} from 'onnxruntime-common';
 
 import {configureLogger, LOG_DEBUG} from './log';
-import {TensorView} from './tensor';
-import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
+import {createView, TensorView} from './tensor-view';
+import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
+import {ComputeContext, GpuData, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
 /**
- * get a unique key representing the program from the program info,input shapes and types.
+ * get a unique key representing the program from the program info, input shapes and types.
  *
  * @returns a unique key is a shorter string than the shader source, which contains all the information to identify a
  * program. if the key is the same, the program shader source should be the same, so we can reuse the program.
  *
  */
 const getProgramInfoUniqueKey =
-    (programInfo: ProgramInfo|ProgramInfoLoader, inputTensorShapes: ReadonlyArray<TensorView['dims']>,
-     inputGpuDataTypes: readonly GpuDataType[]): string => {
-      const inputTensorShapesToString = inputTensorShapes.map(d => `${d.join(',')}`).join('_');
-      const inputGpuDataTypesToString = inputGpuDataTypes.join('_');
+    (programInfo: ProgramInfo|ProgramInfoLoader, inputTensors: readonly TensorView[]): string => {
+      // final key format:
+      // <PROGRAM_NAME>[<PROGRAM_CUSTOM_CACHE_HINT>]:<INPUTS_INFO_0>|<INPUTS_INFO_1>|...
+      const inputInfos = inputTensors.map(tensor => `${tensor.dataType};${tensor.dims.join(',')}`).join('|');
       let key = programInfo.name;
       if (programInfo.cacheHint) {
         key += '[' + programInfo.cacheHint + ']';
       }
-      key += ':' + inputTensorShapesToString + ';' + inputGpuDataTypesToString;
+      key += ':' + inputInfos;
       return key;
     };
 
@@ -82,17 +82,26 @@ export class WebGpuBackend {
   }
 
   /**
-   * a KernelID -> kernel info mapping. value is [ name, run function, [optional] preprocess_attribute_once function ]
+   * a KernelID -> kernel info mapping. value is
+   * [ op_type, name, run function, [optional] preprocess_attribute_once function ]
    */
-  kernels: Map<number, [string, RunFunction, [((attribute: unknown) => unknown) | undefined, unknown]]>;
+  kernels: Map<number, [string, string, RunFunction, [((attribute: unknown) => unknown) | undefined, unknown]]>;
 
   commandEncoder: GPUCommandEncoder|null = null;
   computePassEncoder: GPUComputePassEncoder|null = null;
   pendingDispatchNumber = 0;
 
-  profilingEnabled = false;
+  supportTimestampQuery = false;
   profilingQuerySet: GPUQuerySet;
+  profilingQueryData: GpuData;
   profilingTimeBase?: bigint;
+
+  env: Env;
+
+  /**
+   * a SessionID -> a Map of (InputOutputIndex -> [ID, GPUBuffer]) mapping.
+   */
+  sessionExternalDataMapping: Map<number, Map<number, [number, GPUBuffer]>> = new Map();
 
   async initialize(env: Env): Promise<void> {
     if (!navigator.gpu) {
@@ -105,19 +114,29 @@ export class WebGpuBackend {
       throw new Error('WebGpuBackend: Failed to get GPU adapter.');
     }
 
+    this.env = env;
+    const requiredFeatures: GPUFeatureName[] = [];
     const deviceDescriptor: GPUDeviceDescriptor = {
       requiredLimits: {
         maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
         maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
         maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
-      }
+        maxBufferSize: adapter.limits.maxBufferSize,
+        maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
+        maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
+        maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
+        maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
+      },
+      requiredFeatures,
     };
     // WebGPU Spec: Timestamp Queries Inside Passes
     // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
-    if (adapter.features.has('timestamp-query-inside-passes') && env.webgpu.profilingMode === 'default') {
-      this.profilingEnabled = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      deviceDescriptor.requiredFeatures = ['timestamp-query-inside-passes' as any];
+    if (adapter.features.has('timestamp-query-inside-passes')) {
+      this.supportTimestampQuery = true;
+      requiredFeatures.push('timestamp-query-inside-passes' as GPUFeatureName);
+    }
+    if (adapter.features.has('shader-f16')) {
+      requiredFeatures.push('shader-f16');
     }
 
     this.device = await adapter.requestDevice(deviceDescriptor);
@@ -139,12 +158,14 @@ export class WebGpuBackend {
       }
     };
 
-    if (this.profilingEnabled) {
+    if (this.supportTimestampQuery) {
       this.profilingQuerySet = this.device.createQuerySet({
         type: 'timestamp',
         count: 2,
       });
     }
+
+    Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
   }
 
   dispose(): void {
@@ -176,11 +197,13 @@ export class WebGpuBackend {
   }
 
   flush(): void {
-    this.endComputePass();
-    this.device.queue.submit([this.getCommandEncoder().finish()]);
-    this.gpuDataManager.refreshPendingBuffers();
-    this.commandEncoder = null;
-    this.pendingDispatchNumber = 0;
+    if (this.commandEncoder) {
+      this.endComputePass();
+      this.device.queue.submit([this.getCommandEncoder().finish()]);
+      this.gpuDataManager.refreshPendingBuffers();
+      this.commandEncoder = null;
+      this.pendingDispatchNumber = 0;
+    }
   }
 
   /**
@@ -212,7 +235,7 @@ export class WebGpuBackend {
       inputDatas[i] = gpuData;
     }
 
-    const key = getProgramInfoUniqueKey(program, inputs.map(i => i.dims), inputDatas.map(i => i.type));
+    const key = getProgramInfoUniqueKey(program, inputs);
     let artifact = this.programManager.getArtifact(key);
     const programInfo = artifact ?
         artifact.programInfo :
@@ -229,11 +252,15 @@ export class WebGpuBackend {
     const outputTensorViews: TensorView[] = [];
     const outputDatas: GpuData[] = [];
     for (let i = 0; i < programInfo.outputs.length; ++i) {
-      // value -1 and -2 are used for creating temporary and persistent outputs. so -2, -1 and 0, 1, 2, ... are valid
+      // value -1 and -2 are used for creating temporary and persistent outputs.
+      // value -3 is used for placeholder output. So -3, -2, -1 and 0, 1, 2, ... are valid
       // output indices. see type definition of ComputeContextInputsOutputsMapping for more details.
-      if (!Number.isInteger(validatedOutputIndices[i]) || validatedOutputIndices[i] < -2 ||
+      if (!Number.isInteger(validatedOutputIndices[i]) || validatedOutputIndices[i] < -3 ||
           validatedOutputIndices[i] >= programInfo.outputs.length) {
         throw new Error(`Invalid output index: ${validatedOutputIndices[i]}`);
+      }
+      if (validatedOutputIndices[i] === -3) {
+        continue;
       }
       const isTemporary = validatedOutputIndices[i] === -1;
       const isPersistent = validatedOutputIndices[i] === -2;
@@ -270,7 +297,7 @@ export class WebGpuBackend {
         'info',
         () => `[ProgramManager] run "${programInfo.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
-    this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup);
+    this.programManager.run(artifact, inputs, inputDatas, outputDatas, normalizedDispatchGroup);
 
     return outputTensorViews;
   }
@@ -284,12 +311,9 @@ export class WebGpuBackend {
   }
 
   async download(gpuDataId: number, getTargetBuffer: () => Uint8Array): Promise<void> {
-    const arrayBuffer = await this.gpuDataManager.download(gpuDataId);
-
     // the underlying buffer may be changed after the async function is called. so we use a getter function to make sure
     // the buffer is up-to-date.
-    const data = getTargetBuffer();
-    data.set(new Uint8Array(arrayBuffer, 0, data.byteLength));
+    await this.gpuDataManager.download(gpuDataId, getTargetBuffer);
   }
 
   alloc(size: number): number {
@@ -300,13 +324,13 @@ export class WebGpuBackend {
     return this.gpuDataManager.release(ptr);
   }
 
-  createKernel(name: string, kernelId: number, attribute: unknown): void {
-    const op = WEBGPU_OP_RESOLVE_RULES.get(name);
+  createKernel(opType: string, kernelId: number, attribute: unknown, nodeName: string): void {
+    const op = WEBGPU_OP_RESOLVE_RULES.get(opType);
     if (!op) {
-      throw new Error(`kernel not implemented: ${name}`);
+      throw new Error(`kernel not implemented: ${opType}`);
     }
 
-    this.kernels.set(kernelId, [name, op[0], [op[1], attribute]]);
+    this.kernels.set(kernelId, [opType, nodeName, op[0], [op[1], attribute]]);
   }
 
   releaseKernel(kernelId: number): void {
@@ -322,14 +346,14 @@ export class WebGpuBackend {
     this.kernels.delete(kernelId);
   }
 
-  computeKernel(kernelId: number, context: ComputeContext): number {
+  computeKernel(kernelId: number, context: ComputeContext, errors: Array<Promise<string|null>>): number {
     const kernel = this.kernels.get(kernelId);
     if (!kernel) {
       throw new Error(`kernel not created: ${kernelId}`);
     }
-    const [name, kernelEntry, attributes] = kernel;
+    const [opType, nodeName, kernelEntry, attributes] = kernel;
     if (this.currentKernelId !== null) {
-      throw new Error(`kernel "${name}" is not allowed to be called recursively`);
+      throw new Error(`kernel "[${opType}] ${nodeName}" is not allowed to be called recursively`);
     }
     this.currentKernelId = kernelId;
 
@@ -339,16 +363,27 @@ export class WebGpuBackend {
       attributes[0] = undefined;
     }
 
-    LOG_DEBUG('info', () => `[WebGPU] Start to run kernel "${name}"...`);
+    LOG_DEBUG('info', () => `[WebGPU] Start to run kernel "[${opType}] ${nodeName}"...`);
+
+    const useErrorScope = this.env.debug;
 
     this.temporaryData = [];
     try {
+      if (useErrorScope) {
+        this.device.pushErrorScope('validation');
+      }
+
       kernelEntry(context, attributes[1]);
       return 0;  // ORT_OK
     } catch (e) {
-      LOG_DEBUG('warning', `[WebGPU] Kernel "${name}" failed. Error: ${e}`);
+      errors.push(Promise.resolve(`[WebGPU] Kernel "[${opType}] ${nodeName}" failed. ${e}`));
       return 1;  // ORT_FAIL
     } finally {
+      if (useErrorScope) {
+        errors.push(this.device.popErrorScope().then(
+            err => err ? `GPU validation error for kernel "[${opType}] ${nodeName}": ${err.message}` : null));
+      }
+
       for (const data of this.temporaryData) {
         this.gpuDataManager.release(data.id);
       }
@@ -356,4 +391,40 @@ export class WebGpuBackend {
       this.currentKernelId = null;
     }
   }
+
+  // #region external buffer
+  registerBuffer(sessionId: number, index: number, buffer: GPUBuffer, size: number): number {
+    let sessionInputOutputMapping = this.sessionExternalDataMapping.get(sessionId);
+    if (!sessionInputOutputMapping) {
+      sessionInputOutputMapping = new Map();
+      this.sessionExternalDataMapping.set(sessionId, sessionInputOutputMapping);
+    }
+
+    const previousBuffer = sessionInputOutputMapping.get(index);
+    const id = this.gpuDataManager.registerExternalBuffer(buffer, size, previousBuffer?.[1]);
+    sessionInputOutputMapping.set(index, [id, buffer]);
+    return id;
+  }
+  unregisterBuffers(sessionId: number): void {
+    const sessionInputOutputMapping = this.sessionExternalDataMapping.get(sessionId);
+    if (sessionInputOutputMapping) {
+      sessionInputOutputMapping.forEach(bufferInfo => this.gpuDataManager.unregisterExternalBuffer(bufferInfo[1]));
+      this.sessionExternalDataMapping.delete(sessionId);
+    }
+  }
+  getBuffer(gpuDataId: number): GPUBuffer {
+    const gpuData = this.gpuDataManager.get(gpuDataId);
+    if (!gpuData) {
+      throw new Error(`no GPU data for buffer: ${gpuDataId}`);
+    }
+    return gpuData.buffer;
+  }
+  createDownloader(gpuBuffer: GPUBuffer, size: number, type: Tensor.GpuBufferDataTypes):
+      () => Promise<Tensor.DataType> {
+    return async () => {
+      const data = await downloadGpuData(this, gpuBuffer, size);
+      return createView(data.buffer, type);
+    };
+  }
+  // #endregion
 }

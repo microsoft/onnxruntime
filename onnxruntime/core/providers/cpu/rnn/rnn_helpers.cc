@@ -573,7 +573,8 @@ void gru_reset_gate_tanh(const float* ps1, float* ps2, float* pd, int c, float a
     float q = x2 * beta_6 + beta_4;
     q = x2 * q + beta_2;
     q = x2 * q + beta_0;
-    pd[i] = ps1[i] * p / q;
+    ps2[i] = p / q;
+    pd[i] = ps1[i] * ps2[i];
   }
 }
 
@@ -596,7 +597,8 @@ void gru_reset_gate_sigmoid(const float* ps1, float* ps2, float* pd, int c, floa
     float q = x2 * beta_6 + beta_4;
     q = x2 * q + beta_2;
     q = x2 * q + beta_0;
-    pd[i] = ps1[i] * 0.5f * (1 + p / q);
+    ps2[i] = 0.5f * (1 + p / q);
+    pd[i] = ps1[i] * ps2[i];
   }
 }
 
@@ -636,7 +638,8 @@ void gru_output_gate_tanh(float* ph, const float* pz, const float* ps, float* po
     float q = x2 * beta_6 + beta_4;
     q = x2 * q + beta_2;
     q = x2 * q + beta_0;
-    po[i] = (1 - pz[i]) * (p / q) + pz[i] * ps[i];
+    ph[i] = p / q;
+    po[i] = (1 - pz[i]) * ph[i] + pz[i] * ps[i];
   }
 }
 

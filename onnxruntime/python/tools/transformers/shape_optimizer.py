@@ -16,7 +16,7 @@ import tempfile
 from collections import deque  # noqa: F401
 from datetime import datetime
 from pathlib import Path  # noqa: F401
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import onnx
@@ -287,7 +287,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         input_mask: str,
         enable_shape_opt: bool,
         enable_reshape_opt: bool,
-        output_names: List[str] = None,
+        output_names: Optional[List[str]] = None,
         batch_size=1,
         sequence_length=128,
         verbose=False,

@@ -28,18 +28,35 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   emscripten::val input = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val output = emscripten::val::object();
-  if (op_type == "Cos") {
+
+  if (op_type == "Abs") {
+    output = model_builder.GetBuilder().call<emscripten::val>("abs", input);
+  } else if (op_type == "Ceil") {
+    output = model_builder.GetBuilder().call<emscripten::val>("ceil", input);
+  } else if (op_type == "Cos") {
     output = model_builder.GetBuilder().call<emscripten::val>("cos", input);
   } else if (op_type == "Erf") {
     output = model_builder.GetBuilder().call<emscripten::val>("erf", input);
+  } else if (op_type == "Exp") {
+    output = model_builder.GetBuilder().call<emscripten::val>("exp", input);
   } else if (op_type == "Floor") {
     output = model_builder.GetBuilder().call<emscripten::val>("floor", input);
+  } else if (op_type == "Identity") {
+    output = model_builder.GetBuilder().call<emscripten::val>("identity", input);
+  } else if (op_type == "Log") {
+    output = model_builder.GetBuilder().call<emscripten::val>("log", input);
+  } else if (op_type == "Neg") {
+    output = model_builder.GetBuilder().call<emscripten::val>("neg", input);
   } else if (op_type == "Not") {
     output = model_builder.GetBuilder().call<emscripten::val>("logicalNot", input);
+  } else if (op_type == "Reciprocal") {
+    output = model_builder.GetBuilder().call<emscripten::val>("reciprocal", input);
   } else if (op_type == "Sin") {
     output = model_builder.GetBuilder().call<emscripten::val>("sin", input);
   } else if (op_type == "Sqrt") {
     output = model_builder.GetBuilder().call<emscripten::val>("sqrt", input);
+  } else if (op_type == "Tan") {
+    output = model_builder.GetBuilder().call<emscripten::val>("tan", input);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "UnaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -50,17 +67,25 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 }
 
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =
       {
+          "Abs",
+          "Ceil",
           "Cos",
           "Erf",
+          "Exp",
           "Floor",
+          "Identity",
+          "Log",
+          "Neg",
           "Not",
+          "Reciprocal",
           "Sin",
           "Sqrt",
+          "Tan",
       };
 
   op_registrations.builders.push_back(std::make_unique<UnaryOpBuilder>());
