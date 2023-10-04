@@ -1,13 +1,12 @@
 import logging
 import os
-import sys
 
 import onnx
 from onnx import TensorProto, helper
 from transformers import WhisperConfig
 
-from benchmark_helper import Precision  # noqa: E402
-from convert_generation import (  # noqa: E402
+from benchmark_helper import Precision
+from convert_generation import (
     get_shared_initializers,
     update_decoder_subgraph_output_cross_attention,
     update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
