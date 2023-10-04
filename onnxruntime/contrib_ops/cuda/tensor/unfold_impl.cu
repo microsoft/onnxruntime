@@ -13,7 +13,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-__global__ void UnfoldTensorKenel(
+__global__ void UnfoldTensorKernel(
     const T* input,
     T* output,
     int64_t N,
@@ -71,27 +71,27 @@ Status LaunchUnfoldTensor(
   dim3 grid((unsigned)SafeInt<unsigned>(num_blocks));
   switch (element_size) {
     case 1:
-        UnfoldTensorKenel<int8_t><<<grid, block, 0, stream>>>(
+        UnfoldTensorKernel<int8_t><<<grid, block, 0, stream>>>(
             (const int8_t*)input, (int8_t*)output, N, unfold_size,
             tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
         break;
     case 2:
-        UnfoldTensorKenel<int16_t><<<grid, block, 0, stream>>>(
+        UnfoldTensorKernel<int16_t><<<grid, block, 0, stream>>>(
             (const int16_t*)input, (int16_t*)output, N, unfold_size,
             tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
         break;
     case 4:
-        UnfoldTensorKenel<int32_t><<<grid, block, 0, stream>>>(
+        UnfoldTensorKernel<int32_t><<<grid, block, 0, stream>>>(
             (const int32_t*)input, (int32_t*)output, N, unfold_size,
             tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
         break;
     case 8:
-        UnfoldTensorKenel<int64_t><<<grid, block, 0, stream>>>(
+        UnfoldTensorKernel<int64_t><<<grid, block, 0, stream>>>(
             (const int64_t*)input, (int64_t*)output, N, unfold_size,
             tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
         break;
     case 16:
-        UnfoldTensorKenel<float4><<<grid, block, 0, stream>>>(
+        UnfoldTensorKernel<float4><<<grid, block, 0, stream>>>(
             (const float4*)input, (float4*)output, N, unfold_size,
             tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
         break;

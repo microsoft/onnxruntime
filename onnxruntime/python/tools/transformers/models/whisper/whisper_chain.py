@@ -6,7 +6,6 @@ import onnx
 from onnx import TensorProto, helper
 from transformers import WhisperConfig
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision  # noqa: E402
 from convert_generation import (  # noqa: E402
     get_shared_initializers,
