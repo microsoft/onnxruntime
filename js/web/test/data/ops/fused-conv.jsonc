@@ -1,19 +1,19 @@
 [
   {
-    "name": "FusedConvTranspose without bias addition A",
-    "operator": "FusedConvTranspose",
-    "opset": { "domain": "com.microsoft", "version": 1 },
+    "name": "conv without bias addition A",
+    "operator": "FusedConv",
     "attributes": [
-      { "name": "kernel_shape", "data": [2, 2], "type": "ints" },
-      { "name": "activation", "data": "Relu", "type": "string" }
+      { "name": "activation", "data": "Relu", "type": "string" },
+      { "name": "kernel_shape", "data": [2, 2], "type": "ints" }
     ],
+    "opset": { "domain": "com.microsoft", "version": 1 },
     "cases": [
       {
         "name": "T[0]",
         "inputs": [
           {
-            "data": [10, 20, 30, 40],
-            "dims": [1, 1, 2, 2],
+            "data": [10, 20, 30, 40, 50, 60, 70, 80, 90],
+            "dims": [1, 1, 3, 3],
             "type": "float32"
           },
           {
@@ -24,8 +24,8 @@
         ],
         "outputs": [
           {
-            "data": [10, 40, 40, 60, 200, 160, 90, 240, 160],
-            "dims": [1, 1, 3, 3],
+            "data": [370, 470, 670, 770],
+            "dims": [1, 1, 2, 2],
             "type": "float32"
           }
         ]
@@ -34,8 +34,8 @@
         "name": "T[1]",
         "inputs": [
           {
-            "data": [10, -20, -30, 40],
-            "dims": [1, 1, 2, 2],
+            "data": [10, 20, -30, -40, -50, -60, 70, 80, 90],
+            "dims": [1, 1, 3, 3],
             "type": "float32"
           },
           {
@@ -46,8 +46,8 @@
         ],
         "outputs": [
           {
-            "data": [10, 0, 0, 0, 0, 0, 0, 0, 160],
-            "dims": [1, 1, 3, 3],
+            "data": [0, 0, 390, 430],
+            "dims": [1, 1, 2, 2],
             "type": "float32"
           }
         ]
@@ -55,20 +55,20 @@
     ]
   },
   {
-    "name": "NHWC FusedConvTranspose without bias addition A",
-    "operator": "ConvTranspose",
-    "opset": { "domain": "com.ms.internal.nhwc", "version": 11 },
+    "name": "NHWC conv without bias addition A",
+    "operator": "Conv",
     "attributes": [
-      { "name": "kernel_shape", "data": [2, 2], "type": "ints" },
-      { "name": "activation", "data": "Relu", "type": "string" }
+      { "name": "activation", "data": "Relu", "type": "string" },
+      { "name": "kernel_shape", "data": [2, 2], "type": "ints" }
     ],
+    "opset": { "domain": "com.ms.internal.nhwc", "version": 11 },
     "cases": [
       {
         "name": "T[2]",
         "inputs": [
           {
-            "data": [10, 20, 30, 40],
-            "dims": [1, 2, 2, 1],
+            "data": [10, 20, 30, 40, 50, 60, 70, 80, 90],
+            "dims": [1, 3, 3, 1],
             "type": "float32"
           },
           {
@@ -79,8 +79,8 @@
         ],
         "outputs": [
           {
-            "data": [10, 40, 40, 60, 200, 160, 90, 240, 160],
-            "dims": [1, 3, 3, 1],
+            "data": [370, 470, 670, 770],
+            "dims": [1, 2, 2, 1],
             "type": "float32"
           }
         ]
@@ -89,8 +89,8 @@
         "name": "T[3]",
         "inputs": [
           {
-            "data": [10, -20, -30, 40],
-            "dims": [1, 2, 2, 1],
+            "data": [10, 20, -30, -40, -50, -60, 70, 80, 90],
+            "dims": [1, 3, 3, 1],
             "type": "float32"
           },
           {
@@ -101,8 +101,8 @@
         ],
         "outputs": [
           {
-            "data": [10, 0, 0, 0, 0, 0, 0, 0, 160],
-            "dims": [1, 3, 3, 1],
+            "data": [0, 0, 390, 430],
+            "dims": [1, 2, 2, 1],
             "type": "float32"
           }
         ]

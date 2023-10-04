@@ -62,6 +62,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Exp', [unaryOps.exp]],
   ['Expand', [expand]],
   ['Floor', [unaryOps.floor]],
+  ['FusedConv', [conv, parseConvAttributes]],
   ['FusedConvTranspose', [convTranspose, parseConvTransposeAttributes]],
   ['Gather', [gather, parseGatherAttributes]],
   ['GatherElements', [gatherElements, parseGatherElementsAttributes]],
