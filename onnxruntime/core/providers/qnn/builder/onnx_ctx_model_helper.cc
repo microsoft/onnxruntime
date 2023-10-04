@@ -7,6 +7,16 @@
 namespace onnxruntime {
 namespace qnn {
 
+bool IsQnnCtxModel(const onnxruntime::GraphViewer& graph_viewer) {
+  // It's an Onnx model with Qnn context cache binary if it only has a node with EPContext type
+  for (const auto& node : graph_viewer.Nodes()) {
+    if (EPCONTEXT_OP == node.OpType()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Status CreateNodeArgs(const std::vector<std::string>& names,
                       const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
                       std::vector<NodeArg*>& node_args,
@@ -27,14 +37,14 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
   return Status::OK();
 }
 
-Status GenerateCtxCacheOnnxModle(const std::string& model_name, const std::string& graph_name,
+Status GenerateCtxCacheOnnxModel(const std::string& model_name, const std::string& graph_name,
                                  const std::vector<std::string>& input_names,
                                  const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info,
                                  const std::vector<std::string>& output_names,
                                  const std::unordered_map<std::string, OnnxTensorInfo>& outputs_info,
                                  const std::string& model_description,
                                  const std::string& sdk_build_version,
-                                 const std::string file_path,
+                                 const std::string& file_path,
                                  unsigned char* buffer,
                                  uint64_t buffer_size,
                                  const logging::Logger& logger) {
@@ -43,9 +53,6 @@ Status GenerateCtxCacheOnnxModle(const std::string& model_name, const std::strin
               {}, logger);
   auto& graph = model.MainGraph();
   graph.SetDescription(model_description);
-
-  onnxruntime::Version model_version = 5;
-  model.SetModelVersion(model_version);
 
   using namespace ONNX_NAMESPACE;
   std::vector<NodeArg*> inputs;
@@ -62,7 +69,7 @@ Status GenerateCtxCacheOnnxModle(const std::string& model_name, const std::strin
                                 kMSDomain);
 
   std::string cache_payload(buffer, buffer + buffer_size);
-  ep_node.AddAttribute("ep_engine_cache", cache_payload);
+  ep_node.AddAttribute("ep_cache_context", cache_payload);
   ep_node.AddAttribute("ep_sdk_version", sdk_build_version);
   ep_node.AddAttribute("partition_name", graph_name);
   ep_node.AddAttribute("source", kQnnExecutionProvider);
@@ -75,22 +82,21 @@ Status GenerateCtxCacheOnnxModle(const std::string& model_name, const std::strin
 }
 
 Status GetEpEngineCacheFromModel(const std::string& onnx_model_path,
-                                 std::string& ep_engine_cache,
+                                 std::string& ep_cache_context,
                                  const logging::Logger& logger) {
   using namespace onnxruntime;
   std::shared_ptr<Model> model;
   ORT_RETURN_IF_ERROR(Model::Load(ToPathString(onnx_model_path), model, {}, logger));
   const auto& graph = model->MainGraph();
-  ORT_RETURN_IF_ERROR(GetEpEngineCacheFromGraph(GraphViewer(graph), ep_engine_cache));
+  ep_cache_context = GetEpEngineCacheFromGraph(GraphViewer(graph));
 
   return Status::OK();
 }
 
-Status GetEpEngineCacheFromGraph(const onnxruntime::GraphViewer& graph_viewer, std::string& ep_engine_cache) {
+std::string GetEpEngineCacheFromGraph(const onnxruntime::GraphViewer& graph_viewer) {
   const auto& node = graph_viewer.Nodes().begin();
   NodeAttrHelper node_helper(*node);
-  ep_engine_cache = node_helper.Get("ep_engine_cache", ep_engine_cache);
-  return Status::OK();
+  return node_helper.Get("ep_cache_context", "");
 }
 
 Status QnnCacheModelHandler::GetMetadataFromEpEngineCacheModel(const std::string& onnx_model_path,

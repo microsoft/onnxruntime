@@ -398,7 +398,7 @@ Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const st
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Context written buffer exceeds allocated buffer size.");
   }
 
-  ORT_RETURN_IF_ERROR(GenerateCtxCacheOnnxModle(model_name, graph_name, input_names, inputs_info, output_names,
+  ORT_RETURN_IF_ERROR(GenerateCtxCacheOnnxModel(model_name, graph_name, input_names, inputs_info, output_names,
                                                 outputs_info, model_description_, sdk_build_version_, context_cache_path_,
                                                 context_buffer.get(), written_buffer_size, *logger_));
 
@@ -491,10 +491,10 @@ Status QnnBackendManager::ValidateWithContextFile(const std::string& model_name,
                                                   qnn::QnnCacheModelHandler* qnn_cache_model_handler) {
   ORT_RETURN_IF(!ctx_file_exists_, "Qnn context binary file not exist for some reason!");
 
-  std::string model_name_from_ctx_cache("");
-  std::string model_description_from_ctx_cache("");
-  std::string graph_partition_name_from_ctx_cache("");
-  std::string cache_source("");
+  std::string model_name_from_ctx_cache;
+  std::string model_description_from_ctx_cache;
+  std::string graph_partition_name_from_ctx_cache;
+  std::string cache_source;
   ORT_RETURN_IF_ERROR(qnn_cache_model_handler->GetMetadataFromEpEngineCacheModel(context_cache_path_,
                                                                                  model_name_from_ctx_cache,
                                                                                  model_description_from_ctx_cache,

@@ -251,7 +251,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto& logger = *GetLogger();
   bool load_from_cached_context = false;
-  bool is_qnn_ctx_model = qnn_cache_model_handler_->IsQnnCtxModel(graph_viewer);
+  bool is_qnn_ctx_model = qnn::IsQnnCtxModel(graph_viewer);
   if (is_qnn_ctx_model) {
     load_from_cached_context = true;
   }
@@ -446,7 +446,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
   Node& fused_node = fused_nodes_and_graphs[0].fused_node;
   const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
 
-  bool is_qnn_ctx_model = qnn_cache_model_handler_->GetIsQnnCtxModel();
+  bool is_qnn_ctx_model = qnn::IsQnnCtxModel(graph_viewer);
 
   if (context_cache_enabled_ || is_qnn_ctx_model) {
     ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support single partition for context cache feature.");
@@ -455,6 +455,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     std::string ep_engine_cache;
     ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->GetEpEngineCache(graph_viewer,
                                                                    context_cache_path_,
+                                                                   is_qnn_ctx_model,
                                                                    qnn_backend_manager_->GetIsContextCacheFileExists(),
                                                                    ep_engine_cache,
                                                                    logger));

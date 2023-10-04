@@ -2848,7 +2848,14 @@ void RegisterContribSchemas() {
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc("Onnx node for EP engine or context cache.")
-      .Attr("ep_engine_cache", "payload of the execution provider engine/context cache file.", AttributeProto::STRING)
+      .Attr(
+          "ep_cache_context",
+          "payload of the execution provider context if embed_mode=1, or file path to the context if embed_mode=0.",
+          AttributeProto::STRING)
+      .Attr(
+          "embed_mode",
+          "1: indicate ep_cache_context is the context content. 0: indicate ep_cache_context is the file path to the context content.",
+          AttributeProto::INT, static_cast<int64_t>(1))
       .Attr(
           "ep_sdk_version",
           "(Optional) SDK version used to convert the model.",
