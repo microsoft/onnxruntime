@@ -43,16 +43,14 @@ from diffusers.pipelines.stable_diffusion import (
     StableDiffusionSafetyChecker,
 )
 from diffusers.schedulers import DDIMScheduler
-from diffusers.utils import DIFFUSERS_CACHE
-from huggingface_hub import snapshot_download
-from models import CLIP, VAE, UNet
-from ort_utils import Engines
+from diffusion_models import CLIP, VAE, PipelineInfo, UNet
+from ort_utils import Engines, StableDiffusionPipelineMixin
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 logger = logging.getLogger(__name__)
 
 
-class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
+class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipelineMixin, StableDiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using CUDA provider in ONNX Runtime.
     This pipeline inherits from [`StableDiffusionPipeline`]. Check the documentation in super class for most parameters.
@@ -70,11 +68,12 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
         requires_safety_checker: bool = True,
         # ONNX export parameters
         onnx_opset: int = 14,
-        onnx_dir: str = "raw_onnx",
+        onnx_dir: str = "onnx_ort",
         # Onnxruntime execution provider parameters
-        engine_dir: str = "onnxruntime_optimized_onnx",
+        engine_dir: str = "ORT_CUDA",
         force_engine_rebuild: bool = False,
         enable_cuda_graph: bool = False,
+        pipeline_info: PipelineInfo = None,
     ):
         super().__init__(
             vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
@@ -96,51 +95,38 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
 
         self.fp16 = False
 
-    def __load_models(self):
-        self.embedding_dim = self.text_encoder.config.hidden_size
+        self.pipeline_info = pipeline_info
 
-        self.models["clip"] = CLIP(
-            self.text_encoder,
-            device=self.torch_device,
-            max_batch_size=self.max_batch_size,
-            embedding_dim=self.embedding_dim,
-        )
+    def load_models(self):
+        assert self.pipeline_info.clip_embedding_dim() == self.text_encoder.config.hidden_size
 
-        self.models["unet"] = UNet(
-            self.unet,
-            device=self.torch_device,
-            fp16=self.fp16,
-            max_batch_size=self.max_batch_size,
-            embedding_dim=self.embedding_dim,
-            unet_dim=(9 if self.inpaint else 4),
-        )
-
-        self.models["vae"] = VAE(
-            self.vae, device=self.torch_device, max_batch_size=self.max_batch_size, embedding_dim=self.embedding_dim
-        )
-
-    @classmethod
-    def set_cached_folder(cls, pretrained_model_name_or_path: Union[str, os.PathLike], **kwargs):
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
-        resume_download = kwargs.pop("resume_download", False)
-        proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", False)
-        use_auth_token = kwargs.pop("use_auth_token", None)
-        revision = kwargs.pop("revision", None)
-
-        cls.cached_folder = (
-            pretrained_model_name_or_path
-            if os.path.isdir(pretrained_model_name_or_path)
-            else snapshot_download(
-                pretrained_model_name_or_path,
-                cache_dir=cache_dir,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
+        stages = self.pipeline_info.stages()
+        if "clip" in stages:
+            self.models["clip"] = CLIP(
+                self.pipeline_info,
+                self.text_encoder,
+                device=self.torch_device,
+                max_batch_size=self.max_batch_size,
+                clip_skip=0,
             )
-        )
+
+        if "unet" in stages:
+            self.models["unet"] = UNet(
+                self.pipeline_info,
+                self.unet,
+                device=self.torch_device,
+                fp16=False,
+                max_batch_size=self.max_batch_size,
+                unet_dim=(9 if self.pipeline_info.is_inpaint() else 4),
+            )
+
+        if "vae" in stages:
+            self.models["vae"] = VAE(
+                self.pipeline_info,
+                self.vae,
+                device=self.torch_device,
+                max_batch_size=self.max_batch_size,
+            )
 
     def to(
         self,
@@ -156,7 +142,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
 
         # load models
         self.fp16 = torch_dtype == torch.float16
-        self.__load_models()
+        self.load_models()
 
         # build engines
         self.engines.build(
@@ -179,88 +165,6 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
         logger.info(f"Running inference on device: {self.torch_device}")
 
         return self
-
-    def __encode_prompt(self, prompt, negative_prompt):
-        r"""
-        Encodes the prompt into text encoder hidden states.
-
-        Args:
-             prompt (`str` or `List[str]`, *optional*):
-                prompt to be encoded
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
-        """
-        # Tokenize prompt
-        text_input_ids = (
-            self.tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            .input_ids.type(torch.int32)
-            .to(self.torch_device)
-        )
-
-        # NOTE: output tensor for CLIP must be cloned because it will be overwritten when called again for negative prompt
-        text_embeddings = (
-            self.engines.get_engine("clip").infer({"input_ids": text_input_ids})["text_embeddings"].clone()
-        )
-
-        # Tokenize negative prompt
-        uncond_input_ids = (
-            self.tokenizer(
-                negative_prompt,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            .input_ids.type(torch.int32)
-            .to(self.torch_device)
-        )
-
-        uncond_embeddings = self.engines.get_engine("clip").infer({"input_ids": uncond_input_ids})["text_embeddings"]
-
-        # Concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes for classifier free guidance
-        text_embeddings = torch.cat([uncond_embeddings, text_embeddings]).to(dtype=torch.float16)
-
-        return text_embeddings
-
-    def __denoise_latent(self, latents, text_embeddings, timesteps=None, mask=None, masked_image_latents=None):
-        if not isinstance(timesteps, torch.Tensor):
-            timesteps = self.scheduler.timesteps
-
-        for _step_index, timestep in enumerate(timesteps):
-            # Expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2)
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
-            if isinstance(mask, torch.Tensor):
-                latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
-
-            timestep_float = timestep.to(torch.float16) if self.fp16 else timestep.to(torch.float32)
-
-            # Predict the noise residual
-            noise_pred = self.engines.get_engine("unet").infer(
-                {"sample": latent_model_input, "timestep": timestep_float, "encoder_hidden_states": text_embeddings},
-            )["latent"]
-
-            # Perform guidance
-            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-            latents = self.scheduler.step(noise_pred, timestep, latents).prev_sample
-
-        latents = 1.0 / 0.18215 * latents
-        return latents
-
-    def __decode_latent(self, latents):
-        images = self.engines.get_engine("vae").infer({"latent": latents})["images"]
-        images = (images / 2 + 0.5).clamp(0, 1)
-        return images.cpu().permute(0, 2, 3, 1).float().numpy()
 
     def __allocate_buffers(self, image_height, image_width, batch_size):
         # Allocate output tensors for I/O bindings
@@ -337,7 +241,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
 
         with torch.inference_mode(), torch.autocast("cuda"):
             # CLIP text encoder
-            text_embeddings = self.__encode_prompt(prompt, negative_prompt)
+            text_embeddings = self.encode_prompt(self.engines.get_engine("clip"), prompt, negative_prompt)
 
             # Pre-initialize latents
             num_channels_latents = self.unet_in_channels
@@ -352,30 +256,37 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
             )
 
             # UNet denoiser
-            latents = self.__denoise_latent(latents, text_embeddings)
+            latents = self.denoise_latent(
+                self.engines.get_engine("unet"), latents, text_embeddings, timestep_fp16=self.fp16
+            )
 
             # VAE decode latent
-            images = self.__decode_latent(latents)
+            images = self.decode_latent(self.engines.get_engine("vae"), latents)
 
         images, has_nsfw_concept = self.run_safety_checker(images, self.torch_device, text_embeddings.dtype)
         images = self.numpy_to_pil(images)
         return StableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
 
 
-if __name__ == "__main__":
-    model_name_or_path = "runwayml/stable-diffusion-v1-5"
+def example():
+    pipeline_info = PipelineInfo("1.5")
+    model_name_or_path = pipeline_info.name()
     scheduler = DDIMScheduler.from_pretrained(model_name_or_path, subfolder="scheduler")
-
     pipe = OnnxruntimeCudaStableDiffusionPipeline.from_pretrained(
         model_name_or_path,
         scheduler=scheduler,
+        pipeline_info=pipeline_info,
     )
 
     # re-use cached folder to save ONNX models
-    pipe.set_cached_folder(model_name_or_path)
+    pipe.set_cached_folder(model_name_or_path, resume_download=True, local_files_only=True)
 
     pipe = pipe.to("cuda", torch_dtype=torch.float16)
 
     prompt = "photorealistic new zealand hills"
     image = pipe(prompt).images[0]
-    image.save("ort_trt_txt2img_new_zealand_hills.png")
+    image.save("ort_cuda_txt2img_new_zealand_hills.png")
+
+
+if __name__ == "__main__":
+    example()

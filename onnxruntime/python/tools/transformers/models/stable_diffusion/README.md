@@ -74,15 +74,16 @@ Below is an example to optimize Stable Diffusion 1.5 in Linux. For Windows OS, p
 
 ### Setup Environment (CUDA)
 
-It is recommended to create a Conda environment with Python 3.8, 3.9 or 3.10, and run the model with [CUDA 11.7](https://developer.nvidia.com/cuda-11-7-0-download-archive) or 11.8.
+It is recommended to create a Conda environment with Python 3.8, 3.9 or 3.10, and run the model with CUDA 11.8.
+If you use CUDA 12.*, you will need build onnxruntime-gpu from source.
 ```
 conda create -n py38 python=3.8
 conda activate py38
-pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
+pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu118
+pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 pip install -r requirements-cuda.txt
 ```
-
-ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. CUDA 11.7 and cuDNN 8.5 are used in our tests.
+ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. CUDA 11.8 and cuDNN 8.5 or above are recommended.
 
 #### Install Nightly (Optional)
 
@@ -233,18 +234,21 @@ Sometime, it complains ptxas not found when there are multiple CUDA versions ins
 Note that torch.compile is not supported in Windows: we encountered error `Windows not yet supported for torch.compile`. So it is excluded from RTX 3060 results of Windows.
 
 
-### Run Benchmark with TensorRT and TensorRT execution provider
+### Run Benchmark with TensorRT or TensorRT execution provider
 
 For TensorRT installation, follow https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html.
 
 ```
 pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
-pip install --upgrade polygraphy>=0.47.0 onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
+pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 pip install -r requirements-tensorrt.txt
 export CUDA_MODULE_LOADING=LAZY
 python benchmark.py -e tensorrt -b 1 -v 1.5
 python benchmark.py -e onnxruntime -r tensorrt -b 1 -v 1.5
 python benchmark.py -e onnxruntime -r tensorrt -b 1 -v 1.5 --enable_cuda_graph
+
+python benchmark.py -e tensorrt --height 1024 --width 1024 -s 30  -b 1 -v xl-1.0 --enable_cuda_graph
+python benchmark.py -e onnxruntime -r tensorrt --height 1024 --width 1024 -s 30  -b 1 -v xl-1.0 --enable_cuda_graph
 ```
 
 ### Example Benchmark output
