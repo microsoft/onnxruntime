@@ -745,6 +745,8 @@ struct OrtApi {
 
   /** \brief Create an OrtEnv
    *
+   * \note Invoking this function will return the same instance of the environment as that returned by a previous call
+   * to another env creation function; all arguments to this function will be ignored.
    * \param[in] log_severity_level The log severity level.
    * \param[in] logid The log identifier.
    * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
@@ -755,17 +757,20 @@ struct OrtApi {
 
   /** \brief Create an OrtEnv
    *
+   * \note Invoking this function will return the same instance of the environment as that returned by a previous call
+   * to another env creation function; all arguments to this function will be ignored. If you want to provide your
+   * own logging function, consider setting it using the SetUserLoggingFunction API instead.
    * \param[in] logging_function A pointer to a logging function.
    * \param[in] logger_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
-   *                         `logging_function`.
+   *                         `logging_function`. This parameter is optional.
    * \param[in] log_severity_level The log severity level.
    * \param[in] logid The log identifier.
    * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
-                  OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnvWithCustomLogger, _In_ OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
+                  _In_ OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /** \brief Enable Telemetry
    *
@@ -3592,6 +3597,9 @@ struct OrtApi {
    *   "rpc_control_latency": QNN RPC control latency.
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
    *   "high_power_saver", "low_balanced", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
+   *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
+   *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
+   *   may alter model/EP partitioning. Use only for debugging.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
@@ -4413,6 +4421,26 @@ struct OrtApi {
    * \since Version 1.16.
    */
   ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
+
+  /** \brief Set user logging function
+   *
+   *  By default the logger created by the CreateEnv* functions is used to create the session logger as well.
+   *  This function allows a user to override this default session logger with a logger of their own choosing. This way
+   *  the user doesn't have to create a separate environment with a custom logger. This addresses the problem when
+   *  the user already created an env but now wants to use a different logger for a specific session (for debugging or
+   *  other reasons).
+   *
+   * \param[in] options
+   * \param[in] user_logging_function A pointer to a logging function.
+   * \param[in] user_logging_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
+   *                         `user_logging_function`. This parameter is optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SetUserLoggingFunction, _Inout_ OrtSessionOptions* options,
+                  _In_ OrtLoggingFunction user_logging_function, _In_opt_ void* user_logging_param);
 };
 
 /*
