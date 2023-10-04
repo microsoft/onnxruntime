@@ -37,10 +37,10 @@ void generate_base_grid_2d(int64_t H, int64_t W, bool align_corners, Eigen::Matr
     col_vec = col_vec * (H - 1) / H;
   }
 
-  base_grid.resize(H * W, 2);
+  base_grid.resize(static_cast<Eigen::Index>(H * W), 2);
   for (Eigen::Index j = 0; j < H; j++) {
     for (Eigen::Index i = 0; i < W; i++) {
-      base_grid.row(j * W + i) << row_vec(i), col_vec(j);
+      base_grid.row(j * static_cast<Eigen::Index>(W) + i) << row_vec(i), col_vec(j);
     }
   }
 }
@@ -60,11 +60,11 @@ void generate_base_grid_3d(int64_t D, int64_t H, int64_t W, bool align_corners, 
     slice_vec = slice_vec * (D - 1) / D;
   }
 
-  base_grid.resize(D * H * W, 3);
+  base_grid.resize(static_cast<Eigen::Index>(D * H * W), 3);
   for (Eigen::Index k = 0; k < D; k++) {
     for (Eigen::Index j = 0; j < H; j++) {
       for (Eigen::Index i = 0; i < W; i++) {
-        base_grid.row(k * H * W + j * W + i) << row_vec(i), col_vec(j), slice_vec(k);
+        base_grid.row(k * static_cast<Eigen::Index>(H * W) + j * static_cast<Eigen::Index>(W) + i) << row_vec(i), col_vec(j), slice_vec(k);
       }
     }
   }
