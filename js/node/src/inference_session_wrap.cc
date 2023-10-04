@@ -68,7 +68,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
       int64_t bytesOffset = info[1].As<Napi::Number>().Int64Value();
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
-      ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
+      ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions);
       this->session_.reset(
           new Ort::Session(OrtEnv(), reinterpret_cast<char *>(buffer) + bytesOffset, bytesLength, sessionOptions));
     } else {
