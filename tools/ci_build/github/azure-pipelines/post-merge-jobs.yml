@@ -260,6 +260,8 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)'
       condition: succeededOrFailed()
 
+# We currently use static frameworks in the iOS packages.
+# This test validates that dynamic frameworks also work.
 - stage: IosDynamicFramework
   dependsOn: []
   jobs:
