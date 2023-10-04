@@ -2,15 +2,14 @@ import logging
 import os
 
 import onnx
-from onnx import TensorProto, helper
-from transformers import WhisperConfig
-
 from benchmark_helper import Precision
 from convert_generation import (
     get_shared_initializers,
     update_decoder_subgraph_output_cross_attention,
     update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
 )
+from onnx import TensorProto, helper
+from transformers import WhisperConfig
 
 logger = logging.getLogger(__name__)
 

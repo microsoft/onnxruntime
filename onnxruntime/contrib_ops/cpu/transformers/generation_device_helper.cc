@@ -1095,8 +1095,7 @@ Status UpdateDecoderCrossQK(
     [[maybe_unused]] float* cross_qk_buffer_data,
     [[maybe_unused]] int max_length,
     [[maybe_unused]] AllocatorPtr allocator) {
-  throw std::runtime_error("CPU beam search current not support output cross QK.");
-  return Status::OK();
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CPU beam search current not support output cross QK.");
 }
 
 Status FinalizeDecoderCrossQK(
@@ -1114,8 +1113,7 @@ Status FinalizeDecoderCrossQK(
     [[maybe_unused]] int num_return_sequences,
     [[maybe_unused]] const int* cache_indir_data,
     [[maybe_unused]] gsl::span<const int32_t> beam_indices) {
-  throw std::runtime_error("CPU beam search current not support output cross QK.");
-  return Status::OK();
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CPU beam search current not support output cross QK.");
 }
 
 }  // namespace GenerationCpuDeviceHelper
