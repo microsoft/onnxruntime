@@ -283,6 +283,7 @@ class CudaSession:
             if name in self.input_names:
                 if self.enable_cuda_graph:
                     assert self.input_tensors[name].nelement() == tensor.nelement()
+                    assert self.input_tensors[name].dtype == tensor.dtype
                     assert tensor.device.type == "cuda"
                     # Please install cuda-python package with a version corresponding to CUDA in your machine.
                     from cuda import cudart

@@ -610,7 +610,7 @@ class OnnxModel:
 
            When symbolic shape inference is used (even if it failed), ONNX shape inference will be disabled.
 
-           Note that onnx shape inference will fail for model larger than 2GB. For large model, you have to eanble
+           Note that onnx shape inference will fail for model larger than 2GB. For large model, you have to enable
            symbolic shape inference. If your model is not optimized, you can also use model path to call
            convert_float_to_float16 in float16.py (see https://github.com/microsoft/onnxruntime/pull/15067) to
            avoid the 2GB limit.
@@ -832,7 +832,7 @@ class OnnxModel:
         # Keep track of nodes to keep. The key is first output of node, and the value is the node.
         output_to_node = {}
 
-        # Start from graph outputs, and find parent nodes recurisvely, and add nodes to the output_to_node dictionary.
+        # Start from graph outputs, and find parent nodes recursively, and add nodes to the output_to_node dictionary.
         dq = deque()
         for output in keep_outputs:
             if output in output_name_to_node:
@@ -1161,7 +1161,7 @@ class OnnxModel:
             signature_cache1 (dict): Optional dictionary to store data signatures of tensor1 in order to speed up comparison.
             signature_cache2 (dict): Optional dictionary to store data signatures of tensor2 in order to speed up comparison.
         Returns:
-            bool: True when two intializers has same value.
+            bool: True when two initializers has same value.
         """
         sig1 = (
             signature_cache1[tensor1.name]
