@@ -16,34 +16,6 @@ using ConvPadVector = ConvAttributes::ConvPadVector;
 
 namespace cuda {
 
-static std::vector<size_t> generateStrides(TensorShapeVector&shape, bool nhwc)
-{
-  // For INT8x4 and INT8x32 we still compute standard strides here to input
-  // into the cuDNN functions. We will manually scale by resizeFactor in the cpu ref.
-  int32_t nbDims = shape.size();
-  std::vector<size_t> strides; //{nbDims};
-  strides.resize(nbDims);
-  if (nhwc)
-  {
-    strides[nbDims - 1] = 1;
-    for (int64_t d = nbDims - 2; d >= 0; d--)
-    {
-      strides[d] = strides[d + 1] * shape[d + 1];
-    }
-  } else
-  {
-    // Here we assume that the format is CUDNN_TENSOR_NHWC
-    strides[1] = 1;
-    strides[nbDims - 1] = strides[1] * shape[1];
-    for (int64_t d = nbDims - 2; d >= 2; d--)
-    {
-      strides[d] = strides[d + 1] * shape[d + 1];
-    }
-    strides[0] = strides[2] * shape[2];
-  }
-  return strides;
-}
-
 class CudnnConvolutionDescriptor final {
  public:
   CudnnConvolutionDescriptor();
