@@ -129,7 +129,7 @@ class CpuDetensorizer {
   }
 
   template <>
-  static float ReadTensor<DirectX::PackedVector::HALF>(
+  float ReadTensor<DirectX::PackedVector::HALF>(
     const DirectX::PackedVector::HALF* pCPUTensor, const NominalRangeConverter& nominalRangeConverter
   ) {
     return nominalRangeConverter.Denormalize(DirectX::PackedVector::XMConvertHalfToFloat(*pCPUTensor));
@@ -169,7 +169,7 @@ class CpuDetensorizer {
 
 #if defined(_M_AMD64) || defined(_M_IX86)
   template <>
-  static void InterleaveRowFloatToByte(
+  void InterleaveRowFloatToByte(
     const float* xChannel,
     const float* yChannel,
     const float* zChannel,

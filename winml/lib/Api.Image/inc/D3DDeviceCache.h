@@ -35,6 +35,12 @@ enum class PipelineStateCacheOperation : unsigned char {
   kCount = 2
 };
 
+template <typename E>
+constexpr auto to_underlying_integer(E e) noexcept {
+  return static_cast<typename std::underlying_type<E>::type>(e);
+}
+
+
 class D3DDeviceCache {
  public:
   ~D3DDeviceCache();
@@ -105,8 +111,10 @@ class D3DDeviceCache {
   winrt::com_ptr<ID3D12RootSignature> detensorize_root_signature_;
 
   winrt::com_ptr<ID3D12PipelineState>
-    cached_pipeline_state[PipelineStateCacheType::kCount][PipelineStateCacheFormat::kCount]
-                         [PipelineStateCacheFormat::kCount][PipelineStateCacheOperation::kCount];
+    cached_pipeline_state[to_underlying_integer(PipelineStateCacheType::kCount)]
+                         [to_underlying_integer(PipelineStateCacheFormat::kCount)]
+                         [to_underlying_integer(PipelineStateCacheFormat::kCount)]
+                         [to_underlying_integer(PipelineStateCacheOperation::kCount)];
 
   winrt::com_ptr<ID3D12Resource> detensorize_vertex_buffer_;
 
