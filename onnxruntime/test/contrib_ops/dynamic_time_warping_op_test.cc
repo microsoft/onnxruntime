@@ -11,6 +11,8 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
+#ifdef USE_CUDA
+
 TEST(DynamicTimeWarp, simple) {
   if (NeedSkipIfCudaArchLowerThan(530)) {
     return;
@@ -114,6 +116,8 @@ TEST(DynamicTimeWarp, simple) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

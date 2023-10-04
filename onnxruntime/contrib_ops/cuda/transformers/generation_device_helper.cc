@@ -489,7 +489,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
         parameters->num_beams,
         parameters->vocab_size,
         parameters->extra_decoding_ids.data(),
-        parameters->extra_decoding_ids.size() / parameters->batch_size,
+        static_cast<int>(parameters->extra_decoding_ids.size() / parameters->batch_size),
         step - 1,
         cuda_stream);
   }
@@ -1611,12 +1611,12 @@ Status UpdateDecoderCrossQK(
       cross_qk_buffer_data,
       qk_layer_pointers.get(),
       iteration_number - 2,
-      batchxbeam,
+      static_cast<int>(batchxbeam),
       num_layers,
-      num_heads,
+      static_cast<int>(num_heads),
       cross_qk_layer_head_pair_count,
       cross_qk_layer_head_pairs,
-      frames,
+      static_cast<int>(frames),
       max_length);
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());

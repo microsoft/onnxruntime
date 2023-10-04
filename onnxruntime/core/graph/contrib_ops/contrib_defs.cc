@@ -1102,10 +1102,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           const int rank = input_shape.dim_size();
           int64_t dim = getAttribute(ctx, "dim", -1);
           dim = HandleNegativeAxis(dim, rank);
-          if (!input_shape.dim(dim).has_dim_value()) {
+          if (!input_shape.dim(static_cast<int>(dim)).has_dim_value()) {
             return;
           }
-          int64_t dim_size = input_shape.dim(dim).dim_value();
+          int64_t dim_size = input_shape.dim(static_cast<int>(dim)).dim_value();
 
           const int64_t step = getAttribute(ctx, "step", -1);
           if (step <= 0) {
