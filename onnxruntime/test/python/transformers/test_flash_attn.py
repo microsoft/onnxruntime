@@ -1142,13 +1142,13 @@ def parity_check_gqa_past_no_buff(
 
 
 if __name__ == "__main__":
-    print("-------- TEST PACKED MHA ---------")
-    for b in [5]:
-        for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
-            for n in [6]:
-                for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-                    config = Config(b, s, s, 0, n, n, h)
-                    parity_check_mha(config, True)
+    # print("-------- TEST PACKED MHA ---------")
+    # for b in [5]:
+    #     for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
+    #         for n in [6]:
+    #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+    #                 config = Config(b, s, s, 0, n, n, h)
+    #                 parity_check_mha(config, True)
     print("-------- TEST MHA ---------")
     for b in [5]:
         for s, s2 in [

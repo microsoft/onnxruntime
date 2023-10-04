@@ -27,7 +27,7 @@ namespace cuda {
       kCudaExecutionProvider,                                          \
       (*KernelDefBuilder::Create())                                    \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
+          .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}) \
           .MayInplace(3, 1)                                            \
           .MayInplace(4, 2)                                            \
           .InputMemoryType(OrtMemTypeCPUInput, 5),                     \
@@ -71,7 +71,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   GroupQueryAttentionData<CudaT> data;
 
-  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs<Tensor>(query,
+  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
                                                                         key,
                                                                         value,
                                                                         past_key,

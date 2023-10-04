@@ -596,6 +596,7 @@ Status QkvToContext(
 
 #if USE_FLASH_ATTENTION
   if (data.use_flash_attention) {
+    std::cout << "i am flash\n";
     return FlashAttention(device_prop, stream, parameters, data, scale);
   }
 #endif

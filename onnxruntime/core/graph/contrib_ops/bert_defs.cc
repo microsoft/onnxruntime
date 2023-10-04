@@ -1056,7 +1056,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
-        .TypeConstraint("M", {"tensor(int32)"}, "Constrain past sequence length to int tensor.")
+        .TypeConstraint("M", {"tensor(int32)", "tensor(int64)"}, "Constrain past sequence length to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);
         }));
