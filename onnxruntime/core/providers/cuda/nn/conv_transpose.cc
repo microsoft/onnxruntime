@@ -77,6 +77,7 @@ Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, Allo
       if (!status.IsOK()) {
         return status;
       }
+      CUDA_CALL_THROW(cudaStreamSynchronize(DefaultCudaStream()));
       is_packed = true;
     }
   }
