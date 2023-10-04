@@ -435,6 +435,9 @@ class CLIP(BaseModel):
             for j in range(len(graph.node[i].output)):
                 if graph.node[i].output[j] == node_output_name:
                     found = True
+                    break
+            if found:
+                break
         if not found:
             raise RuntimeError("Failed to find hidden_states graph output in clip")
 

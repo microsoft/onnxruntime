@@ -79,7 +79,7 @@ If you use CUDA 12.*, you will need build onnxruntime-gpu from source.
 ```
 conda create -n py38 python=3.8
 conda activate py38
-pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu118
+pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu118
 pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 pip install -r requirements-cuda.txt
 ```
