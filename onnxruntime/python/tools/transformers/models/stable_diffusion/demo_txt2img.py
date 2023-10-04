@@ -64,7 +64,7 @@ if __name__ == "__main__":
     pipeline.load_resources(image_height, image_width, batch_size)
 
     def run_inference(warmup=False):
-        images, time_base = pipeline.run(
+        return pipeline.run(
             prompt,
             negative_prompt,
             image_height,
@@ -76,20 +76,18 @@ if __name__ == "__main__":
             return_type="images",
         )
 
-        return images, time_base
-
     if not args.disable_cuda_graph:
         # inference once to get cuda graph
-        images, _ = run_inference(warmup=True)
+        _image, _latency = run_inference(warmup=True)
 
     print("[I] Warming up ..")
     for _ in range(args.num_warmup_runs):
-        images, _ = run_inference(warmup=True)
+        _image, _latency = run_inference(warmup=True)
 
     print("[I] Running StableDiffusion pipeline")
     if args.nvtx_profile:
         cudart.cudaProfilerStart()
-    images, pipeline_time = run_inference(warmup=False)
+    _image, _latency = run_inference(warmup=False)
     if args.nvtx_profile:
         cudart.cudaProfilerStop()
 
