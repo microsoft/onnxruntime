@@ -12,7 +12,6 @@ import tempfile
 from pathlib import Path
 
 import onnx
-from optimize_pipeline import has_external_data
 from packaging import version
 
 from onnxruntime.transformers.fusion_options import FusionOptions
@@ -59,8 +58,6 @@ class OrtStableDiffusionOptimizer:
         if self.model_type in ["unet"] and not float16:
             fusion_options.enable_packed_kv = False
             fusion_options.enable_packed_qkv = False
-
-        use_external_data_format = has_external_data(input_fp32_onnx_path)
 
         m = optimize_model(
             input_fp32_onnx_path,
