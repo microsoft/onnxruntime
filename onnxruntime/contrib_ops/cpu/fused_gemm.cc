@@ -9,6 +9,8 @@ namespace contrib {
 constexpr const char* ACTIVATION_NAME_PREFIX = "activation_";
 constexpr size_t ACTIVATION_NAME_PREFIX_LEN = 11;
 
+// code change.
+
 template <typename T>
 class FusedGemm final : public Gemm<T> {
  public:
