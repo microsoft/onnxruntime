@@ -159,6 +159,8 @@ Status FusedTrtCrossAttention(
     AttentionData<T>& data) {
   assert(data.qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H);
 
+  std::cout << "fused trt cross\n";
+
   // We only enable fused cross attention when there is no key padding mask.
   // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
   assert(data.mask_index == nullptr);
@@ -225,6 +227,9 @@ Status FusedTrtSelfAttention(
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data) {
+
+  std::cout << "fused TRT self\n";
+
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const bool causal = parameters.is_unidirectional;
@@ -291,6 +296,9 @@ Status FlashAttention(
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
     float scale) {
+
+  std::cout << "flash\n";
+
   assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
   assert(nullptr == data.mask_index);
   assert(nullptr == data.relative_position_bias);
@@ -343,6 +351,9 @@ Status EfficientAttention(
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
     float scale) {
+
+  std::cout << "memeff\n";
+
   // We only enable fused cross attention when there is no key padding mask.
   // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
   assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
@@ -413,6 +424,7 @@ Status UnfusedAttention(
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
     float scale) {
+  std::cout <<"unfused\n";
   assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
 
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
