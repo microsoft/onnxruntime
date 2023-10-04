@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Table from './table.svelte';
-	import Temp from './temp.svelte'
 	import githublogo from '../../images/logos/GitHub-Logo.svg';
 	import ImageTutorials from '../../images/undraw/image_tutorials.svelte';
 </script>
@@ -11,8 +10,8 @@
 		ONNX Runtime supports a variety of hardware and architectures to fit any need. Select the
 		configuration you want to use and run the corresponding installation script.
 	</p> -->
-	<!-- <Table /> -->
-	<Temp/>
+	<Table />
+	<!-- <Temp/> -->
 	<p class="pt-4">
 		For more in-depth installation instructions, check out the <a
 			href="https://onnxruntime.ai/docs/tutorials/"
