@@ -2021,34 +2021,9 @@ static void ModelBuilding_GridSampleDeviceDirectX() {
 #endif
 }
 
-static void people() {
-  auto model = LearningModel::LoadFromFilePath(L"C:\\Users\\smk20\\source\\repos\\cat_stft\\cat_stft\\people_20230519-045711.onnx");
-
-  auto device = LearningModelDevice(LearningModelDeviceKind::DirectX);
-  auto session = LearningModelSession(model, device);
-  auto binding = LearningModelBinding(session);
-
-  auto input0 = std::vector<float>(800 * 800 * 3, 0);
-  auto input1 = std::vector<float>(1, 0);
-  binding.Bind(L"image", TensorFloat::CreateFromShapeArrayAndDataArray(std::vector<int64_t>{1, 3, 800, 800}, input0));
-  binding.Bind(L"thre", TensorFloat::CreateFromShapeArrayAndDataArray(std::vector<int64_t>{1, 1, 1, 1}, input1));
-
-  //session.Evaluate(binding, L"");
-  session.Evaluate(binding, L"");
-  auto start = std::chrono::high_resolution_clock::now();
-  int num_iter = 10;
-  for (int i = 0; i < num_iter; i++) {
-    session.Evaluate(binding, L"");
-  }
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> diff = end - start;
-  printf("%f ms\n", ((float)std::chrono::duration_cast<std::chrono::milliseconds>(diff).count() / num_iter));
-}
-
 static void ModelBuilding_DiscreteFourierTransform() {
-  people();
 #if !defined(BUILD_INBOX)
-  //ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind::Cpu);
+  ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind::Cpu);
 #endif
 }
 
