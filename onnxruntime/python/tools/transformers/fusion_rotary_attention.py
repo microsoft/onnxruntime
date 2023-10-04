@@ -40,7 +40,8 @@ class FusionRotaryAttention(FusionAttention):
         q_rotary: NodeProto,
         k_rotary: NodeProto,
         v_matmul: NodeProto,
-        attn_mask: str,
+        attn_mask: str = "",
+        add_qk: str = "",
         past_k: str = "",
         past_v: str = "",
         present_k: str = "",
@@ -60,7 +61,7 @@ class FusionRotaryAttention(FusionAttention):
             v_matmul.output[0],
             "",                 # bias
             attn_mask,          # key_padding_mask
-            "",                 # relative_position_bias
+            add_qk,             # relative_position_bias
             past_k,
             past_v,
         ]
@@ -387,7 +388,7 @@ class FusionRotaryAttention(FusionAttention):
 
         # attn_mask_nodes_1, attn_mask_nodes_2 are for LLaMA-2 Microsoft's 3D attention mask
         # attn_mask_nodes_3, attn_mask_nodes_4 are for LLaMA-2 Hugging Face's 2D attention mask
-        attn_mask = ""
+        attn_mask, add_qk_str = "", ""
         attn_mask_nodes = None
         attn_mask_nodes_1 = self.model.match_parent_path(
             add_qk,
@@ -420,21 +421,23 @@ class FusionRotaryAttention(FusionAttention):
         elif attn_mask_nodes_3 is not None:
             # Either send 2D attention mask directly or reshape from (B,1,S,T) to (B,N,S,T) using 4D helper in fusion_attention.py
             attn_mask_nodes = attn_mask_nodes_3
-            attn_mask = attn_mask_nodes_3[-1].input[0]
+            # attn_mask = attn_mask_nodes_3[-1].input[0]
+            add_qk_str = self.reshape_add_qk(attn_mask_nodes_3[0].output[0])
         elif attn_mask_nodes_4 is not None:
             # Either send 2D attention mask directly or reshape from (B,1,S,T) to (B,N,S,T) using 4D helper in fusion_attention.py
             attn_mask_nodes = attn_mask_nodes_4
-            attn_mask = attn_mask_nodes_4[-1].input[0]
+            # attn_mask = attn_mask_nodes_4[-1].input[0]
+            add_qk_str = self.reshape_add_qk(attn_mask_nodes_4[0].output[0])
         else:
             logger.debug("fuse_rotary_attention: failed to match attention mask nodes")
             return
 
-        if attn_mask_nodes == attn_mask_nodes_3 or attn_mask_nodes == attn_mask_nodes_4:
-            # Convert mask input from int64 to int32 for MHA
-            for i, graph_input in enumerate(self.model.model.graph.input):
-                if graph_input.name == "attention_mask" and graph_input.type.tensor_type.elem_type == TensorProto.INT64:
-                    graph_input.type.tensor_type.elem_type = TensorProto.INT32
-                    break
+        # if attn_mask_nodes == attn_mask_nodes_3 or attn_mask_nodes == attn_mask_nodes_4:
+        #     # Convert mask input from int64 to int32 for MHA
+        #     for i, graph_input in enumerate(self.model.model.graph.input):
+        #         if graph_input.name == "attention_mask" and graph_input.type.tensor_type.elem_type == TensorProto.INT64:
+        #             graph_input.type.tensor_type.elem_type = TensorProto.INT32
+        #             break
 
         # k_nodes_1 is for LLaMA-2 Microsoft
         # k_nodes_2 is for LLaMA-2 Hugging Face
@@ -557,6 +560,7 @@ class FusionRotaryAttention(FusionAttention):
             rotary_k,
             matmul_v,
             attn_mask,
+            add_qk_str,
             past_k,
             past_v,
             present_k,

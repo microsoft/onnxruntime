@@ -11,7 +11,7 @@ import numpy as np
 import psutil
 import torch
 from benchmark_helper import setup_logger
-from llama_inputs import get_msft_sample_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
+from llama_inputs import convert_inputs_for_ort, get_msft_sample_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
 from tqdm import trange
@@ -40,6 +40,26 @@ def get_inputs(args: argparse.Namespace):
             use_fp16=args.use_fp16,
             return_dict=True,
         )
+
+    elif args.benchmark_type == "ort" and not args.ort_msft_model:
+        # Microsoft export from convert_to_onnx
+        init_inputs = get_sample_inputs(
+            args.config,
+            args.target_device,
+            args.batch_size,
+            args.sequence_length,
+            return_dict=True,
+        )
+        iter_inputs = get_sample_with_past_kv_inputs(
+            args.config,
+            args.target_device,
+            args.batch_size,
+            args.sequence_length,
+            use_fp16=args.use_fp16,
+            return_dict=True,
+        )
+        init_inputs = convert_inputs_for_ort(init_inputs, args.use_fp16)
+        iter_inputs = convert_inputs_for_ort(iter_inputs, args.use_fp16)
 
     elif args.benchmark_type == "ort":
         # Microsoft export from https://github.com/microsoft/Llama-2-Onnx
@@ -131,7 +151,7 @@ def get_model(args: argparse.Namespace):
         end_time = time.time()
 
     if args.benchmark_type == "ort":
-        # Microsoft export from https://github.com/microsoft/Llama-2-Onnx
+        # Ex: Microsoft export from https://github.com/microsoft/Llama-2-Onnx
         logger.info(f"Loading model from {args.ort_model_path}")
         start_time = time.time()
         model = ort.InferenceSession(
@@ -361,15 +381,17 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
         return
 
     # ORT evaluations
-    logger.info("\nEvaluating `model(inputs)` step to get past_key_values")
-    ort_init_inputs = prepare_ort_inputs(init_inputs)
-    time_fn(args, generate_fn, ort_init_inputs)
-    measure_fn(args, generate_fn, ort_init_inputs)
+    if not args.split_kv:
+        logger.info("\nEvaluating `model(inputs)` step to get past_key_values")
+        ort_init_inputs = prepare_ort_inputs(init_inputs)
+        time_fn(args, generate_fn, ort_init_inputs)
+        measure_fn(args, generate_fn, ort_init_inputs)
 
-    logger.info("\nEvaluating `model(inputs)` step with past_key_values")
-    ort_iter_inputs = prepare_ort_inputs(iter_inputs)
-    time_fn(args, generate_fn, ort_iter_inputs)
-    measure_fn(args, generate_fn, ort_iter_inputs)
+    if args.split_kv or args.ort_msft_model:
+        logger.info("\nEvaluating `model(inputs)` step with past_key_values")
+        ort_iter_inputs = prepare_ort_inputs(iter_inputs)
+        time_fn(args, generate_fn, ort_iter_inputs)
+        measure_fn(args, generate_fn, ort_iter_inputs)
 
 
 def run_inference(args, init_inputs, iter_inputs, model):
@@ -519,6 +541,7 @@ def main():
 
     # Measure prompt cost (init_inputs) and generated token cost (iter_inputs)
     model = get_model(args)
+    setattr(args, "ort_msft_model", "pos" in list(map(lambda inpt: inpt.name, model.get_inputs())))
     for batch_size, sequence_length in itertools.product(args.batch_sizes, args.sequence_lengths):
         logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")
         setattr(args, "batch_size", int(batch_size))  # noqa: B010

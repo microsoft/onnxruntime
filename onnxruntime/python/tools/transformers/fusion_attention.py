@@ -214,16 +214,23 @@ class FusionAttention(Fusion):
     def reshape_add_qk(self, add_qk: str):
         # Convert 4D mask from (B,1,S,T) to (B,N,S,T)
         # B = batch size, N = num heads, S = source sequence length, T = target sequence length
+        mask_output_name = add_qk + "_mask"
+
+        # Check if concat node for (B,1,S,T) --> (B,N,S,T) already exists
+        concat_node = list(filter(lambda node: node.output[0] == mask_output_name, self.nodes_to_add))
+        if len(concat_node) == 1:
+            return mask_output_name
+
+        assert len(concat_node) == 0
         concat_node_name = self.model.create_node_name("Concat")
-        mask_output_name = add_qk_str + "_mask"
         concat_add_qk_fp32 = helper.make_node(
             "Concat",
-            inputs=[add_qk_str for _ in range(num_heads)],
+            inputs=[add_qk for _ in range(self.num_heads)],
             outputs=[mask_output_name],
             name=concat_node_name,
             axis=1,
         )
-        # Add new nodes to graph
+        # Add new node to graph
         self.nodes_to_add.append(concat_add_qk_fp32)
         self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
 

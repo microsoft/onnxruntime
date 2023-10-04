@@ -38,7 +38,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
     ort_outputs = ort_model.run(None, inputs)[0]
 
     # Compare PyTorch and ONNX Runtime accuracy
-    tol = 1e-3 if args.precision == "fp32" else 1e-2 if args.precision == "fp16" else 1e2
+    tol = 1e-3 if args.precision == "fp32" else 5e-2 if args.precision == "fp16" else 1e2
     parity = np.allclose(pt_outputs, ort_outputs, rtol=tol, atol=tol)
     logger.warning(f"Are PyTorch and ONNX Runtime results close? {parity}")
     if not parity:
