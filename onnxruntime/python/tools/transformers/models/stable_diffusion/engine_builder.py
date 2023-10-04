@@ -91,6 +91,10 @@ class EngineBuilder:
         if hasattr(torch.nn.functional, "scaled_dot_product_attention"):
             delattr(torch.nn.functional, "scaled_dot_product_attention")
 
+        # For TRT or ORT_TRT, we will export fp16 torch model for UNet.
+        # For ORT_CUDA, we export fp32 model first, then optimize to fp16.
+        export_fp16_unet = self.engine_type in [EngineType.ORT_TRT, EngineType.TRT]
+
         if "clip" in self.stages:
             self.models["clip"] = CLIP(
                 self.pipeline_info,
@@ -114,7 +118,7 @@ class EngineBuilder:
                 self.pipeline_info,
                 None,  # not loaded yet
                 device=self.torch_device,
-                fp16=True,
+                fp16=export_fp16_unet,
                 max_batch_size=self.max_batch_size,
                 unet_dim=(9 if self.pipeline_info.is_inpaint() else 4),
             )
@@ -124,7 +128,7 @@ class EngineBuilder:
                 self.pipeline_info,
                 None,  # not loaded yet
                 device=self.torch_device,
-                fp16=True,
+                fp16=export_fp16_unet,
                 max_batch_size=self.max_batch_size,
                 unet_dim=4,
                 time_dim=(5 if self.pipeline_info.is_sd_xl_refiner() else 6),
@@ -162,23 +166,16 @@ class EngineBuilder:
         return images
 
 
-def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, engine_sub_dir=True):
+def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType):
     root_dir = work_dir or "."
-
     short_name = pipeline_info.short_name()
-    engine_name = engine_type.name.lower()
 
-    if engine_sub_dir:
-        onnx_dir = os.path.join(root_dir, engine_type.name, short_name, "onnx")
-        engine_dir = os.path.join(root_dir, engine_type.name, short_name, "engine")
-        output_dir = os.path.join(root_dir, engine_type.name, short_name, "output")
-        timing_cache = os.path.join(root_dir, engine_type.name, "timing_cache")
-    else:
-        onnx_dir = os.path.join(root_dir, short_name, "onnx")
-        engine_dir = os.path.join(root_dir, short_name, engine_name)
-        output_dir = os.path.join(root_dir, short_name, "output")
-        timing_cache = os.path.join(root_dir, "timing_cache")
-
-    framework_model_dir = os.path.join(root_dir, "torch_model")
+    # When both ORT_CUDA and ORT_TRT/TRT is used, we shall make sub directory for each engine since
+    # ORT_CUDA need fp32 torch model, while ORT_TRT/TRT use fp16 torch model.
+    onnx_dir = os.path.join(root_dir, engine_type.name, short_name, "onnx")
+    engine_dir = os.path.join(root_dir, engine_type.name, short_name, "engine")
+    output_dir = os.path.join(root_dir, engine_type.name, short_name, "output")
+    timing_cache = os.path.join(root_dir, engine_type.name, "timing_cache")
+    framework_model_dir = os.path.join(root_dir, engine_type.name, "torch_model")
 
     return onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache

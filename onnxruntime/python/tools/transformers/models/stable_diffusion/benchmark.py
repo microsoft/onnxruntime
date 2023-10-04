@@ -10,6 +10,7 @@ import statistics
 import sys
 import time
 
+import __init__  # noqa: F401. Walk-around to run this script directly
 import coloredlogs
 
 # import torch before onnxruntime so that onnxruntime uses the cuDNN in the torch package.

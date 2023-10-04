@@ -115,7 +115,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipelineMixin, Stabl
                 self.pipeline_info,
                 self.unet,
                 device=self.torch_device,
-                fp16=True,
+                fp16=False,
                 max_batch_size=self.max_batch_size,
                 unet_dim=(9 if self.pipeline_info.is_inpaint() else 4),
             )

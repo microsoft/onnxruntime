@@ -121,8 +121,8 @@ class PipelineInfo:
         return 0.13025 if self.is_sd_xl() else 0.18215
 
     @staticmethod
-    def supported_versions():
-        return ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base", "xl-1.0"]
+    def supported_versions(is_xl: bool):
+        return ["xl-1.0"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base"]
 
     def name(self) -> str:
         if self.version == "1.4":

@@ -504,5 +504,4 @@ class TensorrtEngineBuilder(EngineBuilder):
             engine.activate(reuse_device_memory=self.shared_device_memory)
 
     def run_engine(self, model_name, feed_dict):
-        engine = self.engines[model_name]
-        return engine.infer(feed_dict, self.stream, use_cuda_graph=self.use_cuda_graph)
+        return self.engines[model_name].infer(feed_dict, self.stream, use_cuda_graph=self.use_cuda_graph)
