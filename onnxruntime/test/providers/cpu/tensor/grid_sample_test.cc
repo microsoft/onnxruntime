@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 #include <limits>
 
@@ -24,7 +25,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_nearest_zeros_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_nearest_zeros_no_align_corners) {
@@ -44,7 +46,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_nearest_zeros_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_nearest_border_align_corners) {
@@ -64,7 +67,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_nearest_border_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_nearest_border_no_align_corners) {
@@ -84,7 +88,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_nearest_border_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_nearest_reflection_align_corners) {
@@ -104,7 +109,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_nearest_reflection_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_nearest_reflection_no_align_corners) {
@@ -124,7 +130,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_nearest_reflection_no_align_corners)
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_zeros_align_corners) {
@@ -144,7 +151,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_zeros_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_zeros_no_align_corners) {
@@ -164,7 +172,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_zeros_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_border_align_corners) {
@@ -184,7 +193,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_border_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_border_no_align_corners) {
@@ -204,7 +214,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_border_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_reflection_align_corners) {
@@ -224,7 +235,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_reflection_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_reflection_no_align_corners) {
@@ -244,7 +256,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bilinear_reflection_no_align_corners
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_zeros_align_corners) {
@@ -264,7 +277,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_zeros_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_zeros_no_align_corners) {
@@ -284,7 +298,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_zeros_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_border_align_corners) {
@@ -304,7 +319,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_border_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_border_no_align_corners) {
@@ -324,7 +340,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_border_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_reflection_align_corners) {
@@ -344,7 +361,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_reflection_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_reflection_no_align_corners) {
@@ -364,7 +382,8 @@ TEST(GridsampleTest, test_grid_sample_16_4D_bicubic_reflection_no_align_corners)
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_nearest_zeros_align_corners) {
@@ -384,7 +403,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_nearest_zeros_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_nearest_zeros_align_corners) {
@@ -404,7 +424,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_zeros_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_nearest_zeros_no_align_corners) {
@@ -424,7 +445,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_nearest_zeros_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_nearest_zeros_no_align_corners) {
@@ -444,7 +466,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_zeros_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_nearest_border_align_corners) {
@@ -464,7 +487,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_nearest_border_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_nearest_border_align_corners) {
@@ -484,7 +508,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_border_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_nearest_border_no_align_corners) {
@@ -504,7 +529,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_nearest_border_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_nearest_border_no_align_corners) {
@@ -524,7 +550,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_border_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_nearest_reflection_align_corners) {
@@ -544,7 +571,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_nearest_reflection_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_nearest_reflection_align_corners) {
@@ -564,7 +592,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_reflection_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_nearest_reflection_no_align_corners) {
@@ -584,7 +613,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_nearest_reflection_no_align_corners)
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_nearest_reflection_no_align_corners) {
@@ -604,7 +634,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_reflection_no_align_corners)
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_zeros_align_corners) {
@@ -624,7 +655,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_zeros_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_zeros_align_corners) {
@@ -644,7 +676,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_zeros_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_zeros_no_align_corners) {
@@ -664,7 +697,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_zeros_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_zeros_no_align_corners) {
@@ -684,7 +718,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_zeros_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_border_align_corners) {
@@ -704,7 +739,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_border_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_border_align_corners) {
@@ -724,7 +760,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_border_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_border_no_align_corners) {
@@ -744,7 +781,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_border_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_border_no_align_corners) {
@@ -764,7 +802,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_border_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_reflection_align_corners) {
@@ -784,7 +823,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_reflection_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_reflection_align_corners) {
@@ -804,7 +844,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_reflection_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_reflection_no_align_corners) {
@@ -824,7 +865,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bilinear_reflection_no_align_corners
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_reflection_no_align_corners) {
@@ -844,7 +886,8 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_reflection_no_align_corners
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_zeros_align_corners) {
@@ -864,7 +907,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_zeros_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_zeros_no_align_corners) {
@@ -884,7 +928,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_zeros_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_border_align_corners) {
@@ -904,7 +949,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_border_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_border_no_align_corners) {
@@ -924,7 +970,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_border_no_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_reflection_align_corners) {
@@ -944,7 +991,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_reflection_align_corners) {
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_reflection_no_align_corners) {
@@ -964,7 +1012,8 @@ TEST(GridsampleTest, test_grid_sample_20_4D_bicubic_reflection_no_align_corners)
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
-  test.Run();
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 }  // namespace test
 }
