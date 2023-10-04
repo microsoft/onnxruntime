@@ -29,7 +29,7 @@ class OrtCudaEngine(CudaSession):
         if disable_optimization:
             session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
 
-        print("creating CUDA EP session for ", onnx_path)
+        logger.info("creating CUDA EP session for %s", onnx_path)
         ort_session = ort.InferenceSession(
             onnx_path,
             session_options,
@@ -38,7 +38,7 @@ class OrtCudaEngine(CudaSession):
                 "CPUExecutionProvider",
             ],
         )
-        print("created CUDA EP session for ", onnx_path)
+        logger.info("created CUDA EP session for %s", onnx_path)
 
         device = torch.device("cuda", device_id)
         super().__init__(ort_session, device, enable_cuda_graph)
