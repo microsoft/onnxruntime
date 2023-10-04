@@ -5,16 +5,16 @@
 
 #include <algorithm>
 #include "core/common/gsl.h"
-#include "core/providers/cpu/nn/conv_transpose_attributes.h"
 #include "core/providers/js/js_kernel.h"
+#include "core/providers/cpu/nn/conv_transpose_attributes.h"
 namespace onnxruntime {
 namespace js {
-template <bool is_channels_last>
+template <bool is_channels_last, bool has_activation = false>
 class ConvTranspose : public JsKernel {
  public:
-  ConvTranspose(const OpKernelInfo& info, bool hasActivation = false) : JsKernel(info), conv_transpose_attrs_(info), w_is_const_(false) {
+  ConvTranspose(const OpKernelInfo& info) : JsKernel(info), conv_transpose_attrs_(info), w_is_const_(false) {
     TensorShapeVector kernel_shape;
-    if (hasActivation) {
+    if (has_activation) {
       ORT_THROW_IF_ERROR(info.GetAttr<std::string>("activation", &conv_transpose_attrs_.activation));
     } else {
       conv_transpose_attrs_.activation = "";
