@@ -48,11 +48,13 @@
 </script>
 
 <div class="container mx-auto px-4">
+	<h1 class="text-xl mb-4 text-center">
+		Use ONNX Runtime with your favorite language, or dive right into the tutorials.
+	</h1>
 	<div class="grid-cols-1 lg:grid-cols-3 gap-4 grid">
-		<div class="col-span-1 mx-auto mx-4 lg:mx-0 lg:ml-10">
-			<h1 class="text-xl mb-4">
-				Use ONNX Runtime with your favorite language, or dive right into the tutorials.
-			</h1>
+		
+		<div class="col-span-1 mx-auto mt-6 mx-4 lg:mx-0 lg:ml-10">
+			
 			<div class="join join-vertical gap-4 w-full">
 				<a href="./getting-started" class="btn btn-primary rounded-sm btn-block"
 				>Quickstart</a

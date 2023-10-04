@@ -1,5 +1,5 @@
 <svg
-	stroke="black"
+	stroke="currentColor"
 	width="112"
 	height="137"
 	viewBox="0 0 112 137"

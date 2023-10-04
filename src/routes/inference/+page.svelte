@@ -270,7 +270,11 @@
 					<div class="card-actions mt-auto mb-2 justify-center">
 						<a
 							href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/ort-whisper"
-							class="btn btn-primary">Custom Excel Functions for BERT NLP Tasks in JS →</a
+							class="btn btn-primary hidden md:inline-flex">Custom Excel Functions for BERT NLP Tasks in JS →</a
+						>
+						<a
+							href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/ort-whisper"
+							class="btn btn-primary md:hidden">Custom Excel Functions for BERT NLP →</a
 						>
 					</div>
 				</div>

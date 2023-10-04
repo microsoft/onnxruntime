@@ -113,7 +113,9 @@
 		</div>
 	</div>
 </div>
+
 <div class="container mx-auto px-10 my-10">
+	<div class="divider"></div>
 	<div class="flex">
 		<h1 class="text-4xl pb-4">Export Hugging Face Models to ONNX</h1>
 		<div class="ml-5 hidden md:flex">
@@ -137,6 +139,7 @@
 	>
 </div>
 <div class="container mx-auto px-10 my-10">
+	<div class="divider"></div>
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 		<div class="col-span-1">
 			<div class="flex">
@@ -209,6 +212,7 @@
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">
+	<div class="divider"></div>
 	<div class="flex">
 		<h1 class="text-4xl pb-4">Cloud Models</h1>
 		<div class="ml-5 hidden md:flex">

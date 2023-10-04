@@ -9,7 +9,7 @@
 <div class="container mx-auto px-10">
 	<h1 class="text-4xl pb-2">ONNX Runtime Training</h1>
 	<p class="text-xl pb-4">
-		ONNX Runtime can be used to accelerate both large model training and on-device training.
+		ONNX Runtime can be used to accelerate large model training and enable on-device training.
 	</p>
 	<a href="./training" class="btn btn-primary">Learn more about ONNX Runtime Training →</a>
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-10 my-4 md:mx-10">

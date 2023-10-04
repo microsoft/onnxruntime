@@ -68,9 +68,9 @@
 						>
 					</div>
 				</div>
-				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
+				<pre class="md:col-span-1 col-span-2 order-first sm:order-last">
 					<Highlight language={python} code={pythonCode} />
-				</figure>
+				</pre>
 			</article>
 			<article class="card bg-base-300 lg:mt-48 grid md:grid-cols-3">
 				<div class="card-body col-span-2 order-last md:order-first">

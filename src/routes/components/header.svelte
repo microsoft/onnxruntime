@@ -65,7 +65,7 @@
 			<div class="hidden lg:inline">
 				<OnnxLight width={32} height={32} />
 			</div>
-			ONNXRuntime
+			ONNX Runtime
 			<div class="lg:hidden">
 				<OnnxLight width={32} height={32} />
 			</div>
