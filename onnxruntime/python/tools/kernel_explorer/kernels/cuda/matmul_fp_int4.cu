@@ -50,7 +50,11 @@ struct MatrixFloatInt4Params :
 template <typename T>
 class MatrixFloatInt4 : public IKernelExplorer {
  public:
-  MatrixFloatInt4(DeviceArray& output, DeviceArray& a, DeviceArray& b, DeviceArray& scales, int m, int n, int k) {
+  MatrixFloatInt4(DeviceArray& output,
+                  DeviceArray& a,
+                  DeviceArray& b,
+                  DeviceArray& scales,
+                  int m, int n, int k) {
     params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.output_ = static_cast<T*>(output.ptr());
@@ -61,6 +65,15 @@ class MatrixFloatInt4 : public IKernelExplorer {
     params_.m_ = m;
     params_.n_ = n;
     params_.k_ = k;
+  }
+
+  MatrixFloatInt4(DeviceArray& output,
+                  DeviceArray& a,
+                  DeviceArray& b,
+                  DeviceArray& scales,
+                  DeviceArray& zeropoints,
+                  int m, int n, int k) : MatrixFloatInt4(output, a, b, scales, m, n, k) {
+    params_.zero_points_ = static_cast<uint8_t*>(zeropoints.ptr());
   }
 
   void Run() override {
@@ -83,11 +96,12 @@ class MatrixFloatInt4 : public IKernelExplorer {
   ParamsT params_{};
 };
 
-#define REGISTER_OP(name, type)                                                               \
-  py::class_<name<type>>(m, #name "_" #type)                                                  \
-      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, int, int, int>()) \
-      .def("SetRepeats", &name<type>::SetRepeats)                                             \
-      .def("Profile", &name<type>::Profile)                                                   \
+#define REGISTER_OP(name, type)                                                                             \
+  py::class_<name<type>>(m, #name "_" #type)                                                                \
+      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, int, int, int>())               \
+      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, int, int, int>()) \
+      .def("SetRepeats", &name<type>::SetRepeats)                                                           \
+      .def("Profile", &name<type>::Profile)                                                                 \
       .def("Run", &name<type>::Run);
 
 KE_REGISTER(m) {

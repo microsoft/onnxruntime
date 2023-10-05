@@ -62,7 +62,7 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
 
 constexpr int BLOCKSIZEN = 8;
 
-template <class T, int group_size>
+template <class T, int block_size>
 __global__ void MatMulFloatInt4Kernel(
     T* output,
     const T* a_data,
@@ -77,7 +77,7 @@ __global__ void MatMulFloatInt4Kernel(
   int lane_id = threadIdx.x;
   int warp_id = threadIdx.y;
   int n_id = n_block_id * BLOCKSIZEN + warp_id;
-  int group_count = (k + group_size - 1) / group_size;
+  int blocks_per_K = (k + block_size - 1) / block_size;
   int thread_id = warp_id * 32 + lane_id;
   int k_iter = k / 256;
 
@@ -85,31 +85,35 @@ __global__ void MatMulFloatInt4Kernel(
 
   // load scale to shared buffer
   T* b_scale_vec = (T*)shared_buffer;
-  uint8_t* b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + BLOCKSIZEN * group_count);
-  int offset = n_block_id * BLOCKSIZEN * group_count;
-  for (int i = thread_id; i < BLOCKSIZEN * group_count; i += 256) {
+  uint8_t* b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + BLOCKSIZEN * blocks_per_K);
+  int offset = n_block_id * BLOCKSIZEN * blocks_per_K;
+  for (int i = thread_id; i < BLOCKSIZEN * blocks_per_K; i += 256) {
     b_scale_vec[i] = scales_data[offset + i];
-    b_zp_vec[i] = zero_points != nullptr ? zero_points[offset + i] : uint8_t(8);
+  }
+  for (int i = thread_id; i < BLOCKSIZEN * blocks_per_K / 2; i += 256) {
+    b_zp_vec[i] = zero_points != nullptr ? zero_points[offset/2 + i] : uint8_t(0x88);
   }
   __syncthreads();
 
   a_data += m_id * k;
-  b_data_quant += n_id * group_count * (group_size / 2);
+  b_data_quant += n_id * blocks_per_K * (block_size / 2);
 
   float sum = 0.f;
   int k_id = 0;
   for (; k_id < (k & 0xffffff00); k_id += 256) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + (k_id >> 1) + lane_id * 4));
-    T scale = b_scale_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size];
-    uint8_t zp = b_zp_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size];
+    int32_t block_idx = warp_id * blocks_per_K + (k_id + lane_id * 8) / block_size;
+    T scale = b_scale_vec[block_idx];
+    uint8_t zp = (block_idx & 0x01) ? (b_zp_vec[block_idx/2] >> 4) : (b_zp_vec[block_idx/2] & 0x0f);
     sum += AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3));
   }
 
   // handle reminder
   if (k_id + lane_id * 8 < k) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_iter * 128 + lane_id * 4));
-    T scale = b_scale_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size];
-    uint8_t zp = b_zp_vec[warp_id * group_count + (k_id + lane_id * 8) / group_size];
+    int32_t block_idx = warp_id * blocks_per_K + (k_id + lane_id * 8) / block_size;
+    T scale = b_scale_vec[block_idx];
+    uint8_t zp = (block_idx & 0x01) ? (b_zp_vec[block_idx/2] >> 4) : (b_zp_vec[block_idx/2] & 0x0f);
     sum += AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3));
   }
 
@@ -133,29 +137,29 @@ bool TryMatMul4Bits(
     int m,
     int n,
     int k,
-    int group_size,
+    int block_size,
     cudaStream_t stream) {
   if (n % BLOCKSIZEN != 0 || k % 8 != 0 || m > 1) {
     return false;
   }
   dim3 blocks((n + BLOCKSIZEN - 1) / BLOCKSIZEN, m);
   dim3 threads(32, 8);
-  int shared_mem_size = (sizeof(T) + 1) * ((k + group_size - 1) / group_size * 8);
+  int shared_mem_size = (sizeof(T) + 1) * ((k + block_size - 1) / block_size * 8);
 
-  if (16 == group_size) {
+  if (16 == block_size) {
     MatMulFloatInt4Kernel<T, 16><<<blocks, threads, shared_mem_size, stream>>>(
         output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
-  } else if (32 == group_size) {
+  } else if (32 == block_size) {
     MatMulFloatInt4Kernel<T, 32><<<blocks, threads, shared_mem_size, stream>>>(
         output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
-  } else if (64 == group_size) {
+  } else if (64 == block_size) {
     MatMulFloatInt4Kernel<T, 64><<<blocks, threads, shared_mem_size, stream>>>(
         output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
-  } else if (128 == group_size) {
+  } else if (128 == block_size) {
     MatMulFloatInt4Kernel<T, 128><<<blocks, threads, shared_mem_size, stream>>>(
         output, a_data, b_data_quant, scales_data, zero_points, m, n, k);
   } else {
-    ORT_THROW("block size ", group_size, " is not supported");
+    ORT_THROW("block size ", block_size, " is not supported");
   }
 
   return true;

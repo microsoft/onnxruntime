@@ -75,7 +75,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   int64_t buf_size = number_of_block * (block_size * 4 / 8);
   std::vector<uint8_t> input1_vals(buf_size);
   std::vector<float> scales(number_of_block);
-  std::vector<uint8_t> zp(number_of_block);
+  std::vector<uint8_t> zp((N *block_per_k + 1) / 2);
 
   QuantizeDequantize(input1_f_vals, input1_vals, scales, has_zeropoint ? &zp : nullptr, N, K, block_size);
 
@@ -98,9 +98,9 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   if (use_float16) {
     test.AddInput<MLFloat16>("A", {M, K}, ToFloat16(input0_vals), false);
     test.AddInput<uint8_t>("B", {N, block_per_k, block_blob_size}, input1_vals, true);
-    test.AddInput<MLFloat16>("scales", {N, block_per_k}, ToFloat16(scales), true);
+    test.AddInput<MLFloat16>("scales", {N * block_per_k}, ToFloat16(scales), true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {N, block_per_k}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {(N * block_per_k + 1) / 2}, zp, true);
     }
 
     test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(expected_vals));
@@ -112,9 +112,9 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   } else {
     test.AddInput<float>("A", {M, K}, input0_vals, false);
     test.AddInput<uint8_t>("B", {N, block_per_k, block_blob_size}, input1_vals, true);
-    test.AddInput<float>("scales", {N, block_per_k}, scales, true);
+    test.AddInput<float>("scales", {N * block_per_k}, scales, true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {N, block_per_k}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {(N * block_per_k + 1) / 2}, zp, true);
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_vals);
@@ -149,6 +149,43 @@ TEST(MatMulNBits, Float16) {
     }
   }
 }
+TEST(MatMulNBits, Float16_Dequantize) {
+  for (auto M : {1, 2, 100}) {
+    for (auto N : {1, 2}) {
+      for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
+        for (auto block_size : {16}) {
+          RunTest(M, N, K, block_size, false, true);
+          RunTest(M, N, K, block_size, true, true);
+        }
+      }
+    }
+  }
+}
+
+TEST(MatMulNBits, Float16_MatMul) {
+  for (auto M : {1}) {
+    for (auto N : {32}) {
+      for (auto K : {64}) {
+        for (auto block_size : {16}) {
+          RunTest(M, N, K, block_size, false, true);
+        }
+      }
+    }
+  }
+}
+
+TEST(MatMulNBits, Float16_MatMul_zp) {
+  for (auto M : {1}) {
+    for (auto N : {32}) {
+      for (auto K : {64}) {
+        for (auto block_size : {16}) {
+          RunTest(M, N, K, block_size, true, true);
+        }
+      }
+    }
+  }
+}
+
 #endif
 }  // namespace test
 }  // namespace onnxruntime

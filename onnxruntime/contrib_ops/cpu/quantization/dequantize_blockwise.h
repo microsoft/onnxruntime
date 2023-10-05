@@ -5,8 +5,11 @@
 
 #include "blockwise_quant_block.h"
 
+#include <vector>
+
 #include "core/framework/float16.h"
 #include "core/platform/threadpool.h"
+#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
@@ -15,8 +18,8 @@ template <typename T, int32_t block_size, int32_t bits>
 void QuantizeBlockwise(
     uint8_t* dst,          // shape: [ N, block_per_K, block_blob_size ]
     const T* src,          // shape: [K, N]
-    T* scale,              // shape: [N, block_per_K]
-    uint8_t* zero_points,  // shape: [N, block_per_K]
+    T* scale,              // shape: [N * block_per_K]
+    uint8_t* zero_points,  // shape: [N * block_per_K] if bits > 4 else [(N *block_per_K + 1) / 2]
     int32_t N,
     int32_t K,
     onnxruntime::concurrency::ThreadPool* thread_pool) {
@@ -24,23 +27,40 @@ void QuantizeBlockwise(
       reinterpret_cast<BlockwiseQuantBlock<T, block_size, bits>*>(dst);
 
   int32_t block_per_K = (K + block_size - 1) / block_size;
-  int32_t task_count = N * block_per_K;
+  int32_t total_block_count = N * block_per_K;
+
+  std::vector<uint8_t> zero_points_tmp;  // to avoid race condition
+  (void)zero_points_tmp;
+  uint8_t* zero_points_tmp_ptr = zero_points;
+  if (bits <= 4 && zero_points != nullptr) {
+    zero_points_tmp.resize(total_block_count, 0);
+    zero_points_tmp_ptr = zero_points_tmp.data();
+  }
 
   concurrency::ThreadPool::TryBatchParallelFor(
       thread_pool,
-      task_count,
-      [&](ptrdiff_t task_idx) {
-        int32_t n = static_cast<int32_t>(task_idx / block_per_K);
-        int32_t k_block_idx = static_cast<int32_t>(task_idx % block_per_K);
+      total_block_count,
+      [&](ptrdiff_t block_idx) {
+        int32_t n = static_cast<int32_t>(block_idx / block_per_K);
+        int32_t k_block_idx = static_cast<int32_t>(block_idx % block_per_K);
         int32_t k = k_block_idx * block_size;
-        BlockwiseQuantBlock<T, block_size, bits>* blob_ptr = dst_blob + task_idx;
-        if (nullptr != zero_points) {
-          blob_ptr->quant(src + k * N + n, scale[task_idx], zero_points[task_idx], k, K, N);
+        BlockwiseQuantBlock<T, block_size, bits>* blob_ptr = dst_blob + block_idx;
+        if (nullptr != zero_points_tmp_ptr) {
+          blob_ptr->quant(src + k * N + n, scale[block_idx], zero_points_tmp_ptr[block_idx], k, K, N);
         } else {
-          blob_ptr->quant(src + k * N + n, scale[task_idx], k, K, N);
+          blob_ptr->quant(src + k * N + n, scale[block_idx], k, K, N);
         }
       },
       0);
+
+  if (bits <= 4 && zero_points != nullptr) {  // compact zero points
+    for (int32_t zp_idx = 0; zp_idx < total_block_count / 2; zp_idx++) {
+      zero_points[zp_idx] = ((zero_points_tmp[zp_idx * 2]) | (zero_points_tmp[zp_idx * 2 + 1] << 4));
+    }
+    if (total_block_count & 1) {
+      zero_points[total_block_count / 2] = (zero_points[total_block_count / 2] &0xf0) | zero_points_tmp[total_block_count - 1];
+    }
+  }
 }
 
 #define QuantizeBlockwise4Bits(block_size) \
@@ -78,10 +98,10 @@ void QuantizeBlockwise(
 
 template <typename T, int32_t block_size, int32_t bits>
 void DequantizeBlockwise(
-    T* dst,                      // [N, K]
-    const uint8_t* src,          // [N, block_per_K, block_blob_size]
-    const T* scale,              // [N, block_per_K]
-    const uint8_t* zero_points,  // [N, block_per_K]
+    T* dst,                      // shape: [N, K]
+    const uint8_t* src,          // shape: [N, block_per_K, block_blob_size]
+    const T* scale,              // shape: [N, block_per_K]
+    const uint8_t* zero_points,  // shape: [N, block_per_K] if bits > 4 else [N, (block_per_K + 1) / 2]
     int32_t N,
     int32_t K,
     onnxruntime::concurrency::ThreadPool* thread_pool) {
@@ -100,7 +120,14 @@ void DequantizeBlockwise(
         int32_t k = k_block_idx * block_size;
         const BlockwiseQuantBlock<T, block_size, bits>* blob_ptr = src_blob + task_idx;
         if (nullptr != zero_points) {
-          blob_ptr->dequant(dst + n * K + k, scale[task_idx], zero_points[task_idx], k, K);
+          // if bits >= 4
+          if constexpr (bits > 4) {  // zero point is stored with a byte
+            blob_ptr->dequant(dst + n * K + k, scale[task_idx], zero_points[task_idx], k, K);
+          } else {  // zero points is stored with 4bits
+            uint8_t zp = zero_points[task_idx / 2];
+            zp = (task_idx & 1) ? (zp >> 4) : (zp & 0xf);
+            blob_ptr->dequant(dst + n * K + k, scale[task_idx], zp, k, K);
+          }
         } else {
           blob_ptr->dequant(dst + n * K + k, scale[task_idx], k, K);
         }
