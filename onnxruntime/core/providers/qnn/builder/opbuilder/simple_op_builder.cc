@@ -156,7 +156,7 @@ Status ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
   if (is_quantized_tensor) {
     float scale;
     uint8_t zero_point;
-    int64_t num_of_elements = 1;
+    constexpr size_t num_of_elements = 1;
     concurrency::ThreadPool* thread_pool = nullptr;
     GetQuantizationParameter(&tensor_data.alpha, num_of_elements, scale, zero_point, thread_pool);
     unpacked_data.resize(1);

@@ -454,7 +454,8 @@ Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const st
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get QNN context binary size.");
   }
 
-  std::unique_ptr<unsigned char[]> context_buffer = std::make_unique<unsigned char[]>(required_buffer_size);
+  std::unique_ptr<unsigned char[]> context_buffer = std::make_unique<unsigned char[]>(
+      gsl::narrow<size_t>(required_buffer_size));
   if (nullptr == context_buffer) {
     LOGS(*logger_, ERROR) << "Failed to allocate buffer for context cache.";
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate buffer for context cache.");
@@ -506,7 +507,7 @@ Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const st
 
   LOGS(*logger_, VERBOSE) << "Dump metadata with length: " << totale_length;
 
-  of_stream.write(reinterpret_cast<char*>(context_buffer.get()), written_buffer_size);
+  of_stream.write(reinterpret_cast<char*>(context_buffer.get()), gsl::narrow<std::streamsize>(written_buffer_size));
 
   LOGS(*logger_, VERBOSE) << "Dump QNN Context completed.";
   return Status::OK();
@@ -520,11 +521,10 @@ Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
 
   ORT_RETURN_IF(!ctx_file_exists_, "Qnn context binary file not exist for some reason!");
 
-  uint64_t buffer_size{0};
   std::ifstream cache_file(context_cache_path_.c_str(), std::ifstream::binary);
   ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
   cache_file.seekg(0, cache_file.end);
-  buffer_size = cache_file.tellg();
+  auto buffer_size = cache_file.tellg();
   ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
   cache_file.seekg(0, cache_file.beg);
   // Skip Ort generated metadata
@@ -533,11 +533,11 @@ Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
     buffer_size -= ort_ctx_metadata_length_;
   }
 
-  std::unique_ptr<unsigned char[]> buffer = std::make_unique<unsigned char[]>(buffer_size);
+  std::unique_ptr<unsigned char[]> buffer = std::make_unique<unsigned char[]>(gsl::narrow<size_t>(buffer_size));
   ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
 
   // Load file into buffer
-  const auto& read_result = cache_file.read(reinterpret_cast<char*>(buffer.get()), buffer_size);
+  const auto& read_result = cache_file.read(reinterpret_cast<char*>(buffer.get()), gsl::narrow<size_t>(buffer_size));
   cache_file.close();
   ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
 

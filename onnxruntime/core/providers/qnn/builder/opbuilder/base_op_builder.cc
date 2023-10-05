@@ -203,7 +203,7 @@ Status BaseOpBuilder::TransposeInitializer(const QnnModelWrapper& qnn_model_wrap
   std::vector<size_t> permutations;
   new_tensor_shape_dims.reserve(rank);
   permutations.reserve(rank);
-  for (int64_t p : perm) {
+  for (auto p : perm) {
     permutations.push_back(p);
     new_tensor_shape_dims.push_back(tensor_shape_dims[p]);
   }
