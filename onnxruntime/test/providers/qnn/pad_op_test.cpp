@@ -329,8 +329,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_Pad4dOutOfRangePadConstantValue) {
                            ExpectedEPNodeAssignment::All);
 }
 
-// Pad 5d supported, but Quantize & Dequantize doesn't support 5d
-TEST_F(QnnHTPBackendTests, DISABLED_Pad5d) {
+TEST_F(QnnHTPBackendTests, Pad5d) {
   RunQDQPadOpTest<uint8_t>(TestInputDef<float>({1, 2, 2, 2, 2}, false, GetFloatDataInRange(1.0f, 10.0f, 16)),
                            TestInputDef<int64_t>({10}, true, {0, 0, 0, 1, 0, 0, 0, 1, 0, 0}),
                            TestInputDef<float>({1}, true, {2.0f}),
