@@ -1315,6 +1315,67 @@ template void BufferExpansionKernelLauncher(const int32_t* input,
                                             int chunk_size,
                                             cudaStream_t stream);
 
+// Support head_size up to 128
+constexpr unsigned int kTileSize = 32;
+constexpr unsigned int kSeqTileSize = 16;
+
+__global__ void ReorderPastStatesKernel(float4* out_buffer,
+                                        const float4* in_buffer,
+                                        int batch_size,
+                                        int num_heads,
+                                        int max_length,
+                                        int chunked_head_size) {
+  __shared__ float4 tile[kSeqTileSize][kTileSize + 1];
+
+  const int b = blockIdx.z;
+  const int n = blockIdx.y;
+  const int s_base = blockIdx.x * kSeqTileSize;
+  const int s = s_base + threadIdx.y;
+  const int base_offset = (b * num_heads + n) * max_length * chunked_head_size;
+
+  if (s < max_length) {
+    const int in_offset = base_offset + s * chunked_head_size + threadIdx.x;
+    tile[threadIdx.y][threadIdx.x] = in_buffer[in_offset];
+  }
+
+  __syncthreads();
+
+  const int tidx = threadIdx.x + threadIdx.y * chunked_head_size;
+  const int tidx_x = tidx % kSeqTileSize;
+  const int tidx_y = tidx / kSeqTileSize;
+
+  const int s2 = s_base + tidx_x;
+
+  if (s2 < max_length) {
+    const int out_offset = base_offset + tidx_y * max_length + s2;
+    out_buffer[out_offset] = tile[tidx_x][tidx_y];
+  }
+}
+
+void ReorderPastStatesKernelLauncher(void* out_buffer,
+                                     const void* in_buffer,
+                                     int batch_size,
+                                     int num_heads,
+                                     int max_length,
+                                     int head_size,
+                                     int chunk_size,
+                                     cudaStream_t stream) {
+  //[B, N, max_length, H2(head_size/chunk_size), equv_chunk_size] -> [B, N, H2(head_size/chunk_size), max_length, equv_chunk_size]
+  const int chunked_head_size = head_size / chunk_size;
+  const dim3 block(chunked_head_size, kSeqTileSize);
+  const dim3 grid((max_length + kSeqTileSize - 1) / kSeqTileSize, num_heads, batch_size);
+  if (chunk_size == 4 || chunk_size == 8) {
+    ReorderPastStatesKernel<<<grid, block, 0, stream>>>(reinterpret_cast<float4*>(out_buffer),
+                                                        reinterpret_cast<const float4*>(in_buffer),
+                                                        batch_size,
+                                                        num_heads,
+                                                        max_length,
+                                                        chunked_head_size);
+  } else {
+    ORT_THROW("ReorderPastStatesKernelLauncher only support float or half");
+  }
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
