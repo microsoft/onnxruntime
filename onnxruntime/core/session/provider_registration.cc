@@ -109,6 +109,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "JS") == 0) {
 #if defined(USE_JSEP)
+    std::string preferred_layout;
+    if (options->value.config_options.TryGetConfigEntry("preferredLayout", preferred_layout)) {
+      provider_options["preferred_layout"] = preferred_layout;
+    }
     options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();

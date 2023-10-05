@@ -9,6 +9,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
 
+#include "core/platform/env_var_utils.h"
 #include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph.h"
@@ -41,7 +42,22 @@ std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_
   return data;
 }
 
-void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
+void TryEnableQNNSaver(ProviderOptions& qnn_options) {
+  // Allow dumping QNN API calls to file by setting an environment variable that enables the QNN Saver backend.
+  constexpr auto kEnableQNNSaverEnvironmentVariableName = "ORT_UNIT_TEST_ENABLE_QNN_SAVER";
+  static std::optional<int> enable_qnn_saver = onnxruntime::ParseEnvironmentVariable<int>(
+      kEnableQNNSaverEnvironmentVariableName);
+
+  if (enable_qnn_saver.has_value() && *enable_qnn_saver != 0) {
+#if defined(_WIN32)
+    qnn_options["qnn_saver_path"] = "QnnSaver.dll";
+#else
+    qnn_options["qnn_saver_path"] = "libQnnSaver.so";
+#endif  // defined(_WIN32)
+  }
+}
+
+void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err, logging::Severity log_severity) {
   EPVerificationParams verification_params;
@@ -65,6 +81,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
+  TryEnableQNNSaver(provider_options);
   RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
                             helper.feeds_, verification_params);

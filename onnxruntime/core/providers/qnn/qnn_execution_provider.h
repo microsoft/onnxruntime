@@ -59,7 +59,6 @@ class QNNExecutionProvider : public IExecutionProvider {
 
  private:
   ProviderOptions runtime_options_;
-  std::string backend_path_;
   qnn::ProfilingLevel profiling_level_ = qnn::ProfilingLevel::OFF;
   qnn::HtpPerformanceMode htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
