@@ -927,6 +927,182 @@ TEST(ReductionOpTest, ReduceMax_default_axes_do_not_keep_dims) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch                         //TensorRT: axis must be 0
 }
 
+TEST(ReductionOpTest, test_bool_ReduceMax_0) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {2}, {-1, 1});
+  test.AddOutput<bool>("reduced", {2}, {true, true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMin_1) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {2}, {-1, 1});
+  test.AddOutput<bool>("reduced", {2}, {false, false});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMax_2) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {2}, {-1, 1});
+  test.AddOutput<bool>("reduced", {2, 1, 1}, {true, true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMin_3) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {2}, {-1, 1});
+  test.AddOutput<bool>("reduced", {2, 1, 1}, {false, false});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMax_4) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {2}, {2, 1});
+  test.AddOutput<bool>("reduced", {2}, {true, true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMin_5) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {2}, {2, 1});
+  test.AddOutput<bool>("reduced", {2}, {false, false});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMax_6) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {2}, {2, 1});
+  test.AddOutput<bool>("reduced", {2, 1, 1}, {true, true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMin_7) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {2}, {2, 1});
+  test.AddOutput<bool>("reduced", {2, 1, 1}, {false, false});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMax_8) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<bool>("reduced", {3, 2}, {false, true, true, true, false, true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMin_9) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<bool>("reduced", {3, 2}, {false, false, false, true, false, true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMax_10) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<bool>("reduced", {1, 3, 2}, {false, true, true, true, false, true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMin_11) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<bool>("reduced", {1, 3, 2}, {false, false, false, true, false, true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMax_12) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {1}, {2});
+  test.AddOutput<bool>("reduced", {2, 3}, {false, true, true, true, true, true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMin_13) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {1}, {2});
+  test.AddOutput<bool>("reduced", {2, 3}, {false, true, false, false, false, false});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMax_14) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {1}, {2});
+  test.AddOutput<bool>("reduced", {2, 3, 1}, {false, true, true, true, true, true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMin_15) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddInput<int64_t>("axes", {1}, {2});
+  test.AddOutput<bool>("reduced", {2, 3, 1}, {false, true, false, false, false, false});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMax_16) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddOutput<bool>("reduced", {}, {true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMin_17) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddOutput<bool>("reduced", {}, {false});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMax_18) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddOutput<bool>("reduced", {1, 1, 1}, {true});
+  test.Run();
+}
+
+TEST(ReductionOpTest, test_bool_ReduceMin_19) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
+  test.AddOutput<bool>("reduced", {1, 1, 1}, {false});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceMax_do_not_keepdims) {
   OpTester test("ReduceMax");
   test.AddAttribute("axes", std::vector<int64_t>{1});
