@@ -26,7 +26,8 @@ Status ReorderPastState(
     const void* cuda_device_prop,
     Tensor& past_state,
     Tensor& past_state_staging,
-    Stream* stream);
+    Stream* stream,
+    bool do_copy_only);
 
 Status InitCacheIndir(
     Tensor& cache_indir,

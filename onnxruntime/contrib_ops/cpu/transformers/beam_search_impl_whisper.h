@@ -274,11 +274,33 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
 #ifdef USE_CUDA
       // Here we only need to reorder the past key for self-attention and cross-attention.
-      for (size_t i = 0; i < 2 * static_cast<size_t>(decoder_subgraph_.num_layers); ++i) {
-        ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
-                                                     *decoder_feeds[offset + 2 * i].GetMutable<Tensor>(),
-                                                     beam_state.staging_for_past_state_reorder,
-                                                     this->ort_stream_));
+      for (int attn_type_id = 0; attn_type_id < 2; ++attn_type_id) {
+        int num_layers = static_cast<size_t>(decoder_subgraph_.num_layers);
+        for (int i = num_layers * attn_type_id; i < num_layers * (attn_type_id + 1); ++i) {
+          if (i == num_layers * attn_type_id) {
+            ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                         *decoder_feeds[offset + 2 * i].GetMutable<Tensor>(),
+                                                         beam_state.staging_for_past_state_reorder,
+                                                         this->ort_stream_, false));
+          } else {
+            ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                         *decoder_feeds[offset + 2 * i].GetMutable<Tensor>(),
+                                                         *decoder_feeds[offset + 2 * (i - 1)].GetMutable<Tensor>(),
+                                                         this->ort_stream_, false));
+            if (i == num_layers * (attn_type_id + 1) - 1) {
+              ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                           beam_state.staging_for_past_state_reorder,
+                                                           *decoder_feeds[offset + 2 * i].GetMutable<Tensor>(),
+                                                           this->ort_stream_, true));
+            }
+          }
+        }
+        // right shift with an interval of 2
+        OrtValue& temp = decoder_feeds[offset + 2 * (num_layers * (attn_type_id + 1) - 1)];
+        for (int i = num_layers * (attn_type_id + 1) - 2; i >= num_layers * attn_type_id; --i) {
+          decoder_feeds[offset + 2 * (i + 1)] = decoder_feeds[offset + 2 * i];
+        }
+        decoder_feeds[offset + 2 * (num_layers * attn_type_id)] = temp;
       }
       size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
       ORT_RETURN_IF_ERROR(init_cache_indir_func_(*decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>(), this->ort_stream_));

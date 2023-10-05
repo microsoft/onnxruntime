@@ -347,11 +347,26 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
       // If we ever do them in different streams, we must use different staging buffers to avoid data
       // races.
       for (size_t i = 0; i < static_cast<size_t>(gpt_subgraph_.num_layers); ++i) {
-        ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
-                                                     *fetches[offset + i].GetMutable<Tensor>(),
-                                                     greedy_state.staging_for_past_state_reorder,
-                                                     this->ort_stream_));
+        if (i == 0) {
+          ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                       *fetches[offset + i].GetMutable<Tensor>(),
+                                                       greedy_state.staging_for_past_state_reorder,
+                                                       this->ort_stream_, false));
+        } else {
+          ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                       *fetches[offset + i].GetMutable<Tensor>(),
+                                                       *fetches[offset + i - 1].GetMutable<Tensor>(),
+                                                       this->ort_stream_, false));
+          if (i == static_cast<size_t>(gpt_subgraph_.num_layers) - 1) {
+            ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                         greedy_state.staging_for_past_state_reorder,
+                                                         *fetches[offset + i].GetMutable<Tensor>(),
+                                                         this->ort_stream_, true)); 
+          }            
+        }
       }
+      // Right shift 1
+      std::rotate(fetches.rbegin(), fetches.rbegin() + 1, fetches.rend());
     }
 #endif
 

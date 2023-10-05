@@ -59,7 +59,8 @@ Status ReorderPastState(
     const void*,
     Tensor& past_state,
     Tensor& past_state_staging,
-    Stream* stream) {
+    Stream* stream,
+    bool do_copy_only) {
   ORT_ENFORCE(stream);
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream->GetHandle());
 
@@ -68,23 +69,30 @@ Status ReorderPastState(
   const auto& past_state_dims = past_state_shape.GetDims();
   const bool packed_past = past_state_dims.size() == 5;
 
+  void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
+
+  if (do_copy_only) {
+    size_t past_state_size = packed_past ? past_state.SizeInBytes() / 2 : past_state.SizeInBytes();
+    size_t past_state_staging_size = packed_past ? past_state_staging.SizeInBytes() / 2 : past_state_staging.SizeInBytes();
+    size_t buffer_size = std::min(past_state_size, past_state_staging_size);
+    std::cout << "copy_only with past_state_size " << past_state_size << std::endl;
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), buffer_size,
+                                         cudaMemcpyDeviceToDevice, cuda_stream));
+    return Status::OK();
+  }
+
   size_t batch_size = packed_past ? past_state_dims[1] : past_state_dims[0];
   size_t num_heads = packed_past ? past_state_dims[2] : past_state_dims[1];
   size_t max_length = packed_past ? past_state_dims[3] : past_state_dims[2];
   size_t head_size = packed_past ? past_state_dims[4] : past_state_dims[3];
 
-  // Copy the 'K' values into the temp staging buffer
-  size_t past_state_size = packed_past ? past_state.SizeInBytes() / 2 : past_state.SizeInBytes();
-  void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state_size,
-                                       cudaMemcpyDeviceToDevice, cuda_stream));
-
   // Now consider the original 'K' values to be of shape [B, N, max_length, head_size / x, x] and transpose it into
   // [B, N, head_size / x, max_length, x], where x = 16 / sizeof(T)
   int64_t chunk_size = static_cast<int64_t>(16 / past_state.DataType()->Size());
-
-  cuda::ReorderPastStatesKernelLauncher(past_state.MutableDataRaw(),
-                                        past_state_staging_buffer,
+  // Transpose past_state to past_state_staging
+  std::cout << "batch_size " << batch_size << " num_heads"  << num_heads << " max_length " << max_length << " head_size " << head_size << " chunk_size" << chunk_size << std::endl;
+  cuda::ReorderPastStatesKernelLauncher(past_state_staging_buffer,
+                                        past_state.DataRaw(),
                                         static_cast<int>(batch_size),
                                         static_cast<int>(num_heads),
                                         static_cast<int>(max_length),

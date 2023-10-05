@@ -38,7 +38,8 @@ using ReorderPastStateFunc = std::function<Status(
     const void* cuda_device_prop,  // cudaDeviceProp
     Tensor& past_state,
     Tensor& past_state_staging,
-    Stream* stream)>;  // cublasHandle_t
+    Stream* stream,
+    bool do_copy_only)>;  // cublasHandle_t
 
 using InitCacheIndirFunc = std::function<Status(
     Tensor& cache_indir,

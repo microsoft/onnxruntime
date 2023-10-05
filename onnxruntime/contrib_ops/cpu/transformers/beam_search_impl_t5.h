@@ -282,12 +282,48 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
 #ifdef USE_CUDA
       // Here we only need to reorder the past key for self-attention and cross-attention.
-      for (size_t i = 0; i < 2 * static_cast<size_t>(decoder_subgraph_.num_layers); ++i) {
-        ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
-                                                     *decoder_feeds[offset + 2 * i].GetMutable<Tensor>(),
-                                                     beam_state.staging_for_past_state_reorder,
-                                                     this->ort_stream_));
+      // attn_type_id = 0 -> self_attn, attn_type_id = 1 -> cross_attn
+      for (int attn_type_id = 0; attn_type_id < 2; ++attn_type_id) {
+        if (attn_type_id == 0) {
+          std::cout << "self_attention" << std::endl;
+        } else {
+          std::cout << "cross_attention" << std::endl;
+        }
+        int num_layers = static_cast<int>(decoder_subgraph_.num_layers);
+        for (int i = num_layers * attn_type_id; i < num_layers * (attn_type_id + 1); ++i) {
+          if (i == num_layers * attn_type_id) {
+            std::cout << "transpose decoder_feeds: " << offset + 2 * i << " to staging" << std::endl;
+            ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                         *decoder_feeds[offset + 2 * i].GetMutable<Tensor>(),
+                                                         beam_state.staging_for_past_state_reorder,
+                                                         this->ort_stream_, false));
+          } else {
+            std::cout << "transpose decoder_feeds: " << offset + 2 * i << " to " << offset + 2 * (i - 1) << std::endl;
+            ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                         *decoder_feeds[offset + 2 * i].GetMutable<Tensor>(),
+                                                         *decoder_feeds[offset + 2 * (i - 1)].GetMutable<Tensor>(),
+                                                         this->ort_stream_, false));
+            if (i == num_layers * (attn_type_id + 1) - 1) {
+              std::cout << "copy staging to decoder_feeds: " << offset + 2 * i << std::endl;
+              ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                           beam_state.staging_for_past_state_reorder,
+                                                           *decoder_feeds[offset + 2 * i].GetMutable<Tensor>(),
+                                                           this->ort_stream_, true));
+            }
+          }
+        }
+        // right shift with an interval of 2
+        std::cout << "restore back" << std::endl;
+        std::cout << "redirect decoder_feeds: " << offset + 2 * (num_layers * (attn_type_id + 1) - 1) << " to temp" << std::endl;
+        OrtValue& temp = decoder_feeds[offset + 2 * (num_layers * (attn_type_id + 1) - 1)];
+        for (int i = num_layers * (attn_type_id + 1) - 2; i >= num_layers * attn_type_id; --i) {
+          std::cout << "redirect decoder_feeds: " << offset + 2 * i << " to " << offset + 2 * (i + 1) << std::endl;
+          decoder_feeds[offset + 2 * (i + 1)] = decoder_feeds[offset + 2 * i];
+        }
+        std::cout << "redirect temp to decoder_feeds: " << offset + 2 * (num_layers * attn_type_id) << std::endl;
+        decoder_feeds[offset + 2 * (num_layers * attn_type_id)] = temp;
       }
+
       size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
       ORT_RETURN_IF_ERROR(init_cache_indir_func_(*decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>(), this->ort_stream_));
 #endif
