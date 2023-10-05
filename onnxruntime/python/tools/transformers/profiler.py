@@ -454,7 +454,7 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
 
 
 def get_dim_from_type_proto(dim):
-    return getattr(dim, dim.WhichOneof("value")) if type(dim.WhichOneof("value")) == str else None
+    return getattr(dim, dim.WhichOneof("value")) if type(dim.WhichOneof("value")) == str else None  # noqa: E721
 
 
 def get_shape_from_type_proto(type_proto):

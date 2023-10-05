@@ -844,7 +844,7 @@ class ORTTrainer:
 
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
         # Normalize input to tuple of samples
-        if type(inputs) == tuple and len(inputs) == 1 and type(inputs[0]) == list:
+        if type(inputs) == tuple and len(inputs) == 1 and type(inputs[0]) == list:  # noqa: E721
             input = tuple(inputs[0])
         else:
             input = inputs

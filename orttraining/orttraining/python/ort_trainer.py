@@ -65,7 +65,7 @@ def generate_sample(desc, device=None):
 
 
 def get_device_index(device):
-    if type(device) == str:
+    if type(device) == str:  # noqa: E721
         # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
         device = torch.device(device)
     return 0 if device.index is None else device.index
@@ -1005,7 +1005,7 @@ class ORTTrainer:
         self, input_desc_with_, internal_learning_rate, internal_loss_scale, *args, **kwargs
     ):
         fetches = None
-        if type(args) == tuple and len(args) == 1 and type(args[0]) == list:
+        if type(args) == tuple and len(args) == 1 and type(args[0]) == list:  # noqa: E721
             input = tuple(args[0])
         else:
             input = args
