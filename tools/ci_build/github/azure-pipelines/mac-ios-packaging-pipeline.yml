@@ -100,22 +100,3 @@ stages:
 - template: templates/stages/mac-ios-packaging-build-stage.yml
   parameters:
     packageVariant: Training
-
-- stage: IosPackaging_TestPackageSwift_Full
-  dependsOn:
-  - IosPackaging_SetCommonVariables
-  - IosPackaging_Build_Full
-
-  jobs:
-  - job: j
-    displayName: "Test Package.swift with full package"
-
-    pool:
-      vmImage: "macOS-13"
-
-    variables:
-      xcodeVersion: "14.3"
-      ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
-      skipComponentGovernanceDetection: true
-
-    timeoutInMinutes: 10
