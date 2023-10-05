@@ -251,11 +251,7 @@ class MinMaxCalibrater(CalibraterBase):
                 self.compute_range()
                 self.clear_collected_data()
 
-        if (
-            self.max_intermediate_outputs is None
-            and len(self.intermediate_outputs) == 0
-            and self.calibrate_tensors_range is None
-        ):
+        if len(self.intermediate_outputs) == 0 and self.calibrate_tensors_range is None:
             raise ValueError("No data is collected.")
 
         self.compute_range()
