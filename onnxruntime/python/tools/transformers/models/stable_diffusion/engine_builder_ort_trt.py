@@ -32,7 +32,7 @@ class OrtTensorrtEngine(CudaSession):
 
         session_options = ort.SessionOptions()
         session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
-        print("creating TRT EP session for ", onnx_path)
+        logger.info("creating TRT EP session for %s", onnx_path)
         ort_session = ort.InferenceSession(
             onnx_path,
             session_options,
@@ -40,7 +40,7 @@ class OrtTensorrtEngine(CudaSession):
                 ("TensorrtExecutionProvider", self.ort_trt_provider_options),
             ],
         )
-        print("created TRT EP session for ", onnx_path)
+        logger.info("created TRT EP session for %s", onnx_path)
 
         device = torch.device("cuda", device_id)
         super().__init__(ort_session, device, enable_cuda_graph)

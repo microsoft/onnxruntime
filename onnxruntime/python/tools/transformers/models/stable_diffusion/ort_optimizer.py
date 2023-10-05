@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 import onnx
-from optimize_pipeline import has_external_data
+from packaging import version
 
 from onnxruntime.transformers.fusion_options import FusionOptions
 from onnxruntime.transformers.onnx_model_clip import ClipOnnxModel
@@ -59,8 +59,6 @@ class OrtStableDiffusionOptimizer:
             fusion_options.enable_packed_kv = False
             fusion_options.enable_packed_qkv = False
 
-        use_external_data_format = has_external_data(input_fp32_onnx_path)
-
         m = optimize_model(
             input_fp32_onnx_path,
             model_type=self.model_type,
@@ -71,10 +69,6 @@ class OrtStableDiffusionOptimizer:
             use_gpu=True,
         )
 
-        if keep_outputs is None and self.model_type == "clip":
-            # remove the pooler_output, and only keep the first output.
-            keep_outputs = ["text_embeddings"]
-
         if keep_outputs:
             m.prune_graph(outputs=keep_outputs)
 
@@ -84,8 +78,16 @@ class OrtStableDiffusionOptimizer:
                 keep_io_types=keep_io_types,
             )
 
+        use_external_data_format = m.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF
+
         # Note that ORT < 1.16 could not save model larger than 2GB.
-        if float16 or (self.model_type != "unet"):
+        # This step is is optional since it has no impact on inference latency.
+        # The optimized model is not portable. It could only run in the same execution provider (CUDA EP in this case).
+        # When the model has been optimized by onnxruntime, we can disable optimization in SessionOption
+        # to save session creation time. Another benefit is to inspect the final graph for developing purpose.
+        from onnxruntime import __version__ as ort_version
+
+        if version.parse(ort_version) >= version.parse("1.16.0") or not use_external_data_format:
             m = self.optimize_by_ort(m, use_external_data_format=use_external_data_format)
 
         m.get_operator_statistics()

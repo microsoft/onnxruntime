@@ -77,9 +77,8 @@ class EngineBuilder:
 
     def get_onnx_path(self, model_name, onnx_dir, opt=True):
         engine_name = self.engine_type.name.lower()
-        onnx_model_dir = os.path.join(
-            onnx_dir, self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "")
-        )
+        directory_name = self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "")
+        onnx_model_dir = os.path.join(onnx_dir, directory_name)
         os.makedirs(onnx_model_dir, exist_ok=True)
         return os.path.join(onnx_model_dir, "model.onnx")
 

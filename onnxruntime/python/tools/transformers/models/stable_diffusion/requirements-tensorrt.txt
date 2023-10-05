@@ -1,2 +1,0 @@
--r requirements-cuda.txt
-tensorrt>=8.6.1
