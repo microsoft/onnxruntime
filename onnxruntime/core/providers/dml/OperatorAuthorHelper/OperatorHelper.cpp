@@ -1869,7 +1869,7 @@ namespace OperatorHelper
         std::vector<int> tensor;
         ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ tensor);
         m_imageShape.resize(tensor.size());
-        std::transform(tensor.begin(), tensor.end(), m_imageShape.begin(), [](auto& x){ return (uint32_t)x; });
+        std::transform(tensor.begin(), tensor.end(), m_imageShape.begin(), [](auto& x){ return uint32_t(x); });
         ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(2), /*out*/ tensor);
         m_blockShape.resize(tensor.size());
         std::transform(tensor.begin(), tensor.end(), m_blockShape.begin(), [](auto& x){ return (uint32_t)x; });
@@ -1911,7 +1911,7 @@ namespace OperatorHelper
         m_outputShape[1] = m_inputShape[1] / blockShapeProduct; // C
         for (int i = 2; i < m_outputShape.size(); i++)
         {
-            m_outputShape[i] = m_imageShape[i-2];
+            m_outputShape[i] = m_imageShape[i - 2];
         };
     }
 

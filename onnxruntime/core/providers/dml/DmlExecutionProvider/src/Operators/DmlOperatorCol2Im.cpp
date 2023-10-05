@@ -21,20 +21,22 @@ public:
         std::vector<uint32_t> outputTensorShape = tensorShapeDescription.GetOutputTensorShape(0);
 
         ML_CHECK_VALID_ARGUMENT(outputTensorShape.size() == m_outputShape.size());
-        for (uint32_t i = 0; i < outputTensorShape.size(); i++) {
+        for (uint32_t i = 0; i < outputTensorShape.size(); i++)
+        {
             ML_CHECK_VALID_ARGUMENT(outputTensorShape[i] == m_outputShape[i]);
         }
 
         std::vector<std::optional<uint32_t>> inputIndices = { 0 };
         gsl::span<const uint32_t> inputShapes[1] = { m_inputShape };
         gsl::span<const uint32_t> outputShapes[1] = { m_outputShape };
-        DmlOperator::InitializeWithShapes(kernelCreationContext,
-                                          inputIndices,
-                                          std::nullopt,
-                                          inputShapes,
-                                          outputShapes,
-                                          3);
-
+        DmlOperator::InitializeWithShapes(
+            kernelCreationContext,
+            inputIndices,
+            std::nullopt,
+            inputShapes,
+            outputShapes,
+            3
+        );
         // Prepare DML_FOLD_OPERATOR_DESC
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
