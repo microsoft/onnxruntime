@@ -2854,7 +2854,8 @@ void RegisterContribSchemas() {
           AttributeProto::STRING)
       .Attr(
           "embed_mode",
-          "1: indicate ep_cache_context is the context content. 0: indicate ep_cache_context is the file path to the context content.",
+          "1: indicate ep_cache_context is the context content. 0: indicate ep_cache_context is the file path to the context content."
+          "The path is relative to this Onnx file",
           AttributeProto::INT, static_cast<int64_t>(1))
       .Attr(
           "ep_sdk_version",
