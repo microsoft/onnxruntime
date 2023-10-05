@@ -689,7 +689,9 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   device_cache.SyncD3D12ToCPU();
 
   void* pCPUTensorBuffer = nullptr;
-  WINML_THROW_IF_FAILED(readback_heap_->Map(0, unmove_ptr(CD3DX12_RANGE(0, singleVideoFramebufferSize)), &pCPUTensorBuffer));
+  WINML_THROW_IF_FAILED(
+    readback_heap_->Map(0, unmove_ptr(CD3DX12_RANGE(0, singleVideoFramebufferSize)), &pCPUTensorBuffer)
+  );
 
   // We avoid the Video Frame pipeline by manually downloading the GPU data to the CPU and detensorize while we are filling the readback heap
   ConvertCPUTensorToSoftwareBitmap(pCPUTensorBuffer, tensorDesc, softwareBitmap);
@@ -733,9 +735,9 @@ void TensorToVideoFrameConverter::ConvertBatchedDX12TensorToBuffers(
   device_cache.SyncD3D12ToCPU();
 
   byte* readback_buffer = nullptr;
-  WINML_THROW_IF_FAILED(
-    readback_heap_->Map(0, unmove_ptr(CD3DX12_RANGE(0, buffer_size_in_bytes)), reinterpret_cast<void**>(&readback_buffer))
-  );
+  WINML_THROW_IF_FAILED(readback_heap_->Map(
+    0, unmove_ptr(CD3DX12_RANGE(0, buffer_size_in_bytes)), reinterpret_cast<void**>(&readback_buffer)
+  ));
   auto readback_buffer_span = gsl::span<byte>(readback_buffer, buffer_size_in_bytes);
   _winml::StoreSpanIntoDisjointBuffers(
     buffers.size(),
