@@ -24,6 +24,7 @@ from onnxruntime.capi._pybind_state import quantize_matmul_4bits
 
 logger = logging.getLogger(__name__)
 
+
 class MatMul4BitsQuantizer:
     """Perform 4b quantization of constant MatMul weights"""
 
@@ -59,8 +60,8 @@ class MatMul4BitsQuantizer:
 
         # block wise quantization, each block comes from a single column
         packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
-        scales = np.zeros((cols, k_blocks), dtype=fp32weight.dtype)
-        zero_point = np.zeros((cols, k_blocks), dtype="uint8")
+        scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
+        zero_point = np.zeros((cols * k_blocks + 1) // 2, dtype="uint8")
         quantize_matmul_4bits(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.is_symmetric)
 
         return (packed, scales, zero_point)
@@ -194,12 +195,21 @@ set of 4b integers with a scaling factor and an optional offset.
     parser.add_argument("--input_model", required=True, help="Path to the input model file")
     parser.add_argument("--output_model", required=True, help="Path to the output model file")
     parser.add_argument("--block_size", required=False, default=32)
-    parser.add_argument("--symmetric", required=False, default=True, help="Indicate whether to quantize the model symmetrically")
+    parser.add_argument(
+        "--symmetric", required=False, default=True, help="Indicate whether to quantize the model symmetrically"
+    )
     parser.add_argument("-v", "--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
     parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
     parser.set_defaults(use_external_data_format=False)
-    parser.add_argument("--nodes_to_exclude", nargs='+', type=str, required=False, default=[], help="Specify the nodes to be excluded from quantization with node names")
+    parser.add_argument(
+        "--nodes_to_exclude",
+        nargs="+",
+        type=str,
+        required=False,
+        default=[],
+        help="Specify the nodes to be excluded from quantization with node names",
+    )
 
     return parser.parse_args()
 
@@ -223,6 +233,6 @@ if __name__ == "__main__":
         raise Exception(f"file {output_model_path} already exists")
 
     model = onnx.load(input_model_path)
-    quant = MatMul4BitsQuantizer(model, args.block_size, args.symmetric, nodes_to_exclude = args.nodes_to_exclude)
+    quant = MatMul4BitsQuantizer(model, args.block_size, args.symmetric, nodes_to_exclude=args.nodes_to_exclude)
     quant.process()
     quant.model.save_model_to_file(output_model_path, True)

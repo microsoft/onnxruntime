@@ -50,16 +50,19 @@ __global__ void Dequantize4BitsKernel(
     const T* scale_data,
     const uint8_t* zero_points,
     int block_size,
-    int blocks_per_tb,
+    int blocks_per_threadblock,
     int shift) {
-  int block_id = blockIdx.x * blocks_per_tb + ((threadIdx.x * 8)>>shift);
-  int element_offset = block_id * block_size + ((threadIdx.x * 8) & ((1<<shift) - 1));
+  int block_id = blockIdx.x * blocks_per_threadblock + ((threadIdx.x * 8) >> shift);
+  int element_offset = block_id * block_size + ((threadIdx.x * 8) & ((1 << shift) - 1));
   uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
   T scale = *(scale_data + block_id);
-  T zero_point = static_cast<T>(zero_points ? zero_points[block_id] : (uint8_t)(8));
+  uint8_t zp = 8;
+  if (zero_points) {
+    zp = (block_id & 0x01) ? (zero_points[block_id / 2] >> 4) : (zero_points[block_id / 2] & 0x0f);
+  }
 
   output = output + element_offset;
-  DequantizeEightElements(quant_value, scale, zero_point, output);
+  DequantizeEightElements(quant_value, scale, static_cast<T>(zp), output);
 }
 
 template <class T>
@@ -67,16 +70,17 @@ Status Dequantize4Bits(
     T* output,
     const uint8_t* quant_data,
     const T* scales_data,
-    const uint8_t* zero_points,
+    const uint8_t* zero_points,  // shape: [N, (block_per_K + 1)/2]
     int k,
     int n,
     int block_size,
     cudaStream_t stream) {
+  // k is padded and equal to block_per_K * block_size
   ORT_ENFORCE(k % block_size == 0, "k must be a multiplier of block_size");
   constexpr int element_per_thread = 8;
-  int blocks_per_tb = GridDim::maxThreadsPerBlock * element_per_thread / block_size;
-  int k_blocks = k / block_size;
-  int blocks_per_grid = static_cast<int>(CeilDiv(n * k_blocks, blocks_per_tb));
+  int blocks_per_threadblock = GridDim::maxThreadsPerBlock * element_per_thread / block_size;
+  int blocks_per_K = k / block_size;
+  int blocks_per_grid = static_cast<int>(CeilDiv(n * blocks_per_K, blocks_per_threadblock));
   int shift = static_cast<int>(log2f(float(block_size)));
 
   Dequantize4BitsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
@@ -85,7 +89,7 @@ Status Dequantize4Bits(
       scales_data,
       zero_points,
       block_size,
-      blocks_per_tb,
+      blocks_per_threadblock,
       shift);
 
   return Status::OK();

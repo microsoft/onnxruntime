@@ -38,7 +38,7 @@ void QuantizeMatMulNBitsBlockwise(
     py::array_t<uint8_t> dst,          // shape: [ N, block_per_K, block_blob_size ]
     py::array_t<T> src,                // shape: [K, N]
     py::array_t<T> scale,              // shape: [N, block_per_K]
-    py::array_t<uint8_t> zero_points,  // shape: [N, block_per_K]
+    py::array_t<uint8_t> zero_points,  // shape: [N, block_per_K] if bits > 4 else [N, (block_per_K + 1) / 2]
     int32_t block_size,
     int32_t N,
     int32_t K,

@@ -3026,10 +3026,10 @@ B:
   - shape: [n_cols, n_blocks_per_col, blob_size]
   - type: uint8_t
 scales:
-  - shape: [n_cols, n_blocks_per_col]
+  - shape: [n_cols * n_blocks_per_col]
   - type: float32 or float16. Same as input A
 zero_points
-  - shape: [n_cols, (n_blocks_per_col * 4 + 4) / 8] for nbits <= 4 and [n_cols, n_blocks_per_col] for nbits > 4
+  - shape: [(n_cols * n_blocks_per_col + 1) / 2] for nbits <= 4 and [n_cols * n_blocks_per_col] for nbits > 4
   - type: uint8_t
 
 )DOC";
@@ -3037,11 +3037,7 @@ zero_points
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-<<<<<<< HEAD
-      .SetDoc(MatMulWithCompressWeight_ver1_doc)
-=======
       .SetDoc(MatMulNBits_ver1_doc)
->>>>>>> change matmul 4bits name
       .Attr("K", "size of each input feature", AttributeProto::INT)
       .Attr("N", "size of each output feature", AttributeProto::INT)
       .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
