@@ -30,6 +30,7 @@ from cuda import cudart
 from diffusion_models import PipelineInfo, get_tokenizer
 from diffusion_schedulers import DDIMScheduler, EulerAncestralDiscreteScheduler, UniPCMultistepScheduler
 from engine_builder import EngineType
+from engine_builder_ort_cuda import OrtCudaEngineBuilder
 from engine_builder_ort_trt import OrtTensorrtEngineBuilder
 from engine_builder_tensorrt import TensorrtEngineBuilder
 
@@ -135,6 +136,8 @@ class StableDiffusionPipeline:
             self.backend = TensorrtEngineBuilder(pipeline_info, max_batch_size, hf_token, device, use_cuda_graph)
         elif engine_type == EngineType.ORT_TRT:
             self.backend = OrtTensorrtEngineBuilder(pipeline_info, max_batch_size, hf_token, device, use_cuda_graph)
+        elif engine_type == EngineType.ORT_CUDA:
+            self.backend = OrtCudaEngineBuilder(pipeline_info, max_batch_size, hf_token, device, use_cuda_graph)
         else:
             raise RuntimeError(f"Backend engine type {engine_type.name} is not supported")
 

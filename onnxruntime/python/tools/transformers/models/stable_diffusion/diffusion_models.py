@@ -298,9 +298,16 @@ class BaseModel:
     def get_shape_dict(self, batch_size, image_height, image_width):
         return None
 
+    def fp32_input_output_names(self) -> List[str]:
+        """For CUDA EP, we export ONNX model with FP32 first, then convert it to mixed precision model.
+        This is a list of input or output names that are kept as float32 during converting.
+        For the first version, we will use same data type as TensorRT.
+        """
+        return []
+
     def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True):
         optimizer = self.get_ort_optimizer()
-        optimizer.optimize(input_onnx_path, optimized_onnx_path, to_fp16)
+        optimizer.optimize(input_onnx_path, optimized_onnx_path, to_fp16, keep_io_types=self.fp32_input_output_names())
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
         onnx_graph = onnx.load(input_onnx_path)
@@ -416,7 +423,7 @@ class CLIP(BaseModel):
         self.check_dims(batch_size, image_height, image_width)
         return (torch.zeros(batch_size, self.text_maxlen, dtype=torch.int32, device=self.device),)
 
-    def add_hidden_states_graph_output(self, model: ModelProto, optimized_onnx_path):
+    def add_hidden_states_graph_output(self, model: ModelProto, optimized_onnx_path, use_external_data_format=False):
         graph: GraphProto = model.graph
         hidden_layers = -1
         for i in range(len(graph.node)):
@@ -457,7 +464,29 @@ class CLIP(BaseModel):
 
         onnx_model = OnnxModel(model)
         onnx_model.add_node(cast_node)
-        onnx_model.save_model_to_file(optimized_onnx_path)
+        onnx_model.save_model_to_file(optimized_onnx_path, use_external_data_format=use_external_data_format)
+
+    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True):
+        optimizer = self.get_ort_optimizer()
+        if not self.output_hidden_state:
+            optimizer.optimize(
+                input_onnx_path, optimized_onnx_path, to_fp16, keep_io_types=[], keep_outputs=["text_embeddings"]
+            )
+        else:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                # Save to a temporary file so that we can load it with Onnx Runtime.
+                logger.info("Saving a temporary model to add hidden_states to graph output ...")
+                tmp_model_path = os.path.join(tmp_dir, "model.onnx")
+
+                model = onnx.load(input_onnx_path)
+                self.add_hidden_states_graph_output(model, tmp_model_path, use_external_data_format=True)
+                optimizer.optimize(
+                    tmp_model_path,
+                    optimized_onnx_path,
+                    to_fp16,
+                    keep_io_types=[],
+                    keep_outputs=["text_embeddings", "hidden_states"],
+                )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
         onnx_graph = onnx.load(input_onnx_path)
@@ -598,6 +627,9 @@ class UNet(BaseModel):
             torch.randn(2 * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
         )
 
+    def fp32_input_output_names(self) -> List[str]:
+        return ["sample", "timestep"]
+
 
 class UNetXL(BaseModel):
     def __init__(
@@ -703,6 +735,9 @@ class UNetXL(BaseModel):
             },
         )
 
+    def fp32_input_output_names(self) -> List[str]:
+        return ["sample", "timestep"]
+
 
 # VAE Decoder
 class VAE(BaseModel):
@@ -772,6 +807,9 @@ class VAE(BaseModel):
     def get_sample_input(self, batch_size, image_height, image_width):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
         return (torch.randn(batch_size, 4, latent_height, latent_width, dtype=torch.float32, device=self.device),)
+
+    def fp32_input_output_names(self) -> List[str]:
+        return ["latent", "images"]
 
 
 def get_tokenizer(pipeline_info: PipelineInfo, framework_model_dir, hf_token, subfolder="tokenizer"):
