@@ -101,6 +101,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_;
   }
 
+  bool qnn_context_embed_mode = true;
+  static const std::string CONTEXT_CACHE_EMBED_MODE = "qnn_context_embed_mode";
+  auto context_cache_embed_mode_pos = runtime_options_.find(CONTEXT_CACHE_EMBED_MODE);
+  if (context_cache_embed_mode_pos != runtime_options_.end()) {
+    qnn_context_embed_mode = context_cache_embed_mode_pos->second == "1";
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << qnn_context_embed_mode;
+  }
+
   static const std::string BACKEND_PATH = "backend_path";
   auto backend_path_pos = runtime_options_.find(BACKEND_PATH);
 
@@ -134,7 +142,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(backend_path_,
                                                                   profiling_level_,
                                                                   rpc_control_latency_,
-                                                                  htp_performance_mode_);
+                                                                  htp_performance_mode_,
+                                                                  qnn_context_embed_mode);
   qnn_cache_model_handler_ = std::make_unique<qnn::QnnCacheModelHandler>();
 }
 
@@ -453,12 +462,12 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager_.get());
     bool loaded_from_cache = false;
     std::string ep_engine_cache;
-    ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->GetEpEngineCache(graph_viewer,
-                                                                   context_cache_path_,
-                                                                   is_qnn_ctx_model,
-                                                                   qnn_backend_manager_->GetIsContextCacheFileExists(),
-                                                                   ep_engine_cache,
-                                                                   logger));
+    ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->GetEpContext(graph_viewer,
+                                                               context_cache_path_,
+                                                               is_qnn_ctx_model,
+                                                               qnn_backend_manager_->GetIsContextCacheFileExists(),
+                                                               ep_engine_cache,
+                                                               logger));
     qnn_cache_model_handler_.reset();
     ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnCtxFromOnnxModel(ep_engine_cache,
                                                                             *(qnn_model.get()),

@@ -4,6 +4,10 @@
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/graph/constants.h"
 
+#include <iostream>
+#include <fstream>
+#include <filesystem>
+
 namespace onnxruntime {
 namespace qnn {
 
@@ -47,6 +51,7 @@ Status GenerateCtxCacheOnnxModel(const std::string& model_name, const std::strin
                                  const std::string& file_path,
                                  unsigned char* buffer,
                                  uint64_t buffer_size,
+                                 bool qnn_context_embed_mode,
                                  const logging::Logger& logger) {
   std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
   Model model(model_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
@@ -68,11 +73,25 @@ Status GenerateCtxCacheOnnxModel(const std::string& model_name, const std::strin
                                 nullptr,
                                 kMSDomain);
 
-  std::string cache_payload(buffer, buffer + buffer_size);
-  ep_node.AddAttribute("ep_cache_context", cache_payload);
-  ep_node.AddAttribute("ep_sdk_version", sdk_build_version);
-  ep_node.AddAttribute("partition_name", graph_name);
-  ep_node.AddAttribute("source", kQnnExecutionProvider);
+  if (qnn_context_embed_mode) {
+    std::string cache_payload(buffer, buffer + buffer_size);
+    ep_node.AddAttribute(EP_CACHE_CONTEXT, cache_payload);
+  } else {
+    std::string context_cache_path(file_path + "_" + graph_name + ".bin");
+    std::string context_cache_name(std::filesystem::path(context_cache_path).filename().string());
+    std::ofstream of_stream(context_cache_path.c_str(), std::ofstream::binary);
+    if (!of_stream) {
+      LOGS(logger, ERROR) << "Failed to open cached context file.";
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
+    }
+    of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
+    ep_node.AddAttribute(EP_CACHE_CONTEXT, context_cache_name);
+  }
+  int64_t embed_mode = qnn_context_embed_mode ? static_cast<int64_t>(1) : static_cast<int64_t>(0);
+  ep_node.AddAttribute(EMBED_MODE, embed_mode);
+  ep_node.AddAttribute(EP_SDK_VER, sdk_build_version);
+  ep_node.AddAttribute(PARTITION_NAME, graph_name);
+  ep_node.AddAttribute(SOURCE, kQnnExecutionProvider);
 
   ORT_RETURN_IF_ERROR(graph.Resolve());
 
@@ -81,41 +100,64 @@ Status GenerateCtxCacheOnnxModel(const std::string& model_name, const std::strin
   return Status::OK();
 }
 
-Status GetEpEngineCacheFromModel(const std::string& onnx_model_path,
-                                 std::string& ep_cache_context,
-                                 const logging::Logger& logger) {
+Status GetEpContextFromModel(const std::string& ctx_onnx_model_path,
+                             std::string& ep_cache_context,
+                             const logging::Logger& logger) {
   using namespace onnxruntime;
   std::shared_ptr<Model> model;
-  ORT_RETURN_IF_ERROR(Model::Load(ToPathString(onnx_model_path), model, {}, logger));
+  ORT_RETURN_IF_ERROR(Model::Load(ToPathString(ctx_onnx_model_path), model, {}, logger));
   const auto& graph = model->MainGraph();
-  ep_cache_context = GetEpEngineCacheFromGraph(GraphViewer(graph));
+  ORT_RETURN_IF_ERROR(GetEpContextFromGraph(GraphViewer(graph), ctx_onnx_model_path, ep_cache_context));
 
   return Status::OK();
 }
 
-std::string GetEpEngineCacheFromGraph(const onnxruntime::GraphViewer& graph_viewer) {
+Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
+                             const std::string& ctx_onnx_model_path,
+                             std::string& ep_cache_context) {
   const auto& node = graph_viewer.Nodes().begin();
   NodeAttrHelper node_helper(*node);
-  return node_helper.Get("ep_cache_context", "");
+  bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
+  if (is_embed_mode) {
+    ep_cache_context = node_helper.Get(EP_CACHE_CONTEXT, "");
+  } else {
+    std::string external_qnn_context_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
+
+    std::string context_binary_path(std::filesystem::path(ctx_onnx_model_path).parent_path().string() +
+                                    "/" + external_qnn_context_binary_file_name);
+    size_t buffer_size{0};
+    std::ifstream cache_file(context_binary_path.c_str(), std::ifstream::binary);
+    ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
+    cache_file.seekg(0, cache_file.end);
+    buffer_size = static_cast<size_t>(cache_file.tellg());
+    ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
+    cache_file.seekg(0, cache_file.beg);
+    ep_cache_context.reserve(buffer_size);
+    // Load file into buffer
+    ep_cache_context.assign(std::istreambuf_iterator<char>(cache_file), std::istreambuf_iterator<char>());
+    cache_file.close();
+    ORT_RETURN_IF(ep_cache_context.length() != buffer_size, "Failed to read contents from cached context file.");
+  }
+  return Status::OK();
 }
 
-Status QnnCacheModelHandler::GetMetadataFromEpEngineCacheModel(const std::string& onnx_model_path,
-                                                               std::string& model_name,
-                                                               std::string& model_description,
-                                                               std::string& graph_partition_name,
-                                                               std::string& cache_source,
-                                                               const logging::Logger& logger) {
+Status QnnCacheModelHandler::GetMetadataFromEpContextModel(const std::string& ctx_onnx_model_path,
+                                                           std::string& model_name,
+                                                           std::string& model_description,
+                                                           std::string& graph_partition_name,
+                                                           std::string& cache_source,
+                                                           const logging::Logger& logger) {
   if (!is_metadata_ready_) {
     using namespace onnxruntime;
     std::shared_ptr<Model> model;
-    ORT_RETURN_IF_ERROR(Model::Load(ToPathString(onnx_model_path), model, {}, logger));
+    ORT_RETURN_IF_ERROR(Model::Load(ToPathString(ctx_onnx_model_path), model, {}, logger));
     const auto& graph = GraphViewer(model->MainGraph());
     const auto& node = graph.Nodes().begin();
     NodeAttrHelper node_helper(*node);
     model_name_ = graph.Name();
     model_description_ = graph.Description();
-    graph_partition_name_ = node_helper.Get("partition_name", "");
-    cache_source_ = node_helper.Get("source", "");
+    graph_partition_name_ = node_helper.Get(PARTITION_NAME, "");
+    cache_source_ = node_helper.Get(SOURCE, "");
     is_metadata_ready_ = true;
   }
   model_name = model_name_;

@@ -29,11 +29,13 @@ class QnnBackendManager {
   QnnBackendManager(std::string backend_path,
                     ProfilingLevel profiling_level,
                     uint32_t rpc_control_latency,
-                    HtpPerformanceMode htp_performance_mode)
+                    HtpPerformanceMode htp_performance_mode,
+                    bool qnn_context_embed_mode)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
-        htp_performance_mode_(htp_performance_mode) {
+        htp_performance_mode_(htp_performance_mode),
+        qnn_context_embed_mode_(qnn_context_embed_mode) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -215,6 +217,7 @@ class QnnBackendManager {
   std::string sdk_build_version_ = "";
   bool ctx_file_exists_ = false;
   bool get_capability_round_2_ = false;
+  bool qnn_context_embed_mode_ = true;
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif

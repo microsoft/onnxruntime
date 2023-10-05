@@ -2850,7 +2850,7 @@ void RegisterContribSchemas() {
       .SetDoc("Onnx node for EP engine or context cache.")
       .Attr(
           "ep_cache_context",
-          "payload of the execution provider context if embed_mode=1, or file path to the context if embed_mode=0.",
+          "payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0.",
           AttributeProto::STRING)
       .Attr(
           "embed_mode",

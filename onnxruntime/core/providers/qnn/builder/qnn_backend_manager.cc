@@ -3,8 +3,6 @@
 
 #include "qnn_backend_manager.h"
 #include "qnn_model.h"
-#include <iostream>
-#include <fstream>
 #include <filesystem>
 #include "QnnOpDef.h"
 #include "HTP/QnnHtpPerfInfrastructure.h"
@@ -400,7 +398,7 @@ Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const st
 
   ORT_RETURN_IF_ERROR(GenerateCtxCacheOnnxModel(model_name, graph_name, input_names, inputs_info, output_names,
                                                 outputs_info, model_description_, sdk_build_version_, context_cache_path_,
-                                                context_buffer.get(), written_buffer_size, *logger_));
+                                                context_buffer.get(), written_buffer_size, qnn_context_embed_mode_, *logger_));
 
   LOGS(*logger_, VERBOSE) << "Dump QNN Context completed.";
   return Status::OK();
@@ -495,12 +493,12 @@ Status QnnBackendManager::ValidateWithContextFile(const std::string& model_name,
   std::string model_description_from_ctx_cache;
   std::string graph_partition_name_from_ctx_cache;
   std::string cache_source;
-  ORT_RETURN_IF_ERROR(qnn_cache_model_handler->GetMetadataFromEpEngineCacheModel(context_cache_path_,
-                                                                                 model_name_from_ctx_cache,
-                                                                                 model_description_from_ctx_cache,
-                                                                                 graph_partition_name_from_ctx_cache,
-                                                                                 cache_source,
-                                                                                 *logger_));
+  ORT_RETURN_IF_ERROR(qnn_cache_model_handler->GetMetadataFromEpContextModel(context_cache_path_,
+                                                                             model_name_from_ctx_cache,
+                                                                             model_description_from_ctx_cache,
+                                                                             graph_partition_name_from_ctx_cache,
+                                                                             cache_source,
+                                                                             *logger_));
 
   // The source attribute from the skeleton onnx file indicate whether it's generated from QNN toolchain or ORT
   if (cache_source != kQnnExecutionProvider) {
