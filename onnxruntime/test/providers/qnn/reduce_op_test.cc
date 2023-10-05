@@ -482,6 +482,16 @@ TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumS8Opset13_Rank5) {
                              ExpectedEPNodeAssignment::All);
 }
 
+// Test that QNN validation APIs reject inputs of unsupported ranks.
+TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank6_Unsupported) {
+  RunReduceOpQDQTest<int8_t>("ReduceSum",
+                             TestInputDef<float>({1, 3, 4, 4, 2, 1}, false, GetFloatDataInRange(-10.0f, 10.0f, 96)),
+                             {-1},                             // axes
+                             false,                            // keepdims
+                             13,                               // opset
+                             ExpectedEPNodeAssignment::None);  // Not assigned to QNN EP
+}
+
 // Test rank 5 ReduceSum (u8 quant) with axes = [-1], keep_dims = false
 // TODO: Enable on QNN 2.15.1 (works fine)
 TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumS8Opset13_Rank5_LastAxis) {
