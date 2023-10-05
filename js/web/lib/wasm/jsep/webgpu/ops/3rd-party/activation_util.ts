@@ -78,7 +78,7 @@ export const activationFnSnippet =
     }`;
           }
           return activationFnSnippet;
-        }
+        };
 
 export const biasActivationSnippet = (hasBias: boolean, activation?: Activation): string => `
       ${hasBias ? 'value = value + getBiasByOutputCoords(coords);' : ''}
