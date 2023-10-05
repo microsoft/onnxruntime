@@ -17,7 +17,7 @@ class ConvTranspose : public JsKernel {
     if (has_activation) {
       ORT_THROW_IF_ERROR(info.GetAttr<std::string>("activation", &conv_transpose_attrs_.activation));
     } else {
-      conv_transpose_attrs_.activation = "";
+      conv_transpose_attrs_.activation = info.GetAttrOrDefault<std::string>("activation", "");
     }
 
     if (conv_transpose_attrs_.kernel_shape_specified) {

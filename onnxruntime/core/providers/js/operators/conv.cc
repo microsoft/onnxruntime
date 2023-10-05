@@ -15,7 +15,7 @@ ONNX_OPERATOR_KERNEL_EX(
     11,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
-    Conv<true, true>);
+    Conv<true>);
 
 ONNX_OPERATOR_KERNEL_EX(
     Conv,

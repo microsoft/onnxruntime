@@ -20,7 +20,7 @@ class Conv : public JsKernel {
     if (has_activation) {
       ORT_THROW_IF_ERROR(info.GetAttr<std::string>("activation", &conv_attrs_.activation));
     } else {
-      conv_attrs_.activation = "";
+      conv_transpose_attrs_.activation = info.GetAttrOrDefault<std::string>("activation", "");
     }
 
     int64_t channels_last = is_channels_last ? 1 : info.GetAttrOrDefault<int64_t>("channels_last", 0);
