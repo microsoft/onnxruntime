@@ -27,8 +27,6 @@ typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn_t)(const QnnInterface_t**
 typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(const QnnSystemInterface_t*** providerList,
                                                                 uint32_t* numProviders);
 
-constexpr const char* QNN_PROVIDER = "ORTQNNEP";
-
 static Qnn_Version_t GetQnnInterfaceApiVersion(const QnnInterface_t* qnn_interface) {
   return qnn_interface->apiVersion.coreApiVersion;
 }
