@@ -27,8 +27,8 @@ struct GroupQueryAttentionData {
   int* seqlens_k = nullptr;
   // Memory Efficient buffers
   T* fmha_buffer = nullptr;
-  T* present_k = nullptr;
-  T* present_v = nullptr;
+  T* k = nullptr;
+  T* v = nullptr;
   // Output Tensors
   T* output = nullptr;
   T* present_key = nullptr;

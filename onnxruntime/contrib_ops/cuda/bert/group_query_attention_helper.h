@@ -188,6 +188,7 @@ Status CheckInputs(const T* query,
                            "Missing value tensor.");
   }
 
+  // TODO(aciddelgado): make sure we can take int64 here
   // When kv-cache, we take past_seq_len as an argument... otherwise we use sequence length of past kv directly.
   int32_t past_sequence_length = 0;
   int present_sequence_length = 0;

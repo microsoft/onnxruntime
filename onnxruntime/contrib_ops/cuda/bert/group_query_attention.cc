@@ -56,6 +56,13 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
 #else
   disable_flash_attention_ = true;
 #endif
+
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  disable_memory_efficient_attention_ = sizeof(T) != 2 ||
+                                        ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
+#else
+  disable_memory_efficient_attention_ = true;
+#endif
 }
 
 template <typename T>
@@ -144,24 +151,35 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       !use_flash_attention &&
       !disable_memory_efficient_attention_ &&
       (parameters.head_size & 7) == 0 &&
+      parameters.sequence_length <= parameters.past_sequence_length + parameters.kv_sequence_length &&
       // (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2);
   // allocate buffers
-  size_t present_kv_bytes = 0;
-  if (use_memory_efficient_attention && (num_heads != kv_num_heads || past_kv_format != AttentionQkvFormat::Q_K_V_BSNH)) {
-    present_kv_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.present_sequence_length * parameters.head_size);
+  size_t kv_buffer_bytes = 0;
+  const bool needs_buff = (parameters.num_heads != parameters.kv_num_heads)
+                       || (parameters.past_kv_format != AttentionQkvFormat::Q_K_V_BSNH)
+                       || (past_key != nullptr
+                       && parameters.present_sequence_length != parameters.past_sequence_length + parameters.kv_sequence_length);
+  if (use_memory_efficient_attention && needs_buff) {
+    if (past_key == nullptr) {
+      kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.kv_sequence_length
+                        * parameters.head_size);
+    } else {
+      kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * (parameters.past_sequence_length
+                        + parameters.kv_sequence_length) * parameters.head_size);
+    }
   }
   size_t fmha_buffer_bytes = 0;
   if (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float))) {
     fmha_buffer_bytes = (parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size * sizeof(float));
   }
-  auto present_k_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  auto present_v_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
+  auto k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
+  auto v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
   auto fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, context->GetComputeStream());
 #else
   constexpr bool use_memory_efficient_attention = false;
-  auto present_k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
-  auto present_v_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
+  auto k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
+  auto v_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto fmha_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
 #endif
 
@@ -199,12 +217,12 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (seqlens_k_buffer != nullptr) {
     data.seqlens_k = reinterpret_cast<int*>(seqlens_k_buffer.get());
   }
-  if (present_k_buffer != nullptr) {
-    data.present_k = present_k_buffer;
-    data.present_v = present_v_buffer;
+  if (k_buffer != nullptr) {
+    data.k = reinterpret_cast<CudaT*>(k_buffer.get());
+    data.v = reinterpret_cast<CudaT*>(v_buffer.get());
   }
   if (fmha_buffer != nullptr) {
-    data.fmha_buffer = fmha_buffer;
+    data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
