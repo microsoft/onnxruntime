@@ -666,7 +666,7 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
     const KernelCreateInfo* webgpu_kernel_def = kernel_lookup.LookUpKernel(node);
     // none of the provided registries has a webgpu kernel for this node
     if (webgpu_kernel_def == nullptr) {
-      LOGS(*GetLogger(), ERROR) << "webgpu kernel not found in registries for Op type: " << node.OpType() << " node name: " << node.Name();
+      LOGS(*GetLogger(), INFO) << "webgpu kernel not found in registries for Op type: " << node.OpType() << " node name: " << node.Name();
       continue;
     }
     candidates.push_back(node.Index());
