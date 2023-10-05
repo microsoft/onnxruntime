@@ -306,8 +306,8 @@ class ORTTrainer:
         # Mute the dropout nodes
         dropout_nodes = [n for n in onnx_model_copy.graph.node if n.op_type == "Dropout"]
         for node in dropout_nodes:
-            ratio_node = [n for n in onnx_model_copy.graph.node if node.input[1] in n.output][0]
-            training_mode_node = [n for n in onnx_model_copy.graph.node if node.input[2] in n.output][0]
+            ratio_node = next(n for n in onnx_model_copy.graph.node if node.input[1] in n.output)
+            training_mode_node = next(n for n in onnx_model_copy.graph.node if node.input[2] in n.output)
 
             training_mode_node.attribute.pop()
             ratio_node.attribute.pop()

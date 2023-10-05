@@ -995,7 +995,7 @@ class SymbolicShapeInference:
                 letter = term[-i]
                 if letter != 46:  # letter != b'.'
                     dim = shape[-i]
-                    if letter not in letter_to_dim.keys():
+                    if letter not in letter_to_dim:
                         letter_to_dim[letter] = dim
                     elif type(dim) != sympy.Symbol:
                         letter_to_dim[letter] = dim
@@ -1556,12 +1556,12 @@ class SymbolicShapeInference:
             )
         else:
             input_sympy_shape = self._get_sympy_shape(node, 0)
-            total = int(1)
+            total = 1
             for d in input_sympy_shape:
                 total = total * d
             new_sympy_shape = []
             deferred_dim_idx = -1
-            non_deferred_size = int(1)
+            non_deferred_size = 1
             for i, d in enumerate(shape_value):
                 if type(d) == sympy.Symbol:
                     new_sympy_shape.append(d)

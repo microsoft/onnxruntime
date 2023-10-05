@@ -5904,7 +5904,7 @@ def test_ops_for_padding_elimination(test_cases):
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
-    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "PadAndUnflatten"][0]
+    gathergrad_node = next(node for node in training_model.graph.node if node.op_type == "PadAndUnflatten")
 
     def find_input_node_type(model, arg):
         result = []

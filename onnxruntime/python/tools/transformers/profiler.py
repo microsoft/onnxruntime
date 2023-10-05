@@ -573,7 +573,7 @@ def create_gpt2_inputs(onnx_model, batch_size, sequence_length, past_sequence_le
         shape = get_shape_from_type_proto(graph_input.type)
         for i, dim in enumerate(shape):
             if isinstance(dim, str):
-                if dim not in symbols.keys():
+                if dim not in symbols:
                     raise RuntimeError(f"symbol is not supported: {dim}")
                 else:
                     shape[i] = symbols[dim]
@@ -615,7 +615,7 @@ def create_longformer_inputs(onnx_model, batch_size, sequence_length, global_len
         shape = get_shape_from_type_proto(graph_input.type)
         for i, dim in enumerate(shape):
             if isinstance(dim, str):
-                if dim not in symbols.keys():
+                if dim not in symbols:
                     raise RuntimeError(f"symbol is not supported: {dim}")
                 else:
                     shape[i] = symbols[dim]

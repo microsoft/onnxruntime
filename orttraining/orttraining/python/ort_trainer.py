@@ -580,10 +580,10 @@ def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partiti
 
     if is_partitioned:
         assert_msg = (
-            "Couldn't find checkpoint file {}."
+            f"Couldn't find checkpoint file {checkpoint_file}."
             "Optimizer partitioning is enabled using ZeRO. Please make sure that the "
-            "checkpoint file exists for rank {} of {}."
-        ).format(checkpoint_file, model.world_rank, model.world_size)
+            f"checkpoint file exists for rank {model.world_rank} of {model.world_size}."
+        )
     else:
         assert_msg = f"Couldn't find checkpoint file {checkpoint_file}."
 
@@ -1174,7 +1174,7 @@ class ORTTrainer:
         )
 
         if len(session_run_results) == 1:
-            return session_run_results[list(session_run_results.keys())[0]]
+            return session_run_results[next(iter(session_run_results.keys()))]
         else:
             return [session_run_results[output_desc.name_] for output_desc in output_desc]
 
