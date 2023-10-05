@@ -154,7 +154,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       profiling_level_,
       rpc_control_latency_,
       htp_performance_mode_,
-	  qnn_context_embed_mode,
+      qnn_context_embed_mode,
       std::move(qnn_saver_path));
   qnn_cache_model_handler_ = std::make_unique<qnn::QnnCacheModelHandler>();
 }

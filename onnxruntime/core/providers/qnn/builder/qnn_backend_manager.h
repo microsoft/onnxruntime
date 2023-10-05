@@ -31,7 +31,7 @@ class QnnBackendManager {
                     uint32_t rpc_control_latency,
                     HtpPerformanceMode htp_performance_mode,
                     bool qnn_context_embed_mode,
-					std::string&& qnn_saver_path)
+                    std::string&& qnn_saver_path)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
