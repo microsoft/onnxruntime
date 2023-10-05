@@ -115,6 +115,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) override { return onnxruntime::PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
   // From cpu/tensor/slice.h (direct)
+  Status SliceBase__FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
+                                      TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
+                                      TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) override {
+    return SliceBase::FlattenOutputDims(input_dimensions, output_dims, starts, ends, steps, p_flattened_input_dims, p_flattened_output_dims);
+  }
+
   Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
                                       gsl::span<const int64_t> raw_ends,
                                       gsl::span<const int64_t> raw_axes,

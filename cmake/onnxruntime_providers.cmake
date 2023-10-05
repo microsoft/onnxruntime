@@ -404,6 +404,9 @@ if (onnxruntime_USE_CUDA)
     if (NOT onnxruntime_USE_NCCL)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/nccl_kernels.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding_spec.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_matmul.cc"
       )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
@@ -452,7 +455,6 @@ if (onnxruntime_USE_CUDA)
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
       )
-
       list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_nccl_op_srcs})
     endif()
   endif()
