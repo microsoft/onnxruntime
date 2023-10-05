@@ -129,6 +129,9 @@ class CpuDetensorizer {
   }
 
   template <>
+#if __cplusplus < 202002L
+  static
+#endif
   float ReadTensor<DirectX::PackedVector::HALF>(
     const DirectX::PackedVector::HALF* pCPUTensor, const NominalRangeConverter& nominalRangeConverter
   ) {
@@ -169,6 +172,9 @@ class CpuDetensorizer {
 
 #if defined(_M_AMD64) || defined(_M_IX86)
   template <>
+#if __cplusplus < 202002L
+  static
+#endif
   void InterleaveRowFloatToByte(
     const float* xChannel,
     const float* yChannel,
