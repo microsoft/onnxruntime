@@ -90,8 +90,8 @@ export const makeMatMulPackedVec4Source =
             workPerThread[0]} must be 4.`);
       }
       return `
-var<workgroup> mm_Asub : array<array<vec${innerElementSize}<${type}>, ${tileAWidth / innerElementSize}>, ${tileAHight}>;
-var<workgroup> mm_Bsub : array<array<vec4<${type}>, ${tileBOuter / workPerThread[0]}>, ${tileInner}>;
+var<workgroup> mm_Asub: array<array<vec${innerElementSize}<${type}>, ${tileAWidth / innerElementSize}>, ${tileAHight}>;
+var<workgroup> mm_Bsub: array<array<vec4<${type}>, ${tileBOuter / workPerThread[0]}>, ${tileInner}>;
 
 const rowPerThread = ${workPerThread[1]};
 const colPerThread = ${workPerThread[0]};
@@ -339,7 +339,8 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
     };
 
 const matMulReadWriteFnSource =
-    (component: number, hasBias: boolean, applyActivation: string, variables: IndicesHelper[]): string => {
+    (component: number, hasBias: boolean, applyActivation: string, variables: IndicesHelper[],
+     isChannelsLast = false): string => {
       const batchAVariable = variables[0];
       const batchBVariable = variables[1];
       const batchVariable = variables[2];
@@ -407,7 +408,10 @@ const matMulReadWriteFnSource =
       if (row < dimAOuter && col < dimBOuter) {
         var value = valueIn;
         let coords = vec3<i32>(batch, row, colIn);
-        ${hasBias ? 'value = value + bias[colIn];' : ''}
+        ${
+          hasBias ?
+              `value = value + ${isChannelsLast ? 'bias[colIn]' : `${typeSnippet(component, dataType)}(bias[row])`};` :
+                                                  ''                                    }
         ${applyActivation}
         ${outputVariable.setByIndices('vec3<u32>(coords)', 'value')}
       }
@@ -418,7 +422,8 @@ const matMulReadWriteFnSource =
 
 export const createMatmulProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes,
-     outputShape: readonly number[], reshapedOutputShape?: readonly number[]): ProgramInfo => {
+     outputShape: readonly number[], reshapedOutputShape?: readonly number[],
+     isChannelsLast = false /* only used for conv2dByMatMul*/): ProgramInfo => {
       const aShape = inputs[0].dims;
       const bShape = inputs[1].dims;
 
@@ -457,9 +462,10 @@ export const createMatmulProgramInfo =
       variables.push(output);
       const inputVariables = [A, B];
       const hasBias = inputs.length > 2;
-      const declareFunctions = matMulReadWriteFnSource(components, hasBias, applyActivation, variables);
+      const declareFunctions = matMulReadWriteFnSource(components, hasBias, applyActivation, variables, isChannelsLast);
       if (hasBias) {
-        inputVariables.push(inputVariable('bias', inputs[2].dataType, [dimBOuter / components], components));
+        const biasComponents = isChannelsLast ? components : 1;
+        inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims, biasComponents));
       }
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   const dimAOuter: i32 = ${dimAOuter};

@@ -17,11 +17,12 @@ const createMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
 
 export const createMatmulProgramInfoLoader =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
-     reshapedOutputShape?: readonly number[]): ProgramInfoLoader => {
+     reshapedOutputShape?: readonly number[], isChannelsLast = false): ProgramInfoLoader => {
       const metadata = createMatmulProgramMetadata(inputs.length > 2, activationAttributes.activationCacheKey);
       return {
         ...metadata,
-        get: () => createMatmulProgramInfo(metadata, inputs, activationAttributes, outputShape, reshapedOutputShape)
+        get: () => createMatmulProgramInfo(
+            metadata, inputs, activationAttributes, outputShape, reshapedOutputShape, isChannelsLast)
       };
     };
 
