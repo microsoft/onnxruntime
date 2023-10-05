@@ -3,6 +3,9 @@
 
 #include "nccl_kernels.h"
 #include "mpi_include.h"
+#include "core/providers/cpu/tensor/slice.h"
+#include "core/providers/cuda/tensor/slice.h"
+#include "core/providers/cuda/math/matmul.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 
@@ -245,6 +248,116 @@ ONNX_OPERATOR_KERNEL_EX(
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     AllToAll);
+
+Status FuncAllReduce(
+    ncclComm_t comm,
+    cudaStream_t stream,
+    const Tensor* input,
+    Tensor* output) {
+  const void* input_data = input->DataRaw();
+  const auto input_shape = input->Shape();
+  int64_t input_count = input_shape.Size();
+
+  void* output_data = output->MutableDataRaw();
+
+  ncclDataType_t dtype = GetNcclDataType(input->DataType());
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
+  return Status::OK();
+}
+
+static std::vector<size_t> CalculatePermToSwapAxes(
+    const int64_t axis,
+    const int64_t another_axis,
+    const size_t rank) {
+  // This is for swapping axis and another_axis.
+  // NCCL's AllGather only gathers along axis 0. If gathering along another axis is needed,
+  // we need to call transpose. E.g.,
+  // Case 1:
+  //  AllGather(axis=0)
+  // Case 2:
+  //  AllGather(axis=3) = Transpose(perm=[3, 1, 2, 0]) -> AllGather(axis=0) -> Transpose(perm=[3, 1, 2, 0])
+  std::vector<size_t> permutation(rank);
+  std::iota(std::begin(permutation), std::end(permutation), 0);
+  permutation[axis] = another_axis;
+  permutation[another_axis] = axis;
+  return permutation;
+}
+
+void FuncAllGather(
+    const NcclKernel* nccl_kernel,
+    OpKernelContext* ctx,
+    const Tensor* input,
+    const int64_t group_size,
+    const int64_t axis,
+    Tensor* output) {
+  ORT_ENFORCE(output->Shape().Size() == input->Shape().Size() * group_size, "Input and output shapes mismatch.");
+  ORT_ENFORCE(group_size >= 0, "group_size should be non-negative.");
+  ORT_ENFORCE(axis >= 0, "axis should be non-negative.");
+  AllocatorPtr alloc;
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc) == Status::OK(), "Fail to find allocator.");
+  if (axis == 0) {
+    const void* input_data = input->DataRaw();
+    const auto input_shape = input->Shape();
+    void* output_data = output->MutableDataRaw();
+    ncclAllGather(
+        input_data,
+        output_data,
+        input_shape.Size(),
+        GetNcclDataType(input->DataType()),
+        nccl_kernel->Comm(),
+        nccl_kernel->Stream(ctx));
+  } else {
+    const auto source_shape = input->Shape();
+    TensorShape transposed_shape(source_shape);
+    transposed_shape[0] = source_shape[axis];
+    transposed_shape[axis] = source_shape[0];
+
+    auto transposed_buffer = Tensor::Create(input->DataType(), transposed_shape, alloc);
+
+    // swap axis 0 and axis axis
+    std::vector<size_t> perm = CalculatePermToSwapAxes(0, axis, source_shape.NumDimensions());
+
+    ORT_ENFORCE(onnxruntime::cuda::Transpose::DoTranspose(nccl_kernel->GetDeviceProp(),
+                                                          nccl_kernel->Stream(ctx),
+                                                          nccl_kernel->GetCublasHandle(ctx),
+                                                          perm, *input, *transposed_buffer) == Status::OK());
+
+    TensorShape gathered_shape(transposed_shape);
+    gathered_shape[0] = group_size * transposed_shape[0];
+    auto gathered_buffer = Tensor::Create(input->DataType(), gathered_shape, alloc);
+
+    ncclAllGather(
+        transposed_buffer->DataRaw(),
+        gathered_buffer->MutableDataRaw(),
+        transposed_shape.Size(),
+        GetNcclDataType(input->DataType()),
+        nccl_kernel->Comm(),
+        nccl_kernel->Stream(ctx));
+
+    ORT_ENFORCE(gathered_buffer->Shape().Size() == output->Shape().Size());
+    ORT_ENFORCE(onnxruntime::cuda::Transpose::DoTranspose(nccl_kernel->GetDeviceProp(),
+                                                          nccl_kernel->Stream(ctx),
+                                                          nccl_kernel->GetCublasHandle(ctx),
+                                                          perm, *gathered_buffer, *output) == Status::OK());
+  }
+}
+
+std::unique_ptr<Tensor> FuncAllGather(
+    const NcclKernel* nccl_kernel,
+    OpKernelContext* ctx,
+    const Tensor* input,
+    const int64_t group_size,
+    const int64_t axis) {
+  ORT_ENFORCE(group_size >= 0);
+  ORT_ENFORCE(axis >= 0);
+  AllocatorPtr alloc;
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc) == Status::OK());
+  TensorShape output_shape(input->Shape());
+  output_shape[axis] = group_size * output_shape[axis];
+  auto output = Tensor::Create(input->DataType(), output_shape, alloc);
+  FuncAllGather(nccl_kernel, ctx, input, group_size, axis, output.get());
+  return output;
+}
 
 }  // namespace cuda
 }  // namespace contrib
