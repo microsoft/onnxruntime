@@ -58,11 +58,10 @@ class D3DDeviceCache {
   ID3D12RootSignature* GetTensorizeRootSignature();
   ID3D12RootSignature* GetDetensorizeRootSignature();
   ID3D12PipelineState* GetCachedPipelineState(
-    PipelineStateCacheType type,
-    PipelineStateCacheFormat format_from,
-    PipelineStateCacheFormat format_to,
-    PipelineStateCacheOperation operation
-  );
+      PipelineStateCacheType type,
+      PipelineStateCacheFormat format_from,
+      PipelineStateCacheFormat format_to,
+      PipelineStateCacheOperation operation);
 
   ID3D12Resource* GetDetensorizeVertexBuffer(_Out_ UINT* vertex_buffer_size);
 
@@ -92,11 +91,9 @@ class D3DDeviceCache {
   void InitializeCommandQueue(ID3D12Device1* device);
 
   ID3D12PipelineState* CreateTensorizePipelineState(
-    PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to
-  );
+      PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to);
   ID3D12PipelineState* CreateDetensorizePipelineState(
-    PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to
-  );
+      PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to);
 
   winrt::com_ptr<ID3D12Device1> device_;
   winrt::com_ptr<ID3D12CommandQueue> command_queue_;
@@ -109,8 +106,7 @@ class D3DDeviceCache {
   winrt::com_ptr<ID3D12RootSignature> tensorize_root_signature_;
   winrt::com_ptr<ID3D12RootSignature> detensorize_root_signature_;
 
-  winrt::com_ptr<ID3D12PipelineState> cached_pipeline_state[to_underlying_integer(PipelineStateCacheType::kCount
-  )][to_underlying_integer(PipelineStateCacheFormat::kCount)][to_underlying_integer(PipelineStateCacheFormat::kCount)]
+  winrt::com_ptr<ID3D12PipelineState> cached_pipeline_state[to_underlying_integer(PipelineStateCacheType::kCount)][to_underlying_integer(PipelineStateCacheFormat::kCount)][to_underlying_integer(PipelineStateCacheFormat::kCount)]
                                                            [to_underlying_integer(PipelineStateCacheOperation::kCount)];
 
   winrt::com_ptr<ID3D12Resource> detensorize_vertex_buffer_;
