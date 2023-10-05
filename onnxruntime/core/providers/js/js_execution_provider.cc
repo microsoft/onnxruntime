@@ -649,25 +649,28 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
 
     const auto& node = *p_node;
     if (!node.GetExecutionProviderType().empty()) {
+      // If the node was added by layout transformer, do not move it to CPU
+      if (node.GetExecutionProviderType() == kJsExecutionProvider) {
+        candidates.push_back(node.Index());
+      }
       continue;
     }
 
     const KernelCreateInfo* webgpu_kernel_def = kernel_lookup.LookUpKernel(node);
     // none of the provided registries has a webgpu kernel for this node
     if (webgpu_kernel_def == nullptr) {
-      LOGS(*GetLogger(), INFO) << "webgpu kernel not found in registries for Op type: " << node.OpType() << " node name: " << node.Name();
+      LOGS(*GetLogger(), ERROR) << "webgpu kernel not found in registries for Op type: " << node.OpType() << " node name: " << node.Name();
       continue;
     }
     candidates.push_back(node.Index());
-    if(node.Domain() != 'com.ms.internal.nhwc'){
-      tenative_candidates.push_back(node.Index());
-    }
+    tenative_candidates.push_back(node.Index());
   }
   auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tenative_candidates);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
-    if (cpu_nodes.count(node_index) > 0)
+    if (cpu_nodes.count(node_index) > 0) {
       continue;
+    }
 
     auto sub_graph = std::make_unique<IndexedSubGraph>();
     sub_graph->nodes.push_back(node_index);

@@ -238,6 +238,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   PerThreadContext& GetPerThreadContext() const;
   void ReleasePerThreadContext() const;
+  DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 };
 
 }  // namespace onnxruntime
