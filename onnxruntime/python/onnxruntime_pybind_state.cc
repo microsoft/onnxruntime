@@ -1959,6 +1959,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             ORT_UNUSED_PARAMETER(error_on_invalid);
             ORT_THROW("TunableOp and set_tuning_results are not supported in this build.");
 #endif
+      })
+      .def("set_cache", [](PyInferenceSession* sess, PyInferenceSession* base_sess) -> void {
+        sess->GetSessionHandle()->SetCache(*base_sess->GetSessionHandle());
       });
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())

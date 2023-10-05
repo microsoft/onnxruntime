@@ -349,6 +349,15 @@ class Session:
         """
         self._sess.run_with_ortvaluevector(run_options, feed_names, feeds, fetch_names, fetches, fetch_devices)
 
+    def set_cache(self, base_sess):
+        """
+        Compute the predictions.
+
+        :param iobinding: the iobinding object that has graph inputs/outputs bind.
+        :param run_options: See :class:`onnxruntime.RunOptions`.
+        """
+        self._sess.set_cache(base_sess)
+
 
 class InferenceSession(Session):
     """
@@ -394,7 +403,16 @@ class InferenceSession(Session):
         if capable, otherwise execute using `CPUExecutionProvider`.
         """
         super().__init__()
+        self._initialize(path_or_bytes, sess_options, providers, provider_options, **kwargs)
 
+    def _initialize(
+        self,
+        path_or_bytes: str | bytes | os.PathLike,
+        sess_options: Sequence[onnxruntime.SessionOptions] | None = None,
+        providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
+        provider_options: Sequence[dict[Any, Any]] | None = None,
+        **kwargs,
+    ) -> None:
         if isinstance(path_or_bytes, (str, os.PathLike)):
             self._model_path = os.fspath(path_or_bytes)
             self._model_bytes = None
@@ -406,6 +424,8 @@ class InferenceSession(Session):
 
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
+        self._provider_options_initial = provider_options
+        self._base_session = None
         self._enable_fallback = True
         if "read_config_from_model" in kwargs:
             self._read_config_from_model = int(kwargs["read_config_from_model"]) == 1
@@ -432,6 +452,11 @@ class InferenceSession(Session):
                     raise fallback_error from e
             # Fallback is disabled. Raise the original error.
             raise e
+
+    def update_session_options(self, sess_options: Sequence[onnxruntime.SessionOptions]):
+        self._sess_options_initial = sess_options
+        self._base_session = self._sess
+        self._reset_session(self._providers, self._provider_options_initial)
 
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
@@ -469,6 +494,10 @@ class InferenceSession(Session):
             sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
             sess = C.InferenceSession(session_options, self._model_bytes, False, self._read_config_from_model)
+
+        if self._base_session is not None:
+            sess.set_cache(self._base_session)
+            self._base_session = None
 
         if disabled_optimizers is None:
             disabled_optimizers = set()

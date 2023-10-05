@@ -34,6 +34,10 @@
 #include <TraceLoggingActivity.h>
 #endif
 
+#ifdef USE_DML
+#include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
+#endif
+
 namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
@@ -368,6 +372,10 @@ class InferenceSession {
   [[nodiscard]] virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding);
   [[nodiscard]] common::Status Run(IOBinding& io_binding);
 
+  [[nodiscard]] void SetCache(InferenceSession& base_sess);
+
+  [[nodiscard]] Dml::DmlGraphFusionCache& GetCache();
+
 #ifdef ENABLE_TRAINING
   /**
    * Partially run a pre-loaded and pre-intialized model.
@@ -594,8 +602,6 @@ class InferenceSession {
   ExecutionProviders execution_providers_;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
-
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
 
@@ -833,6 +839,10 @@ class InferenceSession {
   // The life-cycle of the cache itself is maintained by the user and the user will ensure
   // the cache is valid until any session reliant on it is still in scope.
   PrepackedWeightsContainer* prepacked_weights_container_ = nullptr;
+
+#ifdef USE_DML
+  Dml::DmlGraphFusionCache dml_graph_fusion_cache_;
+#endif
 
   // Cache the EP instance if the user has configured the EP to capture a graph
   // for the model and all the necessary criteria for graph capture has been met.

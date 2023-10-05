@@ -156,6 +156,7 @@ namespace Dml
         D3D12_RESOURCE_STATES dstState,
         gsl::span<const std::byte> src)
     {
+        printf("%llu\n", src.size());
         assert(!src.empty());
         assert(dst->GetDesc().Dimension == D3D12_RESOURCE_DIMENSION_BUFFER);
 

@@ -110,6 +110,7 @@ namespace DmlGraphFusionHelper
         const gsl::span<const std::string> subGraphInputArgNames,
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& initializerNameToInitializerMap,
         onnxruntime::Graph& graph,
+        gsl::span<const ComPtr<ID3D12Resource>> prevNonOwnedGraphInputsFromInitializers,
         _Out_ std::vector<bool>& inputsUsed,
         _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
@@ -208,10 +209,19 @@ namespace DmlGraphFusionHelper
 
                 if (!isInputsUploadedByDmlEP[i])
                 {
-                    // Store the resource to use during execution
-                    ComPtr<ID3D12Resource> defaultBuffer = CreateResource(providerImpl, tensorPtr, tensorByteSize);
-                    nonOwnedGraphInputsFromInitializers[i] = defaultBuffer;
-                    initializeResourceRefs.push_back(std::move(defaultBuffer));
+                    if (prevNonOwnedGraphInputsFromInitializers.empty())
+                    {
+                        // Store the resource to use during execution
+                        ComPtr<ID3D12Resource> defaultBuffer = CreateResource(providerImpl, tensorPtr, tensorByteSize);
+                        nonOwnedGraphInputsFromInitializers[i] = defaultBuffer;
+                        initializeResourceRefs.push_back(std::move(defaultBuffer));
+                    }
+                    else
+                    {
+                        ORT_THROW_HR_IF(E_UNEXPECTED, prevNonOwnedGraphInputsFromInitializers.size() <= initializeResourceRefs.size());
+                        nonOwnedGraphInputsFromInitializers[i] = prevNonOwnedGraphInputsFromInitializers[initializeResourceRefs.size()];
+                        initializeResourceRefs.push_back(prevNonOwnedGraphInputsFromInitializers[initializeResourceRefs.size()]);
+                    }
                 }
                 else
                 {
@@ -431,7 +441,7 @@ namespace DmlGraphFusionHelper
         return compiledExecutionPlanOperator;
     }
 
-    void FusePartitionAndRegisterKernel(
+    std::vector<ComPtr<ID3D12Resource>> FusePartitionAndRegisterKernel(
         onnxruntime::Graph& graph,
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& initializerNameToInitializerMap,
@@ -439,7 +449,8 @@ namespace DmlGraphFusionHelper
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         std::vector<uint8_t>&& isInputsUploadedByDmlEP,
         const GraphDescBuilder::GraphDesc& graphDesc,
-        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator)
+        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
+        gsl::span<const ComPtr<ID3D12Resource>> prevNonOwnedGraphInputsFromInitializers)
     {
         auto& fusedNode = graph.BeginFuseSubGraph(indexedSubGraph, indexedSubGraph.GetMetaDef()->name);
         fusedNode.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
@@ -459,6 +470,7 @@ namespace DmlGraphFusionHelper
             indexedSubGraph.GetMetaDef()->inputs,
             initializerNameToInitializerMap,
             graph,
+            prevNonOwnedGraphInputsFromInitializers,
             inputsUsed,
             initInputBindings,
             nonOwnedGraphInputsFromInitializers,
@@ -500,6 +512,9 @@ namespace DmlGraphFusionHelper
         ORT_THROW_IF_ERROR(registryForPartitionKernels->Register(builder, fused_kernel_func));
 
         graph.FinalizeFuseSubGraph(indexedSubGraph, fusedNode);
+
+        // Return the non-owned initializers so that we can reuse them in the future
+        return nonOwnedGraphInputsFromInitializers;
     }
 }
 }

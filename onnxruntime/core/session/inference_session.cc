@@ -300,6 +300,10 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          const Environment& session_env) {
+#if !defined(ORT_MINIMAL_BUILD)
+  graph_transformer_mgr_ = GraphTransformerManager(session_options.max_num_graph_transformation_steps);
+#endif
+
   auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
@@ -423,11 +427,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
-    :
-#if !defined(ORT_MINIMAL_BUILD)
-      graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-#endif
-      logging_manager_(session_env.GetLoggingManager()),
+    : logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   // Initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
@@ -437,11 +437,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const Environment& session_env,
                                    onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool,
                                    onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool)
-    :
-#if !defined(ORT_MINIMAL_BUILD)
-      graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-#endif
-      logging_manager_(session_env.GetLoggingManager()),
+    : logging_manager_(session_env.GetLoggingManager()),
       external_intra_op_thread_pool_(external_intra_op_thread_pool),
       external_inter_op_thread_pool_(external_inter_op_thread_pool),
       environment_(session_env) {
@@ -453,7 +449,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const PathString& model_uri)
     : model_location_(model_uri),
-      graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   auto status = Model::Load(model_location_, model_proto_);
@@ -474,8 +469,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
-    : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
+    : logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   Status st = Model::Load(model_istream, &model_proto_);
   ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
@@ -486,8 +480,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const void* model_data, int model_data_len)
-    : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
+    : logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
@@ -1544,8 +1537,10 @@ common::Status InferenceSession::Initialize() {
                                         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableDmlGraphFusion, "0") == "0";
 
         if (dml_graph_fusion_enabled) {
-          std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
-                                                                                                                                      execution_providers_.Get(kDmlExecutionProvider));
+          std::unique_ptr<Dml::DmlGraphFusionTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>(
+              "DmlGraphFusionTransformer",
+              execution_providers_.Get(kDmlExecutionProvider),
+              dml_graph_fusion_cache_);
           if (dmlGraphFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
           }
@@ -2536,6 +2531,14 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
   // io_binding.SynchronizeInputs();
   return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
              &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
+}
+
+void InferenceSession::SetCache(InferenceSession& base_sess) {
+  dml_graph_fusion_cache_ = std::move(base_sess.GetCache());
+}
+
+Dml::DmlGraphFusionCache& InferenceSession::GetCache() {
+  return dml_graph_fusion_cache_;
 }
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {

@@ -71,7 +71,7 @@ namespace DmlGraphFusionHelper
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const ExecutionProviderImpl* providerImpl);
 
-    void FusePartitionAndRegisterKernel(
+    std::vector<ComPtr<ID3D12Resource>> FusePartitionAndRegisterKernel(
         onnxruntime::Graph& graph,
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& initializerNameToInitializerMap,
@@ -79,6 +79,7 @@ namespace DmlGraphFusionHelper
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         std::vector<uint8_t>&& isInputsUploadedByDmlEP,
         const GraphDescBuilder::GraphDesc& graphDesc,
-        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator);
+        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
+        gsl::span<const ComPtr<ID3D12Resource>> prevNonOwnedGraphInputsFromInitializers);
 }
 }

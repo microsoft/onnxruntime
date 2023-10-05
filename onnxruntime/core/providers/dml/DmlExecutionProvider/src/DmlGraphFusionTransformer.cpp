@@ -17,10 +17,12 @@ namespace Dml
 {
     DmlGraphFusionTransformer::DmlGraphFusionTransformer(
         const std::string& name,
-        const onnxruntime::IExecutionProvider* provider
+        const onnxruntime::IExecutionProvider* provider,
+        DmlGraphFusionCache& graph_fusion_cache
     )
-        :onnxruntime::GraphTransformer(name),
-         m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl())
+        : onnxruntime::GraphTransformer(name),
+          m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl()),
+          m_graphFusionCache(graph_fusion_cache)
     {
     }
 
@@ -39,7 +41,7 @@ namespace Dml
         int graph_level,
         const onnxruntime::logging::Logger& logger) const
     {
-        return ApplyImplHelper(graph, modified, graph_level, logger, {});
+        return ApplyImplHelper(graph, modified, graph_level, logger, m_graphFusionCache, {});
     }
 
     onnxruntime::common::Status DmlGraphFusionTransformer::ApplyImplHelper(
@@ -47,6 +49,7 @@ namespace Dml
         bool& modified,
         int graph_level,
         const onnxruntime::logging::Logger& logger,
+        DmlGraphFusionCache& cache,
         const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputDefs) const
     {
         onnxruntime::ProviderType provider_type = onnxruntime::kDmlExecutionProvider;
@@ -78,8 +81,16 @@ namespace Dml
 
             for (auto& entry : node->GetAttributeNameToMutableSubgraphMap())
             {
+                auto subgraphCacheIter = cache.subgraphCaches.emplace(entry.first, std::make_unique<DmlGraphFusionCache>()).first;
+
                 auto& subgraph = *entry.second;
-                ORT_RETURN_IF_ERROR(ApplyImplHelper(subgraph, modified, graph_level + 1, logger, subgraphImplicitInputDefs));
+                ORT_RETURN_IF_ERROR(ApplyImplHelper(
+                    subgraph,
+                    modified,
+                    graph_level + 1,
+                    logger,
+                    *subgraphCacheIter->second,
+                    subgraphImplicitInputDefs));
             }
         }
 
@@ -166,7 +177,7 @@ namespace Dml
 
                                 continue;
                             }
-                            isInitializerTransferable[input] = {tensor, true};
+                            isInitializerTransferable[input] = {tensor, false};
                         }
                     }
 
@@ -181,7 +192,8 @@ namespace Dml
                     for (uint32_t index = 0; index < fusedNodeInputCount; ++index)
                     {
                         auto iter = isInitializerTransferable.find(indexedSubGraph.GetMetaDef()->inputs[index]);
-                        isInputsUploadedByDmlEP[index] = iter != isInitializerTransferable.end() ? true : false;
+                        // isInputsUploadedByDmlEP[index] = iter != isInitializerTransferable.end() ? true : false;
+                        isInputsUploadedByDmlEP[index] = false;
                     }
 
                     auto partitionNodePropsMap = DmlGraphFusionHelper::CreatePartitionNodePropsMap(
@@ -234,12 +246,19 @@ namespace Dml
         }
         while (!additionalSplittingNodes.empty());
 
+        uint32_t partitionIndex = 0;
+
         for (auto&& compiledPartitionInfo : compiledPartitionInfos)
         {
             // Null compiled operators were not DML partitions
             if (compiledPartitionInfo)
             {
-                DmlGraphFusionHelper::FusePartitionAndRegisterKernel(
+                if (partitionIndex >= cache.nonOwnedGraphInputsFromInitializers.size())
+                {
+                    cache.nonOwnedGraphInputsFromInitializers.resize(partitionIndex + 1);
+                }
+
+                auto prevNonOwnedGraphInputs = DmlGraphFusionHelper::FusePartitionAndRegisterKernel(
                     graph,
                     m_providerImpl->GetKernelRegistry().get(),
                     compiledPartitionInfo->isInitializerTransferable,
@@ -247,7 +266,12 @@ namespace Dml
                     compiledPartitionInfo->indexedSubGraph,
                     std::move(compiledPartitionInfo->isInputsUploadedByDmlEP),
                     compiledPartitionInfo->graphDesc,
-                    compiledPartitionInfo->compiledOperator);
+                    compiledPartitionInfo->compiledOperator,
+                    cache.nonOwnedGraphInputsFromInitializers[partitionIndex]);
+
+                cache.nonOwnedGraphInputsFromInitializers[partitionIndex] = std::move(prevNonOwnedGraphInputs);
+
+                ++partitionIndex;
             }
         }
 

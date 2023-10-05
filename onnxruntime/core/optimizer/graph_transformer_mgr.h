@@ -15,6 +15,7 @@ namespace onnxruntime {
 // transformers. Each inference session can further register additional ones.
 class GraphTransformerManager {
  public:
+  GraphTransformerManager() = default;
   explicit GraphTransformerManager(unsigned steps) : steps_(steps) {
   }
 
@@ -31,8 +32,6 @@ class GraphTransformerManager {
   common::Status ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);
-
   // maximum number of graph transformation steps
   unsigned steps_;
 
