@@ -494,7 +494,7 @@ TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank6_Unsupported) {
 
 // Test rank 5 ReduceSum (u8 quant) with axes = [-1], keep_dims = false
 // TODO: Enable on QNN 2.15.1 (works fine)
-TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumS8Opset13_Rank5_LastAxis) {
+TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumU8Opset13_Rank5_LastAxis) {
   constexpr size_t num_elems = 2ULL * 12 * 124 * 2 * 4;
   std::vector<float> input_data = GetFloatDataInRange(-100.0f, 100.0f, num_elems);
   RunReduceOpQDQTest<uint8_t>("ReduceSum",
