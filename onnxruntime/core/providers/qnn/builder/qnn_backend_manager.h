@@ -22,6 +22,7 @@ namespace onnxruntime {
 namespace qnn {
 
 class QnnModel;
+class QnnCacheModelHandler;
 
 class QnnBackendManager {
  public:
@@ -71,13 +72,11 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status DumpQnnContext(const std::string& model_name, const std::string& graph_name);
+  std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
-  Status LoadCachedQnnContext(QnnModel& qnn_model);
-
-  Status GetMetadataFromOrtContextFile();
-
-  Status ValidateWithContextFile(const std::string& model_name, const std::string& graph_name);
+  Status LoadCachedQnnCtxFromOnnxModel(const std::string& ep_engine_cache,
+                                       QnnModel& qnn_model,
+                                       bool& loaded_from_cache);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
@@ -90,14 +89,6 @@ class QnnBackendManager {
   const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
 
   const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_; }
-
-  std::string GetBackendBuildId() {
-    char* backend_build_id{nullptr};
-    if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
-      LOGS(*logger_, ERROR) << "Unable to get build Id from the backend.";
-    }
-    return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
-  }
 
   void SetLogger(const logging::Logger* logger) {
     if (logger_ == nullptr) {
@@ -133,9 +124,7 @@ class QnnBackendManager {
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
-  bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
-                                const std::string& model_description,
-                                const onnxruntime::PathString& model_pathstring);
+  const std::string& GetSdkVersion() { return sdk_build_version_; }
 
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
@@ -177,6 +166,16 @@ class QnnBackendManager {
     return ret;
   }
 
+  std::string GetBackendBuildId() {
+    char* backend_build_id{nullptr};
+    if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
+      LOGS(*logger_, ERROR) << "Unable to get build Id from the backend.";
+    }
+    return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
+  }
+
+  Status LoadCachedQnnContextFromBuffer(const std::string& buffer, QnnModel& qnn_model);
+
  private:
   const std::string backend_path_;
   const logging::Logger* logger_ = nullptr;
@@ -201,16 +200,7 @@ class QnnBackendManager {
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_ = 0;
   HtpPerformanceMode htp_performance_mode_;
-  std::string model_name_from_ctx_cache_ = "";
-  std::string graph_name_from_ctx_cache_ = "";
-  std::string model_description_from_ctx_cache_ = "";
-  std::string model_description_ = "";
-  std::string context_cache_path_ = "";
-  bool ctx_file_exists_ = false;
-  bool ctx_metadata_tried_ = false;
-  bool ort_generated_ctx_cache_ = false;
-  bool get_capability_round_2_ = false;
-  uint16_t ort_ctx_metadata_length_ = 0;
+  std::string sdk_build_version_ = "";
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
