@@ -372,9 +372,9 @@ class MinMaxCalibrater(CalibraterBase):
             else:
                 min_value_array = min(merged_added_output_dict[added_output_names[i]])
                 max_value_array = max(merged_added_output_dict[added_output_names[i + 1]])
-            if type(min_value_array) == int or min_value_array.size > 0:
+            if isinstance(min_value_array, int) or min_value_array.size > 0:
                 min_value = float(min_value_array)
-            if type(max_value_array) == int or max_value_array.size > 0:
+            if isinstance(max_value_array, int) or max_value_array.size > 0:
                 max_value = float(max_value_array)
 
             if self.symmetric:

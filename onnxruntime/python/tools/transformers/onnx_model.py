@@ -663,7 +663,7 @@ class OnnxModel:
                         if vi.name in name_vi:
                             del name_vi[vi.name]
                     for vi in name_vi.values():
-                        model.graph.value_info.append(vi)  # noqa: PERF402
+                        model.graph.value_info.append(vi)
             except Exception:
                 logger.warning(
                     "Failed to run symbolic shape inference. Please file an issue in https://github.com/microsoft/onnxruntime."
