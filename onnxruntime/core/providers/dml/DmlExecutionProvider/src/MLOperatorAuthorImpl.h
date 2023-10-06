@@ -399,6 +399,7 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
         const onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> * protoHelper,
         const void* executionHandle,
         bool isInternalOperator,
+        const EdgeShapes* inputShapesOverrides,
         const EdgeShapes* inferredOutputShapes,
         const AttributeMap* defaultAttributes,
         DmlGraphNodeCreateInfo* graphNodeCreateInfo,

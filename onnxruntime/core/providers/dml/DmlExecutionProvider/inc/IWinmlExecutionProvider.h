@@ -88,12 +88,14 @@ namespace Windows::AI::MachineLearning::Adapter
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
         EdgeShapes outputShapes;
+        const std::unordered_map<std::string, std::vector<uint32_t>>* inferredOutputShapes;
     };
 
     using GraphNodeFactory = std::function<void(
         const onnxruntime::Node& node,
         MLOperatorTensorGetter& constantInputGetter,
         const void* executionHandle,
+        const EdgeShapes* inputShapesOverrides,
         /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo
         )>;
 

@@ -198,57 +198,8 @@ namespace Dml
                     std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
                     if (requiredCpuInputsConstant && (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
                     {
-                        bool valid = true;
-                        onnxruntime::ProtoHelperNodeContext protoContext(node);
-                        onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> info(&protoContext);
-
-                        graphNodeProperty.first->second.inputShapes.Reset(info.GetInputCount());
-
-                        for (size_t inputIndex = 0; inputIndex < graphNodeProperty.first->second.inputShapes.EdgeCount(); ++inputIndex)
-                        {
-                            const onnx::TypeProto* inputProto = info.GetInputType(inputIndex);
-                            // Skip this input if it is not valid.
-                            if (inputProto == nullptr)
-                            {
-                                continue;
-                            }
-
-                            if (inputProto->value_case() != onnx::TypeProto::kTensorType)
-                            {
-                                continue;
-                            }
-
-                            const auto& tensorType = inputProto->tensor_type();
-
-                            if (!tensorType.has_shape())
-                            {
-                                valid = false;
-                                break;
-                            }
-
-                            const auto& shape = tensorType.shape();
-                            graphNodeProperty.first->second.inputShapes.GetMutableShape(inputIndex).resize(shape.dim_size());
-
-                            for (uint32_t dimIndex = 0; dimIndex < static_cast<uint32_t>(shape.dim_size()); ++dimIndex)
-                            {
-                                if (!shape.dim(dimIndex).has_dim_value() && !shape.dim(dimIndex).has_dim_param())
-                                {
-                                    valid = false;
-                                    break;
-                                }
-                            }
-
-                            if (!valid)
-                            {
-                                break;
-                            }
-                        }
-
-                        if (valid)
-                        {
-                            *isDmlGraphNode = true;
-                            graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
-                        }
+                        *isDmlGraphNode = true;
+                        graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
                     }
                 }
                 else

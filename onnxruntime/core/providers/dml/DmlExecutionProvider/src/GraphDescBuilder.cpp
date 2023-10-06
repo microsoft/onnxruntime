@@ -219,6 +219,8 @@ namespace Dml::GraphDescBuilder
 
         // Iterate through each node and create a corresponding node in the new graph
         // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
+        std::unordered_map<std::string, std::vector<uint32_t>> inferredOutputShapes;
+
         for (const onnxruntime::Node* subgraphNode : subgraphNodes)
         {
             const onnxruntime::Node& node = *subgraphNode;
@@ -245,12 +247,42 @@ namespace Dml::GraphDescBuilder
             };
 
             DmlGraphNodeCreateInfo graphNodeCreateInfo;
+            EdgeShapes inputShapesOverrides(node.InputDefs().size());
+
+            // Override the input shapes with shapes that were previously inferred
+            for (int inputIndex = 0; inputIndex < node.InputDefs().size(); ++inputIndex)
+            {
+                auto inputDef = node.InputDefs()[inputIndex];
+
+                auto outputShapesIter = inferredOutputShapes.find(inputDef->Name());
+                if (outputShapesIter != inferredOutputShapes.end())
+                {
+                    inputShapesOverrides.GetMutableShape(inputIndex) = outputShapesIter->second;
+                }
+                else
+                {
+                    for (int i = 0; i < inputDef->Shape()->dim_size(); ++i)
+                    {
+                        ORT_THROW_HR_IF(E_INVALIDARG, !inputDef->Shape()->dim(i).has_dim_value());
+                        inputShapesOverrides.GetMutableShape(inputIndex).push_back(gsl::narrow_cast<uint32_t>(inputDef->Shape()->dim(i).dim_value()));
+                    }
+                }
+            }
+
+            graphNodeCreateInfo.inferredOutputShapes = &inferredOutputShapes;
             graphNodeProps.internalRegInfo->graphNodeFactoryRegistration->factory(
                 node,
                 constantCpuNodeInputGetter,
                 executionHandle,
+                &inputShapesOverrides,
                 /*out*/ &graphNodeCreateInfo
             );
+
+            ORT_THROW_HR_IF(E_UNEXPECTED, graphNodeCreateInfo.outputShapes.EdgeCount() != node.OutputDefs().size());
+            for (int i = 0; i < node.OutputDefs().size(); ++i)
+            {
+                inferredOutputShapes[node.OutputDefs()[i]->Name()] = graphNodeCreateInfo.outputShapes.GetShape(i);
+            }
 
             // Create a map between operatorGraphNodeIndex to mainGraphNodeIndex.
             std::unordered_map<uint32_t, uint32_t> operatorGraphNodeIndexToMainGraphNodeIndexMap;
