@@ -111,6 +111,8 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
+        // TODO: Port this to a graph description to enable DML graph optimization
+
         dml::Graph graph(m_dmlDevice.Get());
         dml::TensorDesc inputTensorDesc = inputDescs[OnnxInputIndex::X];
         dml::TensorDesc scaleTensorDesc = inputDescs[OnnxInputIndex::Scale];

@@ -58,6 +58,15 @@ public:
         AddDesc.OutputScaleTensor = &inputDescs[IN_C_SCALE];
         AddDesc.OutputZeroPointTensor = inputDescs[IN_C_ZERO_POINT].Desc != nullptr ? &inputDescs[IN_C_ZERO_POINT] : nullptr; 
         AddDesc.OutputTensor = &outputDescs[0];
+        
+        TryConvertTensorToBroadcastScalar(kernelInfo, AddDesc.AScaleTensor,           IN_A_SCALE);
+        TryConvertTensorToBroadcastScalar(kernelInfo, AddDesc.AZeroPointTensor,       IN_A_ZERO_POINT);
+
+        TryConvertTensorToBroadcastScalar(kernelInfo, AddDesc.BScaleTensor,           IN_B_SCALE);
+        TryConvertTensorToBroadcastScalar(kernelInfo, AddDesc.BZeroPointTensor,       IN_B_ZERO_POINT);
+
+        TryConvertTensorToBroadcastScalar(kernelInfo, AddDesc.OutputScaleTensor,      IN_C_SCALE);
+        TryConvertTensorToBroadcastScalar(kernelInfo, AddDesc.OutputZeroPointTensor,  IN_C_ZERO_POINT);
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD, &AddDesc };
         SetDmlOperatorDesc(opDesc, kernelInfo);

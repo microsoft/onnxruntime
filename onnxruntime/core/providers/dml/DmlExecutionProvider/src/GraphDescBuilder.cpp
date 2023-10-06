@@ -314,7 +314,11 @@ namespace Dml::GraphDescBuilder
                             // This is a highly inefficient approach to generating constant nodes.  It duplicates constant data 
                             // across the graph input as well as every consumer's unique constant node.  However it is currently 
                             // only used for small inputs.
-                            uint32_t c_maxConstNodeDataSize = 64;
+                            
+                            // TODO: Rework this to create DML constant nodes with the minimum data size actually used by consuming
+                            // nodes.  This would allow this size to be reduced while handling the case that 1D scale and zero point
+                            // values that have been de-duplicated with conversion to scalars in kernels.
+                            uint32_t c_maxConstNodeDataSize = 1024 * 1024;
 
                             ComPtr<OnnxTensorWrapper> constantInput = constantCpuGraphInputGetter(arg->Name());
 
