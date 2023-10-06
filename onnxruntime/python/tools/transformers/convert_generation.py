@@ -1272,9 +1272,9 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
-def replace_mha_with_gqa(model: ModelProto):
+def replace_mha_with_gqa(model: OnnxModel, kv_num_heads: int = 0):
     # Replace MultiHeadAttention with GroupQueryAttention
-    for i, node in enumerate(model.graph.node):
+    for node in model.model.graph.node:
         if node.op_type == "MultiHeadAttention":
             gqa_node = onnx.helper.make_node(
                 "GroupQueryAttention",
@@ -1289,10 +1289,11 @@ def replace_mha_with_gqa(model: ModelProto):
                 name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
                 domain="com.microsoft",
                 num_heads=node.attribute[0].i,
-                kv_num_heads=node.attribute[0].i,
+                kv_num_heads=node.attribute[0].i if kv_num_heads == 0 else kv_num_heads,
                 is_past_bsnh=0,
             )
-            model.graph.node[i] = gqa_node
+            model.model.graph.node.remove(node)
+            model.model.graph.node.extend([gqa_node])
     return model
 
 

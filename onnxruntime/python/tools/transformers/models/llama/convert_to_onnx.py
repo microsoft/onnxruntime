@@ -8,9 +8,11 @@ from typing import List
 import onnx
 import torch
 from benchmark_helper import Precision, prepare_environment, setup_logger
+from convert_generation import replace_mha_with_gqa
 from llama_inputs import get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
 from onnx_model import OnnxModel
+from optimizer import optimize_model
 from transformers import LlamaConfig, LlamaForCausalLM
 
 from onnxruntime import quantization as ort_quantization
@@ -248,12 +250,45 @@ def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llam
     logger.info(f"The {args.model_name} ONNX model has been successfully created with the TorchScript exporter!")
 
 
+# Optimize the model as FP32
+def optimize_export(config: LlamaConfig, input_path: str, output_path: str):
+    from fusion_options import FusionOptions
+    optimization_options = FusionOptions("gpt2")
+
+    model_opt = optimize_model(
+        input_path,
+        model_type="gpt2",
+        num_heads=config.num_attention_heads,
+        hidden_size=config.num_hidden_layers,
+        opt_level=0,
+        optimization_options=optimization_options,
+        only_onnxruntime=False,
+    )
+
+    # Replace MultiHeadAttention with GroupQueryAttention and remove attention mask nodes
+    model_opt = replace_mha_with_gqa(model_opt, config.num_key_value_heads)
+    model_opt.prune_graph()
+    model_opt.update_graph(allow_remove_graph_inputs=True)
+
+    model_opt.save_model_to_file(output_path, use_external_data_format=True)
+    logger.info(f"The ONNX model at {input_path} has been successfully optimized and saved at {output_path}!")
+    remove_existing_model(input_path)
+
+
+def remove_existing_model(model_path: str):
+    # Remove ONNX model and its external data
+    data_path = os.path.join(model_path + ".data")
+    os.remove(model_path)
+    os.remove(data_path)
+    logger.warning(f"Removed {model_path} and {data_path}")
+
+
 def remove_existing_files(output_path: str):
     for filename in os.listdir(output_path):
         filepath = os.path.join(output_path, filename)
         if ".onnx" in filename or ".onnx.data" in filename:
             os.remove(filepath)
-            logger.warning(f"Removing {filepath}")
+            logger.warning(f"Removed {filepath}")
 
 
 def get_args():
@@ -309,6 +344,23 @@ def get_args():
         default="0",
         help="Device ID for GPUs",
     )
+
+    parser.add_argument(
+        "-r",
+        "--reexport",
+        required=False,
+        action="store_true",
+        help="Re-export models and overwrite existing models in output folder",
+    )
+    parser.set_defaults(reexport=False)
+
+    parser.add_argument(
+        "--merged",
+        required=False,
+        action="store_true",
+        help="Export models into 1 ONNX file instead of 2. Default is false to support older packages that export as 2 instead of 1.",
+    )
+    parser.set_defaults(merged=False)
 
     parser.add_argument(
         "-q",
@@ -411,7 +463,8 @@ def main():
     args = get_args()
     setup_logger(args.verbose)
     prepare_environment(args.input, args.output, args.execution_provider != "cpu")
-    remove_existing_files(args.output)
+    if args.reexport:
+        remove_existing_files(args.output)
     logger.info(f"Arguments: {args}")
 
     # Load model and config
@@ -425,47 +478,76 @@ def main():
     setattr(args, "original_model_name", original_model_name)  # noqa: B010
     args.model_name = args.model_name.split("/")[-1]
 
-    # Export to ONNX
-    if args.use_dynamo_export:
-        logger.warning("Please ensure you have installed PyTorch, ONNX, and ONNX Script as follows.")
-        logger.warning("Step 1 - PyTorch nightly: https://pytorch.org/get-started/locally/")
-        logger.warning("Step 2 - ONNX weekly: https://pypi.org/project/onnx-weekly/")
-        logger.warning(
-            "Step 3 - ONNX Script from source: https://github.com/microsoft/onnxscript#installing-onnx-script"
-        )
-        logger.warning(
-            "Note: After you install ONNX weekly, omit `onnx` when running the first line for installing ONNX Script. This is because you already installed `onnx-weekly` in the previous step."
-        )
-        run_dynamo_export(args, l_config, llama)
-    else:
-        run_torchscript_export(args, l_config, llama)
-
-    # Change precision of exported models if not FP32
+    # Set model paths for FP32 model
     decoder_model_fp32_path = os.path.join(args.output, f"{args.model_name}_decoder_model_fp32.onnx")
     decoder_with_past_model_fp32_path = os.path.join(
         args.output, f"{args.model_name}_decoder_with_past_model_fp32.onnx"
     )
 
+    # Export to ONNX
+    if not os.path.exists(decoder_model_fp32_path) and not os.path.exists(decoder_with_past_model_fp32_path):
+        if args.use_dynamo_export:
+            logger.warning("Please ensure you have installed PyTorch, ONNX, and ONNX Script as follows.")
+            logger.warning("Step 1 - PyTorch nightly: https://pytorch.org/get-started/locally/")
+            logger.warning("Step 2 - ONNX weekly: https://pypi.org/project/onnx-weekly/")
+            logger.warning(
+                "Step 3 - ONNX Script from source: https://github.com/microsoft/onnxscript#installing-onnx-script"
+            )
+            logger.warning(
+                "Note: After you install ONNX weekly, omit `onnx` when running the first line for installing ONNX Script. This is because you already installed `onnx-weekly` in the previous step."
+            )
+            run_dynamo_export(args, l_config, llama)
+        else:
+            run_torchscript_export(args, l_config, llama)
+
+    # Set model paths to store FP32 optimized model
+    decoder_model_fp32_opt_path = os.path.join(args.output, f"{args.model_name}_decoder_model_fp32_opt.onnx")
+    decoder_with_past_model_fp32_opt_path = os.path.join(
+        args.output, f"{args.model_name}_decoder_with_past_model_fp32_opt.onnx"
+    )
+
+    # Run the optimizer script
+    logger.info(f"Optimizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path}")
+    optimize_export(l_config, input_path=decoder_model_fp32_path, output_path=decoder_model_fp32_opt_path)
+    optimize_export(l_config, input_path=decoder_with_past_model_fp32_path, output_path=decoder_with_past_model_fp32_opt_path)
+
+    # Re-assign default FP32 model paths as their optimized versions
+    decoder_model_fp32_path = decoder_model_fp32_opt_path
+    decoder_with_past_model_fp32_path = decoder_with_past_model_fp32_opt_path
+
+    logger.info(f"The {args.model_name} ONNX model has been successfully optimized with the ORT transformer optimizer script!")
+
+    # Change precision of exported models from FP32
     if args.precision == Precision.FLOAT16:
+        logger.info(f"Converting {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to float16")
+
         # Convert decoder_model.onnx to FP16
         decoder_model_fp16_path = os.path.join(args.output, f"{args.model_name}_decoder_model_fp16.onnx")
         model = OnnxModel(onnx.load_model(decoder_model_fp32_path, load_external_data=True))
-        model.convert_float_to_float16(keep_io_types=False, op_block_list=["If"])
+        model.convert_float_to_float16(keep_io_types=False)
         model.save_model_to_file(decoder_model_fp16_path, use_external_data_format=True, all_tensors_to_one_file=True)
         del model
+        logger.info(f"The ONNX model at {decoder_model_fp32_path} has been converted to float16 and saved at {decoder_model_fp16_path}!")
+        remove_existing_model(decoder_model_fp32_path)
 
         # Convert decoder_with_past_model.onnx to FP16
         decoder_with_past_model_fp16_path = os.path.join(
             args.output, f"{args.model_name}_decoder_with_past_model_fp16.onnx"
         )
         model = OnnxModel(onnx.load_model(decoder_with_past_model_fp32_path, load_external_data=True))
-        model.convert_float_to_float16(keep_io_types=False, op_block_list=["If"])
+        model.convert_float_to_float16(keep_io_types=False)
         model.save_model_to_file(
             decoder_with_past_model_fp16_path, use_external_data_format=True, all_tensors_to_one_file=True
         )
         del model
+        logger.info(f"The ONNX model at {decoder_with_past_model_fp32_path} has been converted to float16 and saved at {decoder_with_past_model_fp16_path}!")
+        remove_existing_model(decoder_with_past_model_fp32_path)
+
+        logger.info(f"The {args.model_name} ONNX model has been successfully converted to float16!")
 
     elif args.precision == Precision.INT8:
+        logger.info(f"Quantizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to int8")
+
         decoder_model_int8_path = os.path.join(args.output, f"{args.model_name}_decoder_model_int8.onnx")
         decoder_with_past_model_int8_path = os.path.join(
             args.output, f"{args.model_name}_decoder_with_past_model_int8.onnx"
@@ -510,6 +592,8 @@ def main():
                 f"{args.model_name}_decoder_model_int8.onnx.data",
             )
             del decoder_model_int8
+            logger.info(f"The ONNX model at {decoder_model_fp32_path} has been quantized to int8 and saved at {decoder_model_int8_path}!")
+            remove_existing_model(decoder_model_fp32_path)
 
             # Convert decoder_with_past_model.onnx to INT8
             decoder_with_past_model_int8 = intel_quantization.fit(
@@ -527,11 +611,16 @@ def main():
                 f"{args.model_name}_decoder_with_past_model_int8.onnx.data",
             )
             del decoder_with_past_model_int8
+            logger.info(f"The ONNX model at {decoder_with_past_model_fp32_path} has been quantized to int8 and saved at {decoder_with_past_model_int8_path}!")
+            remove_existing_model(decoder_with_past_model_fp32_path)
+
+            logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")
 
             logger.info(f"Removing {args.nc_workspace}")
             os.system(f"rm -R {args.nc_workspace}")
 
         elif args.quantization_method == "quantize_dynamic":
+            logger.info(f"Quantizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to int8")
             logger.warning(
                 "The `quantize_dynamic` method is deprecated in favor of `smooth_quant` instead. Precision loss may be high with `quantize_dynamic`."
             )
@@ -548,6 +637,8 @@ def main():
                 use_external_data_format=True,
                 extra_options={"MatMulConstBOnly": True},
             )
+            logger.info(f"The ONNX model at {decoder_model_fp32_path} has been quantized to int8 and saved at {decoder_model_int8_path}!")
+            remove_existing_model(decoder_model_fp32_path)
 
             # Convert decoder_with_past_model.onnx to INT8
             ort_quantization.quantize_dynamic(
@@ -561,6 +652,10 @@ def main():
                 use_external_data_format=True,
                 extra_options={"MatMulConstBOnly": True},
             )
+            logger.info(f"The ONNX model at {decoder_with_past_model_fp32_path} has been quantized to int8 and saved at {decoder_with_past_model_int8_path}!")
+            remove_existing_model(decoder_with_past_model_fp32_path)
+
+            logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")
 
         else:
             raise Exception(f"Could not recognize {args.quantization_method} as a quantization method")
@@ -572,7 +667,7 @@ def main():
         if ".data" in filename or ".onnx" not in filename:
             continue
 
-        precision = filename[filename.rfind("_") + 1 : filename.find(".onnx")]
+        precision = "fp32" if "fp32" in filename else "fp16" if "fp16" in filename else "int8"
         parity_cmd = ["-m", f"{original_model_name}", "-o", f"{os.path.join(args.output, filename)}", "-fp", precision]
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
