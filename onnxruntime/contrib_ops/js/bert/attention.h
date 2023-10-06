@@ -23,13 +23,13 @@ class Attention : public JsKernel, AttentionBase {
     }
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Attention, ({
-                                 numHeads : $1,
-                                 isUnidirectional : $2,
-                                 maskFilterValue : $3,
-                                 scale : $4,
-                                 doRotary : $5,
-                                 qkvHiddenSizes : $6 ? (Array.from(HEAP32.subarray(Number($7), Number($7) + $6))) : [],
-                                 pastPresentShareBuffer : !!$8,
+                                 "numHeads" : $1,
+                                 "isUnidirectional" : $2,
+                                 "maskFilterValue" : $3,
+                                 "scale" : $4,
+                                 "doRotary" : $5,
+                                 "qkvHiddenSizes" : $6 ? (Array.from(HEAP32.subarray(Number($7), Number($7) + $6))) : [],
+                                 "pastPresentShareBuffer" : !!$8,
                                }),
                                static_cast<int32_t>(num_heads_),
                                static_cast<int32_t>(is_unidirectional_),
