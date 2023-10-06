@@ -153,7 +153,7 @@ namespace Dml
           m_areMetacommandsEnabled(enableMetacommands)
     {
         // TODO (pavignol): Remove me
-        m_areMetacommandsEnabled = false;
+        // m_areMetacommandsEnabled = false;
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
         D3D_FEATURE_LEVEL featureLevelsList[] = {

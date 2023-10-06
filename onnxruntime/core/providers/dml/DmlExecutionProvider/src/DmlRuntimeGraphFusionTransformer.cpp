@@ -84,6 +84,7 @@ namespace Dml
         std::vector<onnxruntime::NodeIndex> additionalSplittingNodes;
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties> graphNodePropertyMap;
         std::unordered_set<std::string> requiredInitializerMap;
+        std::unordered_set<std::string> dynamicCpuInputMap;
         onnxruntime::GraphViewer graphViewer(graph);
         std::vector<std::unique_ptr<GraphPartition>> partitions = BuildPartitions(
             graphViewer,
@@ -92,6 +93,7 @@ namespace Dml
             m_providerImpl->GetSupportedDeviceDataTypeMask(),
             graphNodePropertyMap,
             requiredInitializerMap,
+            dynamicCpuInputMap,
             additionalSplittingNodes,
             implicitInputDefs,
             true);
@@ -149,6 +151,7 @@ namespace Dml
                     m_providerImpl->GetKernelRegistry().get(),
                     m_providerImpl,
                     graphNodePropertyMap,
+                    dynamicCpuInputMap,
                     std::move(compiledPartitionInfo->indexedSubGraph),
                     std::move(compiledPartitionInfo->isInitializerTransferable));
             }

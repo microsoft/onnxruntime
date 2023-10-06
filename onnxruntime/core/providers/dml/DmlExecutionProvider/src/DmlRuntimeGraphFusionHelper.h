@@ -76,6 +76,7 @@ namespace DmlRuntimeGraphFusionHelper
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const ExecutionProviderImpl* providerImpl,
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties> graphNodePropertyMap,
+        const std::unordered_set<std::string>& dynamicCpuInputMap,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
         std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>&& isInitializerTransferable);
 }

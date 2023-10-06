@@ -121,6 +121,15 @@ namespace Dml
                     iter->second = input.Shape();
                     recompiledNeeded = true;
                 }
+
+                // If we have CPU inputs that are not initializers (i.e. they were computed at runtime), add them to the initializer list
+                if (input.Location().device.Type() == OrtDevice::CPU)
+                {
+                    // TODO (pavignol): Force recompile if CPU data changed
+                    auto inputProto = onnxruntime::utils::TensorToTensorProto(input, inputName);
+                    m_ownedCpuInputs.push_back(std::make_unique<ONNX_NAMESPACE::TensorProto>(std::move(inputProto)));
+                    m_isInitializerTransferable[inputName] = std::make_pair(m_ownedCpuInputs.back().get(), false);
+                }
             }
 
             if (recompiledNeeded)
@@ -311,10 +320,11 @@ namespace Dml
         mutable std::vector<std::shared_ptr<onnxruntime::NodeArg>> m_intermediateNodeArgs;
         std::unordered_map<std::string, GraphNodeProperties> m_partitionNodePropsMap;
         std::vector<ONNX_NAMESPACE::TensorProto> m_ownedInitializers;
-        std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> m_isInitializerTransferable;
+        mutable std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> m_isInitializerTransferable;
         std::vector<const onnxruntime::Node*> m_subgraphNodePointers;
 
         // Bindings from previous executions of a re-used command list
+        mutable std::vector<std::unique_ptr<ONNX_NAMESPACE::TensorProto>> m_ownedCpuInputs;
         mutable ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
         mutable std::vector<uint64_t> m_inputBindingAllocIds;
         mutable std::vector<uint64_t> m_outputBindingAllocIds;
