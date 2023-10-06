@@ -338,8 +338,7 @@ article section {
   background: rgba(25, 25, 25, 0.5);
 }
 .search-results-container .search-results-group {
-  padding-top: 50px !important;
-  padding: 10px;
+  padding: 50px 10px 10px 10px;
 }
 .search-results-group-heading {
   font-family: "Open Sans";
