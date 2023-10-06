@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 from fusion_attention import FusionAttention
 from fusion_base import Fusion
@@ -702,6 +702,23 @@ class FusionRotaryEmbeddings(Fusion):
 
         return rotary_emb_node
 
+    def add_nodes_to_remove(self, nodes: List[NodeProto]):
+        # Some rotary embedding nodes are shared between the Q and K paths. When path A is fused,
+        # its shared rotary embedding nodes are added to `self.nodes_to_remove`. But when path B
+        # is fused, its rotary embedding nodes are also added to `self.nodes_to_remove`. When the
+        # nodes are iteratively removed from `self.nodes_to_remove`, path A's rotary embedding nodes
+        # are removed first. Since path A's rotary embeddings nodes are removed, path B's rotary embedding
+        # nodes are not removed because they were previously removed for path A. This causes an error
+        # to print in remove_node that a node has failed to be removed.
+        #
+        # To avoid this error, we pre-emptively check if the shared rotary embedding nodes are already
+        # in `self.nodes_to_remove`. We could alternatively convert `self.nodes_to_remove` to a set to
+        # avoid this issue, but there could be scenarios where the nodes need to be removed in a specific
+        # order and converting to a set would lose this order.
+        for node in nodes:
+            if node not in self.nodes_to_remove:
+                self.nodes_to_remove.append(node)
+
     def create_rotary_embeddings_from_nodes(
         self,
         root_input: str,
@@ -963,20 +980,23 @@ class FusionRotaryEmbeddings(Fusion):
                 return
 
             # Remove rotary embedding nodes
-            self.nodes_to_remove.append(node)
-            self.nodes_to_remove.extend(rotate_half_x1_path_1[:-1])
-            self.nodes_to_remove.extend(rotate_half_x1_path_2[:-1])
-            self.nodes_to_remove.extend(rotate_half_x2_path_1[:-1])
-            self.nodes_to_remove.extend(rotate_half_x2_path_2[:-1])
-            self.nodes_to_remove.extend(x_path[:-1])
-            self.nodes_to_remove.extend(sin_path) # if past_seq_len == "" else sin_path[:-1])
-            self.nodes_to_remove.extend(cos_path) # if past_seq_len == "" else sin_path[:-1])
-            self.nodes_to_remove.extend(position_ids_from_sin_path[:-1])
-            self.nodes_to_remove.extend(position_ids_from_cos_path[:-1])
+            self.add_nodes_to_remove([node])
+            self.add_nodes_to_remove(rotate_half_x1_path_1[:-1])
+            self.add_nodes_to_remove(rotate_half_x1_path_2[:-1])
+            self.add_nodes_to_remove(rotate_half_x2_path_1[:-1])
+            self.add_nodes_to_remove(rotate_half_x2_path_2[:-1])
+            self.add_nodes_to_remove(x_path[:-1])
+            self.add_nodes_to_remove(sin_path) # if past_seq_len == "" else sin_path[:-1])
+            self.add_nodes_to_remove(cos_path) # if past_seq_len == "" else sin_path[:-1])
+            self.add_nodes_to_remove(position_ids_from_sin_path[:-1])
+            self.add_nodes_to_remove(position_ids_from_cos_path[:-1])
 
-            if past_seq_len_path != None and curr_seq_len_path != None:
-                self.nodes_to_remove.extend(past_seq_len_path)
-                self.nodes_to_remove.extend(curr_seq_len_path[:-1])
+            if past_seq_len_path != None and len(self.model.get_children(past_seq_len_path[0])) == 1:
+                # In merged HF model, output of Gather in past_seq_len_path is used twice 
+                # for past_key_values.0.key and once for other past_key_values
+                self.add_nodes_to_remove(past_seq_len_path)
+            if curr_seq_len_path != None:
+                self.add_nodes_to_remove(curr_seq_len_path[:-1])
 
         self.increase_counter(self.base_name)
         self.node_name_to_graph_name[rotary_emb_node.name] = self.this_graph_name
