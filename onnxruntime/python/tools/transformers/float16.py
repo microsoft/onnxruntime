@@ -403,7 +403,7 @@ def convert_float_to_float16(
 
         queue = next_level
 
-    for _key, value in fp32_initializers.items():
+    for value in fp32_initializers.values():
         # By default, to avoid precision loss, do not convert an initializer to fp16 when it is used only by fp32 nodes.
         if force_fp16_initializers or value.fp16_nodes:
             value.initializer = convert_tensor_float_to_float16(value.initializer, min_positive_val, max_finite_val)

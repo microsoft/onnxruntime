@@ -55,7 +55,7 @@ def upload_whl(python_wheel_path, final_storage=False):
     with open(download_path_to_html) as f:
         lines = f.read().splitlines()
 
-    new_line = '<a href="{blobname}">{blobname}</a><br>'.format(blobname=blob_name_plus_replaced)
+    new_line = f'<a href="{blob_name_plus_replaced}">{blob_name_plus_replaced}</a><br>'
     if new_line not in lines:
         lines.append(new_line)
         lines.sort()

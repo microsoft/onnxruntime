@@ -1264,8 +1264,8 @@ def generate_build_tree(
             args.apple_deploy_target,
         ]
         arg_names = [
-            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",  # noqa: ISC003
-            "--apple_deploy_target  " + "<the minimum version of the target platform>",  # noqa: ISC003
+            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",
+            "--apple_deploy_target  " + "<the minimum version of the target platform>",
         ]
         if not all(needed_args):
             raise BuildError(
@@ -1684,7 +1684,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             if args.use_nnapi:
                 run_adb_shell("{0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
             else:
-                run_adb_shell("{0}/onnx_test_runner {0}/test".format(device_dir))
+                run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
 
             # run shared_lib_test if necessary
             if args.build_shared_lib:
