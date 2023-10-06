@@ -73,5 +73,10 @@ interface MesssageEndProfiling extends MessageError {
   in ?: number;
 }
 
+interface MessageIsOrtEnvInitialized extends MessageError {
+  type: 'is-ort-env-initialized';
+  out?: boolean;
+}
+
 export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCreateSessionAllocate|MessageCreateSessionFinalize|
-    MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling;
+    MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling|MessageIsOrtEnvInitialized;

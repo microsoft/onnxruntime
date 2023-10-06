@@ -57,6 +57,8 @@ export const initRuntime = async(env: Env): Promise<void> => {
     const initJsep = require('./jsep/init').init;
     await initJsep(getInstance(), env);
   }
+
+  ortEnvInitialized = true;
 };
 
 /**
@@ -92,6 +94,11 @@ type SessionMetadata = [
 ];
 
 const activeSessions = new Map<number, SessionMetadata>();
+let ortEnvInitialized = false;
+
+export const isOrtEnvInitialized = (): boolean => {
+  return ortEnvInitialized;
+};
 
 /**
  * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.

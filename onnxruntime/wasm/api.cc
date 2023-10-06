@@ -493,6 +493,14 @@ char* OrtEndProfiling(ort_session_handle_t session) {
 #define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
 
+#define RETURN_TRAINING_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...)          \
+  do {                                                                 \
+    int error_code = CHECK_TRAINING_STATUS(ORT_API_NAME, __VA_ARGS__); \
+    if (error_code != ORT_OK) {                                        \
+      return error_code;                                               \
+    }                                                                  \
+  } while (false)
+
 ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint_data_buffer,
                                                                                 size_t checkpoint_size) {
   OrtCheckpointState* checkpoint_state = nullptr;
@@ -569,6 +577,35 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_sessio
                                                              size_t parameter_count,
                                                              bool trainable_only) {
   return CHECK_TRAINING_STATUS(CopyBufferToParameters, training_handle, parameters_buffer, trainable_only);
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingGetInputOutputCount(ort_training_session_handle_t training_handle,
+                                                        size_t* input_count,
+                                                        size_t* output_count) {
+  RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetTrainingModelInputCount, training_handle, input_count);
+  RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetTrainingModelOutputCount, training_handle, output_count);
+  return ORT_OK;
+}
+
+char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetInputOutputName(ort_training_session_handle_t training_handle,
+                                                         size_t index,
+                                                         bool isInput) {
+  OrtAllocator* allocator = nullptr;
+  RETURN_NULLPTR_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
+
+  char* name = nullptr;
+
+  if (isInput) {
+    return (CHECK_TRAINING_STATUS(TrainingSessionGetTrainingModelInputName, training_handle, index,
+                                  allocator, &name) == ORT_OK)
+               ? name
+               : nullptr;
+  } else {
+    return (CHECK_TRAINING_STATUS(TrainingSessionGetTrainingModelOutputName, training_handle, index,
+                                  allocator, &name) == ORT_OK)
+               ? name
+               : nullptr;
+  }
 }
 
 void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_handle) {
