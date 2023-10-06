@@ -2269,7 +2269,9 @@ def generate_documentation(source_dir, build_dir, configs, validate):
             have_diff = False
 
             def diff_file(path, regenerate_qualifiers=""):
-                diff = subprocess.check_output(["git", "diff", path], cwd=source_dir).decode("utf-8")
+                diff = subprocess.check_output(["git", "diff", "--ignore-cr-at-eol", path], cwd=source_dir).decode(
+                    "utf-8"
+                )
                 if diff:
                     nonlocal have_diff
                     have_diff = True
