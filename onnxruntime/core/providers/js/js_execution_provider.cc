@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "js_execution_provider.h"
 
@@ -648,6 +649,7 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& kernel_lookup) const {
   InlinedVector<NodeIndex> candidates;
+  // `tenative_candidates` is a subset of `candidates`.
   InlinedVector<NodeIndex> tenative_candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
@@ -666,7 +668,8 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
     const KernelCreateInfo* webgpu_kernel_def = kernel_lookup.LookUpKernel(node);
     // none of the provided registries has a webgpu kernel for this node
     if (webgpu_kernel_def == nullptr) {
-      LOGS(*GetLogger(), INFO) << "webgpu kernel not found in registries for Op type: " << node.OpType() << " node name: " << node.Name();
+      LOGS(*GetLogger(), INFO) << "webgpu kernel not found in registries for Op type: "
+                               << node.OpType() << " node name: " << node.Name();
       continue;
     }
     candidates.push_back(node.Index());
