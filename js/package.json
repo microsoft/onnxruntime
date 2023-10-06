@@ -8,6 +8,8 @@
     "@typescript-eslint/parser": "^5.54.1",
     "clang-format": "^1.8.0",
     "dir-compare": "^4.0.0",
+    "esbuild": "^0.19.3",
+    "esbuild-plugin-polyfill-node": "^0.3.0",
     "eslint": "^8.35.0",
     "eslint-plugin-header": "^3.1.1",
     "eslint-plugin-import": "^2.27.5",

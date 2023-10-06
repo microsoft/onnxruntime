@@ -68,7 +68,7 @@
     ".": {
       "node": {
         "types": "./types.d.ts",
-        "default": "./dist/ort-web.node.js"
+        "default": "./dist/ort.node.min.js"
       },
       "default": {
         "types": "./types.d.ts",
