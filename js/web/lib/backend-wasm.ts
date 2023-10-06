@@ -51,5 +51,3 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
     return Promise.resolve(handler);
   }
 }
-
-export const wasmBackend = new OnnxruntimeWebAssemblyBackend();

@@ -10,7 +10,7 @@ import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 /* eslint-disable @typescript-eslint/no-require-imports */
 let ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule>;
 
-if (BUILD_DEFS.ENABLE_TRAINING) {
+if (!BUILD_DEFS.DISABLE_TRAINING) {
   ortWasmFactory = require('./binding/ort-training-wasm-simd.js');
 } else {
   ortWasmFactory =
@@ -79,7 +79,7 @@ const isSimdSupported = (): boolean => {
 
 const getWasmFileName = (useSimd: boolean, useThreads: boolean) => {
   if (useSimd) {
-    if (BUILD_DEFS.ENABLE_TRAINING) {
+    if (!BUILD_DEFS.DISABLE_TRAINING) {
       return 'ort-training-wasm-simd.wasm';
     }
     return useThreads ? 'ort-wasm-simd-threaded.wasm' : 'ort-wasm-simd.wasm';
