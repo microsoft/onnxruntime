@@ -60,7 +60,7 @@ def run_with_config(config):
         cmds.append("--transformer_layer_recompute")
 
     # access to azure storage shared disk is much slower so we need a longer timeout.
-    subprocess.run(cmds, timeout=1200).check_returncode()
+    subprocess.run(cmds, timeout=1200).check_returncode()  # noqa: PLW1510
 
 
 for config in configs:

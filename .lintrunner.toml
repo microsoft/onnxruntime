@@ -98,33 +98,6 @@ init_command = [
 is_formatter = true
 
 [[linter]]
-code = 'PYLINT'
-include_patterns = [
-    # TODO: Opt in to pylint by adding paths here
-]
-exclude_patterns = [
-]
-command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'pylint_linter',
-    '--rcfile=pyproject.toml',
-    '--',
-    '@{{PATHSFILE}}'
-]
-init_command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'pip_init',
-    '--dry-run={{DRYRUN}}',
-    '--requirement=requirements-lintrunner.txt',
-]
-
-[[linter]]
 code = 'RUSTFMT'
 include_patterns = ['**/*.rs']
 command = [

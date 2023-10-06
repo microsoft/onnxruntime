@@ -490,7 +490,7 @@ class TensorrtEngineBuilder(EngineBuilder):
 
     def max_device_memory(self):
         max_device_memory = 0
-        for _model_name, engine in self.engines.items():
+        for engine in self.engines.values():
             max_device_memory = max(max_device_memory, engine.engine.device_memory_size)
         return max_device_memory
 

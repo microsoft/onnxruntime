@@ -129,7 +129,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         output_type = logits_casted.type()
     else:
         # For higher version torch we can get node output types
-        loss_output = list(node.outputs())[0]
+        loss_output = next(iter(node.outputs()))
         output_type = loss_output.type()
     ##################################
 

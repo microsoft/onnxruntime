@@ -29,28 +29,28 @@ for line in lines:
     url = re.sub("^[^;]+?;https://([^;]+?);.*", r"https://\1", line)
     filename = re.sub("^[^;]+?;https://([^;]+?);.*", r"\1", line)
     full_path = os.path.join(root_path, filename)
-    subprocess.run(["curl", "-sSL", "--create-dirs", "-o", full_path, url])
+    subprocess.run(["curl", "-sSL", "--create-dirs", "-o", full_path, url])  # noqa: PLW1510
 
 package_name = "onnxruntime_build_dependencies"
 version = args.version
 
 # Check if the user is logged in to Azure
-result = subprocess.run("az account show", shell=True, capture_output=True, text=True)
+result = subprocess.run("az account show", shell=True, capture_output=True, text=True)  # noqa: PLW1510
 if "No subscriptions found" in result.stderr:
     # Prompt the user to log in to Azure
     print("You are not logged in to Azure. Please log in to continue.")
-    subprocess.run("az login", shell=True)
+    subprocess.run("az login", shell=True)  # noqa: PLW1510
 
 # Publish the package to Azure Artifacts if --no-upload is not specified
 
 cmd = f'az artifacts universal publish --organization https://dev.azure.com/onnxruntime --feed onnxruntime --name {package_name} --version {version} --description "onnxruntime build time dependencies" --path {root_path}'
 if args.do_upload:
-    subprocess.run(cmd, shell=True)
+    subprocess.run(cmd, shell=True)  # noqa: PLW1510
 else:
     print("would have run: " + cmd)
 
 cmd = f'az artifacts universal publish --organization https://dev.azure.com/aiinfra --feed Lotus --name {package_name} --version {version} --description "onnxruntime build time dependencies" --path {root_path}'
 if args.do_upload:
-    subprocess.run(cmd, shell=True)
+    subprocess.run(cmd, shell=True)  # noqa: PLW1510
 else:
     print("would have run: " + cmd)
