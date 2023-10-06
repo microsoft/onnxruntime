@@ -11,16 +11,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace group_query_attention_helper {
 
-template <typename T>
-Status CheckInputs(const T* query,
-                   const T* key,
-                   const T* value,
-                   const T* past_key,
-                   const T* past_value,
+Status CheckInputs(const Tensor* query,
+                   const Tensor* key,
+                   const Tensor* value,
+                   const Tensor* past_key,
+                   const Tensor* past_value,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   const T* past_seq_len,
+                   const Tensor* past_seq_len,
                    bool is_past_bsnh,
                    float scale) {
   // Note: Here S* is max_sequence_length, S- is past_sequence_length, S+ is kv_sequence_length
@@ -197,7 +196,11 @@ Status CheckInputs(const T* query,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "past_sequence_length tensor must be of one element when using past kv.");
     }
-    past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+    if (past_seq_len->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+      past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+    } else {
+      past_sequence_length = static_cast<int32_t>(*((*past_seq_len).template Data<int64_t>()));
+    }
     present_sequence_length = max_sequence_length;
   } else if (past_key != nullptr) {
     past_sequence_length = max_sequence_length;  // this is the length of past_key tensor
