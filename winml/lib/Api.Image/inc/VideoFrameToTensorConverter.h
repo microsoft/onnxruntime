@@ -86,7 +86,7 @@ class VideoFrameToTensorConverter : public ImageConverter {
     const UINT32 batch_index, const D3D12_RESOURCE_DESC& resource_description, const ImageTensorDescription& description
   );
 
-  static void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
+  static void ConvertSoftwareBitmapToCPUTensor(
     _In_ const wgi::SoftwareBitmap& software_bitmap,
     _In_ const ImageTensorDescription& tensor_description,
     _In_ const wgi::BitmapBounds& input_bounds,

@@ -13,7 +13,7 @@ namespace Dml
         ComPtr<ID3D12Resource> resource;
         auto buffer = CD3DX12_RESOURCE_DESC::Buffer(size, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            unmove_ptr(CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT)),
             D3D12_HEAP_FLAG_NONE,
             &buffer,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,

@@ -143,7 +143,8 @@ public:
         );
 
         DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
-        m_compiledOperator.Attach(graph.Compile(executionFlags, { batchNormalization }).Detach());
+        std::array<dml::Expression, 1> outputs = { batchNormalization };
+        m_compiledOperator.Attach(graph.Compile(executionFlags, outputs).Detach());
     }
 
     void Compute(const MLOperatorKernelContext& kernelContext) override
