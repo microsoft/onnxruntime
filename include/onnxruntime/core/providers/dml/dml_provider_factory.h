@@ -37,7 +37,7 @@ enum OrtDmlPerformancePreference {
 };
 
 enum OrtDmlDeviceFilter : uint32_t {
-  Any = (1 << 32) - 1,
+  Any = 0xffffffff,
   Gpu = 1 << 0,
   Npu = 1 << 1,
 };

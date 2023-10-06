@@ -15,6 +15,9 @@
 struct OrtSession;
 using ort_session_handle_t = OrtSession*;
 
+struct OrtIoBinding;
+using ort_io_binding_handle_t = OrtIoBinding*;
+
 struct OrtSessionOptions;
 using ort_session_options_handle_t = OrtSessionOptions*;
 
@@ -23,6 +26,14 @@ using ort_run_options_handle_t = OrtRunOptions*;
 
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
+
+#ifdef ENABLE_TRAINING_APIS
+struct OrtTrainingSession;
+using ort_training_session_handle_t = OrtTrainingSession*;
+
+struct OrtCheckpointState;
+using ort_training_checkpoint_handle_t = OrtCheckpointState*;
+#endif
 
 extern "C" {
 
@@ -75,6 +86,13 @@ ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions(size_t
  */
 int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
                                                     const char* name);
+
+/**
+ * add a free dimension override for one dimension of a session's input.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,
+                                                     const char* dim_param_name,
+                                                     int dim_value);
 
 /**
  * store configurations for a session.
@@ -149,9 +167,10 @@ void EMSCRIPTEN_KEEPALIVE OrtFree(void* ptr);
  * @param data_length size of the buffer 'data' in bytes.
  * @param dims a pointer to an array of dims. the array should contain (dims_length) element(s).
  * @param dims_length the length of the tensor's dimension
+ * @param data_location specify the memory location of the tensor data. 0 for CPU, 1 for GPU buffer.
  * @returns a tensor handle. Caller must release it after use by calling OrtReleaseTensor().
  */
-ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length);
+ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length, int data_location);
 
 /**
  * get type, shape info and data of the specified tensor.
@@ -202,6 +221,58 @@ int EMSCRIPTEN_KEEPALIVE OrtAddRunConfigEntry(ort_run_options_handle_t run_optio
 void EMSCRIPTEN_KEEPALIVE OrtReleaseRunOptions(ort_run_options_handle_t run_options);
 
 /**
+ * create an instance of ORT IO binding.
+ */
+ort_io_binding_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateBinding(ort_session_handle_t session);
+
+/**
+ * bind an input tensor to the IO binding instance. A cross device copy will be performed if necessary.
+ * @param io_binding handle of the IO binding
+ * @param name name of the input
+ * @param input handle of the input tensor
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtBindInput(ort_io_binding_handle_t io_binding,
+                                      const char* name,
+                                      ort_tensor_handle_t input);
+
+/**
+ * bind an output tensor or location to the IO binding instance.
+ * @param io_binding handle of the IO binding
+ * @param name name of the output
+ * @param output handle of the output tensor. nullptr for output location binding.
+ * @param output_location specify the memory location of the output tensor data.
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtBindOutput(ort_io_binding_handle_t io_binding,
+                                       const char* name,
+                                       ort_tensor_handle_t output,
+                                       int output_location);
+
+/**
+ * clear all bound outputs.
+ */
+void EMSCRIPTEN_KEEPALIVE OrtClearBoundOutputs(ort_io_binding_handle_t io_binding);
+
+/**
+ * release the specified ORT IO binding.
+ */
+void EMSCRIPTEN_KEEPALIVE OrtReleaseBinding(ort_io_binding_handle_t io_binding);
+
+/**
+ * inference the model.
+ * @param session handle of the specified session
+ * @param io_binding handle of the IO binding
+ * @param run_options handle of the run options
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtRunWithBinding(ort_session_handle_t session,
+                                           ort_io_binding_handle_t io_binding,
+                                           size_t output_count,
+                                           ort_tensor_handle_t* outputs,
+                                           ort_run_options_handle_t run_options);
+
+/**
  * inference the model.
  * @param session handle of the specified session
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
@@ -222,4 +293,151 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
  * Caller must release the C style string after use by calling OrtFree().
  */
 char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
+
+// Training API Section
+
+#ifdef ENABLE_TRAINING_APIS
+/**
+ * @brief Load the checkpoint for training.
+ *
+ * @param checkpoint_data_buffer pointer to a buffer containing the CheckpointState
+ * @param checkpoint_size size of the CheckpointState in bytes
+ * @return ort_training_checkpoint_handle_t
+ */
+ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint_data_buffer, size_t checkpoint_size);
+
+/**
+ * @brief Release the specified ORT training checkpoint state.
+ *
+ * @param training_checkpoint_state_handle handle for the CheckpointState
+ */
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_handle_t training_checkpoint_state_handle);
+
+/**
+ * Creates an instance of a training session that can be used to begin or resume training from a given checkpoint state
+ * for the given onnx models.
+ * @param options Session options that the user can customize for this training session.
+ * @param training_checkpoint_state_handle Training states that the training session uses as a starting point for training.
+ * @param train_model pointer to a buffer containing the ONNX training model
+ * @param train_size size of the train_model buffer in bytes
+ * @param eval_model pointer to a buffer containing the ONNX evaluation model
+ * @param eval_size size of the eval_model buffer in bytes
+ * @param optimizer_model pointer to a buffer containing the ONNX optimizer model
+ * @param optimizer_size size of the optimizer_model buffer in bytes
+ * @return a handle of the ORT training session
+ *
+ */
+ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateSession(ort_session_options_handle_t options,
+                                                                            ort_training_checkpoint_handle_t training_checkpoint_state_handle,
+                                                                            void* train_model,
+                                                                            size_t train_size,
+                                                                            void* eval_model,
+                                                                            size_t eval_size,
+                                                                            void* optimizer_model,
+                                                                            size_t optimizer_size);
+
+/**
+ * Resets the gradients of all trainable parameters to zero for the specified TrainingSession
+ * @param training_handle handle of the training session
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t training_handle);
+
+/**
+ * @brief Run a single training step.
+ *
+ * @param training_handle session handle of the specified session
+ * @param inputs user inputs to the training model
+ * @param input_count number of user inputs to the training model
+ * @param outputs [out] user outputs computed by train step
+ * @param output_count [out] number of user outputs expected from this train step
+ * @param run_options handle of the run options
+ * @return int ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtTrainingRunTrainStep(ort_training_session_handle_t training_handle,
+                                                 ort_tensor_handle_t* inputs, size_t input_count,
+                                                 ort_tensor_handle_t* outputs,
+                                                 size_t output_count,
+                                                 ort_run_options_handle_t run_options = nullptr);
+
+/**
+ * Performs weight updates for the trainable parameters in the given training session using the optimizer model.
+ * @param training_handle handle of the training session
+ * @param run_options optional parameter of run options for this training step
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t training_handle,
+                                                  ort_run_options_handle_t run_options = nullptr);
+
+/**
+ * Computs outputs for the eval model associated with the given training session.
+ * @param training_handle handle of the training session
+ * @param options run options for this eval step
+ * @param input_count number of user inputs to the eval model
+ * @param inputs the user inputs to the eval model
+ * @param output_count [out] number of user outputs expected from this eval step
+ * @param outputs [out] user outputs computed by the eval step
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
+                                             ort_tensor_handle_t* inputs,
+                                             size_t input_count,
+                                             ort_tensor_handle_t* outputs,
+                                             size_t output_count,
+                                             ort_run_options_handle_t options = nullptr);
+
+/**
+ * Retrieves the size of all parameters for the training state.
+ * When the trainable_only argument is true, the size is calculated for trainable params only.
+ *
+ * @param training_handle handle of the training session
+ * @param param_size [out] size of all parameter elements
+ * @param trainable_only skips non-trainable parameters when true.
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtTrainingGetParametersSize(ort_training_session_handle_t training_handle,
+                                                      size_t* param_size,
+                                                      bool trainable_only);
+
+/**
+ * Copy all parameters to a contiguous buffer held by the argument parameters_buffer
+ *
+ * User is responsible for allocating and freeing resources used by the parameters_buffer.
+ * Parameter ordering is preserved.
+ *
+ * @param training_handle handle of the training session
+ * @param parameters_buffer [out] pre-allocated OrtValue buffer to copy onto. Must be same size as results of
+ *                          GetParametersSize api call
+ * @param parameter_count number of parameters expected in the parameters_buffer
+ * @param trainable_only whether to skip non-trainable parameters
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(ort_training_session_handle_t training_handle,
+                                                           ort_tensor_handle_t parameters_buffer,
+                                                           size_t parameter_count,
+                                                           bool trainable_only);
+
+/**
+ * Copy parameters values from given contiguous buffer held by parameters_buffer to the training state.
+ * Parameter ordering is preserved.
+ * @param training_handle handle of the training session
+ * @param parameters_buffer OrtValue buffer to copy from. Must be same size as results of
+ *                          GetParametersSize api call
+ * @param parameter_count number of parameters expected in the parameters_buffer
+ * @param trainable_only whether to skip non-trainable parameters
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_session_handle_t training_handle,
+                                                             ort_tensor_handle_t parameters_buffer,
+                                                             size_t parameter_count,
+                                                             bool trainable_only);
+
+/**
+ * @brief Release the specified ORT training session.
+ *
+ * @param training_session_handle handle of the training session
+ */
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_session_handle);
+
+#endif
 };

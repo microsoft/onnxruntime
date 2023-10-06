@@ -5,7 +5,9 @@
 
 #include <string>
 #include <unordered_map>
+#include <vector>
 
+#include "core/graph/node_attr_utils.h"
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
 
@@ -16,87 +18,11 @@
 namespace onnxruntime {
 namespace test {
 
-// Returns a function that creates a graph with a single AveragePool operator.
-static GetTestModelFn BuildAveragePoolTestCase(const TestInputDef<float>& input_def,
-                                               const std::vector<int64_t>& kernel_shape,
-                                               const std::vector<int64_t>& strides,
-                                               const std::vector<int64_t>& pads,
-                                               int64_t count_include_pad,
-                                               const std::string& auto_pad = "NOTSET") {
-  return [input_def, kernel_shape, strides, pads,
-          count_include_pad, auto_pad](ModelTestBuilder& builder) {
-    auto* input = MakeTestInput(builder, input_def);
-
-    auto* output = builder.MakeOutput();
-    Node& pool_node = builder.AddNode("AveragePool", {input}, {output});
-
-    pool_node.AddAttribute("kernel_shape", kernel_shape);
-
-    if (!strides.empty()) {
-      pool_node.AddAttribute("strides", strides);
-    }
-
-    pool_node.AddAttribute("auto_pad", auto_pad);
-
-    if (!pads.empty() && auto_pad == "NOTSET") {
-      pool_node.AddAttribute("pads", pads);
-    }
-
-    if (count_include_pad > 0) {
-      pool_node.AddAttribute("count_include_pad", count_include_pad);
-    }
-  };
-}
-
-// Returns a function that creates a graph with a QDQ AveragePool operator.
-template <typename QuantType>
-GetTestQDQModelFn<QuantType> BuildAveragePoolQDQTestCase(const TestInputDef<float>& input_def,
-                                                         const std::vector<int64_t>& kernel_shape,
-                                                         const std::vector<int64_t>& strides,
-                                                         const std::vector<int64_t>& pads,
-                                                         int64_t count_include_pad,
-                                                         const std::string& auto_pad = "NOTSET") {
-  return [input_def, kernel_shape, strides, pads,
-          count_include_pad, auto_pad](ModelTestBuilder& builder,
-                                       std::vector<QuantParams<QuantType>>& output_qparams) {
-    auto* input_arg = MakeTestInput(builder, input_def);
-
-    // add QDQ + AveragePool
-    QuantParams<QuantType> input_qparams = GetTestInputQuantParams(input_def);
-    auto* dq_output = AddQDQNodePair<QuantType>(builder, input_arg, input_qparams.scale, input_qparams.zero_point);
-    auto* averagepool_output = builder.MakeIntermediate();
-    Node& pool_node = builder.AddNode("AveragePool", {dq_output}, {averagepool_output});
-
-    pool_node.AddAttribute("kernel_shape", kernel_shape);
-
-    if (!strides.empty()) {
-      pool_node.AddAttribute("strides", strides);
-    }
-
-    pool_node.AddAttribute("auto_pad", auto_pad);
-
-    if (!pads.empty() && auto_pad == "NOTSET") {
-      pool_node.AddAttribute("pads", pads);
-    }
-
-    if (count_include_pad > 0) {
-      pool_node.AddAttribute("count_include_pad", count_include_pad);
-    }
-
-    // op_output -> Q -> DQ -> output
-    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, averagepool_output,
-                                                     output_qparams[0].scale, output_qparams[0].zero_point);
-  };
-}
-
 // Runs an AveragePool model on the QNN CPU backend. Checks the graph node assignment, and that inference
 // outputs for QNN and CPU match.
-static void RunAveragePoolOpTest(const TestInputDef<float>& input_def,
-                                 const std::vector<int64_t>& kernel_shape,
-                                 const std::vector<int64_t>& strides,
-                                 const std::vector<int64_t>& pads,
-                                 int64_t count_include_pad,
-                                 const std::string& auto_pad,
+static void RunAveragePoolOpTest(const std::string& op_type,
+                                 const std::vector<TestInputDef<float>>& input_defs,
+                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                  ExpectedEPNodeAssignment expected_ep_assignment,
                                  int opset = 18) {
   ProviderOptions provider_options;
@@ -106,7 +32,7 @@ static void RunAveragePoolOpTest(const TestInputDef<float>& input_def,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildAveragePoolTestCase(input_def, kernel_shape, strides, pads, count_include_pad, auto_pad),
+  RunQnnModelTest(BuildOpTestCase<float>(op_type, input_defs, {}, attrs),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -115,14 +41,11 @@ static void RunAveragePoolOpTest(const TestInputDef<float>& input_def,
 // Runs a QDQ AveragePool model on the QNN HTP backend. Checks the graph node assignment, and that accuracy
 // on QNN EP is at least as good as on CPU EP.
 template <typename QuantType>
-static void RunQDQAveragePoolOpTest(const TestInputDef<float>& input_def,
-                                    const std::vector<int64_t>& kernel_shape,
-                                    const std::vector<int64_t>& strides,
-                                    const std::vector<int64_t>& pads,
-                                    int64_t count_include_pad,
-                                    const std::string& auto_pad,
+static void RunQDQAveragePoolOpTest(const std::string& op_type,
+                                    const std::vector<TestInputDef<float>>& input_defs,
+                                    const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                     ExpectedEPNodeAssignment expected_ep_assignment,
-                                    int opset = 18, float fp32_abs_err = 1e-5f) {
+                                    int opset = 18) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -130,13 +53,11 @@ static void RunQDQAveragePoolOpTest(const TestInputDef<float>& input_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildAveragePoolTestCase(input_def, kernel_shape, strides, pads, count_include_pad, auto_pad),
-                       BuildAveragePoolQDQTestCase<QuantType>(input_def, kernel_shape, strides, pads, count_include_pad,
-                                                              auto_pad),
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input_defs, {}, attrs),
+                       BuildQDQOpTestCase<QuantType>(op_type, input_defs, {}, attrs),
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       fp32_abs_err);
+                       expected_ep_assignment);
 }
 
 //
@@ -144,46 +65,48 @@ static void RunQDQAveragePoolOpTest(const TestInputDef<float>& input_def,
 //
 
 // AveragePool with kernel size equal to the spatial dimension of input tensor.
-TEST_F(QnnCPUBackendTests, AveragePool_Global) {
-  RunAveragePoolOpTest(TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // random input
-                       {3, 3},                                                   // kernel_shape
-                       {3, 3},                                                   // strides
-                       {0, 0, 0, 0},                                             // pads
-                       0,                                                        // count_include_pad
-                       "NOTSET",
+TEST_F(QnnCPUBackendTests, AveragePool_AsGlobal) {
+  RunAveragePoolOpTest("AveragePool",
+                       {TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 18))},
+                       {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                        utils::MakeAttribute("strides", std::vector<int64_t>{3, 3})},
+                       ExpectedEPNodeAssignment::All);
+}
+
+// Test GlobalAveragePool on QNN CPU backend.
+TEST_F(QnnCPUBackendTests, GlobalAveragePool) {
+  RunAveragePoolOpTest("GlobalAveragePool",
+                       {TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 18))},
+                       {},
                        ExpectedEPNodeAssignment::All);
 }
 
 // AveragePool that counts padding.
 TEST_F(QnnCPUBackendTests, AveragePool_CountIncludePad) {
-  RunAveragePoolOpTest(TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // random input
-                       {1, 1},                                                   // kernel_shape
-                       {1, 1},                                                   // strides
-                       {0, 0, 0, 0},                                             // pads
-                       1,                                                        // count_include_pad
-                       "NOTSET",
+  RunAveragePoolOpTest("AveragePool",
+                       {TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 18))},
+                       {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                        utils::MakeAttribute("count_include_pad", static_cast<int64_t>(1))},
                        ExpectedEPNodeAssignment::All);
 }
 
 // AveragePool that use auto_pad 'SAME_UPPER'.
 TEST_F(QnnCPUBackendTests, AveragePool_AutopadSameUpper) {
-  RunAveragePoolOpTest(TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // random input
-                       {1, 1},                                                   // kernel_shape
-                       {1, 1},                                                   // strides
-                       {},                                                       // pads
-                       1,                                                        // count_include_pad
-                       "SAME_UPPER",
+  RunAveragePoolOpTest("AveragePool",
+                       {TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 18))},
+                       {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                        utils::MakeAttribute("count_include_pad", static_cast<int64_t>(1)),
+                        utils::MakeAttribute("auto_pad", "SAME_UPPER")},
                        ExpectedEPNodeAssignment::All);
 }
 
 // AveragePool that use auto_pad 'SAME_LOWER'.
 TEST_F(QnnCPUBackendTests, AveragePool_AutopadSameLower) {
-  RunAveragePoolOpTest(TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // random input
-                       {1, 1},                                                   // kernel_shape
-                       {1, 1},                                                   // strides
-                       {},                                                       // pads
-                       1,                                                        // count_include_pad
-                       "SAME_LOWER",
+  RunAveragePoolOpTest("AveragePool",
+                       {TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 18))},
+                       {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                        utils::MakeAttribute("count_include_pad", static_cast<int64_t>(1)),
+                        utils::MakeAttribute("auto_pad", "SAME_LOWER")},
                        ExpectedEPNodeAssignment::All);
 }
 
@@ -193,15 +116,23 @@ TEST_F(QnnCPUBackendTests, AveragePool_AutopadSameLower) {
 //
 
 // QDQ AveragePool with kernel size equal to the spatial dimension of input tensor.
-TEST_F(QnnHTPBackendTests, AveragePool_Global_HTP) {
+TEST_F(QnnHTPBackendTests, AveragePool_AsGlobal) {
   std::vector<float> input = {32.1289f, -59.981f, -17.2799f, 62.7263f, 33.6205f, -19.3515f, -54.0113f, 37.5648f, 61.5357f,
                               -52.5769f, 27.3637f, -9.01382f, -65.5612f, 19.9497f, -47.9228f, 26.9813f, 83.064f, 0.362503f};
-  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, input),
-                                   {3, 3},        // kernel_shape
-                                   {3, 3},        // strides
-                                   {0, 0, 0, 0},  // pads
-                                   0,             // count_include_pad
-                                   "NOTSET",
+  RunQDQAveragePoolOpTest<uint8_t>("AveragePool",
+                                   {TestInputDef<float>({1, 2, 3, 3}, false, input)},
+                                   {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                    utils::MakeAttribute("strides", std::vector<int64_t>{3, 3})},
+                                   ExpectedEPNodeAssignment::All);
+}
+
+// Test accuracy for 8-bit QDQ GlobalAveragePool with input of rank 4.
+TEST_F(QnnHTPBackendTests, GlobalAveragePool) {
+  std::vector<float> input = GetFloatDataInRange(-32.0f, 32.0f, 18);
+
+  RunQDQAveragePoolOpTest<uint8_t>("GlobalAveragePool",
+                                   {TestInputDef<float>({1, 2, 3, 3}, false, input)},
+                                   {},
                                    ExpectedEPNodeAssignment::All);
 }
 
@@ -210,12 +141,10 @@ TEST_F(QnnHTPBackendTests, AveragePool_CountIncludePad_HTP_u8) {
   std::vector<float> input = {-9.0f, -7.33f, -6.0f, -5.0f, -4.0f, -3.0f, -2.0f, -1.0f, 0.0f,
                               1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
 
-  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, input),
-                                   {1, 1},        // kernel_shape
-                                   {1, 1},        // strides
-                                   {0, 0, 0, 0},  // pads
-                                   1,             // count_include_pad
-                                   "NOTSET",
+  RunQDQAveragePoolOpTest<uint8_t>("AveragePool",
+                                   {TestInputDef<float>({1, 2, 3, 3}, false, input)},
+                                   {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                                    utils::MakeAttribute("count_include_pad", static_cast<int64_t>(1))},
                                    ExpectedEPNodeAssignment::All,
                                    18);
 }
@@ -225,12 +154,10 @@ TEST_F(QnnHTPBackendTests, AveragePool_AutopadSameUpper_HTP_u8) {
   std::vector<float> input = {-9.0f, -7.33f, -6.0f, -5.0f, -4.0f, -3.0f, -2.0f, -1.0f, 0.0f,
                               1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
 
-  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, input),
-                                   {1, 1},  // kernel_shape
-                                   {1, 1},  // strides
-                                   {},      // pads
-                                   0,       // count_include_pad
-                                   "SAME_UPPER",
+  RunQDQAveragePoolOpTest<uint8_t>("AveragePool",
+                                   {TestInputDef<float>({1, 2, 3, 3}, false, input)},
+                                   {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                                    utils::MakeAttribute("auto_pad", "SAME_UPPER")},
                                    ExpectedEPNodeAssignment::All,
                                    18);
 }
@@ -240,12 +167,10 @@ TEST_F(QnnHTPBackendTests, AveragePool_AutopadSameLower_HTP_u8) {
   std::vector<float> input = {-9.0f, -7.33f, -6.0f, -5.0f, -4.0f, -3.0f, -2.0f, -1.0f, 0.0f,
                               1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
 
-  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, input),
-                                   {1, 1},  // kernel_shape
-                                   {1, 1},  // strides
-                                   {},      // pads
-                                   0,       // count_include_pad
-                                   "SAME_LOWER",
+  RunQDQAveragePoolOpTest<uint8_t>("AveragePool",
+                                   {TestInputDef<float>({1, 2, 3, 3}, false, input)},
+                                   {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                                    utils::MakeAttribute("auto_pad", "SAME_LOWER")},
                                    ExpectedEPNodeAssignment::All,
                                    18);
 }

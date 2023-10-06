@@ -3,11 +3,8 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 
 #include <cmath>
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
+#include "core/graph/onnx_protobuf.h"
+
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 
@@ -3006,7 +3003,7 @@ Having this op allows runtime to do operator re-ordering to reduce compute FLOPs
   }
 #endif
 
-#ifdef USE_MPI
+#ifdef ORT_USE_NCCL
   RegisterCollectiveOps();
 #endif
 }

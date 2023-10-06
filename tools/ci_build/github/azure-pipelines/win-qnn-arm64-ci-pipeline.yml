@@ -1,9 +1,38 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 parameters:
 
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.12.1.230626_win
+  default: qnn-v2.14.1.230828_win
 
 jobs:
 - job: 'build'
@@ -41,7 +70,7 @@ jobs:
   - task: NuGetToolInstaller@1
     inputs:
       versionSpec: 6.4.x
-     
+
   - task: PythonScript@0
     displayName: 'Build'
     inputs:

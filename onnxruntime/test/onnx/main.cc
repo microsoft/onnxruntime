@@ -56,6 +56,7 @@ void usage() {
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
       "\t    'high_power_saver', 'low_balanced', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
+      "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
@@ -79,7 +80,7 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino,
   if (useCustom) {
     return TestTolerances(atol, rtol, absolute_overrides, relative_overrides);
   }
-  std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
+  std::ifstream overrides_ifstream(ConcatPathComponent(
       ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
   if (!overrides_ifstream.good()) {
     constexpr double absolute = 1e-3;
@@ -477,6 +478,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_performance_mode. select from: " + str);
           }
+        } else if (key == "qnn_saver_path") {
+          // no validation
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable', 
 'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'htp_performance_mode'])");
@@ -724,20 +727,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
                                                      ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
     static const ORTCHAR_T* qnn_disabled_tests[] = {
-        ORT_TSTR("basic_conv_without_padding"),
-        ORT_TSTR("basic_conv_with_padding"),
-        ORT_TSTR("convtranspose"),
-        ORT_TSTR("convtranspose_autopad_same"),
-        ORT_TSTR("convtranspose_dilations"),
-        ORT_TSTR("convtranspose_kernel_shape"),
-        ORT_TSTR("convtranspose_output_shape"),
-        ORT_TSTR("convtranspose_pad"),
-        ORT_TSTR("convtranspose_pads"),
-        ORT_TSTR("convtranspose_with_kernel"),
-        ORT_TSTR("conv_with_autopad_same"),
-        ORT_TSTR("conv_with_strides_and_asymmetric_padding"),
-        ORT_TSTR("conv_with_strides_no_padding"),
-        ORT_TSTR("conv_with_strides_padding"),
         ORT_TSTR("nllloss_NCd1d2d3_none_no_weight_negative_ii"),
         ORT_TSTR("nllloss_NCd1d2d3_none_no_weight_negative_ii_expanded"),
         ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii"),
@@ -1236,6 +1225,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     broken_tests.insert({"sce_sum_expanded", "result differs"});
     broken_tests.insert({"sce_sum_log_prob", "result differs"});
     broken_tests.insert({"sce_sum_log_prob_expanded", "result differs"});
+    broken_tests.insert({"gridsample_reflection_padding", "result differs"});
+    broken_tests.insert({"spacetodepth", "result differs"});
   }
 #if defined(_WIN32) && !defined(_WIN64)
   broken_tests.insert({"vgg19", "failed: bad allocation"});

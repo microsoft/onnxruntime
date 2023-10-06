@@ -202,6 +202,20 @@ struct Tensorrt_Provider : Provider {
       trt_options.trt_tactic_sources = (const char*)dest;
     }
 
+    str_size = internal_options.extra_plugin_lib_paths.size();
+    if (str_size == 0) {
+      trt_options.trt_extra_plugin_lib_paths = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.extra_plugin_lib_paths.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.extra_plugin_lib_paths.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_options.trt_extra_plugin_lib_paths = (const char*)dest;
+    }
+
     str_size = internal_options.profile_min_shapes.size();
     if (str_size == 0) {
       trt_options.trt_profile_min_shapes = nullptr;

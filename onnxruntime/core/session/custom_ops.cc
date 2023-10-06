@@ -27,6 +27,10 @@ static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
 static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+static constexpr uint32_t min_ort_version_with_compute_v2_support = 17;
+#endif
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv9()
 #else
@@ -126,6 +130,22 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelCon
   }
   std::unique_ptr<onnxruntime::OrtAllocatorImplWrappingIAllocator> p = std::make_unique<onnxruntime::OrtAllocatorImplWrappingIAllocator>(std::move(allocator));
   *out = p.release();
+  return nullptr;
+  API_IMPL_END
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resource_version, _In_ int resource_id, _Outptr_ void** resource) {
+  API_IMPL_BEGIN
+  *resource = {};
+  const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
+  auto* stream = reinterpret_cast<onnxruntime::Stream*>(ctx->GetComputeStream());
+  if (!stream) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Failed to fetch a stream hosting the requested resource");
+  }
+  *resource = stream->GetResource(resource_version, resource_id);
+  if (!(*resource)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Requested resource does not exist");
+  }
   return nullptr;
   API_IMPL_END
 };
@@ -408,7 +428,8 @@ struct CustomOpKernel : OpKernel {
       ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
     }
 
-    if (op_.version > 15 && op_.KernelCompute == 0) {
+    if (op_.version >= min_ort_version_with_compute_v2_support &&
+        op_.CreateKernelV2) {
       op_kernel_ = nullptr;
       Ort::ThrowOnError(
           op_.CreateKernelV2(
@@ -427,13 +448,14 @@ struct CustomOpKernel : OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    if (op_.version > 15 && op_.KernelCompute == 0) {
+    if (op_.version >= min_ort_version_with_compute_v2_support &&
+        op_.KernelComputeV2) {
       auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
       return ToStatus(status_ptr);
+    } else {
+      op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
+      return Status::OK();
     }
-
-    op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
-    return Status::OK();
   }
 
  private:

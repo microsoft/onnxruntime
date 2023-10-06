@@ -1,3 +1,32 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 jobs:
 - job: iOS_CI_on_Mac
   pool:
@@ -8,21 +37,6 @@ jobs:
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 150
   steps:
-    - template: templates/mac-build-step-with-cache.yml
-      parameters:
-        WithCache: true
-        Today: $(TODAY)
-        AdditionalKey: ' protobuf | "$(Agent.OS)" | $(Build.SourcesDirectory)/cmake/deps.txt, $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh'
-        CacheDir: $(PROTO_CACHE_DIR)
-        ChangeEveryCommit: false
-        BuildStep:
-          - script: |
-              $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh \
-                -p $(Build.BinariesDirectory)/protobuf_install -d $(Build.SourcesDirectory)/cmake/deps.txt
-            displayName: Install protobuf
-            env:
-              CCACHE_DIR: $(PROTO_CACHE_DIR)
-
     - template: templates/use-xcode-version.yml
     - template: templates/mac-build-step-with-cache.yml
       parameters:
@@ -46,7 +60,6 @@ jobs:
                 --use_xcode \
                 --config RelWithDebInfo \
                 --build_apple_framework \
-                --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
                 --parallel
             displayName: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
             env:

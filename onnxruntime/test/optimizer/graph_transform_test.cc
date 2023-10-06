@@ -83,6 +83,7 @@
 #include "test/util/include/test_utils.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
 #include "core/optimizer/double_qdq_pairs_remover.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
@@ -155,22 +156,42 @@ TEST_F(GraphTransformationTests, IdentityWithSharedNodeArgNotEliminated) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
+// Runs a model to ensure that common subexpression elimination does not eliminate
+// DequantizeLinear nodes.
 TEST_F(GraphTransformationTests, DequantizeLinearNodeNotEliminated) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.onnx";
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["DequantizeLinear"], 25);
+  auto test_case = [](const ORTCHAR_T* model_uri,
+                      bool use_contrib_qdq,
+                      const logging::Logger& logger) {
+    const char* dq_key = use_contrib_qdq ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
+    Graph& graph = model->MainGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count[dq_key], 25);
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
-                                                     TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
+                                                       TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
 
-  // CommonSubexpressionElimination should skip the DequantizeLinear nodes
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["DequantizeLinear"], 25);
+    // CommonSubexpressionElimination should skip the DequantizeLinear nodes
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count[dq_key], 25);
+  };
+
+  test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.onnx",
+            false,  // use_contrib_qdq
+            *logger_);
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Test with 8-bit com.microsoft.DequantizeLinear
+  test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq_contrib.onnx",
+            true,  // use_contrib_qdq
+            *logger_);
+  // Test with 16-bit com.microsoft.DequantizeLinear
+  test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq16_contrib.onnx",
+            true,  // use_contrib_qdq
+            *logger_);
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 }
 
 TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
@@ -592,6 +613,36 @@ TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   }
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "constant_float16_mul.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Mul"] == 1);
+  std::unique_ptr<CPUExecutionProvider> e =
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
+
+  // assign all nodes to CUDA. the constant folding should try folding the node on the CPU and fail, thus leaving the
+  // EP as CUDA and not constant folding the node.
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Mul"] == 1);
+
+  // all nodes should still be on CUDA
+  for (auto& node : graph.Nodes()) {
+    EXPECT_STREQ(node.GetExecutionProviderType().c_str(), kCudaExecutionProvider);
+  }
+}
+
 TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
   TensorProto value_tensor;
   value_tensor.add_dims(1);
@@ -785,76 +836,119 @@ static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<s
   }
 }
 
+// Runs a model that checks constant folding with DequantizeLinear nodes.
 TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_dequantizelinear.onnx";
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["QuantizeLinear"] == 1);
-  ASSERT_TRUE(op_to_count["DequantizeLinear"] == 3);
-  ASSERT_TRUE(op_to_count["Conv"] == 1);
+  auto test_case = [](const ORTCHAR_T* model_uri,
+                      bool use_contrib_qdq,
+                      const logging::Logger& logger) {
+    const char* q_key = use_contrib_qdq ? "com.microsoft.QuantizeLinear" : "QuantizeLinear";
+    const char* dq_key = use_contrib_qdq ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
 
-  std::unordered_map<std::string, int> expected_op_counts = {{"QuantizeLinear", 1},
-                                                             {"DequantizeLinear", 3},
-                                                             {"Conv", 1}};
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
+    Graph& graph = model->MainGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count[q_key] == 1);
+    ASSERT_TRUE(op_to_count[dq_key] == 3);
+    ASSERT_TRUE(op_to_count["Conv"] == 1);
 
-  SessionOptions session_options;
-  // Check DequantizeLinear aren't constant folded for default setting.
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+    std::unordered_map<std::string, int> expected_op_counts = {{q_key, 1},
+                                                               {dq_key, 3},
+                                                               {"Conv", 1}};
 
-  // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0"));
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+    SessionOptions session_options;
+    // Check DequantizeLinear aren't constant folded for default setting.
+    VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
 
-  // set SessionOptionsEnableQuantQDQ to disable it
-  expected_op_counts["DequantizeLinear"] = 1;
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+    // set kOrtSessionOptionsDisableQuantQDQ to enable it explicitly
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "0"));
+    VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
+
+    // set SessionOptionsEnableQuantQDQ to disable it
+    expected_op_counts[dq_key] = 1;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+    VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
+  };
+
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.onnx",
+            false, *logger_);
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Test with 8-bit contrib QDQ ops
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq_contrib.onnx",
+            true, *logger_);
+  // Test with 16-bit contrib QDQ ops
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq16_contrib.onnx",
+            true, *logger_);
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 }
 
 // model with 2 QDQ node units that can be constant folded as they are simple DQ -> Node -> Q where DQ and Node have
 // single consumer and do not produce graph outputs. Node is deterministic.
 // there are also other DQ nodes that should be ignored.
 TEST_F(GraphTransformationTests, ConstantFoldingQDQNodeUnit) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.onnx";
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["QuantizeLinear"] == 3);
-  ASSERT_TRUE(op_to_count["DequantizeLinear"] == 4);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 1);
-  ASSERT_TRUE(op_to_count["Transpose"] == 1);
+  auto test_case = [](const ORTCHAR_T* model_uri, bool use_contrib_qdq, const logging::Logger& logger) {
+    const char* q_key = use_contrib_qdq ? "com.microsoft.QuantizeLinear" : "QuantizeLinear";
+    const char* dq_key = use_contrib_qdq ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
 
-  SessionOptions session_options;
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
+    Graph& graph = model->MainGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count[q_key] == 3);
+    ASSERT_TRUE(op_to_count[dq_key] == 4);
+    ASSERT_TRUE(op_to_count["Unsqueeze"] == 1);
+    ASSERT_TRUE(op_to_count["Transpose"] == 1);
 
-  // 2 QDQ node units should be constant folded and go away
-  std::unordered_map<std::string, int> expected_op_counts = {{"QuantizeLinear", 1},
-                                                             {"DequantizeLinear", 2},
-                                                             {"Transpose", 0},
-                                                             {"Unsqueeze", 0}};
+    SessionOptions session_options;
 
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+    // 2 QDQ node units should be constant folded and go away
+    std::unordered_map<std::string, int> expected_op_counts = {{q_key, 1},
+                                                               {dq_key, 2},
+                                                               {"Transpose", 0},
+                                                               {"Unsqueeze", 0}};
+
+    VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
+  };
+
+  test_case(MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.onnx", false, *logger_);
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Test with 8-bit com.microsoft.Q/DQ
+  test_case(MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.qdq_contrib.onnx", true, *logger_);
+  // Test with 16-bit com.microsoft.Q/DQ
+  test_case(MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.qdq16_contrib.onnx", true, *logger_);
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 }
 
 // Simple QDQ Node Unit but shouldn't be constant folded as the node in the middle produces a graph output
 TEST_F(GraphTransformationTests, ConstantFoldingQDQNodeUnitGraphOutput) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.graph_output.onnx";
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["QuantizeLinear"] == 2);
-  ASSERT_TRUE(op_to_count["DequantizeLinear"] == 3);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 1);
+  auto test_case = [](const ORTCHAR_T* model_uri, bool use_contrib_qdq, const logging::Logger& logger) {
+    const char* q_key = use_contrib_qdq ? "com.microsoft.QuantizeLinear" : "QuantizeLinear";
+    const char* dq_key = use_contrib_qdq ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
 
-  std::unordered_map<std::string, int> expected_op_counts = {{"QuantizeLinear", 2},
-                                                             {"DequantizeLinear", 3},
-                                                             {"Unsqueeze", 1}};
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
+    Graph& graph = model->MainGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count[q_key] == 2);
+    ASSERT_TRUE(op_to_count[dq_key] == 3);
+    ASSERT_TRUE(op_to_count["Unsqueeze"] == 1);
 
-  SessionOptions session_options;
-  VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, *logger_);
+    std::unordered_map<std::string, int> expected_op_counts = {{q_key, 2},
+                                                               {dq_key, 3},
+                                                               {"Unsqueeze", 1}};
+
+    SessionOptions session_options;
+    VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
+  };
+
+  test_case(MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.graph_output.onnx", false, *logger_);
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Test with 8-bit contrib QDQ ops
+  test_case(MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.graph_output.qdq_contrib.onnx", true, *logger_);
+
+  // Test with 16-bit contrib QDQ ops
+  test_case(MODEL_FOLDER "fusion/constant_folding_qdq_node_unit.graph_output.qdq16_contrib.onnx", true, *logger_);
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 }
 
 TEST_F(GraphTransformationTests, ConstantFolding_RemoveDanglingInputNodesToConstantFoldedNode) {
@@ -904,6 +998,26 @@ TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   // output is subsequently constant folded to leave the graph with no
   // nodes.
   ASSERT_TRUE(op_to_count.size() == 0U);
+}
+
+// Test we don't fail when constant folding hits a string initializer
+TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "gh_issue_17392.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count.size(), 0U) << "Identity node should have been removed";
 }
 
 // Check transformations in the case of a subgraph with constant inputs.
@@ -3766,12 +3880,12 @@ TEST_F(GraphTransformationTests, DoublQDQRemover_RemoveDupQDQ) {
   std::string zp_name_after_reshape_node;
   for (auto& node : graph.Nodes()) {
     if (node.Name() == "dq_2") {
-      dq_scale_name_before_reshape_node = node.InputDefs()[InputIndex::SCALE_ID]->Name();
-      zp_name_before_reshape_node = node.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+      dq_scale_name_before_reshape_node = node.InputDefs()[QDQ::InputIndex::SCALE_ID]->Name();
+      zp_name_before_reshape_node = node.InputDefs()[QDQ::InputIndex::ZERO_POINT_ID]->Name();
     }
     if (node.Name() == "q_3") {
-      dq_scale_name_after_reshape_node = node.InputDefs()[InputIndex::SCALE_ID]->Name();
-      zp_name_after_reshape_node = node.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+      dq_scale_name_after_reshape_node = node.InputDefs()[QDQ::InputIndex::SCALE_ID]->Name();
+      zp_name_after_reshape_node = node.InputDefs()[QDQ::InputIndex::ZERO_POINT_ID]->Name();
     }
   }
   EXPECT_EQ(dq_scale_name_before_reshape_node.empty(), false);
@@ -6186,7 +6300,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
 TEST_F(GraphTransformationTests, GatherToSplitFusion) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* data_arg = builder.MakeInput<float>({{54}});
-    auto* shape_arg = builder.MakeInput<int64_t>({{1}});
+    auto* shape_arg = builder.MakeInput<int64_t>({{4}});
     auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 3, 3}});
     auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
     auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
@@ -6299,7 +6413,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
 TEST_F(GraphTransformationTests, GatherToSplitFusion_NoSqueeze) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* data_arg = builder.MakeInput<float>({{54}});
-    auto* shape_arg = builder.MakeInput<int64_t>({{1}});
+    auto* shape_arg = builder.MakeInput<int64_t>({{4}});
     auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 3, 3}});
     auto* gather_index_1 = builder.MakeInitializer<int64_t>({1}, {static_cast<int64_t>(0)});
     auto* gather_index_2 = builder.MakeInitializer<int64_t>({1}, {static_cast<int64_t>(1)});

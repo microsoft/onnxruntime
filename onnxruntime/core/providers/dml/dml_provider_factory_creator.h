@@ -21,5 +21,6 @@ struct DMLProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> CreateDXCore(
 	  std::vector<Microsoft::WRL::ComPtr<IDXCoreAdapter>>&& dxcore_devices);
   static Microsoft::WRL::ComPtr<ID3D12Device> CreateD3D12Device(int device_id, bool skip_software_device_check);
+  static Microsoft::WRL::ComPtr<IDMLDevice> CreateDMLDevice(ID3D12Device* d3d12_device);
 };
 }  // namespace onnxruntime

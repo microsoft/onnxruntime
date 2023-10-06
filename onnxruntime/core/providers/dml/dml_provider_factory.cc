@@ -35,25 +35,18 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   ~DMLProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  void SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode);
 
   void SetMetacommandsEnabled(bool metacommands_enabled);
 
  private:
   ComPtr<IDMLDevice> dml_device_{};
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
-  AllocatorRoundingMode rounding_mode_ = AllocatorRoundingMode::Enabled;
   bool metacommands_enabled_ = true;
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
   auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_);
-  Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
   return provider;
-}
-
-void DMLProviderFactory::SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode) {
-  rounding_mode_ = rounding_mode;
 }
 
 void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
@@ -81,11 +74,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
   auto luid = d3d12_device->GetAdapterLuid();
   env.GetTelemetryProvider().LogExecutionProviderEvent(&luid);
   return std::make_shared<onnxruntime::DMLProviderFactory>(dml_device, cmd_queue);
-}
-
-void DmlConfigureProviderFactoryDefaultRoundingMode(IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode) {
-  auto dml_provider_factory = static_cast<DMLProviderFactory*>(factory);
-  dml_provider_factory->SetDefaultRoundingMode(rounding_mode);
 }
 
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled) {
@@ -143,19 +131,13 @@ Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Devic
   return d3d12_device;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateDMLDeviceAndProviderFactory(ID3D12Device* d3d12_device) {
-  D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
-  cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-  cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
-
-  ComPtr<ID3D12CommandQueue> cmd_queue;
-  ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
-
+Microsoft::WRL::ComPtr<IDMLDevice> DMLProviderFactoryCreator::CreateDMLDevice(ID3D12Device* d3d12_device)
+{
   DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
 
   // In debug builds, enable the DML debug layer if the D3D12 debug layer is also enabled
 #if _DEBUG && !_GAMING_XBOX
-  ComPtr<ID3D12DebugDevice> debug_device;
+  Microsoft::WRL::ComPtr<ID3D12DebugDevice> debug_device;
   (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device));  // ignore failure
   const bool is_d3d12_debug_layer_enabled = (debug_device != nullptr);
 
@@ -164,12 +146,25 @@ std::shared_ptr<IExecutionProviderFactory> CreateDMLDeviceAndProviderFactory(ID3
   }
 #endif
 
-  ComPtr<IDMLDevice> dml_device;
-  ORT_THROW_IF_FAILED(DMLCreateDevice1(d3d12_device,
-                                   flags,
-                                   DML_FEATURE_LEVEL_5_0,
-                                   IID_PPV_ARGS(&dml_device)));
+  Microsoft::WRL::ComPtr<IDMLDevice> dml_device;
+  ORT_THROW_IF_FAILED(DMLCreateDevice1(
+      d3d12_device,
+      flags,
+      DML_FEATURE_LEVEL_5_0,
+      IID_PPV_ARGS(&dml_device)));
 
+  return dml_device;
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateDMLDeviceAndProviderFactory(ID3D12Device* d3d12_device) {
+  D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
+  cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+  cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
+
+  ComPtr<ID3D12CommandQueue> cmd_queue;
+  ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+
+  auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device);
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
 }
 
@@ -289,7 +284,7 @@ API_IMPL_BEGIN
     // Move this to another static helper... add coments about the use case...
     // DML prefers the HighPerformance adapter by default
     std::array<DXCoreAdapterPreference, 1> adapter_list_preferences = {
-        DXCoreAdapterPreference::HighPerformance 
+        DXCoreAdapterPreference::HighPerformance
     };
 
     // If callers specify minimum power change the DXCore sort policy
@@ -298,8 +293,10 @@ API_IMPL_BEGIN
     {
         adapter_list_preferences[0] = DXCoreAdapterPreference::MinimumPower;
     }
-    
-    ORT_THROW_IF_FAILED(adapter_list->Sort(adapter_list_preferences.size(), adapter_list_preferences.data()));
+
+    ORT_THROW_IF_FAILED(adapter_list->Sort(
+      static_cast<uint32_t>(adapter_list_preferences.size()),
+      adapter_list_preferences.data()));
 
     // Struct for holding each adapter
     struct AdapterInfo {
@@ -333,7 +330,7 @@ API_IMPL_BEGIN
             // default is false because GPUs are considered higher priority in
             // a mixed adapter environment
             bool npus_first_ = false;
-            
+
             SortingPolicy(bool npus_first = false) : npus_first_(npus_first)
             {
             }

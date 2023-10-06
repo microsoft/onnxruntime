@@ -404,6 +404,9 @@ if (onnxruntime_USE_CUDA)
     if (NOT onnxruntime_USE_NCCL)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/nccl_kernels.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding_spec.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_matmul.cc"
       )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
@@ -452,7 +455,6 @@ if (onnxruntime_USE_CUDA)
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
       )
-
       list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_nccl_op_srcs})
     endif()
   endif()
@@ -460,13 +462,17 @@ if (onnxruntime_USE_CUDA)
   if (onnxruntime_REDUCED_OPS_BUILD)
     substitute_op_reduction_srcs(onnxruntime_providers_cuda_src)
   endif()
-  # cuda_provider_interface.cc is removed from the object target: onnxruntime_providers_cuda_obj and
-  # add to the lib onnxruntime_providers_cuda separatedly.
-  # onnxruntime_providers_cuda_ut can share all the object files with onnxruntime_providers_cuda except cuda_provider_interface.cc.
-  set(cuda_provider_interface_src ${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_provider_interface.cc)
-  list(REMOVE_ITEM onnxruntime_providers_cuda_src ${cuda_provider_interface_src})
-  onnxruntime_add_object_library(onnxruntime_providers_cuda_obj ${onnxruntime_providers_cuda_src})
-  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${cuda_provider_interface_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
+    # cuda_provider_interface.cc is removed from the object target: onnxruntime_providers_cuda_obj and
+    # add to the lib onnxruntime_providers_cuda separatedly.
+    # onnxruntime_providers_cuda_ut can share all the object files with onnxruntime_providers_cuda except cuda_provider_interface.cc.
+    set(cuda_provider_interface_src ${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_provider_interface.cc)
+    list(REMOVE_ITEM onnxruntime_providers_cuda_src ${cuda_provider_interface_src})
+    onnxruntime_add_object_library(onnxruntime_providers_cuda_obj ${onnxruntime_providers_cuda_src})
+    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${cuda_provider_interface_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  else()
+    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
+  endif()
   # config_cuda_provider_shared_module can be used to config onnxruntime_providers_cuda_obj, onnxruntime_providers_cuda & onnxruntime_providers_cuda_ut.
   # This function guarantees that all 3 targets have the same configurations.
   function(config_cuda_provider_shared_module target)
@@ -529,7 +535,7 @@ if (onnxruntime_USE_CUDA)
       target_link_libraries(${target} PRIVATE cuda)
     endif()
 
-    if (onnxruntime_USE_FLASH_ATTENTION)
+    if (onnxruntime_USE_FLASH_ATTENTION OR onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       include(cutlass)
       target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
     endif()
@@ -545,7 +551,7 @@ if (onnxruntime_USE_CUDA)
       target_link_libraries(${target} PRIVATE cupti)
     endif()
 
-    if (onnxruntime_ENABLE_NVTX_PROFILE)
+    if (onnxruntime_ENABLE_NVTX_PROFILE AND NOT WIN32)
       target_link_libraries(${target} PRIVATE nvToolsExt)
     endif()
 
@@ -600,7 +606,9 @@ if (onnxruntime_USE_CUDA)
       target_compile_definitions(${target} PRIVATE ENABLE_ATEN)
     endif()
   endfunction()
-  config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
+  if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
+    config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
+  endif()
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
 
   install(TARGETS onnxruntime_providers_cuda
@@ -694,6 +702,13 @@ if (onnxruntime_USE_TENSORRT)
   endif()
   set(CXX_VERSION_DEFINED TRUE)
 
+  # There is an issue when running "Debug build" TRT EP with "Release build" TRT builtin parser on Windows.
+  # We enforce following workaround for now until the real fix.
+  if (WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(onnxruntime_USE_TENSORRT_BUILTIN_PARSER OFF)
+    MESSAGE(STATUS "[Note] There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows. This build will use tensorrt oss parser instead.")
+  endif()
+
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     # Add TensorRT library
     find_path(TENSORRT_INCLUDE_DIR NvInfer.h
@@ -722,6 +737,7 @@ if (onnxruntime_USE_TENSORRT)
     onnxruntime_fetchcontent_makeavailable(onnx_tensorrt)
     include_directories(${onnx_tensorrt_SOURCE_DIR})
     set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
+    set(CUDA_INCLUDE_DIR ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}) # onnx-tensorrt repo needs this variable to build
     if ( CMAKE_COMPILER_IS_GNUCC )
       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
     endif()
@@ -1065,7 +1081,7 @@ if (onnxruntime_USE_WEBNN)
 
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_webnn_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_webnn ${onnxruntime_providers_webnn_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_webnn onnxruntime_common onnx onnx_proto Boost::mp11)
+  onnxruntime_add_include_to_target(onnxruntime_providers_webnn onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
   add_dependencies(onnxruntime_providers_webnn onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_webnn PROPERTIES FOLDER "ONNXRuntime")
@@ -1276,7 +1292,7 @@ if (onnxruntime_USE_DML)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_dml
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface WIL::WIL
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${WIL_TARGET}
   )
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE
@@ -1496,7 +1512,7 @@ if (onnxruntime_USE_ROCM)
   add_definitions(-DUSE_ROCM=1)
   include(onnxruntime_rocm_hipify.cmake)
 
-  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME}/rccl ${onnxruntime_ROCM_HOME}/roctracer)
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME})
 
   find_package(HIP)
   find_package(hiprand REQUIRED)
@@ -1505,12 +1521,21 @@ if (onnxruntime_USE_ROCM)
 
   # MIOpen version
   if(NOT DEFINED ENV{MIOPEN_PATH})
-    set(MIOPEN_PATH ${onnxruntime_ROCM_HOME}/miopen)
+    set(MIOPEN_PATH ${onnxruntime_ROCM_HOME})
   else()
     set(MIOPEN_PATH $ENV{MIOPEN_PATH})
   endif()
+  find_path(MIOPEN_VERSION_H_PATH
+    NAMES version.h
+    HINTS
+    ${MIOPEN_PATH}/include/miopen
+    ${MIOPEN_PATH}/miopen/include)
+  if (MIOPEN_VERSION_H_PATH-NOTFOUND)
+    MESSAGE(FATAL_ERROR "miopen version.h not found")
+  endif()
+  MESSAGE(STATUS "Found miopen version.h at ${MIOPEN_VERSION_H_PATH}")
 
-  file(READ ${MIOPEN_PATH}/include/miopen/version.h MIOPEN_HEADER_CONTENTS)
+  file(READ ${MIOPEN_VERSION_H_PATH}/version.h MIOPEN_HEADER_CONTENTS)
         string(REGEX MATCH "define MIOPEN_VERSION_MAJOR * +([0-9]+)"
                                  MIOPEN_VERSION_MAJOR "${MIOPEN_HEADER_CONTENTS}")
         string(REGEX REPLACE "define MIOPEN_VERSION_MAJOR * +([0-9]+)" "\\1"
@@ -1680,6 +1705,8 @@ if (onnxruntime_USE_ROCM)
       device_gemm_instance
       device_gemm_add_fastgelu_instance
       device_gemm_fastgelu_instance
+      device_gemm_splitk_instance
+      device_gemm_streamk_instance
       device_batched_gemm_instance
       device_softmax_instance
     )
@@ -1731,7 +1758,7 @@ if (onnxruntime_USE_TVM)
 
   target_include_directories(onnxruntime_providers_tvm PRIVATE
           ${TVM_INCLUDES}
-          ${PYTHON_INLCUDE_DIRS})
+          ${PYTHON_INCLUDE_DIRS})
   onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
   add_dependencies(onnxruntime_providers_tvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -1783,7 +1810,7 @@ if (onnxruntime_USE_XNNPACK)
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_xnnpack ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_xnnpack
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool Boost::mp11 safeint_interface
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool flatbuffers::flatbuffers Boost::mp11 safeint_interface
   )
 
   add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})

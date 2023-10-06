@@ -42,7 +42,7 @@ jobs:
   variables:
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "MinGW Makefiles" --build_wasm --use_xnnpack --emsdk_version releases-7c905cfc1ca6699f6ccb288ae174902cfbdcf0a2-64bit ${{ parameters.ExtraBuildArgs }}'
+    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "MinGW Makefiles" --build_wasm --use_xnnpack ${{ parameters.ExtraBuildArgs }}'
     runCodesignValidationInjection: false
   timeoutInMinutes: ${{ parameters.TimeoutInMinutes }}
   workspace:
@@ -74,7 +74,7 @@ jobs:
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:
-      versionSpec: '16.x'
+      versionSpec: '18.x'
   - template: download-deps.yml
 
   - task: PythonScript@0

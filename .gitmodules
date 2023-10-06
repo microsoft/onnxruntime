@@ -7,7 +7,4 @@
 [submodule "cmake/external/emsdk"]
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
-	branch = 3.1.37
-[submodule "cmake/external/onnxruntime-extensions"]
-	path = cmake/external/onnxruntime-extensions
-	url = https://github.com/microsoft/onnxruntime-extensions.git
+	branch = 3.1.44

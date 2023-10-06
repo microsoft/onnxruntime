@@ -1,4 +1,5 @@
 #include "testPch.h"
+#include <absl/strings/ascii.h>
 #include "test/onnx/TestCase.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/util/include/test/compare_ortvalue.h"
@@ -377,17 +378,10 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   // The model path is structured like this "<opset>/<model_name>/model.onnx
   // The desired naming of the test is like this <model_name>_<opset>_<CPU/GPU>
   name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_";  // model name
-  name += tokenizedModelPath[tokenizedModelPath.size() - 3];  // opset version
-
-  // To introduce models from model zoo, the model path is structured like this "<source>/<opset>/<model_name>/?.onnx"
-  std::string source = tokenizedModelPath[tokenizedModelPath.size() - 4];
-  // `models` means the root of models, to be ompatible with the old structure, that is, the source name is empty.
-  if (source != "models") {
-    name += "_" + source;
-  }
+  name += tokenizedModelPath[tokenizedModelPath.size() - 3];         // opset version
 
   std::replace_if(
-    name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_'
+    name.begin(), name.end(), [](char c) { return !absl::ascii_isalnum(c); }, '_'
   );
 
   // Determine if test should be skipped, using the generic name (no CPU or GPU suffix yet).
@@ -402,6 +396,13 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   // Check once more with the full name, lest any GPU-specific/CPU-specific cases exist.
   if (!isDisabled) {
     ModifyNameIfDisabledTest(/*inout*/ name, deviceKind);
+  }
+
+  // To introduce models from model zoo, the model path is structured like this "<source>/<opset>/<model_name>/?.onnx"
+  std::string source = tokenizedModelPath[tokenizedModelPath.size() - 4];
+  // `models` means the root of models, to be ompatible with the old structure, that is, the source name is empty.
+  if (source != "models") {
+    name += "_" + source;
   }
 
   return name;

@@ -57,6 +57,9 @@ if (options.globalEnvFlags) {
   if (flags.webgpu?.profilingMode !== undefined) {
     ort.env.webgpu.profilingMode = flags.webgpu.profilingMode;
   }
+  if (flags.webgpu?.validateInputContent !== undefined) {
+    ort.env.webgpu.validateInputContent = flags.webgpu.validateInputContent;
+  }
 }
 
 // Set logging configuration
@@ -110,9 +113,9 @@ for (const group of ORT_WEB_TEST_CONFIG.model) {
               test, ORT_WEB_TEST_CONFIG.profile, ORT_WEB_TEST_CONFIG.options.sessionOptions);
         });
 
-        after('release session', () => {
+        after('release session', async () => {
           if (context) {
-            context.release();
+            await context.release();
           }
         });
 
@@ -137,7 +140,8 @@ for (const group of ORT_WEB_TEST_CONFIG.op) {
         let context: ProtoOpTestContext|OpTestContext;
 
         before('Initialize Context', async () => {
-          context = useProtoOpTest ? new ProtoOpTestContext(test) : new OpTestContext(test);
+          context = useProtoOpTest ? new ProtoOpTestContext(test, ORT_WEB_TEST_CONFIG.options.sessionOptions) :
+                                     new OpTestContext(test);
           await context.init();
           if (ORT_WEB_TEST_CONFIG.profile) {
             if (context instanceof ProtoOpTestContext) {

@@ -2,12 +2,7 @@
 # Licensed under the MIT License.
 
 # Minimum CMake required
-if(WIN32)
-  # TODO: actually we need cmake 3.26+ on Windows but QNN EP's build machine doesn't have it
-  cmake_minimum_required(VERSION 3.25)
-else()
-  cmake_minimum_required(VERSION 3.26)
-endif()
+cmake_minimum_required(VERSION 3.26)
 
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
@@ -19,13 +14,7 @@ cmake_policy(SET CMP0117 NEW)
 cmake_policy(SET CMP0104 OLD)
 
 # Enable Hot Reload for MSVC compilers if supported.
-if (POLICY CMP0141)
-  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.26.0")
-    cmake_policy(SET CMP0141 NEW)
-  else()
-    cmake_policy(SET CMP0141 OLD)
-  endif()
-endif()
+cmake_policy(SET CMP0141 NEW)
 
 # Project
 project(onnxruntime C CXX ASM)
@@ -50,7 +39,12 @@ include(CMakeDependentOption)
 include(FetchContent)
 include(CheckFunctionExists)
 
+# TODO: update this once all system adapt c++20
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+set(CMAKE_CXX_STANDARD 20)
+else()
 set(CMAKE_CXX_STANDARD 17)
+endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
@@ -65,8 +59,8 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
-  message(FATAL_ERROR  "GCC version must be greater than or equal to 9")
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 8)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 8")
 endif()
 
 # Options
@@ -79,6 +73,11 @@ option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 # Enable it may cause LNK1169 error
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
+# Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
+# OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
+# use. If you hit any problem with that, please do not report it to GTest. Turn OFF the following build option instead.
+cmake_dependent_option(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS "Build with CUDA unit tests" OFF "onnxruntime_USE_CUDA;onnxruntime_BUILD_UNIT_TESTS;LINUX" OFF)
+
 option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support, generate device code line number information." OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
@@ -95,7 +94,8 @@ option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to prov
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
-option(onnxruntime_USE_FLASH_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
+cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "NOT WIN32; onnxruntime_USE_CUDA" OFF)
+option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -151,10 +151,11 @@ option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OF
 option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
 option(onnxruntime_DISABLE_FLOAT8_TYPES "Disable float 8 types" OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
-cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
+cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON;NOT onnxruntime_USE_CUDA" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
 cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." ON "onnxruntime_MINIMAL_BUILD;NOT onnxruntime_ENABLE_PYTHON" OFF)
-option(onnxruntime_DISABLE_ABSEIL "Do not link to Abseil. Redefine Inlined containers to STD containers." OFF)
+# Even when onnxruntime_DISABLE_ABSEIL is ON, ONNX Runtime still needs to link to abseil.
+option(onnxruntime_DISABLE_ABSEIL "Do not use Abseil data structures in ONNX Runtime source code. Redefine Inlined containers to STD containers." OFF)
 
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
@@ -274,10 +275,6 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
   endif()
 endif()
 
-if (onnxruntime_USE_CUDA)
-  set(onnxruntime_DISABLE_RTTI OFF)
-endif()
-
 if (onnxruntime_USE_ROCM)
   if (WIN32)
     message(FATAL_ERROR "ROCM does not support build in Windows!")
@@ -312,7 +309,15 @@ if (onnxruntime_USE_ROCM)
   add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
 
   if (NOT onnxruntime_HIPIFY_PERL)
-    set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
+    find_path(HIPIFY_PERL_PATH
+      NAMES hipify-perl
+      HINTS
+      ${onnxruntime_ROCM_HOME}/bin
+      ${onnxruntime_ROCM_HOME}/hip/bin)
+    if (HIPIFY_PERL_PATH-NOTFOUND)
+      MESSAGE(FATAL_ERROR "hipify-perl not found")
+    endif()
+    set(onnxruntime_HIPIFY_PERL ${HIPIFY_PERL_PATH}/hipify-perl)
   endif()
 
   # replicate strategy used by pytorch to get ROCM_VERSION
@@ -556,6 +561,8 @@ if (WIN32)
     list(APPEND ORT_WARNING_FLAGS "/wd4251")
     # issued by thrust nonstandard extension used: nameless struct/union
     list(APPEND ORT_WARNING_FLAGS "/wd4201")
+    # structure was padded due to __declspec(align())
+    list(APPEND ORT_WARNING_FLAGS "/wd4324")
     # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
     if (onnxruntime_USE_OPENVINO)
        list(APPEND ORT_WARNING_FLAGS "/wd4800")
@@ -669,13 +676,16 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_DISABLE_CONTRIB_OPS)
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
+    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
   endif()
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.6)
     message( STATUS "Turn off flash attention since CUDA compiler version < 11.6")
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
+    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
   endif()
 else()
   set(onnxruntime_USE_FLASH_ATTENTION OFF)
+  set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -687,6 +697,11 @@ if (onnxruntime_USE_CUDA)
       message( STATUS "Enable flash attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
+    endif()
+    if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
+      message( STATUS "Enable memory efficient attention for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
+      list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=1)
     endif()
 
 endif()
@@ -857,6 +872,7 @@ function(onnxruntime_set_compile_flags target_name)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")
+      target_compile_definitions(${target_name} PRIVATE -DDISABLE_CUSPARSE_DEPRECATED)
     endif()
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
@@ -1329,9 +1345,11 @@ set(ORT_BUILD_INFO "ORT Build Info: ")
 find_package(Git)
 if (Git_FOUND)
   execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%h
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       OUTPUT_VARIABLE ORT_GIT_COMMIT)
   string(STRIP "${ORT_GIT_COMMIT}" ORT_GIT_COMMIT)
   execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       OUTPUT_VARIABLE ORT_GIT_BRANCH)
   string(STRIP "${ORT_GIT_BRANCH}" ORT_GIT_BRANCH)
   string(APPEND ORT_BUILD_INFO "git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}, ")
@@ -1458,29 +1476,32 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-if (UNIX AND onnxruntime_USE_MPI)
-  if (EXISTS "${onnxruntime_MPI_HOME}")
-    set(MPI_HOME "${onnxruntime_MPI_HOME}")
-  elseif (EXISTS "/bert_ort/openmpi")
-    set(MPI_HOME "/bert_ort/openmpi")
+if (UNIX AND onnxruntime_USE_NCCL)
+  # MPI is INDEPENDENT of NCCL for now. You can build NCLL without MPI and launch multi-GPU with your own launcher.
+  if (onnxruntime_USE_MPI)
+    if (EXISTS "${onnxruntime_MPI_HOME}")
+      set(MPI_HOME "${onnxruntime_MPI_HOME}")
+    elseif (EXISTS "/bert_ort/openmpi")
+      set(MPI_HOME "/bert_ort/openmpi")
+    endif()
+    find_package(MPI)
+
+    if (MPI_CXX_FOUND)
+      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
+      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
+      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+    else ()
+      message(
+            FATAL_ERROR
+            "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
+            "or you can remove --use_mpi from build args to disable MPI."
+          )
+    endif()
   endif()
 
-  find_package(MPI)
-
-  if (MPI_CXX_FOUND)
-    message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
-    message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
-    mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-  else ()
-    message(
-          FATAL_ERROR
-          "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
-        )
-  endif()
-
-  # Find NCCL and MPI
-  if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
+  # Find NCCL
+  if (onnxruntime_USE_NCCL)
     if (onnxruntime_USE_CUDA)
       set(NCCL_LIBNAME "nccl")
     elseif (onnxruntime_USE_ROCM)
@@ -1489,6 +1510,7 @@ if (UNIX AND onnxruntime_USE_MPI)
     find_path(NCCL_INCLUDE_DIR
       NAMES ${NCCL_LIBNAME}.h
       HINTS
+      ${onnxruntime_NCCL_HOME}/include/rccl
       ${onnxruntime_NCCL_HOME}/include
       $ENV{CUDA_ROOT}/include)
 

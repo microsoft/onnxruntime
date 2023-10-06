@@ -8,6 +8,9 @@
 #include <filesystem>
 #include "QnnOpDef.h"
 #include "HTP/QnnHtpPerfInfrastructure.h"
+#include "CPU/QnnCpuCommon.h"
+// TODO: not exist for Windows yet
+// #include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "core/common/gsl.h"
@@ -27,12 +30,20 @@ typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(const QnnSystemI
 
 constexpr const char* QNN_PROVIDER = "ORTQNNEP";
 
+static Qnn_Version_t GetQnnInterfaceApiVersion(const QnnInterface_t* qnn_interface) {
+  return qnn_interface->apiVersion.coreApiVersion;
+}
+
+static Qnn_Version_t GetQnnInterfaceApiVersion(const QnnSystemInterface_t* qnn_interface) {
+  return qnn_interface->systemApiVersion;
+}
+
 template <typename F, class T>
-Status QnnBackendManager::GetQnnInterfaceProviders(const char* lib_path,
-                                                   const char* interface_provider_name,
-                                                   void** backend_lib_handle,
-                                                   T*** interface_providers,
-                                                   uint32_t& num_providers) {
+Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
+                                                  const char* interface_provider_name,
+                                                  void** backend_lib_handle,
+                                                  Qnn_Version_t req_version,
+                                                  T** interface_provider) {
   std::string error_msg;
   *backend_lib_handle = LoadLib(lib_path,
                                 static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
@@ -44,47 +55,144 @@ Status QnnBackendManager::GetQnnInterfaceProviders(const char* lib_path,
   GetInterfaceProviders = ResolveSymbol<F>(*backend_lib_handle, interface_provider_name, *logger_);
   ORT_RETURN_IF(nullptr == GetInterfaceProviders, "Failed to get QNN providers!");
 
-  auto result = GetInterfaceProviders((const T***)interface_providers, &num_providers);
+  T** interface_providers{nullptr};
+  uint32_t num_providers{0};
+
+  auto result = GetInterfaceProviders((const T***)&interface_providers, &num_providers);
   ORT_RETURN_IF((QNN_SUCCESS != result || nullptr == *interface_providers || 0 == num_providers),
                 "Failed to get QNN providers.");
+
+  bool found_valid_interface{false};
+  for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
+    Qnn_Version_t interface_version = GetQnnInterfaceApiVersion(interface_providers[pIdx]);
+
+    LOGS_DEFAULT(VERBOSE) << lib_path << " interface version: " << interface_version.major << "."
+                          << interface_version.minor << "." << interface_version.patch;
+
+    // Check the interface's API version against the required version.
+    // Major versions must match. The interface's minor version must be greater OR equal with a suitable patch version.
+    if (interface_version.major == req_version.major) {
+      bool minor_and_patch_version_ok = (interface_version.minor > req_version.minor) ||
+                                        (interface_version.minor == req_version.minor &&
+                                         interface_version.patch >= req_version.patch);
+      if (minor_and_patch_version_ok) {
+        found_valid_interface = true;
+        *interface_provider = interface_providers[pIdx];
+        break;
+      }
+    }
+  }
+
+  ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid interface for ", lib_path);
 
   return Status::OK();
 }
 
+void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
+  switch (backend_id) {
+    case QNN_BACKEND_ID_CPU:
+      qnn_backend_type_ = QnnBackendType::CPU;
+      break;
+      // TODO: update once it's ready for Widows
+      // case QNN_BACKEND_ID_GPU:
+      //  qnn_backend_type_ = QnnBackendType::GPU;
+      //  break;
+    case QNN_BACKEND_ID_DSP:
+      qnn_backend_type_ = QnnBackendType::DSP;
+      break;
+    case QNN_BACKEND_ID_HTP:
+      qnn_backend_type_ = QnnBackendType::HTP;
+      break;
+    default:
+      qnn_backend_type_ = QnnBackendType::CPU;
+      break;
+  }
+}
+
 Status QnnBackendManager::LoadBackend() {
-  QnnInterface_t** interface_providers{nullptr};
-  uint32_t num_providers{0};
-  auto rt = GetQnnInterfaceProviders<QnnInterfaceGetProvidersFn_t,
-                                     QnnInterface_t>(backend_path_.c_str(),
-                                                     "QnnInterface_getProviders",
-                                                     &backend_lib_handle_,
-                                                     &interface_providers,
-                                                     num_providers);
+  QnnInterface_t* backend_interface_provider{nullptr};
+  auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
+                                    QnnInterface_t>(backend_path_.c_str(),
+                                                    "QnnInterface_getProviders",
+                                                    &backend_lib_handle_,
+                                                    {QNN_API_VERSION_MAJOR,
+                                                     QNN_API_VERSION_MINOR,
+                                                     QNN_API_VERSION_PATCH},
+                                                    &backend_interface_provider);
+  ORT_RETURN_IF_ERROR(rt);
+  qnn_interface_ = backend_interface_provider->QNN_INTERFACE_VER_NAME;
+  auto backend_id = backend_interface_provider->backendId;
+  SetQnnBackendType(backend_id);
+
+  Qnn_Version_t backend_interface_version = GetQnnInterfaceApiVersion(backend_interface_provider);
+  LOGS_DEFAULT(INFO) << "Found valid interface, version: " << backend_interface_version.major
+                     << "." << backend_interface_version.minor << "." << backend_interface_version.patch
+                     << " backend provider name: " << backend_interface_provider->providerName
+                     << " backend id: " << backend_id;
+
+  return Status::OK();
+}
+
+// Loads the intended backend (e.g., HTP, CPU, etc) to get its type, and then
+// sets QNN Saver as the active backend. QNN op builders will still see the intended backend (e.g., HTP)
+// as the backend type to ensure they emit the expected QNN API calls.
+//
+// QNN Saver is a "debugging" backend that serializes all QNN API calls (and weights) into local files.
+// This information can be used to debug issues by replaying QNN API calls with another backend.
+Status QnnBackendManager::LoadQnnSaverBackend() {
+  void* backend_lib_handle = nullptr;
+
+  // Helper that unloads the intended backend library handle when the `unload_backend_lib` variable
+  // goes out of scope. Similar to `defer` in other languages.
+  auto unload_backend_lib = gsl::finally([&] {
+    if (backend_lib_handle != nullptr) {
+      auto result = UnloadLib(backend_lib_handle);
+      if (Status::OK() != result) {
+        ORT_THROW("Failed to unload backend library.");
+      }
+    }
+  });
+
+  // Load the intended backend (e.g., HTP, CPU) to ensure it is valid and to get its type.
+  QnnInterface_t* backend_interface_provider{nullptr};
+  auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
+                                    QnnInterface_t>(backend_path_.c_str(),
+                                                    "QnnInterface_getProviders",
+                                                    &backend_lib_handle,
+                                                    {QNN_API_VERSION_MAJOR,
+                                                     QNN_API_VERSION_MINOR,
+                                                     QNN_API_VERSION_PATCH},
+                                                    &backend_interface_provider);
   ORT_RETURN_IF_ERROR(rt);
 
-  bool found_valid_interface{false};
-  LOGS_DEFAULT(VERBOSE) << "QNN_API_VERSION_MAJOR: " << QNN_API_VERSION_MAJOR
-                        << " QNN_API_VERSION_MINOR: " << QNN_API_VERSION_MINOR;
-  for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
-    LOGS_DEFAULT(VERBOSE) << "interface_providers major: " << interface_providers[pIdx]->apiVersion.coreApiVersion.major
-                          << " interface_providers minor: " << interface_providers[pIdx]->apiVersion.coreApiVersion.minor;
-    if (QNN_API_VERSION_MAJOR == interface_providers[pIdx]->apiVersion.coreApiVersion.major &&
-        QNN_API_VERSION_MINOR <= interface_providers[pIdx]->apiVersion.coreApiVersion.minor) {
-      found_valid_interface = true;
-      qnn_interface_ = interface_providers[pIdx]->QNN_INTERFACE_VER_NAME;
-      auto backend_id = interface_providers[pIdx]->backendId;
-      if (QNN_BACKEND_ID_DSP == backend_id || QNN_BACKEND_ID_HTP == backend_id) {
-        is_npu_backend_ = true;
-      }
-      LOGS_DEFAULT(INFO) << "Found valid interface, version: " << QNN_API_VERSION_MAJOR
-                         << "." << QNN_API_VERSION_MINOR
-                         << " backend provider name: " << interface_providers[pIdx]->providerName
-                         << " backend id: " << backend_id;
-      break;
-    }
-  }
+  // Set the "intended" backend type so that QNN builders still make the expected QNN API calls.
+  auto backend_id = backend_interface_provider->backendId;
+  SetQnnBackendType(backend_id);
 
-  ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid interface.");
+  // Load the QNN Saver backend and set it as the activate backend.
+  QnnInterface_t* saver_interface_provider{nullptr};
+  auto saver_rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
+                                          QnnInterface_t>(qnn_saver_path_.c_str(),
+                                                          "QnnInterface_getProviders",
+                                                          &backend_lib_handle_,  // NOTE: QNN Saver library handle is set
+                                                          {QNN_API_VERSION_MAJOR,
+                                                           QNN_API_VERSION_MINOR,
+                                                           QNN_API_VERSION_PATCH},
+                                                          &saver_interface_provider);
+  ORT_RETURN_IF_ERROR(saver_rt);
+  qnn_interface_ = saver_interface_provider->QNN_INTERFACE_VER_NAME;  // NOTE: QNN Saver will provide the interfaces
+
+  Qnn_Version_t backend_interface_version = GetQnnInterfaceApiVersion(backend_interface_provider);
+  Qnn_Version_t saver_interface_version = GetQnnInterfaceApiVersion(saver_interface_provider);
+
+  LOGS_DEFAULT(INFO) << "Using QNN Saver version: " << saver_interface_version.major << "."
+                     << saver_interface_version.minor << "." << saver_interface_version.patch
+                     << " provider name : " << saver_interface_provider->providerName;
+
+  LOGS_DEFAULT(INFO) << "Intended backend provider name: " << backend_interface_provider->providerName
+                     << " backend id: " << backend_id
+                     << " interface version: " << backend_interface_version.major
+                     << "." << backend_interface_version.minor << "." << backend_interface_version.patch;
 
   return Status::OK();
 }
@@ -97,34 +205,22 @@ Status QnnBackendManager::LoadQnnSystemLib() {
 #endif  // #ifdef _WIN32
   std::filesystem::path lib_file_path(backend_path_.c_str());
   std::string sys_file_path(lib_file_path.remove_filename().string() + system_lib_file);
-  QnnSystemInterface_t** system_interface_providers{nullptr};
-  uint32_t num_providers = 0;
-  auto rt = GetQnnInterfaceProviders<QnnSystemInterfaceGetProvidersFn_t,
-                                     QnnSystemInterface_t>(sys_file_path.c_str(),
-                                                           "QnnSystemInterface_getProviders",
-                                                           &system_lib_handle_,
-                                                           &system_interface_providers,
-                                                           num_providers);
+  QnnSystemInterface_t* system_interface_provider{nullptr};
+  auto rt = GetQnnInterfaceProvider<QnnSystemInterfaceGetProvidersFn_t,
+                                    QnnSystemInterface_t>(sys_file_path.c_str(),
+                                                          "QnnSystemInterface_getProviders",
+                                                          &system_lib_handle_,
+                                                          {QNN_SYSTEM_API_VERSION_MAJOR,
+                                                           QNN_SYSTEM_API_VERSION_MINOR,
+                                                           QNN_SYSTEM_API_VERSION_PATCH},
+                                                          &system_interface_provider);
   ORT_RETURN_IF_ERROR(rt);
+  Qnn_Version_t system_interface_version = GetQnnInterfaceApiVersion(system_interface_provider);
+  qnn_sys_interface_ = system_interface_provider->QNN_SYSTEM_INTERFACE_VER_NAME;
 
-  bool found_valid_interface{false};
-  for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
-    LOGS_DEFAULT(VERBOSE) << "system_interface_providers major: " << system_interface_providers[pIdx]->systemApiVersion.major
-                          << " system_interface_providers minor: " << system_interface_providers[pIdx]->systemApiVersion.minor;
-    int64_t systems_version_major = static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.major);
-    int64_t systems_version_minor = static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.minor);
-    if (systems_version_major == QNN_SYSTEM_API_VERSION_MAJOR &&
-        systems_version_minor >= QNN_SYSTEM_API_VERSION_MINOR) {
-      found_valid_interface = true;
-      qnn_sys_interface_ = system_interface_providers[pIdx]->QNN_SYSTEM_INTERFACE_VER_NAME;
-      LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << QNN_API_VERSION_MAJOR
-                         << "." << QNN_API_VERSION_MINOR
-                         << " backend provider name: " << system_interface_providers[pIdx]->providerName;
-      break;
-    }
-  }
-
-  ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid system interface.");
+  LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << system_interface_version.major
+                     << "." << system_interface_version.minor
+                     << " backend provider name: " << system_interface_provider->providerName;
 
   return Status::OK();
 }
@@ -620,7 +716,12 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_
     return Status::OK();
   }
 
-  ORT_RETURN_IF_ERROR(LoadBackend());
+  if (qnn_saver_path_.empty()) {
+    ORT_RETURN_IF_ERROR(LoadBackend());
+  } else {
+    ORT_RETURN_IF_ERROR(LoadQnnSaverBackend());
+  }
+
   LOGS(logger, VERBOSE) << "LoadBackend succeed.";
 
   if (load_from_cached_context) {

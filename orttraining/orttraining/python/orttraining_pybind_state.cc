@@ -174,10 +174,11 @@ struct PyOptimizer {
   PyOptimizer(const std::string optimizer_model_uri, onnxruntime::training::api::CheckpointState* state,
               std::vector<std::shared_ptr<IExecutionProvider>> providers, PySessionOptions* session_options)
       : optimizer_() {
+    auto model_identifiers = onnxruntime::training::api::ModelIdentifiers("", std::nullopt, optimizer_model_uri);
     auto env = GetTrainingEnv().GetORTEnv();
     // XXX: We hope that env will be around when optimizer needs it.
     optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(
-        optimizer_model_uri, state, session_options->value, *env, providers, session_options->custom_op_domains_);
+        model_identifiers, state, session_options->value, *env, providers, session_options->custom_op_domains_);
   }
 
   std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
@@ -941,9 +942,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                        OrtDevice device, PySessionOptions* session_options) {
         std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
         auto env = GetTrainingEnv().GetORTEnv();
-        return std::make_unique<onnxruntime::training::api::Module>(
-            model_uri, state, session_options->value, *env, provider, eval_model_uri,
-            session_options->custom_op_domains_);
+        auto model_identifiers = onnxruntime::training::api::ModelIdentifiers(model_uri, eval_model_uri, std::nullopt);
+        return std::make_unique<onnxruntime::training::api::Module>(model_identifiers,
+                                                                    state, session_options->value, *env, provider,
+                                                                    session_options->custom_op_domains_);
       }))
       .def("train_step",
            [](onnxruntime::training::api::Module* model,
@@ -1006,12 +1008,12 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
              ORT_THROW_IF_ERROR(model->LazyResetGrad());
            })
       .def("copy_parameters_to_buffer",
-           [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
-             ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
+           [](onnxruntime::training::api::Module* model, OrtValue& output, bool trainable_only) -> void {
+             ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output, trainable_only));
            })
       .def("copy_buffer_to_parameters",
-           [](onnxruntime::training::api::Module* model, OrtValue& input) -> void {
-             ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input));
+           [](onnxruntime::training::api::Module* model, OrtValue& input, bool trainable_only) -> void {
+             ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input, trainable_only));
            })
       .def("get_parameters_size",
            [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
@@ -1063,17 +1065,60 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       checkpoint_state(m, "CheckpointState", R"pbdoc(CheckpointState.)pbdoc");
   checkpoint_state
       .def(py::init())
-      .def("add_property", [](onnxruntime::training::api::CheckpointState* state,
-                              const std::string& property_name,
-                              const std::variant<int64_t, float, std::string>& property_value) {
-        state->property_bag.AddProperty(property_name, property_value);
-      })
-      .def("get_property", [](onnxruntime::training::api::CheckpointState* state, const std::string& property_name) {
-        return state->property_bag.GetProperty<onnxruntime::training::api::PropertyDataType>(property_name);
-      })
-      .def("has_property", [](onnxruntime::training::api::CheckpointState* state, const std::string& property_name) {
-        return state->property_bag.HasProperty(property_name);
-      });
+      .def("add_property",
+           [](onnxruntime::training::api::CheckpointState* state,
+              const std::string& property_name,
+              const std::variant<int64_t, float, std::string>& property_value) {
+             state->property_bag.AddProperty(property_name, property_value);
+           })
+      .def("get_property",
+           [](onnxruntime::training::api::CheckpointState* state, const std::string& property_name) {
+             return state->property_bag.GetProperty<onnxruntime::training::api::PropertyDataType>(property_name);
+           })
+      .def("has_property",
+           [](onnxruntime::training::api::CheckpointState* state, const std::string& property_name) {
+             return state->property_bag.HasProperty(property_name);
+           })
+      .def("copy_parameter_from",
+           [](onnxruntime::training::api::CheckpointState* state,
+              const std::string& parameter_name, OrtValue& value) -> void {
+             auto it = state->module_checkpoint_state.named_parameters.find(parameter_name);
+             if (it == state->module_checkpoint_state.named_parameters.end()) {
+               ORT_THROW("Parameter with name ", parameter_name, " does not exist.");
+             }
+             ORT_THROW_IF_ERROR(it->second->CopyFrom(
+                 state->module_checkpoint_state.train_session_data_transfer_mgr, value));
+           })
+      .def("get_parameter",
+           [](onnxruntime::training::api::CheckpointState* state, const std::string& parameter_name) {
+             auto it = state->module_checkpoint_state.named_parameters.find(parameter_name);
+             if (it == state->module_checkpoint_state.named_parameters.end()) {
+               ORT_THROW("Parameter with name ", parameter_name, " does not exist.");
+             }
+             return it->second;
+           })
+      .def("has_parameter",
+           [](onnxruntime::training::api::CheckpointState* state, const std::string& parameter_name) {
+             return state->module_checkpoint_state.named_parameters.count(parameter_name);
+           })
+      .def("parameter_names",
+           [](onnxruntime::training::api::CheckpointState* state) {
+             std::vector<std::string> names;
+             for ([[maybe_unused]] auto& [name, value] : state->module_checkpoint_state.named_parameters) {
+               names.push_back(name);
+             }
+             std::sort(names.begin(), names.end());
+             return names;
+           })
+      .def("property_names",
+           [](onnxruntime::training::api::CheckpointState* state) {
+             std::vector<std::string> names;
+             for ([[maybe_unused]] auto& [name, value] : state->property_bag) {
+               names.push_back(name);
+             }
+             std::sort(names.begin(), names.end());
+             return names;
+           });
 
   py::class_<PyOptimizer>
       training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
@@ -1108,6 +1153,21 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("scheduler_step", [](onnxruntime::training::api::LinearLRScheduler* scheduler) -> void {
         ORT_THROW_IF_ERROR(scheduler->Step());
       });
+
+  py::class_<onnxruntime::training::api::Parameter,
+             std::unique_ptr<onnxruntime::training::api::Parameter, py::nodelete>>
+      parameter(m, "Parameter");
+  parameter
+      .def_property_readonly("name", &onnxruntime::training::api::Parameter::Name)
+      .def_property_readonly("data", &onnxruntime::training::api::Parameter::Data)
+      .def_property_readonly("grad", &onnxruntime::training::api::Parameter::Gradient)
+      .def_property_readonly("requires_grad", &onnxruntime::training::api::Parameter::RequiresGrad)
+      .def("copy_from",
+           [](onnxruntime::training::api::Parameter* parameter,
+              onnxruntime::training::api::CheckpointState* state,
+              OrtValue& value) -> void {
+             ORT_THROW_IF_ERROR(parameter->CopyFrom(state->module_checkpoint_state.train_session_data_transfer_mgr, value));
+           });
 
   m.def(
       "save_checkpoint",

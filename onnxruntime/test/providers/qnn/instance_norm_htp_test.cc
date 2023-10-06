@@ -16,25 +16,6 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Function that builds a float32 model with an InstanceNormalization operator.
-GetTestModelFn BuildInstanceNormTestCase(const TestInputDef<float>& input_def,
-                                         const TestInputDef<float>& scale_def,
-                                         const TestInputDef<float>& bias_def,
-                                         const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
-  return [input_def, scale_def, bias_def, attrs](ModelTestBuilder& builder) {
-    NodeArg* input = MakeTestInput(builder, input_def);
-    NodeArg* scale = MakeTestInput(builder, scale_def);
-    NodeArg* bias = MakeTestInput(builder, bias_def);
-
-    NodeArg* output = builder.MakeOutput();
-    Node& op_node = builder.AddNode("InstanceNormalization", {input, scale, bias}, {output});
-
-    for (const auto& attr : attrs) {
-      op_node.AddAttributeProto(attr);
-    }
-  };
-}
-
 // Function that builds a QDQ model with an InstanceNormalization operator.
 template <typename QuantType>
 static GetTestQDQModelFn<QuantType> BuildQDQInstanceNormTestCase(const TestInputDef<float>& input_def,
@@ -45,12 +26,12 @@ static GetTestQDQModelFn<QuantType> BuildQDQInstanceNormTestCase(const TestInput
                                                  std::vector<QuantParams<QuantType>>& output_qparams) {
     // input => Q => DQ =>
     NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<QuantType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
     NodeArg* input_qdq = AddQDQNodePair(builder, input, input_qparams.scale, input_qparams.zero_point);
 
     // scale => Q => DQ =>
     NodeArg* scale = MakeTestInput(builder, scale_def);
-    QuantParams<QuantType> scale_qparams = GetTestInputQuantParams(scale_def);
+    QuantParams<QuantType> scale_qparams = GetTestInputQuantParams<QuantType>(scale_def);
     NodeArg* scale_qdq = AddQDQNodePair(builder, scale, scale_qparams.scale, scale_qparams.zero_point);
 
     // bias (as int32) => DQ =>
@@ -93,7 +74,7 @@ static void RunInstanceNormQDQTest(const TestInputDef<float>& input_def,
 #endif
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
-  TestQDQModelAccuracy(BuildInstanceNormTestCase(input_def, scale_def, bias_def, attrs),
+  TestQDQModelAccuracy(BuildOpTestCase<float>("InstanceNormalization", {input_def, scale_def, bias_def}, {}, attrs),
                        BuildQDQInstanceNormTestCase<QuantType>(input_def, scale_def, bias_def, attrs),
                        provider_options,
                        18,
@@ -104,9 +85,14 @@ static void RunInstanceNormQDQTest(const TestInputDef<float>& input_def,
 // Check that QNN compiles DQ -> InstanceNormalization -> Q as a single unit.
 // Use an input of rank 4.
 TEST_F(QnnHTPBackendTests, InstanceNormU8) {
-  RunInstanceNormQDQTest(TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),
-                         TestInputDef<float>({2}, true, -2.0f, 2.0f),
-                         TestInputDef<float>({2}, true, -3.0f, 3.0f),
+  // fails with QNN 2.15.1 with the following fixed input.
+  std::vector<float> input_data = {3.21289f, -5.9981f, -1.72799f, 6.27263f, 3.36205f, -1.93515f, -5.40113f, 3.75648f, 6.15357f,
+                                   -5.25769f, 2.73637f, -0.901382f, -6.55612f, 1.99497f, -4.79228f, 2.69813f, 8.3064f, 0.0362501f};
+  std::vector<float> scale_data = {-0.148738f, -1.45158f};
+  std::vector<float> bias_data = {-2.2785083772f, 2.3338717017f};
+  RunInstanceNormQDQTest(TestInputDef<float>({1, 2, 3, 3}, false, input_data).OverrideValueRange(-10.0f, 10.0f),
+                         TestInputDef<float>({2}, true, scale_data).OverrideValueRange(-2.0f, 2.0f),
+                         TestInputDef<float>({2}, true, bias_data).OverrideValueRange(-3.0f, 3.0f),
                          {},
                          ExpectedEPNodeAssignment::All);
 }

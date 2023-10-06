@@ -165,18 +165,34 @@ export const logLevelStringToEnum = (logLevel?: 'verbose'|'info'|'warning'|'erro
   }
 };
 
-export const tensorTypeToWsglType = (type: DataType) => {
-  switch (type) {
-    case DataType.float:
-      return 'f32';
-    // TODO: enable after "shader-f16" WSGL extension release
-    // case DataType.float16:
-    //   return 'f16';
-    case DataType.int32:
-      return 'i32';
-    case DataType.uint32:
-      return 'u32';
+/**
+ * Check whether the given tensor type is supported by GPU buffer
+ */
+export const isGpuBufferSupportedType = (type: Tensor.Type): type is Tensor.GpuBufferDataTypes => type === 'float32' ||
+    type === 'int32' || type === 'int64' || type === 'bool' || type === 'float16' || type === 'uint32';
+
+/**
+ * Map string data location to integer value
+ */
+export const dataLocationStringToEnum = (location: Tensor.DataLocation): number => {
+  switch (location) {
+    case 'none':
+      return 0;
+    case 'cpu':
+      return 1;
+    case 'cpu-pinned':
+      return 2;
+    case 'texture':
+      return 3;
+    case 'gpu-buffer':
+      return 4;
     default:
-      throw new Error(`Unsupported type: ${type}`);
+      throw new Error(`unsupported data location: ${location}`);
   }
 };
+
+/**
+ * Map integer data location to string value
+ */
+export const dataLocationEnumToString = (location: number): Tensor.DataLocation|undefined =>
+    (['none', 'cpu', 'cpu-pinned', 'texture', 'gpu-buffer'] as const)[location];
