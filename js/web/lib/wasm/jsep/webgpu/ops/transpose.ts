@@ -69,19 +69,18 @@ export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: nu
   }`;
   return {
     ...transposeProgramMetadata,
-    outputs: [{dims: outputShape, dataType: inputTensor.dataType, gpuDataType: GpuDataType.default}],
+    shaderCache: {hint: `${permAttr}`},
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: inputTensor.dataType, gpuDataType: GpuDataType.default}],
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+    }),
     getShaderSource,
-    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
   };
 };
 
 export const transpose = (context: ComputeContext, attributes: TransposeAttributes): void => {
   validateInputs(context.inputs);
-  context.compute({
-    ...transposeProgramMetadata,
-    cacheHint: attributes.cacheKey,
-    get: () => createTransposeProgramInfo(context.inputs[0], attributes.perm)
-  });
+  context.compute(createTransposeProgramInfo(context.inputs[0], attributes.perm));
 };
 
 export const parseTransposeAttributes = (attributes: Record<string, unknown>): TransposeAttributes =>
