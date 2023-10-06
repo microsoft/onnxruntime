@@ -116,16 +116,18 @@ class CpuTensorizer {
 #if _MSVC_LANG < 202002L
   static
 #endif
-  float
-  ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter) {
+  float ConvertByteToFloat(
+    const BYTE& input,
+    const NominalRangeConverter& nominalRangeConverter) {
     return nominalRangeConverter.Normalize(static_cast<float>(input));
   }
   template <>
 #if _MSVC_LANG < 202002L
   static
 #endif
-  DirectX::PackedVector::HALF
-  ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter) {
+  DirectX::PackedVector::HALF ConvertByteToFloat(
+    const BYTE& input,
+    const NominalRangeConverter& nominalRangeConverter) {
     return nominalRangeConverter.Normalize(DirectX::PackedVector::XMConvertFloatToHalf(input));
   }
 
@@ -170,16 +172,14 @@ class CpuTensorizer {
 #if _MSVC_LANG < 202002L
   static
 #endif
-  void
-  DeinterleaveRowByteToFloat(
+  void DeinterleaveRowByteToFloat(
     _In_ BYTE* pBuffer,
     _Inout_ float* xChannel,
     _Inout_ float* yChannel,
     _Inout_ float* zChannel,
     uint32_t pixelElements,
     uint32_t bytesPerPixel,
-    const NominalRangeConverter& nominalRangeConverter
-  ) {
+    const NominalRangeConverter& nominalRangeConverter) {
     assert(bytesPerPixel == 4);
 
     __m128i ZeroVector = _mm_setzero_si128();

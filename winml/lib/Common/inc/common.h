@@ -52,7 +52,7 @@ TRACELOGGING_DECLARE_PROVIDER(winml_trace_logging_provider);
 #include "StringHelpers.h"
 #include "WinML_Lock.h"
 
-template <class T>
+template <typename T>
 auto unmove_ptr(T&& t) {
   return &static_cast<T&>(t);
 }

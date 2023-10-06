@@ -132,10 +132,9 @@ class CpuDetensorizer {
 #if _MSVC_LANG < 202002L
   static
 #endif
-  float
-  ReadTensor<DirectX::PackedVector::HALF>(
-      const DirectX::PackedVector::HALF* pCPUTensor, const NominalRangeConverter& nominalRangeConverter
-  ) {
+  float ReadTensor<DirectX::PackedVector::HALF>(
+    const DirectX::PackedVector::HALF* pCPUTensor,
+    const NominalRangeConverter& nominalRangeConverter) {
     return nominalRangeConverter.Denormalize(DirectX::PackedVector::XMConvertHalfToFloat(*pCPUTensor));
   }
 
@@ -176,16 +175,14 @@ class CpuDetensorizer {
 #if _MSVC_LANG < 202002L
   static
 #endif
-  void
-  InterleaveRowFloatToByte(
+  void InterleaveRowFloatToByte(
     const float* xChannel,
     const float* yChannel,
     const float* zChannel,
     uint32_t tensorWidth,
     BYTE* pData,
     uint32_t bytesPerPixel,
-    const NominalRangeConverter& nominalRangeConverter
-  ) {
+    const NominalRangeConverter& nominalRangeConverter) {
     BYTE* pPixel = pData;
     uint32_t tensorWidthRemaining = tensorWidth;
 
