@@ -38,7 +38,7 @@ const permFunctionBody = (perm: number[], rank: number, input: IndicesHelper, ou
 export const createTransposeProgramInfo =
     (inputDataType: number, inputRank: number, permAttr: number[]): ProgramInfo => {
       const perm = getAdjustedPerm(inputRank, permAttr);
-      const output = outputVariable('output', inputDataType, (permAttr && permAttr.length) ?? inputRank);
+      const output = outputVariable('output', inputDataType, (permAttr && permAttr.length) || inputRank);
       const input = inputVariable('a', inputDataType, inputRank);
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
