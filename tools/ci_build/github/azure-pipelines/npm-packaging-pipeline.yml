@@ -9,10 +9,14 @@ parameters:
   - 'custom'
   default: 'nightly (@dev)'
 
-- name: NodePipelineId
-  displayName: 'Node npm package build Id'
-  type: string
-  default: 'latest'
+
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
+    trigger: true
+    branch: main
+
 
 variables:
   # pipeline should define the following varaibles
@@ -65,31 +69,10 @@ stages:
       runCodesignValidationInjection: false
     timeoutInMinutes: 10
     steps:
-
-    - ${{ if eq(parameters.NodePipelineId, 'latest') }}:
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          buildType: 'specific'
-          project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
-          definition: '940'
-          specificBuildWithTriggering: true
-          buildVersionToDownload: 'latestFromBranch'
-          branchName: 'refs/heads/main'
-          artifactName: 'NPM_packages'
-          targetPath: '$(Pipeline.Workspace)'
-        displayName: 'Download onnxruntime-node Pipeline Artifact'
-
-    - ${{ if ne(parameters.NodePipelineId, 'latest') }}:
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          buildType: 'specific'
-          project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
-          definition: '940'
-          buildVersionToDownload: 'specific'
-          pipelineId: '${{ parameters.NodePipelineId }}'
-          artifactName: 'NPM_packages'
-          targetPath: '$(Pipeline.Workspace)'
-        displayName: 'Download onnxruntime-node Pipeline Artifact'
+    - download: build
+      artifact: 'NPM_packages'
+      targetPath: '$(Pipeline.Workspace)'
+      displayName: 'Download onnxruntime-node Pipeline Artifact'
 
     - task: CopyFiles@2
       inputs:
