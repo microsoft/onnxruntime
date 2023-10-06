@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {readFile} from 'fs';
+import {readFile} from 'node:fs/promises';
 import {env, InferenceSession, InferenceSessionHandler, SessionHandler, Tensor} from 'onnxruntime-common';
-import {promisify} from 'util';
 
 import {SerializableModeldata, TensorMetadata} from './proxy-messages';
 import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, releaseSession, run} from './proxy-wrapper';
@@ -70,7 +69,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
     if (typeof pathOrBuffer === 'string') {
       if (typeof process !== 'undefined' && process.versions && process.versions.node) {
         // node
-        const model = await promisify(readFile)(pathOrBuffer);
+        const model = await readFile(pathOrBuffer);
         [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
       } else {
         // browser
