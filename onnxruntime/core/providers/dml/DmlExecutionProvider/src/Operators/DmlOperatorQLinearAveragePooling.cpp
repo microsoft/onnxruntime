@@ -118,8 +118,8 @@ public:
         qLinearAvgPooldesc.InputTensor = &inputDescs[OrtInputTensors::ortInput];
         qLinearAvgPooldesc.InputScaleTensor = &inputDescs[OrtInputTensors::ortInputScale];
         qLinearAvgPooldesc.InputZeroPointTensor = &inputDescs[OrtInputTensors::ortInputZeroPoint];
-        qLinearAvgPooldesc.OutputScaleTensor = &inputDescs[OrtInputTensors::ortOutputScale];;
-        qLinearAvgPooldesc.OutputZeroPointTensor = &inputDescs[OrtInputTensors::ortOutputZeroPoint];;
+        qLinearAvgPooldesc.OutputScaleTensor = &inputDescs[OrtInputTensors::ortOutputScale];
+        qLinearAvgPooldesc.OutputZeroPointTensor = &inputDescs[OrtInputTensors::ortOutputZeroPoint];
         qLinearAvgPooldesc.OutputTensor = &outputDescs[0];
         qLinearAvgPooldesc.DimensionCount = m_kernel.spatialDimensionCount;
         qLinearAvgPooldesc.WindowSize = m_kernel.windowSize;
@@ -128,6 +128,12 @@ public:
         qLinearAvgPooldesc.EndPadding = m_kernel.endPadding;
         qLinearAvgPooldesc.Dilations = m_kernel.dilations;
         qLinearAvgPooldesc.IncludePadding = kernelInfo.GetOptionalAttribute<bool>(AttrName::CountIncludePad, false);
+
+        TryConvertTensorToBroadcastScalar(kernelInfo, qLinearAvgPooldesc.InputScaleTensor,      OrtInputTensors::ortInputScale);
+        TryConvertTensorToBroadcastScalar(kernelInfo, qLinearAvgPooldesc.InputZeroPointTensor,  OrtInputTensors::ortInputZeroPoint);
+
+        TryConvertTensorToBroadcastScalar(kernelInfo, qLinearAvgPooldesc.OutputScaleTensor,     OrtInputTensors::ortOutputScale);
+        TryConvertTensorToBroadcastScalar(kernelInfo, qLinearAvgPooldesc.OutputZeroPointTensor, OrtInputTensors::ortOutputZeroPoint);
 
         DML_OPERATOR_DESC opDesc = { (DML_OPERATOR_TYPE) DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING, &qLinearAvgPooldesc };
         SetDmlOperatorDesc(opDesc, kernelInfo);
