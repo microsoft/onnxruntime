@@ -152,7 +152,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       !disable_memory_efficient_attention_ &&
       (parameters.head_size & 7) == 0 &&
       parameters.sequence_length <= parameters.past_sequence_length + parameters.kv_sequence_length &&
-      // (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
+      (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2);
   // allocate buffers
   size_t kv_buffer_bytes = 0;
