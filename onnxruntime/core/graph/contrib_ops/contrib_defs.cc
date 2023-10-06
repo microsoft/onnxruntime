@@ -3003,7 +3003,7 @@ Having this op allows runtime to do operator re-ordering to reduce compute FLOPs
   }
 #endif
 
-#ifdef USE_MPI
+#ifdef ORT_USE_NCCL
   RegisterCollectiveOps();
 #endif
 }
