@@ -4462,7 +4462,7 @@ struct OrtApi {
   ORT_API2_STATUS(ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info);
 
   /**
-   * Get attribute from OrtShapeInferContext
+   * Get attribute from OrtShapeInferContext. Note that OrtShapeInferContext is a per-node context, one could only read attribute from current node.
    *
    * \param[in] context
    * \param[in] attr_name

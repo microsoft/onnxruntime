@@ -1905,10 +1905,7 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
     type_shape_info.GetSymbolicDimensions(&symbolic_shape[0], integer_shape.size());
     Shape shape;
     for (size_t ith = 0; ith < integer_shape.size(); ++ith) {
-      if (integer_shape[ith] == -1) {
-        if (!symbolic_shape[ith]) {
-          ORT_CXX_API_THROW("symbolic dim expected!", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
-        }
+      if (symbolic_shape[ith]) {
         shape.emplace_back(symbolic_shape[ith]);
       } else {
         shape.emplace_back(integer_shape[ith]);

@@ -38,8 +38,17 @@ static constexpr uint32_t min_ort_version_with_shape_inference = 17;
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv4()
 #endif
 
+#if defined(ORT_MINIMAL_BUILD)
 struct OrtShapeInferContext {
- public:
+  size_t GetInputCount() const { return 0; }
+  OrtTensorTypeAndShapeInfo* GetInputTypeShape(size_t) const { return {}; }
+  onnxruntime::Status SetOutputTypeShape(size_t, const OrtTensorTypeAndShapeInfo*) const {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "OrtShapeInferContext::SetOutputTypeShape not implemented for minimal build");
+  }
+  const ONNX_NAMESPACE::AttributeProto* GetAttr(const char*) const { return {}; }
+};
+#else
+struct OrtShapeInferContext {
   OrtShapeInferContext(ONNX_NAMESPACE::InferenceContext& ctx) : ctx_(ctx) {
     auto num_inputs = ctx_.getNumInputs();
     for (size_t ith_input = 0; ith_input < num_inputs; ++ith_input) {
@@ -63,22 +72,15 @@ struct OrtShapeInferContext {
   }
 
   onnxruntime::Status SetOutputTypeShape(size_t index, const OrtTensorTypeAndShapeInfo* info) const {
-    ORT_ENFORCE(info);
+    ORT_RETURN_IF_NOT(info, "Invalid shape info");
     ONNX_NAMESPACE::TensorShapeProto shape_proto;
     const auto& symbolic_dims = info->dim_params;
     const auto& integer_dims = info->shape.GetDims();
-    if (symbolic_dims.empty()) {
-      for (auto dim : integer_dims) {
-        auto* dim_proto = shape_proto.add_dim();
-        dim_proto->set_dim_value(dim);
-      }
-    } else {
-      ORT_ENFORCE(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
-      for (size_t ith = 0; ith < symbolic_dims.size(); ith++) {
-        auto* dim_proto = shape_proto.add_dim();
-        dim_proto->set_dim_value(integer_dims[ith]);
-        dim_proto->set_dim_param(symbolic_dims[ith]);
-      }
+    ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
+    for (size_t ith = 0; ith < symbolic_dims.size(); ith++) {
+      auto* dim_proto = shape_proto.add_dim();
+      dim_proto->set_dim_value(integer_dims[ith]);
+      dim_proto->set_dim_param(symbolic_dims[ith]);
     }
     ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
     return onnxruntime::Status::OK();
@@ -105,6 +107,7 @@ struct OrtShapeInferContext {
   using TypeShapePtr = std::unique_ptr<OrtTensorTypeAndShapeInfo>;
   onnxruntime::InlinedVector<TypeShapePtr> input_type_shapes_;
 };
+#endif
 
 ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputCount, _In_ const OrtShapeInferContext* context, _Out_ size_t* out) {
   API_IMPL_BEGIN
