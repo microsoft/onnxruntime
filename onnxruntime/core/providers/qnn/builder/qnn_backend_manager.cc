@@ -537,7 +537,8 @@ Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
   ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
 
   // Load file into buffer
-  const auto& read_result = cache_file.read(reinterpret_cast<char*>(buffer.get()), gsl::narrow<size_t>(buffer_size));
+  const auto& read_result = cache_file.read(reinterpret_cast<char*>(buffer.get()),
+                                            gsl::narrow<std::streamsize>(buffer_size));
   cache_file.close();
   ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
 
