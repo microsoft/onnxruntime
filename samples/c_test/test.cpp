@@ -1,6 +1,6 @@
 #include <iostream>
 #include <vector>
-#include "core/session/onnxruntime_c_api.h"
+#include <core/session/onnxruntime_c_api.h>
 
 int main() {
   const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);

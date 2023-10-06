@@ -1,5 +1,5 @@
 #pragma once
-#include "core/framework/custom_execution_provider.h"
+#include <core/framework/custom_execution_provider.h>
 
 namespace onnxruntime {
 

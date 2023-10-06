@@ -6,7 +6,9 @@ set(CUSTOM_PUBLIC_HEADER custom_ep2.h)
 #set_target_properties(customep2 PROPERTIES PUBLIC_HEADER custom_ep2.h)
 set_target_properties(customep2 PROPERTIES PUBLIC_HEADER "${CUSTOM_PUBLIC_HEADER}")
 
-target_include_directories(customep2 PUBLIC "/bert_ort/leca/code/onnxruntime2/include/onnxruntime")
+#target_include_directories(customep2 PUBLIC "/bert_ort/leca/code/onnxruntime2/include/onnxruntime")
 #target_include_directories(customep PUBLIC "/bert_ort/leca/code/onnxruntime2/onnxruntime")
+#target_link_libraries(customep2 PUBLIC "/bert_ort/leca/code/onnxruntime2/build/Linux/Debug/libonnxruntime.so")
 
-target_link_libraries(customep2 PUBLIC "/bert_ort/leca/code/onnxruntime2/build/Linux/Debug/libonnxruntime.so")
+target_include_directories(customep2 PUBLIC "/onnxruntime/include/onnxruntime")
+target_link_libraries(customep2 PUBLIC "/onnxruntime/build/windows/debug/debug/onnxruntime.lib")

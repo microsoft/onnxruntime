@@ -16,7 +16,9 @@ struct OrtThreadingOptions;
 namespace onnxruntime {
 
 struct ProviderLibrary2 {
-  ProviderLibrary2(const ORTCHAR_T* library_path) : library_path_{library_path} {}
+  explicit ProviderLibrary2(const ORTCHAR_T* library_path) : library_path_{library_path} {}
+  //ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary2);
+  
   ~ProviderLibrary2() {
     // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
   }
@@ -30,8 +32,6 @@ struct ProviderLibrary2 {
  private:
   const ORTCHAR_T* library_path_;
   void* handle_{};
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary2);
 };
 
 /** TODO: remove this class
