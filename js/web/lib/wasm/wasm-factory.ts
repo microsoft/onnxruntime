@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import * as path from 'node:path';
 import {Env} from 'onnxruntime-common';
-import * as path from 'path';
 
 import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
@@ -128,7 +128,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
             typeof Blob !== 'undefined') {
           return URL.createObjectURL(new Blob(
               [
-                // This require() function is handled by webpack to load file content of the corresponding .worker.js
+                // This require() function is handled by esbuild plugin to load file content as string.
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
                 require('./binding/ort-wasm-threaded.worker.js')
               ],
@@ -161,7 +161,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       if (typeof Blob === 'undefined') {
         config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
       } else {
-        const scriptSourceCode = `var ortWasmThreaded=(function(){var _scriptDir;return ${factory.toString()}})();`;
+        const scriptSourceCode = `var ortWasmThreaded=${factory.toString()};`;
         config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
       }
     }

@@ -9,3 +9,5 @@ tsconfig.tsbuildinfo
 *.d.ts
 
 *.tgz
+
+*.esbuild.metafile.json
