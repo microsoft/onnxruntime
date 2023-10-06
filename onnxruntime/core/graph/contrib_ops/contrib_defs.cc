@@ -2847,16 +2847,26 @@ void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(EPContext)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("Onnx node for EP engine or context cache.")
+      .SetDoc("Onnx node container for EP context.")
+      .Attr(
+          "main_context",
+          "Usually each single EPContext associate with a graph partition."
+          "But for some case like QNN, it has single EPContext contains all partitions."
+          "In that case, the node with ep_cache_context should set main_context=1. Other nodes set main_context=0 and skip ep_cache_context."
+          "The path is relative to this Onnx file. Default is 1.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .Attr(
           "ep_cache_context",
           "payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0.",
-          AttributeProto::STRING)
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
       .Attr(
           "embed_mode",
           "1: indicate ep_cache_context is the context content. 0: indicate ep_cache_context is the file path to the context content."
-          "The path is relative to this Onnx file",
-          AttributeProto::INT, static_cast<int64_t>(1))
+          "The path is relative to this Onnx file. Default is 1.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .Attr(
           "ep_sdk_version",
           "(Optional) SDK version used to convert the model.",

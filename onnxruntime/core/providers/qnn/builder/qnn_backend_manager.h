@@ -30,13 +30,11 @@ class QnnBackendManager {
                     ProfilingLevel profiling_level,
                     uint32_t rpc_control_latency,
                     HtpPerformanceMode htp_performance_mode,
-                    bool qnn_context_embed_mode,
                     std::string&& qnn_saver_path)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
         htp_performance_mode_(htp_performance_mode),
-        qnn_context_embed_mode_(qnn_context_embed_mode),
         qnn_saver_path_(qnn_saver_path) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -74,19 +72,11 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status DumpQnnContext(const std::string& model_name, const std::string& graph_name,
-                        const std::vector<std::string>& input_names,
-                        const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info,
-                        const std::vector<std::string>& output_names,
-                        const std::unordered_map<std::string, OnnxTensorInfo>& outputs_info);
+  std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
   Status LoadCachedQnnCtxFromOnnxModel(const std::string& ep_engine_cache,
                                        QnnModel& qnn_model,
                                        bool& loaded_from_cache);
-
-  Status ValidateWithContextFile(const std::string& model_name,
-                                 const std::string& graph_name,
-                                 qnn::QnnCacheModelHandler* qnn_cache_model_handler);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
@@ -99,14 +89,6 @@ class QnnBackendManager {
   const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
 
   const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_; }
-
-  std::string GetBackendBuildId() {
-    char* backend_build_id{nullptr};
-    if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
-      LOGS(*logger_, ERROR) << "Unable to get build Id from the backend.";
-    }
-    return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
-  }
 
   void SetLogger(const logging::Logger* logger) {
     if (logger_ == nullptr) {
@@ -142,13 +124,7 @@ class QnnBackendManager {
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
-  bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
-                                const std::string& model_description,
-                                const onnxruntime::PathString& model_pathstring);
-
-  bool GetIsContextCacheFileExists() const {
-    return ctx_file_exists_;
-  }
+  const std::string& GetSdkVersion() { return sdk_build_version_; }
 
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
@@ -190,6 +166,14 @@ class QnnBackendManager {
     return ret;
   }
 
+  std::string GetBackendBuildId() {
+    char* backend_build_id{nullptr};
+    if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
+      LOGS(*logger_, ERROR) << "Unable to get build Id from the backend.";
+    }
+    return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
+  }
+
   Status LoadCachedQnnContextFromBuffer(const std::string& buffer, QnnModel& qnn_model);
 
  private:
@@ -216,12 +200,7 @@ class QnnBackendManager {
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_ = 0;
   HtpPerformanceMode htp_performance_mode_;
-  std::string model_description_ = "";
-  std::string context_cache_path_ = "";
   std::string sdk_build_version_ = "";
-  bool ctx_file_exists_ = false;
-  bool get_capability_round_2_ = false;
-  bool qnn_context_embed_mode_ = true;
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif

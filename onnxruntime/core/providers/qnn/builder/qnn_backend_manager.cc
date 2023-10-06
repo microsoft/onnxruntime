@@ -409,72 +409,43 @@ Status QnnBackendManager::ReleaseContext() {
   return Status::OK();
 }
 
-bool QnnBackendManager::IsContextCacheFileExists(const std::string& customer_context_cache_path,
-                                                 const std::string& model_description,
-                                                 const onnxruntime::PathString& model_pathstring) {
-  // Avoid duplicate work
-  if (ctx_file_exists_) {
-    return ctx_file_exists_;
-  }
-  model_description_ = model_description;
-  // Use user provided context cache file path if exist, otherwise try model_file.onnx_ctx.onnx by default
-  if (customer_context_cache_path.empty()) {
-    context_cache_path_ = PathToUTF8String(model_pathstring) + "_qnn_ctx.onnx";
-  } else {
-    context_cache_path_ = customer_context_cache_path;
-  }
-
-  ctx_file_exists_ = std::filesystem::exists(context_cache_path_);
-
-  return ctx_file_exists_;
-}
-
-Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const std::string& graph_name,
-                                         const std::vector<std::string>& input_names,
-                                         const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info,
-                                         const std::vector<std::string>& output_names,
-                                         const std::unordered_map<std::string, OnnxTensorInfo>& outputs_info) {
+std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint64_t& written_buffer_size) {
   if (nullptr == qnn_interface_.contextGetBinarySize ||
       nullptr == qnn_interface_.contextGetBinary) {
     LOGS(*logger_, ERROR) << "Failed to get valid function pointer.";
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get valid function pointer.");
+    return nullptr;
   }
 
   uint64_t required_buffer_size(0);
   Qnn_ErrorHandle_t rt = qnn_interface_.contextGetBinarySize(context_, &required_buffer_size);
   if (QNN_CONTEXT_NO_ERROR != rt) {
     LOGS(*logger_, ERROR) << "Failed to get QNN context binary size. Error code: " << rt;
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get QNN context binary size.");
+    return nullptr;
   }
 
   std::unique_ptr<unsigned char[]> context_buffer = std::make_unique<unsigned char[]>(required_buffer_size);
   if (nullptr == context_buffer) {
     LOGS(*logger_, ERROR) << "Failed to allocate buffer for context cache.";
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate buffer for context cache.");
+    return nullptr;
   }
 
-  uint64_t written_buffer_size(0);
   rt = qnn_interface_.contextGetBinary(context_,
                                        reinterpret_cast<void*>(context_buffer.get()),
                                        required_buffer_size,
                                        &written_buffer_size);
   if (QNN_CONTEXT_NO_ERROR != rt) {
     LOGS(*logger_, ERROR) << "Failed to get context binary.";
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get context binary.");
+    return nullptr;
   }
 
   if (required_buffer_size < written_buffer_size) {
     LOGS(*logger_, ERROR) << "Context written buffer size: " << written_buffer_size
                           << " exceeds allocated buffer size: " << required_buffer_size;
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Context written buffer exceeds allocated buffer size.");
+    return nullptr;
   }
 
-  ORT_RETURN_IF_ERROR(GenerateCtxCacheOnnxModel(model_name, graph_name, input_names, inputs_info, output_names,
-                                                outputs_info, model_description_, sdk_build_version_, context_cache_path_,
-                                                context_buffer.get(), written_buffer_size, qnn_context_embed_mode_, *logger_));
-
-  LOGS(*logger_, VERBOSE) << "Dump QNN Context completed.";
-  return Status::OK();
+  LOGS(*logger_, VERBOSE) << "Get context binary buffer succeed.";
+  return context_buffer;
 }
 
 Status QnnBackendManager::LoadCachedQnnCtxFromOnnxModel(const std::string& ep_engine_cache,
@@ -537,6 +508,8 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(const std::string& buff
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
 
+  // More work to support multiple partition, how to map the graph name in compile to qnn graph name
+  // Need the lower level framework to understand EPContext op and pass in the partition_name in fused_node during Compile
   ORT_RETURN_IF_ERROR(qnn_model.DeserializeGraphInfoFromBinaryInfo(graphs_info[0]));
 
   qnn_sys_interface_.systemContextFree(sys_ctx_handle);
@@ -545,55 +518,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(const std::string& buff
   ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
   context_created_ = true;
 
-  model_description_.clear();
   LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";
-  return Status::OK();
-}
-
-/* \brief: Validate the model file name and graph name with Ort generated context cache metadata
- * \param[in] model_name - model file name
- * \param[in] graph_partition_name - graph name, e.g Ort_QNN_[hash_id]_[id]. Since GetCapability is called twice,
- *                                   [hash_id]_[id] changes even for same graph,
- *                                   so only validate the graph name for 2nd call
- * \param[in] qnn_cache_model_handler -QnnCacheModelHandler
- */
-Status QnnBackendManager::ValidateWithContextFile(const std::string& model_name,
-                                                  const std::string& graph_partition_name,
-                                                  qnn::QnnCacheModelHandler* qnn_cache_model_handler) {
-  ORT_RETURN_IF(!ctx_file_exists_, "Qnn context binary file not exist for some reason!");
-
-  std::string model_name_from_ctx_cache;
-  std::string model_description_from_ctx_cache;
-  std::string graph_partition_name_from_ctx_cache;
-  std::string cache_source;
-  ORT_RETURN_IF_ERROR(qnn_cache_model_handler->GetMetadataFromEpContextModel(context_cache_path_,
-                                                                             model_name_from_ctx_cache,
-                                                                             model_description_from_ctx_cache,
-                                                                             graph_partition_name_from_ctx_cache,
-                                                                             cache_source,
-                                                                             *logger_));
-
-  // The source attribute from the skeleton onnx file indicate whether it's generated from QNN toolchain or ORT
-  if (cache_source != kQnnExecutionProvider) {
-    return Status::OK();
-  }
-
-  ORT_RETURN_IF(model_name != model_name_from_ctx_cache,
-                "Model file name from context cache metadata: " + model_name_from_ctx_cache +
-                    " is different with target: " + model_name +
-                    ". Please make sure the context binary file matches the model.");
-
-  ORT_RETURN_IF(model_description_ != model_description_from_ctx_cache,
-                "Model description from context cache metadata: " + model_description_from_ctx_cache +
-                    " is different with target: " + model_description_ +
-                    ". Please make sure the context binary file matches the model.");
-
-  ORT_RETURN_IF(graph_partition_name != graph_partition_name_from_ctx_cache && get_capability_round_2_,
-                "Graph name from context cache metadata: " + graph_partition_name_from_ctx_cache +
-                    " is different with target: " + graph_partition_name +
-                    ". You may need to re-generate the context binary file.");
-
-  get_capability_round_2_ = true;
   return Status::OK();
 }
 

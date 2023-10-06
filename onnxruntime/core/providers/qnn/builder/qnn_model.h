@@ -91,6 +91,8 @@ class QnnModel {
     return outputs_info_;
   }
 
+  const std::string& Name() { return graph_info_->Name(); }
+
  private:
   const NodeUnit& GetNodeUnit(const Node* node,
                               const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map) const;
@@ -104,13 +106,13 @@ class QnnModel {
 
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
- private:
   size_t GetInputOutputIndex(const std::string& name, const std::unordered_map<std::string, OnnxTensorInfo>& io_info) const {
     auto it = io_info.find(name);
     ORT_ENFORCE(it != io_info.end(), "Input/Output name not found.");
     return it->second.index_;
   }
 
+ private:
   const logging::Logger& logger_;
   std::unique_ptr<GraphInfo> graph_info_;
   QnnBackendManager* qnn_backend_manager_ = nullptr;

@@ -3,6 +3,7 @@
 
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/graph/constants.h"
+#include "core/providers/qnn/builder/qnn_model.h"
 
 #include <iostream>
 #include <fstream>
@@ -10,6 +11,24 @@
 
 namespace onnxruntime {
 namespace qnn {
+
+Status IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                              bool& is_qnn_ctx_model) {
+  is_qnn_ctx_model = false;
+  for (const auto& fused_node_graph : fused_nodes_and_graphs) {
+    const onnxruntime::GraphViewer& graph_viewer(fused_node_graph.filtered_graph);
+    // It's an Onnx model with Qnn context cache binary if it only has a node with EPContext type
+    int count = 0;
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (EPCONTEXT_OP == node.OpType()) {
+        is_qnn_ctx_model = true;
+      }
+      ++count;
+    }
+    ORT_RETURN_IF(is_qnn_ctx_model && count > 1, "Fused graph should only has 1 single EPContext node.");
+  }
+  return Status::OK();
+}
 
 bool IsQnnCtxModel(const onnxruntime::GraphViewer& graph_viewer) {
   // It's an Onnx model with Qnn context cache binary if it only has a node with EPContext type
@@ -38,65 +57,6 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
     auto& input_arg = graph.GetOrCreateNodeArg(name, &tensor_type);
     node_args.push_back(&input_arg);
   }
-  return Status::OK();
-}
-
-Status GenerateCtxCacheOnnxModel(const std::string& model_name, const std::string& graph_name,
-                                 const std::vector<std::string>& input_names,
-                                 const std::unordered_map<std::string, OnnxTensorInfo>& inputs_info,
-                                 const std::vector<std::string>& output_names,
-                                 const std::unordered_map<std::string, OnnxTensorInfo>& outputs_info,
-                                 const std::string& model_description,
-                                 const std::string& sdk_build_version,
-                                 const std::string& file_path,
-                                 unsigned char* buffer,
-                                 uint64_t buffer_size,
-                                 bool qnn_context_embed_mode,
-                                 const logging::Logger& logger) {
-  std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
-  Model model(model_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-              {}, logger);
-  auto& graph = model.MainGraph();
-  graph.SetDescription(model_description);
-
-  using namespace ONNX_NAMESPACE;
-  std::vector<NodeArg*> inputs;
-  std::vector<NodeArg*> outputs;
-  ORT_RETURN_IF_ERROR(CreateNodeArgs(input_names, inputs_info, inputs, graph));
-  ORT_RETURN_IF_ERROR(CreateNodeArgs(output_names, outputs_info, outputs, graph));
-
-  auto& ep_node = graph.AddNode(graph_name,
-                                EPCONTEXT_OP,
-                                "Onnx Qnn context binary cache for graph partition: " + graph_name,
-                                inputs,
-                                outputs,
-                                nullptr,
-                                kMSDomain);
-
-  if (qnn_context_embed_mode) {
-    std::string cache_payload(buffer, buffer + buffer_size);
-    ep_node.AddAttribute(EP_CACHE_CONTEXT, cache_payload);
-  } else {
-    std::string context_cache_path(file_path + "_" + graph_name + ".bin");
-    std::string context_cache_name(std::filesystem::path(context_cache_path).filename().string());
-    std::ofstream of_stream(context_cache_path.c_str(), std::ofstream::binary);
-    if (!of_stream) {
-      LOGS(logger, ERROR) << "Failed to open cached context file.";
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
-    }
-    of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
-    ep_node.AddAttribute(EP_CACHE_CONTEXT, context_cache_name);
-  }
-  int64_t embed_mode = qnn_context_embed_mode ? static_cast<int64_t>(1) : static_cast<int64_t>(0);
-  ep_node.AddAttribute(EMBED_MODE, embed_mode);
-  ep_node.AddAttribute(EP_SDK_VER, sdk_build_version);
-  ep_node.AddAttribute(PARTITION_NAME, graph_name);
-  ep_node.AddAttribute(SOURCE, kQnnExecutionProvider);
-
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-
-  ORT_RETURN_IF_ERROR(Model::Save(model, file_path));
-
   return Status::OK();
 }
 
@@ -138,6 +98,7 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
     cache_file.close();
     ORT_RETURN_IF(ep_cache_context.length() != buffer_size, "Failed to read contents from cached context file.");
   }
+  ORT_RETURN_IF(ep_cache_context.empty(), "Cached context empty.");
   return Status::OK();
 }
 
@@ -164,6 +125,137 @@ Status QnnCacheModelHandler::GetMetadataFromEpContextModel(const std::string& ct
   model_description = model_description_;
   graph_partition_name = graph_partition_name_;
   cache_source = cache_source_;
+
+  return Status::OK();
+}
+
+bool QnnCacheModelHandler::IsContextCacheFileExists(const std::string& customer_context_cache_path,
+                                                    const std::string& model_description,
+                                                    const onnxruntime::PathString& model_pathstring) {
+  // Avoid duplicate work
+  if (ctx_file_exists_) {
+    return ctx_file_exists_;
+  }
+  model_description_ = model_description;
+  // Use user provided context cache file path if exist, otherwise try model_file.onnx_ctx.onnx by default
+  if (customer_context_cache_path.empty()) {
+    context_cache_path_ = PathToUTF8String(model_pathstring) + "_qnn_ctx.onnx";
+  } else {
+    context_cache_path_ = customer_context_cache_path;
+  }
+
+  ctx_file_exists_ = std::filesystem::exists(context_cache_path_);
+
+  return ctx_file_exists_;
+}
+
+Status QnnCacheModelHandler::ValidateWithContextFile(const std::string& model_name,
+                                                     const std::string& graph_partition_name,
+                                                     const logging::Logger& logger) {
+  ORT_RETURN_IF(!ctx_file_exists_, "Qnn context binary file not exist for some reason!");
+
+  std::string model_name_from_ctx_cache;
+  std::string model_description_from_ctx_cache;
+  std::string graph_partition_name_from_ctx_cache;
+  std::string cache_source;
+  ORT_RETURN_IF_ERROR(GetMetadataFromEpContextModel(context_cache_path_,
+                                                    model_name_from_ctx_cache,
+                                                    model_description_from_ctx_cache,
+                                                    graph_partition_name_from_ctx_cache,
+                                                    cache_source,
+                                                    logger));
+
+  // The source attribute from the skeleton onnx file indicate whether it's generated from QNN toolchain or ORT
+  if (cache_source != kQnnExecutionProvider) {
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF(model_name != model_name_from_ctx_cache,
+                "Model file name from context cache metadata: " + model_name_from_ctx_cache +
+                    " is different with target: " + model_name +
+                    ". Please make sure the context binary file matches the model.");
+
+  ORT_RETURN_IF(model_description_ != model_description_from_ctx_cache,
+                "Model description from context cache metadata: " + model_description_from_ctx_cache +
+                    " is different with target: " + model_description_ +
+                    ". Please make sure the context binary file matches the model.");
+
+  ORT_RETURN_IF(graph_partition_name != graph_partition_name_from_ctx_cache && get_capability_round_2_,
+                "Graph name from context cache metadata: " + graph_partition_name_from_ctx_cache +
+                    " is different with target: " + graph_partition_name +
+                    ". You may need to re-generate the context binary file.");
+
+  get_capability_round_2_ = true;
+  return Status::OK();
+}
+
+Status QnnCacheModelHandler::GenerateCtxCacheOnnxModel(unsigned char* buffer,
+                                                       uint64_t buffer_size,
+                                                       const std::string& sdk_build_version,
+                                                       const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                                       const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
+                                                       const logging::Logger& logger) {
+  std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
+  Model model(model_name_, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, logger);
+  auto& graph = model.MainGraph();
+  graph.SetDescription(model_description_);
+
+  using namespace ONNX_NAMESPACE;
+  int index = 0;
+  // Still need more work to support multiple partition, it's out of EP's scope.
+  // Already have code to make sure it's single partition before this method get invoked.
+  for (const auto& fused_node_graph : fused_nodes_and_graphs) {
+    const onnxruntime::GraphViewer& graph_viewer(fused_node_graph.filtered_graph);
+    Node& fused_node = fused_node_graph.fused_node;
+    // graph_viewer.Name() is generated in GetCapability, e.g QNN_[hash_id]_[id]
+    // dump graph_viewer.Name() as metadata in context cache binary file, so that we can validate it in GetCapability
+    auto qnn_model_kv = qnn_models.find(fused_node.Name());
+    ORT_RETURN_IF(qnn_model_kv == qnn_models.end(), fused_node.Name(), " not exist in QnnModel table.");
+
+    auto qnn_model = qnn_model_kv->second.get();
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+    ORT_RETURN_IF_ERROR(CreateNodeArgs(qnn_model->GetInputNames(), qnn_model->GetInputsInfo(), inputs, graph));
+    ORT_RETURN_IF_ERROR(CreateNodeArgs(qnn_model->GetOutputNames(), qnn_model->GetOutputsInfo(), outputs, graph));
+
+    const std::string& graph_name = graph_viewer.Name();
+    auto& ep_node = graph.AddNode(graph_name,
+                                  EPCONTEXT_OP,
+                                  "Onnx Qnn context binary cache for graph partition: " + graph_name,
+                                  inputs,
+                                  outputs,
+                                  nullptr,
+                                  kMSDomain);
+
+    // Only dump the context buffer once since all QNN graph are in one single context
+    if (0 == index) {
+      if (qnn_context_embed_mode_) {
+        std::string cache_payload(buffer, buffer + buffer_size);
+        ep_node.AddAttribute(EP_CACHE_CONTEXT, cache_payload);
+      } else {
+        std::string context_cache_path(context_cache_path_ + "_" + graph_name + ".bin");
+        std::string context_cache_name(std::filesystem::path(context_cache_path).filename().string());
+        std::ofstream of_stream(context_cache_path.c_str(), std::ofstream::binary);
+        if (!of_stream) {
+          LOGS(logger, ERROR) << "Failed to open create context file.";
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
+        }
+        of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
+        ep_node.AddAttribute(EP_CACHE_CONTEXT, context_cache_name);
+      }
+    } else {
+      ep_node.AddAttribute(MAIN_CONTEXT, static_cast<int64_t>(0));
+    }
+    int64_t embed_mode = qnn_context_embed_mode_ ? static_cast<int64_t>(1) : static_cast<int64_t>(0);
+    ep_node.AddAttribute(EMBED_MODE, embed_mode);
+    ep_node.AddAttribute(EP_SDK_VER, sdk_build_version);
+    ep_node.AddAttribute(PARTITION_NAME, graph_name);
+    ep_node.AddAttribute(SOURCE, kQnnExecutionProvider);
+    ++index;
+  }
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+  ORT_RETURN_IF_ERROR(Model::Save(model, context_cache_path_));
 
   return Status::OK();
 }
