@@ -221,6 +221,25 @@ void InferenceModel(const std::string& model_data, const char* log_id,
                     std::vector<OrtValue>& output_vals);
 
 /**
+ * If the ORT_UNIT_TEST_ENABLE_QNN_SAVER environment variable is enabled (set to 1), this function modifies
+ * the QNN EP provider options to enable the QNN Saver backend, which dumps QNN API calls (and weights) to disk.
+ *
+ * - saver_output/saver_output.c: C file containing all QNN API calls.
+ * - saver_output/params.bin: binary file containing all input/output/parameter tensor data provided during tensor
+ *                            creation, op config validation, and graph execution.
+ *
+ * Enabling the QNN Saver backend has 2 note-worthy effects:
+ * 1. All QNN API calls will succeed.
+ * 2. Inference output returns dummy data.
+ *
+ * Because output files from QNN Saver are always overwritten, it is recommended to run individual unit tests via the
+ * --gtest_filter command-line option. Ex: --gtest_filter=QnnHTPBackendTests.Resize_DownSample_Linear_AlignCorners
+ *
+ * \param qnn_options QNN EP provider options that may be modified to enable QNN Saver.
+ */
+void TryEnableQNNSaver(ProviderOptions& qnn_options);
+
+/**
  * Tests the accuracy of a QDQ model on QNN EP by runnning 3 inferences:
  *
  * 1. float model on CPU EP (baseline)
@@ -240,7 +259,7 @@ void InferenceModel(const std::string& model_data, const char* log_id,
  */
 template <typename QuantType>
 inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
-                                 const ProviderOptions& qnn_options, int opset_version,
+                                 ProviderOptions qnn_options, int opset_version,
                                  ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err = 1e-4f,
                                  logging::Severity log_severity = logging::Severity::kERROR) {
   // Add kMSDomain to cover contrib op like Gelu
@@ -300,6 +319,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   qdq_model.ToProto().SerializeToString(&qdq_model_data);
 
   // Run QDQ model on QNN EP and collect outputs.
+  TryEnableQNNSaver(qnn_options);
   std::vector<OrtValue> qnn_qdq_outputs;
   InferenceModel(qdq_model_data, "qdq_model_logger", QnnExecutionProviderWithOptions(qnn_options),
                  expected_ep_assignment, qdq_helper.feeds_, qnn_qdq_outputs);
@@ -538,7 +558,7 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(const std::string& op_typ
  * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
  * \param log_severity The logger's minimum severity level.
  */
-void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
+void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err = 1e-5f, logging::Severity log_severity = logging::Severity::kERROR);
 

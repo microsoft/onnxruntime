@@ -21,6 +21,8 @@ Do not modify directly.*
 | Atan | ai.onnx(7+) |  |
 | Atanh | ai.onnx(9+) |  |
 | AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(11+) | need perf optimization; need implementing activation |
+| BiasAdd | com.microsoft(1+) |  |
+| BiasSplitGelu | com.microsoft(1+) |  |
 | Cast | ai.onnx(6-8,9-12,13-18,19+) |  |
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
@@ -94,3 +96,4 @@ Do not modify directly.*
 | Tile | ai.onnx(6-12,13+) |  |
 | Transpose | ai.onnx(1-12,13+) | need perf optimization |
 | Unsqueeze | ai.onnx(1-10,11-12,13+) |  |
+| Where | ai.onnx(9-15,16+) |  |

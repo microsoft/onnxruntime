@@ -648,8 +648,8 @@ class FusionAttention(Fusion):
             else:
                 mha_inputs.extend([q_matmul.output[0], k_matmul.output[0], v_matmul.output[0]])
         elif (
-            type(k_matmul) == str
-            and type(v_matmul) == str
+            type(k_matmul) == str  # noqa: E721
+            and type(v_matmul) == str  # noqa: E721
             and k_matmul in graph_input_names
             and v_matmul in graph_input_names
         ):

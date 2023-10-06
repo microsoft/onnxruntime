@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
+import type {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
 export type SerializableTensorMetadata =
     [dataType: Tensor.Type, dims: readonly number[], data: Tensor.DataType, location: 'cpu'];
