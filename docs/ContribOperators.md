@@ -27,6 +27,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.DequantizeWithOrder">com.microsoft.DequantizeWithOrder</a>
   * <a href="#com.microsoft.DynamicQuantizeLSTM">com.microsoft.DynamicQuantizeLSTM</a>
   * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
+  * <a href="#com.microsoft.EPContext">com.microsoft.EPContext</a>
   * <a href="#com.microsoft.EmbedLayerNormalization">com.microsoft.EmbedLayerNormalization</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FastGelu">com.microsoft.FastGelu</a>
@@ -1517,6 +1518,55 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input A, b_scale and output Y data type as float tensor.</dd>
 <dt><tt>T2</tt> : tensor(int8), tensor(uint8)</dt>
 <dd>Constrain input B data type to 8-bit integer tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.EPContext"></a><a name="com.microsoft.epcontext">**com.microsoft.EPContext**</a>
+
+  Onnx node container for EP context.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>embed_mode</tt> : int</dt>
+<dd>1: indicate ep_cache_context is the context content. 0: indicate ep_cache_context is the file path to the context content.The path is relative to this Onnx file. Default is 1.</dd>
+<dt><tt>ep_cache_context</tt> : string</dt>
+<dd>payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0.</dd>
+<dt><tt>ep_sdk_version</tt> : string</dt>
+<dd>(Optional) SDK version used to convert the model.</dd>
+<dt><tt>main_context</tt> : int</dt>
+<dd>Usually each single EPContext associate with a graph partition.But for some case like QNN, it has single EPContext contains all partitions.In that case, the node with ep_cache_context should set main_context=1. Other nodes set main_context=0 and skip ep_cache_context.The path is relative to this Onnx file. Default is 1.</dd>
+<dt><tt>notes</tt> : string</dt>
+<dd>(Optional) Some notes for the model</dd>
+<dt><tt>partition_name</tt> : string</dt>
+<dd>(Optional) partitioned graph name.</dd>
+<dt><tt>source</tt> : string</dt>
+<dd>(Optional) the source used to generate the engine/context cache file. Ort EP or native SDK tool chain</dd>
+</dl>
+
+#### Inputs (1 - &#8734;)
+
+<dl>
+<dt><tt>inputs</tt> (variadic) : T</dt>
+<dd>List of tensors for inputs</dd>
+</dl>
+
+#### Outputs (1 - &#8734;)
+
+<dl>
+<dt><tt>outputs</tt> (variadic) : T</dt>
+<dd>One or more outputs, list of tensors for outputs</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain input and output types.</dd>
 </dl>
 
 
