@@ -307,6 +307,9 @@ class CudaSession:
 
         self.ort_session.run_with_iobinding(self.io_binding)
 
+        print("inputs", feed_dict)
+        print("outputs", self.output_tensors)
+
         return self.output_tensors
 
     @staticmethod

@@ -34,7 +34,7 @@ class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatte
 def parse_arguments(is_xl: bool, description: str):
     parser = argparse.ArgumentParser(description=description, formatter_class=RawTextArgumentDefaultsHelpFormatter)
 
-    engines = ["ORT_TRT", "TRT"] if is_xl else ["ORT_CUDA", "ORT_TRT", "TRT"]
+    engines = ["ORT_CUDA", "ORT_TRT", "TRT"]
 
     parser.add_argument(
         "--engine",

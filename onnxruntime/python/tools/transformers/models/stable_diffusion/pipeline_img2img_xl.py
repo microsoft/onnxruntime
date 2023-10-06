@@ -29,7 +29,7 @@ from pipeline_stable_diffusion import StableDiffusionPipeline
 
 class Img2ImgXLPipeline(StableDiffusionPipeline):
     """
-    Stable Diffusion Img2Img XL pipeline using NVidia TensorRT.
+    Stable Diffusion Img2Img XL pipeline.
     """
 
     def __init__(self, pipeline_info: PipelineInfo, *args, **kwargs):
