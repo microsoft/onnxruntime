@@ -128,7 +128,9 @@ class FusionInsertTranspose(Fusion):
             return
 
         if not (
-            self.model.get_constant_value(unsqueeze_3.input[1]) == 3
+            len(unsqueeze_3.input) == 2
+            and self.model.get_constant_value(unsqueeze_3.input[1]) == 3
+            and len(unsqueeze_2.input) == 2
             and self.model.get_constant_value(unsqueeze_2.input[1]) == 2
             and len(self.model.get_children(gemm, input_name_to_nodes)) == 1
             and len(self.model.get_children(unsqueeze_3, input_name_to_nodes)) == 1
