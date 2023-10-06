@@ -261,7 +261,6 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
     return window_size;
   };
 
-
   const size_t width_rindex = is_nchw ? 0 : 1;
   const size_t height_rindex = is_nchw ? 1 : 2;
   const size_t channel_rindex = is_nchw ? 2 : 2;  // only works for trilinear NC(chw)
