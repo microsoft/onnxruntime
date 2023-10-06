@@ -149,6 +149,11 @@ namespace Dml
             uint32_t minDimensionCount = NchwDimensionCount
             ) const;
 
+        static void TryConvertTensorToBroadcastScalar(
+            const MLOperatorKernelCreationContext& kernelInfo, 
+            const DML_TENSOR_DESC* tensor, 
+            uint32_t kernelInputIndex);
+
     private:
         // For each input or output of the DML kernel, the corresponding input or output of the original
         // kernel.  Entries for unused DML inputs are nullopt.
@@ -164,6 +169,7 @@ namespace Dml
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
 
+        static const uint32_t zeroArray[8];
     };
 
 } // namespace Dml
