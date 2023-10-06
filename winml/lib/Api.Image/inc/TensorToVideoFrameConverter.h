@@ -80,7 +80,7 @@ class TensorToVideoFrameConverter : public ImageConverter {
     _Inout_ wm::VideoFrame& unsupported_video_frame
   );
 
-  static D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor(
+  static D3D12_SHADER_RESOURCE_VIEW_DESC CreateSRVDescriptor(
     const UINT32 batch_index, const D3D12_RESOURCE_DESC& resource_description, const ImageTensorDescription& description
   );
 
