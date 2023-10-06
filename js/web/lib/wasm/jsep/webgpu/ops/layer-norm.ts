@@ -49,8 +49,7 @@ const createLayerNormProgramInfo =
             }
           }
 
-          // TODO: for some reason it does not work correctly with fp16
-          const components = inputs[0].dataType !== DataType.float16 ? getMaxComponents(normSize) : 1;
+          const components = getMaxComponents(normSize);
           const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
           const variables = [
             inputVariable('x', inputs[0].dataType, inputs[0].dims, components),
@@ -72,26 +71,27 @@ const createLayerNormProgramInfo =
           }
 
           const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const normSize: u32 = ${normSize / components};
+  const normSize: f32 = ${normSize};
+  const normSizeVectorized: u32 = ${normSize / components};
   const epsilon: f32 = ${attributes.epsilon};
 
   ${shaderHelper.declareVariables(...variables)}
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(normCount)}
-    let offset = global_idx * normSize;
+    let offset = global_idx * normSizeVectorized;
     var meanVector = ${fillVector('f32', components)};
     var meanSquareVector = ${fillVector('f32', components)};
 
-    for (var h: u32 = 0u; h < normSize; h++) {
+    for (var h: u32 = 0u; h < normSizeVectorized; h++) {
       let value = ${castToF32(dataType, components, 'x[h + offset]')};
       meanVector += value;
       meanSquareVector += value * value;
     }
-    let mean = ${sumVector('meanVector', components)} / f32(normSize);
+    let mean = ${sumVector('meanVector', components)} / normSize;
     let meanSquare = sqrt(${sumVector('meanSquareVector', components)} 
-      / f32(normSize) - mean * mean + epsilon);
+      / normSize - mean * mean + epsilon);
 
-    for (var j: u32 = 0; j < normSize; j++) {
+    for (var j: u32 = 0; j < normSizeVectorized; j++) {
       let f32input = ${castToF32(dataType, components, 'x[j + offset]')};
       let f32scale = ${castToF32(dataType, components, 'scale[j]')};
       output[j + offset] = ${variables[0].type.value}((f32input - mean) / meanSquare * f32scale

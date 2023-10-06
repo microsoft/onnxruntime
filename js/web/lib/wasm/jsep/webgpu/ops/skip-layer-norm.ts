@@ -109,7 +109,7 @@ const createSkipLayerNormProgramInfo =
       }
       const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-      const hiddenSize: u32 = ${hiddenSize};
+      const hiddenSize: f32 = ${hiddenSize};
       const hiddenSizeVectorized: u32 = ${hiddenSize / components};
       const epsilon: f32 = ${attributes.epsilon};
 
@@ -131,8 +131,8 @@ const createSkipLayerNormProgramInfo =
           sum += f32Value;
           squareSum += f32Value * f32Value;
         }
-        let mean = ${sumVector('sum', components)} / f32(hiddenSize);
-        let variance = sqrt(${sumVector('squareSum', components)} / f32(hiddenSize) - mean * mean + epsilon);
+        let mean = ${sumVector('sum', components)} / hiddenSize;
+        let variance = sqrt(${sumVector('squareSum', components)} / hiddenSize - mean * mean + epsilon);
         ${hasMeanOutput ? 'meanOutput[global_idx] = mean;' : ''}
         ${hasInvStdDevOutput ? 'invStdOutput[global_idx] = 1.0 / variance;' : ''}
         for (var i: u32 = 0; i < hiddenSizeVectorized; i++) {
