@@ -77,6 +77,17 @@ ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo,
 ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo*) {
 }
 
+//ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
+//                    _In_ OrtOpAttr*,
+//                    _In_ const char*,
+//                    _In_ OrtOpAttrType,
+//                    _Inout_ void*,
+//                    _In_ int) {
+//  API_IMPL_BEGIN
+//  return nullptr;
+//  API_IMPL_END
+//}
+
 #else
 
 namespace onnxruntime {
@@ -554,5 +565,16 @@ ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_co
     delete kernel_info;
   }
 }
+
+//ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
+//                    _In_ OrtOpAttr* /*op_attr*/,
+//                    _In_ const char* /*attr_name*/,
+//                    _In_ OrtOpAttrType /*type*/,
+//                    _Inout_ void* /*data*/,
+//                    _In_ int /*len*/) {
+//  API_IMPL_BEGIN
+//  return nullptr;
+//  API_IMPL_END
+//}
 
 #endif

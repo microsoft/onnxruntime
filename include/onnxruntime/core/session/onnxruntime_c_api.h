@@ -4458,6 +4458,15 @@ struct OrtApi {
   ORT_API2_STATUS(ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info);
 
   /**
+   * Get attribute from OrtShapeInferContext
+   *
+   * \param[in] context
+   * \param[in] attr_name
+   * \param[out] attr
+   */
+  ORT_API2_STATUS(ShapeInferContext_GetAttribute, _In_ const OrtShapeInferContext* context, _In_ const char* attr_name, _Outptr_ const OrtOpAttr** attr);
+
+  /**
    * Set type and shape info of an ouput
    *
    * \param[in] context
@@ -4473,6 +4482,16 @@ struct OrtApi {
    * \param[in] dim_params_length Number of strings
    */
   ORT_API2_STATUS(SetSymbolicDimensions, _In_ OrtTensorTypeAndShapeInfo* info, _In_ const char* dim_params[], _In_ size_t dim_params_length);
+
+  /**
+   * Read contents of an attribute to data
+   * \param[in] op_attr
+   * \param[in] attr_name Attribute name
+   * \param[in] type Attribute type
+   * \param[out] data Memory address to save raw content of the attribute
+   * \param[in] len Number of bytes allowed to store in data
+   */
+  ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
 };
 
 /*
@@ -4565,7 +4584,7 @@ struct OrtCustomOp {
   // Perform the computation step.
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
 
-  OrtStatusPtr(ORT_API_CALL* InferOutputShape)(_In_ OrtShapeInferContext*);
+  OrtStatusPtr(ORT_API_CALL* InferOutputShapeFn)(_In_ const struct OrtCustomOp* op, _In_ OrtShapeInferContext*);
 };
 
 /*

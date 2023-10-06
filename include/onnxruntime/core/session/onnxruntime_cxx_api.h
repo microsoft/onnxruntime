@@ -41,6 +41,14 @@
 #include <iostream>
 #endif
 
+#define RETURN_ON_API_FAIL(expression) \
+  {                                    \
+    auto err = (expression);           \
+    if (err) {                         \
+      return Status(err);              \
+    }                                  \
+  }
+
 /** \brief All C++ Onnxruntime APIs are defined inside this namespace
  *
  */
@@ -2156,6 +2164,82 @@ struct Op : detail::Base<OrtOp> {
               size_t output_count);
 };
 
+struct ShapeInferContext {
+  struct SymbolicInteger {
+    SymbolicInteger(int64_t i) : i_(i), is_int_(true){};
+    SymbolicInteger(const char* s) : s_(s), is_int_(false){};
+    SymbolicInteger(const SymbolicInteger&) = default;
+    SymbolicInteger(SymbolicInteger&&) = default;
+
+    SymbolicInteger& operator=(const SymbolicInteger&) = default;
+    SymbolicInteger& operator=(SymbolicInteger&&) = default;
+
+    bool operator==(const SymbolicInteger& dim) const {
+      if (is_int_ == dim.is_int_) {
+        if (is_int_) {
+          return i_ == dim.i_;
+        } else {
+          return std::string{s_} == std::string{dim.s_};
+        }
+      }
+      return false;
+    }
+
+    bool IsInt() const { return is_int_; }
+    int64_t AsInt() const { return i_; }
+    const char* AsSym() const { return s_; }
+
+   private:
+    union {
+      int64_t i_;
+      const char* s_;
+    };
+    bool is_int_;
+  };
+
+  using Shape = std::vector<SymbolicInteger>;
+
+  ShapeInferContext(const OrtApi* ort_api, OrtShapeInferContext* ctx);
+
+  const Shape& GetInputShape(size_t indice) const { return input_shapes_.at(indice); }
+
+  size_t GetInputCount() const { return input_shapes_.size(); }
+
+  Status SetOutputShape(size_t indice, const Shape& shape);
+
+  template <typename R>
+  R GetAttr(const char*) { return {}; }
+
+  template <>
+  int64_t GetAttr<int64_t>(const char* attr_name);
+
+  using Ints = std::vector<int64_t>;
+  template <>
+  Ints GetAttr<Ints>(const char* attr_name);
+
+  template <>
+  float GetAttr<float>(const char* attr_name);
+
+  using Floats = std::vector<float>;
+  template <>
+  Floats GetAttr<Floats>(const char* attr_name);
+
+  template <>
+  std::string GetAttr<std::string>(const char* attr_name);
+
+  using Strings = std::vector<std::string>;
+  template <>
+  Strings GetAttr<Strings>(const char* attr_name);
+
+ private:
+  const OrtOpAttr* GetAttrHdl(const char* attr_name) const;
+  const OrtApi* ort_api_;
+  OrtShapeInferContext* ctx_;
+  std::vector<Shape> input_shapes_;
+};
+
+using ShapeInferFn = Ort::Status (*)(Ort::ShapeInferContext&);
+
 template <typename TOp, typename TKernel, bool WithStatus = false>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
@@ -2206,7 +2290,8 @@ struct CustomOpBase : OrtCustomOp {
         static_cast<TKernel*>(op_kernel)->Compute(context);
       };
     }
-    OrtCustomOp::InferOutputShape = nullptr;
+
+    SetShapeInferFn<TOp>(0);
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
@@ -2256,6 +2341,20 @@ struct CustomOpBase : OrtCustomOp {
   // This default implementation returns an empty vector of config entries.
   std::vector<std::string> GetSessionConfigKeys() const {
     return std::vector<std::string>{};
+  }
+
+  template <typename C>
+  decltype(&C::InferOutputShape) SetShapeInferFn(decltype(&C::InferOutputShape)) {
+    OrtCustomOp::InferOutputShapeFn = [](const OrtCustomOp*, OrtShapeInferContext* ort_ctx) -> OrtStatusPtr {
+      ShapeInferContext ctx(&GetApi(), ort_ctx);
+      return C::InferOutputShape(ctx);
+    };
+    return {};
+  }
+
+  template <typename C>
+  void SetShapeInferFn(...) {
+    OrtCustomOp::InferOutputShapeFn = {};
   }
 
  protected:

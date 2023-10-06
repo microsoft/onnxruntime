@@ -7,6 +7,11 @@
 
 #include "onnxruntime_lite_custom_op.h"
 
+#define CUSTOM_ENFORCE(cond, msg)                                \
+  if (!(cond)) {                                                 \
+    ORT_CXX_API_THROW(msg, OrtErrorCode::ORT_RUNTIME_EXCEPTION); \
+  }
+
 using namespace Ort::Custom;
 
 namespace Cpu {
@@ -30,12 +35,12 @@ struct KernelOne {
     return Ort::Status{nullptr};
   }
 
-  static Ort::Status InferOutputShape(Ort::Custom::ShapeInferContext& ctx) {
+  static Ort::Status InferOutputShape(Ort::ShapeInferContext& ctx) {
     auto input_count = ctx.GetInputCount();
     if (input_count != 2) {
       return Ort::Status("input count should be 2", OrtErrorCode::ORT_INVALID_ARGUMENT);
     }
-    Ort::Custom::ShapeInferContext::Shape shape_3_5 = {{3}, {5}};
+    Ort::ShapeInferContext::Shape shape_3_5 = {{3}, {5}};
     if (ctx.GetInputShape(0) == shape_3_5 &&
         ctx.GetInputShape(1) == shape_3_5) {
       ctx.SetOutputShape(0, shape_3_5);
@@ -225,6 +230,73 @@ Ort::Status CopyTensorArrayCombined(const Ort::Custom::Tensor<float>& first_inpu
   return CopyTensorArrayAllVariadic<T>(other_inputs, other_outputs);
 }
 
+Ort::Status AttrTesterIntFloatCompute(const Ort::Custom::Tensor<float>& X, Ort::Custom::Tensor<float>& Z) {
+  auto x_shape = X.Shape();
+  auto x_raw = X.Data();
+  auto z_raw = Z.Allocate(x_shape);
+  for (int64_t i = 0; i < X.NumberOfElement(); ++i) {
+    z_raw[i] = x_raw[i] * 2;
+  }
+  return Ort::Status{nullptr};
+}
+
+Ort::Status AttrTesterIntFloatShapeInfer(Ort::ShapeInferContext& ctx) {
+  CUSTOM_ENFORCE(ctx.GetAttr<int64_t>("a_int") == 1, "int attr mismatch");
+  CUSTOM_ENFORCE(ctx.GetAttr<float>("a_float") == 2.f, "float attr mismatch");
+  std::vector<int64_t> ints{3, 4, 5};
+  CUSTOM_ENFORCE(ctx.GetAttr<std::vector<int64_t>>("ints") == ints, "ints attr mismatch");
+  std::vector<float> floats{6, 7, 8};
+  CUSTOM_ENFORCE(ctx.GetAttr<std::vector<float>>("floats") == floats, "floats attr mismatch");
+  Ort::ShapeInferContext::Shape shape5 = {{5}};
+  ctx.SetOutputShape(0, shape5);
+  return Ort::Status{nullptr};
+}
+
+Ort::Status AttrTesterStringShapeInfer(Ort::ShapeInferContext& ctx) {
+  CUSTOM_ENFORCE(ctx.GetAttr<std::string>("a_string") == "iamastring", "string attr mismatch");
+  std::vector<std::string> strings{"more", "strings"};
+  CUSTOM_ENFORCE(ctx.GetAttr<std::vector<std::string>>("strings") == strings, "strings attr mismatch");
+  Ort::ShapeInferContext::Shape shape5 = {{5}};
+  ctx.SetOutputShape(0, shape5);
+  return Ort::Status{nullptr};
+}
+
+struct AttrTesterStringKernel {
+  void Compute(OrtKernelContext* context) {
+    Ort::KernelContext ctx(context);
+    auto input_X = ctx.GetInput(0);
+    const auto* X = input_X.GetTensorData<float>();
+    auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
+    auto output = ctx.GetOutput(0, dimensions);
+    auto* out = output.GetTensorMutableData<float>();
+    const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
+    for (size_t i = 0; i < size; i++) {
+      out[i] = X[i] * 3;
+    }
+  }
+};
+
+struct AttrTesterStringOp : Ort::CustomOpBase<AttrTesterStringOp, AttrTesterStringKernel> {
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo*) const {
+    return std::make_unique<AttrTesterStringKernel>().release();
+  };
+  const char* GetName() const { return "AttrTesterString"; };
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; };
+  size_t GetInputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+
+  static Ort::Status InferOutputShape(Ort::ShapeInferContext& ctx) {
+    CUSTOM_ENFORCE(ctx.GetAttr<std::string>("a_string") == "iamastring", "string attr mismatch");
+    std::vector<std::string> strings{"more", "strings"};
+    CUSTOM_ENFORCE(ctx.GetAttr<std::vector<std::string>>("strings") == strings, "strings attr mismatch");
+    Ort::ShapeInferContext::Shape shape5 = {{5}};
+    ctx.SetOutputShape(0, shape5);
+    return Ort::Status{nullptr};
+  }
+};
+
 void RegisterOps(Ort::CustomOpDomain& domain) {
   static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp<KernelOne>("CustomOpOne", "CPUExecutionProvider")};
   static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", "CPUExecutionProvider", KernelTwo)};
@@ -236,6 +308,9 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
   static const std::unique_ptr<OrtLiteCustomOp> c_Box{Ort::Custom::CreateLiteCustomOp("Box", "CPUExecutionProvider", Box)};
   static const std::unique_ptr<OrtLiteCustomOp> c_CopyTensorArrayAllVariadic{Ort::Custom::CreateLiteCustomOp("CopyTensorArrayAllVariadic", "CPUExecutionProvider", CopyTensorArrayAllVariadic<float>)};
   static const std::unique_ptr<OrtLiteCustomOp> c_CopyTensorArrayCombined{Ort::Custom::CreateLiteCustomOp("CopyTensorArrayCombined", "CPUExecutionProvider", CopyTensorArrayCombined<float>)};
+
+  static const std::unique_ptr<OrtLiteCustomOp> c_AtterTesterIntFloat{Ort::Custom::CreateLiteCustomOp("AttrTesterIntFloat", "CPUExecutionProvider", AttrTesterIntFloatCompute, AttrTesterIntFloatShapeInfer)};
+  static const AttrTesterStringOp c_AtterTesterString;
 
 #if !defined(DISABLE_FLOAT8_TYPES)
   static const CustomOpOneFloat8 c_CustomOpOneFloat8;
@@ -252,6 +327,8 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
   domain.Add(c_Box.get());
   domain.Add(c_CopyTensorArrayAllVariadic.get());
   domain.Add(c_CopyTensorArrayCombined.get());
+  domain.Add(c_AtterTesterIntFloat.get());
+  domain.Add(&c_AtterTesterString);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
   domain.Add(&c_CustomOpOneFloat8);

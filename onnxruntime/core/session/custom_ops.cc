@@ -84,6 +84,10 @@ struct OrtShapeInferContext {
     return onnxruntime::Status::OK();
   }
 
+  const ONNX_NAMESPACE::AttributeProto* GetAttr(const char* attr_name) const {
+    return ctx_.getAttribute(attr_name);
+  }
+
  private:
   static std::vector<std::string> GetSymbolicDims(const ONNX_NAMESPACE::TensorShapeProto& shape_proto) {
     std::vector<std::string> symblic_dims;
@@ -111,9 +115,136 @@ ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputCount, _In_ const OrtShap
 
 ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info) {
   API_IMPL_BEGIN
-  // todo - handle invalid index
   *info = context->GetInputTypeShape(index);
   return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetAttribute, _In_ const OrtShapeInferContext* context, _In_ const char* attr_name, _Outptr_ const OrtOpAttr** attr) {
+  API_IMPL_BEGIN
+  *attr = reinterpret_cast<const OrtOpAttr*>(context->GetAttr(attr_name));
+  if (*attr) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute does not exist.");
+  }
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
+                    _In_ const OrtOpAttr* op_attr,
+                    _In_ OrtOpAttrType type,
+                    _Inout_ void* data,
+                    _In_ size_t len,
+                    _Out_ size_t* out) {
+  API_IMPL_BEGIN
+
+  if (!op_attr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Invalid attribute.");
+  }
+
+  auto attr = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(op_attr);
+  OrtStatusPtr ret = nullptr;
+  *out = 0;
+
+  if (type == OrtOpAttrType::ORT_OP_ATTR_FLOAT) {
+
+    if (len < sizeof(float)) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold a float.");
+    } else {
+        if (attr->has_f()) {
+        auto output_f = reinterpret_cast<float*>(data);
+        *output_f = attr->f();
+      } else {
+        ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute has no float value.");
+      }
+    }
+    *out = sizeof(float);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_FLOATS) {
+
+    const auto& floats = attr->floats();
+    auto num_floats = floats.size();
+
+    if (len < sizeof(float) * num_floats) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the array of floats.");
+    } else {
+      auto output_f = reinterpret_cast<float*>(data);
+      for (auto f : floats) {
+        *output_f = f;
+        output_f++;
+      }
+    }
+    *out = num_floats * sizeof(float);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_INT) {
+
+    if (len < sizeof(int)) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold a int64.");
+    } else {
+      if (attr->has_i()) {
+        auto output_i = reinterpret_cast<int64_t*>(data);
+        *output_i = attr->i();
+      } else {
+        ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute has no int64 value.");
+      }
+    }
+    *out = sizeof(int64_t);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_INTS) {
+
+    const auto& ints = attr->ints();
+    auto num_ints = ints.size();
+
+    if (len < sizeof(int64_t) * num_ints) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the array of int64.");
+    } else {
+      auto output_i = reinterpret_cast<int64_t*>(data);
+      for (auto i : ints) {
+        *output_i = i;
+        output_i++;
+      }
+    }
+    *out = num_ints * sizeof(int64_t);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_STRING) {
+
+    const auto& s = attr->s();
+    if (len < s.size() + 1) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the string.");
+    } else {
+      char* output_c = reinterpret_cast<char*>(data);
+      for (char c : s) {
+        *output_c++ = c;
+      }
+      *output_c = '\0';
+    }
+    *out = s.size() + 1;
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_STRINGS) {
+
+    const auto& ss = attr->strings();
+    size_t num_bytes = 0;
+    for_each(ss.begin(), ss.end(), [&num_bytes](const std::string& s) { num_bytes += s.size() + 1; });
+
+    if (len < num_bytes) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the array of strings.");
+    } else {
+      char* output_c = reinterpret_cast<char*>(data);
+      for (const auto& s : ss) {
+        for (char c : s) {
+          *output_c++ = c;
+        }
+        *output_c++ = '\0';
+      }
+    }
+    *out = num_bytes;
+
+  } else {
+    ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Unknown attribute type.");
+  }
+
+  return ret;
   API_IMPL_END
 }
 
@@ -688,10 +819,10 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
   schema.SinceVersion(1);
   schema.AllowUncheckedAttributes();
 
-  if (op->version >= min_ort_version_with_shape_inference && op->InferOutputShape) {
+  if (op->version >= min_ort_version_with_shape_inference && op->InferOutputShapeFn) {
     schema.TypeAndShapeInferenceFunction([op](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
       OrtShapeInferContext ctx(infer_ctx);
-      op->InferOutputShape(&ctx);
+      op->InferOutputShapeFn(op, &ctx);
     });
   }
   return schema;
