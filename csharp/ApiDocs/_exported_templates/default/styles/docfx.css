@@ -341,7 +341,7 @@ article section {
   padding: 50px 10px 10px 10px;
 }
 .search-results-group-heading {
-  font-family: "Open Sans";
+  font-family: "Open Sans", Arial, sans-serif;
   padding-left: 10px;
   color: white;
 }
