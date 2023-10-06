@@ -61,6 +61,33 @@ namespace Dml
             {
                 m_subgraphNodePointers.push_back(subgraphNode.get());
             }
+
+            m_nodeDimParams.resize(m_subgraphNodes.size());
+
+            for (int nodeIndex = 0; nodeIndex < m_subgraphNodes.size(); ++nodeIndex)
+            {
+                m_nodeDimParams[nodeIndex].resize(m_subgraphNodes[nodeIndex]->InputDefs().size());
+
+                for (int inputIndex = 0; inputIndex < m_subgraphNodes[nodeIndex]->InputDefs().size(); ++inputIndex)
+                {
+                    auto* inputDef = m_subgraphNodes[nodeIndex]->MutableInputDefs()[inputIndex];
+
+                    ORT_THROW_HR_IF(E_INVALIDARG, !inputDef->TypeAsProto()->has_tensor_type());
+                    auto tensorShape = inputDef->TypeAsProto()->tensor_type().shape();
+
+                    m_nodeDimParams[nodeIndex][inputIndex].resize(tensorShape.dim_size());
+
+                    for (int i = 0; i < tensorShape.dim_size(); ++i)
+                    {
+                        if (tensorShape.dim(i).has_dim_param())
+                        {
+                            m_nodeDimParams[nodeIndex][inputIndex][i] = tensorShape.dim(i).dim_param();
+                        }
+                    }
+
+                    inputDef->SetShape(tensorShape);
+                }
+            }
         }
 
         void TranslateAndCompileGraph(
@@ -101,16 +128,7 @@ namespace Dml
 
         onnxruntime::Status Compute(onnxruntime::OpKernelContext* kernelContext) const override
         {
-            const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(m_indexedSubGraph->GetMetaDef()->inputs.size());
-
-            // Populate input bindings for operator initialization
-            std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initializeResourceRefs; // For lifetime control
-            std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
-            std::vector<uint8_t> isInputsUploadedByDmlEP(fusedNodeInputCount);
-
-            auto providerImpl = static_cast<const ExecutionProvider*>(Info().GetExecutionProvider())->GetImpl();
-
-            std::unordered_map<std::string, int64_t> dynamicDimOverrides;
+            bool recompiledNeeded = false;
 
             ORT_THROW_HR_IF(E_UNEXPECTED, m_inputDimParams->size() != kernelContext->InputCount());
             for (int inputIndex = 0; inputIndex < m_inputDimParams->size(); ++inputIndex)
@@ -124,62 +142,87 @@ namespace Dml
 
                     if (!dimParam.empty())
                     {
-                        dynamicDimOverrides[dimParam] = input.Shape().GetDims()[i];
-                    }
-                }
-            }
-
-            for (auto& subgraphNode : m_subgraphNodes)
-            {
-                for (onnxruntime::NodeArg* inputDef : subgraphNode->MutableInputDefs())
-                {
-                    ORT_THROW_HR_IF(E_INVALIDARG, !inputDef->TypeAsProto()->has_tensor_type());
-                    auto tensorShape = inputDef->TypeAsProto()->tensor_type().shape();
-
-                    for (int i = 0; i < tensorShape.dim_size(); ++i)
-                    {
-                        if (tensorShape.dim(i).has_dim_param())
+                        auto iter = m_dynamicDimOverrides.find(dimParam);
+                        if (iter == m_dynamicDimOverrides.end())
                         {
-                            tensorShape.mutable_dim(i)->set_dim_value(dynamicDimOverrides[tensorShape.dim(i).dim_param()]);
+                            m_dynamicDimOverrides[dimParam] = input.Shape().GetDims()[i];
+                            recompiledNeeded = true;
+                        }
+                        else if (iter->second != input.Shape().GetDims()[i])
+                        {
+                            iter->second = input.Shape().GetDims()[i];
+                            recompiledNeeded = true;
                         }
                     }
-
-                    inputDef->SetShape(tensorShape);
                 }
             }
 
-            // Convert partitionONNXGraph into DML EP GraphDesc
-            ComPtr<IDMLDevice> device;
-            ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
-            GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
-                isInputsUploadedByDmlEP.data(),
-                isInputsUploadedByDmlEP.size(),
-                m_isInitializerTransferable,
-                m_partitionNodePropsMap,
-                device.Get(),
-                providerImpl,
-                m_modelPath,
-                m_subgraphNodePointers,
-                m_subgraphInputs,
-                m_subgraphOutputs);
-
-            // Walk through each graph edge and mark used inputs
-            m_inputsUsed.resize(fusedNodeInputCount, false);
-            for (const DML_INPUT_GRAPH_EDGE_DESC& edge : graphDesc.inputEdges)
+            if (recompiledNeeded)
             {
-                m_inputsUsed[edge.GraphInputIndex] = true;
+                // Populate input bindings for operator initialization
+                const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(m_indexedSubGraph->GetMetaDef()->inputs.size());
+                std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initializeResourceRefs; // For lifetime control
+                std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
+                std::vector<uint8_t> isInputsUploadedByDmlEP(fusedNodeInputCount);
+                auto providerImpl = static_cast<const ExecutionProvider*>(Info().GetExecutionProvider())->GetImpl();
+
+                for (int nodeIndex = 0; nodeIndex < m_subgraphNodes.size(); ++nodeIndex)
+                {
+                    for (int inputIndex = 0; inputIndex < m_subgraphNodes[nodeIndex]->InputDefs().size(); ++inputIndex)
+                    {
+                        auto* inputDef = m_subgraphNodes[nodeIndex]->MutableInputDefs()[inputIndex];
+
+                        ORT_THROW_HR_IF(E_INVALIDARG, !inputDef->TypeAsProto()->has_tensor_type());
+                        auto tensorShape = inputDef->TypeAsProto()->tensor_type().shape();
+
+                        for (int i = 0; i < tensorShape.dim_size(); ++i)
+                        {
+                            const std::string& dimParam = m_nodeDimParams[nodeIndex][inputIndex][i];
+                            if (!dimParam.empty())
+                            {
+                                tensorShape.mutable_dim(i)->set_dim_value(m_dynamicDimOverrides[dimParam]);
+                            }
+                        }
+
+                        inputDef->SetShape(tensorShape);
+                    }
+                }
+
+                // Convert partitionONNXGraph into DML EP GraphDesc
+                ComPtr<IDMLDevice> device;
+                ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
+                GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
+                    isInputsUploadedByDmlEP.data(),
+                    isInputsUploadedByDmlEP.size(),
+                    m_isInitializerTransferable,
+                    m_partitionNodePropsMap,
+                    device.Get(),
+                    providerImpl,
+                    m_modelPath,
+                    m_subgraphNodePointers,
+                    m_subgraphInputs,
+                    m_subgraphOutputs);
+
+                m_outputShapes = graphDesc.outputShapes;
+
+                // Walk through each graph edge and mark used inputs
+                m_inputsUsed.resize(fusedNodeInputCount, false);
+                for (const DML_INPUT_GRAPH_EDGE_DESC& edge : graphDesc.inputEdges)
+                {
+                    m_inputsUsed[edge.GraphInputIndex] = true;
+                }
+
+                // Compile the operator
+                m_compiledExecutionPlanOperator = DmlRuntimeGraphFusionHelper::TryCreateCompiledOperator(
+                    graphDesc,
+                    *m_indexedSubGraph,
+                    providerImpl);
+
+                TranslateAndCompileGraph(
+                    Info(),
+                    initializeResourceRefs,
+                    initInputBindings);
             }
-
-            // Compile the operator
-            m_compiledExecutionPlanOperator = DmlRuntimeGraphFusionHelper::TryCreateCompiledOperator(
-                graphDesc,
-                *m_indexedSubGraph,
-                providerImpl);
-
-            TranslateAndCompileGraph(
-                Info(),
-                initializeResourceRefs,
-                initInputBindings);
 
             // Wrap tensors as required by Dml::IExecutionProvider::ExecuteOperator
             OpKernelContextWrapper contextWrapper(
@@ -206,7 +249,7 @@ namespace Dml
                 inputPtrs[i] = m_provider->DecodeResource(MLOperatorTensor(inputTensors[i].Get()).GetDataInterface().Get());
             }
 
-            auto aux = contextWrapper.GetOutputTensors(graphDesc.outputShapes);
+            auto aux = contextWrapper.GetOutputTensors(m_outputShapes);
             ExecuteOperator(
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
@@ -306,6 +349,7 @@ namespace Dml
         std::vector<ONNX_NAMESPACE::TensorProto> m_ownedInitializers;
         std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> m_isInitializerTransferable;
         std::vector<const onnxruntime::Node*> m_subgraphNodePointers;
+        std::vector<std::vector<std::vector<std::string>>> m_nodeDimParams;
 
         // Bindings from previous executions of a re-used command list
         mutable ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
@@ -315,6 +359,8 @@ namespace Dml
         mutable std::vector<bool> m_inputsUsed;
         mutable ComPtr<ID3D12Resource> m_persistentResource;
         mutable ComPtr<IUnknown> m_persistentResourceAllocatorUnk; // Controls when the persistent resource is returned to the allocator
+        mutable std::unordered_map<std::string, int64_t> m_dynamicDimOverrides;
+        mutable Windows::AI::MachineLearning::Adapter::EdgeShapes m_outputShapes;
 
         // Fence tracking the status of the command list's last execution, and whether its descriptor heap
         // can safely be updated.

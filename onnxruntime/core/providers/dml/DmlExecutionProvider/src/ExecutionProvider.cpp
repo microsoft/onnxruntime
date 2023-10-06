@@ -152,7 +152,6 @@ namespace Dml
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands)
     {
-
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
         D3D_FEATURE_LEVEL featureLevelsList[] = {
