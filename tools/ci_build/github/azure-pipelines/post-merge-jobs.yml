@@ -6,7 +6,7 @@ stages:
       IsReleasePipeline: true
       PoolName: 'aiinfra-Win-CPU-2022-web-beta'
       BuildStaticLib: true
-      ExtraBuildArgs: ''
+      ExtraBuildArgs: 'onnxruntime_POST_MERGE_WASM_TESTING'
 
 # This stage is to test if the combined build works on
 # o Windows ARM64
