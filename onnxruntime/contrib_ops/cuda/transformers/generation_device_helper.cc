@@ -75,7 +75,6 @@ Status ReorderPastState(
     size_t past_state_size = packed_past ? past_state.SizeInBytes() / 2 : past_state.SizeInBytes();
     size_t past_state_staging_size = packed_past ? past_state_staging.SizeInBytes() / 2 : past_state_staging.SizeInBytes();
     size_t buffer_size = std::min(past_state_size, past_state_staging_size);
-    std::cout << "copy_only with past_state_size " << past_state_size << std::endl;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), buffer_size,
                                          cudaMemcpyDeviceToDevice, cuda_stream));
     return Status::OK();
@@ -90,7 +89,6 @@ Status ReorderPastState(
   // [B, N, head_size / x, max_length, x], where x = 16 / sizeof(T)
   int64_t chunk_size = static_cast<int64_t>(16 / past_state.DataType()->Size());
   // Transpose past_state to past_state_staging
-  std::cout << "batch_size " << batch_size << " num_heads"  << num_heads << " max_length " << max_length << " head_size " << head_size << " chunk_size" << chunk_size << std::endl;
   cuda::ReorderPastStatesKernelLauncher(past_state_staging_buffer,
                                         past_state.DataRaw(),
                                         static_cast<int>(batch_size),
@@ -99,7 +97,6 @@ Status ReorderPastState(
                                         static_cast<int>(head_size),
                                         static_cast<int>(chunk_size),
                                         cuda_stream);
-
   return Status::OK();
 }
 
