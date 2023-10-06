@@ -10,6 +10,14 @@
 #include <cstring>
 #include <functional>
 
+#define RETURN_ON_API_FAIL(expression) \
+  {                                    \
+    auto err = (expression);           \
+    if (err) {                         \
+      return Status(err);              \
+    }                                  \
+  }
+
 namespace Ort {
 
 namespace detail {

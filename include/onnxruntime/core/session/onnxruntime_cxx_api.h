@@ -41,14 +41,6 @@
 #include <iostream>
 #endif
 
-#define RETURN_ON_API_FAIL(expression) \
-  {                                    \
-    auto err = (expression);           \
-    if (err) {                         \
-      return Status(err);              \
-    }                                  \
-  }
-
 /** \brief All C++ Onnxruntime APIs are defined inside this namespace
  *
  */
