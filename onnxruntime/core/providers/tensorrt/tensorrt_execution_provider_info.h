@@ -54,6 +54,7 @@ struct TensorrtExecutionProviderInfo {
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtTensorRTProviderOptionsV2& info);
+  static void UpdateProviderOptions(void* provider_options, const ProviderOptions& options, bool string_copy);
 
   std::vector<OrtCustomOpDomain*> custom_op_domain_list;
 };

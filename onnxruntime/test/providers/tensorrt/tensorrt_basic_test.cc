@@ -175,41 +175,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
-  OrtTensorRTProviderOptionsV2 params{
-      0,
-      0,
-      nullptr,
-      1000,
-      1,
-      1 << 30,
-      0,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      3,
-      -1,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      0};
-
+  OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -259,41 +225,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
   std::vector<int64_t> expected_dims_nonzero_m = {3, 6};
   std::vector<int64_t> expected_values_nonzero_m = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 0, 1, 0, 1, 0, 1};
 
-  OrtTensorRTProviderOptionsV2 params{
-      0,
-      0,
-      nullptr,
-      1000,
-      1,
-      1 << 30,
-      0,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      3,
-      -1,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      0};
-
+  OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -422,41 +354,7 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   output_names.push_back("output");
   std::vector<OrtValue> fetches;
 
-  OrtTensorRTProviderOptionsV2 params{
-      0,
-      0,
-      nullptr,
-      1000,
-      1,
-      1 << 30,
-      0,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      3,
-      -1,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      0};
-
+  OrtTensorRTProviderOptionsV2 params;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   std::cout << model_name << std::endl;
@@ -516,41 +414,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
-  OrtTensorRTProviderOptionsV2 params{
-      0,
-      0,
-      nullptr,
-      1000,
-      1,
-      1 << 30,
-      0,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      3,
-      -1,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      0};
-
+  OrtTensorRTProviderOptionsV2 params;
   if (cache_type.compare("engine") == 0) {
     /* Following code block tests the functionality of engine and optimization profile of ORT TRT, including:
      * - engine cache serialization/de-serialization

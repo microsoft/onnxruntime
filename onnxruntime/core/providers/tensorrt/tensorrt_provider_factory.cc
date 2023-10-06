@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#include "tensorrt_provider_factory.h"
 #include <atomic>
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_provider_factory_creator.h"
@@ -18,21 +18,44 @@ namespace onnxruntime {
 void InitializeRegistry();
 void DeleteRegistry();
 
+struct ProviderInfo_TensorRT_Impl final : ProviderInfo_TensorRT {
+  OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) override {
+    auto cuda_err = cudaGetDevice(device_id);
+    if (cuda_err != cudaSuccess) {
+      return CreateStatus(ORT_FAIL, "Failed to get device id.");
+    }
+    return nullptr;
+  }
+
+  OrtStatus* UpdateProviderOptions(void* provider_options, const ProviderOptions& options, bool string_copy) override {
+    TensorrtExecutionProviderInfo::UpdateProviderOptions(provider_options, options, string_copy);
+    return nullptr;
+  }
+
+  OrtStatus* GetTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) override {
+    common::Status status = CreateTensorRTCustomOpDomainList(domain_list, extra_plugin_lib_paths);
+    if (!status.IsOK()) {
+      return CreateStatus(ORT_FAIL, "[TensorRT EP] Can't create custom ops for TRT plugins.");
+    }
+    return nullptr;
+  }
+
+  OrtStatus* ReleaseCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list) override {
+    ReleaseTensorRTCustomOpDomainList(domain_list);
+    return nullptr;
+  }
+
+} g_info;
+
 struct TensorrtProviderFactory : IExecutionProviderFactory {
   TensorrtProviderFactory(const TensorrtExecutionProviderInfo& info) : info_{info} {}
   ~TensorrtProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
-  void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list);
-
  private:
   TensorrtExecutionProviderInfo info_;
 };
-
-void TensorrtProviderFactory::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) {
-  custom_op_domain_list = info_.custom_op_domain_list;
-}
 
 std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
   return std::make_unique<TensorrtExecutionProvider>(info_);
@@ -46,6 +69,7 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
 }
 
 struct Tensorrt_Provider : Provider {
+  void* GetInfo() override { return &g_info; }
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     TensorrtExecutionProviderInfo info;
     info.device_id = device_id;
@@ -55,6 +79,7 @@ struct Tensorrt_Provider : Provider {
     if (!status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
     }
+
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -104,171 +129,13 @@ struct Tensorrt_Provider : Provider {
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
-  /**
-   * This function will be called by the C API UpdateTensorRTProviderOptions().
-   *
-   * Please note that it will reset the OrtProviderOptionsV2 instance first and then set up the provided provider options
-   * See TensorrtExecutionProviderInfo::FromProviderOptions() for more details
-   */
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
-    auto internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
-    auto& trt_options = *reinterpret_cast<OrtTensorRTProviderOptionsV2*>(provider_options);
-    trt_options.device_id = internal_options.device_id;
-
-    // The 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance can be set by C API UpdateTensorRTProviderOptionsWithValue() as well
-    // We only set the 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance if it is provided in options
-    if (options.find("has_user_compute_stream") != options.end()) {
-      trt_options.has_user_compute_stream = internal_options.has_user_compute_stream;
-    }
-
-    trt_options.trt_max_partition_iterations = internal_options.max_partition_iterations;
-    trt_options.trt_min_subgraph_size = internal_options.min_subgraph_size;
-    trt_options.trt_max_workspace_size = internal_options.max_workspace_size;
-    trt_options.trt_fp16_enable = internal_options.fp16_enable;
-    trt_options.trt_int8_enable = internal_options.int8_enable;
-
-    char* dest = nullptr;
-    auto str_size = internal_options.int8_calibration_table_name.size();
-    if (str_size == 0) {
-      trt_options.trt_int8_calibration_table_name = nullptr;
-    } else {
-      dest = new char[str_size + 1];
-#ifdef _MSC_VER
-      strncpy_s(dest, str_size + 1, internal_options.int8_calibration_table_name.c_str(), str_size);
-#else
-      strncpy(dest, internal_options.int8_calibration_table_name.c_str(), str_size);
-#endif
-      dest[str_size] = '\0';
-      trt_options.trt_int8_calibration_table_name = (const char*)dest;
-    }
-
-    trt_options.trt_int8_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
-    trt_options.trt_dla_enable = internal_options.dla_enable;
-    trt_options.trt_dla_core = internal_options.dla_core;
-    trt_options.trt_dump_subgraphs = internal_options.dump_subgraphs;
-    trt_options.trt_engine_cache_enable = internal_options.engine_cache_enable;
-
-    str_size = internal_options.engine_cache_path.size();
-    if (str_size == 0) {
-      trt_options.trt_engine_cache_path = nullptr;
-    } else {
-      dest = new char[str_size + 1];
-#ifdef _MSC_VER
-      strncpy_s(dest, str_size + 1, internal_options.engine_cache_path.c_str(), str_size);
-#else
-      strncpy(dest, internal_options.engine_cache_path.c_str(), str_size);
-#endif
-      dest[str_size] = '\0';
-      trt_options.trt_engine_cache_path = (const char*)dest;
-    }
-
-    trt_options.trt_engine_decryption_enable = internal_options.engine_decryption_enable;
-
-    str_size = internal_options.engine_decryption_lib_path.size();
-    if (str_size == 0) {
-      trt_options.trt_engine_decryption_lib_path = nullptr;
-    } else {
-      dest = new char[str_size + 1];
-#ifdef _MSC_VER
-      strncpy_s(dest, str_size + 1, internal_options.engine_decryption_lib_path.c_str(), str_size);
-#else
-      strncpy(dest, internal_options.engine_decryption_lib_path.c_str(), str_size);
-#endif
-      dest[str_size] = '\0';
-      trt_options.trt_engine_decryption_lib_path = (const char*)dest;
-    }
-
-    trt_options.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
-    trt_options.trt_context_memory_sharing_enable = internal_options.context_memory_sharing_enable;
-    trt_options.trt_layer_norm_fp32_fallback = internal_options.layer_norm_fp32_fallback;
-    trt_options.trt_timing_cache_enable = internal_options.timing_cache_enable;
-    trt_options.trt_force_timing_cache = internal_options.force_timing_cache;
-    trt_options.trt_detailed_build_log = internal_options.detailed_build_log;
-    trt_options.trt_build_heuristics_enable = internal_options.build_heuristics_enable;
-    trt_options.trt_sparsity_enable = internal_options.sparsity_enable;
-    trt_options.trt_builder_optimization_level = internal_options.builder_optimization_level;
-    trt_options.trt_auxiliary_streams = internal_options.auxiliary_streams;
-    str_size = internal_options.tactic_sources.size();
-    if (str_size == 0) {
-      trt_options.trt_tactic_sources = nullptr;
-    } else {
-      dest = new char[str_size + 1];
-#ifdef _MSC_VER
-      strncpy_s(dest, str_size + 1, internal_options.tactic_sources.c_str(), str_size);
-#else
-      strncpy(dest, internal_options.tactic_sources.c_str(), str_size);
-#endif
-      dest[str_size] = '\0';
-      trt_options.trt_tactic_sources = (const char*)dest;
-    }
-
-    str_size = internal_options.extra_plugin_lib_paths.size();
-    if (str_size == 0) {
-      trt_options.trt_extra_plugin_lib_paths = nullptr;
-    } else {
-      dest = new char[str_size + 1];
-#ifdef _MSC_VER
-      strncpy_s(dest, str_size + 1, internal_options.extra_plugin_lib_paths.c_str(), str_size);
-#else
-      strncpy(dest, internal_options.extra_plugin_lib_paths.c_str(), str_size);
-#endif
-      dest[str_size] = '\0';
-      trt_options.trt_extra_plugin_lib_paths = (const char*)dest;
-    }
-
-    str_size = internal_options.profile_min_shapes.size();
-    if (str_size == 0) {
-      trt_options.trt_profile_min_shapes = nullptr;
-    } else {
-      dest = new char[str_size + 1];
-#ifdef _MSC_VER
-      strncpy_s(dest, str_size + 1, internal_options.profile_min_shapes.c_str(), str_size);
-#else
-      strncpy(dest, internal_options.profile_min_shapes.c_str(), str_size);
-#endif
-      dest[str_size] = '\0';
-      trt_options.trt_profile_min_shapes = (const char*)dest;
-    }
-
-    str_size = internal_options.profile_max_shapes.size();
-    if (str_size == 0) {
-      trt_options.trt_profile_max_shapes = nullptr;
-    } else {
-      dest = new char[str_size + 1];
-#ifdef _MSC_VER
-      strncpy_s(dest, str_size + 1, internal_options.profile_max_shapes.c_str(), str_size);
-#else
-      strncpy(dest, internal_options.profile_max_shapes.c_str(), str_size);
-#endif
-      dest[str_size] = '\0';
-      trt_options.trt_profile_max_shapes = (const char*)dest;
-    }
-
-    str_size = internal_options.profile_opt_shapes.size();
-    if (str_size == 0) {
-      trt_options.trt_profile_opt_shapes = nullptr;
-    } else {
-      dest = new char[str_size + 1];
-#ifdef _MSC_VER
-      strncpy_s(dest, str_size + 1, internal_options.profile_opt_shapes.c_str(), str_size);
-#else
-      strncpy(dest, internal_options.profile_opt_shapes.c_str(), str_size);
-#endif
-      dest[str_size] = '\0';
-      trt_options.trt_profile_opt_shapes = (const char*)dest;
-    }
-
-    trt_options.trt_cuda_graph_enable = internal_options.cuda_graph_enable;
+    TensorrtExecutionProviderInfo::UpdateProviderOptions(provider_options, options, true);
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
     auto& options = *reinterpret_cast<const OrtTensorRTProviderOptionsV2*>(provider_options);
     return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(options);
-  }
-
-  void GetCustomOpDomainList(IExecutionProviderFactory* factory, std::vector<OrtCustomOpDomain*>& custom_op_domains_ptr) override {
-    TensorrtProviderFactory* trt_factory = reinterpret_cast<TensorrtProviderFactory*>(factory);
-    trt_factory->GetCustomOpDomainList(custom_op_domains_ptr);
   }
 
   void Initialize() override {
