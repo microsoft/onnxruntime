@@ -148,11 +148,10 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
   *out = 0;
 
   if (type == OrtOpAttrType::ORT_OP_ATTR_FLOAT) {
-
     if (len < sizeof(float)) {
       ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold a float.");
     } else {
-        if (attr->has_f()) {
+      if (attr->has_f()) {
         auto output_f = reinterpret_cast<float*>(data);
         *output_f = attr->f();
       } else {
@@ -162,7 +161,6 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
     *out = sizeof(float);
 
   } else if (type == OrtOpAttrType::ORT_OP_ATTR_FLOATS) {
-
     const auto& floats = attr->floats();
     auto num_floats = floats.size();
 
@@ -178,7 +176,6 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
     *out = num_floats * sizeof(float);
 
   } else if (type == OrtOpAttrType::ORT_OP_ATTR_INT) {
-
     if (len < sizeof(int)) {
       ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold a int64.");
     } else {
@@ -192,7 +189,6 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
     *out = sizeof(int64_t);
 
   } else if (type == OrtOpAttrType::ORT_OP_ATTR_INTS) {
-
     const auto& ints = attr->ints();
     auto num_ints = ints.size();
 
@@ -208,7 +204,6 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
     *out = num_ints * sizeof(int64_t);
 
   } else if (type == OrtOpAttrType::ORT_OP_ATTR_STRING) {
-
     const auto& s = attr->s();
     if (len < s.size() + 1) {
       ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the string.");
@@ -222,7 +217,6 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
     *out = s.size() + 1;
 
   } else if (type == OrtOpAttrType::ORT_OP_ATTR_STRINGS) {
-
     const auto& ss = attr->strings();
     size_t num_bytes = 0;
     for_each(ss.begin(), ss.end(), [&num_bytes](const std::string& s) { num_bytes += s.size() + 1; });
