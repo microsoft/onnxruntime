@@ -241,21 +241,21 @@ Ort::Status AttrTesterIntFloatCompute(const Ort::Custom::Tensor<float>& X, Ort::
 }
 
 Ort::Status AttrTesterIntFloatShapeInfer(Ort::ShapeInferContext& ctx) {
-  CUSTOM_ENFORCE(ctx.GetAttr<int64_t>("a_int") == 1, "int attr mismatch");
-  CUSTOM_ENFORCE(ctx.GetAttr<float>("a_float") == 2.f, "float attr mismatch");
+  CUSTOM_ENFORCE(ctx.GetAttrInt("a_int") == 1, "int attr mismatch");
+  CUSTOM_ENFORCE(ctx.GetAttrFloat("a_float") == 2.f, "float attr mismatch");
   std::vector<int64_t> ints{3, 4, 5};
-  CUSTOM_ENFORCE(ctx.GetAttr<std::vector<int64_t>>("ints") == ints, "ints attr mismatch");
+  CUSTOM_ENFORCE(ctx.GetAttrInts("ints") == ints, "ints attr mismatch");
   std::vector<float> floats{6, 7, 8};
-  CUSTOM_ENFORCE(ctx.GetAttr<std::vector<float>>("floats") == floats, "floats attr mismatch");
+  CUSTOM_ENFORCE(ctx.GetAttrFloats("floats") == floats, "floats attr mismatch");
   Ort::ShapeInferContext::Shape shape5 = {{5}};
   ctx.SetOutputShape(0, shape5);
   return Ort::Status{nullptr};
 }
 
 Ort::Status AttrTesterStringShapeInfer(Ort::ShapeInferContext& ctx) {
-  CUSTOM_ENFORCE(ctx.GetAttr<std::string>("a_string") == "iamastring", "string attr mismatch");
+  CUSTOM_ENFORCE(ctx.GetAttrString("a_string") == "iamastring", "string attr mismatch");
   std::vector<std::string> strings{"more", "strings"};
-  CUSTOM_ENFORCE(ctx.GetAttr<std::vector<std::string>>("strings") == strings, "strings attr mismatch");
+  CUSTOM_ENFORCE(ctx.GetAttrStrings("strings") == strings, "strings attr mismatch");
   Ort::ShapeInferContext::Shape shape5 = {{5}};
   ctx.SetOutputShape(0, shape5);
   return Ort::Status{nullptr};
@@ -288,9 +288,9 @@ struct AttrTesterStringOp : Ort::CustomOpBase<AttrTesterStringOp, AttrTesterStri
   ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
   static Ort::Status InferOutputShape(Ort::ShapeInferContext& ctx) {
-    CUSTOM_ENFORCE(ctx.GetAttr<std::string>("a_string") == "iamastring", "string attr mismatch");
+    CUSTOM_ENFORCE(ctx.GetAttrString("a_string") == "iamastring", "string attr mismatch");
     std::vector<std::string> strings{"more", "strings"};
-    CUSTOM_ENFORCE(ctx.GetAttr<std::vector<std::string>>("strings") == strings, "strings attr mismatch");
+    CUSTOM_ENFORCE(ctx.GetAttrStrings("strings") == strings, "strings attr mismatch");
     Ort::ShapeInferContext::Shape shape5 = {{5}};
     ctx.SetOutputShape(0, shape5);
     return Ort::Status{nullptr};

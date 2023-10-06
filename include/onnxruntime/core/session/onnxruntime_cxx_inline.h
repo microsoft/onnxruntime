@@ -1948,8 +1948,7 @@ inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shap
   return Status{nullptr};
 }
 
-template <>
-int64_t ShapeInferContext::GetAttr<int64_t>(const char* attr_name) {
+inline int64_t ShapeInferContext::GetAttrInt(const char* attr_name) {
   const auto* attr = GetAttrHdl(attr_name);
   int64_t i = {};
   size_t out = {};
@@ -1957,8 +1956,7 @@ int64_t ShapeInferContext::GetAttr<int64_t>(const char* attr_name) {
   return i;
 }
 
-template <>
-ShapeInferContext::Ints ShapeInferContext::GetAttr<ShapeInferContext::Ints>(const char* attr_name) {
+inline ShapeInferContext::Ints ShapeInferContext::GetAttrInts(const char* attr_name) {
   const auto* attr = GetAttrHdl(attr_name);
   int64_t i = {};
   size_t out = {};
@@ -1974,8 +1972,7 @@ ShapeInferContext::Ints ShapeInferContext::GetAttr<ShapeInferContext::Ints>(cons
   }
 }
 
-template <>
-float ShapeInferContext::GetAttr<float>(const char* attr_name) {
+inline float ShapeInferContext::GetAttrFloat(const char* attr_name) {
   const auto* attr = GetAttrHdl(attr_name);
   float f = {};
   size_t out = {};
@@ -1983,8 +1980,7 @@ float ShapeInferContext::GetAttr<float>(const char* attr_name) {
   return f;
 }
 
-template <>
-ShapeInferContext::Floats ShapeInferContext::GetAttr<ShapeInferContext::Floats>(const char* attr_name) {
+inline ShapeInferContext::Floats ShapeInferContext::GetAttrFloats(const char* attr_name) {
   const auto* attr = GetAttrHdl(attr_name);
   float f = {};
   size_t out = {};
@@ -2000,8 +1996,7 @@ ShapeInferContext::Floats ShapeInferContext::GetAttr<ShapeInferContext::Floats>(
   }
 }
 
-template <>
-std::string ShapeInferContext::GetAttr<std::string>(const char* attr_name) {
+inline std::string ShapeInferContext::GetAttrString(const char* attr_name) {
   const auto* attr = GetAttrHdl(attr_name);
   char c = {};
   size_t out = {};
@@ -2016,8 +2011,7 @@ std::string ShapeInferContext::GetAttr<std::string>(const char* attr_name) {
   }
 }
 
-template <>
-ShapeInferContext::Strings ShapeInferContext::GetAttr<ShapeInferContext::Strings>(const char* attr_name) {
+inline ShapeInferContext::Strings ShapeInferContext::GetAttrStrings(const char* attr_name) {
   const auto* attr = GetAttrHdl(attr_name);
   char c = {};
   size_t out = {};

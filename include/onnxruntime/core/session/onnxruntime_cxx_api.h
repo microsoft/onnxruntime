@@ -2199,29 +2199,20 @@ struct ShapeInferContext {
 
   Status SetOutputShape(size_t indice, const Shape& shape);
 
-  template <typename R>
-  R GetAttr(const char*) { return {}; }
-
-  template <>
-  int64_t GetAttr<int64_t>(const char* attr_name);
+  int64_t GetAttrInt(const char* attr_name);
 
   using Ints = std::vector<int64_t>;
-  template <>
-  Ints GetAttr<Ints>(const char* attr_name);
+  Ints GetAttrInts(const char* attr_name);
 
-  template <>
-  float GetAttr<float>(const char* attr_name);
+  float GetAttrFloat(const char* attr_name);
 
   using Floats = std::vector<float>;
-  template <>
-  Floats GetAttr<Floats>(const char* attr_name);
+  Floats GetAttrFloats(const char* attr_name);
 
-  template <>
-  std::string GetAttr<std::string>(const char* attr_name);
+  std::string GetAttrString(const char* attr_name);
 
   using Strings = std::vector<std::string>;
-  template <>
-  Strings GetAttr<Strings>(const char* attr_name);
+  Strings GetAttrStrings(const char* attr_name);
 
  private:
   const OrtOpAttr* GetAttrHdl(const char* attr_name) const;
