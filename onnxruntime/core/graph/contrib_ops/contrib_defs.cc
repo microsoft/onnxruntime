@@ -3030,8 +3030,7 @@ zero_points shape: [dim_0, dim_1]
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulWithCompressWeight)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(R"DOC(MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6).
-      It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) AxB. B[K][N] QB[(K + block_size - 1)/block_size][N][(block_size * bits + 7)/8])DOC")
+      .SetDoc(MatMulWithCompressWeight_ver1_doc)
       .Attr("K", "size of each input feature", AttributeProto::INT)
       .Attr("N", "size of each output feature", AttributeProto::INT)
       .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
