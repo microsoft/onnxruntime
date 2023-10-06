@@ -2269,7 +2269,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
             have_diff = False
 
             def diff_file(path, regenerate_qualifiers=""):
-                diff = subprocess.check_output(["git", "diff", "--ignore-cr-at-eol", path], cwd=source_dir).decode(
+                diff = subprocess.check_output(["git", "diff", "--ignore-blank-lines", path], cwd=source_dir).decode(
                     "utf-8"
                 )
                 if diff:
