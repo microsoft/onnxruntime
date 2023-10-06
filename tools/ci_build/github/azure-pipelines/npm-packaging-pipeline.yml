@@ -9,15 +9,6 @@ parameters:
   - 'custom'
   default: 'nightly (@dev)'
 
-
-resources:
-  pipelines:
-  - pipeline: build
-    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
-    trigger: true
-    branch: main
-
-
 variables:
   # pipeline should define the following varaibles
   #   ExtraBuildArgs
@@ -33,6 +24,11 @@ variables:
     NpmPackagingMode: '$(VersionSuffix)'
 
 resources:
+  pipelines:
+  - pipeline: build
+    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
+    trigger: true
+    branch: main
   repositories:
   - repository: manylinux
     type: Github
