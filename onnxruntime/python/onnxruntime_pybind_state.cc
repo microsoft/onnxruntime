@@ -31,6 +31,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
+#include "core/providers/dml/dml_provider_options.h"
 
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
@@ -887,18 +888,36 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
-    int device_id = 0;
+
+    OrtDmlProviderOptions provider_options{};
+
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       for (auto option : it->second) {
         if (option.first == "device_id") {
           if (!option.second.empty()) {
-            device_id = std::stoi(option.second);
+            provider_options.device_id = std::stoi(option.second);
+          }
+        } else if (option.first == "disable_metacommands") {
+          if (option.second == "True" || option.second == "true") {
+            provider_options.disable_metacommands = true;
+          } else if (option.second == "False" || option.second == "false") {
+            provider_options.disable_metacommands = false;
+          } else {
+            ORT_THROW("[ERROR] [DirectML] The value for the key 'disable_metacommands' should be 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "enable_dynamic_graph_fusion") {
+          if (option.second == "True" || option.second == "true") {
+            provider_options.enable_dynamic_graph_fusion = true;
+          } else if (option.second == "False" || option.second == "false") {
+            provider_options.enable_dynamic_graph_fusion = false;
+          } else {
+            ORT_THROW("[ERROR] [DirectML] The value for the key 'enable_dynamic_graph_fusion' should be 'True' or 'False'. Default value is 'False'.\n");
           }
         }
       }
     }
-    return onnxruntime::DMLProviderFactoryCreator::Create(device_id)->CreateProvider();
+    return onnxruntime::DMLProviderFactoryCreator::Create(provider_options)->CreateProvider();
 #endif
   } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)
