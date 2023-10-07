@@ -75,7 +75,7 @@ def post_processing_enable_zero_stage3_compat(
 
     from onnxruntime.training.utils.hooks._zero_offload_subscriber import ORTZeROOffloadPreForwardFunction
 
-    prefowrad_function_name = get_fully_qualified_class_name(ORTZeROOffloadPreForwardFunction)
+    pre_forward_function_name = get_fully_qualified_class_name(ORTZeROOffloadPreForwardFunction)
 
     # Connect weight consumers to use the full-sized parameter output of ORTZeROOffloadPreForwardFunction.
     for graph_input in exported_model.graph.input:
@@ -93,7 +93,7 @@ def post_processing_enable_zero_stage3_compat(
                 continue
 
             func_name = _get_func_name(c)
-            if func_name == prefowrad_function_name:
+            if func_name == pre_forward_function_name:
                 assert (
                     pre_forward_pythonop_node is None
                 ), "Multiple ORTZeROOffloadPreForwardFunction nodes found, it should not happen"
@@ -104,6 +104,7 @@ def post_processing_enable_zero_stage3_compat(
                 "Fail to find ORTZeROOffloadPreForwardFunction for partitioned param: " + graph_input.name
             )
 
+        pull_weight_trigger_input_name = _get_param_pull_trigger_name(graph_input.name)
         index_offset_on_python_op_input = []
         for i, input_name in enumerate(pre_forward_pythonop_node.input):
             if input_name == graph_input.name:
@@ -111,21 +112,32 @@ def post_processing_enable_zero_stage3_compat(
 
         assert (
             len(index_offset_on_python_op_input) == 1
-        ), f"index_offset_on_python_op_input length is not 1: {index_offset_on_python_op_input}"
+        ), f"index_offset_on_python_op_input length is not 1: {index_offset_on_python_op_input} for node {pre_forward_pythonop_node.name}, input {graph_input.name}, {pre_forward_pythonop_node.input}"
 
         reverse_index_among_inputs = index_offset_on_python_op_input[0] - len(pre_forward_pythonop_node.input)
-        new_input_name = _get_param_pull_trigger_name(graph_input.name)
-        pre_forward_pythonop_node.input[index_offset_on_python_op_input[0]] = new_input_name
+
+        pre_forward_pythonop_node.input[index_offset_on_python_op_input[0]] = pull_weight_trigger_input_name
 
         _update_python_op_input_related_attributes(
             pre_forward_pythonop_node,
-            new_input_name,
+            pull_weight_trigger_input_name,
             len(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE),  # new rank
             STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,  # new data type
         )
 
         output_index = reverse_index_among_inputs + len(pre_forward_pythonop_node.output)
-        pre_forward_pythonop_node.output[output_index] = graph_input.name
+
+        ready_weight_name = f"ready_{graph_input.name}"
+        pre_forward_pythonop_node.output[output_index] = ready_weight_name
+
+        # Update consumer's input to use the full-sized parameter output of ORTZeROOffloadPreForwardFunction.
+        for c in consumers:
+            new_inputs = [c_input for c_input in c.input]
+            for c_input_index in range(len(c.input)):
+                if c.input[c_input_index] == graph_input.name:
+                    new_inputs[c_input_index] = ready_weight_name
+            del c.input[:]
+            c.input.extend(new_inputs)
 
         # If the consumer of original `graph_input.name` is PythonOp, we need also update its attributes because now
         # `graph_input.name` as output of pre_forward_pythonop_node, is full-sized parameter, the rank might differ
@@ -192,6 +204,7 @@ def _create_weight_retrieval_function(
             tensor_output_dtypes = [
                 tensor_input_dtypes[0],
             ] * param_count
+
             return tensor_output_shapes, tensor_output_dtypes
 
     func_full_qual_name = get_fully_qualified_class_name(WeightRetrievalFunction)
@@ -310,7 +323,9 @@ def _create_weight_retrieval_pythonop(
     return new_input, weight_pull_node
 
 
-def _update_python_op_input_related_attributes(node: NodeProto, input_name: str, new_rank: int, new_dtype: int):
+def _update_python_op_input_related_attributes(
+    node: NodeProto, input_name: str, new_rank: int, new_dtype: torch.onnx.TensorProtoDataType
+):
     """This function is used to update PythonOp's input related attributes, e.g.
         input_tensor_ranks and input_tensor_types.
 
@@ -318,7 +333,7 @@ def _update_python_op_input_related_attributes(node: NodeProto, input_name: str,
         node (NodeProto): The PythonOp node.
         input_name (str): The input name to be updated.
         new_rank (int): The new rank of the input, to be used in input_tensor_ranks.
-        new_dtype (int): The new data type of the input, to be used in input_tensor_types.
+        new_dtype (torch.onnx.TensorProtoDataType): The new data type of the input, to be used in input_tensor_types.
     """
     input_tensor_ranks = None
     input_tensor_dtypes = None
@@ -338,7 +353,7 @@ def _update_python_op_input_related_attributes(node: NodeProto, input_name: str,
     for index, node_input_name in enumerate(node.input):
         if node_input_name == input_name:
             input_tensor_ranks[index] = new_rank
-            input_tensor_dtypes[index] = new_dtype
+            input_tensor_dtypes[index] = int(new_dtype)
 
     node.attribute.remove(rank_attr)
     node.attribute.remove(dtype_attr)

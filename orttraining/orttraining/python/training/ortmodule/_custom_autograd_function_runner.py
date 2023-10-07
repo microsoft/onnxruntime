@@ -247,8 +247,8 @@ def _process_inplace_outputs(
                     # Only need a copy once.
                     raw_input_tensor.copy_(all_outputs_of_kernel_run[output_index])
                     _log_warning(
-                        f"{log_prefix}Copy output tensor {output_index} to raw input tensor {raw_tensor_input_index}."
-                        "Provide output to input reuse mapping to avoid the copy overhead."
+                        f"{log_prefix}Copy output tensor {output_index} to raw input tensor {raw_tensor_input_index}. "
+                        f"{'Provide output to input reuse mapping to avoid the copy overhead.' if not is_first_time_init else ''}"
                     )
                     copied = True
 

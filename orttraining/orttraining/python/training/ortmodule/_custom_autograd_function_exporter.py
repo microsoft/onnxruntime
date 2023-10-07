@@ -332,7 +332,7 @@ def post_process_enabling_autograd_function(exported_model: ModelProto) -> Model
                     op_name_prefix = kclass_name
                     break
 
-        node.name = f"{op_name_prefix}_id_{index}"
+            node.name = f"{op_name_prefix}_id_{index}"
         index += 1
 
     return exported_model

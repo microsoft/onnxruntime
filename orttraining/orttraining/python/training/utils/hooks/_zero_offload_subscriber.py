@@ -272,7 +272,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         start_offset = len(tensor_input_shapes) - len(partitioned_params)
         for index, param in enumerate(partitioned_params):
             tensor_output_shapes[start_offset + index] = list(param.ds_shape)
-            tensor_output_dtypes[start_offset + index] = pytorch_dtype_to_onnx(param.dtype)
+            tensor_output_dtypes[start_offset + index] = int(pytorch_dtype_to_onnx(param.dtype))
         assert len(tensor_output_shapes) == len(tensor_input_shapes)
         assert len(tensor_output_dtypes) == len(tensor_input_dtypes)
 
