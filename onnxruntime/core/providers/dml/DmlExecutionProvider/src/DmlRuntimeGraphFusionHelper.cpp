@@ -369,9 +369,6 @@ namespace DmlRuntimeGraphFusionHelper
             subgraphOutputs.push_back(graph.GetNodeArg(graphOutputName));
         }
 
-        // We store the input dim params that haven't been overriden yet so that we can map their value at runtime once the real inputs are provided
-        auto inputDimParams = std::make_shared<std::vector<std::vector<std::string>>>();
-
         // We need to keep the initializers alive since they will be freed once the nodes are removed from the graph
         std::vector<ONNX_NAMESPACE::TensorProto> ownedInitializers;
         ownedInitializers.reserve(isInitializerTransferable.size());
@@ -393,7 +390,6 @@ namespace DmlRuntimeGraphFusionHelper
 
         // lamda captures for the kernel registration
         auto fused_kernel_func = [
-            inputDimParams,
             indexedSubGraph,
             &modelPath,
             nodesInfo = std::move(nodesInfo),
@@ -422,7 +418,6 @@ namespace DmlRuntimeGraphFusionHelper
                 info,
                 indexedSubGraph,
                 modelPath,
-                std::move(inputDimParams),
                 std::move(subgraphNodes),
                 std::move(subgraphInputs),
                 std::move(subgraphOutputs),
@@ -452,26 +447,6 @@ namespace DmlRuntimeGraphFusionHelper
 
         auto& fusedNode = graph.BeginFuseSubGraph(*indexedSubGraph, indexedSubGraph->GetMetaDef()->name);
         fusedNode.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
-
-        inputDimParams->resize(fusedNode.InputDefs().size());
-
-        for (int inputIndex = 0; inputIndex < fusedNode.InputDefs().size(); ++inputIndex)
-        {
-            const onnxruntime::NodeArg* inputDef = fusedNode.InputDefs()[inputIndex];
-
-            ORT_THROW_HR_IF(E_INVALIDARG, !inputDef->TypeAsProto()->has_tensor_type());
-            const auto& tensorShape = inputDef->TypeAsProto()->tensor_type().shape();
-
-            (*inputDimParams)[inputIndex].resize(tensorShape.dim_size());
-
-            for (int i = 0; i < tensorShape.dim_size(); ++i)
-            {
-                if (tensorShape.dim(i).has_dim_param())
-                {
-                    (*inputDimParams)[inputIndex][i] = tensorShape.dim(i).dim_param();
-                }
-            }
-        }
 
         graph.FinalizeFuseSubGraph(*indexedSubGraph, fusedNode);
     }

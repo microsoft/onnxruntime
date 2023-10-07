@@ -11,7 +11,6 @@ namespace Dml
         const onnxruntime::OpKernelInfo& info,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
         const onnxruntime::Path& modelPath,
-        std::shared_ptr<std::vector<std::vector<std::string>>> inputDimParams,
         std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
         std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
         std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,

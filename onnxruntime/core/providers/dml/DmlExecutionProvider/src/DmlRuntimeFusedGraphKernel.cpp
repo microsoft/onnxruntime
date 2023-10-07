@@ -20,7 +20,6 @@ namespace Dml
             const onnxruntime::OpKernelInfo& kernelInfo,
             std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
             const onnxruntime::Path& modelPath,
-            std::shared_ptr<std::vector<std::vector<std::string>>> inputDimParams,
             std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
             std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
             std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,
@@ -30,7 +29,6 @@ namespace Dml
         : OpKernel(kernelInfo),
           m_indexedSubGraph(std::move(indexedSubGraph)),
           m_modelPath(modelPath),
-          m_inputDimParams(std::move(inputDimParams)),
           m_subgraphNodes(std::move(subgraphNodes)),
           m_subgraphInputs(std::move(subgraphInputs)),
           m_subgraphOutputs(std::move(subgraphOutputs)),
@@ -68,8 +66,6 @@ namespace Dml
             std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
             std::vector<DML_BUFFER_BINDING> initInputBindings) const
         {
-            std::optional<DML_BUFFER_BINDING> persistentResourceBinding;
-
             // Allocate a persistent resource and initialize the operator
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
@@ -80,12 +76,12 @@ namespace Dml
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourceAllocatorUnk.GetAddressOf()));
 
-                persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
+                m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
                 m_compiledExecutionPlanOperator.Get(),
-                persistentResourceBinding ? &*persistentResourceBinding : nullptr,
+                m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));
 
             // Queue references to objects which must be kept alive until resulting GPU work completes
@@ -303,17 +299,10 @@ namespace Dml
         ComPtr<IWinmlExecutionProvider> m_winmlProvider;
         ComPtr<Dml::IExecutionProvider> m_provider;
 
-        // Re-usable command list, supporting descriptor heap, and DML binding table to update that heap.
-        ComPtr<ID3D12GraphicsCommandList> m_graphicsCommandList;
-        ComPtr<ID3D12CommandAllocator> m_commandAllocator;
-        ComPtr<ID3D12DescriptorHeap> m_heap;
-        ComPtr<IDMLBindingTable> m_bindingTable;
-        std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
+        mutable std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
         std::shared_ptr<const onnxruntime::IndexedSubGraph> m_indexedSubGraph;
         const onnxruntime::Path& m_modelPath;
 
-        // TODO (pavignol): Remove m_inputDimParams if truly not needed
-        std::shared_ptr<std::vector<std::vector<std::string>>> m_inputDimParams;
         std::vector<std::shared_ptr<onnxruntime::Node>> m_subgraphNodes;
         std::vector<const onnxruntime::NodeArg*> m_subgraphInputs;
         std::vector<const onnxruntime::NodeArg*> m_subgraphOutputs;
@@ -326,26 +315,17 @@ namespace Dml
         // Bindings from previous executions of a re-used command list
         mutable std::vector<std::unique_ptr<ONNX_NAMESPACE::TensorProto>> m_ownedCpuInputs;
         mutable ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
-        mutable std::vector<uint64_t> m_inputBindingAllocIds;
-        mutable std::vector<uint64_t> m_outputBindingAllocIds;
-        mutable uint64_t m_tempBindingAllocId = 0;
         mutable std::vector<bool> m_inputsUsed;
         mutable ComPtr<ID3D12Resource> m_persistentResource;
         mutable ComPtr<IUnknown> m_persistentResourceAllocatorUnk; // Controls when the persistent resource is returned to the allocator
         mutable Windows::AI::MachineLearning::Adapter::EdgeShapes m_outputShapes;
         mutable std::unordered_map<std::string, onnxruntime::TensorShape> m_inferredInputShapes;
-
-        // Fence tracking the status of the command list's last execution, and whether its descriptor heap
-        // can safely be updated.
-        mutable ComPtr<ID3D12Fence> m_fence;
-        mutable uint64_t m_completionValue = 0;
     };
 
     onnxruntime::OpKernel* CreateRuntimeFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
         const onnxruntime::Path& modelPath,
-        std::shared_ptr<std::vector<std::vector<std::string>>> inputDimParams,
         std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
         std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
         std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,
@@ -357,7 +337,6 @@ namespace Dml
             info,
             std::move(indexedSubGraph),
             modelPath,
-            std::move(inputDimParams),
             std::move(subgraphNodes),
             std::move(subgraphInputs),
             std::move(subgraphOutputs),
