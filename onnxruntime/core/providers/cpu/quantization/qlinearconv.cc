@@ -354,6 +354,19 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 REGISTER_QLINEARCONV_INT8_KERNEL(kMSDomain, 1);
 
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QLinearConv,
+    kMSDomain,
+    1,
+    uint16_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint16_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint16_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    QLinearConv<uint16_t>);
+
 }  // namespace contrib
 
 #endif

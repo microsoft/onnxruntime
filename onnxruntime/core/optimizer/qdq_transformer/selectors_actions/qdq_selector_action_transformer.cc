@@ -167,15 +167,22 @@ void ConvQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool is_
   // Delete all original nodes
   const std::string action_name{"Conv"};
   std::unique_ptr<Action> action = std::make_unique<QDQ::ConvReplaceWithQLinear>();
+  const std::string action16_name{"Conv16"};
+  std::unique_ptr<Action> action16 = std::make_unique<QDQ::Conv16ReplaceWithQLinear>();
 
 #if !defined(ORT_MINIMAL_BUILD)
   // TODO: Enable 16-bit types in selector when QLinearConv supports 16-bit.
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::ConvSelector>(is_int8_allowed);
+  std::unique_ptr<NodeSelector> selector16 = std::make_unique<QDQ::ConvSelector>(false, true);
 
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Conv", {}}},
                                                          std::move(selector),
                                                          std::move(action));
+  qdq_selector_action_registry.RegisterSelectorAndAction(action16_name,
+                                                         {{"Conv", {}}},
+                                                         std::move(selector16),
+                                                         std::move(action16));
 
 #else
   ORT_UNUSED_PARAMETER(is_int8_allowed);

@@ -458,6 +458,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(
 
 template struct Im2col<float, StorageOrder::NCHW>;
 template struct Im2col<uint8_t, StorageOrder::NCHW>;
+template struct Im2col<uint16_t, StorageOrder::NCHW>;
 
 template <typename T>
 void Im2col<T, StorageOrder::NHWC>::operator()(
@@ -699,6 +700,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
 
 template struct Im2col<int8_t, StorageOrder::NHWC>;
 template struct Im2col<uint8_t, StorageOrder::NHWC>;
+template struct Im2col<uint16_t, StorageOrder::NHWC>;
 template struct Im2col<MLFloat16, StorageOrder::NHWC>;
 
 template <>

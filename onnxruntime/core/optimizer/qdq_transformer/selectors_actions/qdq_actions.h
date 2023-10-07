@@ -59,6 +59,11 @@ struct VariadicReplaceWithQLinear : ReplaceWithQLinear {
 struct ConvReplaceWithQLinear : ReplaceWithQLinear {
   ConvReplaceWithQLinear();
 };
+
+struct Conv16ReplaceWithQLinear : ReplaceWithQLinear {
+  Conv16ReplaceWithQLinear();
+};
+
 struct WhereReplaceWithQLinear : ReplaceWithQLinear {
   WhereReplaceWithQLinear();
 };

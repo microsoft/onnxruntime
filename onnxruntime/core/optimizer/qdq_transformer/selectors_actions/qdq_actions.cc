@@ -238,6 +238,11 @@ VariadicReplaceWithQLinear::VariadicReplaceWithQLinear(std::string domain)
 ConvReplaceWithQLinear::ConvReplaceWithQLinear()
     : ReplaceWithQLinear(kOnnxDomain, ConvMoves()) {
 }
+
+Conv16ReplaceWithQLinear::Conv16ReplaceWithQLinear()
+    : ReplaceWithQLinear(kMSDomain, ConvMoves()) {
+}
+
 WhereReplaceWithQLinear::WhereReplaceWithQLinear()
     : ReplaceWithQLinear(kMSDomain, WhereMoves()) {
 }
