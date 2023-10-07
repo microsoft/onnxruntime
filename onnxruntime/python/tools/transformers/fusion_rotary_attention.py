@@ -419,12 +419,12 @@ class FusionRotaryAttention(FusionAttention):
             attn_mask_nodes = attn_mask_nodes_2
             attn_mask = slice_mask_1.output[0]
         elif attn_mask_nodes_3 is not None:
-            # Either send 2D attention mask directly or reshape from (B,1,S,T) to (B,N,S,T) using 4D helper in fusion_attention.py
+            # Reshape from (B,1,S,T) to (B,N,S,T)
             attn_mask_nodes = attn_mask_nodes_3
             # attn_mask = attn_mask_nodes_3[-1].input[0]
             add_qk_str = self.reshape_add_qk(attn_mask_nodes_3[0].output[0])
         elif attn_mask_nodes_4 is not None:
-            # Either send 2D attention mask directly or reshape from (B,1,S,T) to (B,N,S,T) using 4D helper in fusion_attention.py
+            # Reshape from (B,1,S,T) to (B,N,S,T)
             attn_mask_nodes = attn_mask_nodes_4
             # attn_mask = attn_mask_nodes_4[-1].input[0]
             add_qk_str = self.reshape_add_qk(attn_mask_nodes_4[0].output[0])

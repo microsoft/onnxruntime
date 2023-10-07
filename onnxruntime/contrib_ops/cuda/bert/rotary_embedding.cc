@@ -30,7 +30,7 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-template<typename T>
+template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info) {
   scale = info.GetAttrOrDefault<float>("scale", 1.0);
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);

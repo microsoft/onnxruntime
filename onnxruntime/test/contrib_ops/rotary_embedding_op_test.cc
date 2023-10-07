@@ -27,7 +27,9 @@ static void RunTest(
     int num_heads,
     int max_sequence_length,
     int64_t interleaved,
-    bool use_float16) {
+    bool use_float16,
+    bool disable_cpu,
+    bool disable_cuda) {
 
   //    input        : (batch_size, sequence_length, hidden_size)
   //    position ids : (1) or (batch_size, sequence_length)
@@ -49,7 +51,15 @@ static void RunTest(
 
   std::string op_type = "RotaryEmbedding";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+
+  int min_cuda_architecture = use_float16 ? 700 : 0;  // use_float16 ? 750 : 0;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  if (enable_cuda && !disable_cuda) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  if (!use_float16 && !disable_cpu) {
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+  }
 
   OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("interleaved", interleaved);
@@ -86,6 +96,7 @@ static void RunTests(const std::vector<float>& input_data,
                      int64_t interleaved = 0,
                      bool use_float16 = true) {
 
+    // FP32 test for CPU
     RunTest(input_data,
             position_ids,
             cos_cache,
@@ -99,8 +110,29 @@ static void RunTests(const std::vector<float>& input_data,
             num_heads,
             max_sequence_length,
             interleaved,
-            false /* use_fp16 */);
+            false, /* use_fp16 */
+            false, /* disable_cpu */
+            true   /* disable_cuda */);
 
+    // FP32 test for CUDA
+    RunTest(input_data,
+            position_ids,
+            cos_cache,
+            sin_cache,
+            output_data,
+            epsilon_,
+            batch_size,
+            sequence_length,
+            hidden_size,
+            head_size,
+            num_heads,
+            max_sequence_length,
+            interleaved,
+            false, /* use_fp16 */
+            false, /* disable_cpu */
+            false  /* disable_cuda */);
+
+    // FP16 test for CUDA
     if (use_float16) {
         RunTest(input_data,
                 position_ids,
@@ -115,7 +147,9 @@ static void RunTests(const std::vector<float>& input_data,
                 num_heads,
                 max_sequence_length,
                 interleaved,
-                true /* use_fp16 */);
+                true, /* use_fp16 */
+                true, /* disable_cpu */
+                false /* disable_cuda*/);
     }
 }
 

@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import time
 from typing import List
 
 import numpy as np
@@ -24,7 +25,15 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
             config, args.device, batch_size, sequence_length, use_fp16=(args.precision == "fp16"), return_dict=True
         )
     )
+
+    if args.execution_provider != "cpu":
+        torch.cuda.synchronize()
+    start_time = time.time()
     pt_outputs = pt_model(**inputs).logits.detach().cpu().numpy()
+    if args.execution_provider != "cpu":
+        torch.cuda.synchronize()
+    end_time = time.time()
+    logger.info(f"PyTorch took {end_time - start_time} s")
 
     # Run inference with ORT
     inputs = convert_inputs_for_ort(inputs, use_fp16=(args.precision == "fp16"))
@@ -35,7 +44,15 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
         verbose=args.verbose,
         provider_options={} if args.execution_provider == "cpu" else {"device_id": args.device_id},
     )
+
+    if args.execution_provider != "cpu":
+        torch.cuda.synchronize()
+    start_time = time.time()
     ort_outputs = ort_model.run(None, inputs)[0]
+    if args.execution_provider != "cpu":
+        torch.cuda.synchronize()
+    end_time = time.time()
+    logger.info(f"ONNX Runtime took {end_time - start_time} s")
 
     # Compare PyTorch and ONNX Runtime accuracy
     tol = 1e-3 if args.precision == "fp32" else 5e-2 if args.precision == "fp16" else 1e2
