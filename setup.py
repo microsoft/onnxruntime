@@ -520,6 +520,10 @@ if enable_training or enable_training_apis:
                 # Training CPU package for ADO feeds is called onnxruntime-training-cpu
                 package_name = "onnxruntime-training-cpu"
 
+            if rocm_version:
+                # Training ROCM package for ADO feeds is called onnxruntime-training-rocm
+                package_name = "onnxruntime-training-rocm"
+
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]
 
