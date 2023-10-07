@@ -10,8 +10,7 @@
 #include "core/optimizer/constant_sharing.h"
 #include "DmlRuntimeFusedGraphKernel.h"
 #include "MLOperatorAuthorImpl.h"
-#include "DmlRuntimeGraphFusionHelper.h"
-
+#include "DmlGraphFusionHelper.h"
 
 namespace Dml
 {
@@ -105,7 +104,7 @@ namespace Dml
         std::vector<std::shared_ptr<CompiledPartitionInfo>> compiledPartitionInfos(partitions.size());
 
         // Create a map between each initialized tensor and the partition(s) it is part of.
-        auto initializerPartitionMap = DmlRuntimeGraphFusionHelper::GetInitializerToPartitionMap(graphViewer, partitions);
+        auto initializerPartitionMap = DmlGraphFusionHelper::GetInitializerToPartitionMap(graphViewer, partitions);
 
         for (uint32_t partitionIndex = 0; partitionIndex < partitions.size(); ++partitionIndex)
         {
@@ -136,7 +135,7 @@ namespace Dml
 
                 compiledPartitionInfos[partitionIndex] = std::make_shared<CompiledPartitionInfo>();
                 compiledPartitionInfos[partitionIndex]->indexedSubGraph = std::make_shared<onnxruntime::IndexedSubGraph>(
-                    DmlRuntimeGraphFusionHelper::CreateIndexedSubGraph(partition.get(), partitionIndex, partitionKernelPrefix));
+                    DmlGraphFusionHelper::CreateIndexedSubGraph(partition.get(), partitionIndex, partitionKernelPrefix));
                 compiledPartitionInfos[partitionIndex]->isInitializerTransferable = std::move(isInitializerTransferable);
             }
         }
@@ -146,7 +145,7 @@ namespace Dml
             // Null compiled operators were not DML partitions
             if (compiledPartitionInfo)
             {
-                DmlRuntimeGraphFusionHelper::RegisterKernel(
+                DmlGraphFusionHelper::RegisterDynamicKernel(
                     graph,
                     m_providerImpl->GetKernelRegistry().get(),
                     m_providerImpl,

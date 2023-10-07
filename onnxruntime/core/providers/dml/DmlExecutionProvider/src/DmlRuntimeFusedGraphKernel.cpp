@@ -3,9 +3,9 @@
 
 #include "precomp.h"
 
-#include "MLOperatorAuthorImpl.h"
-#include "DmlRuntimeFusedGraphKernel.h"
-#include "DmlRuntimeGraphFusionHelper.h"
+#include "core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlRuntimeFusedGraphKernel.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionHelper.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
@@ -206,7 +206,7 @@ namespace Dml
                 }
 
                 // Compile the operator
-                m_compiledExecutionPlanOperator = DmlRuntimeGraphFusionHelper::TryCreateCompiledOperator(
+                m_compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
                     graphDesc,
                     *m_indexedSubGraph,
                     providerImpl);
