@@ -71,7 +71,7 @@ RUN pip install cryptography==41.0.0
 # Create migraphx-ci environment
 ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/migraphx-ci
 ENV CONDA_DEFAULT_ENV migraphx-ci
-RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.8
+RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.9
 ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
 
 # Enable migraphx-ci environment
