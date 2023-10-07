@@ -78,7 +78,15 @@ class AttentionMask:
             # ReduceSum-13: axes is moved from attribute to input
             axes_name = "ort_const_1_reduce_sum_axes"
             if self.model.get_initializer(axes_name) is None:
-                self.add_initializer(name=axes_name, data_type=TensorProto.INT64, dims=[1], vals=[1], raw=False)
+                self.model.add_initializer(
+                    helper.make_tensor(
+                        name=axes_name,
+                        data_type=TensorProto.INT64,
+                        dims=[1],
+                        vals=[1],
+                        raw=False,
+                    )
+                )
             mask_index_node = helper.make_node(
                 "ReduceSum",
                 inputs=[input_name, axes_name],
@@ -640,8 +648,8 @@ class FusionAttention(Fusion):
             else:
                 mha_inputs.extend([q_matmul.output[0], k_matmul.output[0], v_matmul.output[0]])
         elif (
-            type(k_matmul) == str
-            and type(v_matmul) == str
+            type(k_matmul) == str  # noqa: E721
+            and type(v_matmul) == str  # noqa: E721
             and k_matmul in graph_input_names
             and v_matmul in graph_input_names
         ):

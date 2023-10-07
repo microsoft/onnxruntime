@@ -4193,7 +4193,7 @@ Return true if all elements are true and false otherwise.
               "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
-      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(),
                       "Allow inputs and outputs to be any kind of tensor.");
 #endif  // ENABLE_TRITON
 
