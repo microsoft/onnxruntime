@@ -56,6 +56,9 @@ void usage() {
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
       "\t    'high_power_saver', 'low_balanced', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
+      "\t    [QNN only] [qnn_context_embed_mode]: 1 means dump the QNN context binary into the Onnx skeleton model.\n"
+      "\t    0 means dump the QNN context binary into separate bin file and set the path in the Onnx skeleton model.\n"
+      "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
@@ -453,6 +456,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           if (value.empty()) {
             ORT_THROW("Please provide the QNN backend path.");
           }
+        } else if (key == "qnn_context_embed_mode") {
+          if (value != "0") {
+            ORT_THROW("Set to 0 to disable qnn_context_embed_mode.");
+          }
         } else if (key == "qnn_context_cache_enable") {
           if (value != "1") {
             ORT_THROW("Set to 1 to enable qnn_context_cache_enable.");
@@ -477,6 +484,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_performance_mode. select from: " + str);
           }
+        } else if (key == "qnn_saver_path") {
+          // no validation
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable', 
 'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'htp_performance_mode'])");

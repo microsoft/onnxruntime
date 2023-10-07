@@ -637,7 +637,7 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto cpuOnDmlOperators = std::array<char*, 8>{
+        auto cpuOnDmlOperators = std::array<const char*, 8>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
@@ -660,7 +660,7 @@ namespace Dml
 
     bool IsDmlSequenceOperator(const onnxruntime::Node& node)
     {
-        auto sequence_ops = std::array<char*, 1>{
+        auto sequence_ops = std::array<const char*, 1>{
             "ConcatFromSequence"
         };
 
@@ -676,7 +676,7 @@ namespace Dml
 
     bool IsCustomOpShader(const onnxruntime::Node& node)
     {
-        auto custom_ops = std::array<char*, 3>{
+        auto custom_ops = std::array<const char*, 3>{
             "DFT",
             "STFT",
             "GridSample"
