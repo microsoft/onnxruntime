@@ -95,6 +95,9 @@ def convert_inputs_for_ort(pt_inputs: dict, use_fp16: bool):
     for k, v in pt_inputs.items():
         if k == "past_key_values":
             ort_inputs.update(flatten_past_kv_inputs(v, use_fp16))
+        elif k == "attention_mask" and use_fp16:
+            # Skip because FP16 model has GroupQueryAttention and that supports a causal mask by default
+            pass
         else:
             ort_inputs[k] = v.detach().cpu().numpy()
     return ort_inputs

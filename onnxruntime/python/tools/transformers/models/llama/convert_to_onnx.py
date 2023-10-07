@@ -264,15 +264,17 @@ def optimize_export(config: LlamaConfig, input_path: str, output_path: str):
         optimization_options=optimization_options,
         only_onnxruntime=False,
     )
-
-    # Replace MultiHeadAttention with GroupQueryAttention and remove attention mask nodes
-    model_opt = replace_mha_with_gqa(model_opt, config.num_key_value_heads)
-    model_opt.prune_graph()
-    model_opt.update_graph(allow_remove_graph_inputs=True)
-
     model_opt.save_model_to_file(output_path, use_external_data_format=True)
     logger.info(f"The ONNX model at {input_path} has been successfully optimized and saved at {output_path}!")
     remove_existing_model(input_path)
+
+
+def use_grouped_query_attention(config: LlamaConfig, fp16_model_opt: OnnxModel):
+    # Replace MultiHeadAttention with GroupQueryAttention and remove attention mask nodes
+    fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, config.num_key_value_heads)
+    fp16_model_opt.prune_graph()
+    fp16_model_opt.update_graph(allow_remove_graph_inputs=True)
+    return fp16_model_opt
 
 
 def remove_existing_model(model_path: str):
@@ -525,6 +527,7 @@ def main():
         decoder_model_fp16_path = os.path.join(args.output, f"{args.model_name}_decoder_model_fp16.onnx")
         model = OnnxModel(onnx.load_model(decoder_model_fp32_path, load_external_data=True))
         model.convert_float_to_float16(keep_io_types=False)
+        model = use_grouped_query_attention(l_config, model)
         model.save_model_to_file(decoder_model_fp16_path, use_external_data_format=True, all_tensors_to_one_file=True)
         del model
         logger.info(f"The ONNX model at {decoder_model_fp32_path} has been converted to float16 and saved at {decoder_model_fp16_path}!")
@@ -536,6 +539,7 @@ def main():
         )
         model = OnnxModel(onnx.load_model(decoder_with_past_model_fp32_path, load_external_data=True))
         model.convert_float_to_float16(keep_io_types=False)
+        model = use_grouped_query_attention(l_config, model)
         model.save_model_to_file(
             decoder_with_past_model_fp16_path, use_external_data_format=True, all_tensors_to_one_file=True
         )
