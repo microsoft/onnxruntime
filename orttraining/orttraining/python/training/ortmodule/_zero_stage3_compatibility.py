@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
@@ -234,16 +235,16 @@ def _create_weight_retrieval_pythonop(
     func_full_qual_name: str,
     input_name: str,
     output_names: List[str],
-    STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
-    STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE: List[int],
+    pull_weight_trigger_output_dtype: int,
+    pull_weight_trigger_output_shape: List[int],
 ) -> Tuple[ValueInfoProto, NodeProto]:
     """This function is used to create a weight retrieving PythonOp."""
     offload_param_count = 0 if zero_stage3_named_params is None else len(zero_stage3_named_params)
     new_input = helper.make_tensor_value_info(
-        input_name, STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE, STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE
+        input_name, pull_weight_trigger_output_dtype, pull_weight_trigger_output_shape
     )
-    output_rank_for_pull_weight_trigger = len(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE)
-    output_dtype_for_pull_weight_trigger = STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE
+    output_rank_for_pull_weight_trigger = len(pull_weight_trigger_output_shape)
+    output_dtype_for_pull_weight_trigger = pull_weight_trigger_output_dtype
     output_tensor_ranks = [
         output_rank_for_pull_weight_trigger,
     ] * offload_param_count
@@ -253,10 +254,9 @@ def _create_weight_retrieval_pythonop(
 
     node_attributes = {
         "comment": "",
-        "inplace": 0,
         "input_convention": "d",
-        "input_tensor_ranks": [len(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE)],
-        "input_tensor_types": [STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE],
+        "input_tensor_ranks": [len(pull_weight_trigger_output_shape)],
+        "input_tensor_types": [pull_weight_trigger_output_dtype],
         "output_tensor_ranks": output_tensor_ranks,
         "output_tensor_types": output_tensor_types,
         "training_mode": 1,
