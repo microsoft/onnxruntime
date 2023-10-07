@@ -71,7 +71,7 @@ stages:
 
     - task: CopyFiles@2
       inputs:
-        sourceFolder: '$(Pipeline.Workspace)\NPM_packages'
+        sourceFolder: '$(Pipeline.Workspace)\build\NPM_packages'
         contents: onnxruntime-*.tgz
         targetFolder: $(Build.ArtifactStagingDirectory)\node-artifacts
       displayName: 'Copy onnxruntime-node Artifacts'
