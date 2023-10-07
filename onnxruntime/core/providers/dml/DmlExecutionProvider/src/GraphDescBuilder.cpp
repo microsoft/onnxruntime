@@ -246,7 +246,6 @@ namespace Dml::GraphDescBuilder
                 return tensor;
             };
 
-            DmlGraphNodeCreateInfo graphNodeCreateInfo;
             EdgeShapes inputShapesOverrides(node.InputDefs().size());
 
             // Override the input shapes with shapes that were previously inferred
@@ -269,19 +268,21 @@ namespace Dml::GraphDescBuilder
                 }
             }
 
-            graphNodeCreateInfo.inferredOutputShapes = &inferredOutputShapes;
+            EdgeShapes outputShapes;
+            DmlGraphNodeCreateInfo graphNodeCreateInfo;
             graphNodeProps.internalRegInfo->graphNodeFactoryRegistration->factory(
                 node,
                 constantCpuNodeInputGetter,
                 executionHandle,
                 &inputShapesOverrides,
+                /*out*/ &outputShapes,
                 /*out*/ &graphNodeCreateInfo
             );
 
-            ORT_THROW_HR_IF(E_UNEXPECTED, graphNodeCreateInfo.outputShapes.EdgeCount() != node.OutputDefs().size());
+            ORT_THROW_HR_IF(E_UNEXPECTED, outputShapes.EdgeCount() != node.OutputDefs().size());
             for (int i = 0; i < node.OutputDefs().size(); ++i)
             {
-                inferredOutputShapes[node.OutputDefs()[i]->Name()] = graphNodeCreateInfo.outputShapes.GetShape(i);
+                inferredOutputShapes[node.OutputDefs()[i]->Name()] = outputShapes.GetShape(i);
             }
 
             // Create a map between operatorGraphNodeIndex to mainGraphNodeIndex.
@@ -380,7 +381,7 @@ namespace Dml::GraphDescBuilder
                         operatorGraphOutputEdge.FromNodeOutputIndex
                     };
 
-                    nodeOutputShapes[arg->Name()] = graphNodeCreateInfo.outputShapes;
+                    nodeOutputShapes[arg->Name()] = outputShapes;
                 }
             }
 

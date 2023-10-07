@@ -492,6 +492,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                     MLOperatorTensorGetter& constantInputGetter,
                     const void* executionHandle,
                     const EdgeShapes* inputShapesOverrides,
+                    /*out*/ EdgeShapes* outputShapes,
                     /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo
                 )
                 {
@@ -499,10 +500,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                     onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
 
                     // Use the same list of required constant inputs for the shape inferrer and the kernel.
-                    EdgeShapes outputShapes;
-                    InferAndVerifyOutputSizes(node, &defaultAttributesCapture, shapeInferrerCapture.Get(), constantCpuInputCapture, constantInputGetter, inputShapesOverrides, outputShapes);
-
-                    graphNodeCreateInfo->outputShapes = outputShapes;
+                    InferAndVerifyOutputSizes(node, &defaultAttributesCapture, shapeInferrerCapture.Get(), constantCpuInputCapture, constantInputGetter, inputShapesOverrides, *outputShapes);
 
                     // Create the kernel while allowing input shape and output shape queries according to options
                     ComPtr<DmlGraphOpKernelInfoWrapper> kernelInfoWrapper = wil::MakeOrThrow<DmlGraphOpKernelInfoWrapper>(
@@ -510,7 +508,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                             executionHandle,
                             true,
                             inputShapesOverrides,
-                            &outputShapes,
+                            outputShapes,
                             &defaultAttributesCapture,
                             graphNodeCreateInfo,
                             constantCpuInputCapture,
