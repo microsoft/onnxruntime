@@ -170,6 +170,15 @@ def parse_arguments(argv=None):
     parser.set_defaults(chain_model=True)
 
     parser.add_argument(
+        "--use_whisper_beamsearch",
+        required=False,
+        action="store_true",
+        help="When chain_model, using WhisperBeamSearch operator rather than BeamSearch operator. \
+              It will be set to true when collect_cross_qk, extra_decoding_ids or output_no_speech_probs is set.",
+    )
+    parser.set_defaults(use_whisper_beamsearch=False)
+
+    parser.add_argument(
         "--extra_decoding_ids",
         required=False,
         action="store_true",

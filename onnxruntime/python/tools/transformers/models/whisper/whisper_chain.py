@@ -24,7 +24,10 @@ def verify_inputs(beam_inputs, graph_inputs):
 
 
 def chain_model(args):
-    # Load encoder/decoder and insert necessary (but unused) graph inputs expected by BeamSearch op
+    # Load encoder/decoder and insert necessary (but unused) graph inputs expected by BeamSearch op or WhisperBeamSearch op
+    args.use_whisper_beamsearch = (
+        args.use_whisper_beamsearch or args.collect_cross_qk or args.output_no_speech_probs or args.extra_decoding_ids
+    )
     encoder_model = onnx.load_model(args.encoder_path, load_external_data=True)
     encoder_model.graph.name = "encoderdecoderinit subgraph"
 
@@ -46,8 +49,6 @@ def chain_model(args):
         "",  # attention mask
         "decoder_input_ids" if args.use_forced_decoder_ids else "",
         "logits_processor" if args.use_logits_processor else "",
-        "cross_qk_layer_head" if args.collect_cross_qk else "",
-        "extra_decoding_ids" if args.extra_decoding_ids else "",
     ]
 
     beam_outputs = ["sequences"]
@@ -56,14 +57,22 @@ def chain_model(args):
     if args.output_scores:
         beam_outputs.append("scores")
 
-    if args.collect_cross_qk:
-        while len(beam_outputs) < 3:
-            beam_outputs.extend([""])
-        beam_outputs.extend(["cross_qk"])
-    if args.output_no_speech_probs:
-        while len(beam_outputs) < 4:
-            beam_outputs.extend([""])
-        beam_outputs.extend(["no_speech_probs_beam"])
+    if args.use_whisper_beamsearch:
+        assert len(beam_inputs) == 12
+        beam_inputs.extend(
+            [
+                "cross_qk_layer_head" if args.collect_cross_qk else "",
+                "extra_decoding_ids" if args.extra_decoding_ids else "",
+            ]
+        )
+        if args.collect_cross_qk:
+            while len(beam_outputs) < 3:
+                beam_outputs.extend([""])
+            beam_outputs.extend(["cross_qk"])
+        if args.output_no_speech_probs:
+            while len(beam_outputs) < 4:
+                beam_outputs.extend([""])
+            beam_outputs.extend(["no_speech_probs_beam"])
 
     input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
     if args.precision == Precision.FLOAT16:
@@ -89,7 +98,8 @@ def chain_model(args):
             to=TensorProto.FLOAT16,
         )
 
-    node = helper.make_node("BeamSearch", inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
+    operator_type = "WhisperBeamSearch" if args.use_whisper_beamsearch else "BeamSearch"
+    node = helper.make_node(operator_type, inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
     node.domain = "com.microsoft"
     node.attribute.extend(
         [
@@ -101,10 +111,11 @@ def chain_model(args):
             helper.make_attribute("model_type", 2),
         ]
     )
-    if args.collect_cross_qk:
-        node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
-    if args.no_speech_token_id >= 0:
-        node.attribute.extend([helper.make_attribute("no_speech_token", args.no_speech_token_id)])
+    if args.use_whisper_beamsearch:
+        if args.collect_cross_qk:
+            node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
+        if args.no_speech_token_id >= 0:
+            node.attribute.extend([helper.make_attribute("no_speech_token", args.no_speech_token_id)])
 
     input_features = helper.make_tensor_value_info(
         "input_features", TensorProto.FLOAT, ["batch_size", "feature_size", "sequence_length"]
@@ -226,7 +237,8 @@ def chain_model(args):
         post_qk_graph = post_qk_model.graph
         beam_graph.initializer.extend(post_qk_graph.initializer)
         beam_graph.node.extend(post_qk_graph.node)
-        # TODO: Treat same name same input, user need check their shapes, etc
+        # If tensor from cross_qk_onnx_model has same name as tensor in beamsearch graph, treat them as same tensor.
+        # User should notice this rule when provide cross_qk_onnx_model to append to the beamsearch node.
         for pgi in post_qk_graph.input:
             if (
                 (pgi.name not in beam_graph_input_names)

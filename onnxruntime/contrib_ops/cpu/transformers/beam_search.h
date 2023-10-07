@@ -25,11 +25,12 @@ using namespace onnxruntime::controlflow;  // namespace of IControlFlowKernel
 
 class BeamSearch : public IControlFlowKernel {
  public:
-  BeamSearch(const OpKernelInfo& info)
+  BeamSearch(const OpKernelInfo& info, std::unique_ptr<BeamSearchParameters> param = std::make_unique<BeamSearchParameters>())
       : IControlFlowKernel(info),
         encoder_feeds_fetches_manager_(nullptr),
         decoder_feeds_fetches_manager_(nullptr),
         dumper_(nullptr) {
+    parameters_.swap(param);
     Init(info);
   }
 
@@ -105,7 +106,7 @@ class BeamSearch : public IControlFlowKernel {
   int cuda_device_arch_ = 0;
 #endif
 
- private:
+ protected:
   // Device specific functions
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::TopkFunc topk_func_;
@@ -176,13 +177,21 @@ class BeamSearch : public IControlFlowKernel {
 
   IConsoleDumper* dumper_;
 
-  BeamSearchParameters parameters_;
+  std::unique_ptr<BeamSearchParameters> parameters_;
 
   bool has_init_decoder_ = false;
 
   GenerationDeviceHelper::UpdateDecoderCrossQKFunc update_decoder_cross_qk_func_;
 
   GenerationDeviceHelper::FinalizeDecoderCrossQKFunc finalize_decoder_cross_qk_func_;
+};
+
+class WhisperBeamSearch : public BeamSearch {
+ public:
+  WhisperBeamSearch(const OpKernelInfo& info)
+      : BeamSearch(info, std::unique_ptr<BeamSearchParameters>(new WhisperBeamSearchParameters())) {}
+
+  Status Compute(OpKernelContext* ctx) const override;
 };
 
 }  // namespace transformers

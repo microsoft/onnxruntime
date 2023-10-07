@@ -130,13 +130,15 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   TensorShape scores_shape(&scores_dims[0], sizeof(scores_dims) / sizeof(scores_dims[0]));
   Tensor* output_scores = this->context_.Output(2, scores_shape);
 
-  TensorShape no_speech_probs_shape{parameters->batch_size};
-  Tensor* no_speech_probs = this->context_.Output(4, no_speech_probs_shape);
-  if (no_speech_probs && no_speech_probs->MutableData<T>()) {
-    ORT_ENFORCE(parameters->no_speech_token >= 0 && parameters->no_speech_token < parameters->vocab_size,
-                "no_speech_token id out of range, it is ", parameters->no_speech_token,
-                ", vocab_size is ", parameters->vocab_size);
-    this->parameters_->no_speech_probs = (void*)no_speech_probs->MutableData<T>();
+  if (parameters->no_speech_probs_output_id > 0) {
+    TensorShape no_speech_probs_shape{parameters->batch_size};
+    Tensor* no_speech_probs = this->context_.Output(parameters->no_speech_probs_output_id, no_speech_probs_shape);
+    if (no_speech_probs && no_speech_probs->MutableData<T>()) {
+      ORT_ENFORCE(parameters->no_speech_token >= 0 && parameters->no_speech_token < parameters->vocab_size,
+                  "no_speech_token id out of range, it is ", parameters->no_speech_token,
+                  ", vocab_size is ", parameters->vocab_size);
+      this->parameters_->no_speech_probs = (void*)no_speech_probs->MutableData<T>();
+    }
   }
 
   // Update the flag to indicate whether scores exists in output
@@ -299,7 +301,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       ORT_ENFORCE(decoder_subgraph_.past_present_share_buffer_, "decoder subgraph: output_cross_qk could only work with past_present_share_buffer");
 
       cross_qk_layer_head_pair_count = parameters->num_layers * parameters->num_heads;
-      const auto* input_tensor_cross_qk_layer_head = this->context_.template Input<Tensor>(12);
+      const auto* input_tensor_cross_qk_layer_head = this->context_.template Input<Tensor>(parameters->cross_qk_layer_head_input_id);
       ORT_ENFORCE(input_tensor_cross_qk_layer_head != nullptr, "Must specify input cross_qk_layer_head");
       cross_qk_layer_head_pair_count = input_tensor_cross_qk_layer_head->Shape()[0];
       cross_qk_layer_head_pairs = input_tensor_cross_qk_layer_head->template Data<int32_t>();  // it is on GPU
@@ -469,7 +471,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         cross_qk_layer_head_pair_count,
         static_cast<int64_t>(iteration_counter - 1),
         frames_of_k};
-    cross_qk_output = this->context_.Output(3, cross_qk_shape);
+    cross_qk_output = this->context_.Output(parameters->cross_qk_output_id, cross_qk_shape);
 
     size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
     const int* cache_indir_data = decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>()->Data<int32_t>();
