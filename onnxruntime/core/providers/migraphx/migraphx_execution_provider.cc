@@ -954,6 +954,22 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         migraphx::quantize_fp16(prog);
       }
 
+      if (int8_enable_)
+      {
+        std::vector<float> calib_dig;
+        migraphx::quantize_int8_options quant_opts;
+        migraphx::program_parameters quant_params;
+
+        auto param_shapes = prog.get_parameter_shapes();
+        for(auto&& name : param_shapes.names())
+        {
+            quant_params.add(name, migraphx::argument(param_shapes[name], calib_dig.data()));
+        }
+
+        quant_opts.add_calibration_data(quant_params);
+        migraphx::quantize_int8(prog, t_, quant_opts);
+      }
+
       prog.compile(t_);
       auto prog_output_shapes = prog.get_output_shapes();
       for (std::size_t i = 0; i < output_names.size(); ++i) {
@@ -973,7 +989,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
-            map_no_input_shape_[context->node_name], fp16_enable_, dump_model_ops_};
+            map_no_input_shape_[context->node_name], fp16_enable_, int8_enable_, dump_model_ops_};
       *state = p.release();
       return 0;
     };
@@ -1057,12 +1073,16 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           migraphx::program_parameters quant_params;
 
           auto param_shapes = prog.get_parameter_shapes();
+          std::vector<std::vector<char>> calib_dig;
+          calib_dig.reserve(param_shapes.input_tensor.size());
           for(auto&& name : param_shapes.names())
           {
+              
               quant_params.add(name, migraphx::argument(param_shapes[name], calib_dig.data()));
           }
 
           quant_opts.add_calibration_data(quant_params);
+          //perform static quantization on the program
           migraphx::quantize_int8(prog, t, quant_opts);
         }
 

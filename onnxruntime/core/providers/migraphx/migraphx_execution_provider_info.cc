@@ -16,6 +16,7 @@ constexpr const char* kDeviceId = "device_id";
 constexpr const char* kFp16Enable = "trt_fp16_enable";
 constexpr const char* kInt8Enable = "migx_int8_enable";
 constexpr const char* kInt8CalibTable = "migx_int8_calibration_table_name";
+constexpr const char* kInt8UseNativeCalibTable = "migx_int8_use_native_calibration_table";
 
 }  // namespace provider_option_names
 }  // namespace migraphx
