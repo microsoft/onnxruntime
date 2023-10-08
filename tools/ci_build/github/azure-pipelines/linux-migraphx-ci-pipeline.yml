@@ -182,7 +182,7 @@ jobs:
           /bin/bash -c "
             set -ex; \
             cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
-            bash /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh"
+            bash /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
 
