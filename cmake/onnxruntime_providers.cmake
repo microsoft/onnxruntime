@@ -366,7 +366,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   install(TARGETS onnxruntime_providers_shared
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
 endif()
 
@@ -819,7 +819,7 @@ if (onnxruntime_USE_TENSORRT)
           PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_LIBDIR})
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (onnxruntime_USE_VITISAI)
@@ -1432,6 +1432,14 @@ if (onnxruntime_USE_MIGRAPHX)
       message(STATUS "MIGRAPHX GPU STREAM SYNC is ENABLED")
   else()
       message(STATUS "MIGRAPHX GPU STREAM SYNC is DISABLED")
+  endif()
+
+  if (onnxruntime_ENABLE_TRAINING_OPS)
+    onnxruntime_add_include_to_target(onnxruntime_providers_migraphx onnxruntime_training)
+    target_link_libraries(onnxruntime_providers_migraphx PRIVATE onnxruntime_training)
+    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      onnxruntime_add_include_to_target(onnxruntime_providers_migraphx Python::Module)
+    endif()
   endif()
 
   install(TARGETS onnxruntime_providers_migraphx
