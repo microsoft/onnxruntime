@@ -114,7 +114,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   }
 
   // whether int8 is enabled
-  const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kInt8Enable);
+  const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8Enable);
   if (!int8_enable_env.empty()) {
     int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
   }

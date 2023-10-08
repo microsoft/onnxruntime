@@ -19,7 +19,7 @@ namespace onnxruntime {
 
 namespace migraphx_env_vars {
 static const std::string kFP16Enable = "ORT_MIGRAPHX_FP16_ENABLE";
-static const std::string kInt8Enable = "ORT_MIGRAPHX_INT8_ENABLE";
+static const std::string kINT8Enable = "ORT_MIGRAPHX_INT8_ENABLE";
 static const std::string dumpModelOps = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
 };  // namespace migraphx_env_vars
 
