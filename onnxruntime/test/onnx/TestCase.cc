@@ -774,10 +774,6 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       if (is_onnx_format) {
 #if !defined(ORT_MINIMAL_BUILD)
         model_info = std::make_unique<OnnxModelInfo>(p.c_str());
-        if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
-            model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-          return true;
-        }
 #else
         ORT_THROW("onnx model is not supported in this build");
 #endif
@@ -786,6 +782,13 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       } else {
         ORT_NOT_IMPLEMENTED(ToUTF8String(filename_str), " is not supported");
       }
+
+#if !defined(ORT_MINIMAL_BUILD)
+        if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
+            model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
+          return true;
+        }
+#endif
 
       const auto tolerance_key = ToUTF8String(my_dir_name);
 
