@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace rocm {
 
-template <typename T, typename TOut, bool is_log_softmax>
+template <typename T, typename TOut, bool IsLogSoftmax>
 Status SoftMaxComputeHelper(
     Stream* stream,
     const T* X,
@@ -30,11 +30,11 @@ Status SoftMaxComputeHelper(
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
     return dispatch_warpwise_softmax_forward<
-        HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, is_log_softmax>(
+        HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
   }
 
-  return dispatch_blockwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, is_log_softmax>(
+  return dispatch_blockwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
       stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
       gsl::narrow_cast<int>(N), tuning_ctx);
 }
