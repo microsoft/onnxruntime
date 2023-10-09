@@ -3,38 +3,6 @@
 #pragma once
 
 
-struct DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC
-{
-    const DML_TENSOR_DESC* ATensor;
-    const DML_TENSOR_DESC* AScaleTensor;
-    _Maybenull_ const DML_TENSOR_DESC* AZeroPointTensor;
-    const DML_TENSOR_DESC* BTensor;
-    const DML_TENSOR_DESC* BScaleTensor;
-    _Maybenull_ const DML_TENSOR_DESC* BZeroPointTensor;
-    _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
-    const DML_TENSOR_DESC* OutputTensor;
-};
-const int DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT = 0x80000011;
-
-struct DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC
-{
-    const DML_TENSOR_DESC* InputTensor;
-    const DML_TENSOR_DESC* InputScaleTensor;
-    _Maybenull_ const DML_TENSOR_DESC* InputZeroPointTensor;
-    const DML_TENSOR_DESC* OutputScaleTensor;
-    _Maybenull_ const DML_TENSOR_DESC* OutputZeroPointTensor;
-    const DML_TENSOR_DESC* OutputTensor;
-    UINT DimensionCount;
-    _Field_size_(DimensionCount) const UINT* Strides;
-    _Field_size_(DimensionCount) const UINT* WindowSize;
-    _Field_size_(DimensionCount) const UINT* StartPadding;
-    _Field_size_(DimensionCount) const UINT* EndPadding;
-    _Field_size_(DimensionCount) const UINT* Dilations;
-    BOOL IncludePadding;
-};
-const int DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING = 0x8000000B;
-
-
 namespace ApiTraits
 {
 template <typename T>
@@ -2711,11 +2679,8 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_RESAMPLE2: return "DML_OPERATOR_RESAMPLE2";
     case DML_OPERATOR_RESAMPLE_GRAD1: return "DML_OPERATOR_RESAMPLE_GRAD1";
     case DML_OPERATOR_DIAGONAL_MATRIX1: return "DML_OPERATOR_DIAGONAL_MATRIX1";
-#pragma warning(push)
-#pragma warning(disable: 4063)
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT: return "DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT";
     case DML_OPERATOR_MULTIHEAD_ATTENTION: return "DML_OPERATOR_MULTIHEAD_ATTENTION";
-#pragma warning(pop)
     default:
         assert(false);
         return "<unknown>";
