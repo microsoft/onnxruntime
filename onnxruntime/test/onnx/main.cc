@@ -171,6 +171,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool user_graph_optimization_level_set = false;
   bool set_denormal_as_zero = false;
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
+  std::string provider_name = "cpu";
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
@@ -216,6 +217,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           whitelisted_test_cases.emplace_back(optarg);
           break;
         case 'e':
+          provider_name = ToUTF8String(optarg);
           if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
             // do nothing
           } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
