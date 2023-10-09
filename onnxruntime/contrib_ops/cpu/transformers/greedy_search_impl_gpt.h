@@ -60,7 +60,7 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
         init_greedy_state_func_(init_greedy_state_func),
         update_feeds_func_(update_feeds_func) {}
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
   Status InitializeCuda(
       const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
       const void* cuda_device_prop,
@@ -109,7 +109,7 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
   GenerationDeviceHelper::CreateGptInputsFunc create_inputs_func_;
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitGreedyStateFunc<T> init_greedy_state_func_;
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
 #endif
   GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
@@ -336,7 +336,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
     // Increase sequence length after a new token is generated.
     ++current_length;
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
     // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
     // contains DecoderMaskedSelfAttention nodes
     if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_attention_) {

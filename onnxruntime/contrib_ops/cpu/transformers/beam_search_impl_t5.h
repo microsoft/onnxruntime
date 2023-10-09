@@ -53,7 +53,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
         expand_buffer_float16_func_(expand_buffer_float16_func),
         create_beam_scorer_func_(create_beam_scorer_func) {}
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
   Status InitializeCuda(
       const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
       const GenerationDeviceHelper::InitCacheIndirFunc& init_cache_indir_func,
@@ -87,7 +87,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
   // Device specific functions
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
   GenerationDeviceHelper::InitCacheIndirFunc init_cache_indir_func_;
 #endif
@@ -280,7 +280,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       auto cross_attention_past_key_sz = first_cross_attention_key->Shape().Size();
       beam_state.EnsurePastStateReorderStagingBuffer(this->temp_space_allocator_, cross_attention_past_key_sz);
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
       // Here we only need to reorder the past key for self-attention and cross-attention.
       for (size_t i = 0; i < 2 * static_cast<size_t>(decoder_subgraph_.num_layers); ++i) {
         ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,

@@ -33,7 +33,7 @@ enum DeviceCopyDirection {
 
 namespace GenerationDeviceHelper {
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
 using ReorderPastStateFunc = std::function<Status(
     const void* cuda_device_prop,  // cudaDeviceProp
     Tensor& past_state,

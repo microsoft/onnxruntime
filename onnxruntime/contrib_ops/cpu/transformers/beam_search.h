@@ -66,7 +66,7 @@ class BeamSearch : public IControlFlowKernel {
     create_beam_scorer_func_ = create_beam_scorer_func;
   }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
   void SetDeviceHelpers_Cuda(
       const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
       const GenerationDeviceHelper::InitCacheIndirFunc& init_cache_indir_func) {
@@ -96,7 +96,7 @@ class BeamSearch : public IControlFlowKernel {
     expand_buffer_float16_func_ = expand_buffer_float16_func;
   }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
   const void* cuda_device_prop_ = nullptr;
   int cuda_device_arch_ = 0;
 #endif
@@ -115,7 +115,7 @@ class BeamSearch : public IControlFlowKernel {
   GenerationDeviceHelper::InitBeamStateFunc<MLFloat16> init_beam_state_fp16_func_;
   GenerationDeviceHelper::CreateBeamScorer create_beam_scorer_func_;
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
   GenerationDeviceHelper::InitCacheIndirFunc init_cache_indir_func_;
 #endif
