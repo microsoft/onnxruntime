@@ -48,8 +48,8 @@ struct MIGraphX_Provider : Provider {
     info.target_device = "gpu";
     info.fp16_enable = options.migraphx_fp16_enable;
     info.int8_enable = options.migraphx_int8_enable;
-    info.int8_calibration_table_name = options.trt_migraphx_calibration_table_name == nullptr ? "" : options.migraphx_int8_calibration_table_name;
-    info.int8_use_native_calibration_table = options.migraphx_int8_use_native_calibration_table != 0;
+    info.int8_calibration_table_name = options.migraphx_int8_calibration_table_name == nullptr ? "" : options.migraphx_int8_calibration_table_name;
+    info.int8_use_native_calibration_table = options.migraphx_use_native_calibration_table != 0;
     return std::make_shared<MIGraphXProviderFactory>(info);
   }
 
@@ -72,10 +72,10 @@ struct MIGraphX_Provider : Provider {
       strncpy(dest, internal_options.int8_calibration_table_name.c_str(), str_size);
 #endif
       dest[str_size] = '\0';
-      migx_options.trt_int8_calibration_table_name = (const char*)dest;
+      migx_options.migraphx_int8_calibration_table_name = (const char*)dest;
     }
 
-    migx_options.migraphx_int8_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
+    migx_options.migraphx_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

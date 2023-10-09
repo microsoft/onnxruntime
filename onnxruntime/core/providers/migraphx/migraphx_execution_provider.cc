@@ -1074,7 +1074,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
           auto param_shapes = prog.get_parameter_shapes();
           std::vector<std::vector<char>> calib_dig;
-          calib_dig.reserve(param_shapes.input_tensor.size());
+          calib_dig.reserve(param_shapes.size());
           for(auto&& name : param_shapes.names())
           {
               

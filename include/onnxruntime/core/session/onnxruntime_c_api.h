@@ -602,8 +602,8 @@ typedef struct OrtMIGraphXProviderOptions {
   int device_id;             // hip device id.
   int migraphx_fp16_enable;  // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int migraphx_use_native_calibration_table; //MIGraphx INT8 calibration table. Default 0 = false, noznero = true
   const char* migraphx_int8_calibration_table_name; //MIGraphx INT8 calibration table name
-  int migraphx_use_native_calibration_table //MIGraphx INT8 calibration table. Default 0 = false, noznero = true
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
