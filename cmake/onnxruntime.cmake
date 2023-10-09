@@ -217,6 +217,7 @@ if (onnxruntime_USE_EXTENSIONS)
   list(APPEND onnxruntime_INTERNAL_LIBRARIES
     onnxruntime_extensions
     ocos_operators
+    noexcep_operators
   )
 endif()
 
