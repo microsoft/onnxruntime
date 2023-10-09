@@ -662,7 +662,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (provider_name == onnxruntime::kDmlExecutionProvider) {
 #ifdef USE_DML
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
+    std::unordered_map<std::string, std::string> dml_options;
+    dml_options["PerformancePreference"] = "HighPerformance";
+    dml_options["DeviceFilter"] = "Gpu";
+    session_options.AppendExecutionProvider("DirectML", dml_options);
 #else
     ORT_THROW("DirectML is not supported in this build\n");
 #endif
