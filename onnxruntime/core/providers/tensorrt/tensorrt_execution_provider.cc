@@ -2563,6 +2563,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         trt_state->engine->reset();
         auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
+
+        // Allows optimization profiles to be shared across execution contexts.
+        // If the flag is false, we should have one optimization profiles per execution context.
+        //
+        // This flag defaults to false and will become the default behavior in TensorRT 9.0. At that point this flag will do nothing.
+        trt_config->setPreviewFeature(nvinfer1::PreviewFeature::kPROFILE_SHARING_0806, true);
         for (auto trt_profile : trt_profiles) {
           trt_config->addOptimizationProfile(trt_profile);
         }
