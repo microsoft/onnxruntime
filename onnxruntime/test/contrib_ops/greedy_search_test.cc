@@ -58,7 +58,7 @@ TEST(GreedySearchTest, GptGreedySearchFp16_VocabPadded) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
-#elif USE_ROCM
+#elif defined(USE_ROCM)
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
 #endif
 
@@ -130,7 +130,7 @@ TEST(GreedySearchTest, GptGreedySearchFp32) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
-#elif USE_ROCM
+#elif defined(USE_ROCM)
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
 #endif
 
