@@ -1,7 +1,7 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
 FROM ubuntu:22.04
 
-ARG ROCM_VERSION=5.6
+ARG ROCM_VERSION=5.7
 ARG AMDGPU_VERSION=${ROCM_VERSION}
 ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
 
@@ -71,11 +71,14 @@ RUN pip install cryptography==41.0.0
 # Create migraphx-ci environment
 ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/migraphx-ci
 ENV CONDA_DEFAULT_ENV migraphx-ci
-RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.8
+RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.9
 ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
 
 # Enable migraphx-ci environment
 SHELL ["conda", "run", "-n", "migraphx-ci", "/bin/bash", "-c"]
+
+# ln -sf is needed to make sure that version `GLIBCXX_3.4.30' is found
+RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libstdc++.so.6
 
 # Install migraphx
 RUN apt update && apt install -y migraphx
