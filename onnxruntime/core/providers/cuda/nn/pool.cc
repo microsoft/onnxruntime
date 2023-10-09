@@ -12,10 +12,10 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define POOLING_KERNEL(op_name, data_type, pool_type, since_version, op_domain, nhwc)                         \
+#define POOLING_KERNEL(op_name, data_type, pool_type, since_version, op_domain, nhwc)              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                   \
       op_name,                                                                                     \
-      op_domain,                                                                                 \
+      op_domain,                                                                                   \
       since_version,                                                                               \
       data_type,                                                                                   \
       kCudaExecutionProvider,                                                                      \
@@ -23,40 +23,40 @@ namespace cuda {
       Pool<data_type, pool_type, nhwc>);
 
 #define POOLING_KERNEL_VERSIONED(op_name, data_type, pool_type, since_version, end_version, op_domain, nhwc) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                        \
-      op_name,                                                                                    \
-      op_domain,                                                                                \
-      since_version,                                                                              \
-      end_version,                                                                                \
-      data_type,                                                                                  \
-      kCudaExecutionProvider,                                                                     \
-      (*KernelDefBuilder::Create())                                                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()),                         \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                   \
+      op_name,                                                                                               \
+      op_domain,                                                                                             \
+      since_version,                                                                                         \
+      end_version,                                                                                           \
+      data_type,                                                                                             \
+      kCudaExecutionProvider,                                                                                \
+      (*KernelDefBuilder::Create())                                                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()),                                    \
       Pool<data_type, pool_type, nhwc>);
 
 #define POOLING_KERNEL_WITH_INDICES(op_name, data_type, pool_type, since_version, op_domain, nhwc) \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                        \
-      op_name,                                                                          \
-      op_domain,                                                                      \
-      since_version,                                                                    \
-      data_type,                                                                        \
-      kCudaExecutionProvider,                                                           \
-      (*KernelDefBuilder::Create())                                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())                \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                   \
+      op_name,                                                                                     \
+      op_domain,                                                                                   \
+      since_version,                                                                               \
+      data_type,                                                                                   \
+      kCudaExecutionProvider,                                                                      \
+      (*KernelDefBuilder::Create())                                                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())                           \
+          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),                            \
       Pool<data_type, pool_type, nhwc>);
 
 #define POOLING_KERNEL_VERSIONED_WITH_INDICES(op_name, data_type, pool_type, since_version, end_version, op_domain, nhwc) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                     \
-      op_name,                                                                                                 \
-      op_domain,                                                                                             \
-      since_version,                                                                                           \
-      end_version,                                                                                             \
-      data_type,                                                                                               \
-      kCudaExecutionProvider,                                                                                  \
-      (*KernelDefBuilder::Create())                                                                            \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())                                       \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),                                        \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                \
+      op_name,                                                                                                            \
+      op_domain,                                                                                                          \
+      since_version,                                                                                                      \
+      end_version,                                                                                                        \
+      data_type,                                                                                                          \
+      kCudaExecutionProvider,                                                                                             \
+      (*KernelDefBuilder::Create())                                                                                       \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())                                                  \
+          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),                                                   \
       Pool<data_type, pool_type, nhwc>);
 
 POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 7, 9, kOnnxDomain, false)
@@ -120,8 +120,6 @@ POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 11, kMSInternalNHWCDomain, t
 POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1, kMSInternalNHWCDomain, true)
 #endif
-
-
 
 class CudnnPoolingDescriptor final {
  public:

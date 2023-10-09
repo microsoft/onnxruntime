@@ -154,7 +154,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       Ort::ThrowOnError(
           api.UpdateCUDAProviderOptions(cuda_options, &key_p, &value_p, 1));
     }
-    
+
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");

@@ -53,11 +53,11 @@ struct ConvTransposeAttributes : public ConvAttributes {
     const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
     const Tensor* B = has_bias ? (dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2)) : nullptr;
 
-    const int rank = X->Shape().NumDimensions();
-    TensorShape input_shape = X->Shape().Slice(is_nhwc ? 1 : 2 , is_nhwc ? rank-1 : rank);
-    const int64_t num_input_channels = is_nhwc ? X->Shape()[rank - 1]: X->Shape()[1];
+    const int rank = static_cast<int>(X->Shape().NumDimensions());
+    TensorShape input_shape = X->Shape().Slice(is_nhwc ? 1 : 2, is_nhwc ? rank - 1 : rank);
+    const int64_t num_input_channels = is_nhwc ? X->Shape()[rank - 1] : X->Shape()[1];
     const int64_t N = X->Shape()[0];
-    const int64_t num_output_channels_multiplier = is_nhwc ? F_Shape[3]: F_Shape[1];
+    const int64_t num_output_channels_multiplier = is_nhwc ? F_Shape[3] : F_Shape[1];
     const int64_t num_output_channels = num_output_channels_multiplier * group;
 
     // input validations
@@ -148,7 +148,6 @@ struct ConvTransposeAttributes : public ConvAttributes {
     } else {
       output_shape_p->insert(output_shape_p->begin(), {N, output_channel});
     }
-
 
     size_t rank = input_shape.NumDimensions();
     for (size_t dim = 0; dim < rank; ++dim) {

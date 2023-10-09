@@ -33,7 +33,7 @@ CostCheckResult PostLayoutTransformCostCheck(const api::GraphRef& graph, const a
 #if defined(USE_CUDA) && ENABLE_CUDA_NHWC_OPS
 const std::unordered_set<std::string_view>& GetCUDALayoutSensitiveOps() {
   static std::unordered_set<std::string_view> cuda_nhwc_ops = []() {
-      return std::unordered_set<std::string_view>{
+    return std::unordered_set<std::string_view>{
         "BatchNormalization",
         "Conv",
         "ConvTranspose",
@@ -41,7 +41,7 @@ const std::unordered_set<std::string_view>& GetCUDALayoutSensitiveOps() {
         "MaxPool",
         "GlobalAveragePool",
         "AveragePool",
-      };
+    };
   }();
   return cuda_nhwc_ops;
 }
