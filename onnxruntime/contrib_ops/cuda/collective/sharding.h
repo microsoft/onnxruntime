@@ -48,6 +48,16 @@ void ReshardTensor(
     const Tensor* src,
     Tensor* dst);
 
+// Output from ctx
+void ReshardTensor(
+    const NcclKernel* nccl_kernel,
+    OpKernelContext* ctx,
+    const TensorPartitionSpec& src_spec,
+    const TensorPartitionSpec& dst_spec,
+    const int64_t device_id,
+    const Tensor* src,
+    int output_idx);
+
 std::unique_ptr<Tensor> ReshardTensor(
     const NcclKernel* nccl_kernel,
     OpKernelContext* ctx,

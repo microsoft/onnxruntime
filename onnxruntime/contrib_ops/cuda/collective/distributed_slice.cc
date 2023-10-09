@@ -98,18 +98,30 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
                                     input_steps,
                                     context->Output(0, output_shape)));
     } else{
-      ORT_THROW("Not Implemented yet.");
+      AllocatorPtr alloc;
+      ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc) == Status::OK());
+      auto dst_tensor = Tensor::Create(tensor_data->DataType(), output_shape, alloc);
+      ORT_RETURN_IF_ERROR(FuncSlice(this,
+                                    context,
+                                    tensor_data.get(),
+                                    input_starts,
+                                    input_ends,
+                                    input_axes,
+                                    input_steps,
+                                    dst_tensor.get()));
+      auto tmp_spec_output = TensorPartitionSpec::CreateAllReplica(spec_Y);
+      ReshardTensor(this, context, tmp_spec_output, spec_Y, nccl_->Rank(), dst_tensor.get(), 0);
     }
   } else{
+    const auto& input_shape = tensor_shard_data->Shape();
+    const auto input_dimensions = input_shape.GetDims();
+    if (input_dimensions.empty()) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
+
+    SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
+    ORT_RETURN_IF_ERROR(SliceBase::PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
+    TensorShape output_shape(compute_metadata.output_dims_);
+
     if (spec_Y.GetPartitionAxis() == spec_data.GetPartitionAxis()){
-      const auto& input_shape = tensor_shard_data->Shape();
-      const auto input_dimensions = input_shape.GetDims();
-      if (input_dimensions.empty()) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
-
-      SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
-      ORT_RETURN_IF_ERROR(SliceBase::PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
-      TensorShape output_shape(compute_metadata.output_dims_);
-
       ORT_RETURN_IF_ERROR(FuncSlice(this,
                                     context,
                                     tensor_shard_data,
@@ -119,7 +131,18 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
                                     input_steps,
                                     context->Output(0, output_shape)));
     } else{
-      ORT_THROW("Not Implemented yet.");
+      AllocatorPtr alloc;
+      ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc) == Status::OK());
+      auto dst_tensor = Tensor::Create(tensor_shard_data->DataType(), output_shape, alloc);
+      ORT_RETURN_IF_ERROR(FuncSlice(this,
+                                    context,
+                                    tensor_shard_data,
+                                    input_starts,
+                                    input_ends,
+                                    input_axes,
+                                    input_steps,
+                                    dst_tensor.get()));
+      ReshardTensor(this, context, spec_data, spec_Y, nccl_->Rank(), dst_tensor.get(), 0);
     }
   }
 
