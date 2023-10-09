@@ -262,36 +262,45 @@ class FusionRotaryAttention(FusionAttention):
             return
 
         past_v, present_v, past_seq_len = "", "", ""
-        v_nodes = self.model.match_parent_path(
+        v_nodes_1 = self.model.match_parent_path(
+            matmul_qkv,
+            ["Reshape", "Transpose", "Concat", "Transpose", "Reshape", "MatMul"],
+            [1, 0, 0, 1, 0, 0],
+        )
+        v_nodes_2 = self.model.match_parent_path(
             matmul_qkv,
             ["Reshape", "Concat", "Transpose", "Reshape", "MatMul"],
             [1, 0, 1, 0, 0],
         )
-        if v_nodes is not None:
-            reshape_v_2, concat_v, _, reshape_v_1, matmul_v = v_nodes
-            concat_v_path = self.model.match_parent_path(
-                concat_v,
-                ["Slice", "Unsqueeze"],
-                [0, 2],
-            )
 
-            if concat_v_path is None:
-                # Handle the case where the cache is already unsqueezed
-                concat_v_path = self.model.match_parent_path(
-                    concat_v,
-                    ["Slice"],
-                    [0],
-                )
-                if concat_v_path is None:
-                    logger.debug("fuse_rotary_attention: failed to match past/present concat in v path")
-                    return
-
-            past_v = concat_v_path[0].input[0]
-            past_seq_len = concat_v_path[-1].input[0]
-            present_v = concat_v.output[0]
+        if v_nodes_1 is not None:
+            reshape_v_2, _, concat_v, _, reshape_v_1, matmul_v = v_nodes_1
+        elif v_nodes_2 is not None:
+            reshape_v_2, concat_v, _, reshape_v_1, matmul_v = v_nodes_2
         else:
             logger.debug("fuse_rotary_attention: failed to match v path")
             return
+
+        concat_v_path = self.model.match_parent_path(
+            concat_v,
+            ["Slice", "Unsqueeze"],
+            [0, 2],
+        )
+
+        if concat_v_path is None:
+            # Handle the case where the cache is already unsqueezed
+            concat_v_path = self.model.match_parent_path(
+                concat_v,
+                ["Slice"],
+                [0],
+            )
+            if concat_v_path is None:
+                logger.debug("fuse_rotary_attention: failed to match past/present concat in v path")
+                return
+
+        past_v = concat_v_path[0].input[0]
+        past_seq_len = concat_v_path[-1].input[0]
+        present_v = concat_v.output[0]
 
         qk_nodes = self.model.match_parent_path(
             matmul_qkv,
@@ -343,14 +352,26 @@ class FusionRotaryAttention(FusionAttention):
         # Try to match the ScatterND path
         k_nodes_2 = self.model.match_parent_path(
             matmul_qk,
-            ["Reshape", "Transpose", "Concat", "Transpose", "ScatterND", "ScatterND", "Slice", "Reshape", "MatMul"],
-            [1, 0, 0, 1, 0, 0, 0, 0, 0],
+            [
+                "Reshape",
+                "Transpose",
+                "Concat",
+                "Transpose",
+                "Reshape",
+                "Reshape",
+                "ScatterND",
+                "ScatterND",
+                "Slice",
+                "Reshape",
+                "MatMul",
+            ],
+            [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
         )
 
         if k_nodes_1 is not None:
             reshape_k_2, _, concat_k, _, rotary_k, matmul_k = k_nodes_1
         elif k_nodes_2 is not None:
-            reshape_k_2, _, concat_k, _, rotary_k, _, _, _, matmul_k = k_nodes_2
+            reshape_k_2, _, concat_k, _, _, rotary_k, _, _, _, _, matmul_k = k_nodes_2
         else:
             logger.debug("fuse_rotary_attention: failed to match k nodes")
             return
@@ -386,13 +407,13 @@ class FusionRotaryAttention(FusionAttention):
         # Try to match the ScatterND path
         q_nodes_2 = self.model.match_parent_path(
             matmul_qk,
-            ["Reshape", "Transpose", "ScatterND", "ScatterND", "Slice", "Reshape", "MatMul"],
-            [0, 0, 0, 0, 0, 0, 0],
+            ["Reshape", "Transpose", "Reshape", "Reshape", "ScatterND", "ScatterND", "Slice", "Reshape", "MatMul"],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
         )
         if q_nodes_1 is not None:
             reshape_q_2, _, rotary_q, matmul_q = q_nodes_1
         elif q_nodes_2 is not None:
-            reshape_q_2, _, rotary_q, _, _, _, matmul_q = q_nodes_2
+            reshape_q_2, _, _, rotary_q, _, _, _, _, matmul_q = q_nodes_2
         else:
             logger.debug("fuse_rotary_attention: failed to match q nodes")
             return
@@ -434,18 +455,23 @@ class FusionRotaryAttention(FusionAttention):
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
         self.nodes_to_remove.extend(qkv_nodes[1:])
-        self.nodes_to_remove.extend(v_nodes[:-2])
+
+        if v_nodes_1 is not None:
+            self.nodes_to_remove.extend(v_nodes_1[:-2])
+        elif v_nodes_2 is not None:
+            self.nodes_to_remove.extend(v_nodes_2[:-1])
+
         self.nodes_to_remove.extend(qk_nodes)
 
         if k_nodes_1 is not None:
             self.nodes_to_remove.extend(k_nodes_1[:-2])
         elif k_nodes_2 is not None:
-            self.nodes_to_remove.extend(k_nodes_2[:-5])
+            self.nodes_to_remove.extend(k_nodes_2[:-6])
 
         if q_nodes_1 is not None:
             self.nodes_to_remove.extend(q_nodes_1[:-2])
         elif q_nodes_2 is not None:
-            self.nodes_to_remove.extend(q_nodes_2[:-5])
+            self.nodes_to_remove.extend(q_nodes_2[:-6])
 
         self.prune_graph = True
 
