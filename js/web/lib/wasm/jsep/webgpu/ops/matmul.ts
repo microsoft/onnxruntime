@@ -26,13 +26,14 @@ export const createNaiveMatmulProgramInfo =
       const bShape = inputs[1].dims;
 
       const M = aShape[aShape.length - 2];
-      const K = aShape[aShape.length - 1];
       const N = bShape[bShape.length - 1];
+      const K = aShape[aShape.length - 1];
       const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
       const batchSize = ShapeUtil.size(outerDims);
       const components = getMaxComponents(N);
+      const aComponents = 1; //getMaxComponents(K);
       const outputSize = ShapeUtil.size(outputShape) / components;
-      const a = inputVariable('a', inputs[0].dataType, aShape, 1);
+      const a = inputVariable('a', inputs[0].dataType, aShape, aComponents);
       const b = inputVariable('b', inputs[1].dataType, bShape, components);
       const output = outputVariable('output', inputs[0].dataType, [batchSize, M, N], components);
       const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);
@@ -69,6 +70,16 @@ export const createNaiveMatmulProgramInfo =
         return resStr;
       };
 
+      const calcResult = (): string => {
+        let calcStr = '';
+        for (let i = 0; i < aComponents; i++) {
+          calcStr += `
+          value = fma(${b.type.value}(a[(offsetA + row * K + k) / ${aComponents}]${
+              aComponents === 1 ? '' : `[${i}]`}), b[(offsetB + (k + ${i}) * N + col) / ${components}], value);`;
+        }
+        return calcStr;
+      };
+
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   const M: u32 = ${M}u;
   const N: u32 = ${N}u;
@@ -87,8 +98,8 @@ export const createNaiveMatmulProgramInfo =
     ${getIndices(b, broadCastBDims)}
     let offsetB = ${b.indicesToOffset('bIndices')};
     var value = ${output.type.value}(0);
-    for (var k: u32 = 0u; k<${K}u; k++) {
-      value = fma(${b.type.value}(a[offsetA + row * K + k]), b[(offsetB + k * N + col) / ${components}], value);
+    for (var k: u32 = 0u; k < K; k = k + ${aComponents}) {
+      ${calcResult()}
     }
     ${processBias}
     ${applyActivation}
