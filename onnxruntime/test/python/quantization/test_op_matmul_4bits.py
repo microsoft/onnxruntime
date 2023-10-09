@@ -26,7 +26,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
-        pass
 
     def fill_int4_data(self, shape: Union[int, Tuple[int, ...]], symmetric: bool) -> np.ndarray:
         line = np.zeros(shape)
@@ -140,7 +139,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
     def test_quantize_matmul_int4_symmetric(self):
         np.random.seed(13)
 
-        print(self._tmp_model_dir.name)
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_symmetric.onnx").absolute())
         self.construct_model_matmul(model_fp32_path, symmetric=True)
         data_reader = self.input_feeds(1, {"input": [100, 52]})

@@ -75,4 +75,4 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.m, args.n, args.k, args.dtype, args.sort)
+        profile_with_args(args.n, args.k, args.dtype, args.sort)
