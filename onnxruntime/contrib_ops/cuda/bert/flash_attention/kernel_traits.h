@@ -111,7 +111,8 @@ struct Flash_fwd_kernel_traits : public Base {
   using SmemLayoutO = decltype(tile_to_shape(
       SmemLayoutAtomO{},
       Shape<Int<kBlockM>, Int<kHeadDim>>{}));
-  using SmemCopyAtomO = Copy_Atom<DefaultCopy, elem_type>;
+  using SmemCopyAtomO = Copy_Atom<DefaultCopy, Element>;
+  using SmemCopyAtomOaccum = Copy_Atom<DefaultCopy, ElementAccum>;
 
   static constexpr int kSmemQCount = cute::size(SmemLayoutQ{});
   static constexpr int kSmemKVCount = cute::size(SmemLayoutKV{}) * 2;
@@ -139,18 +140,28 @@ struct Flash_fwd_kernel_traits : public Base {
       DefaultCopy>;
   using GmemTiledCopyQKV = decltype(make_tiled_copy(Copy_Atom<Gmem_copy_struct, elem_type>{},
                                                     GmemLayoutAtom{},
-                                                    Layout<Shape<_1, _8>>{}));  // Val layout, 8 vals per read
+                                                    cute::Layout<cute::Shape<_1, _8>>{}));  // Val layout, 8 vals per read
   using GmemTiledCopyO = decltype(make_tiled_copy(Copy_Atom<DefaultCopy, elem_type>{},
                                                   GmemLayoutAtom{},
-                                                  Layout<Shape<_1, _8>>{}));  // Val layout, 8 vals per store
+                                                  cute::Layout<cute::Shape<_1, _8>>{}));  // Val layout, 8 vals per store
   static constexpr int kGmemThreadsPerRowP = kBlockN / kGmemElemsPerLoad;
   static_assert(kNThreads % kGmemThreadsPerRowP == 0, "kNThreads must be a multiple of kGmemThreadsPerRowP");
-  using GmemLayoutAtomP = Layout<Shape<Int<kNThreads / kGmemThreadsPerRowP>, Int<kGmemThreadsPerRowP>>,
-                                 Stride<Int<kGmemThreadsPerRowP>, _1>>;
+  using GmemLayoutAtomP = cute::Layout<cute::Shape<cute::Int<kNThreads / kGmemThreadsPerRowP>, cute::Int<kGmemThreadsPerRowP>>,
+                                       cute::Stride<cute::Int<kGmemThreadsPerRowP>, _1>>;
 
   using GmemTiledCopyP = decltype(make_tiled_copy(Copy_Atom<DefaultCopy, elem_type>{},
                                                   GmemLayoutAtomP{},
-                                                  Layout<Shape<_1, _8>>{}));  // Val layout, 8 vals per store
+                                                  cute::Layout<cute::Shape<_1, _8>>{}));  // Val layout, 8 vals per store
+
+  using GmemLayoutAtomOaccum = std::conditional_t<
+      kBlockKSmem == 32,
+      cute::Layout<cute::Shape<_16, _8>,  // Thread layout, 8 threads per row
+                   cute::Stride<_8, _1>>,
+      cute::Layout<cute::Shape<_8, _16>,  // Thread layout, 16 threads per row
+                   cute::Stride<_16, _1>>>;
+  using GmemTiledCopyOaccum = decltype(make_tiled_copy(Copy_Atom<DefaultCopy, ElementAccum>{},
+                                                       GmemLayoutAtomOaccum{},
+                                                       cute::Layout<cute::Shape<_1, _4>>{}));  // Val layout, 4 vals per store
 };
 
 // Is_V_in_regs is an option to reduce smem usage, but will increase register pressue.
@@ -289,13 +300,13 @@ struct Flash_bwd_kernel_traits : public Base {
   static constexpr int kSmemdSCount = cute::size(SmemLayoutPdS{});
   static constexpr int kSmemPCount = cute::size(SmemLayoutPdS{});
   static constexpr int kSmemdQCount = cute::size(SmemLayoutdQ{});
-  static constexpr int kSmemdPsumCount = kBlockM;
+  //   static constexpr int kSmemdPsumCount = kBlockM;
   static constexpr int kSmemQdOSize = kSmemQdOCount * sizeof(Element);
   static constexpr int kSmemKVSize = kSmemKVCount * sizeof(Element);
   static constexpr int kSmemdSSize = kSmemdSCount * sizeof(Element);
   static constexpr int kSmemPSize = kSmemPCount * sizeof(Element);
   static constexpr int kSmemdQSize = kSmemdQCount * sizeof(Element);
-  static constexpr int kSmemdPsumSize = kSmemdPsumCount * sizeof(ElementAccum);
+  //   static constexpr int kSmemdPsumSize = kSmemdPsumCount * sizeof(ElementAccum);
   static constexpr int kSmemSize = kSmemQdOSize + (!Is_V_in_regs
                                                        ? kSmemKVSize + kSmemdSSize + std::max(kSmemPSize, kSmemdQSize)
                                                        : std::max(kSmemKVSize, kSmemKVSize / 2 + kSmemdSSize + std::max(kSmemPSize, kSmemdQSize)));

@@ -233,6 +233,59 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   }
 }
 
+void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
+  // Output 0 has shape (batch_size, sequence_length, hidden_size)
+
+  // Q, K and V:
+  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+  //   Input 1 (key) has shape (batch_size, kv_sequence_length, kv_hidden_size)
+  //   Input 2 (value) has shape (batch_size, kv_sequence_length, kv_hidden_size)
+
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  // Shape inference
+  if (hasInputShape(ctx, 0)) {
+    auto& query_shape = getInputShape(ctx, 0);
+    auto& query_dims = query_shape.dim();
+
+    if (query_dims.size() != 3) {
+      fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
+    }
+
+    if (hasInputShape(ctx, 2)) {
+      auto& value_shape = getInputShape(ctx, 2);
+      auto& value_dims = value_shape.dim();
+      if (value_dims.size() != 3) {
+        fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
+      }
+
+      ONNX_NAMESPACE::TensorShapeProto output_shape;
+      *output_shape.add_dim() = query_dims[0];
+      *output_shape.add_dim() = query_dims[1];
+      *output_shape.add_dim() = query_dims[2];
+      updateOutputShape(ctx, 0, output_shape);
+      return;
+    } else {
+      fail_shape_inference("Missing input 2 (value)");
+    }
+  }
+
+  if (ctx.getNumOutputs() > 1) {  // has present output
+    if (hasInputShape(ctx, past_key_index)) {
+      auto& past_shape = getInputShape(ctx, past_key_index);
+      auto& past_dims = past_shape.dim();
+      if (past_dims.size() != 4) {
+        fail_shape_inference("The past_key input shall be 4 dimensions");
+      }
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, past_key_index, 1);
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
+    }
+  }
+}
+
 constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
 
@@ -823,7 +876,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_key",
-                "past state for key with shape (batch_size, num_heads, total_sequence_length, head_size). "
+                "present state for key with shape (batch_size, num_heads, total_sequence_length, head_size). "
                 "If past_present_share_buffer is set, "
                 "its shape is (batch_size, num_heads, max_sequence_length, head_size), "
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
@@ -831,7 +884,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
-                "past state for value with shape (batch_size, num_heads, total_sequence_length, head_size). "
+                "present state for value with shape (batch_size, num_heads, total_sequence_length, head_size). "
                 "If past_present_share_buffer is set, "
                 "its shape is (batch_size, num_heads, max_sequence_length, head_size), "
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
@@ -928,6 +981,84 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           MultiHeadAttentionTypeAndShapeInference(ctx, 6);
+        }));
+
+constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
+Group Query Self/Cross Attention.
+
+Supports different number of heads for q and kv.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GroupQueryAttention, 1,
+    OpSchema()
+        .SetDoc(GroupQueryAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
+        .Attr("unidirectional",
+              "Whether every token can only attend to previous tokens. Default value is 1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("is_past_bsnh",
+              "Whether past kv uses BSNH, otherwise BNSH. Default value is 1 (BSNH).",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "query",
+               "Query with shape (batch_size, sequence_length, hidden_size)",
+               "T")
+        .Input(1,
+               "key",
+               "Key with shape (batch_size, kv_sequence_length, kv_hidden_size) ",
+               "T")
+        .Input(2,
+               "value",
+               "Value with shape (batch_size, kv_sequence_length, kv_hidden_size)",
+               "T")
+        .Input(3,
+               "past_key",
+               "past state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key"
+               "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
+               "T",
+               OpSchema::Optional)
+        .Input(4,
+               "past_value",
+               "past state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value"
+               "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
+               "T",
+               OpSchema::Optional)
+        .Input(5,
+               "past_sequence_length",
+               "When buffered past_key and past_value is used (present_key uses same tensor as past_key), required"
+               "to specify past_sequence_length (could be 0). Otherwise, past_sequence_length inferred from past_key.",
+               "M",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
+                "T")
+        .Output(1,
+                "present_key",
+                "present state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key"
+                "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
+                "kv_sequence_length.",
+                "T",
+                OpSchema::Optional)
+        .Output(2,
+                "present_value",
+                "present state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value"
+                "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
+                "kv_sequence_length.",
+                "T",
+                OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("M", {"tensor(int32)", "tensor(int64)"}, "Constrain past sequence length to int tensor.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          GroupQueryAttentionTypeAndShapeInference(ctx, 3);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
