@@ -9,7 +9,6 @@ import logging
 import os
 from typing import List, Tuple
 
-import coloredlogs
 import numpy as np
 import numpy.typing as npt
 import onnx
@@ -20,6 +19,7 @@ import onnxruntime as ort
 from .onnx_model import ONNXModel
 from .quant_utils import attribute_to_kwarg
 
+logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -217,13 +217,7 @@ set of 4b integers with a scaling factor and an optional offset.
 if __name__ == "__main__":
     args = parse_args()
     if args.verbose:
-        coloredlogs.install(
-            level="DEBUG",
-            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
-        )
-    else:
-        coloredlogs.install(fmt="%(funcName)20s: %(message)s")
-        logging.getLogger().setLevel(logging.INFO)
+        logger.setLevel(logging.DEBUG)
 
     input_model_path = args.input_model
     output_model_path = args.output_model
