@@ -53,9 +53,9 @@ struct OrtShapeInferContext {
     auto num_inputs = ctx_.getNumInputs();
     for (size_t ith_input = 0; ith_input < num_inputs; ++ith_input) {
       const auto* input_type = ctx_.getInputType(ith_input);
-      const auto value_case = input_type->value_case();
+      const auto& value_case = input_type->value_case();
       ORT_ENFORCE(value_case == ONNX_NAMESPACE::TypeProto::kTensorType, "shape inference not yet supported for non-tensor types");
-      const auto shape_proto = input_type->tensor_type().shape();
+      const auto& shape_proto = input_type->tensor_type().shape();
       const auto& type_proto = input_type->tensor_type();
       auto elem_type = ::onnxruntime::utils::CApiElementTypeFromProtoType(type_proto.elem_type());
       auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
@@ -119,7 +119,11 @@ ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputCount, _In_ const OrtShap
 ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info) {
   API_IMPL_BEGIN
   *info = context->GetInputTypeShape(index);
-  return nullptr;
+  if (*info) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Failed to fetch type shape info for the index.");
+  }
   API_IMPL_END
 }
 
@@ -180,7 +184,7 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
 
   } else if (type == OrtOpAttrType::ORT_OP_ATTR_INT) {
     if (len < sizeof(int)) {
-      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold a int64.");
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold an int64.");
     } else {
       if (attr->has_i()) {
         auto output_i = reinterpret_cast<int64_t*>(data);

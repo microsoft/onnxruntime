@@ -4465,8 +4465,8 @@ struct OrtApi {
    * Get attribute from OrtShapeInferContext. Note that OrtShapeInferContext is a per-node context, one could only read attribute from current node.
    *
    * \param[in] context
-   * \param[in] attr_name
-   * \param[out] attr
+   * \param[in] attr_name Name of the attribute
+   * \param[out] attr Handle of the attribute fetched
    *
    * \since Version 1.17.
    */
@@ -4486,7 +4486,7 @@ struct OrtApi {
   /**
    * Set symbolic shape to type shape info
    *
-   * \param[in] context
+   * \param[in] info Type shape info
    * \param[in] dim_params Symbolic strings
    * \param[in] dim_params_length Number of strings
    *
