@@ -332,6 +332,7 @@ class FusionRotaryAttention(FusionAttention):
         attn_mask = ""
         if attn_mask_nodes_0 is not None:
             slice_mask_1, slice_mask_2 = attn_mask_nodes_0
+            attn_mask = slice_mask_1.output[0]
         elif attn_mask_nodes_1 is not None:
             _, slice_mask_1, slice_mask_2 = attn_mask_nodes_1
             attn_mask = slice_mask_1.output[0]
