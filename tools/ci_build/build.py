@@ -1221,7 +1221,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
             "-Ddml_EXTERNAL_PROJECT=ON",
         ]
-
+    cmake_args += ["-Donnxruntime_BUILD_UNIT_TESTS=OFF"] if args.skip_tests else [""] # zhijiang_fix
     if args.use_gdk:
         cmake_args += [
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "gdk_toolchain.cmake"),

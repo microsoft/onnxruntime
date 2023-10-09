@@ -12,7 +12,7 @@ namespace onnxruntime {
 
 namespace {
 
-constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 15;
+constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 100;
 
 std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* shape) {
   std::ostringstream shape_oss;
@@ -483,6 +483,7 @@ void MemoryOptimizer::RegisterAllowedRecomputeOps() {
     recomputable_op_type_to_input_arg_index_map_.insert({
         {"MatMul", AllowedRecomputeNodeConfig{{0, 1}}},
         {"FusedMatMul", AllowedRecomputeNodeConfig{{0, 1}}},
+        {"SimplifiedLayerNormalization", AllowedRecomputeNodeConfig{{0, 1}}},
         {"Softmax", AllowedRecomputeNodeConfig{{0}}},
         {"BiasSoftmax", AllowedRecomputeNodeConfig{{0, 1}}},
         {"BiasSoftmaxDropout", AllowedRecomputeNodeConfig{{0, 1}}},
