@@ -5,12 +5,19 @@ import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-// import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
+import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
 import {getBroadcastDims, IndicesHelper, inputVariable, outputVariable, ShaderHelper,} from './common';
 import {getActicationSnippet, InternalActivationAttributes} from './fuse-utils';
 
 const createMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
-  name: 'MatMul',
+  name: 'SharedMatMul',
+  inputTypes: hasBias ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
+                        [GpuDataType.default, GpuDataType.default],
+  cacheHint
+});
+
+const createNaiveMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
+  name: 'NaiveMatMul',
   inputTypes: hasBias ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
                         [GpuDataType.default, GpuDataType.default],
   cacheHint
@@ -143,10 +150,22 @@ const createNaiveMatmulProgramInfo =
 export const createMatmulProgramInfoLoader =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
      reshapedOutputShape?: readonly number[], isChannelsLast = false): ProgramInfoLoader => {
+     //  const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
+     // const batchSize = ShapeUtil.size(outerDims);
+      const isIntel = true;
+      if (isIntel) {
+        const metadata = createNaiveMatmulProgramMetadata(inputs.length > 2, activationAttributes.activationCacheKey);
+        return {
+          ...metadata,
+          get: () => createNaiveMatmulProgramInfo(
+              metadata, inputs, activationAttributes, outputShape, reshapedOutputShape, isChannelsLast)
+        };
+      }
+
       const metadata = createMatmulProgramMetadata(inputs.length > 2, activationAttributes.activationCacheKey);
       return {
         ...metadata,
-        get: () => createNaiveMatmulProgramInfo(
+        get: () => createMatmulProgramInfo(
             metadata, inputs, activationAttributes, outputShape, reshapedOutputShape, isChannelsLast)
       };
     };
