@@ -31,9 +31,15 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
   const TensorPartitionSpec& spec_starts = input_shard_specs_[1];
   const TensorPartitionSpec& spec_ends = input_shard_specs_[2];
   const TensorPartitionSpec& spec_Y = output_shard_specs_[0];
+  
+  const auto tensor_shard_axes = context->Input<Tensor>(3);
+  const TensorPartitionSpec& spec_axes = input_shard_specs_[3];
 
-  if (spec_starts.HasShard() || spec_ends.HasShard())
-    ORT_THROW("Not supported yet.");
+  if (spec_starts.HasShard() || 
+      spec_ends.HasShard() || 
+      spec_axes.HasShard() || 
+      (input_shard_specs_.size() > 4 && input_shard_specs_[4].HasShard()))
+    ORT_THROW("DistributedSlice: shard on starts / ends / axes / steps are not supported yet.");
 
   std::vector<int64_t> input_starts;
   std::vector<int64_t> input_ends;
@@ -44,18 +50,8 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
   input_ends.resize(ends_data.size());
   std::copy(ends_data.begin(), ends_data.end(), input_ends.begin());
 
-  const auto tensor_shard_axes = context->Input<Tensor>(3);
-  const TensorPartitionSpec& spec_axes = input_shard_specs_[3];
-
   std::vector<int64_t> input_axes;
-
-  if (spec_axes.HasShard()){
-    auto tmp_spec_axes = TensorPartitionSpec::CreateAllReplica(spec_axes);
-    std::unique_ptr<Tensor> tensor_axes = ReshardTensor(this, context, spec_axes, tmp_spec_axes, nccl_->Rank(), tensor_shard_axes);
-    auto axes_data = tensor_axes->DataAsSpan<Tind>();
-    input_axes.resize(axes_data.size());
-    std::copy(axes_data.begin(), axes_data.end(), input_axes.begin());
-  } else if (tensor_shard_axes){
+  if (tensor_shard_axes){
     auto axes_data = tensor_shard_axes->DataAsSpan<Tind>();
     input_axes.resize(axes_data.size());
     std::copy(axes_data.begin(), axes_data.end(), input_axes.begin());
