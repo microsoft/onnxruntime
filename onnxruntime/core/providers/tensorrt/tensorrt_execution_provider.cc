@@ -2078,6 +2078,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, msg.str());
       } else {
+        // Allows optimization profiles to be shared across execution contexts.
+        // If the flag is false, we should have one optimization profiles per execution context.
+        //
+        // This flag defaults to false and will become the default behavior in TensorRT 9.0. At that point this flag will do nothing.
+        trt_config->setPreviewFeature(nvinfer1::PreviewFeature::kPROFILE_SHARING_0806, true);
         for (auto trt_profile : trt_profiles) {
           trt_config->addOptimizationProfile(trt_profile);
         }
