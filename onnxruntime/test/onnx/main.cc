@@ -809,7 +809,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     BrokenTest t = {p.first, ""};
     auto iter = broken_tests->find(t);
     if (iter == broken_tests->end() || (p.second != TestModelInfo::unknown_version && !iter->broken_opset_versions_.empty() &&
-                                       iter->broken_opset_versions_.find(p.second) == iter->broken_opset_versions_.end())) {
+                                        iter->broken_opset_versions_.find(p.second) == iter->broken_opset_versions_.end())) {
       fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     } else {
