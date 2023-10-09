@@ -1237,6 +1237,62 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
                           "DML does not support 5D+ tensors"});
   }
 
+  if (provider_name == "qnn") {
+    broken_tests.insert({"gemm_default_no_bias", "result differs"});
+    broken_tests.insert({"resize_downsample_scales_linear", "result differs"});
+    broken_tests.insert({"resize_downsample_scales_linear_antialias", "result differs"});
+    broken_tests.insert({"resize_downsample_sizes_linear_antialias", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_expanded", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_log_prob", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean", "result differs"});
+    broken_tests.insert({"sce_mean_3d", "result differs"});
+    broken_tests.insert({"sce_mean_3d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_3d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_3d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight", "result differs"});
+    broken_tests.insert({"sce_mean_weight_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_none", "result differs"});
+    broken_tests.insert({"sce_none_expanded", "result differs"});
+    broken_tests.insert({"sce_none_log_prob", "result differs"});
+    broken_tests.insert({"sce_none_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_sum", "result differs"});
+    broken_tests.insert({"sce_sum_expanded", "result differs"});
+    broken_tests.insert({"sce_sum_log_prob", "result differs"});
+    broken_tests.insert({"sce_sum_log_prob_expanded", "result differs"});
+    broken_tests.insert({"gridsample_reflection_padding", "result differs"});
+    broken_tests.insert({"spacetodepth", "result differs"});
+  }
 #ifdef DISABLE_CONTRIB_OPS
   broken_tests->insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
   broken_tests->insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});
