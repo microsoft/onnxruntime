@@ -31,7 +31,7 @@ class QPad(QuantOperatorBase):
             kwargs.update(kv)
 
         if "mode" not in kwargs or kwargs["mode"] == b"constant":
-            if len(node.input) > 2:  # There is 3rd input 'constant_value'
+            if len(node.input) > 2 and node.input[2] != "":  # There is 3rd input 'constant_value'
                 zp_tensor = self.quantizer.model.get_initializer(quantized_input_value.zp_name)
                 scale_tensor = self.quantizer.model.get_initializer(quantized_input_value.scale_name)
                 if zp_tensor is None or scale_tensor is None:
@@ -72,7 +72,17 @@ class QPad(QuantOperatorBase):
                     self.quantizer.new_nodes.extend(pad_value_qnodes)
                     node.input[2] = pad_value_qnodes[0].output[0]
             else:
-                node.input.extend([quantized_input_value.zp_name])  # pad zero_point for original zero
+                # In quantized format, the `zero` before quantization is mapped
+                # to quantized_input_value.zp_name. Thus, padding 0 to
+                # original tensor should become padding zero point to quantized
+                # tensor.
+                if len(node.input) == 2:
+                    # Feed quantization's zero point to padding node.
+                    node.input.append(quantized_input_value.zp_name)
+                else:
+                    # Assign quantization's zero point to padding node.
+                    assert node.input[2] == ""
+                    node.input[2] = quantized_input_value.zp_name
 
         # Create an entry for output quantized value
         quantized_output_value = QuantizedValue(
