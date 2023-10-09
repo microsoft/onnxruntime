@@ -143,6 +143,10 @@ class WhisperHelper:
         if model_impl == "openai":
             model = WhisperHelper.load_model_openai(model_name_or_path, cache_dir, device)
             model_for_config = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+
+            decoder = WhisperDecoder(model.decoder, model_for_config.config, model_impl=model_impl, model=model)
+            decoder.eval().to(device)
+
             if merge_encoder_and_decoder_init:
                 #encoder = WhisperEncoder(model.encoder, model_for_config.config)
                 #encoder.eval().to(device)
@@ -155,7 +159,7 @@ class WhisperHelper:
                     model_impl=model_impl,
                     model=model,
                 )
-                return {"encoder_decoder_init": encoder_decoder_init}
+                return {"encoder_decoder_init": encoder_decoder_init, "decoder": decoder}
 
         model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
         if state_dict_path:

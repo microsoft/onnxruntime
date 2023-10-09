@@ -41,8 +41,35 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         self,
         tokens,
         audio_features,
+        past=None,
     ):
+
+        # Create a kv_cache for past_values
+        past_kv_cache = dict()
+        if past is not None:
+            for idx, block in enumerate(self.whisper_decoder.blocks):
+                past_kv_cache[block.attn.key] = past[4 * idx]
+                past_kv_cache[block.attn.value] = past[4 * idx + 1]
+                past_kv_cache[block.cross_attn.key] = past[4 * idx + 2]
+                past_kv_cache[block.cross_attn.value] = past[4 * idx + 3]
+
+        for key in past_kv_cache.values():
+            print(key.shape)
+
         if not self.kv_cache:
             self.kv_cache, _ = self.whisper_model.install_kv_cache_hooks()
-        logits = self.whisper_decoder(tokens, audio_features, kv_cache=self.kv_cache)
-        return logits, list(self.kv_cache.values())
+
+        logits = self.whisper_decoder(tokens, audio_features, kv_cache=past_kv_cache)
+
+        if past is not None:
+            for idx, block in enumerate(self.whisper_decoder.blocks):
+                self.kv_cache[block.attn.key] = torch.cat([past_kv_cache[block.attn.key], self.kv_cache[block.attn.key]], dim=1).detach()
+                self.kv_cache[block.attn.value] = torch.cat([past_kv_cache[block.attn.value], self.kv_cache[block.attn.value]], dim=1).detach()
+
+        present_self = []
+        for idx, block in enumerate(self.whisper_decoder.blocks):
+            present_self.append(self.kv_cache[block.attn.key])
+            present_self.append(self.kv_cache[block.attn.value])
+
+        #self.kv_cache.values()
+        return logits, present_self
