@@ -5,22 +5,20 @@
 # --------------------------------------------------------------------------
 
 import argparse
-import struct
-from pathlib import Path
+import logging
+import os
 from typing import List, Tuple
 
-import logging
-
+import coloredlogs
 import numpy as np
 import numpy.typing as npt
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
-import os
+
+from onnxruntime.capi._pybind_state import quantize_matmul_4bits
 
 from .onnx_model import ONNXModel
-from .quant_utils import attribute_to_kwarg, load_model_with_shape_infer
-import coloredlogs
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits
+from .quant_utils import attribute_to_kwarg
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +26,9 @@ logger = logging.getLogger(__name__)
 class MatMul4BitsQuantizer:
     """Perform 4b quantization of constant MatMul weights"""
 
-    def __init__(self, model: ModelProto, block_size: int, is_symmetric: bool, nodes_to_exclude=[]):
+    def __init__(self, model: ModelProto, block_size: int, is_symmetric: bool, nodes_to_exclude=None):
+        if nodes_to_exclude is None:
+            nodes_to_exclude = []
         self.model = ONNXModel(model)
         self.block_size = block_size
         self.is_symmetric = is_symmetric
@@ -97,13 +97,13 @@ class MatMul4BitsQuantizer:
                 Bs_graph.input.remove(input)
                 break
 
-        scales_tensor = onnx.numpy_helper.from_array(scales)  # noqa: N806
+        scales_tensor = onnx.numpy_helper.from_array(scales)
         scales_tensor.name = B.name + "_scales"
         Bs_graph.initializer.extend([B_quant, scales_tensor])
 
         input_names = [node.input[0], B_quant.name, scales_tensor.name]
         if not self.is_symmetric:
-            zp_tensor = onnx.numpy_helper.from_array(zero_points)  # noqa: N806
+            zp_tensor = onnx.numpy_helper.from_array(zero_points)
             zp_tensor.name = B.name + "_zero_points"
             Bs_graph.initializer.extend([zp_tensor])
             input_names.append(zp_tensor.name)

@@ -11,7 +11,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "matmul_with_quant_weight.cuh"
+#include "matmul_nbits.cuh"
 #include "dequantize_blockwise.cuh"
 
 namespace onnxruntime {

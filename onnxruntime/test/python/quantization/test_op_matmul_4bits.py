@@ -21,12 +21,11 @@ from onnxruntime.quantization import matmul_4bits_quantizer, quant_utils
 class TestOpMatMul4Bits(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        #cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_matmulfpq4.")
-        cls._tmp_model_dir = Path("test_models")
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_matmulfpq4.")
 
     @classmethod
     def tearDownClass(cls):
-        #cls._tmp_model_dir.cleanup()
+        cls._tmp_model_dir.cleanup()
         pass
 
     def fill_int4_data(self, shape: Union[int, Tuple[int, ...]], symmetric: bool) -> np.ndarray:
@@ -114,7 +113,9 @@ class TestOpMatMul4Bits(unittest.TestCase):
         block_size: int,
         is_symmetric: bool,
     ):
-        model_int4_path = str(Path(self._tmp_model_dir.name).joinpath(f"MatMulNBits_{block_size}_{is_symmetric}.onnx").absolute())
+        model_int4_path = str(
+            Path(self._tmp_model_dir.name).joinpath(f"MatMulNBits_{block_size}_{is_symmetric}.onnx").absolute()
+        )
 
         # Quantize fp32 model to int4 model
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))

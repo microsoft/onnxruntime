@@ -10,7 +10,7 @@
 
 namespace pybind11 {
 namespace detail {
-  // python3 -c 'import numpy as np; print(np.dtype(np.float16).num)'
+// python3 -c 'import numpy as np; print(np.dtype(np.float16).num)'
 constexpr int NPY_FLOAT16 = 23;
 template <>
 struct npy_format_descriptor<onnxruntime::MLFloat16> {
@@ -19,7 +19,7 @@ struct npy_format_descriptor<onnxruntime::MLFloat16> {
     handle ptr = npy_api::get().PyArray_DescrFromType_(NPY_FLOAT16);
     return reinterpret_borrow<pybind11::dtype>(ptr);
   }
-    static std::string format() {
+  static std::string format() {
     // following: https://docs.python.org/3/library/struct.html#format-characters
     return "e";
   }
@@ -34,7 +34,7 @@ namespace py = pybind11;
 using namespace onnxruntime;
 
 template <typename T>
-void QuantizeMatMulNBitsBlockwise(
+void QuantizeMatMul4BitsBlockwise(
     py::array_t<uint8_t> dst,          // shape: [ N, block_per_K, block_blob_size ]
     py::array_t<T> src,                // shape: [K, N]
     py::array_t<T> scale,              // shape: [N, block_per_K]
@@ -65,8 +65,8 @@ void QuantizeMatMulNBitsBlockwise(
 }
 
 void CreateQuantPybindModule(py::module& m) {
-  m.def("quantize_matmul_4bits", &QuantizeMatMulNBitsBlockwise<float>);
-  m.def("quantize_matmul_4bits", &QuantizeMatMulNBitsBlockwise<MLFloat16>);
+  m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<float>);
+  m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<MLFloat16>);
 }
 
 }  // namespace python

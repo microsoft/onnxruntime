@@ -157,8 +157,13 @@ class VectorAddTunable : public IKernelExplorer {
   REGISTER_OP(name, type, threads_per_block, 8)
 
 #define REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(name, type)  \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 64)             \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 128)            \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 192)            \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 256)            \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 320)            \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)            \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 448)            \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 512)
 
 #define REGISTER_TUNABLE_OP(type)                                      \

@@ -29,9 +29,9 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
                         std::vector<uint8_t>& quant_vals,
                         std::vector<float>& scales,
                         std::vector<uint8_t>* zp,
-                        int64_t N,
-                        int64_t K,
-                        int64_t block_size) {
+                        int32_t N,
+                        int32_t K,
+                        int32_t block_size) {
   OrtThreadPoolParams to;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
                                           concurrency::ThreadPoolType::INTRA_OP);
@@ -75,9 +75,15 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   int64_t buf_size = number_of_block * (block_size * 4 / 8);
   std::vector<uint8_t> input1_vals(buf_size);
   std::vector<float> scales(number_of_block);
-  std::vector<uint8_t> zp((N *block_per_k + 1) / 2);
+  std::vector<uint8_t> zp((N * block_per_k + 1) / 2);
 
-  QuantizeDequantize(input1_f_vals, input1_vals, scales, has_zeropoint ? &zp : nullptr, N, K, block_size);
+  QuantizeDequantize(input1_f_vals,
+                     input1_vals,
+                     scales,
+                     has_zeropoint ? &zp : nullptr,
+                     static_cast<int32_t>(N),
+                     static_cast<int32_t>(K),
+                     static_cast<int32_t>(block_size));
 
   std::vector<float> expected_vals(M * N);
   for (int64_t m = 0; m < M; m++) {
@@ -143,42 +149,6 @@ TEST(MatMulNBits, Float16) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
           RunTest(M, N, K, block_size, false, true);
-          RunTest(M, N, K, block_size, true, true);
-        }
-      }
-    }
-  }
-}
-TEST(MatMulNBits, Float16_Dequantize) {
-  for (auto M : {1, 2, 100}) {
-    for (auto N : {1, 2}) {
-      for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
-        for (auto block_size : {16}) {
-          RunTest(M, N, K, block_size, false, true);
-          RunTest(M, N, K, block_size, true, true);
-        }
-      }
-    }
-  }
-}
-
-TEST(MatMulNBits, Float16_MatMul) {
-  for (auto M : {1}) {
-    for (auto N : {32}) {
-      for (auto K : {64}) {
-        for (auto block_size : {16}) {
-          RunTest(M, N, K, block_size, false, true);
-        }
-      }
-    }
-  }
-}
-
-TEST(MatMulNBits, Float16_MatMul_zp) {
-  for (auto M : {1}) {
-    for (auto N : {32}) {
-      for (auto K : {64}) {
-        for (auto block_size : {16}) {
           RunTest(M, N, K, block_size, true, true);
         }
       }

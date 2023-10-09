@@ -20,7 +20,7 @@
 #endif
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 #include "python/tools/kernel_explorer/kernels/vector_add_kernel.cuh"
-#include "contrib_ops/cuda/quantization/matmul_with_quant_weight.cuh"
+#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 
 namespace py = pybind11;
 

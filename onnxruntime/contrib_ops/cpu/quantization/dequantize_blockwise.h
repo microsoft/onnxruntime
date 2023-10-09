@@ -58,7 +58,7 @@ void QuantizeBlockwise(
       zero_points[zp_idx] = ((zero_points_tmp[zp_idx * 2]) | (zero_points_tmp[zp_idx * 2 + 1] << 4));
     }
     if (total_block_count & 1) {
-      zero_points[total_block_count / 2] = (zero_points[total_block_count / 2] &0xf0) | zero_points_tmp[total_block_count - 1];
+      zero_points[total_block_count / 2] = (zero_points[total_block_count / 2] & 0xf0) | zero_points_tmp[total_block_count - 1];
     }
   }
 }
