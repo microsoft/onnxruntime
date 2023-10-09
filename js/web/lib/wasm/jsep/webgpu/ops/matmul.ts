@@ -31,8 +31,9 @@ export const createNaiveMatmulProgramInfo =
       const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
       const batchSize = ShapeUtil.size(outerDims);
       const components = getMaxComponents(N);
-      const aComponents = 1; //getMaxComponents(K);
-      const outputSize = ShapeUtil.size(outputShape) / components;
+      const aComponents = getMaxComponents(K);
+      const outputNumber = getMaxComponents(M);
+      const outputSize = ShapeUtil.size(outputShape) / components / outputNumber;
       const a = inputVariable('a', inputs[0].dataType, aShape, aComponents);
       const b = inputVariable('b', inputs[1].dataType, bShape, components);
       const output = outputVariable('output', inputs[0].dataType, [batchSize, M, N], components);
@@ -44,7 +45,8 @@ export const createNaiveMatmulProgramInfo =
         const biasComponents = isChannelsLast ? components : 1;
         inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims, biasComponents));
         processBias = `${
-            isChannelsLast ? `value += bias[col / ${biasComponents}];` : `value += ${output.type.value}(bias[row]);`}`;
+            isChannelsLast ? `value += bias[col / ${biasComponents}];` :
+                             `value += ${output.type.value}(bias[row + i]);`}`;
       }
       const outerDimsA = aShape.slice(0, -2);
       const outerDimsB = bShape.slice(0, -2);
@@ -71,11 +73,18 @@ export const createNaiveMatmulProgramInfo =
       };
 
       const calcResult = (): string => {
-        let calcStr = '';
+        let calcStr = `var aData: ${a.type.value};`;
         for (let i = 0; i < aComponents; i++) {
           calcStr += `
-          value = fma(${b.type.value}(a[(offsetA + row * K + k) / ${aComponents}]${
-              aComponents === 1 ? '' : `[${i}]`}), b[(offsetB + (k + ${i}) * N + col) / ${components}], value);`;
+            let bData${i} = b[(offsetB + (k + ${i}) * N + col) / ${components}];`;
+        }
+        for (let i = 0; i < outputNumber; i++) {
+          calcStr += `aData = a[(offsetA + (row + ${i}) * K + k) / ${aComponents}];`;
+
+          for (let j = 0; j < aComponents; j++) {
+            calcStr += `
+          values[${i}] = fma(${b.type.value}(aData${aComponents === 1 ? '' : `[${j}]`}), bData${j}, values[${i}]);\n`;
+          }
         }
         return calcStr;
       };
@@ -88,22 +97,29 @@ export const createNaiveMatmulProgramInfo =
   ${activationFunction}
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-    let outputIndices = ${output.offsetToIndices(`global_idx * ${components}`)};
-    let batch = outputIndices.x;
-    let row = outputIndices.y;
-    let col = outputIndices.z;
+    let col = (global_idx % ${N / components}u) * ${components}u;
+    var index1 = global_idx / ${N / components}u;
+    let stride1 = ${M / outputNumber}u;
+    let row = (index1 % stride1) * ${outputNumber}u;
+    let batch = index1 / stride1;
+
     ${outputShape.length === 2 ? '' : `let batchIndices = ${batchDims.offsetToIndices('batch')};`}
     ${getIndices(a, broadCastADims)}
     let offsetA = ${a.indicesToOffset('aIndices')};
     ${getIndices(b, broadCastBDims)}
     let offsetB = ${b.indicesToOffset('bIndices')};
-    var value = ${output.type.value}(0);
+    var values: array<${output.type.value}, ${outputNumber}>;
     for (var k: u32 = 0u; k < K; k = k + ${aComponents}) {
       ${calcResult()}
     }
-    ${processBias}
-    ${applyActivation}
-    output[global_idx] = value;
+    for (var i = 0u; i < ${outputNumber}u; i++) {
+      var value = values[i];
+      ${processBias}
+      ${applyActivation}
+      let curIndices = ${output.type.indices}(batch, row + i, col);
+      let offset = ${output.indicesToOffset('curIndices')};
+      ${output.setByOffset(`offset / ${components}`, 'value')};
+    }
   }
   ${batchDims.impl()}
   `;
