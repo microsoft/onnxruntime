@@ -11,7 +11,7 @@ namespace rocm {
 
 using tunable::RocmTuningContext;
 
-template <typename T, typename TOut, bool is_log_softmax>
+template <typename T, typename TOut, bool IsLogSoftmax>
 Status SoftMaxComputeHelper(
     Stream* stream,
     const T* input,
@@ -20,14 +20,14 @@ Status SoftMaxComputeHelper(
     int64_t axis,
     RocmTuningContext* tuning_ctx = nullptr);
 
-template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-Status dispatch_warpwise_softmax_forward(Stream* stream, output_t* dst, const input_t* src,
-                                         int softmax_elements, int softmax_elements_stride, int batch_count,
+template <typename InputT, typename OutputT, typename AccT, bool IsLogSoftmax>
+Status dispatch_warpwise_softmax_forward(Stream* stream, OutputT* dst, const InputT* src, int softmax_elements,
+                                         int softmax_elements_stride, int batch_count,
                                          RocmTuningContext* tuning_ctx = nullptr);
 
-template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-Status dispatch_blockwise_softmax_forward(Stream* stream, output_t* output, const input_t* input,
-                                          int softmax_elements, int input_stride, int output_stride, int batch_count,
+template <typename InputT, typename OutputT, typename AccT, bool IsLogSoftmax>
+Status dispatch_blockwise_softmax_forward(Stream* stream, OutputT* output, const InputT* input, int softmax_elements,
+                                          int input_stride, int output_stride, int batch_count,
                                           RocmTuningContext* tuning_ctx = nullptr);
 
 template <typename T>
