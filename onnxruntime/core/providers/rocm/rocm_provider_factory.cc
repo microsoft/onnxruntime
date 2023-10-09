@@ -132,7 +132,6 @@ struct ProviderInfo_ROCM_Impl final : ProviderInfo_ROCM {
     HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyHostToDevice));
 
     // To ensure that the copy has completed, invoke a stream sync for the default stream.
-    // https://docs.nvidia.com/rocm/rocm-runtime-api/api-sync-behavior.html#api-sync-behavior__memcpy-sync
     // For transfers from pageable host memory to device memory, a stream sync is performed before the copy is initiated.
     // The function will return once the pageable buffer has been copied to the staging memory for DMA transfer
     // to device memory, but the DMA to final destination may not have completed.
@@ -142,7 +141,6 @@ struct ProviderInfo_ROCM_Impl final : ProviderInfo_ROCM {
 
   // Used by onnxruntime_pybind_state.cc
   void rocmMemcpy_DeviceToHost(void* dst, const void* src, size_t count) override {
-    // https://docs.nvidia.com/rocm/rocm-runtime-api/api-sync-behavior.html#api-sync-behavior__memcpy-sync
     // For transfers from device to either pageable or pinned host memory, the function returns only once the copy has completed.
     HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyDeviceToHost));
   }
