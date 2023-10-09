@@ -10,31 +10,41 @@ import {ComputeContext, ProgramInfo} from '../types';
 import {getBroadcastDims, IndicesHelper, inputVariable, outputVariable, ShaderHelper,} from './common';
 import {getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
 
+const getMaxComponents = (size: number): 1|2|3|4 => {
+  if (size % 4 === 0) {
+    return 4;
+  } else if (size % 2 === 0) {
+    return 2;
+  }
+  return 1;
+};
 export const createNaiveMatmulProgramInfo =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes,
      outputShape: readonly number[], reshapedOutputShape?: readonly number[],
      isChannelsLast = false /* only used for conv2dByMatMul*/): ProgramInfo => {
       const aShape = inputs[0].dims;
       const bShape = inputs[1].dims;
-      const outputSize = ShapeUtil.size(outputShape);
 
       const M = aShape[aShape.length - 2];
       const K = aShape[aShape.length - 1];
       const N = bShape[bShape.length - 1];
       const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
       const batchSize = ShapeUtil.size(outerDims);
-      const components = 1;
-      const a = inputVariable('a', inputs[0].dataType, aShape, components);
+      const components = getMaxComponents(N);
+      const outputSize = ShapeUtil.size(outputShape) / components;
+      const a = inputVariable('a', inputs[0].dataType, aShape, 1);
       const b = inputVariable('b', inputs[1].dataType, bShape, components);
       const output = outputVariable('output', inputs[0].dataType, [batchSize, M, N], components);
       const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);
       const inputVariables = [a, b];
       const hasBias = inputs.length > 2;
+      let processBias = '';
       if (hasBias) {
         const biasComponents = isChannelsLast ? components : 1;
         inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims, biasComponents));
+        processBias = `${
+            isChannelsLast ? `value += bias[col / ${biasComponents}];` : `value += ${output.type.value}(bias[row]);`}`;
       }
-
       const outerDimsA = aShape.slice(0, -2);
       const outerDimsB = bShape.slice(0, -2);
       const batchDims = inputVariable('batchDims', inputs[0].dataType, outerDims);
@@ -67,7 +77,7 @@ export const createNaiveMatmulProgramInfo =
   ${activationFunction}
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-    let outputIndices = ${output.offsetToIndices('global_idx')};
+    let outputIndices = ${output.offsetToIndices(`global_idx * ${components}`)};
     let batch = outputIndices.x;
     let row = outputIndices.y;
     let col = outputIndices.z;
@@ -78,8 +88,9 @@ export const createNaiveMatmulProgramInfo =
     let offsetB = ${b.indicesToOffset('bIndices')};
     var value = ${output.type.value}(0);
     for (var k: u32 = 0u; k<${K}u; k++) {
-      value += a[offsetA + row * K + k] * b[offsetB + k * N + col];
+      value = fma(${b.type.value}(a[offsetA + row * K + k]), b[(offsetB + k * N + col) / ${components}], value);
     }
+    ${processBias}
     ${applyActivation}
     output[global_idx] = value;
   }
