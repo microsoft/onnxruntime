@@ -10,6 +10,7 @@ import time
 import numpy as np
 import psutil
 import torch
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import setup_logger
 from llama_inputs import get_msft_sample_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from optimum.onnxruntime import ORTModelForCausalLM
@@ -322,7 +323,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
             for k, v in inputs.items():
                 io_binding.bind_cpu_input(k, v)
             for output in model.get_outputs():
-                io_binding.bind_output(output.name)
+                io_binding.bind_output(output.name, device_type=args.device, device_id=args.device_id)
             return io_binding
 
         return inputs

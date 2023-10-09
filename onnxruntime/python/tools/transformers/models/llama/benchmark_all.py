@@ -94,7 +94,7 @@ def get_args():
     parser.add_argument(
         "--timeout",
         type=int,
-        default=10,
+        default=60,
         help="Number of mins to attempt the benchmark before moving on",
     )
 
@@ -226,104 +226,108 @@ def main():
     torch.backends.cudnn.benchmark = True
 
     all_results = []
-    # Benchmark PyTorch without torch.compile
-    benchmark_cmd = [
-        "python3",
-        "benchmark.py",
-        "--benchmark-type",
-        "hf-pt",
-        "--model-name",
-        args.model_name,
-        "--precision",
-        args.precision,
-        "--batch-sizes",
-        args.batch_sizes,
-        "--sequence-lengths",
-        args.sequence_lengths,
-        "--device",
-        args.device,
-        "--device-id",
-        str(args.device_id),
-        "--warmup-runs",
-        str(args.warmup_runs),
-        "--num-runs",
-        str(args.num_runs),
-        "--log-folder",
-        args.log_folder,
-        "--auth",
-    ]
-    logger.info("Benchmark PyTorch without torch.compile")
-    results = benchmark(args, benchmark_cmd, "pytorch")
-    all_results.extend(results)
+    # # Benchmark PyTorch without torch.compile
+    # benchmark_cmd = [
+    #     "python3",
+    #     "-m",
+    #     "models.llama.benchmark",
+    #     "--benchmark-type",
+    #     "hf-pt",
+    #     "--model-name",
+    #     args.model_name,
+    #     "--precision",
+    #     args.precision,
+    #     "--batch-sizes",
+    #     args.batch_sizes,
+    #     "--sequence-lengths",
+    #     args.sequence_lengths,
+    #     "--device",
+    #     args.device,
+    #     "--device-id",
+    #     str(args.device_id),
+    #     "--warmup-runs",
+    #     str(args.warmup_runs),
+    #     "--num-runs",
+    #     str(args.num_runs),
+    #     "--log-folder",
+    #     args.log_folder,
+    #     "--auth",
+    # ]
+    # logger.info("Benchmark PyTorch without torch.compile")
+    # results = benchmark(args, benchmark_cmd, "pytorch")
+    # all_results.extend(results)
 
-    # Benchmark PyTorch with torch.compile
-    benchmark_cmd = [
-        "python3",
-        "benchmark.py",
-        "--benchmark-type",
-        "hf-pt2",
-        "--model-name",
-        args.model_name,
-        "--precision",
-        args.precision,
-        "--batch-sizes",
-        args.batch_sizes,
-        "--sequence-lengths",
-        args.sequence_lengths,
-        "--device",
-        args.device,
-        "--device-id",
-        str(args.device_id),
-        "--warmup-runs",
-        str(args.warmup_runs),
-        "--num-runs",
-        str(args.num_runs),
-        "--log-folder",
-        args.log_folder,
-        "--auth",
-    ]
-    logger.info("Benchmark PyTorch with torch.compile")
-    results = benchmark(args, benchmark_cmd, "pytorch-2")
-    all_results.extend(results)
+    # # Benchmark PyTorch with torch.compile
+    # benchmark_cmd = [
+    #     "python3",
+    #     "-m",
+    #     "models.llama.benchmark",
+    #     "--benchmark-type",
+    #     "hf-pt2",
+    #     "--model-name",
+    #     args.model_name,
+    #     "--precision",
+    #     args.precision,
+    #     "--batch-sizes",
+    #     args.batch_sizes,
+    #     "--sequence-lengths",
+    #     args.sequence_lengths,
+    #     "--device",
+    #     args.device,
+    #     "--device-id",
+    #     str(args.device_id),
+    #     "--warmup-runs",
+    #     str(args.warmup_runs),
+    #     "--num-runs",
+    #     str(args.num_runs),
+    #     "--log-folder",
+    #     args.log_folder,
+    #     "--auth",
+    # ]
+    # logger.info("Benchmark PyTorch with torch.compile")
+    # results = benchmark(args, benchmark_cmd, "pytorch-2")
+    # all_results.extend(results)
 
-    # Benchmark Optimum + ONNX Runtime
-    if args.hf_ort_model_path:
-        benchmark_cmd = [
-            "python3",
-            "benchmark.py",
-            "--benchmark-type",
-            "hf-ort",
-            "--hf-ort-model-path",
-            args.hf_ort_model_path,
-            "--model-name",
-            args.model_name,
-            "--precision",
-            args.precision,
-            "--batch-sizes",
-            args.batch_sizes,
-            "--sequence-lengths",
-            args.sequence_lengths,
-            "--device",
-            args.device,
-            "--device-id",
-            str(args.device_id),
-            "--warmup-runs",
-            str(args.warmup_runs),
-            "--num-runs",
-            str(args.num_runs),
-            "--log-folder",
-            args.log_folder,
-            "--auth",
-        ]
-        logger.info("Benchmark Optimum + ONNX Runtime")
-        results = benchmark(args, benchmark_cmd, "pytorch-ort")
-        all_results.extend(results)
+    # # Benchmark Optimum + ONNX Runtime
+    # if args.hf_ort_model_path:
+    #     benchmark_cmd = [
+    #         "python3",
+    #         "-m",
+    #         "models.llama.benchmark",
+    #         "--benchmark-type",
+    #         "hf-ort",
+    #         "--hf-ort-model-path",
+    #         args.hf_ort_model_path,
+    #         "--model-name",
+    #         args.model_name,
+    #         "--precision",
+    #         args.precision,
+    #         "--batch-sizes",
+    #         args.batch_sizes,
+    #         "--sequence-lengths",
+    #         args.sequence_lengths,
+    #         "--device",
+    #         args.device,
+    #         "--device-id",
+    #         str(args.device_id),
+    #         "--warmup-runs",
+    #         str(args.warmup_runs),
+    #         "--num-runs",
+    #         str(args.num_runs),
+    #         "--log-folder",
+    #         args.log_folder,
+    #         "--auth",
+    #     ]
+    #     logger.info("Benchmark Optimum + ONNX Runtime")
+    #     results = benchmark(args, benchmark_cmd, "pytorch-ort")
+    #     all_results.extend(results)
 
     # Benchmark ONNX Runtime
     if args.ort_model_path:
         benchmark_cmd = [
             "python3",
-            "benchmark.py",
+            "-m",
+            "models.llama.benchmark",
             "--benchmark-type",
             "ort",
             "--ort-model-path",

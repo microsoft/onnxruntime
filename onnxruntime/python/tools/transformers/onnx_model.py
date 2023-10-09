@@ -39,6 +39,8 @@ class OnnxModel:
         self.shape_infer_helper: SymbolicShapeInferenceHelper = None
         self.enable_shape_infer: bool = True
         self.all_graphs: Optional[List[GraphProto]] = None
+        # self.input_name_to_nodes: Dict[str, List] = self.input_name_to_nodes()
+        # self.output_name_to_nodes: Dict[str, List] = self.output_name_to_nodes()
 
     def disable_shape_inference(self):
         self.enable_shape_infer = False
