@@ -43,7 +43,6 @@ try:
     from onnxruntime.capi._pybind_state import get_device  # noqa: F401
     from onnxruntime.capi._pybind_state import get_version_string  # noqa: F401
     from onnxruntime.capi._pybind_state import has_collective_ops  # noqa: F401
-    from onnxruntime.capi._pybind_state import quantize_matmul_4bits  # noqa: F401
     from onnxruntime.capi._pybind_state import set_default_logger_severity  # noqa: F401
     from onnxruntime.capi._pybind_state import set_default_logger_verbosity  # noqa: F401
     from onnxruntime.capi._pybind_state import set_seed  # noqa: F401

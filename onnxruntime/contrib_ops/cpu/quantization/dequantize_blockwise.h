@@ -7,6 +7,7 @@
 
 #include <vector>
 
+#include "core/common/safeint.h"
 #include "core/framework/float16.h"
 #include "core/platform/threadpool.h"
 #include <iostream>
@@ -45,10 +46,11 @@ void QuantizeBlockwise(
         int32_t k_block_idx = static_cast<int32_t>(block_idx % block_per_K);
         int32_t k = k_block_idx * block_size;
         BlockwiseQuantBlock<T, block_size, bits>* blob_ptr = dst_blob + block_idx;
+        size_t offset = SafeInt<size_t>(k) * N + n;
         if (nullptr != zero_points_tmp_ptr) {
-          blob_ptr->quant(src + k * N + n, scale[block_idx], zero_points_tmp_ptr[block_idx], k, K, N);
+          blob_ptr->quant(src + offset, scale[block_idx], zero_points_tmp_ptr[block_idx], k, K, N);
         } else {
-          blob_ptr->quant(src + k * N + n, scale[block_idx], k, K, N);
+          blob_ptr->quant(src + offset, scale[block_idx], k, K, N);
         }
       },
       0);
@@ -119,17 +121,19 @@ void DequantizeBlockwise(
         int32_t k_block_idx = static_cast<int32_t>(task_idx % block_per_K);
         int32_t k = k_block_idx * block_size;
         const BlockwiseQuantBlock<T, block_size, bits>* blob_ptr = src_blob + task_idx;
+        size_t offset = SafeInt<size_t>(n) * K + k;
         if (nullptr != zero_points) {
           // if bits >= 4
           if constexpr (bits > 4) {  // zero point is stored with a byte
-            blob_ptr->dequant(dst + n * K + k, scale[task_idx], zero_points[task_idx], k, K);
+            blob_ptr->dequant(dst + offset, scale[task_idx], zero_points[task_idx], k, K);
           } else {  // zero points is stored with 4bits
             uint8_t zp = zero_points[task_idx / 2];
             zp = (task_idx & 1) ? (zp >> 4) : (zp & 0xf);
-            blob_ptr->dequant(dst + n * K + k, scale[task_idx], zp, k, K);
+            blob_ptr->dequant(dst + offset, scale[task_idx], zp, k, K);
           }
-        } else {
-          blob_ptr->dequant(dst + n * K + k, scale[task_idx], k, K);
+        }
+        else {
+          blob_ptr->dequant(dst + offset, scale[task_idx], k, K);
         }
       },
       0);

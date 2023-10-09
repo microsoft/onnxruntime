@@ -14,7 +14,7 @@ import numpy.typing as npt
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
-import onnxruntime as ort
+from onnxruntime.capi._pybind_state import quantize_matmul_4bits
 
 from .onnx_model import ONNXModel
 from .quant_utils import attribute_to_kwarg
@@ -62,7 +62,7 @@ class MatMul4BitsQuantizer:
         packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
         scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
         zero_point = np.zeros((cols * k_blocks + 1) // 2, dtype="uint8")
-        ort.quantize_matmul_4bits(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.is_symmetric)
+        quantize_matmul_4bits(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.is_symmetric)
 
         return (packed, scales, zero_point)
 
