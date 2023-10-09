@@ -101,6 +101,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_;
   }
 
+  bool qnn_context_embed_mode = true;
+  static const std::string CONTEXT_CACHE_EMBED_MODE = "qnn_context_embed_mode";
+  auto context_cache_embed_mode_pos = runtime_options_.find(CONTEXT_CACHE_EMBED_MODE);
+  if (context_cache_embed_mode_pos != runtime_options_.end()) {
+    qnn_context_embed_mode = context_cache_embed_mode_pos->second == "1";
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << qnn_context_embed_mode;
+  }
+
   static const std::string BACKEND_PATH = "backend_path";
   auto backend_path_pos = runtime_options_.find(BACKEND_PATH);
 
@@ -147,6 +155,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       rpc_control_latency_,
       htp_performance_mode_,
       std::move(qnn_saver_path));
+  qnn_cache_model_handler_ = std::make_unique<qnn::QnnCacheModelHandler>(qnn_context_embed_mode);
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
@@ -262,10 +271,16 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto& logger = *GetLogger();
   bool load_from_cached_context = false;
-  if (context_cache_enabled_) {
-    load_from_cached_context = qnn_backend_manager_->IsContextCacheFileExists(context_cache_path_,
-                                                                              graph_viewer.Description(),
-                                                                              graph_viewer.ModelPath().ToPathString());
+  bool is_qnn_ctx_model = qnn::IsQnnCtxModel(graph_viewer);
+  if (is_qnn_ctx_model) {
+    load_from_cached_context = true;
+  }
+
+  // This is for case: QDQ model + Onnx Qnn context cache model
+  if (context_cache_enabled_ && !is_qnn_ctx_model) {
+    load_from_cached_context = qnn_cache_model_handler_->IsContextCacheFileExists(context_cache_path_,
+                                                                                  graph_viewer.Description(),
+                                                                                  graph_viewer.ModelPath().ToPathString());
   }
 
   // Load from cached context will load the QnnSystem lib and skip the Qnn context creation
@@ -275,7 +290,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return result;
   }
 
-  if (context_cache_enabled_ && !IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
+  if ((context_cache_enabled_ || is_qnn_ctx_model) && !IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
     LOGS(logger, ERROR) << "Qnn context cache only works for HTP or DSP backend.";
     return result;
   }
@@ -365,9 +380,10 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const size_t num_of_partitions = result.size();
 
-  if (load_from_cached_context && 1 == num_of_partitions) {
-    rt = qnn_backend_manager_->ValidateWithContextFile(GetFileNameFromModelPath(graph_viewer.ModelPath()),
-                                                       result[0]->sub_graph->GetMetaDef()->name);
+  if (!is_qnn_ctx_model && load_from_cached_context && 1 == num_of_partitions) {
+    rt = qnn_cache_model_handler_->ValidateWithContextFile(GetFileNameFromModelPath(graph_viewer.ModelPath()),
+                                                           result[0]->sub_graph->GetMetaDef()->name,
+                                                           logger);
     if (Status::OK() != rt) {
       LOGS(logger, ERROR) << "QNN failed to validate context cache metadata: " << rt.ErrorMessage();
       return result;
@@ -447,22 +463,28 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
+  Node& fused_node = fused_nodes_and_graphs[0].fused_node;
+  const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
 
-  if (context_cache_enabled_) {
+  bool is_qnn_ctx_model = false;
+  ORT_RETURN_IF_ERROR(qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs, is_qnn_ctx_model));
+
+  if (context_cache_enabled_ || is_qnn_ctx_model) {
     ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support single partition for context cache feature.");
-    Node& fused_node = fused_nodes_and_graphs[0].fused_node;
-    const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
-    // The dumy_model_description won't be used since IsContextCacheFileExists call cached the result
-    // The graph_viewer.Description here is not same with original model
-    std::string dumy_model_description = "";
-    bool load_from_cached_context = qnn_backend_manager_->IsContextCacheFileExists(context_cache_path_,
-                                                                                   dumy_model_description,
-                                                                                   graph_viewer.ModelPath().ToPathString());
+    std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager_.get());
+    bool loaded_from_cache = false;
+    std::string ep_engine_cache;
+    ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->GetEpContext(graph_viewer,
+                                                               context_cache_path_,
+                                                               is_qnn_ctx_model,
+                                                               qnn_cache_model_handler_->GetIsContextCacheFileExists(),
+                                                               ep_engine_cache,
+                                                               logger));
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnCtxFromOnnxModel(ep_engine_cache,
+                                                                            *(qnn_model.get()),
+                                                                            loaded_from_cache));
     // Load and execute from cached context if exist
-    if (load_from_cached_context) {
-      std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
-                                                                                 qnn_backend_manager_.get());
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(*(qnn_model.get())));
+    if (loaded_from_cache) {
       ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
       ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
@@ -473,18 +495,22 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
 
       ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
       return Status::OK();
-    } else {
-      // Load and execute from Onnx model if not exit and dump the context
-      ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
-      // graph_viewer.Name() is generated in GetCapability, e.g QNN_[hash_id]_[id]
-      // dump graph_viewer.Name() as metadata in context cache binary file, so that we can validate it in GetCapability
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(GetFileNameFromModelPath(graph_viewer.ModelPath()),
-                                                               graph_viewer.Name()));
     }
-    return Status::OK();
   }
 
   ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
+  if (context_cache_enabled_ && !is_qnn_ctx_model) {
+    ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support single partition for context cache feature.");
+    uint64_t buffer_size(0);
+    auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
+    ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->GenerateCtxCacheOnnxModel(context_buffer.get(),
+                                                                            buffer_size,
+                                                                            qnn_backend_manager_->GetSdkVersion(),
+                                                                            fused_nodes_and_graphs,
+                                                                            qnn_models_,
+                                                                            logger));
+  }
+  qnn_cache_model_handler_.reset();
 
   return Status::OK();
 }

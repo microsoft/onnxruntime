@@ -735,7 +735,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
         )
         normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
         normalize_node.attribute.extend([helper.make_attribute("axis", int(-1))])
-        normalize_node.attribute.extend([helper.make_attribute("stash_type", int(1))])
+        normalize_node.attribute.extend([helper.make_attribute("stash_type", 1)])
         self.nodes_to_add.append(normalize_node)
         self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 

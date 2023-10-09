@@ -4,7 +4,7 @@
 'use strict';
 
 const args = require('minimist')(process.argv, {});
-const bundleMode = args['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
+const bundleMode = args['bundle-mode'] || 'dev';  // 'dev'|'perf'
 const karmaPlugins = args['karma-plugins'] || undefined;
 const timeoutMocha = args['timeout-mocha'] || 60000;
 const forceLocalHost = !!args['force-localhost'];
@@ -19,8 +19,8 @@ if (!chromiumFlags) {
   throw new Error(`Invalid command line arg: --chromium-flags: ${chromiumFlags}`);
 }
 
-const commonFile = bundleMode === 'dev' ? '../common/dist/ort-common.js' : '../common/dist/ort-common.min.js'
-const mainFile = bundleMode === 'dev' ? 'test/ort.dev.js' : 'test/ort.perf.js';
+const ORT_FILE = bundleMode === 'dev' ? 'dist/ort.all.js' : 'dist/ort.all.min.js';
+const TEST_FILE = bundleMode === 'dev' ? 'test/ort.test.js' : 'test/ort.test.min.js';
 
 // it's a known issue that Safari does not work with "localhost" in BrowserStack:
 // https://www.browserstack.com/question/663
@@ -67,30 +67,14 @@ module.exports = function(config) {
     },
     frameworks: ['mocha'],
     files: [
-      {pattern: commonFile},
-      {pattern: mainFile},
-      {pattern: 'test/testdata-file-cache-*.json', included: false},
-      {pattern: 'test/data/**/*', included: false, nocache: true},
-      {pattern: 'dist/ort-wasm.wasm', included: false},
-      {pattern: 'dist/ort-wasm-threaded.wasm', included: false},
-      {pattern: 'dist/ort-wasm-simd.wasm', included: false},
-      {pattern: 'dist/ort-wasm-simd-threaded.wasm', included: false},
-      {pattern: 'dist/ort-wasm-simd.jsep.wasm', included: false},
-      {pattern: 'dist/ort-wasm-simd-threaded.jsep.wasm', included: false},
-      {pattern: 'dist/ort-wasm-threaded.worker.js', included: false},
+      {pattern: ORT_FILE},
+      {pattern: TEST_FILE},
+      {pattern: 'test/testdata-file-cache-*.json', included: false, watched: false},
+      {pattern: 'test/data/**/*', included: false, nocache: true, watched: false},
+      {pattern: 'dist/*.wasm', included: false, watched: false},
     ],
-    proxies: {
-      '/base/test/ort-wasm.wasm': '/base/dist/ort-wasm.wasm',
-      '/base/test/ort-wasm-threaded.wasm': '/base/dist/ort-wasm-threaded.wasm',
-      '/base/test/ort-wasm-simd.wasm': '/base/dist/ort-wasm-simd.wasm',
-      '/base/test/ort-wasm-simd-threaded.wasm': '/base/dist/ort-wasm-simd-threaded.wasm',
-      '/base/test/ort-wasm-simd.jsep.wasm': '/base/dist/ort-wasm-simd.jsep.wasm',
-      '/base/test/ort-wasm-simd-threaded.jsep.wasm': '/base/dist/ort-wasm-simd-threaded.jsep.wasm',
-      '/base/test/ort-wasm-threaded.worker.js': '/base/dist/ort-wasm-threaded.worker.js',
-    },
     plugins: karmaPlugins,
     client: {captureConsole: true, mocha: {expose: ['body'], timeout: timeoutMocha}},
-    preprocessors: {mainFile: ['sourcemap']},
     reporters: ['mocha', 'BrowserStack'],
     browsers: [],
     captureTimeout: 120000,

@@ -351,6 +351,10 @@ def quantize_static(
                     Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                     minimum and maximum values. Effective only when the calibration method selected is MinMax and
                     when CalibMovingAverage is set to True.
+                CalibMaxIntermediateOutputs = Optional[int] :
+                    Default is None. If set to an integer, during calculation of the min-max range of the tensors
+                    it will load at max value number of outputs before computing and merging the range. This will
+                    produce the same result as all computing with None, but is more memory efficient.
                 SmoothQuant = True/False :
                     Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
                     fake input channel quantization.
@@ -396,6 +400,7 @@ def quantize_static(
         ("CalibTensorRangeSymmetric", "symmetric"),
         ("CalibMovingAverage", "moving_average"),
         ("CalibMovingAverageConstant", "averaging_constant"),
+        ("CalibMaxIntermediateOutputs", "max_intermediate_outputs"),
     ]
     calib_extra_options = {
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
