@@ -11,7 +11,7 @@ TEST(ContribOpTest, Rfft) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
+#elif defined(USE_ROCM)
   execution_providers.push_back(DefaultRocmExecutionProvider());
 #else
   return;
@@ -31,7 +31,7 @@ TEST(ContribOpTest, Irfft) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
+#elif defined(USE_ROCM)
   execution_providers.push_back(DefaultRocmExecutionProvider());
 #else
   return;
