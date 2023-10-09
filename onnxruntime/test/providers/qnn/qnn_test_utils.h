@@ -213,13 +213,31 @@ inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& inp
  * \param execution_provider The EP on which to run the model. Set to nullptr for CPU EP.
  * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
  * \param feeds The input feeds.
- * \param output_names If empty, the function will write the output names.
  * \param output_vals Initialized to the inference results.
  */
 void InferenceModel(const std::string& model_data, const char* log_id,
                     std::unique_ptr<IExecutionProvider> execution_provider,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
-                    std::vector<std::string>& output_names, std::vector<OrtValue>& output_vals);
+                    std::vector<OrtValue>& output_vals);
+
+/**
+ * If the ORT_UNIT_TEST_ENABLE_QNN_SAVER environment variable is enabled (set to 1), this function modifies
+ * the QNN EP provider options to enable the QNN Saver backend, which dumps QNN API calls (and weights) to disk.
+ *
+ * - saver_output/saver_output.c: C file containing all QNN API calls.
+ * - saver_output/params.bin: binary file containing all input/output/parameter tensor data provided during tensor
+ *                            creation, op config validation, and graph execution.
+ *
+ * Enabling the QNN Saver backend has 2 note-worthy effects:
+ * 1. All QNN API calls will succeed.
+ * 2. Inference output returns dummy data.
+ *
+ * Because output files from QNN Saver are always overwritten, it is recommended to run individual unit tests via the
+ * --gtest_filter command-line option. Ex: --gtest_filter=QnnHTPBackendTests.Resize_DownSample_Linear_AlignCorners
+ *
+ * \param qnn_options QNN EP provider options that may be modified to enable QNN Saver.
+ */
+void TryEnableQNNSaver(ProviderOptions& qnn_options);
 
 /**
  * Tests the accuracy of a QDQ model on QNN EP by runnning 3 inferences:
@@ -241,9 +259,10 @@ void InferenceModel(const std::string& model_data, const char* log_id,
  */
 template <typename QuantType>
 inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
-                                 const ProviderOptions& qnn_options, int opset_version,
+                                 ProviderOptions qnn_options, int opset_version,
                                  ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err = 1e-4f,
-                                 logging::Severity log_severity = logging::Severity::kERROR) {
+                                 logging::Severity log_severity = logging::Severity::kERROR,
+                                 const std::string& qnn_ctx_model_path = "") {
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
@@ -263,9 +282,10 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
   // Run f32 model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_f32_outputs;
-  std::vector<std::string> output_names;
   InferenceModel(f32_model_data, "f32_model_logger", nullptr, ExpectedEPNodeAssignment::All,
-                 f32_helper.feeds_, output_names, cpu_f32_outputs);
+                 f32_helper.feeds_, cpu_f32_outputs);
+  ASSERT_FALSE(cpu_f32_outputs.empty());
+
   const size_t num_outputs = cpu_f32_outputs.size();
 
   // Compute output range(s) and quantization params.
@@ -300,15 +320,29 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   qdq_model.ToProto().SerializeToString(&qdq_model_data);
 
   // Run QDQ model on QNN EP and collect outputs.
+  TryEnableQNNSaver(qnn_options);
   std::vector<OrtValue> qnn_qdq_outputs;
-  InferenceModel(qdq_model_data, "qdq_model_logger", QnnExecutionProviderWithOptions(qnn_options),
-                 expected_ep_assignment, qdq_helper.feeds_, output_names, qnn_qdq_outputs);
+  if (!qnn_ctx_model_path.empty()) {
+    onnx::ModelProto model_proto;
+    onnxruntime::Model qnn_ctx_model;
+    // Load the QNN context cache model from path specified
+    ASSERT_STATUS_OK(qnn_ctx_model.Load(ToPathString(qnn_ctx_model_path), model_proto));
+    std::string qnn_ctx_model_data;
+    model_proto.SerializeToString(&qnn_ctx_model_data);
+    // Run QNN context cache model on QNN EP and collect outputs.
+    InferenceModel(qnn_ctx_model_data, "qnn_ctx_model_logger", QnnExecutionProviderWithOptions(qnn_options),
+                   expected_ep_assignment, qdq_helper.feeds_, qnn_qdq_outputs);
+  } else {
+    // Run QDQ model on QNN EP and collect outputs.
+    InferenceModel(qdq_model_data, "qdq_model_logger", QnnExecutionProviderWithOptions(qnn_options),
+                   expected_ep_assignment, qdq_helper.feeds_, qnn_qdq_outputs);
+  }
 
   if (expected_ep_assignment != ExpectedEPNodeAssignment::None) {
     // Run QDQ model on CPU EP and collect outputs.
     std::vector<OrtValue> cpu_qdq_outputs;
     InferenceModel(qdq_model_data, "qdq_model_logger", nullptr, ExpectedEPNodeAssignment::All,
-                   qdq_helper.feeds_, output_names, cpu_qdq_outputs);
+                   qdq_helper.feeds_, cpu_qdq_outputs);
     ASSERT_EQ(cpu_qdq_outputs.size(), num_outputs);
     ASSERT_EQ(qnn_qdq_outputs.size(), num_outputs);
 
@@ -318,7 +352,9 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
     // Compare accuracy of QDQ results with float model.
     // QNN EP must be at least as accurate as CPU EP when running the QDQ model.
+    const std::string base_output_name = "output_";
     for (size_t i = 0; i < num_outputs; i++) {
+      std::string debug_output_name = base_output_name + std::to_string(i);
       auto& cpu_qdq_tensor = cpu_qdq_outputs[i].Get<Tensor>();
       auto& qnn_qdq_tensor = qnn_qdq_outputs[i].Get<Tensor>();
 
@@ -351,8 +387,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
           }
 
           EXPECT_TRUE(is_as_accurate_as_cpu_qdq)
-              << "Inaccuracy detected for output '"
-              << output_names[i]
+              << "Inaccuracy detected for output '" << debug_output_name
               << "', element " << j
               << ".\nOutput quant params: scale=" << output_qparams[i].scale
               << ", zero_point=" << static_cast<int32_t>(output_qparams[i].zero_point)
@@ -361,7 +396,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
               << "CPU QDQ val: " << cpu_qdq_val << " (err " << cpu_err << ")";
         }
       } else {
-        VerifyOutput(output_names[i], cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
+        VerifyOutput(debug_output_name, cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
       }
     }
   }
@@ -432,28 +467,37 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool
 // to input_scale * weights_scale. See quantization tool: onnx_quantizer.py::quantize_bias_static()
 //
 // i.e., initial bias => manual quantization (int32) => DQ => final float bias
-NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale);
+NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
+                              bool use_contrib_qdq = false);
 
 /**
- * Returns a function that builds a model with a single operator with N inputs of the same element type.
+ * Returns a function that builds a model with a single operator with N inputs type InputType1 and M inputs
+ * of type InputType2.
  *
  * \param op_type The operator to instantiate.
- * \param input_defs List of input definitions.
+ * \param input_defs_1 List of input definitions of type InputType1.
+ * \param input_defs_2 List of input definitions of type InputType2.
  * \param attrs List of operator attributes.
  * \param op_domain The operator's domain. Defaults to the ONNX domain (i.e., "").
  * \returns A model building function.
  */
-template <typename InputType>
+template <typename InputType1, typename InputType2 = int64_t>
 inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
-                                      const std::vector<TestInputDef<InputType>>& input_defs,
+                                      const std::vector<TestInputDef<InputType1>>& input_defs_1,
+                                      const std::vector<TestInputDef<InputType2>>& input_defs_2,
                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                       const std::string& op_domain = kOnnxDomain) {
-  return [op_type, input_defs, attrs, op_domain](ModelTestBuilder& builder) {
+  return [op_type, input_defs_1, input_defs_2, attrs, op_domain](ModelTestBuilder& builder) {
     std::vector<NodeArg*> op_inputs;
-    op_inputs.reserve(input_defs.size());
+    op_inputs.reserve(input_defs_1.size() + input_defs_2.size());
 
-    for (const auto& input_def : input_defs) {
-      NodeArg* input = MakeTestInput<InputType>(builder, input_def);
+    for (const auto& input_def : input_defs_1) {
+      NodeArg* input = MakeTestInput<InputType1>(builder, input_def);
+      op_inputs.push_back(input);
+    }
+
+    for (const auto& input_def : input_defs_2) {
+      NodeArg* input = MakeTestInput<InputType2>(builder, input_def);
       op_inputs.push_back(input);
     }
 
@@ -467,7 +511,8 @@ inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
 }
 
 /**
- * Returns a function that builds a model with a single QDQ operator with N inputs of the same element type.
+ * Returns a function that builds a model with a single QDQ operator with N float (quantizeable) inputs
+ * and M inputs of a potentially different type.
  *
  * \param op_type The operator to instantiate.
  * \param input_defs List of input definitions.
@@ -475,22 +520,31 @@ inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
  * \param op_domain The operator's domain. Defaults to the ONNX domain (i.e., "").
  * \returns A model building function.
  */
-template <typename InputQType>
-inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_type,
-                                                        const std::vector<TestInputDef<float>>& input_defs,
-                                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                                        const std::string& op_domain = kOnnxDomain) {
-  return [op_type, input_defs, attrs, op_domain](ModelTestBuilder& builder,
-                                                 std::vector<QuantParams<InputQType>>& output_qparams) {
+template <typename QuantType, typename OtherInputType = int64_t>
+inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(const std::string& op_type,
+                                                       const std::vector<TestInputDef<float>>& quant_input_defs,
+                                                       const std::vector<TestInputDef<OtherInputType>>& non_quant_input_defs,
+                                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                                       const std::string& op_domain = kOnnxDomain,
+                                                       bool use_contrib_qdq = false) {
+  return [op_type, quant_input_defs, non_quant_input_defs, attrs, op_domain,
+          use_contrib_qdq](ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams) {
     std::vector<NodeArg*> op_inputs;
-    op_inputs.reserve(input_defs.size());
+    op_inputs.reserve(quant_input_defs.size() + non_quant_input_defs.size());
 
-    for (const auto& input_def : input_defs) {
+    // Create QDQ inputs
+    for (const auto& input_def : quant_input_defs) {
       NodeArg* input = MakeTestInput<float>(builder, input_def);
-      QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def);
-      NodeArg* input_after_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale,
-                                                            input_qparams.zero_point);
+      QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+      NodeArg* input_after_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale,
+                                                           input_qparams.zero_point, use_contrib_qdq);
       op_inputs.push_back(input_after_qdq);
+    }
+
+    // Create non-QDQ inputs
+    for (const auto& input_def : non_quant_input_defs) {
+      NodeArg* input = MakeTestInput<OtherInputType>(builder, input_def);
+      op_inputs.push_back(input);
     }
 
     // Op -> op_output
@@ -502,8 +556,8 @@ inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_ty
     }
 
     // op_output -> Q -> DQ -> output
-    AddQDQNodePairWithOutputAsGraphOutput<InputQType>(builder, op_output, output_qparams[0].scale,
-                                                      output_qparams[0].zero_point);
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, op_output, output_qparams[0].scale,
+                                                     output_qparams[0].zero_point, use_contrib_qdq);
   };
 }
 
@@ -518,7 +572,7 @@ inline GetTestQDQModelFn<InputQType> BuildQDQOpTestCase(const std::string& op_ty
  * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
  * \param log_severity The logger's minimum severity level.
  */
-void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
+void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err = 1e-5f, logging::Severity log_severity = logging::Severity::kERROR);
 

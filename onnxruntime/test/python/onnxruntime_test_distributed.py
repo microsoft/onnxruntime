@@ -18,7 +18,7 @@ def shard_tensor(X, rank, axis, num_shards):
     return np.split(X, num_shards, axis)[rank]
 
 
-class TestDistributedMatMul(unittest.TestCase):
+class TestDistributed(unittest.TestCase):
     def test_matmul_rs_sr_rr(self):
         @onnxscript.script()
         def matmul_rs_sr_rr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:

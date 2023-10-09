@@ -214,7 +214,7 @@ try:
                     "libhsa-runtime64.so.1",
                 ]
 
-                tensorrt_dependencies = ["libnvinfer.so.8.6", "libnvinfer_plugin.so.8.6", "libnvonnxparser.so.8.6"]
+                tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
 
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
@@ -519,6 +519,10 @@ if enable_training or enable_training_apis:
             if not (cuda_version or rocm_version):
                 # Training CPU package for ADO feeds is called onnxruntime-training-cpu
                 package_name = "onnxruntime-training-cpu"
+
+            if rocm_version:
+                # Training ROCM package for ADO feeds is called onnxruntime-training-rocm
+                package_name = "onnxruntime-training-rocm"
 
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]

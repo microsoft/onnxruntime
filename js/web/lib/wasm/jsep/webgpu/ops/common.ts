@@ -103,6 +103,16 @@ export interface IndicesHelper {
   readonly indicesToOffset: (varIndices: string) => string;
 
   /**
+   * WGSL code of an `u32` expression for getting original offset from broadcasted indices.
+   *
+   * @param varIndices - a `type.indices` expression representing the output indices.
+   * @param output - output IndicesHelper.
+   *
+   * @returns an `u32` expression
+   */
+  readonly broadcastedIndicesToOffset: (varIndices: string, output: IndicesHelper) => string;
+
+  /**
    * WGSL code of generating an indices literal
    *
    * @param init - initial value.
@@ -192,11 +202,14 @@ export interface IndicesHelper {
 }
 
 const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, string] => {
+  if (components === 3) {
+    throw new Error('vec3 has same alignment as vec4, use vec4 instead');
+  }
+
   // return type is [ storage type, runtime type ] or a single string for both
   switch (type) {
-    // TODO: enable after "shader-f16" WSGL extension release
-    // case DataType.float16:
-    //   return components > 1 ? `vec${components}<f16>` : 'f16';
+    case DataType.float16:
+      return components > 1 ? `vec${components}<f16>` : 'f16';
     case DataType.float:
       return components > 1 ? `vec${components}<f32>` : 'f32';
     case DataType.int32:
@@ -259,6 +272,7 @@ const createIndicesHelper =
       const implementationUsed = {
         offsetToIndices: false,
         indicesToOffset: false,
+        broadcastedIndicesToOffset: false,
         set: false,
         setByIndices: false,
         get: false,
@@ -305,6 +319,26 @@ const createIndicesHelper =
       const indicesToOffset = (varIndices: string) => {
         implementationUsed.indicesToOffset = true;
         return rank < 2 ? varIndices : `i2o_${name}(${varIndices})`;
+      };
+
+      const broadcastedIndicesToOffsetImplementation: {[key: string]: string} = {};
+      const broadcastedIndicesToOffset = (varIndices: string, output: IndicesHelper) => {
+        implementationUsed.broadcastedIndicesToOffset = true;
+        const implKey = `${output.name}broadcastedIndicesTo${name}Offset`;
+        if (implKey in broadcastedIndicesToOffsetImplementation) {
+          return `${implKey}(${varIndices})`;
+        }
+        const offsets = [];
+        for (let i = shape.length - 1; i >= 0; i--) {
+          const idx = output.indicesGet('outputIndices', i + output.shape.length - shape.length);
+          offsets.push(`${strides[i]}u * (${idx} % ${shape[i]}u)`);
+        }
+        broadcastedIndicesToOffsetImplementation[implKey] =
+            `fn ${implKey}(outputIndices: ${output.type.indices}) -> u32 {
+             return ${offsets.length > 0 ? offsets.join('+') : '0u'};
+           }`;
+
+        return `${implKey}(${varIndices})`;
       };
 
       const indices = (...init: ReadonlyArray<number|string>) =>
@@ -363,7 +397,7 @@ const createIndicesHelper =
 
       const getByIndicesImplementation = rank < 2 ? '' : `
   fn get_${name}ByIndices(indices: ${type.indices}) -> ${valueType} {
-    return ${name}[i2o_${name}(indices)];
+    return ${getByOffset(`i2o_${name}(indices)`)};
   }`;
 
       const getImplementation = rank < 2 ? '' : (() => {
@@ -459,6 +493,9 @@ const createIndicesHelper =
         if (implementationUsed.indicesToOffset) {
           impls.push(indicesToOffsetImplementation);
         }
+        if (implementationUsed.broadcastedIndicesToOffset) {
+          Object.values(broadcastedIndicesToOffsetImplementation).forEach(impl => impls.push(impl));
+        }
         if (implementationUsed.set) {
           impls.push(setImplementation);
         }
@@ -479,6 +516,7 @@ const createIndicesHelper =
         type,
         offsetToIndices,
         indicesToOffset,
+        broadcastedIndicesToOffset,
         indices,
         indicesGet,
         indicesSet,
@@ -589,7 +627,8 @@ class ShaderHelperImpl implements ShaderHelper {
     const workgroupSizeZ = typeof workgroupSize === 'number' ? 1 : workgroupSize[2];
 
     const is1DimensionDispatch = this.normalizedDispatchGroup[1] === 1 && this.normalizedDispatchGroup[2] === 1;
-    const paramList = is1DimensionDispatch ? '@builtin(global_invocation_id) global_id : vec3<u32>' :
+    const paramList = is1DimensionDispatch ? `@builtin(global_invocation_id) global_id : vec3<u32>,
+    @builtin(local_invocation_id) local_id : vec3<u32>` :
                                              `@builtin(local_invocation_index) local_index : u32,
     @builtin(workgroup_id) workgroup_id : vec3<u32>`;
     const globalIdxDefinition = is1DimensionDispatch ?

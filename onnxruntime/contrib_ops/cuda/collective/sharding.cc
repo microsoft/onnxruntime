@@ -196,7 +196,7 @@ std::unique_ptr<Tensor> ReshardTensor(
   // Implement ReshardTensor but returning a unique_ptr to Tensor instead.
   const auto origin_shape = ComputeOriginShape(src->Shape(), src_spec);
   const auto dst_shape = ComputeShardShape(origin_shape, dst_spec);
-  ORT_ENFORCE(CanShard(origin_shape, dst_spec), "Cannot shard tensor. Shape:", origin_shape, ", sharding spec: ", dst_spec.to_string());
+  ORT_ENFORCE(CanShard(origin_shape, dst_spec), "Cannot shard tensor. Shape:", origin_shape, ", sharding spec: ", dst_spec.ToString());
 
   AllocatorPtr alloc;
   ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc) == Status::OK());
@@ -223,7 +223,7 @@ void ReshardTensor(
   // Implement ReshardTensor but returning a unique_ptr to Tensor instead.
   const auto origin_shape = ComputeOriginShape(src->Shape(), src_spec);
   const auto dst_shape = ComputeShardShape(origin_shape, dst_spec);
-  ORT_ENFORCE(CanShard(origin_shape, dst_spec), "Cannot shard tensor. Shape:", origin_shape, ", sharding spec: ", dst_spec.to_string());
+  ORT_ENFORCE(CanShard(origin_shape, dst_spec), "Cannot shard tensor. Shape:", origin_shape, ", sharding spec: ", dst_spec.ToString());
 
   auto* dst = ctx->Output(output_idx, dst_shape);
   ReshardTensor(

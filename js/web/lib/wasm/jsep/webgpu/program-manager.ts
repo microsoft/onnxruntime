@@ -4,7 +4,7 @@
 import {tensorDataTypeEnumToString} from '../../wasm-common';
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
-import {TensorView} from '../tensor';
+import {TensorView} from '../tensor-view';
 
 import {createShaderHelper} from './ops/common';
 import {Artifact, GpuData, ProgramInfo} from './types';
@@ -126,10 +126,13 @@ export class ProgramManager {
   }
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
     const device = this.backend.device;
-
+    const extensions: string[] = [];
+    if (device.features.has('shader-f16')) {
+      extensions.push('enable f16;');
+    }
     const shaderHelper = createShaderHelper(normalizedDispatchGroupSize);
     const userCode = programInfo.getShaderSource(shaderHelper);
-    const code = `${shaderHelper.additionalImplementations}\n${userCode}`;
+    const code = `${extensions.join('\n')}\n${shaderHelper.additionalImplementations}\n${userCode}`;
     const shaderModule = device.createShaderModule({code, label: programInfo.name});
     LOG_DEBUG('verbose', () => `[WebGPU] shader code: ${code}`);
 

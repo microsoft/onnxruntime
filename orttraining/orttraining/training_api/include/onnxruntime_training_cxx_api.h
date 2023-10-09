@@ -112,13 +112,13 @@ class CheckpointState : public detail::Base<OrtCheckpointState> {
                              const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
                              const bool include_optimizer_state = false);
 
-  /** \brief Adds the given property to the checkpoint state.
+  /** \brief Adds or updates the given property to/in the checkpoint state.
    *
    * Runtime properties such as epoch, training step, best score, and others can be added to the checkpoint
-   * state by the user if they desire by calling this function with the appropriate property name and
-   * value. The given property name must be unique to be able to successfully add the property.
+   * state by the user by calling this function with the corresponding property name and value.
+   * The given property name must be unique to be able to successfully add the property.
    *
-   * \param[in] property_name Unique name of the property being added.
+   * \param[in] property_name Name of the property being added or updated.
    * \param[in] property_value Property value associated with the given name.
    *
    */
@@ -129,11 +129,37 @@ class CheckpointState : public detail::Base<OrtCheckpointState> {
    * Gets the property value from an existing entry in the checkpoint state. The property must
    * exist in the checkpoint state to be able to retrieve it successfully.
    *
-   * \param[in] property_name Unique name of the property being retrieved.
+   * \param[in] property_name Name of the property being retrieved.
    * \return Property value associated with the given property name.
    *
    */
   Property GetProperty(const std::string& property_name);
+
+  /** \brief Updates the data associated with the model parameter in the checkpoint state for the given parameter name.
+   *
+   * This function updates a model parameter in the checkpoint state with the given parameter data.
+   * The training session must be already created with the checkpoint state that contains the parameter
+   * being updated. The given parameter is copied over to the registered device for the training session.
+   * The parameter must exist in the checkpoint state to be able to update it successfully.
+   *
+   * \param[in] parameter_name Name of the parameter being updated.
+   * \param[in] parameter The parameter data that should replace the existing parameter data.
+   *
+   */
+  void UpdateParameter(const std::string& parameter_name, const Value& parameter);
+
+  /** \brief Gets the data associated with the model parameter from the checkpoint state for the given parameter name.
+   *
+   * This function retrieves the model parameter data from the checkpoint state for the given parameter name.
+   * The parameter is copied over to the provided OrtValue. The training session must be already created
+   * with the checkpoint state that contains the parameter being retrieved.
+   * The parameter must exist in the checkpoint state to be able to retrieve it successfully.
+   *
+   * \param[in] parameter_name Name of the parameter being retrieved.
+   * \return The parameter data that is retrieved from the checkpoint state.
+   *
+   */
+  Value GetParameter(const std::string& parameter_name);
 
   /// @}
 };
