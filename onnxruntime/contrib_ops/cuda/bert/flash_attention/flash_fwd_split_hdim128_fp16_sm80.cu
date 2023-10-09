@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace flash {
 
-template void run_mha_fwd_splitkv_dispatch<cutlass::half_t, 128>(Flash_fwd_params &params, cudaStream_t stream);
+template void run_mha_fwd_splitkv_dispatch<cutlass::half_t, 128>(Flash_fwd_params& params, cudaStream_t stream);
 
 }  // namespace flash
 }  // namespace onnxruntime
