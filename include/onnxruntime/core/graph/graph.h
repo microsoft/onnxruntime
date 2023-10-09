@@ -1159,14 +1159,6 @@ class Graph {
   */
   Status InlineFunction(Node& node);
 
-  /** Inlines a function via building and Resolving local subgraph.
-   *  Then inserting that subgraph into the main graph. The api aims
-   *  to save on a global Resolve() by calling it on a locally produced
-   *  subgraph, copying the nodes and then fixing up the edges in the target
-   *  graph.
-   */
-  Status InlineFunctionViaSubgraph(Node& callnode);
-
   /**
   Directly insert the nodes in the function proto provided into the dest graph.
   The function converts Constant nodes into the initializers in the destination graph.
@@ -1194,21 +1186,7 @@ class Graph {
   */
   Status InlineSubgraph(const Graph& graph_to_inline,
                         const Path& model_path,
-                        std::optional<std::string_view> unique_id,
-                        InlinedHashMap<NodeIndex, NodeIndex>* inlined_to_target_map);
-
-  /**
-  This function redirects this graph edges that involved inlined_function and redirects them into the nodes
-  of the inlined graph.
-  @param inlined_node function that was converted to a graph
-  @param inlined_graph the graph instance that was construted from the inlined_node function. It is
-    expected to be independently Resolve()d before this function is called.
-  @param old_to_new_map map between indices of the graph that was constructed from the function to be
-  inlined to this graph node indices.
-  */
-  Status FinalizeFunctionGraphInline(const Node& inlined_node,
-                                     const Graph& inlined_graph,
-                                     const InlinedHashMap<NodeIndex, NodeIndex>& old_to_new_map);
+                        std::optional<std::string> unique_id);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..
@@ -1466,6 +1444,13 @@ class Graph {
    @param model_path model path where constant_node_proto is from
   */
   Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto, const Path& model_path);
+
+  /*
+  * The function will create copies of the initializers in this graph.
+  * @param from_graph initializers source
+  * @param unique_id used to make unique_names for the initializers
+  */
+  void CopyInitializers(const Graph& from_graph, std::optional<std::string> unique_id);
 
 #endif
 
