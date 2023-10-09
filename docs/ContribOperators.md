@@ -41,6 +41,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GreedySearch">com.microsoft.GreedySearch</a>
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.GroupNorm">com.microsoft.GroupNorm</a>
+  * <a href="#com.microsoft.GroupQueryAttention">com.microsoft.GroupQueryAttention</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
@@ -1169,9 +1170,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
 <dt><tt>present_key</tt> (optional) : T</dt>
-<dd>past state for key with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
+<dd>present state for key with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
 <dt><tt>present_value</tt> (optional) : T</dt>
-<dd>past state for value with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
+<dd>present state for value with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
 </dl>
 
 #### Type Constraints
@@ -2215,6 +2216,69 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input X and output Y types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain gamma and beta to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.GroupQueryAttention"></a><a name="com.microsoft.groupqueryattention">**com.microsoft.GroupQueryAttention**</a>
+
+  Group Query Self/Cross Attention.
+  
+  Supports different number of heads for q and kv.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>is_past_bsnh</tt> : int</dt>
+<dd>Whether past kv uses BSNH, otherwise BNSH. Default value is 1 (BSNH).</dd>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for k and v</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for q</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>unidirectional</tt> : int</dt>
+<dd>Whether every token can only attend to previous tokens. Default value is 1.</dd>
+</dl>
+
+#### Inputs (3 - 6)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Key with shape (batch_size, kv_sequence_length, kv_hidden_size) </dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Value with shape (batch_size, kv_sequence_length, kv_hidden_size)</dd>
+<dt><tt>past_key</tt> (optional) : T</dt>
+<dd>past state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
+<dt><tt>past_value</tt> (optional) : T</dt>
+<dd>past state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
+<dt><tt>past_sequence_length</tt> (optional) : M</dt>
+<dd>When buffered past_key and past_value is used (present_key uses same tensor as past_key), requiredto specify past_sequence_length (could be 0). Otherwise, past_sequence_length inferred from past_key.</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>present_key</tt> (optional) : T</dt>
+<dd>present state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
+<dt><tt>present_value</tt> (optional) : T</dt>
+<dd>present state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16)</dt>
+<dd>Constrain input and output to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32), tensor(int64)</dt>
+<dd>Constrain past sequence length to int tensor.</dd>
 </dl>
 
 

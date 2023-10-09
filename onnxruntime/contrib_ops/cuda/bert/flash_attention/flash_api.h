@@ -34,6 +34,7 @@
 
 namespace onnxruntime {
 namespace flash {
+
 Status mha_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
                void* q,            // batch_size x seqlen_q x num_heads x head_size
@@ -48,7 +49,11 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                int seqlen_q,
                int seqlen_k,
                float softmax_scale,
-               bool is_causal);
+               bool is_causal,
+               int num_splits = 0,
+               void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads
+               void* out_accum = nullptr,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
+               bool kv_bsnh = true);
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       cudaStream_t stream,
@@ -68,7 +73,36 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       float softmax_scale,
                       bool is_causal);
 
+Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
+                       cudaStream_t stream,
+                       void* q,            // batch_size x seqlen_q x num_heads x head_size
+                       void* kcache,       // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k seqlen_k x x head_size
+                       void* vcache,       // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k seqlen_k x x head_size
+                       void* k,            // batch_size x seqlen_k_new x num_heads_k x head_size
+                       void* v,            // batch_size x seqlen_k_new x num_heads_k x head_size
+                       void* out,          // batch_size x seqlen_q x num_heads x head_size
+                       void* softmax_lse,  // batch_size x num_heads x seqlen_q
+                       void* seqlens_k_,   // batch_size
+                       int batch_size,
+                       int num_heads,
+                       int num_heads_k,
+                       int head_size,
+                       int seqlen_q,
+                       int seqlen_k,
+                       int seqlen_k_new,
+                       const float softmax_scale,
+                       bool is_causal,
+                       bool past_bsnh,  // otherwise bnsh
+                       int num_splits = 0,
+                       void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads
+                       void* out_accum = nullptr           // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
+);
+
 size_t get_softmax_lse_size(int max_seqlen_q, int batch_size, int num_heads);
+size_t get_softmax_lse_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q);
+size_t get_out_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q, int head_size_rounded);
+
+int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_heads, int head_size, int num_SMs, int max_splits, bool new_kv, bool is_sm8x);
 
 bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, int num_heads_k);
 

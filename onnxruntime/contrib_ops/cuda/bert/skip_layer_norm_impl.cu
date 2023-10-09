@@ -90,7 +90,6 @@ __global__ void SkipLayerNormKernel(
   // reduce x and x^2
   cub::KeyValuePair<T, T> thread_data(0, 0);
 
-
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
 
@@ -130,10 +129,10 @@ __global__ void SkipLayerNormKernelSmall(
   *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
 
   VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
-  if (skip_broadcasted){
-  *skip_val = *reinterpret_cast<const VecT*>(&skip[idx % skip_size]);
-  }else{
-  *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
+  if (skip_broadcasted) {
+    *skip_val = *reinterpret_cast<const VecT*>(&skip[idx % skip_size]);
+  } else {
+    *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
   }
 
   if (hasBias) {
