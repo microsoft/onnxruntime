@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
   add_definitions(-DUSE_ROCM=1)
   include(onnxruntime_rocm_hipify.cmake)
 

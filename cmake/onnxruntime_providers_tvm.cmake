@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
   add_definitions(-DUSE_TVM=1)
   if (onnxruntime_TVM_USE_HASH)
     add_definitions(-DUSE_TVM_HASH=1)

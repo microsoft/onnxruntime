@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
   add_definitions(-DUSE_MIGRAPHX=1)
   set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")

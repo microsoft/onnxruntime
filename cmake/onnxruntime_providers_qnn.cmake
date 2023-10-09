@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
   add_compile_definitions(USE_QNN=1)
 
   # These are shared utils,

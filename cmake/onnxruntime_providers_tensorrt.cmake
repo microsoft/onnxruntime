@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
   add_definitions(-DUSE_TENSORRT=1)
   if (onnxruntime_TENSORRT_PLACEHOLDER_BUILDER)
     add_definitions(-DORT_TENSORRT_PLACEHOLDER_BUILDER)

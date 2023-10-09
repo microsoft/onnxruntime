@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
   add_definitions(-DUSE_ARMNN=1)
   file(GLOB_RECURSE onnxruntime_providers_armnn_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/armnn/*.h"

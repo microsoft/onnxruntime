@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
   if ("${GIT_COMMIT_ID}" STREQUAL "")
   execute_process(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

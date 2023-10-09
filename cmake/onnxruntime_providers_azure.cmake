@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 
   file(GLOB_RECURSE onnxruntime_providers_azure_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/azure/*.h"
