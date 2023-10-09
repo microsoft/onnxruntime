@@ -1446,10 +1446,10 @@ class Graph {
   Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto, const Path& model_path);
 
   /*
-  * The function will create copies of the initializers in this graph.
-  * @param from_graph initializers source
-  * @param unique_id used to make unique_names for the initializers
-  */
+   * The function will create copies of the initializers in this graph.
+   * @param from_graph initializers source
+   * @param unique_id used to make unique_names for the initializers
+   */
   void CopyInitializers(const Graph& from_graph, std::optional<std::string> unique_id);
 
 #endif
