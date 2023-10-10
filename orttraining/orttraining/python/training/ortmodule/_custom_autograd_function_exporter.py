@@ -118,7 +118,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 "wrap exportable sub-nn.Module's as ORTModule."
             )
 
-        inplace = kwargs["inplace"]
         # TODO move to public API once the exporter team exposes that
         training_mode = None
         if get_runtime_pytorch_version() >= version.parse("1.12"):
@@ -260,7 +259,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 
         attrs = {
             "func_name_s": func_full_qual_name,
-            "inplace_i": inplace,
             "input_convention_s": cconv,
             "outputs": n.outputsSize(),
             "input_tensor_types_i": input_tensor_types,
