@@ -11,7 +11,10 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
+
+#if defined(USE_DML)
 #include "core/providers/dml/dml_provider_factory_creator.h"
+#endif
 
 using namespace onnxruntime;
 
