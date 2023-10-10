@@ -449,6 +449,7 @@ Return Value:
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
+    this->FpQ4GemmDispatch = &MlasFpQ4GemmDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
