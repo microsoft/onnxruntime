@@ -21,7 +21,6 @@ export interface GpuData {
 export interface TensorInfo {
   dims: readonly number[];
   dataType: number;
-  gpuDataType?: never;
 }
 
 
@@ -87,11 +86,6 @@ export interface ProgramInfo {
    * the name of the program. used for debugging and profiling
    */
   name: string;
-
-  /**
-   * gpu data types for each input
-   */
-  inputTypes?: never;
 
   /**
    * an optional object describing the cache information of the program shader.
