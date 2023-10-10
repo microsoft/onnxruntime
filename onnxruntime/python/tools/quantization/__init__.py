@@ -14,7 +14,7 @@ from .quantize import StaticQuantConfig  # noqa: F401
 from .quantize import quantize  # noqa: F401
 from .quantize import quantize_dynamic  # noqa: F401
 from .quantize import quantize_static  # noqa: F401
-from .quantize_weight_only import RTNWeightOnlyQuantConfig # noqa: F401
-from .quantize_weight_only import GPTQWeightOnlyQuantConfig # noqa: F401
-from .quantize_weight_only import quantize_weight_only # noqa: F401
+from .quantize_weight_only import GPTQWeightOnlyQuantConfig  # noqa: F401
+from .quantize_weight_only import RTNWeightOnlyQuantConfig  # noqa: F401
+from .quantize_weight_only import quantize_weight_only  # noqa: F401
 from .shape_inference import quant_pre_process  # noqa: F401
