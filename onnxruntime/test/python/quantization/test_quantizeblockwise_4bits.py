@@ -11,8 +11,6 @@ from importlib.util import find_spec
 import numpy as np
 import numpy.typing as npt
 
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits
-
 
 def dequantize_blockwise_4bits(quant_values, scale, zero_point, valid_len):
     blob_size = quant_values.shape[0]
@@ -92,6 +90,8 @@ def quantize_blockwise_4bits_target(matrix_float: npt.ArrayLike, block_size: int
     packed = np.zeros((cols, k_blocks, block_size // 2), dtype="uint8")
     scales = np.zeros((cols * k_blocks), dtype=matrix_float.dtype)
     zero_point = np.full((cols * k_blocks + 1) // 2, 136, dtype="uint8")
+    from onnxruntime.capi._pybind_state import quantize_matmul_4bits
+
     quantize_matmul_4bits(packed, matrix_float, scales, zero_point, block_size, cols, rows, is_symmetric)
     return (packed, scales, zero_point)
 

@@ -131,8 +131,7 @@ void DequantizeBlockwise(
             zp = (task_idx & 1) ? (zp >> 4) : (zp & 0xf);
             blob_ptr->dequant(dst + offset, scale[task_idx], zp, k, K);
           }
-        }
-        else {
+        } else {
           blob_ptr->dequant(dst + offset, scale[task_idx], k, K);
         }
       },
