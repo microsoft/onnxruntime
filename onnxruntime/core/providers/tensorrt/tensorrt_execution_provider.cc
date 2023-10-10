@@ -2742,8 +2742,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             for (int j = 0, end = nb_dims; j < end; ++j) {
               dims.d[j] = static_cast<int32_t>(tensor_shapes[j]);
             }
-            if (!trt_context->setInputShape(input_name, dims))
-            {
+            if (!trt_context->setInputShape(input_name, dims)) {
               std::string error_input_name = input_name;
               ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                                  "TensorRT EP failed to call nvinfer1::IExecutionContext::setInputShape() for input '" + error_input_name + "'"));
