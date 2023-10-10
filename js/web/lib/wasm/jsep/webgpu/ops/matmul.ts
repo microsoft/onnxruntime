@@ -47,8 +47,16 @@ const createNaiveMatmulProgramInfo =
       const batchSize = ShapeUtil.size(outerDims);
       const components = getMaxComponents(N);
       const aComponents = getMaxComponents(K);
-      const outputNumber = getMaxComponents(M);
-      const outputSize = ShapeUtil.size(outputShape) / components / outputNumber;
+      const tileN = N < 32 ? N : 32;
+      const tileM = M < 32 ? M : 32;
+      const tileK = K < 32 ? K : 32;
+      const workgroupSize = 64;
+      // The output number of each thread.
+      const outputNumber = Math.ceil(tileM / Math.floor(workgroupSize / (tileN / components)));
+      // The virtualXXX makes sure that one tile of data has the same batch.
+      const virtualM = Math.ceil(M / tileM) * tileM;
+      const virtualN = Math.ceil(N / tileN) * tileN;
+      const numWorkgroups = ShapeUtil.size([batchSize, virtualM, virtualN]) / tileM / tileN;
       const a = inputVariable('a', inputs[0].dataType, aShape, aComponents);
       const b = inputVariable('b', inputs[1].dataType, bShape, components);
       const output = outputVariable('output', inputs[0].dataType, [batchSize, M, N], components);
@@ -59,8 +67,8 @@ const createNaiveMatmulProgramInfo =
         const biasComponents = isChannelsLast ? components : 1;
         inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims, biasComponents));
         processBias = `${
-            isChannelsLast ? `value += bias[col / ${biasComponents}];` :
-                             `value += ${output.type.value}(bias[row + i]);`}`;
+            isChannelsLast ? `value += bias[globalCol / ${biasComponents}];` :
+                             `value += ${output.type.value}(bias[globalRow + i]);`}`;
       }
       const outerDimsA = aShape.slice(0, -2);
       const outerDimsB = bShape.slice(0, -2);
@@ -92,10 +100,10 @@ const createNaiveMatmulProgramInfo =
         let calcStr = `var aData: ${a.type.value};`;
         for (let i = 0; i < aComponents; i++) {
           calcStr += `
-            let bData${i} = b[(offsetB + (k + ${i}) * N + col) / ${components}];`;
+            let bData${i} = mm_Bsub[k + ${i}][localCol];`;
         }
         for (let i = 0; i < outputNumber; i++) {
-          calcStr += `aData = a[(offsetA + (row + ${i}) * K + k) / ${aComponents}];`;
+          calcStr += `aData = mm_Asub[localRow + ${i}][k / ${aComponents}];`;
 
           for (let j = 0; j < aComponents; j++) {
             calcStr += `
@@ -111,13 +119,37 @@ const createNaiveMatmulProgramInfo =
   const K: u32 = ${K}u;
   ${shaderHelper.declareVariables(...inputVariables, output)}
   ${activationFunction}
-  ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-    let col = (global_idx % ${N / components}u) * ${components}u;
-    var index1 = global_idx / ${N / components}u;
-    let stride1 = ${M / outputNumber}u;
-    let row = (index1 % stride1) * ${outputNumber}u;
+  fn mm_readA(offset: u32, row: u32, col: u32) -> ${a.type.value} {
+    var value = ${a.type.value}(0.0);
+    if(row < M && col < K)
+    {
+      value = a[(offset + row * K + col) / ${aComponents}];
+    }
+    return value;
+  }
+  fn mm_readB(offset: u32, row: u32, col: u32) -> ${b.type.value} {
+    var value = ${b.type.value}(0.0);
+    if(row < K && col < N)
+    {
+      value = b[(offset + row * N + col) / ${components}];
+    }
+    return value;
+  }
+  var<workgroup> mm_Asub: array<array<${a.type.storage}, ${tileK / aComponents}>, ${tileM}>;
+  var<workgroup> mm_Bsub: array<array<${b.type.storage}, ${tileN / components}>, ${tileK}>;
+  ${shaderHelper.mainStart(workgroupSize)}
+    let virtualGlobalId = workgroup_id.z * numWorkgroups.x * numWorkgroups.y +
+        workgroup_id.y * numWorkgroups.x + workgroup_id.x;
+    let tileColStart = (virtualGlobalId % ${virtualN / tileN}u) * ${tileN}u;
+    var index1 = virtualGlobalId / ${virtualN / tileN}u;
+    let stride1 = ${virtualM / tileM}u;
+    let tileRowStart = (index1 % stride1) * ${tileM}u;
     let batch = index1 / stride1;
+
+    // The current thread location in a tile.
+    let localIndex = local_id.x;
+    let localRow = localIndex / ${tileN / components} * ${outputNumber};
+    let localCol = localIndex % ${tileN / components};
 
     ${outputShape.length === 2 ? '' : `let batchIndices = ${batchDims.offsetToIndices('batch')};`}
     ${getIndices(a, broadCastADims)}
@@ -125,16 +157,50 @@ const createNaiveMatmulProgramInfo =
     ${getIndices(b, broadCastBDims)}
     let offsetB = ${b.indicesToOffset('bIndices')};
     var values: array<${output.type.value}, ${outputNumber}>;
-    for (var k: u32 = 0u; k < K; k = k + ${aComponents}) {
-      ${calcResult()}
+
+    let numTiles = (K - 1u) / ${tileK} + 1u;
+    var kStart = 0u;
+    // Loop over shared dimension.
+    for (var t = 0u; t < numTiles; t = t + 1u) {
+      // Load one tile of A into local memory.
+      for (var tIndex = localIndex; tIndex < ${tileM * tileK / aComponents}; tIndex += ${workgroupSize}) {
+          let inputRow = tIndex / ${tileK / aComponents};
+          let inputCol = tIndex % ${tileK / aComponents};
+
+          mm_Asub[inputRow][inputCol] = mm_readA(offsetA, tileRowStart + inputRow, kStart + inputCol * ${aComponents});
+      }
+
+      // Load one tile of B into local memory.
+      for (var tIndex = localIndex; tIndex < ${tileK * tileN / components}; tIndex += ${workgroupSize}) {
+          let inputRow = tIndex / ${tileN / components};
+          let inputCol = tIndex % ${tileN / components};
+          mm_Bsub[inputRow][inputCol] = mm_readB(offsetB, kStart + inputRow, tileColStart + inputCol * ${components});
+      }
+      kStart = kStart + ${tileK};
+      workgroupBarrier();
+
+      // Compute values for a single thread.
+      for (var k = 0; k < ${tileK}; k = k + ${aComponents}) {
+        ${calcResult()}
+      }
+      workgroupBarrier();
     }
+
+    let globalCol = tileColStart + localCol * ${components};
+    var globalRow = tileRowStart + localRow;
     for (var i = 0u; i < ${outputNumber}u; i++) {
-      var value = values[i];
-      ${processBias}
-      ${applyActivation}
-      let curIndices = ${output.type.indices}(batch, row + i, col);
-      let offset = ${output.indicesToOffset('curIndices')};
-      ${output.setByOffset(`offset / ${components}`, 'value')};
+      if (localRow + i >= ${tileM})
+      {
+        return;
+      }
+      if (globalRow + i < M && globalCol < N) {
+        var value = values[i];
+        ${processBias}
+        ${applyActivation}
+        let curIndices = ${output.type.indices}(batch, globalRow + i, globalCol);
+        let offset = ${output.indicesToOffset('curIndices')};
+        ${output.setByOffset(`offset / ${components}`, 'value')};
+      }
     }
   }
   ${batchDims.impl()}
@@ -143,15 +209,15 @@ const createNaiveMatmulProgramInfo =
         ...metadata,
         outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
         getShaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+        dispatchGroup: () => ({x: Math.ceil(numWorkgroups)})
       };
     };
 
 export const createMatmulProgramInfoLoader =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
      reshapedOutputShape?: readonly number[], isChannelsLast = false): ProgramInfoLoader => {
-     //  const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
-     // const batchSize = ShapeUtil.size(outerDims);
+      //  const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
+      // const batchSize = ShapeUtil.size(outerDims);
       const isIntel = true;
       if (isIntel) {
         const metadata = createNaiveMatmulProgramMetadata(inputs.length > 2, activationAttributes.activationCacheKey);
