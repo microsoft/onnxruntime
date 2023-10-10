@@ -134,6 +134,7 @@ _zero_offload_one_time_initializer = None
 try:
     # Have to import below explicitly, otherwise it complains about _apply_to_tensors_only not found.
     # The hooks reference functions or classes in that file.
+    import deepspeed
     from deepspeed.runtime.zero.parameter_offload import *  # noqa: F403
     from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload, _apply_to_tensors_only  # noqa: F401
     from deepspeed.utils import instrument_w_nvtx  # noqa: F401
@@ -156,6 +157,10 @@ try:
             debug, stats_output_dir, stats_overwrite
         )
 
+        # This function will overwrite the original allgather_fn in deepspeed comm to make it ort compatible.
+        # Only need to define it once
+        deepspeed.comm.allgather_fn = _get_ort_compatible_allgather_fn()
+
         from deepspeed.runtime.zero.linear import zero3_linear_wrap
 
         if torch.nn.functional.linear is zero3_linear_wrap:
@@ -166,23 +171,6 @@ except ImportError as e:
 
     def configure_ort_compatible_zero_stage3(debug=False, stats_output_dir=None, stats_overwrite=False):
         raise RuntimeError("DeepSpeed is not installed, cannot configure ORT compatible ZeRO stage3.")
-
-
-try:
-    import deepspeed
-
-    def configure_ort_compatible_allgather_fn_zero_stage3():
-        """
-        This function will overwrite the original allgather_fn in deepspeed comm to make it ort compatible.
-        """
-        # Only need to define it once
-        deepspeed.comm.allgather_fn = _get_ort_compatible_allgather_fn()
-
-except ImportError as e:
-    warnings.warn(f"DeepSpeed import error {e}")
-
-    def configure_ort_compatible_allgather_fn_zero_stage3():
-        raise RuntimeError("DeepSpeed is not installed, cannot configure ORT compatible All gather fn ZeRO stage3.")
 
 
 def _get_params_for_current_module(module: torch.nn.Module) -> List[torch.nn.parameter.Parameter]:
