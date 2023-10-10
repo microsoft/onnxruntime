@@ -188,6 +188,7 @@ class Conv : public CudaKernel {
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
+    contrib_nhwc_ = info.node().Domain() == kMSInternalNHWCDomain;
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -206,6 +207,7 @@ class Conv : public CudaKernel {
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
   static const cudnnConvolutionFwdAlgo_t kAllAlgos[];
   std::unique_ptr<Tensor> W_;
+  bool contrib_nhwc_;
 };
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,

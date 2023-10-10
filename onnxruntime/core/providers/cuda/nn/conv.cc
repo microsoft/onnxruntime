@@ -98,7 +98,7 @@ Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
                               bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
-  if (NHWC) {  // InputTensors::IN_W
+  if (NHWC && contrib_nhwc_) {  // InputTensors::IN_W
     if (input_idx == 1) {
       // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
       auto orig_shape = tensor.Shape();
