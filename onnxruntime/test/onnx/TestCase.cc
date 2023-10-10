@@ -6,6 +6,7 @@
 #include "TestCase.h"
 
 #include <cctype>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
