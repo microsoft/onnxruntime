@@ -71,7 +71,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
 
-  if (strcmp(provider_name, "DirectML") == 0) {
+  if (strcmp(provider_name, "DML") == 0) {
 #if defined(USE_DML)
     options->provider_factories.push_back(DMLProviderFactoryCreator::CreateFromProviderOptions(provider_options));
 #else
