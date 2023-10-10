@@ -42,18 +42,15 @@ __global__ void BiasAddKernel(T const* input, T const* bias, T const* residual, 
   }
 }
 
-
 template <typename T, unsigned TPB>
 __global__ void BiasAddLargeKernel(
-    int32_t const ld, const T* input, const T* bias, const T* residual,  T* output)
-{
-    int32_t const offset = blockIdx.x * ld;
+    int32_t const ld, const T* input, const T* bias, const T* residual, T* output) {
+  int32_t const offset = blockIdx.x * ld;
 
-    for (int32_t i = threadIdx.x; i < ld; i += TPB)
-    {
-        int32_t const base_offset = offset + i;
-        output[base_offset] = input[base_offset] + bias[i] + residual[base_offset];
-    }
+  for (int32_t i = threadIdx.x; i < ld; i += TPB) {
+    int32_t const base_offset = offset + i;
+    output[base_offset] = input[base_offset] + bias[i] + residual[base_offset];
+  }
 }
 
 template __global__ void BiasAddKernel<float, 320, 320>(float const*, float const*, float const*, float*);
