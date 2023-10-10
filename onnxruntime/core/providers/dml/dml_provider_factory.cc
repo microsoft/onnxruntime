@@ -240,7 +240,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFromOptions(
   OrtDmlDeviceOptions* device_options) {
-  constexpr auto default_device_options = OrtDmlDeviceOptions { Default, Gpu };
+  auto default_device_options = OrtDmlDeviceOptions { Default, Gpu };
   if (device_options == nullptr) {
     device_options = &default_device_options;
   }
