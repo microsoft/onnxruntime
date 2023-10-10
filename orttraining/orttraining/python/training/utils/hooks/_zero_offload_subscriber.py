@@ -7,6 +7,7 @@ import ctypes
 import inspect
 import warnings
 from collections import OrderedDict
+from datetime import timedelta
 from types import CodeType, FunctionType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -19,7 +20,6 @@ from onnxruntime.training.utils import (
     pytorch_dtype_to_onnx,
     unflatten_data_using_schema,
 )
-from datetime import timedelta
 
 from ._subscriber_base import RuntimeStates, SubscriberBase
 
