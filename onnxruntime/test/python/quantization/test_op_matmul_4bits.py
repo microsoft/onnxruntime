@@ -16,7 +16,7 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
 
-from onnxruntime.quantization import matmul_4bits_quantizer, quant_utils
+from onnxruntime.quantization import quant_utils
 
 
 class TestOpMatMul4Bits(unittest.TestCase):
@@ -118,6 +118,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         # Quantize fp32 model to int4 model
+        from onnxruntime.quantization import matmul_4bits_quantizer
+
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, block_size, is_symmetric)
         quant.process()
