@@ -23,7 +23,6 @@ from onnxruntime.training.utils import (
 from ._subscriber_base import RuntimeStates, SubscriberBase
 
 from typing import Any, List
-from deepspeed.utils import get_caller_func
 
 
 def _get_ort_compatible_zero_stage3_hook_function(debug, stats_output_dir, stats_overwrite):
@@ -58,7 +57,8 @@ def _get_ort_compatible_zero_stage3_hook_function(debug, stats_output_dir, stats
 
     return _setup_zero_stage3_ort_compatible_hooks
 
-class DummyWorkZeroStage3(torch.distributed.distributed_c10d.Work):
+# Creating this dummy class because several functions would not be available during export step
+class DummyWork(torch.distributed.distributed_c10d.Work):
     # def __init__(self):
     #     pass
 
@@ -80,25 +80,15 @@ class DummyWorkZeroStage3(torch.distributed.distributed_c10d.Work):
         pass
 
 
-def _ort_compatible_allgather_fn():
+def _get_ort_compatible_allgather_fn():
+    from deepspeed.utils import get_caller_func
     # For Monkey patching the original function
     # Original code https://github.com/microsoft/DeepSpeed/blob/604d701e35548e5407b017c088bdc3760832c9e0/deepspeed/comm/comm.py#L315
     def _ort_compatible_allgather_fn_zero_stage3(output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func()):
         if torch.onnx.is_in_onnx_export():
-            return DummyWorkZeroStage3()
+            return DummyWork()
 
-        global cdb
-        assert cdb is not None and cdb.is_initialized(
-        ), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-        if cdb.has_all_gather_into_tensor():
-            return all_gather_into_tensor(output_tensor, input_tensor, group=group, async_op=async_op, debug=debug)
-        else:
-            if get_rank() == 0:
-                utils.logger.warning_once("unable to find torch.distributed.all_gather_into_tensor. will fall back to "
-                                        "torch.distributed.all_gather which will result in suboptimal performance. "
-                                        "please consider upgrading your pytorch installation.")
-            output_tensors = list(torch.chunk(output_tensor, cdb.get_world_size(group)))
-            return all_gather(output_tensors, input_tensor, group=group, async_op=async_op, debug=debug)
+        return allgather_fn(output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func())
 
     return _ort_compatible_allgather_fn_zero_stage3
 
@@ -173,7 +163,7 @@ try:
         This function will overwrite the original allgather_fn in deepspeed comm to make it ort compatible.
         '''
         # Only need to define it once
-        allgather_fn = _ort_compatible_allgather_fn()
+        allgather_fn = _get_ort_compatible_allgather_fn()
 
 except ImportError as e:
     warnings.warn(f"DeepSpeed import error {e}")
