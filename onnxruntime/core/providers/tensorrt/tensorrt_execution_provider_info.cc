@@ -186,4 +186,211 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
   };
   return options;
 }
+
+/**
+ * Update OrtTensorRTProviderOptionsV2 instance with ProviderOptions (map of string-based key-value pairs)
+ *
+ * Please note that it will reset the OrtTensorRTProviderOptionsV2 instance first and then set up the provided provider options
+ * See TensorrtExecutionProviderInfo::FromProviderOptions() for more details. This function will be called by the C API UpdateTensorRTProviderOptions() also.
+ *
+ * \param provider_options - a pointer to OrtTensorRTProviderOptionsV2 instance
+ * \param options - a reference to ProviderOptions instance
+ * \param string_copy - if it's true, it uses strncpy() to copy 'provider option' string from ProviderOptions instance to where the 'provider option' const char pointer in OrtTensorRTProviderOptionsV2 instance points to.
+ *                      it it's false, it only saves the pointer and no strncpy().
+ *
+ * Note: If there is strncpy involved, please remember to deallocate or simply call C API ReleaseTensorRTProviderOptions.
+ */
+void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options, const ProviderOptions& options, bool string_copy) {
+  if (provider_options == nullptr) {
+    return;
+  }
+  TensorrtExecutionProviderInfo internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
+  auto& trt_provider_options_v2 = *reinterpret_cast<OrtTensorRTProviderOptionsV2*>(provider_options);
+  trt_provider_options_v2.device_id = internal_options.device_id;
+
+  // The 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance can be set by C API UpdateTensorRTProviderOptionsWithValue() as well
+  // We only set the 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance if it is provided in options
+  if (options.find("has_user_compute_stream") != options.end()) {
+    trt_provider_options_v2.has_user_compute_stream = internal_options.has_user_compute_stream;
+  }
+
+  trt_provider_options_v2.trt_max_partition_iterations = internal_options.max_partition_iterations;
+  trt_provider_options_v2.trt_min_subgraph_size = internal_options.min_subgraph_size;
+  trt_provider_options_v2.trt_max_workspace_size = internal_options.max_workspace_size;
+  trt_provider_options_v2.trt_fp16_enable = internal_options.fp16_enable;
+  trt_provider_options_v2.trt_int8_enable = internal_options.int8_enable;
+
+  if (string_copy) {
+    char* dest = nullptr;
+    auto str_size = internal_options.int8_calibration_table_name.size();
+    if (str_size == 0) {
+      trt_provider_options_v2.trt_int8_calibration_table_name = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.int8_calibration_table_name.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.int8_calibration_table_name.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_provider_options_v2.trt_int8_calibration_table_name = (const char*)dest;
+    }
+  } else {
+    trt_provider_options_v2.trt_int8_calibration_table_name = internal_options.int8_calibration_table_name.c_str();
+  }
+
+  trt_provider_options_v2.trt_int8_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
+  trt_provider_options_v2.trt_dla_enable = internal_options.dla_enable;
+  trt_provider_options_v2.trt_dla_core = internal_options.dla_core;
+  trt_provider_options_v2.trt_dump_subgraphs = internal_options.dump_subgraphs;
+  trt_provider_options_v2.trt_engine_cache_enable = internal_options.engine_cache_enable;
+
+  if (string_copy) {
+    char* dest = nullptr;
+    auto str_size = internal_options.engine_cache_path.size();
+    if (str_size == 0) {
+      trt_provider_options_v2.trt_engine_cache_path = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.engine_cache_path.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.engine_cache_path.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_provider_options_v2.trt_engine_cache_path = (const char*)dest;
+    }
+  } else {
+    trt_provider_options_v2.trt_engine_cache_path = internal_options.engine_cache_path.c_str();
+  }
+
+  trt_provider_options_v2.trt_engine_decryption_enable = internal_options.engine_decryption_enable;
+
+  if (string_copy) {
+    char* dest = nullptr;
+    auto str_size = internal_options.engine_decryption_lib_path.size();
+    if (str_size == 0) {
+      trt_provider_options_v2.trt_engine_decryption_lib_path = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.engine_decryption_lib_path.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.engine_decryption_lib_path.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_provider_options_v2.trt_engine_decryption_lib_path = (const char*)dest;
+    }
+  } else {
+    trt_provider_options_v2.trt_engine_decryption_lib_path = internal_options.engine_decryption_lib_path.c_str();
+  }
+
+  trt_provider_options_v2.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
+  trt_provider_options_v2.trt_context_memory_sharing_enable = internal_options.context_memory_sharing_enable;
+  trt_provider_options_v2.trt_layer_norm_fp32_fallback = internal_options.layer_norm_fp32_fallback;
+  trt_provider_options_v2.trt_timing_cache_enable = internal_options.timing_cache_enable;
+  trt_provider_options_v2.trt_force_timing_cache = internal_options.force_timing_cache;
+  trt_provider_options_v2.trt_detailed_build_log = internal_options.detailed_build_log;
+  trt_provider_options_v2.trt_build_heuristics_enable = internal_options.build_heuristics_enable;
+  trt_provider_options_v2.trt_sparsity_enable = internal_options.sparsity_enable;
+  trt_provider_options_v2.trt_builder_optimization_level = internal_options.builder_optimization_level;
+  trt_provider_options_v2.trt_auxiliary_streams = internal_options.auxiliary_streams;
+
+  if (string_copy) {
+    char* dest = nullptr;
+    auto str_size = internal_options.tactic_sources.size();
+    if (str_size == 0) {
+      trt_provider_options_v2.trt_tactic_sources = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.tactic_sources.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.tactic_sources.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_provider_options_v2.trt_tactic_sources = (const char*)dest;
+    }
+  } else {
+    trt_provider_options_v2.trt_tactic_sources = internal_options.tactic_sources.c_str();
+  }
+
+  if (string_copy) {
+    char* dest = nullptr;
+    auto str_size = internal_options.extra_plugin_lib_paths.size();
+    if (str_size == 0) {
+      trt_provider_options_v2.trt_extra_plugin_lib_paths = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.extra_plugin_lib_paths.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.extra_plugin_lib_paths.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_provider_options_v2.trt_extra_plugin_lib_paths = (const char*)dest;
+    }
+  } else {
+    trt_provider_options_v2.trt_extra_plugin_lib_paths = internal_options.extra_plugin_lib_paths.c_str();
+  }
+
+  if (string_copy) {
+    char* dest = nullptr;
+    auto str_size = internal_options.profile_min_shapes.size();
+    if (str_size == 0) {
+      trt_provider_options_v2.trt_profile_min_shapes = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.profile_min_shapes.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.profile_min_shapes.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_provider_options_v2.trt_profile_min_shapes = (const char*)dest;
+    }
+  } else {
+    trt_provider_options_v2.trt_profile_min_shapes = internal_options.profile_min_shapes.c_str();
+  }
+
+  if (string_copy) {
+    char* dest = nullptr;
+    auto str_size = internal_options.profile_max_shapes.size();
+    if (str_size == 0) {
+      trt_provider_options_v2.trt_profile_max_shapes = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.profile_max_shapes.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.profile_max_shapes.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_provider_options_v2.trt_profile_max_shapes = (const char*)dest;
+    }
+  } else {
+    trt_provider_options_v2.trt_profile_max_shapes = internal_options.profile_max_shapes.c_str();
+  }
+
+  if (string_copy) {
+    char* dest = nullptr;
+    auto str_size = internal_options.profile_opt_shapes.size();
+    if (str_size == 0) {
+      trt_provider_options_v2.trt_profile_opt_shapes = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.profile_opt_shapes.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.profile_opt_shapes.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_provider_options_v2.trt_profile_opt_shapes = (const char*)dest;
+    }
+  } else {
+    trt_provider_options_v2.trt_profile_opt_shapes = internal_options.profile_opt_shapes.c_str();
+  }
+
+  trt_provider_options_v2.trt_cuda_graph_enable = internal_options.cuda_graph_enable;
+}
 }  // namespace onnxruntime

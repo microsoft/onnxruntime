@@ -11,16 +11,20 @@ using namespace Ort::Custom;
 
 namespace Cpu {
 
-void KernelOne(const Ort::Custom::Tensor<float>& X,
-               const Ort::Custom::Tensor<float>& Y,
-               Ort::Custom::Tensor<float>& Z) {
-  auto input_shape = X.Shape();
+Ort::Status KernelOne(const Ort::Custom::Tensor<float>& X,
+                      const Ort::Custom::Tensor<float>& Y,
+                      Ort::Custom::Tensor<float>& Z) {
+  if (X.NumberOfElement() != Y.NumberOfElement()) {
+    return Ort::Status("x and y has different number of elements", OrtErrorCode::ORT_INVALID_ARGUMENT);
+  }
+  auto x_shape = X.Shape();
   auto x_raw = X.Data();
   auto y_raw = Y.Data();
-  auto z_raw = Z.Allocate(input_shape);
+  auto z_raw = Z.Allocate(x_shape);
   for (int64_t i = 0; i < Z.NumberOfElement(); ++i) {
     z_raw[i] = x_raw[i] + y_raw[i];
   }
+  return Ort::Status{nullptr};
 }
 
 // lite custom op as a function
@@ -162,6 +166,46 @@ void FilterFloat8(const Ort::Custom::Tensor<Ort::Float8E4M3FN_t>& floats_in,
 }
 #endif
 
+// a sample custom op accepting variadic inputs, and generate variadic outputs by simply 1:1 copying.
+template <typename T>
+Ort::Status CopyTensorArrayAllVariadic(const Ort::Custom::TensorArray& inputs, Ort::Custom::TensorArray& outputs) {
+  for (size_t ith_input = 0; ith_input < inputs.Size(); ++ith_input) {
+    const auto& input = inputs[ith_input];
+    const auto& input_shape = input->Shape();
+    const T* raw_input = reinterpret_cast<const T*>(input->DataRaw());
+    auto num_elements = input->NumberOfElement();
+    T* raw_output = outputs.AllocateOutput<T>(ith_input, input_shape);
+    if (!raw_output) {
+      return Ort::Status("Failed to allocate output!", OrtErrorCode::ORT_FAIL);
+    }
+    for (int64_t jth_elem = 0; jth_elem < num_elements; ++jth_elem) {
+      raw_output[jth_elem] = raw_input[jth_elem];
+    }
+  }
+  return Ort::Status{nullptr};
+}
+
+template <typename T>
+Ort::Status CopyTensorArrayCombined(const Ort::Custom::Tensor<float>& first_input,
+                                    const Ort::Custom::TensorArray& other_inputs,
+                                    Ort::Custom::Tensor<float>& first_output,
+                                    Ort::Custom::TensorArray& other_outputs) {
+  const auto first_input_shape = first_input.Shape();
+  const T* raw_input = reinterpret_cast<const T*>(first_input.DataRaw());
+
+  T* raw_output = first_output.Allocate(first_input_shape);
+  if (!raw_output) {
+    return Ort::Status("Failed to allocate output!", OrtErrorCode::ORT_FAIL);
+  }
+
+  auto num_elements = first_input.NumberOfElement();
+  for (int64_t ith_elem = 0; ith_elem < num_elements; ++ith_elem) {
+    raw_output[ith_elem] = raw_input[ith_elem];
+  }
+
+  return CopyTensorArrayAllVariadic<T>(other_inputs, other_outputs);
+}
+
 void RegisterOps(Ort::CustomOpDomain& domain) {
   static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CPUExecutionProvider", KernelOne)};
   static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", "CPUExecutionProvider", KernelTwo)};
@@ -171,6 +215,8 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
   static const std::unique_ptr<OrtLiteCustomOp> c_Select{Ort::Custom::CreateLiteCustomOp("Select", "CPUExecutionProvider", Select)};
   static const std::unique_ptr<OrtLiteCustomOp> c_Fill{Ort::Custom::CreateLiteCustomOp("Filter", "CPUExecutionProvider", Filter)};
   static const std::unique_ptr<OrtLiteCustomOp> c_Box{Ort::Custom::CreateLiteCustomOp("Box", "CPUExecutionProvider", Box)};
+  static const std::unique_ptr<OrtLiteCustomOp> c_CopyTensorArrayAllVariadic{Ort::Custom::CreateLiteCustomOp("CopyTensorArrayAllVariadic", "CPUExecutionProvider", CopyTensorArrayAllVariadic<float>)};
+  static const std::unique_ptr<OrtLiteCustomOp> c_CopyTensorArrayCombined{Ort::Custom::CreateLiteCustomOp("CopyTensorArrayCombined", "CPUExecutionProvider", CopyTensorArrayCombined<float>)};
 
 #if !defined(DISABLE_FLOAT8_TYPES)
   static const CustomOpOneFloat8 c_CustomOpOneFloat8;
@@ -185,6 +231,9 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
   domain.Add(c_Select.get());
   domain.Add(c_Fill.get());
   domain.Add(c_Box.get());
+  domain.Add(c_CopyTensorArrayAllVariadic.get());
+  domain.Add(c_CopyTensorArrayCombined.get());
+
 #if !defined(DISABLE_FLOAT8_TYPES)
   domain.Add(&c_CustomOpOneFloat8);
   domain.Add(c_FilterFloat8.get());

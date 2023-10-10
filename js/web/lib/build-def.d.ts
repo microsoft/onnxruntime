@@ -13,23 +13,23 @@ interface BuildDefinitions {
   /**
    * defines whether to disable the whole WebGL backend in the build.
    */
-  DISABLE_WEBGL: boolean;
+  readonly DISABLE_WEBGL: boolean;
   /**
    * defines whether to disable the whole WebGpu backend in the build.
    */
-  DISABLE_WEBGPU: boolean;
+  readonly DISABLE_WEBGPU: boolean;
   /**
    * defines whether to disable the whole WebAssembly backend in the build.
    */
-  DISABLE_WASM: boolean;
+  readonly DISABLE_WASM: boolean;
   /**
    * defines whether to disable proxy feature in WebAssembly backend in the build.
    */
-  DISABLE_WASM_PROXY: boolean;
+  readonly DISABLE_WASM_PROXY: boolean;
   /**
    * defines whether to disable multi-threading feature in WebAssembly backend in the build.
    */
-  DISABLE_WASM_THREAD: boolean;
+  readonly DISABLE_WASM_THREAD: boolean;
 }
 
-declare let BUILD_DEFS: BuildDefinitions;
+declare const BUILD_DEFS: BuildDefinitions;

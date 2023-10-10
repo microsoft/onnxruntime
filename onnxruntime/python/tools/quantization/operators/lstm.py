@@ -47,10 +47,10 @@ class LSTMQuant(QuantOperatorBase):
             R.dims[0] = R_num_dir * R_4_hidden_size
 
         quant_input_weight_tuple = self.quantizer.quantize_weight_per_channel(
-            node.input[1], onnx_proto.TensorProto.INT8, 0
+            node.input[1], onnx_proto.TensorProto.INT8, 0  # self.quantizer.weight_qType?
         )
         quant_recurrent_weight_tuple = self.quantizer.quantize_weight_per_channel(
-            node.input[2], onnx_proto.TensorProto.INT8, 0
+            node.input[2], onnx_proto.TensorProto.INT8, 0  # self.quantizer.weight_qType?
         )
 
         W_quant_weight = model.get_initializer(quant_input_weight_tuple[0])  # noqa: N806

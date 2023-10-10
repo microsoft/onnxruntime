@@ -79,6 +79,32 @@ void RegisterCollectiveOps() {
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DistributedMatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("device_mesh_elements",
+            "",
+            AttributeProto::INTS)
+      .Attr("device_mesh_shape",
+            "",
+            AttributeProto::INTS)
+      .Attr("input_shard_specs",
+            "The sharding spec of \"Y\"; e.g., \"RRR\" if Y is not sharded.",
+            AttributeProto::STRINGS)
+      .Attr("output_shard_specs",
+            "The sharding spec of \"Y\"; e.g., \"RRR\" if Y is not sharded.",
+            AttributeProto::STRINGS)
+      .Input(0, "A", "N-dimensional matrix A", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(1, "B", "N-dimensional matrix B", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(0, "Y", "Matrix multiply results from A * B", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .TypeConstraint(
+          "T",
+          {
+              "tensor(float16)",
+              "tensor(float)",
+          },
+          "Constrain input and output types to float tensors.");
 }
 
 }  // namespace contrib
