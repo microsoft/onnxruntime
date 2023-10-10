@@ -165,7 +165,6 @@ static void SortDXCoreAdaptersByPreference(
     return;
   }
 
-  // Move this to another static helper... add coments about the use case...
   // DML prefers the HighPerformance adapter by default
   std::array<DXCoreAdapterPreference, 1> adapter_list_preferences = {
     DXCoreAdapterPreference::HighPerformance
@@ -283,22 +282,22 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
 
 static std::optional<OrtDmlPerformancePreference> ParsePerformancePreference(const ProviderOptions& provider_options)
 {
-  static const std::string PerformancePreference = "PerformancePreference";
-  static const std::string Default = "Default";
-  static const std::string HighPerformance = "HighPerformance";
-  static const std::string LowPower = "LowPower";
+  static const std::string PerformancePreference = "performance_preference";
+  static const std::string Default = "default";
+  static const std::string HighPerformance = "high_performance";
+  static const std::string MinimumPower = "minimum_power";
 
   auto preference_it = provider_options.find(PerformancePreference);
   if (preference_it != provider_options.end()) {
-    if (preference_it->second == "Default") {
+    if (preference_it->second == Default) {
       return OrtDmlPerformancePreference::Default;
     }
 
-    if (preference_it->second == "HighPerformance") {
+    if (preference_it->second == HighPerformance) {
       return OrtDmlPerformancePreference::HighPerformance;
     }
 
-    if (preference_it->second == "MinimumPower") {
+    if (preference_it->second == MinimumPower) {
       return OrtDmlPerformancePreference::MinimumPower;
     }
 
@@ -310,22 +309,22 @@ static std::optional<OrtDmlPerformancePreference> ParsePerformancePreference(con
 
 static std::optional<OrtDmlDeviceFilter> ParseFilter(const ProviderOptions& provider_options)
 {
-  static const std::string Filter = "Filter";
-  static const std::string Any = "Any";
-  static const std::string Gpu = "Gpu";
-  static const std::string Npu = "Npu";
+  static const std::string Filter = "filter";
+  static const std::string Any = "any";
+  static const std::string Gpu = "gpu";
+  static const std::string Npu = "npu";
 
   auto preference_it = provider_options.find(Filter);
   if (preference_it != provider_options.end()) {
-    if (preference_it->second == "Any") {
+    if (preference_it->second == Any) {
       return OrtDmlDeviceFilter::Any;
     }
 
-    if (preference_it->second == "Gpu") {
+    if (preference_it->second == Gpu) {
       return OrtDmlDeviceFilter::Gpu;
     }
 
-    if (preference_it->second == "Npu") {
+    if (preference_it->second == Npu) {
       return OrtDmlDeviceFilter::Npu;
     }
 
