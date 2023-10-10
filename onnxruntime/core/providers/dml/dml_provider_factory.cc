@@ -241,7 +241,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
   OrtDmlDeviceOptions* device_options) {
   constexpr auto default_device_options = OrtDmlDeviceOptions { Default, Gpu };
   if (device_options == nullptr) {
-    device_options = default_device_options;
+    device_options = &default_device_options;
   }
 
   OrtDmlPerformancePreference preference = device_options->Preference;
