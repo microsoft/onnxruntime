@@ -150,6 +150,62 @@ struct SubGraphContext {
 
 using SubGraphContextMap = std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>;
 
+template <typename T>
+inline T RoundUp(T m, T n) {
+  return ((m + n - 1) / n) * n;
+}
+
+//
+// Class to allocate memory for outputs with data-dependent shapes. The sizes of those are unknown so pre-allocation is
+// not possible.
+//
+class OutputAllocator : public nvinfer1::IOutputAllocator {
+ public:
+  OutputAllocator(OrtAllocator* alloc)
+      : allocator(alloc) 
+  {
+  }
+
+  void* reallocateOutput(
+      char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override {
+    // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
+    // even for empty tensors, so allocate a dummy byte.
+    size = std::max(size, static_cast<uint64_t>(1));
+    if (size > allocated_size) {
+      buffer = IAllocator::MakeUniquePtrFromOrtAllocator<void>(allocator, RoundUp(size, alignment));
+      allocated_size = size;
+    }
+    return buffer.get();
+  }
+
+  void* getBuffer() {
+    return buffer.get();
+  }
+
+  void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override {
+    output_shapes.reserve(dims.nbDims);
+    for (int i = 0; i < dims.nbDims; i++) {
+      output_shapes[i] = dims.d[i];
+    }
+  }
+
+  std::vector<int64_t>& getOutputShape() {
+    return output_shapes;
+  }
+
+  uint64_t getSize() {
+    return allocated_size;
+  }
+
+  ~OutputAllocator() override {}
+
+ private:
+  OrtAllocator* allocator = nullptr;
+  IAllocatorUniquePtr<void> buffer;
+  uint64_t allocated_size = 0;
+  std::vector<int64_t> output_shapes;
+};
+
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
  public:
