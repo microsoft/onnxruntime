@@ -246,7 +246,7 @@ class FusionRotaryAttention(FusionAttention):
         return True
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Addsss":
+        if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
             return
 
         # logger.info(f"Normalize node is {normalize_node.name}")
@@ -328,8 +328,8 @@ class FusionRotaryAttention(FusionAttention):
         )
         attn_mask_nodes_3 = self.model.match_parent_path(
             add_qk,
-            ["Mul", "Cast", "Slice", "Slice"],
-            [1, 0, 0, 0],
+            ["Mul", "Sub", "Cast", "Slice", "Slice"],
+            [1, 0, 1, 0, 0],
         )
         attn_mask = ""
         if attn_mask_nodes_1 is not None:
@@ -339,7 +339,7 @@ class FusionRotaryAttention(FusionAttention):
             _, _, slice_mask_1, slice_mask_2 = attn_mask_nodes_2
             attn_mask = slice_mask_1.output[0]
         elif attn_mask_nodes_3 is not None:
-            _, _, slice_mask_1, slice_mask_2 = attn_mask_nodes_3
+            _, _, _, slice_mask_1, slice_mask_2 = attn_mask_nodes_3
             attn_mask = slice_mask_1.output[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match attention mask nodes")
