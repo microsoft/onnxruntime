@@ -59,7 +59,6 @@ def _get_ort_compatible_zero_stage3_hook_function(debug, stats_output_dir, stats
 
 # Creating this dummy class because several functions would not be available during export step
 class DummyWork(torch.distributed.distributed_c10d.Work):
-
     def is_completed(self) -> bool:
         return True
 
