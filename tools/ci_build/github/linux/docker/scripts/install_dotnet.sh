@@ -4,7 +4,7 @@ set -e -x
 if [ -f /etc/redhat-release ]; then
   # If you found the following command went successfully but dotnet command still reports no sdk was found, most likely
   # it was because the dotnet packages were installed from more than one dnf repos.
-  dnf install -y dotnet-sdk-6.0 dotnet-runtime-6.0
+  dnf install -y dotnet-sdk-6.0
 elif [ -f /etc/os-release ]; then
   # Get Ubuntu version
   declare repo_version
