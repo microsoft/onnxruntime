@@ -831,6 +831,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                         tolerances.absolute(tolerance_key),
                                                         tolerances.relative(tolerance_key));
+      fprintf(stdout, "Load Test Case: %s\n", ToUTF8String(full_test_case_name).c_str());
       process_function(std::move(l));
       return true;
     });
