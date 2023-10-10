@@ -88,16 +88,17 @@ def _get_ort_compatible_allgather_fn():
     from deepspeed.utils import get_caller_func
 
     original_allgather_fn = deepspeed.comm.allgather_fn
+    output_get_caller_func = get_caller_func()
 
     # For Monkey patching the original function
     # Original code https://github.com/microsoft/DeepSpeed/blob/604d701e35548e5407b017c088bdc3760832c9e0/deepspeed/comm/comm.py#L315
     def _ort_compatible_allgather_fn_zero_stage3(
-        output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func()
+        output_tensor, input_tensor, group=None, async_op=False, debug=output_get_caller_func
     ):
         if torch.onnx.is_in_onnx_export():
             return DummyWork()
 
-        return original_allgather_fn(output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func())
+        return original_allgather_fn(output_tensor, input_tensor, group=group, async_op=async_op, debug=debug)
 
     return _ort_compatible_allgather_fn_zero_stage3
 
