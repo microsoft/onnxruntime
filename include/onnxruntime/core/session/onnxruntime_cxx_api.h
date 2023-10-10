@@ -2181,6 +2181,8 @@ struct ShapeInferContext {
     int64_t AsInt() const { return i_; }
     const char* AsSym() const { return s_; }
 
+    static constexpr int INVALID_INT_DIM = -2;
+
    private:
     union {
       int64_t i_;

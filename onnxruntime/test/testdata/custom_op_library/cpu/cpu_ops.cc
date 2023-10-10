@@ -282,8 +282,6 @@ struct AttrTesterStringOp : Ort::CustomOpBase<AttrTesterStringOp, AttrTesterStri
     CUSTOM_ENFORCE(ctx.GetAttrString("a_string") == "iamastring", "string attr mismatch");
     std::vector<std::string> strings{"more", "strings"};
     CUSTOM_ENFORCE(ctx.GetAttrStrings("strings") == strings, "strings attr mismatch");
-    Ort::ShapeInferContext::Shape shape5 = {{5}};
-    ctx.SetOutputShape(0, shape5);
     return Ort::Status{nullptr};
   }
 };

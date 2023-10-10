@@ -1905,7 +1905,7 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
     type_shape_info.GetSymbolicDimensions(&symbolic_shape[0], integer_shape.size());
     Shape shape;
     for (size_t ith = 0; ith < integer_shape.size(); ++ith) {
-      if (symbolic_shape[ith]) {
+      if (symbolic_shape[ith] && std::string{symbolic_shape[ith]}.size() > 0) {
         shape.emplace_back(symbolic_shape[ith]);
       } else {
         shape.emplace_back(integer_shape[ith]);
@@ -1934,7 +1934,10 @@ inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shap
       integer_dims.push_back(dim.IsInt());
       symbolic_dims.push_back("");
     } else {
-      integer_dims.push_back(-1);
+      if (!dim.AsSym() || std::string{dim.AsSym()}.empty()) {
+        ORT_CXX_API_THROW("Symbolic dim must not be an empty string", ORT_INVALID_ARGUMENT);
+      }
+      integer_dims.push_back(SymbolicInteger::INVALID_INT_DIM);
       symbolic_dims.push_back(dim.AsSym());
     }
   }

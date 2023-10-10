@@ -79,8 +79,11 @@ struct OrtShapeInferContext {
     ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
     for (size_t ith = 0; ith < symbolic_dims.size(); ith++) {
       auto* dim_proto = shape_proto.add_dim();
-      dim_proto->set_dim_value(integer_dims[ith]);
-      dim_proto->set_dim_param(symbolic_dims[ith]);
+      if (symbolic_dims[ith].size() > 0) {
+        dim_proto->set_dim_param(symbolic_dims[ith]);
+      } else {
+        dim_proto->set_dim_value(integer_dims[ith]);
+      }
     }
     ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
     return onnxruntime::Status::OK();

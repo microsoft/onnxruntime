@@ -3237,8 +3237,8 @@ struct Merge {
     if (input_count != 2) {
       return Ort::Status("input count should be 2", OrtErrorCode::ORT_INVALID_ARGUMENT);
     }
-    const auto& first_input_shape = ctx.GetInputShape(0);
-    ctx.SetOutputShape(0, first_input_shape);
+    Ort::ShapeInferContext::Shape shape_1 = {{-1}};
+    ctx.SetOutputShape(0, shape_1);
     return Ort::Status(nullptr);
   }
   bool reverse_ = false;
