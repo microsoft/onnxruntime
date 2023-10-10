@@ -89,6 +89,7 @@ class DummyWork(torch.distributed.distributed_c10d.Work):
 
 def _get_ort_compatible_allgather_fn():
     from deepspeed.utils import get_caller_func
+
     original_allgather_fn = deepspeed.comm.allgather_fn
 
     # For Monkey patching the original function
