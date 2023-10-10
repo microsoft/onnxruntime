@@ -144,7 +144,8 @@ struct AdapterInfo {
 static ComPtr<IDXCoreAdapterList> EnumerateDXCoreAdapters(IDXCoreAdapterFactory* adapter_factory) {
   ComPtr<IDXCoreAdapterList> adapter_list;
 
-  // use_dxcore_workload_enumeration should be determined by QI
+  // TODO: use_dxcore_workload_enumeration should be determined by QI
+  // When DXCore APIs are available QI for relevant enumeration interfaces
   constexpr bool use_dxcore_workload_enumeration = false;
   if (!use_dxcore_workload_enumeration) {
     // Get a list of all the adapters that support compute
@@ -262,8 +263,11 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
   // Sort the adapter list to honor DXCore hardware ordering
   SortDXCoreAdaptersByPreference(adapter_list.Get(), preference);
 
+  // TODO: use_dxcore_workload_enumeration should be determined by QI
+  // When DXCore APIs are available QI for relevant enumeration interfaces
+  constexpr bool use_dxcore_workload_enumeration = false;
+
   std::vector<AdapterInfo> adapter_infos;
-  constexpr bool use_dxcore_workload_enumeration = false; // should be determined by QI
   if (!use_dxcore_workload_enumeration) {
     // Filter all DXCore adapters to hardware type specified by the device filter
     adapter_infos = FilterDXCoreAdapters(adapter_list.Get(), filter);
