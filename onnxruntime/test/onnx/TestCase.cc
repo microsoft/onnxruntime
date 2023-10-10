@@ -731,6 +731,8 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
                const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
                const TestTolerances& tolerances,
                const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
+               std::unique_ptr<std::set<BrokenTest>> broken_tests,
+               std::unique_ptr<std::set<std::string>> broken_tests_keyword_set,
                const std::function<void(std::unique_ptr<ITestCase>)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
@@ -767,20 +769,60 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
       if (disabled_tests.find(test_case_name) != disabled_tests.end()) return true;
 
+      for (auto iter2 = broken_tests_keyword_set->begin(); iter2 != broken_tests_keyword_set->end(); ++iter2) {
+        std::string keyword = *iter2;
+        if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
+          LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(test_case_name) << " as it is in broken test keywords";
+          return true;
+        }
+      }
+
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(node_data_root_path, filename_str);
 
-      std::unique_ptr<TestModelInfo> model_info;
+      std::unique_ptr<OnnxModelInfo> model_info;
 
       if (is_onnx_format) {
 #if !defined(ORT_MINIMAL_BUILD)
-        model_info = TestModelInfo::LoadOnnxModel(p.c_str());
+        model_info = std::make_unique<OnnxModelInfo>(p.c_str());
 #else
         ORT_THROW("onnx model is not supported in this build");
 #endif
       } else if (is_ort_format) {
-        model_info = TestModelInfo::LoadOrtModel(p.c_str());
+        model_info = std::make_unique<OnnxModelInfo>(p.c_str());
       } else {
         ORT_NOT_IMPLEMENTED(ToUTF8String(filename_str), " is not supported");
+      }
+
+      auto test_case_dir = model_info->GetDir();
+      namespace fs = std::filesystem;
+      fs::path test_case_path = test_case_dir;
+      auto full_test_case_name = (test_case_path /= test_case_name).string();
+      if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
+          model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
+        LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(full_test_case_name) << " as it has training domain";
+        return true;
+      }
+
+      bool has_test_data = false;
+      for (auto& entry : fs::directory_iterator(test_case_dir)) {
+        if (fs::is_directory(entry.path())) {
+          has_test_data = true;
+          break;
+        }
+      }
+      if (!has_test_data) {
+        LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(full_test_case_name) << " due to no test data";
+        return true;
+      }
+
+      BrokenTest t = {ToUTF8String(test_case_name), ""};
+      auto iter = broken_tests->find(t);
+      auto opset_version = model_info->GetNominalOpsetVersion();
+      if (iter != broken_tests->end() &&
+          (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
+           iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end())) {
+        LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(full_test_case_name) << " due to broken_tests";
+        return true;
       }
 
       const auto tolerance_key = ToUTF8String(my_dir_name);
