@@ -90,6 +90,62 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
   return is_concrete_shape;  // convert to constant if this is true
 }
 
+// This function inlines the appropriate subgraph. It does not literally fold it.
+static bool ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Logger& logger) {
+  // First, find out which subgraph to inline
+  // We need to fetch the constant argument.
+  ORT_ENFORCE(if_node.InputDefs().size() == 1, "Expecting one input");
+  const auto* condition_def = if_node.InputDefs()[0];
+
+  // We need to check if the condition is a constant.
+  constexpr bool check_outer_scope_true = true;
+  const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(condition_def->Name(), check_outer_scope_true);
+  if (initializer == nullptr) {
+    return false;
+  }
+
+  // This is a boolean initializer with a single element.
+  const auto proto_shape = utils::GetTensorShapeFromTensorProto(*initializer);
+  // This must be pre-allocated
+  Tensor tensor{
+      DataTypeImpl::TensorTypeFromONNXEnum(initializer->data_type())->GetElementType(),
+      proto_shape,
+      std::make_shared<CPUAllocator>()};
+
+  // XXX: If we fail, we simply ignore this node. Should we bail out?
+  Status status = utils::TensorProtoToTensor(Env::Default(), graph.ModelPath().ToPathString().c_str(), *initializer, tensor);
+  if (!status.IsOK()) {
+    LOGS(logger, WARNING) << "Unable to constant fold. Can't fetch constant value tensor for 'If' "
+                          << " node '" << if_node.Name() << "': "
+                          << status.ErrorMessage();
+    return false;
+  }
+
+  const bool condition_value = *tensor.Data<bool>();
+
+  static const std::string then_branch{"then_branch"};
+  static const std::string else_branch{"else_branch"};
+  const Graph* graph_to_inline;
+  if (condition_value) {
+    graph_to_inline = if_node.GetGraphAttribute(then_branch);
+  } else {
+    graph_to_inline = if_node.GetGraphAttribute(else_branch);
+  }
+
+  if (graph_to_inline == nullptr) {
+    LOGS(logger, WARNING) << "Unable to constant fold If node: '" << if_node.Name() << "' Unable to fetch: "
+                          << (condition_value ? then_branch : else_branch);
+    return false;
+  }
+
+  graph.InlineIfSubgraph(*graph_to_inline, if_node);
+
+  LOGS(logger, INFO) << "Constant folded (inlined) " << (condition_value ? then_branch : else_branch)
+                     << " for If node: " << if_node.Name();
+
+  return true;
+}
+
 Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   bool have_updated_nodes = false;
   GraphViewer graph_viewer(graph);
@@ -118,7 +174,24 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     bool converted_to_constant = false;
-    if (node->OpType().compare("Shape") == 0) {
+    if (node->OpType().compare("If") == 0) {
+      // This process constant folds the If node only,
+      // but inlines the nodes of the corresponding branch graph.
+      // It does not convert the node to a constant in a common sense.
+      // We call it constant folding because the `If` node constant condition
+      // may enable use to inline the corresponding branch graph.
+      if (ConstantFoldIfNode(graph, *node, logger)) {
+        // We do not remove any of the upstream nodes, because we actually
+        // do not know whether any of the upstream nodes provide constant implicit inputs
+        // We let the next round of constant folding check of that.
+        // Remove the output edges of the constant node and then remove the node itself.
+        graph_utils::RemoveNodeOutputEdges(graph, *node);
+        graph.RemoveNode(node->Index());
+        modified = true;
+        // Have shape inference rerun there.
+        have_updated_nodes = true;
+      }
+    } else if (node->OpType().compare("Shape") == 0) {
       converted_to_constant = ConstantFoldShapeNode(graph, *node);
     } else {
       InitializedTensorSet constant_inputs;

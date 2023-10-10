@@ -22,6 +22,16 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(FunctionTest, Profiling) {
+  const ORTCHAR_T* model_path = ORT_TSTR("D:\\dev\\data\\FunctionsConverterProfling\\HF_Bart\\hf_Bart_dynamo.onnx");
+  SessionOptions session_options;
+  session_options.intra_op_param.thread_pool_size = 1;
+  session_options.optimized_model_filepath = ORT_TSTR("D:\\dev\\data\\FunctionsConverterProfling\\HF_Bart\\hf_Bart_dynamo_if_from_start.onnx");
+  InferenceSession session_object(session_options, GetEnvironment(), model_path);
+  ASSERT_STATUS_OK(session_object.Load());
+  ASSERT_STATUS_OK(session_object.Initialize());
+}
+
 static void Check(const char* source,
                   const char* input_name, std::vector<float> input_values,
                   const char* output_name, std::vector<float> output_values) {

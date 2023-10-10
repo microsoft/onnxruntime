@@ -1152,6 +1152,21 @@ class Graph {
   Node& FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
   /**
+    Directly insert one of the If node branches into this Graph.
+    `If` node condition must be a constant. The function would
+    rename the nodes of the graph to make sure there is no conflict.
+    The implicit inputs of the graph should be detected, if so they would not
+    be renamed.
+
+    All of the outputs of the subgraph being inlined should be renamed
+    to the outputs of the If node.
+
+    @param callnode - the node that contains the graph_to_inline. This node is going
+    to be deleted and replaced by the corresponding graph (either then or else)
+  */
+  void InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node);
+
+  /**
   Directly insert the nodes in the function Node provided into this Graph.
   The Graph needs to be Resolve()d after this call.
   @param node Node with Node::Type of Node::Type::Fused
