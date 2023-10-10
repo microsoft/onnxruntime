@@ -780,16 +780,16 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
 
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(node_data_root_path, filename_str);
 
-      std::unique_ptr<OnnxModelInfo> model_info;
+      std::unique_ptr<TestModelInfo> model_info;
 
       if (is_onnx_format) {
 #if !defined(ORT_MINIMAL_BUILD)
-        model_info = std::make_unique<OnnxModelInfo>(p.c_str());
+        model_info = TestModelInfo::LoadOnnxModel(p.c_str());
 #else
         ORT_THROW("onnx model is not supported in this build");
 #endif
       } else if (is_ort_format) {
-        model_info = std::make_unique<OnnxModelInfo>(p.c_str());
+        model_info = TestModelInfo::LoadOrtModel(p.c_str());
       } else {
         ORT_NOT_IMPLEMENTED(ToUTF8String(filename_str), " is not supported");
       }
@@ -798,11 +798,15 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       namespace fs = std::filesystem;
       fs::path test_case_path = test_case_dir;
       auto full_test_case_name = (test_case_path /= test_case_name).string();
-      if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
-          model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
+
+#if !defined(ORT_MINIMAL_BUILD)
+      // to skip some models like *-int8 or *-qdq
+      if ((reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
+          (reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
         LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(full_test_case_name) << " as it has training domain";
         return true;
       }
+#endif
 
       bool has_test_data = false;
       for (auto& entry : fs::directory_iterator(test_case_dir)) {
