@@ -465,6 +465,9 @@ class InferenceSession(Session):
         )
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
+
+        self._register_ep_custom_ops(session_options, providers, provider_options)
+
         if self._model_path:
             sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
@@ -506,6 +509,13 @@ class InferenceSession(Session):
         self._sess = None
         self._sess_options = self._sess_options_initial
         self._create_inference_session(providers, provider_options)
+
+    def _register_ep_custom_ops(self, session_options, providers, provider_options):
+        for i in range(len(providers)):
+            if providers[i] == "TensorrtExecutionProvider":
+                C.register_tensorrt_plugins_as_custom_ops(session_options, provider_options[i])
+            elif isinstance(providers[i], tuple) and providers[i][0] == "TensorrtExecutionProvider":
+                C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
 
 
 class IOBinding:

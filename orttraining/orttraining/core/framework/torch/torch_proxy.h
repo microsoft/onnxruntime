@@ -37,27 +37,29 @@ class TorchProxy {
   };
 
   void Forward(
+      const std::string& func_name,
       void* callback,
       const std::vector<int64_t>& requires_grads,
       const std::vector<std::optional<OrtValue>>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
       const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,
-      void** diff_ctx,
-      std::vector<OrtValue>& returned_ortvalues,
       const bool is_training_mode,
-      const bool is_inplace,
-      const std::string& invoke_id);
+      const std::vector<int64_t>& inplace_map,
+      const std::string& invoke_id,
+      void** diff_ctx,
+      std::vector<OrtValue>& returned_ortvalues);
 
   void Backward(
+      const std::string& func_name,
       void* callback,
       const std::vector<std::optional<OrtValue>>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
       const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,
-      std::vector<OrtValue>& return_args,
-      const bool is_inplace,
-      const std::string& invoke_id);
+      const std::vector<int64_t>& inplace_map,
+      const std::string& invoke_id,
+      std::vector<OrtValue>& return_args);
 
  private:
   TorchProxy(){};

@@ -2844,6 +2844,83 @@ void RegisterContribSchemas() {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(EPContext)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node container for EP context.")
+      .Attr(
+          "main_context",
+          "Usually each single EPContext associate with a graph partition."
+          "But for some case like QNN, it has single EPContext contains all partitions."
+          "In that case, the node with ep_cache_context should set main_context=1. Other nodes set main_context=0 and skip ep_cache_context."
+          "The path is relative to this Onnx file. Default is 1.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "ep_cache_context",
+          "payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
+          "embed_mode",
+          "1: indicate ep_cache_context is the context content. 0: indicate ep_cache_context is the file path to the context content."
+          "The path is relative to this Onnx file. Default is 1.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "ep_sdk_version",
+          "(Optional) SDK version used to convert the model.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
+          "partition_name",
+          "(Optional) partitioned graph name.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
+          "source",
+          "(Optional) the source used to generate the engine/context cache file. Ort EP or native SDK tool chain",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr("notes", "(Optional) Some notes for the model", AttributeProto::STRING, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(
+          0,
+          "inputs",
+          "List of tensors for inputs",
+          "T",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(
+          0,
+          "outputs",
+          "One or more outputs, list of tensors for outputs",
+          "T",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .TypeConstraint(
+          "T",
+          {"tensor(int8)",
+           "tensor(int16)",
+           "tensor(int32)",
+           "tensor(int64)",
+           "tensor(uint8)",
+           "tensor(uint16)",
+           "tensor(uint32)",
+           "tensor(uint64)",
+           "tensor(float16)",
+           "tensor(float)",
+           "tensor(double)"},
+          "Constrain input and output types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
   static const char* BitmaskDropout_ver1_doc = R"DOC(
 BitmaskDropout takes an input floating-point tensor, an optional input ratio (floating-point scalar) and an optional input training_mode (boolean scalar).
 It produces two tensor outputs: output (floating-point tensor) and mask (optional `Tensor<uint32>`). If `training_mode` is true then the output Y will be a random dropout.
@@ -3003,7 +3080,7 @@ Having this op allows runtime to do operator re-ordering to reduce compute FLOPs
   }
 #endif
 
-#ifdef USE_MPI
+#ifdef ORT_USE_NCCL
   RegisterCollectiveOps();
 #endif
 }
