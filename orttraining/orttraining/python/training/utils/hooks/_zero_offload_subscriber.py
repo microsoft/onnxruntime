@@ -8,7 +8,7 @@ import inspect
 import warnings
 from collections import OrderedDict
 from types import CodeType, FunctionType
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import onnx
 import torch
@@ -21,8 +21,6 @@ from onnxruntime.training.utils import (
 )
 
 from ._subscriber_base import RuntimeStates, SubscriberBase
-
-from typing import Any, List
 
 
 def _get_ort_compatible_zero_stage3_hook_function(debug, stats_output_dir, stats_overwrite):
@@ -57,6 +55,7 @@ def _get_ort_compatible_zero_stage3_hook_function(debug, stats_output_dir, stats
 
     return _setup_zero_stage3_ort_compatible_hooks
 
+
 # Creating this dummy class because several functions would not be available during export step
 class DummyWork(torch.distributed.distributed_c10d.Work):
     # def __init__(self):
@@ -64,16 +63,22 @@ class DummyWork(torch.distributed.distributed_c10d.Work):
 
     def is_completed(self) -> bool:
         return True
+
     def is_success(self) -> bool:
         return True
+
     def exception(self) -> Any:
         return None
+
     def wait(self, timeout: timedelta = timedelta) -> bool:
         return True
+
     def source_rank(self) -> int:
         return 0
+
     def _source_rank(self) -> int:
         return 0
+
     def result(self) -> List[torch.Tensor]:
         return []
     def synchronize(self):
@@ -91,6 +96,7 @@ def _get_ort_compatible_allgather_fn():
         return allgather_fn(output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func())
 
     return _ort_compatible_allgather_fn_zero_stage3
+
 
 # Adapted from https://github.com/microsoft/DeepSpeed/blob/e8318634b4313eaad89842cf4322e1762d34ced3/deepspeed/runtime/zero/linear.py#L104
 # In the original logic, if bias is None, after export to ONNX, None becomes a constant, so backward op complains
@@ -156,12 +162,14 @@ except ImportError as e:
     def configure_ort_compatible_zero_stage3(debug=False, stats_output_dir=None, stats_overwrite=False):
         raise RuntimeError("DeepSpeed is not installed, cannot configure ORT compatible ZeRO stage3.")
 
+
 try:
     from deepspeed.comm import *
+
     def configure_ort_compatible_allgather_fn_zero_stage3():
-        '''
+        """
         This function will overwrite the original allgather_fn in deepspeed comm to make it ort compatible.
-        '''
+        """
         # Only need to define it once
         allgather_fn = _get_ort_compatible_allgather_fn()
 

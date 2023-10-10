@@ -20,7 +20,10 @@ import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.training.utils import ORTModelInputOutputSchemaType, onnx_dtype_to_pytorch
-from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3, configure_ort_compatible_allgather_fn_zero_stage3
+from onnxruntime.training.utils.hooks import (
+    configure_ort_compatible_zero_stage3,
+    configure_ort_compatible_allgather_fn_zero_stage3,
+)
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
 from ._fallback import (
