@@ -258,7 +258,7 @@ namespace Dml::GraphDescBuilder
                 {
                     inputShapesOverrides.GetMutableShape(inputIndex) = outputShapesIter->second;
                 }
-                else
+                else if (inputDef->HasTensorOrScalarShape())
                 {
                     for (int i = 0; i < inputDef->Shape()->dim_size(); ++i)
                     {
