@@ -19,6 +19,7 @@ from onnxruntime.training.utils import (
     pytorch_dtype_to_onnx,
     unflatten_data_using_schema,
 )
+from datetime import timedelta
 
 from ._subscriber_base import RuntimeStates, SubscriberBase
 
