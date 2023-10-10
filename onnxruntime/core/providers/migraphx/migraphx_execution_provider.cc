@@ -130,6 +130,12 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
 
   MIOPEN_CALL_THROW(miopenCreate(&external_miopen_handle_));
   MIOPEN_CALL_THROW(miopenSetStream(external_miopen_handle_, stream_));
+
+  LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider options: "
+                        << "device_id: " << device_id_
+                        << ", migraphx_fp16_enable: " << fp16_enable_
+                        << ", migraphx_int8_enable: " << int8_enable_
+                        << ", dump_model_ops: " << dump_model_ops_
 }
 
 MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
