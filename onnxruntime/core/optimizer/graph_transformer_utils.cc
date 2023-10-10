@@ -75,12 +75,12 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
-#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/memory_optimizer.h"
+#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #endif
 #ifdef ENABLE_TRITON
-#include "orttraining/core/optimizer/triton_fusion.h"
 #include "orttraining/core/framework/triton/triton_op_executor.h"
+#include "orttraining/core/optimizer/triton_fusion.h"
 #endif  // ENABLE_TRITON
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -270,11 +270,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                       onnxruntime::kCudaExecutionProvider,
                                                                       onnxruntime::kRocmExecutionProvider,
                                                                       onnxruntime::kDmlExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                            onnxruntime::kCudaExecutionProvider,
-                                                                            onnxruntime::kRocmExecutionProvider,
-                                                                            onnxruntime::kAclExecutionProvider,
-                                                                            onnxruntime::kArmNNExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_js_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                               onnxruntime::kCudaExecutionProvider,
+                                                                               onnxruntime::kRocmExecutionProvider,
+                                                                               onnxruntime::kAclExecutionProvider,
+                                                                               onnxruntime::kArmNNExecutionProvider,
+                                                                               onnxruntime::kArmNNExecutionProvider,
+                                                                               onnxruntime::kJsExecutionProvider};
 
 #ifdef MLAS_TARGET_AMD64_IX86
       const bool avx2_precision_mode =
@@ -296,7 +298,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_js_eps));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_dml_rocm_eps));

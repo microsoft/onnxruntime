@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace js {
 
-template <bool is_channels_last, bool has_activation = false>
+template <bool is_channels_last, bool is_fused_conv = false>
 class Conv : public JsKernel {
  public:
   Conv(const OpKernelInfo& info) : JsKernel(info), conv_attrs_(info), w_is_const_(false) {
@@ -17,7 +17,7 @@ class Conv : public JsKernel {
     if (conv_attrs_.kernel_shape_specified) {
       ORT_ENFORCE(info.GetAttrs("kernel_shape", kernel_shape).IsOK());
     }
-    if (has_activation) {
+    if (is_fused_conv) {
       ORT_THROW_IF_ERROR(info.GetAttr<std::string>("activation", &conv_attrs_.activation));
     } else {
       conv_attrs_.activation = info.GetAttrOrDefault<std::string>("activation", "");

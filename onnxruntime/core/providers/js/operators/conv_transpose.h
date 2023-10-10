@@ -9,12 +9,12 @@
 #include "core/providers/cpu/nn/conv_transpose_attributes.h"
 namespace onnxruntime {
 namespace js {
-template <bool is_channels_last, bool has_activation = false>
+template <bool is_channels_last, bool is_fused_convtranspose = false>
 class ConvTranspose : public JsKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : JsKernel(info), conv_transpose_attrs_(info), w_is_const_(false) {
     TensorShapeVector kernel_shape;
-    if (has_activation) {
+    if (is_fused_convtranspose) {
       ORT_THROW_IF_ERROR(info.GetAttr<std::string>("activation", &conv_transpose_attrs_.activation));
     } else {
       conv_transpose_attrs_.activation = info.GetAttrOrDefault<std::string>("activation", "");
@@ -29,7 +29,7 @@ class ConvTranspose : public JsKernel {
     if (conv_transpose_attrs_.dilations.size() == 1 ||
         (conv_transpose_attrs_.kernel_shape_specified && kernel_shape.size() == 1) ||
         conv_transpose_attrs_.strides.size() == 1) {
-      JSEP_INIT_KERNEL_ATTRIBUTE(isFusedConvTranspose ? FusedConvTranspose : ConvTranspose, ({
+      JSEP_INIT_KERNEL_ATTRIBUTE(ConvTranspose, ({
                                    "format" : $8 ? "NHWC" : "NCHW",
                                    "autoPad" : $1,
                                    "dilations" : [$2],
