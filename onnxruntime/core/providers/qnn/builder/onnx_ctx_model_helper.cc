@@ -144,7 +144,7 @@ bool QnnCacheModelHandler::IsContextCacheFileExists(const std::string& customer_
     context_cache_path_ = customer_context_cache_path;
   }
 
-  ctx_file_exists_ = std::filesystem::exists(context_cache_path_);
+  ctx_file_exists_ = std::filesystem::is_regular_file(context_cache_path_) && std::filesystem::exists(context_cache_path_);
 
   return ctx_file_exists_;
 }
