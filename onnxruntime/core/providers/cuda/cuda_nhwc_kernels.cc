@@ -7,7 +7,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_fwd.h"
 
-#include "cuda_nhwc_kernels.h"
+#include "core/providers/cuda/cuda_nhwc_kernels.h"
 
 namespace onnxruntime {
 namespace cuda {
