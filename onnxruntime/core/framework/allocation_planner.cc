@@ -234,7 +234,7 @@ class PlannerImpl {
 
   int DecrementUseCount(OrtValueIndex n) {
     int& use_count = --UseCount(n);
-    // assert(use_count >= 0);
+    assert(use_count >= 0);
     return use_count;
   }
 
