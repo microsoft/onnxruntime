@@ -247,8 +247,12 @@ Ort::Status AttrTesterIntFloatShapeInfer(Ort::ShapeInferContext& ctx) {
   CUSTOM_ENFORCE(ctx.GetAttrInts("ints") == ints, "ints attr mismatch");
   std::vector<float> floats{6, 7, 8};
   CUSTOM_ENFORCE(ctx.GetAttrFloats("floats") == floats, "floats attr mismatch");
-  Ort::ShapeInferContext::Shape shape5 = {{5}};
-  ctx.SetOutputShape(0, shape5);
+  auto input_shape = ctx.GetInputShape(0);
+  CUSTOM_ENFORCE(input_shape.size() == 1 &&
+                     !input_shape[0].IsInt() &&
+                     std::string{input_shape[0].AsSym()} == "d",
+                 "input dim is not symbolic");
+  ctx.SetOutputShape(0, input_shape);
   return Ort::Status{nullptr};
 }
 
