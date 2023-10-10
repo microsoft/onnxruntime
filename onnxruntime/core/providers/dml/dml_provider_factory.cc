@@ -239,6 +239,11 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFromOptions(
   OrtDmlDeviceOptions* device_options) {
+  constexpr auto default_device_options = OrtDmlDeviceOptions { Default, Gpu };
+  if (device_options == nullptr) {
+    device_options = default_device_options;
+  }
+
   OrtDmlPerformancePreference preference = device_options->Preference;
   OrtDmlDeviceFilter filter = device_options->Filter;
 
@@ -357,12 +362,19 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
   }
 
   auto preference = ParsePerformancePreference(provider_options);
+  auto filter = ParseFilter(provider_options);
+
+  // If no preference/filters are specified then create with default preference/filters.
+  if (!preference.has_value() && !filter.has_value())
+  {
+    return onnxruntime::DMLProviderFactoryCreator::CreateFromOptions(nullptr);
+  }
+
   if (!preference.has_value())
   {
     preference = OrtDmlPerformancePreference::Default;
   }
 
-  auto filter = ParseFilter(provider_options);
   if (!filter.has_value())
   {
     filter = OrtDmlDeviceFilter::Gpu;
