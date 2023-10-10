@@ -246,7 +246,7 @@ class FusionRotaryAttention(FusionAttention):
         return True
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
+        if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Addsss":
             return
 
         # logger.info(f"Normalize node is {normalize_node.name}")
@@ -281,26 +281,28 @@ class FusionRotaryAttention(FusionAttention):
             logger.debug("fuse_rotary_attention: failed to match v path")
             return
 
-        concat_v_path = self.model.match_parent_path(
+        concat_v_path_1 = self.model.match_parent_path(
             concat_v,
             ["Slice", "Unsqueeze"],
             [0, 2],
         )
+        concat_v_path_2 = self.model.match_parent_path(
+            concat_v,
+            ["Slice"],
+            [0],
+        )
 
-        if concat_v_path is None:
-            # Handle the case where the cache is already unsqueezed
-            concat_v_path = self.model.match_parent_path(
-                concat_v,
-                ["Slice"],
-                [0],
-            )
-            if concat_v_path is None:
-                logger.debug("fuse_rotary_attention: failed to match past/present concat in v path")
-                return
-
-        past_v = concat_v_path[0].input[0]
-        past_seq_len = concat_v_path[-1].input[0]
-        present_v = concat_v.output[0]
+        if concat_v_path_1 is not None:
+            past_v = concat_v_path_1[0].input[0]
+            past_seq_len = concat_v_path_1[-1].input[0]
+            present_v = concat_v.output[0]
+        elif concat_v_path_2 is not None:
+            past_v = concat_v_path_2[0].output[0]
+            past_seq_len = concat_v_path_2[-1].input[0]
+            present_v = concat_v.output[0]
+        else:
+            logger.debug("fuse_rotary_attention: failed to match past/present concat in v path")
+            return
 
         qk_nodes = self.model.match_parent_path(
             matmul_qkv,
@@ -314,11 +316,6 @@ class FusionRotaryAttention(FusionAttention):
             logger.debug("fuse_rotary_attention: failed to match qk nodes")
             return
 
-        attn_mask_nodes_0 = self.model.match_parent_path(
-            add_qk,
-            ["Slice", "Slice"],
-            [1, 0],
-        )
         attn_mask_nodes_1 = self.model.match_parent_path(
             add_qk,
             ["Concat", "Slice", "Slice"],
@@ -329,15 +326,20 @@ class FusionRotaryAttention(FusionAttention):
             ["Cast", "Concat", "Slice", "Slice"],
             [1, 0, 0, 0],
         )
+        attn_mask_nodes_3 = self.model.match_parent_path(
+            add_qk,
+            ["Mul", "Cast", "Slice", "Slice"],
+            [1, 0, 0, 0],
+        )
         attn_mask = ""
-        if attn_mask_nodes_0 is not None:
-            slice_mask_1, slice_mask_2 = attn_mask_nodes_0
-            attn_mask = slice_mask_1.output[0]
-        elif attn_mask_nodes_1 is not None:
+        if attn_mask_nodes_1 is not None:
             _, slice_mask_1, slice_mask_2 = attn_mask_nodes_1
             attn_mask = slice_mask_1.output[0]
         elif attn_mask_nodes_2 is not None:
             _, _, slice_mask_1, slice_mask_2 = attn_mask_nodes_2
+            attn_mask = slice_mask_1.output[0]
+        elif attn_mask_nodes_3 is not None:
+            _, _, slice_mask_1, slice_mask_2 = attn_mask_nodes_3
             attn_mask = slice_mask_1.output[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match attention mask nodes")
@@ -377,27 +379,27 @@ class FusionRotaryAttention(FusionAttention):
             logger.debug("fuse_rotary_attention: failed to match k nodes")
             return
 
-        concat_k_path = self.model.match_parent_path(
+        concat_k_path_1 = self.model.match_parent_path(
             concat_k,
             ["Slice", "Unsqueeze"],
             [0, 2],
         )
-        if concat_k_path is None:
-            concat_k_path = self.model.match_parent_path(
-                concat_k,
-                ["Slice"],
-                [0],
-            )
-
-            if concat_k_path is None:
-                logger.debug("fuse_rotary_attention: failed to match past/present concat in k path")
-                return
-
-        past_k = concat_k_path[0].input[0]
-        shared_past_seq_len = concat_k_path[-1].input[0]
-        present_k = concat_k.output[0]
-
-        # assert past_seq_len == shared_past_seq_len
+        concat_k_path_2 = self.model.match_parent_path(
+            concat_k,
+            ["Slice"],
+            [0],
+        )
+        if concat_k_path_1 is not None:
+            past_k = concat_k_path_1[0].input[0]
+            shared_past_seq_len = concat_k_path_1[-1].input[0]
+            present_k = concat_k.output[0]
+            assert past_seq_len == shared_past_seq_len
+        elif concat_k_path_2 is not None:
+            past_k = concat_k_path_2[0].output[0]
+            present_k = concat_k.output[0]
+        else:
+            logger.debug("fuse_rotary_attention: failed to match past/present concat in k path")
+            return
 
         q_nodes_1 = self.model.match_parent_path(
             matmul_qk,
