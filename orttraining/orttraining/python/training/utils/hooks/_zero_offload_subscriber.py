@@ -88,6 +88,8 @@ class DummyWork(torch.distributed.distributed_c10d.Work):
 
 def _get_ort_compatible_allgather_fn():
     from deepspeed.utils import get_caller_func
+    original_allgather_fn = deepspeed.comm.allgather_fn
+
     # For Monkey patching the original function
     # Original code https://github.com/microsoft/DeepSpeed/blob/604d701e35548e5407b017c088bdc3760832c9e0/deepspeed/comm/comm.py#L315
     def _ort_compatible_allgather_fn_zero_stage3(
@@ -96,7 +98,7 @@ def _get_ort_compatible_allgather_fn():
         if torch.onnx.is_in_onnx_export():
             return DummyWork()
 
-        return allgather_fn(output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func())
+        return original_allgather_fn(output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func())
 
     return _ort_compatible_allgather_fn_zero_stage3
 
@@ -167,14 +169,14 @@ except ImportError as e:
 
 
 try:
-    from deepspeed.comm import *
+    import deepspeed
 
     def configure_ort_compatible_allgather_fn_zero_stage3():
         """
         This function will overwrite the original allgather_fn in deepspeed comm to make it ort compatible.
         """
         # Only need to define it once
-        allgather_fn = _get_ort_compatible_allgather_fn()
+        deepspeed.comm.allgather_fn = _get_ort_compatible_allgather_fn()
 
 except ImportError as e:
     warnings.warn(f"DeepSpeed import error {e}")
