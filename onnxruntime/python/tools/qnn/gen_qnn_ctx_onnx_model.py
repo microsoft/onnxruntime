@@ -94,15 +94,17 @@ def parse_qnn_json_file(qnn_json_file_path, qnn_input_tensor_dic, qnn_output_ten
 # This script gets the QNN model input & output information from QNN converted model_net.json file, compare them with Onnx model
 # and inserts Cast, Transpose nodes to Onnx model if required
 def main():
-    parser = ArgumentParser(
-        "Generate Onnx model which includes the QNN context binary."
-    )
+    parser = ArgumentParser("Generate Onnx model which includes the QNN context binary.")
     parser.add_argument("-b", "--qnn_bin", help="Required. Path to Qnn context binary file.", required=True, type=str)
     parser.add_argument(
         "-q", "--qnn_json", help="Required. Path to Qnn converted model_net.json file.", required=True, type=str
     )
     parser.add_argument(
-        "--disable_embed_mode", action="store_true", default=False, help="Set embed_mode=1 which mean embed Qnn context binary into the onnx model. Otherwise, set context binary file path in the onnx model")
+        "--disable_embed_mode",
+        action="store_true",
+        default=False,
+        help="Set embed_mode=1 which mean embed Qnn context binary into the onnx model. Otherwise, set context binary file path in the onnx model",
+    )
     args = parser.parse_args()
 
     # Parse Qnn model_net.json file to get the graph input output information
@@ -114,7 +116,7 @@ def main():
         ep_cache_context_content = args.qnn_bin
         ctx_embed_mode = 0
     else:
-        with open(args.qnn_bin,'rb') as file:
+        with open(args.qnn_bin, "rb") as file:
             ep_cache_context_content = file.read()
         ctx_embed_mode = 1
 
@@ -125,22 +127,24 @@ def main():
     qnn_outputs = []
     for qnn_output in qnn_output_tensor_dic.values():
         qnn_outputs.append(helper.make_tensor_value_info(qnn_output.name, qnn_output.onnx_data_type, qnn_output.dim))
-    
+
     qnn_ep_context_node = helper.make_node(
-        'EPContext',
-        name='QnnContext',
+        "EPContext",
+        name="QnnContext",
         inputs=qnn_input_tensor_dic.keys(),
         outputs=qnn_output_tensor_dic.keys(),
         ep_cache_context=ep_cache_context_content,
         embed_mode=ctx_embed_mode,
-        source='Qnn',
-        domain='com.microsoft')
-    
-    graph_def = helper.make_graph([qnn_ep_context_node], 'qnn-onnx-model', qnn_inputs, qnn_outputs)
-    
-    model_def = helper.make_model(graph_def, producer_name='MS')
-    
-    onnx.save(model_def, args.qnn_json.replace('.json', '_qnn_ctx.onnx'))
+        source="Qnn",
+        domain="com.microsoft",
+    )
+
+    graph_def = helper.make_graph([qnn_ep_context_node], "qnn-onnx-model", qnn_inputs, qnn_outputs)
+
+    model_def = helper.make_model(graph_def, producer_name="MS")
+
+    onnx.save(model_def, args.qnn_json.replace(".json", "_qnn_ctx.onnx"))
+
 
 if __name__ == "__main__":
     main()
