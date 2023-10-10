@@ -254,6 +254,15 @@ stages:
           workingDirectory: '$(Build.SourcesDirectory)\js\node'
           displayName: 'Create NPM Package'
 
+      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+        - template: ../../templates/compliance.yml
+          parameters :
+            msbuildPlatform: ${{ parameters.sln_platform }}
+
+      - template: ../../templates/component-governance-component-detection-steps.yml
+        parameters :
+          condition : 'succeeded'
+
         - task: PublishPipelineArtifact@0
           displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
           inputs:
@@ -284,15 +293,6 @@ stages:
           inputs:
             targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.sln_platform }}-dml'
-
-      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-        - template: ../../templates/compliance.yml
-          parameters :
-            msbuildPlatform: ${{ parameters.sln_platform }}
-
-      - template: ../../templates/component-governance-component-detection-steps.yml
-        parameters :
-          condition : 'succeeded'
 
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'
