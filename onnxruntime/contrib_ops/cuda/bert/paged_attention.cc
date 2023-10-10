@@ -51,6 +51,7 @@ struct THEvent {
 };
 
 struct InputMetadata {
+  int64_t schedule_type;  // 0: vllm. 1:sarathi, 2:custom, 3:self-build
   int64_t block_tables;
   int64_t max_num_blocks_per_seq;
   int64_t context_lens;
