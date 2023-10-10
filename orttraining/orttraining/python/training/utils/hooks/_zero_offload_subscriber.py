@@ -81,6 +81,7 @@ class DummyWork(torch.distributed.distributed_c10d.Work):
 
     def result(self) -> List[torch.Tensor]:
         return []
+
     def synchronize(self):
         pass
 
@@ -89,7 +90,9 @@ def _get_ort_compatible_allgather_fn():
     from deepspeed.utils import get_caller_func
     # For Monkey patching the original function
     # Original code https://github.com/microsoft/DeepSpeed/blob/604d701e35548e5407b017c088bdc3760832c9e0/deepspeed/comm/comm.py#L315
-    def _ort_compatible_allgather_fn_zero_stage3(output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func()):
+    def _ort_compatible_allgather_fn_zero_stage3(
+            output_tensor, input_tensor, group=None, async_op=False, debug=get_caller_func()
+        ):
         if torch.onnx.is_in_onnx_export():
             return DummyWork()
 
