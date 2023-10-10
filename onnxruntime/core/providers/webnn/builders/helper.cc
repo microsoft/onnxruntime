@@ -145,7 +145,7 @@ bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
   // WebNN changed the name of the MLOperandDescriptor's data type from "type" to "dataType",
   // use a duplicate entry temporarily to workaround this API breaking issue.
-  // TODO: Remove lagecy "type" once all browsers implement the new "dataType".
+  // TODO: Remove legacy "type" once all browsers implement the new "dataType".
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
       desc.set("type", emscripten::val("uint8"));
