@@ -37,7 +37,7 @@ For build instructions for iOS devices, please see [Build for iOS](../build/ios.
 
 The ONNX Runtime API details are [here](../api).
 
-The CoreML EP can be used via the C or C++ APIs currently. Additional support via the Objective-C API is in progress.
+The CoreML EP can be used via the C, C++, Objective-C, C# and Java APIs. 
 
 The CoreML EP must be explicitly registered when creating the inference session. For example:
 
@@ -98,6 +98,7 @@ Following ops are supported by the CoreML Execution Provider,
 |ai.onnx:DepthToSpace|Only DCR mode DepthToSpace is supported.|
 |ai.onnx:Div||
 |ai.onnx:Flatten||
+|ai.onnx:Gather|Input `indices` with scalar value is not supported.|
 |ai.onnx:Gemm|Input B should be constant.|
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
@@ -114,7 +115,9 @@ Following ops are supported by the CoreML Execution Provider,
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
 |ai.onnx:Resize||
+|ai.onnx:Shape|Attribute `start` with non-default value is not supported.<br/>Attribute `end` is not supported.|
 |ai.onnx:Sigmoid||
+|ai.onnx:Slice|Inputs `starts`, `ends`, `axes`, and `steps` should be constant. Empty slice is not supported.|
 |ai.onnx:Squeeze||
 |ai.onnx:Sqrt||
 |ai.onnx:Sub||
