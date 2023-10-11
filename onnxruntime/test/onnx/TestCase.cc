@@ -770,16 +770,6 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
       if (disabled_tests.find(test_case_name) != disabled_tests.end()) return true;
 
-      if (broken_tests_keyword_set) {
-        for (auto iter2 = broken_tests_keyword_set->begin(); iter2 != broken_tests_keyword_set->end(); ++iter2) {
-          std::string keyword = *iter2;
-          if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
-            LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(test_case_name) << " as it is in broken test keywords";
-            return true;
-          }
-        }
-      }
-
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(node_data_root_path, filename_str);
 
       std::unique_ptr<TestModelInfo> model_info;
@@ -803,7 +793,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       // to skip some models like *-int8 or *-qdq
       if ((reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
           (reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-        LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(test_case_name_in_log) << " as it has training domain";
+        fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " as it has training domain");
         return true;
       }
 #endif
@@ -818,7 +808,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
         return true;
       });
       if (!has_test_data) {
-        LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(test_case_name_in_log) << " due to no test data";
+        fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " due to no test data");
         return true;
       }
 
@@ -829,8 +819,18 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
         if (iter != broken_tests->end() &&
             (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
              iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end())) {
-          LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(test_case_name_in_log) << " due to broken_tests";
+          fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " due to broken_tests");
           return true;
+        }
+      }
+
+      if (broken_tests_keyword_set) {
+        for (auto iter2 = broken_tests_keyword_set->begin(); iter2 != broken_tests_keyword_set->end(); ++iter2) {
+          std::string keyword = *iter2;
+          if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
+            fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " as it is in broken test keywords");
+            return true;
+          }
         }
       }
 
