@@ -186,7 +186,6 @@ JblasQ4GemmBatchDriver(const size_t M,
                                    StorageWeightS4ScaleFp32PerChannelN*)(ptr);
                 if (ptr->mCoreType == jblas::gemm::GemmCoreType::AVX512_VNNI_8x48) {
                     if (_cd->AMX_INT8()) {
-                        jblas::utils::request_perm_xtile_data();//TODO(yu) move to framework level, call once.
                         auto quanA = amxint8_s4pernkernl.getActivationPtr()->createStorage(M, K);
                         std::vector<int8_t> quanBuf(quanA.mSize);
                         quanA.assign(quanBuf.data());
