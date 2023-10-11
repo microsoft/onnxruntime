@@ -14,50 +14,31 @@ namespace cuda {
 
 #define POOLING_KERNEL(op_name, data_type, pool_type, since_version, op_domain, nhwc)              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                   \
-      op_name,                                                                                     \
-      op_domain,                                                                                   \
-      since_version,                                                                               \
-      data_type,                                                                                   \
-      kCudaExecutionProvider,                                                                      \
+      op_name, op_domain, since_version, data_type, kCudaExecutionProvider,                        \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
       Pool<data_type, pool_type, nhwc>);
 
 #define POOLING_KERNEL_VERSIONED(op_name, data_type, pool_type, since_version, end_version, op_domain, nhwc) \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                   \
-      op_name,                                                                                               \
-      op_domain,                                                                                             \
-      since_version,                                                                                         \
-      end_version,                                                                                           \
-      data_type,                                                                                             \
-      kCudaExecutionProvider,                                                                                \
-      (*KernelDefBuilder::Create())                                                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()),                                    \
+      op_name, op_domain, since_version, end_version, data_type, kCudaExecutionProvider,                     \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()),           \
       Pool<data_type, pool_type, nhwc>);
 
-#define POOLING_KERNEL_WITH_INDICES(op_name, data_type, pool_type, since_version, op_domain, nhwc) \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                   \
-      op_name,                                                                                     \
-      op_domain,                                                                                   \
-      since_version,                                                                               \
-      data_type,                                                                                   \
-      kCudaExecutionProvider,                                                                      \
-      (*KernelDefBuilder::Create())                                                                \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())                           \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),                            \
-      Pool<data_type, pool_type, nhwc>);
+#define POOLING_KERNEL_WITH_INDICES(op_name, data_type, pool_type, since_version, op_domain, nhwc)    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(op_name, op_domain, since_version, data_type, kCudaExecutionProvider, \
+                                (*KernelDefBuilder::Create())                                         \
+                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())    \
+                                    .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),     \
+                                Pool<data_type, pool_type, nhwc>);
 
-#define POOLING_KERNEL_VERSIONED_WITH_INDICES(op_name, data_type, pool_type, since_version, end_version, op_domain, nhwc) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                \
-      op_name,                                                                                                            \
-      op_domain,                                                                                                          \
-      since_version,                                                                                                      \
-      end_version,                                                                                                        \
-      data_type,                                                                                                          \
-      kCudaExecutionProvider,                                                                                             \
-      (*KernelDefBuilder::Create())                                                                                       \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())                                                  \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),                                                   \
-      Pool<data_type, pool_type, nhwc>);
+#define POOLING_KERNEL_VERSIONED_WITH_INDICES(op_name, data_type, pool_type, since_version, end_version, op_domain, \
+                                              nhwc)                                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(op_name, op_domain, since_version, end_version, data_type,                \
+                                          kCudaExecutionProvider,                                                   \
+                                          (*KernelDefBuilder::Create())                                             \
+                                              .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())        \
+                                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),         \
+                                          Pool<data_type, pool_type, nhwc>);
 
 POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 7, 9, kOnnxDomain, false)
 POOLING_KERNEL_VERSIONED(AveragePool, double, AveragePool, 7, 9, kOnnxDomain, false)
@@ -123,8 +104,7 @@ POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1, kMSInternalNHWCDoma
 
 class CudnnPoolingDescriptor final {
  public:
-  CudnnPoolingDescriptor() : desc_(nullptr) {
-  }
+  CudnnPoolingDescriptor() : desc_(nullptr) {}
 
   ~CudnnPoolingDescriptor() {
     if (desc_ != nullptr) {
@@ -136,12 +116,9 @@ class CudnnPoolingDescriptor final {
   CudnnPoolingDescriptor(const CudnnPoolingDescriptor&) = delete;
   CudnnPoolingDescriptor& operator=(const CudnnPoolingDescriptor&) = delete;
 
-  Status Set(cudnnPoolingMode_t mode,
-             const gsl::span<const int64_t>& kernel_shape,
-             const gsl::span<const int64_t>& pads,
-             const gsl::span<const int64_t>& strides) {
-    if (!desc_)
-      CUDNN_RETURN_IF_ERROR(cudnnCreatePoolingDescriptor(&desc_));
+  Status Set(cudnnPoolingMode_t mode, const gsl::span<const int64_t>& kernel_shape,
+             const gsl::span<const int64_t>& pads, const gsl::span<const int64_t>& strides) {
+    if (!desc_) CUDNN_RETURN_IF_ERROR(cudnnCreatePoolingDescriptor(&desc_));
 
     int rank = gsl::narrow_cast<int>(kernel_shape.size());
     InlinedVector<int> window(rank);
@@ -156,14 +133,8 @@ class CudnnPoolingDescriptor final {
     for (int i = 0; i < rank; i++) {
       stride[i] = gsl::narrow_cast<int>(strides[i]);
     }
-    CUDNN_RETURN_IF_ERROR(SetPoolingNdDescriptorHelper(
-        desc_,
-        mode,
-        CUDNN_PROPAGATE_NAN,
-        rank,
-        window.data(),
-        padding.data(),
-        stride.data()));
+    CUDNN_RETURN_IF_ERROR(SetPoolingNdDescriptorHelper(desc_, mode, CUDNN_PROPAGATE_NAN, rank, window.data(),
+                                                       padding.data(), stride.data()));
 
     return Status::OK();
   }
@@ -199,8 +170,7 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
   TensorShape y_shape(y_dims);
   Tensor* Y = context->Output(0, y_shape);
   // special case when there is a dim value of 0 in the shape.
-  if (y_shape.Size() == 0)
-    return Status::OK();
+  if (y_shape.Size() == 0) return Status::OK();
 
   auto x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
@@ -247,7 +217,8 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
     IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, context->GetComputeStream());
     auto temp_Y = GetScratchBuffer<float>(output_count, context->GetComputeStream());
     Impl_Cast<CudaT, float>(Stream(context), reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
-    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, temp_X.get(), &beta, y_tensor, temp_Y.get()));
+    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, temp_X.get(),
+                                               &beta, y_tensor, temp_Y.get()));
     Impl_Cast<float, CudaT>(Stream(context), temp_Y.get(), y_data, output_count);
   } else {
     const auto alpha = Consts<CudaT>::One;
@@ -257,7 +228,8 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
     ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>(), NHWC));
     ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>(), NHWC));
 
-    CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
+    CUDNN_RETURN_IF_ERROR(
+        PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
   }
 
   return Status::OK();
@@ -288,8 +260,7 @@ Status Pool<T, MaxPool<8>, NHWC>::ComputeInternal(OpKernelContext* context) cons
   Tensor* Y = context->Output(0, TensorShape(y_dims));
 
   // special case when there is a dim value of 0 in the shape.
-  if (Y->Shape().Size() == 0)
-    return Status::OK();
+  if (Y->Shape().Size() == 0) return Status::OK();
 
   auto x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
@@ -297,18 +268,8 @@ Status Pool<T, MaxPool<8>, NHWC>::ComputeInternal(OpKernelContext* context) cons
   Tensor* I = context->Output(1, TensorShape(y_dims));
   if (nullptr != I || !this->pool_attrs_.default_dilations) {
     auto i_data = nullptr == I ? nullptr : I->MutableData<int64_t>();
-    MaxPoolWithIndex<CudaT>(
-        this->Stream(context),
-        x_shape,
-        TensorShape(y_dims),
-        kernel_shape,
-        strides,
-        pads,
-        this->pool_attrs_.dilations,
-        this->pool_attrs_.storage_order,
-        x_data,
-        y_data,
-        i_data);
+    MaxPoolWithIndex<CudaT>(this->Stream(context), x_shape, TensorShape(y_dims), kernel_shape, strides, pads,
+                            this->pool_attrs_.dilations, this->pool_attrs_.storage_order, x_data, y_data, i_data);
   } else {
     ORT_RETURN_IF_ERROR((Pool<T, MaxPool<1>, NHWC>::ComputeInternal(context)));
   }

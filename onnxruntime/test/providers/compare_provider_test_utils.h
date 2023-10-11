@@ -3,6 +3,11 @@
 
 #pragma once
 
+#include <string>
+#include <memory>
+#include <vector>
+#include <unordered_map>
+
 #include "core/graph/constants.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"

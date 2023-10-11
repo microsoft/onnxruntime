@@ -2,7 +2,7 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
-#include "nhwc_cuda_helper.h"
+#include "test/providers/cuda/nhwc/nhwc_cuda_helper.h"
 
 namespace onnxruntime {
 namespace test {
@@ -45,8 +45,7 @@ struct ConvTransposeOp {
     }
 
     std::vector<int64_t> output_dims = {
-        input_dims[0],
-        channels,
+        input_dims[0], channels,
         (kernel_shape[1] - 1) * dilations[1] + (input_dims[2] - 1) * strides[1] - (padding[1] + padding[0]) + 1,
         (kernel_shape[0] - 1) * dilations[0] + (input_dims[3] - 1) * strides[0] - (padding[3] + padding[2]) + 1};
     std::vector<T> output_data = FillZeros<T>(output_dims);
@@ -57,43 +56,35 @@ struct ConvTransposeOp {
 };
 
 TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcGroupNoBias) {
-  auto op = ConvTransposeOp<TypeParam>{
-      .input_dims = {8, 8, 32, 32},
-      .kernel_shape = {3, 3},
-      .channels = 16,
-      .group = 4};
+  auto op =
+      ConvTransposeOp<TypeParam>{.input_dims = {8, 8, 32, 32}, .kernel_shape = {3, 3}, .channels = 16, .group = 4};
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcBias) {
-  auto op = ConvTransposeOp<TypeParam>{
-      .input_dims = {1, 8, 80, 80},
-      .kernel_shape = {5, 5},
-      .channels = 16,
-      .bias = true};
+  auto op =
+      ConvTransposeOp<TypeParam>{.input_dims = {1, 8, 80, 80}, .kernel_shape = {5, 5}, .channels = 16, .bias = true};
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcPad) {
-  auto op = ConvTransposeOp<TypeParam>{
-      .input_dims = {1, 16, 8, 8},
-      .kernel_shape = {3, 3},
-      .channels = 32,
-      .padding = {2, 2, 2, 2},
-      .output_padding = {}};
+  auto op = ConvTransposeOp<TypeParam>{.input_dims = {1, 16, 8, 8},
+                                       .kernel_shape = {3, 3},
+                                       .channels = 32,
+                                       .padding = {2, 2, 2, 2},
+                                       .output_padding = {}};
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcOutPad) {
-  auto op = ConvTransposeOp<TypeParam>{
-      .input_dims = {1, 32, 8, 8},
-      .kernel_shape = {3, 3},
-      .channels = 32,
-      .strides = {2, 2},
-      .output_padding = {1, 1, 1, 1}};
+  auto op = ConvTransposeOp<TypeParam>{.input_dims = {1, 32, 8, 8},
+                                       .kernel_shape = {3, 3},
+                                       .channels = 32,
+                                       .strides = {2, 2},
+                                       .output_padding = {1, 1, 1, 1}};
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }

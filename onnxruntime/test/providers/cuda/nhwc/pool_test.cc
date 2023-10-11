@@ -2,7 +2,7 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
-#include "nhwc_cuda_helper.h"
+#include "test/providers/cuda/nhwc/nhwc_cuda_helper.h"
 
 namespace onnxruntime {
 namespace test {
@@ -30,8 +30,7 @@ struct PoolOp {
     test->AddAttribute("pads", padding);
 
     std::vector<int64_t> output_dims = {
-        input_dims[0],
-        channels,
+        input_dims[0], channels,
         (kernel_shape[1] - 1) + (input_dims[2] - 1) * strides[1] - (padding[1] + padding[0]) + 1,
         (kernel_shape[0] - 1) + (input_dims[3] - 1) * strides[0] - (padding[3] + padding[2]) + 1};
     std::vector<T> output_data = FillZeros<T>(output_dims);
@@ -73,24 +72,21 @@ TYPED_TEST(CudaNhwcTypedTest, GlobalMaxPoolNhwc) {
   test->AddOutput<TypeParam>("Y", output_dims, output_data);
 
   std::vector<std::shared_ptr<IExecutionProvider>> execution_providers;
-  OrtCUDAProviderOptionsV2 nhwc = {
-      .prefer_nhwc = true};
+  OrtCUDAProviderOptionsV2 nhwc = {.prefer_nhwc = true};
   execution_providers.push_back(CudaExecutionProviderWithOptions(&nhwc));
 
   double error_tolerance = 1e-3;
-  OrtCUDAProviderOptionsV2 nchw = {
-      .prefer_nhwc = false};
+  OrtCUDAProviderOptionsV2 nchw = {.prefer_nhwc = false};
   auto source_ep = CudaExecutionProviderWithOptions(&nchw);
   test->CompareEPs(std::move(source_ep), execution_providers, error_tolerance);
 }
 
 TYPED_TEST(CudaNhwcTypedTest, AveragePoolNhwcPad) {
-  auto op = PoolOp<TypeParam>{
-      .pooling_type = "AveragePool",
-      .input_dims = {1, 16, 64, 64},
-      .kernel_shape = {3, 3},
-      .channels = 16,
-      .padding = {2, 2, 2, 2}};
+  auto op = PoolOp<TypeParam>{.pooling_type = "AveragePool",
+                              .input_dims = {1, 16, 64, 64},
+                              .kernel_shape = {3, 3},
+                              .channels = 16,
+                              .padding = {2, 2, 2, 2}};
 
   MAKE_PROVIDERS()
 }

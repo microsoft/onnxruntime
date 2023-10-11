@@ -171,6 +171,8 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudaStream_t DefaultCudaStream() const {
+    // this will return the CUDA EP level stream which can differ from the actual compute tasks stream
+    // the compute task stream is supplied within OpKernelContext during inference
     return provider_->ComputeStream();
   }
 

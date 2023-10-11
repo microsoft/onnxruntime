@@ -2,7 +2,7 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
-#include "nhwc_cuda_helper.h"
+#include "test/providers/cuda/nhwc/nhwc_cuda_helper.h"
 
 namespace onnxruntime {
 namespace test {
@@ -41,8 +41,7 @@ struct ConvOp {
     test->AddAttribute("pads", padding);
 
     std::vector<int64_t> output_dims = {
-        input_dims[0],
-        channels,
+        input_dims[0], channels,
         ComputeOutputShape(input_dims[2], strides[0], kernel_shape[0], dilations[0], padding[0], padding[1]),
         ComputeOutputShape(input_dims[3], strides[1], kernel_shape[1], dilations[1], padding[2], padding[3])};
     std::vector<T> output_data = FillZeros<T>(output_dims);
@@ -53,31 +52,20 @@ struct ConvOp {
 };
 
 TYPED_TEST(CudaNhwcTypedTest, ConvNhwcBias) {
-  auto op = ConvOp<TypeParam>{
-      .input_dims = {1, 16, 64, 64},
-      .kernel_shape = {3, 3},
-      .channels = 16,
-      .bias = true};
+  auto op = ConvOp<TypeParam>{.input_dims = {1, 16, 64, 64}, .kernel_shape = {3, 3}, .channels = 16, .bias = true};
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvNhwcGroupNoBias) {
-  auto op = ConvOp<TypeParam>{
-      .input_dims = {1, 16, 64, 64},
-      .kernel_shape = {3, 3},
-      .channels = 16,
-      .group = 4};
+  auto op = ConvOp<TypeParam>{.input_dims = {1, 16, 64, 64}, .kernel_shape = {3, 3}, .channels = 16, .group = 4};
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvNhwcPadding) {
-  auto op = ConvOp<TypeParam>{
-      .input_dims = {2, 4, 64, 64},
-      .kernel_shape = {3, 3},
-      .channels = 4,
-      .padding = {4, 4, 4, 4}};
+  auto op =
+      ConvOp<TypeParam>{.input_dims = {2, 4, 64, 64}, .kernel_shape = {3, 3}, .channels = 4, .padding = {4, 4, 4, 4}};
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }

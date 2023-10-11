@@ -207,7 +207,7 @@ class Conv : public CudaKernel {
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
   static const cudnnConvolutionFwdAlgo_t kAllAlgos[];
   std::unique_ptr<Tensor> W_;
-  bool is_nhwc_domain_; // prepack is only needed for the Conv in kMSInternalNHWCDomain
+  bool is_nhwc_domain_;  // prepack is only needed for the Conv in kMSInternalNHWCDomain
 };
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,

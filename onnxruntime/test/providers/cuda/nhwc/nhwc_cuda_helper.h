@@ -2,6 +2,7 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
+#include <vector>
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/common.h"
 
@@ -12,13 +13,11 @@
 
 #define MAKE_PROVIDERS_EPS(eps)                                           \
   std::vector<std::shared_ptr<IExecutionProvider>> execution_providers;   \
-  OrtCUDAProviderOptionsV2 nhwc = {                                       \
-      .prefer_nhwc = true};                                               \
+  OrtCUDAProviderOptionsV2 nhwc = {.prefer_nhwc = true};                  \
   execution_providers.push_back(CudaExecutionProviderWithOptions(&nhwc)); \
                                                                           \
   double error_tolerance = eps;                                           \
-  OrtCUDAProviderOptionsV2 nchw = {                                       \
-      .prefer_nhwc = false};                                              \
+  OrtCUDAProviderOptionsV2 nchw = {.prefer_nhwc = false};                 \
   auto source_ep = CudaExecutionProviderWithOptions(&nchw);               \
   auto test = op.get_test();                                              \
   test->CompareEPs(std::move(source_ep), execution_providers, error_tolerance);
@@ -37,8 +36,7 @@ namespace onnxruntime {
 namespace test {
 
 template <typename T>
-class CudaNhwcTypedTest : public ::testing::Test {
-};
+class CudaNhwcTypedTest : public ::testing::Test {};
 
 using CudaNhwcTestTypes = ::testing::Types<float, MLFloat16>;  // double,
 TYPED_TEST_SUITE(CudaNhwcTypedTest, CudaNhwcTestTypes);
