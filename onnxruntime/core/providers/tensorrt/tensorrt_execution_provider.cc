@@ -2387,7 +2387,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name,
             &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+            input_shape_ranges_[context->node_name], dds_output_allocator_map_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
@@ -2417,6 +2417,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
+      auto& dds_output_allocator_map = trt_state->dds_output_allocator_map;
       auto trt_builder = trt_state->builder->get();
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
@@ -2728,17 +2729,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         const auto tensor_shapes = tensor_info.GetShape();
 
-        // Set all input dimensions before all bindings can be allocated
-        nvinfer1::Dims dims = trt_context->getTensorShape(input_name);
-        int nb_dims = dims.nbDims;
         if (input_names.count(input_name) == 1) {
           if (trt_engine->isShapeInferenceIO(input_name)) {
+            // Bind input tensor which is shape tensor
             if (!trt_context->setTensorAddress(input_name, &tensor_shape_values[input_name][0])) {
               std::string error_input_name = input_name;
               ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                                  "TensorRT EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" + error_input_name + "'"));
             }
           } else {
+            // Set shape for input tensor which is execution tensor
+            nvinfer1::Dims dims = trt_context->getTensorShape(input_name);
+            int nb_dims = dims.nbDims;
             for (int j = 0, end = nb_dims; j < end; ++j) {
               dims.d[j] = static_cast<int32_t>(tensor_shapes[j]);
             }
@@ -2868,18 +2870,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       /*
        * Set output shapes and bind output buffers
        */
-      std::vector<int> output_dim_sizes(num_outputs, 1);
       std::unordered_map<char const*, void*> buffers;
-      buffers.reserve(num_outputs);
-
-      //char const* check[100];
-      //auto o = trt_context->inferShapes(num_outputs, check);
-      
+      buffers.reserve(num_outputs);     
       using OutputOrtValue = Ort::UnownedValue;
-      std::vector<OutputOrtValue> output_tensors;
+      std::unordered_map<size_t, OutputOrtValue> output_tensors;
       output_tensors.reserve(num_outputs);
+      std::unordered_map<size_t, int> output_dim_sizes;
+      output_dim_sizes.reserve(num_outputs);
       std::unordered_set<char const*> dds_output_set;
-      std::unordered_map<char const*, std::unique_ptr<OutputAllocator>> allocator_map;
 
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         char const* output_name = output_binding_names[i];
@@ -2890,12 +2888,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           output_index = index_iter->second;
         }
 
-        // Set all output dimensions before all bindings can be allocated
+        // Get output shape
         nvinfer1::Dims dims = trt_context->getTensorShape(output_name);
         int nb_dims = dims.nbDims;
-        bool is_dds_output = false; // if output tensor has data dependent shape
+        bool is_dds_output = false;
         std::vector<int64_t> output_shapes(nb_dims);
         for (int j = 0, end = nb_dims; j < end; ++j) {
+          // data-dependent shape
           if (dims.d[j] == -1) {
             is_dds_output = true;
             dds_output_set.emplace(output_name);
@@ -2911,14 +2910,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
 
         // If the output tensor has data-dependent shape, TRT EP will provide an IOutputAllocator for enqueueV3 to dynamically allocate memory buffer.
-        // Otherwise, ORT will pre-allocate memory buffer for enqueueV3.
+        // Once enqueueV3 returns, TRT EP will then bind the output allocation to ORT kernel context output. 
+        // (Please note that we take strategy A mentioned in https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#dynamic-shaped-output,
+        //  which we defer allocation until the size is known and don't call IExecution::setTensorAddress)    
+        //  
+        // Otherwise, if the shape of the output tensor is known prioir to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
         if (is_dds_output) {
-          auto allocator = std::make_unique<OutputAllocator>(alloc);
-          trt_context->setOutputAllocator(output_name, allocator.get());
-          allocator_map.emplace(output_name, std::move(allocator));
+          if (dds_output_allocator_map.find(output_name) == dds_output_allocator_map.end()) {
+            auto allocator = new OutputAllocator(alloc);
+            trt_context->setOutputAllocator(output_name, allocator);
+            dds_output_allocator_map[output_name] = allocator;
+          }
         } else {
-          output_tensors.push_back(ctx.GetOutput(output_index, output_shapes));
-          auto& output_tensor = output_tensors.back();
+          output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
+          auto& output_tensor = output_tensors[i];
           switch (output_type) {
             case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
               auto output_tensor_ptr = output_tensor.GetTensorMutableData<float>();
@@ -3058,38 +3063,89 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
 
       // Bridge TRT output and ORT output
-      // (1) Bind TensorRT DDS output to ORT kernel context output
-      // (2) Cast TensorRT INT32 output back to ORT INT64 output
+      // (1) Cast TensorRT INT32 output back to ORT INT64 output
+      // (2) Bind TensorRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
+      if (dds_output_set.size() > 0) {
+        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+      }
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         char const* output_name = output_binding_names[i];
-
-        if (dds_output_set.find(output_name) != dds_output_set.end()) {
-          auto& allocator = allocator_map[output_name];
-          auto& shape = allocator->getOutputShape();
-          Ort::Value output_value = Ort::Value::CreateTensor(&mem_info, reinterpret_cast<float*>(allocator->getBuffer()), allocator->getSize(),
-                                                             shape.data(), shape.size());
-          size_t output_index = 0;
-          const auto& index_iter = output_indexes.find(output_name);
-          if (index_iter != output_indexes.end()) {
-            output_index = index_iter->second;
-          }
-        }
 
         size_t output_type = 0;
         const auto& iter = output_types.find(output_name);
         if (iter != output_types.end()) {
           output_type = iter->second;
         }
-        auto& output_tensor = output_tensors[i];
-        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
-          auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
-          if (output_tensor_ptr != nullptr) {
-            cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+
+        if (dds_output_set.find(output_name) != dds_output_set.end()) {
+          auto allocator = dds_output_allocator_map[output_name];
+          auto& shape = allocator->getOutputShape();
+          OrtValue* out = nullptr;
+          size_t output_index = 0;
+          const auto& index_iter = output_indexes.find(output_name);
+          if (index_iter != output_indexes.end()) {
+            output_index = index_iter->second;
           }
-        } else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
-          auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
-          if (output_tensor_ptr != nullptr) {
-            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+
+          switch (output_type) {
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
+              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<float>::type, &out));
+              break;
+            }
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
+              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<uint16_t>::type, &out));
+              break;
+            }
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
+              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<bool>::type, &out));
+              break;
+            }
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
+              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<int8_t>::type, &out));
+              break;
+            }
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
+              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<uint8_t>::type, &out));
+              break;
+            }
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<int32_t>::type, &out));
+              break;
+            }
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<int64_t>::type, &out));
+              break;
+            }
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
+              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<double>::type, &out));
+              break;
+            }
+            default: {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
+            }
+          }
+          ctx.SetOutput(output_index, *out);
+        } else {
+          auto& output_tensor = output_tensors[i];
+          if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+            auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
+            if (output_tensor_ptr != nullptr) {
+              cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+            }
+          } else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
+            auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
+            if (output_tensor_ptr != nullptr) {
+              cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+            }
           }
         }
       }

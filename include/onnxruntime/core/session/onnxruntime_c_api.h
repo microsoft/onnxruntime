@@ -4413,6 +4413,13 @@ struct OrtApi {
    * \since Version 1.16.
    */
   ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
+
+  /** \brief Used for custom operators, set an output of a kernel
+   *
+   * \see ::OrtCustomOp
+   */
+  ORT_API2_STATUS(KernelContext_SetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
+                  _In_ const OrtValue& ort_value);
 };
 
 /*
