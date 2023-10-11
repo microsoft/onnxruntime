@@ -881,7 +881,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);
     return onnxruntime::DMLProviderFactoryCreator::CreateFromProviderOptions(
-              cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
         ->CreateProvider();
 #endif
   } else if (type == kNnapiExecutionProvider) {
