@@ -797,7 +797,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
 
       auto test_case_dir = model_info->GetDir();
-      auto full_test_case_name = test_case_name + L" in " + test_case_dir;
+      auto full_test_case_name = test_case_name + ORT_TSTR(" in ") + test_case_dir;
 
 #if !defined(ORT_MINIMAL_BUILD)
       // to skip some models like *-int8 or *-qdq
