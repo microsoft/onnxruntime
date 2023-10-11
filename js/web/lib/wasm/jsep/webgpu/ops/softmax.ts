@@ -22,12 +22,6 @@ export interface SoftmaxAttributes extends AttributeWithCacheKey {
   readonly axis: number;
 }
 
-export const softmaxProgramMetadata = {
-  name: 'Softmax',
-  inputTypes: [GpuDataType.default]
-};
-
-
 const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttributes): ProgramInfo => {
   const dataType = tensorTypeToWsglStorageType(input.dataType);
   const shape = input.dims;
@@ -124,21 +118,20 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
         }
       }`;
   return {
-    ...softmaxProgramMetadata,
-    outputs: [{dims: shape, dataType: input.dataType, gpuDataType: GpuDataType.default}],
+    name: 'Softmax',
+    inputTypes: [GpuDataType.default],
+    getRunData: () => ({
+      outputs: [{dims: shape, dataType: input.dataType, gpuDataType: GpuDataType.default}],
+      dispatchGroup: {x: rows}
+    }),
     getShaderSource,
-    dispatchGroup: () => ({x: rows})
   };
 };
 
 
 export const softmax = (context: ComputeContext, attributes: SoftmaxAttributes): void => {
   validateInputs(context.inputs);
-  context.compute({
-    ...softmaxProgramMetadata,
-    cacheHint: attributes.cacheKey,
-    get: () => createSoftmaxProgramInfo(context.inputs[0], attributes)
-  });
+  context.compute(createSoftmaxProgramInfo(context.inputs[0], attributes));
 };
 
 export const parseSoftmaxAttributes = (attributes: Record<string, unknown>): SoftmaxAttributes =>

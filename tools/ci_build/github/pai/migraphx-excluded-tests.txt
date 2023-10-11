@@ -1,2 +1,0 @@
-GatherOpTest.Gather_invalid_index_cpu
-Scatter.InvalidIndex

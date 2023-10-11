@@ -2714,6 +2714,7 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::KernelContext_GetResource,
     // End of Version 16 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    &OrtApis::SetUserLoggingFunction,
     &OrtApis::KernelContext_SetOutput,
 };
 
@@ -2744,6 +2745,7 @@ static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 22
 static_assert(offsetof(OrtApi, GetSessionConfigEntry) / sizeof(void*) == 238, "Size of version 14 API cannot change");
 static_assert(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*) == 254, "Size of version 15 API cannot change");
 static_assert(offsetof(OrtApi, KernelContext_GetResource) / sizeof(void*) == 265, "Size of version 16 API cannot change");
+static_assert(offsetof(OrtApi, SetUserLoggingFunction) / sizeof(void*) == 266, "Size of version 17 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.17.0",

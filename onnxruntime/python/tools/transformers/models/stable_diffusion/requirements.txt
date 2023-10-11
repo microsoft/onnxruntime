@@ -5,6 +5,7 @@ accelerate
 onnx>=1.13.0
 coloredlogs
 packaging
+# Use newer version of protobuf might cause crash
 protobuf==3.20.3
 psutil
 sympy
