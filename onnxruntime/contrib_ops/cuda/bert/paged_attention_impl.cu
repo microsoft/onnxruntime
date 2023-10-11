@@ -343,10 +343,14 @@ class KVQuantProcessor {
       const VecT* ptr,
       const int block_id,
       const int in_block_token_id,
+      const int valid_tokens_in_block,
       const int head_id,
       const int in_head_idx) const {
-    const kv_quant_param_t* kv_block = kv_quant_params_cache_ + (int64_t)(block_id * 2) * k_or_v_stride_;
-    float unit_scale = (float)*(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
+    const kv_quant_param_t* kv_param_block = kv_quant_params_cache_ + (int64_t)(block_id * 2) * k_or_v_stride_;
+    float unit_scale = 0.0f;
+    if (in_block_token_id < valid_tokens_in_block) {
+      unit_scale = (float)*(kv_param_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
+    }
     return LoadQuantVec(ptr, unit_scale);
   }
 
@@ -357,12 +361,12 @@ class KVQuantProcessor {
       const int in_block_token_id,
       const int head_id,
       const int in_head_idx) const {
-    const kv_quant_param_t* kv_block = kv_quant_params_cache_ + (int64_t)(block_id * 2 + 1) * k_or_v_stride_;
+    const kv_quant_param_t* kv_param_block = kv_quant_params_cache_ + (int64_t)(block_id * 2 + 1) * k_or_v_stride_;
     if constexpr (std::is_same<kv_quant_param_t, float>::value) {
-      const VecT float_scale_vec = *(const VecT*)(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
+      const VecT float_scale_vec = *(const VecT*)(kv_param_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
       return LoadQuantVecByScales(ptr, float_scale_vec);
     } else {
-      const VecT scale_vec = *(const VecT*)(kv_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
+      const VecT scale_vec = *(const VecT*)(kv_param_block + (head_id * head_stride_ + (in_head_idx / kv_quant_chunk_size_) * block_size_ + in_block_token_id));
       using ScaleFp32Vec = typename FloatVec<VecT>::Type;
       const ScaleFp32Vec float_scale_vec = to_float(scale_vec);
       return LoadQuantVecByScales(ptr, float_scale_vec);
@@ -506,6 +510,7 @@ __global__ void single_query_cached_kv_attention_kernel(
   // dot product with the query.
   for (int block_idx = warp_idx; block_idx < num_blocks; block_idx += NUM_WARPS) {
     const int physical_block_number = block_table[block_idx];
+    const int valid_tokens_in_block = max(0, min(context_len - block_idx * BLOCK_SIZE, BLOCK_SIZE));
 
     // Load a key to registers.
     // Each thread in a thread group has a different part of the key.
@@ -791,11 +796,11 @@ __global__ void quantize_reshape_and_cache_kernel(
   assert(head_size % kv_quant_chunk_size == 0);
   assert(kv_quant_chunk_size % VEC_SIZE == 0);
   assert(head_size % VEC_SIZE == 0);
-  assert(x % 4 == 0);
+  assert(x % VEC_SIZE == 0);
 
   // round it up to power of 2
-  int num_threads_per_chunk = max(WARP_SIZE, kv_quant_chunk_size / VEC_SIZE);
-  if ((num_threads_per_chunk ^ (num_threads_per_chunk - 1)) != 0) {
+  int num_threads_per_chunk = min(WARP_SIZE, kv_quant_chunk_size / VEC_SIZE);
+  if ((num_threads_per_chunk & (num_threads_per_chunk - 1)) != 0) {
     num_threads_per_chunk = 1 << (32 - __clz(num_threads_per_chunk));
   }
   const int num_chunks_per_head = head_size / kv_quant_chunk_size;
@@ -829,30 +834,39 @@ __global__ void quantize_reshape_and_cache_kernel(
   float2 max_kv_fp32 = __half22float2(max_kv_fp16);
   float inv_unit_scale_k = max_kv_fp16.x ? (127.0f / max_kv_fp32.x) : 0.0f;
   float inv_unit_scale_v = max_kv_fp16.y ? (127.0f / max_kv_fp32.y) : 0.0f;
-  if (quant_chunk_offset == 0 && quant_chunk_idx < num_chunks_per_head) {
-    int stride = block_size * (head_size / kv_quant_chunk_size);
-    int64_t k_offset = ((int64_t)block_idx * num_heads * 2 + head_idx) * stride + quant_chunk_idx * block_size + block_offset;
-    int64_t v_offset = k_offset + num_heads * stride;
-    if (use_fp32_scales) {
-      *((float*)kv_param_cache + k_offset) = inv_unit_scale_k;
-      *((float*)kv_param_cache + v_offset) = inv_unit_scale_v;
-    } else {
-      *((half*)kv_param_cache + k_offset) = __float2half(inv_unit_scale_k);
-      *((half*)kv_param_cache + v_offset) = __float2half(inv_unit_scale_v);
+  if (quant_chunk_idx < num_chunks_per_head) {
+
+    if (quant_chunk_offset == 0) {
+      int stride = block_size * (head_size / kv_quant_chunk_size);
+      int64_t k_offset = ((int64_t)block_idx * num_heads * 2 + head_idx) * stride + quant_chunk_idx * block_size + block_offset;
+      int64_t v_offset = k_offset + num_heads * stride;
+      if (use_fp32_scales) {
+        *((float*)kv_param_cache + k_offset) = inv_unit_scale_k;
+        *((float*)kv_param_cache + v_offset) = inv_unit_scale_v;
+      } else {
+        *((half*)kv_param_cache + k_offset) = __float2half(inv_unit_scale_k);
+        *((half*)kv_param_cache + v_offset) = __float2half(inv_unit_scale_v);
+      }
     }
-  }
 
-  int64_t tgt_kv_idx = ((int64_t)block_idx * num_heads * +head_idx) * head_size * block_size;
-  for (int iter = 0; iter < num_iters; iter++) {
-    QVec ch2x2_k = Quantize(k_vecs[iter], inv_unit_scale_k);
-    QVec ch2x2_v = Quantize(v_vecs[iter], inv_unit_scale_v);
+    int64_t tgt_kv_idx = ((int64_t)block_idx * num_heads + head_idx) * head_size * block_size;
+    for (int iter = 0; iter < num_iters; iter++) {
+      int h_in_chunk = quant_chunk_offset * VEC_SIZE + iter * num_h_per_iter_per_chunk;
+      if (h_in_chunk < kv_quant_chunk_size) {
+        QVec ch2x2_k = Quantize(k_vecs[iter], inv_unit_scale_k);
+        QVec ch2x2_v = Quantize(v_vecs[iter], inv_unit_scale_v);
 
-    int h = quant_chunk_offset * VEC_SIZE + iter * num_h_per_iter_per_chunk + quant_chunk_idx * kv_quant_chunk_size;
-    const int tgt_key_idx = tgt_kv_idx + (h / x) * block_size * x + block_offset * x + (h % x);
-    const int tgt_value_idx = tgt_kv_idx * h * block_size + block_offset;
+        int h = quant_chunk_offset * VEC_SIZE + iter * num_h_per_iter_per_chunk + quant_chunk_idx * kv_quant_chunk_size;
+        const int tgt_key_idx = tgt_kv_idx + ((h / x) * block_size * x + block_offset * x + (h % x));
+        const int tgt_value_idx = tgt_kv_idx + (h * block_size + block_offset);
 
-    *(QVec*)(&key_cache[tgt_key_idx]) = ch2x2_k;
-    *(QVec*)(&value_cache[tgt_value_idx]) = ch2x2_v;
+        *(QVec*)(&key_cache[tgt_key_idx]) = ch2x2_k;
+        value_cache[tgt_value_idx] = ch2x2_v.x.x;
+        value_cache[tgt_value_idx + 1 * block_size] = ch2x2_v.x.y;
+        value_cache[tgt_value_idx + 2 * block_size] = ch2x2_v.y.x;
+        value_cache[tgt_value_idx + 3 * block_size] = ch2x2_v.y.y;
+      }
+    }
   }
 }
 
