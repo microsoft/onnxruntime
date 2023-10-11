@@ -3,16 +3,13 @@
 // import {InferenceSession, Tensor} from 'onnxruntime-common';
 import {InferenceSession} from 'onnxruntime-common';
 
-import {SerializableModeldata, SerializableSessionMetadata } from './proxy-messages';
-// import {setRunOptions} from './run-options';
+import {SerializableModeldata, SerializableSessionMetadata} from './proxy-messages';
 import {setSessionOptions} from './session-options';
-// import {tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
 import {getInstance} from './wasm-factory';
 import {checkLastError} from './wasm-utils';
-// import {allocWasmString, checkLastError} from './wasm-utils';
-// import { prepareInputOutputTensor } from './wasm-core-impl';
 
-const NO_TRAIN_FUNCS_MSG = 'Built without training APIs enabled. Make sure to use the onnxruntime-training package for training functionality.');
+const NO_TRAIN_FUNCS_MSG =
+    'Built without training APIs enabled. Make sure to use the onnxruntime-training package for training functionality.';
 
 export const createCheckpointHandle = (checkpointData: SerializableModeldata): number => {
   const wasm = getInstance();
@@ -93,7 +90,7 @@ export const createTrainingSessionHandle =
       }
     };
 
-    const getTrainingModelInputOutputNames = (trainingSessionId: number): [string[], number[], string[], number[]] => {
+const getTrainingModelInputOutputNames = (trainingSessionId: number): [string[], number[], string[], number[]] => {
   const [inputCount, outputCount] = getTrainingModelInputOutputCount(trainingSessionId);
 
   const [inputNames, inputNamesUTF8Encoded] = getTrainingNamesLoop(trainingSessionId, inputCount, true);
@@ -102,7 +99,7 @@ export const createTrainingSessionHandle =
   return [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded];
 }
 
-    const getTrainingModelInputOutputCount = (trainingSessionId: number): [number, number] => {
+const getTrainingModelInputOutputCount = (trainingSessionId: number): [number, number] => {
   const wasm = getInstance();
   const stack = wasm.stackSave();
   try {
@@ -143,15 +140,17 @@ const getTrainingNamesLoop = (trainingSessionId: number, count: number, isInput:
   return [names, namesUTF8Encoded];
 }
 
-export const releaseTrainingSessionAndCheckpoint = (checkpointId: number, sessionId: number, inputNamesUTF8Encoded: number[], outputNamesUTF8Encoded: number[]): void => {
-  const wasm = getInstance();
-  inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-  outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+export const releaseTrainingSessionAndCheckpoint =
+    (checkpointId: number, sessionId: number, inputNamesUTF8Encoded: number[], outputNamesUTF8Encoded: number[]):
+        void => {
+          const wasm = getInstance();
+          inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+          outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
 
-  if (wasm._OrtTrainingReleaseCheckpoint) {
-    wasm._OrtTrainingReleaseCheckpoint(checkpointId);
-  }
-  if (wasm._OrtTrainingReleaseSession) {
-    wasm._OrtTrainingReleaseSession(sessionId);
-  }
-}
+          if (wasm._OrtTrainingReleaseCheckpoint) {
+            wasm._OrtTrainingReleaseCheckpoint(checkpointId);
+          }
+          if (wasm._OrtTrainingReleaseSession) {
+            wasm._OrtTrainingReleaseSession(sessionId);
+          }
+        }

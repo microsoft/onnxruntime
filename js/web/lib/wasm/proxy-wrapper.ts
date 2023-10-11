@@ -264,4 +264,4 @@ export const isOrtEnvInitialized = async(): Promise<boolean> => {
   } else {
     return core.isOrtEnvInitialized();
   }
-}
+};

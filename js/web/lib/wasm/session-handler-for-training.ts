@@ -61,12 +61,13 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
   }
 
   async dispose(): Promise<void> {
-    return releaseTrainingSessionAndCheckpoint(this.checkpointId, this.sessionId, this.inputEncodedNames, this.outputEncodedNames);
+    return releaseTrainingSessionAndCheckpoint(
+        this.checkpointId, this.sessionId, this.inputEncodedNames, this.outputEncodedNames);
   }
 
   async runTrainStep(
       _feeds: SessionHandler.FeedsType, _fetches: SessionHandler.FetchesType,
       _options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
-        throw new Error('Method not implemented yet.');
+    throw new Error('Method not implemented yet.');
   }
 }
