@@ -324,11 +324,40 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         start_offset = len(tensor_input_shapes) - len(partitioned_params)
         for index, param in enumerate(partitioned_params):
             tensor_output_shapes[start_offset + index] = list(param.ds_shape)
-            tensor_output_dtypes[start_offset + index] = pytorch_dtype_to_onnx(param.dtype)
+            tensor_output_dtypes[start_offset + index] = int(pytorch_dtype_to_onnx(param.dtype))
         assert len(tensor_output_shapes) == len(tensor_input_shapes)
         assert len(tensor_output_dtypes) == len(tensor_input_dtypes)
 
         return tensor_output_shapes, tensor_output_dtypes
+
+    @staticmethod
+    def alias_input(node_proto_str: str):
+        node = onnx.NodeProto()
+        node.ParseFromString(node_proto_str)
+        input_pointer_scalars_attr_name = "input_pointer_scalars"
+        found = [attr for attr in node.attribute if attr.name == input_pointer_scalars_attr_name]
+        assert len(found) == 1
+        input_pointer_scalars = found[0].ints
+        # Restore the nn.Module from the pointer.
+        module = ctypes.cast(input_pointer_scalars[0], ctypes.py_object).value
+        partitioned_params = _get_params_for_current_module(module)
+
+        non_tensor_fw_input_count = 6
+        fw_output_count = len(node.output) - 1  # exclude the first output appended in ONNX
+        fw_alias_map = [-1] * fw_output_count
+        bw_alias_map = [-1] * (non_tensor_fw_input_count + len(node.input))
+
+        for i in range(fw_output_count - len(partitioned_params)):
+            fw_alias_map[i] = i + non_tensor_fw_input_count
+
+        tensor_input_index = 0
+        for i in range(len(bw_alias_map) - len(partitioned_params)):
+            if i < non_tensor_fw_input_count:
+                continue
+            bw_alias_map[i] = tensor_input_index
+            tensor_input_index += 1
+
+        return fw_alias_map, bw_alias_map
 
 
 class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
@@ -383,6 +412,27 @@ class ORTZeROOffloadPostForwardFunction(torch.autograd.Function):
         tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
     ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
+
+    @staticmethod
+    def alias_input(node_proto_str: str):
+        node = onnx.NodeProto()
+        node.ParseFromString(node_proto_str)
+        non_tensor_fw_input_count = 4
+        fw_output_count = len(node.output) - 1  # exclude the first output appended in ONNX
+        fw_alias_map = [-1] * fw_output_count
+        bw_alias_map = [-1] * (non_tensor_fw_input_count + len(node.input))
+
+        for i in range(fw_output_count):
+            fw_alias_map[i] = i + non_tensor_fw_input_count
+
+        tensor_input_index = 0
+        for i in range(len(bw_alias_map)):
+            if i < non_tensor_fw_input_count:
+                continue
+            bw_alias_map[i] = tensor_input_index
+            tensor_input_index += 1
+
+        return fw_alias_map, bw_alias_map
 
 
 class _ZeROOffloadFunctions:
