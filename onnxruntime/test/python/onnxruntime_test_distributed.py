@@ -314,10 +314,7 @@ class TestDistributed(unittest.TestCase):
 
     def test_slice_sr_axis1(self):
         @onnxscript.script()
-        def slice_sr_axis1(tensor_x: FLOAT,
-                           tensor_starts: INT64,
-                           tensor_ends: INT64,
-                           tensor_axes: INT64) -> FLOAT:
+        def slice_sr_axis1(tensor_x: FLOAT, tensor_starts: INT64, tensor_ends: INT64, tensor_axes: INT64) -> FLOAT:
             return MICROSOFT_OPSET.DistributedSlice(
                 tensor_x,
                 tensor_starts,
@@ -349,20 +346,22 @@ class TestDistributed(unittest.TestCase):
 
         tensor_shard_x = shard_tensor(tensor_x, rank=rank, axis=0, num_shards=2)
 
-        result = sess.run(None, {"tensor_x": tensor_shard_x,
-                                 "tensor_starts" : tensor_starts,
-                                 "tensor_ends" : tensor_ends,
-                                 "tensor_axes" : tensor_axes})
+        result = sess.run(
+            None,
+            {
+                "tensor_x": tensor_shard_x,
+                "tensor_starts": tensor_starts,
+                "tensor_ends": tensor_ends,
+                "tensor_axes": tensor_axes,
+            },
+        )
 
         expected = tensor_shard_x[:, 0:2]
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
-    
+
     def test_slice_rs_axis1(self):
         @onnxscript.script()
-        def slice_sr_axis1(tensor_x: FLOAT,
-                           tensor_starts: INT64,
-                           tensor_ends: INT64,
-                           tensor_axes: INT64) -> FLOAT:
+        def slice_sr_axis1(tensor_x: FLOAT, tensor_starts: INT64, tensor_ends: INT64, tensor_axes: INT64) -> FLOAT:
             return MICROSOFT_OPSET.DistributedSlice(
                 tensor_x,
                 tensor_starts,
@@ -393,13 +392,19 @@ class TestDistributed(unittest.TestCase):
         )
 
         tensor_shard_x = shard_tensor(tensor_x, rank=rank, axis=1, num_shards=2)
-        result = sess.run(None, {"tensor_x": tensor_shard_x,
-                                 "tensor_starts" : tensor_starts,
-                                 "tensor_ends" : tensor_ends,
-                                 "tensor_axes" : tensor_axes})
+        result = sess.run(
+            None,
+            {
+                "tensor_x": tensor_shard_x,
+                "tensor_starts": tensor_starts,
+                "tensor_ends": tensor_ends,
+                "tensor_axes": tensor_axes,
+            },
+        )
 
-        expected = tensor_x[:, 0:2][:, rank:rank+1]
+        expected = tensor_x[:, 0:2][:, rank : rank + 1]
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
+
 
 if __name__ == "__main__":
     unittest.main()
