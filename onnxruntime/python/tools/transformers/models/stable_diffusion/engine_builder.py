@@ -140,6 +140,7 @@ class EngineBuilder:
                 None,  # not loaded yet
                 device=self.torch_device,
                 max_batch_size=self.max_batch_size,
+                fp16=self.pipeline_info.is_sd_xl(),
             )
 
             if self.vae_torch_fallback:

@@ -51,7 +51,15 @@ class OrtStableDiffusionOptimizer:
             model = onnx.load(str(ort_optimized_model_path), load_external_data=True)
             return self.model_type_class_mapping[self.model_type](model)
 
-    def optimize(self, input_fp32_onnx_path, optimized_onnx_path, float16=True, keep_io_types=False, keep_outputs=None):
+    def optimize(
+        self,
+        input_fp32_onnx_path,
+        optimized_onnx_path,
+        float16=True,
+        keep_io_types=False,
+        fp32_op_list=None,
+        keep_outputs=None,
+    ):
         """Optimize onnx model using ONNX Runtime transformers optimizer"""
         logger.info(f"Optimize {input_fp32_onnx_path}...")
         fusion_options = FusionOptions(self.model_type)
@@ -76,6 +84,7 @@ class OrtStableDiffusionOptimizer:
             logger.info("Convert to float16 ...")
             m.convert_float_to_float16(
                 keep_io_types=keep_io_types,
+                op_block_list=fp32_op_list,
             )
 
         use_external_data_format = m.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF

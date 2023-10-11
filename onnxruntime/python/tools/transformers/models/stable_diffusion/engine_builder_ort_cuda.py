@@ -7,13 +7,16 @@ import gc
 import logging
 import os
 import shutil
+from typing import Optional, Dict, List
+from dataclasses import dataclass
 
+import __init__  # noqa: F401. Walk-around to import io_binding_helper directly
 import torch
 from diffusion_models import PipelineInfo
 from engine_builder import EngineBuilder, EngineType
+from io_binding_helper import CudaSession
 
 import onnxruntime as ort
-from onnxruntime.transformers.io_binding_helper import CudaSession
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +48,12 @@ class OrtCudaEngine(CudaSession):
 
     def allocate_buffers(self, shape_dict, device):
         super().allocate_buffers(shape_dict)
+
+
+@dataclass
+class _ModelConfig:
+    use_cuda_graph: bool = True
+    force_fp32_ops: List[str] = []
 
 
 class OrtCudaEngineBuilder(EngineBuilder):
@@ -80,6 +89,11 @@ class OrtCudaEngineBuilder(EngineBuilder):
             use_cuda_graph=use_cuda_graph,
         )
 
+        self.model_config = {}
+
+    def configure(self, model_name: str, use_cuda_graph: bool, force_fp32_ops=None):
+        self.model_config[model_name] = _ModelConfig(use_cuda_graph, force_fp32_ops)
+
     def build_engines(
         self,
         engine_dir,
@@ -91,7 +105,6 @@ class OrtCudaEngineBuilder(EngineBuilder):
         opt_batch_size=1,
         force_engine_rebuild=False,
         device_id=0,
-        disable_cuda_graph_models=None,
     ):
         self.torch_device = torch.device("cuda", device_id)
         self.load_models(framework_model_dir)
@@ -109,6 +122,11 @@ class OrtCudaEngineBuilder(EngineBuilder):
 
         if not os.path.isdir(onnx_dir):
             os.makedirs(onnx_dir)
+
+        # Add default configuration if missing
+        for model_name, model_obj in self.models.items():
+            if model_name not in self.model_config:
+                self.model_config[model_name] = _ModelConfig(self.use_cuda_graph)
 
         # Export models to ONNX
         for model_name, model_obj in self.models.items():
@@ -145,7 +163,13 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 # Run graph optimization and convert to mixed precision (computation in FP16)
                 if not os.path.exists(onnx_opt_path):
                     logger.info("Generating optimized model: %s", onnx_opt_path)
-                    model_obj.optimize_ort(onnx_path, onnx_opt_path, to_fp16=True)
+
+                    model_obj.optimize_ort(
+                        onnx_path,
+                        onnx_opt_path,
+                        to_fp16=True,
+                        fp32_op_list=self.model_config[model_name].force_fp32_ops,
+                    )
                 else:
                     logger.info("Found cached optimized model: %s", onnx_opt_path)
 
@@ -156,11 +180,10 @@ class OrtCudaEngineBuilder(EngineBuilder):
 
             onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True)
 
-            use_cuda_graph = self.use_cuda_graph
-            if self.use_cuda_graph and disable_cuda_graph_models and model_name in disable_cuda_graph_models:
-                use_cuda_graph = False
+            engine = OrtCudaEngine(
+                onnx_opt_path, device_id=device_id, enable_cuda_graph=self.model_config[model_name].use_cuda_graph
+            )
 
-            engine = OrtCudaEngine(onnx_opt_path, device_id=device_id, enable_cuda_graph=use_cuda_graph)
             logger.info("%s options for %s: %s", engine.provider, model_name, engine.provider_options)
             built_engines[model_name] = engine
 

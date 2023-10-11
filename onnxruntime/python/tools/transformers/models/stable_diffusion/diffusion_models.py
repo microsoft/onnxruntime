@@ -305,9 +305,15 @@ class BaseModel:
         """
         return []
 
-    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True):
+    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True, fp32_op_list=None):
         optimizer = self.get_ort_optimizer()
-        optimizer.optimize(input_onnx_path, optimized_onnx_path, to_fp16, keep_io_types=self.fp32_input_output_names())
+        optimizer.optimize(
+            input_onnx_path,
+            optimized_onnx_path,
+            float16=to_fp16,
+            fp32_op_list=fp32_op_list,
+            keep_io_types=self.fp32_input_output_names(),
+        )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
         onnx_graph = onnx.load(input_onnx_path)
@@ -466,11 +472,17 @@ class CLIP(BaseModel):
         onnx_model.add_node(cast_node)
         onnx_model.save_model_to_file(optimized_onnx_path, use_external_data_format=use_external_data_format)
 
-    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True):
+    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True, fp32_op_list=None):
         optimizer = self.get_ort_optimizer()
+
         if not self.output_hidden_state:
             optimizer.optimize(
-                input_onnx_path, optimized_onnx_path, to_fp16, keep_io_types=[], keep_outputs=["text_embeddings"]
+                input_onnx_path,
+                optimized_onnx_path,
+                float16=to_fp16,
+                keep_io_types=[],
+                fp32_op_list=fp32_op_list,
+                keep_outputs=["text_embeddings"],
             )
         else:
             with tempfile.TemporaryDirectory() as tmp_dir:
@@ -483,8 +495,9 @@ class CLIP(BaseModel):
                 optimizer.optimize(
                     tmp_model_path,
                     optimized_onnx_path,
-                    to_fp16,
+                    float16=to_fp16,
                     keep_io_types=[],
+                    fp32_op_list=fp32_op_list,
                     keep_outputs=["text_embeddings", "hidden_states"],
                 )
 
@@ -741,23 +754,30 @@ class UNetXL(BaseModel):
 
 # VAE Decoder
 class VAE(BaseModel):
-    def __init__(self, pipeline_info: PipelineInfo, model, device, max_batch_size):
+    def __init__(self, pipeline_info: PipelineInfo, model, device, max_batch_size, fp16: bool = False):
         super().__init__(
             pipeline_info,
             model=model,
             device=device,
+            fp16=fp16,
             max_batch_size=max_batch_size,
         )
 
     def load_model(self, framework_model_dir, hf_token: Optional[str] = None, subfolder: str = "vae_decoder"):
         model_dir = os.path.join(framework_model_dir, self.pipeline_info.name(), subfolder)
         if not os.path.exists(model_dir):
-            vae = AutoencoderKL.from_pretrained(
-                self.pipeline_info.name(),
-                subfolder="vae",
-                use_safetensors=self.pipeline_info.use_safetensors(),
-                use_auth_token=hf_token,
-            ).to(self.device)
+            if self.pipeline_info.is_sd_xl() and self.fp16:
+                # For SD XL, use an VAE that modified to run in fp16 precision without generating NaNs.
+                vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16).to(
+                    self.device
+                )
+            else:
+                vae = AutoencoderKL.from_pretrained(
+                    self.pipeline_info.name(),
+                    subfolder="vae",
+                    use_safetensors=self.pipeline_info.use_safetensors(),
+                    use_auth_token=hf_token,
+                ).to(self.device)
             vae.save_pretrained(model_dir)
         else:
             print(f"Load {self.name} pytorch model from: {model_dir}")
@@ -809,7 +829,7 @@ class VAE(BaseModel):
         return (torch.randn(batch_size, 4, latent_height, latent_width, dtype=torch.float32, device=self.device),)
 
     def fp32_input_output_names(self) -> List[str]:
-        return ["latent", "images"]
+        return [] if self.fp16 else ["latent", "images"]
 
 
 def get_tokenizer(pipeline_info: PipelineInfo, framework_model_dir, hf_token, subfolder="tokenizer"):

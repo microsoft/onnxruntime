@@ -34,7 +34,7 @@ class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatte
 def parse_arguments(is_xl: bool, description: str):
     parser = argparse.ArgumentParser(description=description, formatter_class=RawTextArgumentDefaultsHelpFormatter)
 
-    engines = ["ORT_TRT", "TRT"] if is_xl else ["ORT_CUDA", "ORT_TRT", "TRT"]
+    engines = ["ORT_CUDA", "ORT_TRT", "TRT"]
 
     parser.add_argument(
         "--engine",
@@ -194,7 +194,7 @@ def parse_arguments(is_xl: bool, description: str):
     return args
 
 
-def repeat_prompt(args):
+def repeat_prompt(args, is_sd_xl=False):
     if not isinstance(args.prompt, list):
         raise ValueError(f"`prompt` must be of type `str` or `str` list, but is {type(args.prompt)}")
     prompt = args.prompt * args.repeat_prompt
@@ -204,7 +204,10 @@ def repeat_prompt(args):
             f"`--negative-prompt` must be of type `str` or `str` list, but is {type(args.negative_prompt)}"
         )
     if len(args.negative_prompt) == 1:
-        negative_prompt = args.negative_prompt * len(prompt)
+        if is_sd_xl and len(args.negative_prompt[0]) == 0:
+            negative_prompt = None  # SDXL has special handling of empty negative prompt
+        else:
+            negative_prompt = args.negative_prompt * len(prompt)
     else:
         negative_prompt = args.negative_prompt
 
@@ -231,6 +234,16 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
     )
 
     if engine_type == EngineType.ORT_CUDA:
+        pipeline.backend.configure(
+            "clip", use_cuda_graph=True, force_fp32_ops=["SkipLayerNormalization", "LayerNormalization"]
+        )
+        pipeline.backend.configure(
+            "clip2", use_cuda_graph=False, force_fp32_ops=["SkipLayerNormalization", "LayerNormalization"]
+        )
+        pipeline.backend.configure(
+            "unetxl", use_cuda_graph=False, force_fp32_ops=["SkipLayerNormalization", "LayerNormalization"]
+        )
+
         # Build CUDA EP engines and load pytorch modules
         pipeline.backend.build_engines(
             engine_dir=engine_dir,
@@ -242,10 +255,6 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
             opt_batch_size=batch_size,
             force_engine_rebuild=args.force_engine_build,
             device_id=torch.cuda.current_device(),
-            disable_cuda_graph_models=[
-                "clip2",  # TODO: Add ArgMax cuda kernel to enable cuda graph for clip2.
-                "unetxl",
-            ],
         )
     elif engine_type == EngineType.ORT_TRT:
         # Build TensorRT EP engines and load pytorch modules

@@ -29,7 +29,7 @@ from pipeline_stable_diffusion import StableDiffusionPipeline
 
 class Img2ImgXLPipeline(StableDiffusionPipeline):
     """
-    Stable Diffusion Img2Img XL pipeline using NVidia TensorRT.
+    Stable Diffusion Img2Img XL pipeline.
     """
 
     def __init__(self, pipeline_info: PipelineInfo, *args, **kwargs):
@@ -71,14 +71,16 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         guidance=5.0,
         seed=None,
         warmup=False,
-        return_type="image",
+        return_type="images",
     ):
         assert len(prompt) == len(negative_prompt)
 
-        # TODO(tianleiwu): Need we use image_height and image_width for the target size here?
-        original_size = (1024, 1024)
+        # In inference, we condition as no crop. To get best result, it is recommended to output image size
+        # same as one of those used in training (see Appendix I in https://arxiv.org/pdf/2307.01952.pdf).
+        original_size = (image_height, image_width)
         crops_coords_top_left = (0, 0)
-        target_size = (1024, 1024)
+        target_size = (image_height, image_width)
+
         strength = 0.3
         aesthetic_score = 6.0
         negative_aesthetic_score = 2.5

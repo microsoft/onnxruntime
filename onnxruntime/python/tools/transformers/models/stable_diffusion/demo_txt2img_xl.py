@@ -31,7 +31,7 @@ from pipeline_txt2img_xl import Txt2ImgXLPipeline
 if __name__ == "__main__":
     coloredlogs.install(fmt="%(funcName)20s: %(message)s")
     args = parse_arguments(is_xl=True, description="Options for Stable Diffusion XL Demo")
-    prompt, negative_prompt = repeat_prompt(args)
+    prompt, negative_prompt = repeat_prompt(args, is_sd_xl=True)
 
     image_height = args.height
     image_width = args.width
