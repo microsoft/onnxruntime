@@ -4,7 +4,7 @@
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -92,11 +92,10 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
 
   return {
     name: 'Where',
-    inputTypes: [GpuDataType.default, GpuDataType.default, GpuDataType.default],
     getShaderSource: (shaderHelper) =>
         createWhereOpProgramShader(shaderHelper, inputs, outputShape, isBroadcast, outputDataType),
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
+      outputs: [{dims: outputShape, dataType: outputDataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* vec size */)}
     }),
   };
