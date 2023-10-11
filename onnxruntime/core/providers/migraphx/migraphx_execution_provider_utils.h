@@ -137,4 +137,74 @@ bool canEvalNodeArgument(const GraphViewer& graph, const Node* node, std::vector
   return true;
 }
 
+/*
+ * Read calibration table for INT8 quantization
+ * Two kind of calibration tables are supported,
+ * 1. ORT generated calibration table
+ * The table is pre-serialized by flatbuffers.
+ * Each entry in the table is a key-value pair,
+ * key: tensor name, value: maximum absolute value in floating point
+ * For example,
+ *   data_0 2.008338
+ *   ...
+ * 2. Native TensorRT generated calibration table
+ * Data format is defined by TensorRT as,
+ * tensor name : scale in 32-bit single precision IEEE754 format
+ * For example,
+ *   TRT-7103-EntropyCalibration2
+ *   data_0: 4000889d
+ *   ...
+ *
+ * Taken from the tensorRT EP to allow MIGraphX EP to reuse calibration tables for existing models
+ *
+ */
+bool ReadDynamicRange(const std::string file_name, const bool is_calibration_table, std::unordered_map<std::string, float>& dynamic_range_map) {
+  std::ifstream infile(file_name, std::ios::binary | std::ios::in);
+  if (!infile) {
+    return false;
+  }
+
+  if (is_calibration_table) {
+    // Native TensorRT generated calibration table
+    std::string line;
+    char delim = ':';
+    if (std::getline(infile, line)) {
+      std::istringstream first_line(line);
+      std::string version;
+      std::getline(first_line, version, delim);
+      std::size_t found = version.find("TRT-");
+      if (found != std::string::npos) {
+        while (std::getline(infile, line)) {
+          std::istringstream in_line(line);
+          std::string str;
+          std::getline(in_line, str, delim);
+          std::string tensor_name = str;
+          std::getline(in_line, str, delim);
+          unsigned long scale_int = std::strtoul(str.c_str(), nullptr, 16);
+          float scale_float = ConvertSinglePrecisionIEEE754ToFloat(scale_int);
+          float dynamic_range = scale_float * 127.0f;
+          dynamic_range_map[tensor_name] = dynamic_range;
+        }
+      } else {
+        throw std::runtime_error("This is not a TensorRT generated calibration table " + file_name);
+      }
+    }
+  } else {
+    // ORT generated calibration table
+    infile.seekg(0, std::ios::end);
+    size_t length = infile.tellg();
+    infile.seekg(0, std::ios::beg);
+    std::unique_ptr<char[]> data{new char[length]};
+    infile.read((char*)data.get(), length);
+    infile.close();
+    auto flat_table = flatbuffers::GetRoot<CalTableFlatBuffers::TrtTable>((const uint8_t*)data.get());
+    auto flat_dict = flat_table->dict();
+    for (size_t i = 0, end = flat_dict->size(); i < end; ++i) {
+      flatbuffers::uoffset_t idx = static_cast<flatbuffers::uoffset_t>(i);
+      dynamic_range_map[flat_dict->Get(idx)->key()->str()] = std::stof(flat_dict->Get(idx)->value()->str());
+    }
+  }
+  return true;
+}
+
 }  // namespace onnxruntime
