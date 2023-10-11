@@ -119,6 +119,22 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
   }
 
+  if (int8_enable_) {
+    const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8CalibrationTableName);
+    if (!int8_calibration_cache_name_env.empty()) {
+      int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+    }
+
+    const std::string int8_use_native_migraphx_calibration_table_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8UseNativeMIGraphXCalibrationTable);
+    if (!int8_use_native_migraphx_calibration_table_env.empty()) {
+      int8_use_native_migraphx_calibration_table_ = (std::stoi(int8_use_native_migraphx_calibration_table_env) == 0 ? false : true);
+    }
+  }
+
+  if (int8_enable_) {
+    int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
+  }
+
   // dump unsupported ops
   const std::string dump_model_ops_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::dumpModelOps);
   if (!dump_model_ops_env.empty()) {
@@ -136,6 +152,9 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
                         << ", migraphx_fp16_enable: " << fp16_enable_
                         << ", migraphx_int8_enable: " << int8_enable_
                         << ", dump_model_ops: " << dump_model_ops_
+                        << ", migraphx_int8_calibration_cache_name: " << int8_calibration_cache_name_
+                        << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
+                        << ", migraphx_int8_use_native_migraphx_calibration_table: " << int8_use_native_migraphx_calibration_table_;
 }
 
 MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {

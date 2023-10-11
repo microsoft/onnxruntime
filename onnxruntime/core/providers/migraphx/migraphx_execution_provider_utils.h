@@ -2,8 +2,18 @@
 // Licensed under the MIT License
 
 #pragma once
+
+#include <fstream>
+#include <unordered_map>
+#include <string>
+#include <iostream>
+#include <experimental/filesystem>
+#include "flatbuffers/idl.h"
+#include "ort_trt_int8_cal_table.fbs.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
+#include "core/common/path_string.h"
+
 
 namespace onnxruntime {
 
@@ -135,6 +145,17 @@ bool canEvalNodeArgument(const GraphViewer& graph, const Node* node, std::vector
   }
 
   return true;
+}
+
+float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
+  int s = (input >> 31) & 0x01;
+  int e = ((input & 0x7f800000) >> 23) - 127;
+  int p = -1;
+  double m = 0.0;
+  for (int i = 0; i < 23; ++i) {
+    m += ((input >> (23 - i - 1)) & 0x01) * pow(2.0, p--);
+  }
+  return static_cast<float>((s ? -1 : 1) * pow(2.0, e) * (m + 1.0));
 }
 
 /*
