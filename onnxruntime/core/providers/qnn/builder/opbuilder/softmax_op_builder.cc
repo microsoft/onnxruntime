@@ -45,14 +45,13 @@ Status SoftmaxOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                        const NodeUnit& node_unit,
                                        const logging::Logger& logger) const {
   ORT_UNUSED_PARAMETER(logger);
-  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   const int opset_version = node_unit.SinceVersion();
 
   // The QNN HTP backend only supports an `axis` attribute that refers to the last input dimension.
   // QNN EP is able to support arbitrary axis attributes by wrapping the QNN operator with transposes.
   // However, the exception is Softmax/LogSoftmax with opset < 13. For these older ONNX operators, only
   // axis == input_rank - 1 is supported.
-  if (is_npu_backend && opset_version < 13) {
+  if (opset_version < 13) {
     const std::string& op_type = node_unit.OpType();
 
     int32_t axis = GetDefaultAxisAttribute(opset_version);
@@ -90,7 +89,6 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                        const logging::Logger& logger,
                                        std::vector<std::string>& input_names,
                                        bool do_op_validation) const {
-  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   const auto& inputs = node_unit.Inputs();
   assert(inputs.size() == 1);
 
@@ -102,8 +100,8 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], input_info));
   const size_t input_rank = input_info.shape.size();
 
-  // If the axis attribute refers to the last dimension (Or not NPU), then process the input as normal.
-  if (!is_npu_backend || axis == static_cast<int32_t>(input_rank) - 1) {
+  // If the axis attribute refers to the last dimension, then process the input as normal.
+  if (axis == static_cast<int32_t>(input_rank) - 1) {
     return ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names);
   }
 
@@ -162,7 +160,6 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                                                      std::vector<std::string>&& input_names,
                                                      const logging::Logger& logger,
                                                      bool do_op_validation) const {
-  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   const std::string& op_type = node_unit.OpType();
   const auto& outputs = node_unit.Outputs();
   assert(outputs.size() == 1);
@@ -176,8 +173,8 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
   const size_t output_rank = output_info.shape.size();
   const bool axis_is_last_dim = static_cast<size_t>(axis) == output_rank - 1;
 
-  // If axis refers to the last dimension (or not NPU), process outputs as usual.
-  if (!is_npu_backend || axis_is_last_dim) {
+  // If axis refers to the last dimension, process outputs as usual.
+  if (axis_is_last_dim) {
     QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_SOFTMAX_PARAM_AXIS, axis_qnn_scalar);
 
     std::vector<std::string> param_tensor_names;
@@ -233,6 +230,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                                                          output_info.qnn_data_type,
                                                          output_info.quant_param,
                                                          do_op_validation,
+                                                         false,
                                                          is_graph_output));
 
   return Status::OK();
