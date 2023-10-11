@@ -469,6 +469,7 @@ class StableDiffusionPipeline:
         )
 
         from PIL import Image
+
         return [Image.fromarray(images[i]) for i in range(images.shape[0])]
 
     def save_images(self, images, pipeline, prompt):

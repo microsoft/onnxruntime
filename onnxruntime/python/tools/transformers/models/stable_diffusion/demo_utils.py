@@ -235,13 +235,25 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
 
     if engine_type == EngineType.ORT_CUDA:
         pipeline.backend.configure(
-            "clip", use_cuda_graph=True, force_fp32_ops=["SkipLayerNormalization", "LayerNormalization"]
+            "clip",
+            onnx_opset_version=args.onnx_opset,
+            use_cuda_graph=True,
+            force_fp32_ops=[],  # ["SkipLayerNormalization", "LayerNormalization"]
+            optimize_by_ort=True,
         )
         pipeline.backend.configure(
-            "clip2", use_cuda_graph=False, force_fp32_ops=["SkipLayerNormalization", "LayerNormalization"]
+            "clip2",
+            onnx_opset_version=11,  # ArgMax-12 is not implemented in CUDA
+            use_cuda_graph=False,
+            force_fp32_ops=[],  # ["SkipLayerNormalization", "LayerNormalization"]
+            optimize_by_ort=True,
         )
         pipeline.backend.configure(
-            "unetxl", use_cuda_graph=False, force_fp32_ops=["SkipLayerNormalization", "LayerNormalization"]
+            "unetxl",
+            onnx_opset_version=args.onnx_opset,
+            use_cuda_graph=False,
+            force_fp32_ops=[],  # ["SkipLayerNormalization", "LayerNormalization"]
+            optimize_by_ort=True,
         )
 
         # Build CUDA EP engines and load pytorch modules
@@ -249,7 +261,6 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
             engine_dir=engine_dir,
             framework_model_dir=framework_model_dir,
             onnx_dir=onnx_dir,
-            onnx_opset=args.onnx_opset,
             opt_image_height=args.height,
             opt_image_width=args.height,
             opt_batch_size=batch_size,

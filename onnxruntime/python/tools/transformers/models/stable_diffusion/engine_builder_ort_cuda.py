@@ -7,8 +7,7 @@ import gc
 import logging
 import os
 import shutil
-from typing import Optional, Dict, List
-from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 import __init__  # noqa: F401. Walk-around to import io_binding_helper directly
 import torch
@@ -22,12 +21,25 @@ logger = logging.getLogger(__name__)
 
 
 class OrtCudaEngine(CudaSession):
-    def __init__(self, onnx_path, device_id: int = 0, enable_cuda_graph=False, disable_optimization=False):
+    def __init__(
+        self,
+        onnx_path,
+        device_id: int = 0,
+        enable_cuda_graph: bool = False,
+        disable_optimization: bool = False,
+        free_dimension_override: Optional[Dict[str, int]] = None,
+    ):
         self.onnx_path = onnx_path
         self.provider = "CUDAExecutionProvider"
         self.provider_options = CudaSession.get_cuda_provider_options(device_id, enable_cuda_graph)
+        self.provider_options["enable_skip_layer_norm_strict_mode"] = True
 
         session_options = ort.SessionOptions()
+        if free_dimension_override:
+            for name, value in free_dimension_override.items():
+                assert isinstance(name, str) and isinstance(value, int)
+                session_options.add_free_dimension_override_by_name(name, value)
+
         # When the model has been optimized by onnxruntime, we can disable optimization to save session creation time.
         if disable_optimization:
             session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -50,10 +62,18 @@ class OrtCudaEngine(CudaSession):
         super().allocate_buffers(shape_dict)
 
 
-@dataclass
 class _ModelConfig:
-    use_cuda_graph: bool = True
-    force_fp32_ops: List[str] = []
+    def __init__(
+        self,
+        onnx_opset_version: int = 17,
+        use_cuda_graph: bool = True,
+        force_fp32_ops: Optional[List[str]] = None,
+        optimize_by_ort: bool = False,
+    ):
+        self.onnx_opset_version = onnx_opset_version
+        self.use_cuda_graph = use_cuda_graph
+        self.force_fp32_ops = force_fp32_ops
+        self.optimize_by_ort = optimize_by_ort
 
 
 class OrtCudaEngineBuilder(EngineBuilder):
@@ -91,20 +111,29 @@ class OrtCudaEngineBuilder(EngineBuilder):
 
         self.model_config = {}
 
-    def configure(self, model_name: str, use_cuda_graph: bool, force_fp32_ops=None):
-        self.model_config[model_name] = _ModelConfig(use_cuda_graph, force_fp32_ops)
+    def configure(
+        self,
+        model_name: str,
+        onnx_opset_version: int,
+        use_cuda_graph: bool,
+        force_fp32_ops: Optional[bool] = None,
+        optimize_by_ort: bool = False,
+    ):
+        self.model_config[model_name] = _ModelConfig(
+            onnx_opset_version, use_cuda_graph, force_fp32_ops, optimize_by_ort
+        )
 
     def build_engines(
         self,
-        engine_dir,
-        framework_model_dir,
-        onnx_dir,
-        onnx_opset,
-        opt_image_height=512,
-        opt_image_width=512,
-        opt_batch_size=1,
-        force_engine_rebuild=False,
-        device_id=0,
+        engine_dir: str,
+        framework_model_dir: str,
+        onnx_dir: str,
+        onnx_opset_version: int = 17,
+        opt_image_height: int = 512,
+        opt_image_width: int = 512,
+        opt_batch_size: int = 1,
+        force_engine_rebuild: bool = False,
+        device_id: int = 0,
     ):
         self.torch_device = torch.device("cuda", device_id)
         self.load_models(framework_model_dir)
@@ -124,9 +153,9 @@ class OrtCudaEngineBuilder(EngineBuilder):
             os.makedirs(onnx_dir)
 
         # Add default configuration if missing
-        for model_name, model_obj in self.models.items():
+        for model_name in self.models:
             if model_name not in self.model_config:
-                self.model_config[model_name] = _ModelConfig(self.use_cuda_graph)
+                self.model_config[model_name] = _ModelConfig(onnx_opset_version, self.use_cuda_graph)
 
         # Export models to ONNX
         for model_name, model_obj in self.models.items():
@@ -137,6 +166,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
             onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True)
             if not os.path.exists(onnx_opt_path):
                 if not os.path.exists(onnx_path):
+                    print("----")
                     logger.info("Exporting model: %s", onnx_path)
                     model = model_obj.load_model(framework_model_dir, self.hf_token)
                     with torch.inference_mode():
@@ -148,7 +178,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
                             inputs,
                             onnx_path,
                             export_params=True,
-                            opset_version=onnx_opset,
+                            opset_version=self.model_config[model_name].onnx_opset_version,
                             do_constant_folding=True,
                             input_names=model_obj.get_input_names(),
                             output_names=model_obj.get_output_names(),
@@ -162,6 +192,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
 
                 # Run graph optimization and convert to mixed precision (computation in FP16)
                 if not os.path.exists(onnx_opt_path):
+                    print("------")
                     logger.info("Generating optimized model: %s", onnx_opt_path)
 
                     model_obj.optimize_ort(
@@ -169,19 +200,31 @@ class OrtCudaEngineBuilder(EngineBuilder):
                         onnx_opt_path,
                         to_fp16=True,
                         fp32_op_list=self.model_config[model_name].force_fp32_ops,
+                        optimize_by_ort=self.model_config[model_name].optimize_by_ort,
                     )
                 else:
                     logger.info("Found cached optimized model: %s", onnx_opt_path)
 
         built_engines = {}
-        for model_name in self.models:
+        for model_name, model_obj in self.models.items():
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
 
             onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True)
 
+            use_cuda_graph = self.model_config[model_name].use_cuda_graph
+            free_dimension_override = (
+                model_obj.get_free_dimension_override(opt_batch_size, opt_image_height, opt_image_width)
+                if use_cuda_graph
+                else None
+            )
+
             engine = OrtCudaEngine(
-                onnx_opt_path, device_id=device_id, enable_cuda_graph=self.model_config[model_name].use_cuda_graph
+                onnx_opt_path,
+                device_id=device_id,
+                enable_cuda_graph=use_cuda_graph,
+                disable_optimization=False,
+                free_dimension_override=free_dimension_override,
             )
 
             logger.info("%s options for %s: %s", engine.provider, model_name, engine.provider_options)

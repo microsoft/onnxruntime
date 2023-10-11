@@ -24,7 +24,7 @@
 import logging
 import os
 import tempfile
-from typing import List, Optional
+from typing import List, Optional, Dict, Tuple
 
 import onnx
 import onnx_graphsurgeon as gs
@@ -254,16 +254,49 @@ class BaseModel:
     def load_model(self, framework_model_dir: str, hf_token: str, subfolder: str):
         pass
 
-    def get_input_names(self):
+    def get_input_names(self) -> List[str]:
         pass
 
-    def get_output_names(self):
+    def get_output_names(self) -> List[str]:
         pass
 
-    def get_dynamic_axes(self):
-        return None
+    def get_dynamic_axes(self) -> Dict[str, Dict[int, str]]:
+        pass
 
-    def get_sample_input(self, batch_size, image_height, image_width):
+    def get_free_dimension_override(self, batch_size, image_height, image_width):
+        input_names = self.get_input_names()
+        dynamic_axes = self.get_dynamic_axes()
+        sample_input = self.get_sample_input(batch_size, image_height, image_width)
+        assert isinstance(sample_input, tuple)
+
+        if isinstance(sample_input[-1], dict) and "added_cond_kwargs" in sample_input[-1]:
+            platten_input = sample_input[:-1]
+            kwargs = sample_input[-1]["added_cond_kwargs"]
+            for key, value in kwargs.items():
+                platten_input += (value,)
+            sample_input = platten_input
+
+        assert len(sample_input) == len(input_names)
+
+        free_dimension_override = {}
+        for i, name in enumerate(input_names):
+            sample = sample_input[i]
+            if name in dynamic_axes:
+                axes = dynamic_axes[name]
+                for dim, dim_param in axes.items():
+                    dim_value = sample.shape[dim]
+                    if dim_param in free_dimension_override:
+                        assert free_dimension_override[dim_param] == dim_value
+                    else:
+                        free_dimension_override[dim_param] = dim_value
+
+        print(
+            f"input_names={input_names}, dynamic_axes={dynamic_axes}, free_dimension_override={free_dimension_override}"
+        )
+
+        return free_dimension_override
+
+    def get_sample_input(self, batch_size, image_height, image_width) -> tuple:
         pass
 
     def get_profile_id(self, batch_size, image_height, image_width, static_batch, static_image_shape):
@@ -293,10 +326,10 @@ class BaseModel:
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
         """For TensorRT"""
-        return None
+        pass
 
     def get_shape_dict(self, batch_size, image_height, image_width):
-        return None
+        pass
 
     def fp32_input_output_names(self) -> List[str]:
         """For CUDA EP, we export ONNX model with FP32 first, then convert it to mixed precision model.
@@ -305,14 +338,16 @@ class BaseModel:
         """
         return []
 
-    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True, fp32_op_list=None):
+    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True, fp32_op_list=None, optimize_by_ort=True):
         optimizer = self.get_ort_optimizer()
         optimizer.optimize(
             input_onnx_path,
             optimized_onnx_path,
             float16=to_fp16,
-            fp32_op_list=fp32_op_list,
             keep_io_types=self.fp32_input_output_names(),
+            fp32_op_list=fp32_op_list,
+            # keep_outputs=self.get_output_names(),
+            optimize_by_ort=optimize_by_ort,
         )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
@@ -472,7 +507,7 @@ class CLIP(BaseModel):
         onnx_model.add_node(cast_node)
         onnx_model.save_model_to_file(optimized_onnx_path, use_external_data_format=use_external_data_format)
 
-    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True, fp32_op_list=None):
+    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True, fp32_op_list=None, optimize_by_ort=True):
         optimizer = self.get_ort_optimizer()
 
         if not self.output_hidden_state:
@@ -499,6 +534,7 @@ class CLIP(BaseModel):
                     keep_io_types=[],
                     fp32_op_list=fp32_op_list,
                     keep_outputs=["text_embeddings", "hidden_states"],
+                    optimize_by_ort=optimize_by_ort,
                 )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):

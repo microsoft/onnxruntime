@@ -59,6 +59,7 @@ class OrtStableDiffusionOptimizer:
         keep_io_types=False,
         fp32_op_list=None,
         keep_outputs=None,
+        optimize_by_ort=True,
     ):
         """Optimize onnx model using ONNX Runtime transformers optimizer"""
         logger.info(f"Optimize {input_fp32_onnx_path}...")
@@ -96,7 +97,7 @@ class OrtStableDiffusionOptimizer:
         # to save session creation time. Another benefit is to inspect the final graph for developing purpose.
         from onnxruntime import __version__ as ort_version
 
-        if version.parse(ort_version) >= version.parse("1.16.0") or not use_external_data_format:
+        if optimize_by_ort and (version.parse(ort_version) >= version.parse("1.16.0") or not use_external_data_format):
             m = self.optimize_by_ort(m, use_external_data_format=use_external_data_format)
 
         m.get_operator_statistics()
