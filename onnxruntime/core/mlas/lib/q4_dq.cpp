@@ -51,10 +51,7 @@ static size_t
 JblasQ4BuSize(int block_size, size_t N, size_t K)
 {
     if (block_size == -1) {
-        auto ptr = avx512vnni_s4pernkernl.getWeightPtr()->createStorage(N, K);
-        auto size = ptr->getSerializedSize();
-        delete ptr;
-        return size;
+        return avx512vnni_s4pernkernl.getWeightPtr()->createStorage(N, K, false).mSize;
     }
     return 0;
 }
@@ -206,10 +203,9 @@ JblasQ4GemmPackB(
     int block_size, void* PackedBuf, const float* FpData, size_t N, size_t K, size_t ldb)
 {
     if (block_size == -1) {
-        auto ptr = avx512vnni_s4pernkernl.getWeightPtr()->createStorage(N, K);
-        avx512vnni_s4pernkernl.getWeightPtr()->packWeight(N, K, FpData, ldb, ptr);
-        ptr->serializeToBuffer(PackedBuf);
-        delete ptr;
+        auto tmpstor = avx512vnni_s4pernkernl.getWeightPtr()->createStorage(N, K, false);
+        tmpstor.assign((int8_t*)PackedBuf);
+        avx512vnni_s4pernkernl.getWeightPtr()->packWeight(N, K, FpData, ldb, &tmpstor);
     }
 }
 #endif
@@ -319,12 +315,13 @@ JblasQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, siz
     auto ptr = jblas::prologue::weight_comp::gemm_kblcok::PackedWeightParser::deserialBuffer(
         const_cast<void*>(PackedBuf));
     if (ptr) {
-        if (ptr->mType == int(jblas::prologue::weight_comp::gemm_kblcok::WeightCompType::
-                                  WeightS4ClipScaleFp32PerChannelN)) {
+        if (ptr->mPrologueID == int(jblas::prologue::weight_comp::gemm_kblcok::PrologueBIDs::
+                                        WeightS4ClipScaleFp32PerChannelN)) {
             if (ptr->mCoreType == jblas::gemm::GemmCoreType::AVX512_VNNI_8x48) {
                 avx512vnni_s4pernkernl.getWeightPtr()->unpackWeight(N, K, ptr, FpData, ldb);
             }
         }
+        delete ptr;
     }
 }
 #endif

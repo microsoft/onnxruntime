@@ -49,6 +49,17 @@ class eltwise_injector {
     assign_zmm(used_zmm_idx, &zmm_aux3);
     assign_zmm(used_zmm_idx, &zmm_aux4);
   }
+  void assign_resources(Xbyak::CodeGenerator* ptr, const std::set<int>& used_ymm_idx, const Xbyak::Reg64& table_reg) {
+    h = ptr;
+    p_table = table_reg;
+    assert(used_ymm_idx.size() <= 10);
+    assign_ymm(used_ymm_idx, &ymm_mask);
+    assign_ymm(used_ymm_idx, &ymm_aux0);
+    assign_ymm(used_ymm_idx, &ymm_aux1);
+    assign_ymm(used_ymm_idx, &ymm_aux2);
+    assign_ymm(used_ymm_idx, &ymm_aux3);
+    assign_ymm(used_ymm_idx, &ymm_aux4);
+  }
   void assign_reg_elt_constp(const Xbyak::Reg64& reg) { reg_rt_const_p = reg; }
   void vector_compute(const Xbyak::Zmm& zmm_src, int const_p_offset = 0) {
     load_table_addr();
@@ -79,6 +90,29 @@ class eltwise_injector {
         break;
     }
   }
+  void vector_compute(const Xbyak::Ymm& ymm_src, int const_p_offset = 0) {
+    load_table_addr();
+    switch (elt_op) {
+      case EXP:
+        exp_compute_vector_fwd(ymm_src);
+        break;
+      case TANH:
+        tanh_compute_vector_fwd(ymm_src);
+        break;
+      case GELU:
+        gelu_compute_vector_fwd(ymm_src);
+        break;
+      case LOW_PRECISION_EXP:
+        low_precision_exp_compute_vector_fwd(ymm_src);
+        break;
+      case SWISH:
+        swish_compute_vector_fwd(ymm_src, const_p_offset);
+        break;
+      default:
+        assert(false);
+        break;
+    }
+  }
   void prepare_table() {
     h->align(64);
     h->L(l_table);
@@ -92,11 +126,12 @@ class eltwise_injector {
 
  private:
   void reigster_table_entries() {
-    static const table_t common_values{{zero, {0x00000000, true}},      {half, {0x3f000000, true}},
-                                       {one, {0x3f800000, true}},       {two, {0x40000000, true}},
-                                       {minus_one, {0xbf800000, true}}, {minus_two, {0xc0000000, true}},
-                                       {ln2f, {0x3f317218, true}},      {positive_mask, {0x7fffffff, true}},
-                                       {sign_mask, {0x80000000, true}}, {exponent_bias, {0x0000007f, true}}};
+    static const table_t common_values{
+        {zero, {0x00000000, true}},      {half, {0x3f000000, true}},          {one, {0x3f800000, true}},
+        {two, {0x40000000, true}},       {minus_one, {0xbf800000, true}},     {minus_two, {0xc0000000, true}},
+        {ln2f, {0x3f317218, true}},      {one_epi32, {0x00000001, true}},     {positive_mask, {0x7fffffff, true}},
+        {sign_mask, {0x80000000, true}}, {exponent_bias, {0x0000007f, true}},
+    };
 
     static constexpr std::array<float, 3> exp_approx_f32_coeff{0.35815147f, 0.96963238f, 1.f};
     static const table_t low_precision_exp_consts{
@@ -418,6 +453,7 @@ class eltwise_injector {
       push_entries_of(exp_polynomial);
     }
     if (need.low_precision_exp() || need.swish()) {
+      push_entries_of(exp_polynomial);
       push_entries_of(exp_consts);
       push_entries_of(low_precision_exp_consts);
     }
@@ -428,6 +464,52 @@ class eltwise_injector {
     if (need.gelu()) push_entries_of(gelu_tanh_const);
 
     set_table_term_offset();
+  }
+  void exp_compute_vector_fwd(const Xbyak::Ymm& ymm_src) {
+    /* exp code */
+    h->vcmpps(ymm_mask, ymm_src, table_val(exp_ln_flt_min_f), _cmp_lt_os);
+    h->vminps(ymm_src, ymm_src, table_val(exp_ln_flt_max_f));
+    h->vmaxps(ymm_src, ymm_src, table_val(exp_ln_flt_min_f));
+    h->vmovups(ymm_aux1, ymm_src);
+    h->vmulps(ymm_src, ymm_src, table_val(exp_log2ef));
+    h->vaddps(ymm_src, ymm_src, table_val(half));
+    h->vroundps(ymm_aux2, ymm_src, _op_floor);
+
+    // keep ymm_src = fx for further computations
+    h->vmovups(ymm_src, ymm_aux2);
+
+    // x = x - fx * ln2
+    h->vfnmadd231ps(ymm_aux1, ymm_aux2, table_val(ln2f));
+
+    // We do not count 2^n here, because n can reach 128 and 2^128 is not
+    // representable by fp32, so to get around this problem, instead of
+    // computing 2^n * exp(r) will be counted 2*2^(n-1)*exp(r), because 2^127
+    // and 2 are numbers representable in fp32.
+
+    // compute 2^(n-1)
+    h->vsubps(ymm_src, ymm_src, table_val(one));
+    h->vcvtps2dq(ymm_aux2, ymm_src);
+    h->vpaddd(ymm_aux2, ymm_aux2, table_val(exponent_bias));
+    h->vpslld(ymm_aux2, ymm_aux2, n_mantissa_bits);
+
+    // use ymm_src as tmp ymm_zero when applying mask
+    h->vxorps(ymm_src, ymm_src, ymm_src);
+
+    // set zeroes at those points which were < log(FLT_MIN)
+    h->vblendvps(ymm_aux2, ymm_aux2, ymm_src, ymm_mask);
+
+    // compute polynomial
+    h->vmovups(ymm_src, table_val(exp_pol, 4));
+    h->vfmadd213ps(ymm_src, ymm_aux1, table_val(exp_pol, 3));
+    h->vfmadd213ps(ymm_src, ymm_aux1, table_val(exp_pol, 2));
+    h->vfmadd213ps(ymm_src, ymm_aux1, table_val(exp_pol, 1));
+    h->vfmadd213ps(ymm_src, ymm_aux1, table_val(exp_pol, 0));
+    h->vfmadd213ps(ymm_src, ymm_aux1, table_val(one));
+
+    // y = y * 2^n
+
+    h->vmulps(ymm_src, ymm_src, ymm_aux2);
+    h->vmulps(ymm_src, ymm_src, table_val(two));
   }
   void exp_compute_vector_fwd(const Xbyak::Zmm& zmm_src) {
     /* exp code */
@@ -475,12 +557,42 @@ class eltwise_injector {
     h->vmulps(zmm_src, zmm_src, zmm_aux2);
     h->vmulps(zmm_src, zmm_src, table_val(two));
   }
+  void low_precision_exp_compute_vector_fwd(const Xbyak::Ymm& ymm_src) {
+    // support abs(x)<23
+    auto code = [&](Xbyak::CodeGenerator* h, const Ymm& dst, const Ymm& src, const Xbyak::Operand& log2e,
+                    const Xbyak::Operand& ln2, const Xbyak::Operand& coeff0, const Xbyak::Operand& coeff1,
+                    const Xbyak::Operand& coeff2, const std::array<Ymm, 4>& tmp) {
+      h->vmulps(tmp[0], src, log2e);      // x / ln2
+      h->vroundps(tmp[0], tmp[0], 0x0A);  // round up
+      const auto& z = tmp[0];
+      h->vmulps(tmp[1], tmp[0], ln2);
+      h->vsubps(tmp[1], src, tmp[1]);  // x mod ln2 (can we use fmsub?)
+      h->vmovaps(dst, coeff1);
+      h->vfmadd231ps(dst, tmp[1], coeff0);  // dst = f * c0 + c1
+      h->vfmadd213ps(dst, tmp[1], coeff2);  // dst = (f * c0 + c1) * f + c2
+
+      const auto& z_sign = tmp[2];
+      const auto& z_abs = tmp[3];
+      h->vcmpps(z_sign, z, table_val(zero), _cmp_lt_os);
+      h->vcvtps2dq(z, z);
+      h->vpabsd(z_abs, z);
+      h->vmovdqu(tmp[1], table_val(one_epi32));
+      h->vpsllvd(z_abs, tmp[1], z_abs);  // 2^z
+      h->vcvtdq2ps(z_abs, z_abs);
+      h->vrcpps(z, z_abs);
+      h->vblendvps(z, z_abs, z, z_sign);
+      h->vmulps(dst, dst, z);  // dst = exp(f) * 2^z
+    };
+    code(h, ymm_src, ymm_src, table_val(exp_log2ef), table_val(ln2f),  //
+         table_val(low_precision_exp_const_v0), table_val(low_precision_exp_const_v1),
+         table_val(low_precision_exp_const_v2), {ymm_aux1, ymm_aux2, ymm_aux3, ymm_aux4});
+  }
   void low_precision_exp_compute_vector_fwd(const Xbyak::Zmm& zmm_src) {
     auto code = [&](Xbyak::CodeGenerator* h, const Zmm& dst, const Zmm& src, const Xbyak::Operand& log2e,
                     const Xbyak::Operand& ln2, const Xbyak::Operand& coeff0, const Xbyak::Operand& coeff1,
                     const Xbyak::Operand& coeff2, const std::array<Zmm, 2>& tmp) {
-      h->vmulps(tmp[0], src, log2e);        // x / ln2
-      h->vrndscaleps(tmp[0], tmp[0], 0x2);  // round up
+      h->vmovups(tmp[0], log2e);
+      h->vmulps(tmp[0] | h->T_ru_sae, src, tmp[0]);  // round up(x / ln2)
       const auto& z = tmp[0];
       h->vmulps(tmp[1], tmp[0], ln2);
       h->vsubps(tmp[1], src, tmp[1]);  // x mod ln2 (can we use fmsub?)
@@ -493,6 +605,14 @@ class eltwise_injector {
          table_val(low_precision_exp_const_v0), table_val(low_precision_exp_const_v1),
          table_val(low_precision_exp_const_v2), {zmm_aux1, zmm_aux2});
   }
+  void swish_compute_vector_fwd(const Xbyak::Ymm& ymm_src, int const_p_offset) {
+    h->vbroadcastss(ymm_aux0, h->ptr[reg_rt_const_p + const_p_offset]);
+    h->vmulps(ymm_aux0, ymm_aux0, ymm_src);
+    exp_compute_vector_fwd(ymm_aux0);
+    h->vaddps(ymm_aux0, ymm_aux0, table_val(one));
+    h->vrcpps(ymm_aux0, ymm_aux0);
+    h->vmulps(ymm_src, ymm_src, ymm_aux0);
+  }
   void swish_compute_vector_fwd(const Xbyak::Zmm& zmm_src, int const_p_offset) {
     h->vmovups(zmm_aux0, zmm_src);
     h->vmulps(zmm_aux0, zmm_aux0, h->zword_b[reg_rt_const_p + const_p_offset]);
@@ -500,6 +620,80 @@ class eltwise_injector {
     h->vaddps(zmm_aux0, zmm_aux0, table_val(one));
     h->vrcp14ps(zmm_aux0, zmm_aux0);
     h->vmulps(zmm_src, zmm_src, zmm_aux0);
+  }
+  void tanh_compute_vector_fwd(const Xbyak::Ymm& ymm_src) {
+    // register mapping
+    Ymm ymm_dst = ymm_aux1, ymm_src_shift = ymm_aux1, ymm_coeff = ymm_aux1, ymm_pol = ymm_aux2, ymm_indices = ymm_aux3,
+        ymm_src_original = ymm_aux4, ymm_sign = ymm_aux4;
+
+    const int tanh_n_polynomials = 32;
+
+    // We split the positive domain in 33 intervals:
+    // a) [0; linear_ubound]: in this interval tanh(x) = x
+    // b) [linear_ubound; 0x1.8p-12]: This interval spans part of a
+    //    half binade
+    // c) [0x1.8p-12; 0x1.0p-11], ..., [0x1.8p2; 0x1.0p3]:
+    //    one interval for each half binade, there are 29 of those
+    // d) [0x1.0p3; saturation_ubound]:
+    //    This interval spans part of a half binade
+    // e) [0x1.205966p3; saturation_ubound]: in this interval, tanh(x) = 1
+    // For b-d, we need 31 polynomials and will do a table lookup for those.
+    // To simplify the logic, we will also put a) in the table.
+    auto coeffs_address = [&](int coeff_off, int off = 0) {
+      return table_val(tanh_pol_table, coeff_off * tanh_n_polynomials + off);
+    };
+    auto gather_coefficient = [&](Ymm vmm_coeff, int coeff_idx, Ymm vmm_pol_idx) {
+      Ymm ymm_coeff(vmm_coeff.getIdx());
+      Ymm ymm_pol_idx(vmm_pol_idx.getIdx());
+      Xbyak::Address idx_addr =
+          h->ptr[p_table + table_off(tanh_pol_table, coeff_idx * tanh_n_polynomials) + ymm_pol_idx * sizeof(float)];
+      h->vcmpps(ymm_mask, ymm_mask, ymm_mask, _cmp_eq_oq);
+      h->vgatherdps(vmm_coeff, idx_addr, ymm_mask);
+    };
+
+    // because tanh(x) = -tanh(-x), we extract sign to make x postive
+    // and reapply sign at the end
+    h->vmovups(ymm_src_original, ymm_src);
+    h->vandps(ymm_src, ymm_src, table_val(positive_mask));
+
+    // We compute the indices for the table lookup
+    h->vmovups(ymm_indices, ymm_src);
+    h->vpsubd(ymm_indices, ymm_indices, table_val(tanh_idx_bias));
+    h->vandps(ymm_indices, ymm_indices, table_val(tanh_idx_mask));
+    h->vpsrld(ymm_indices, ymm_indices, 22);
+
+    // we do the argument reduction
+    h->vmovups(ymm_src_shift, ymm_src);
+    h->vandps(ymm_src_shift, ymm_src_shift, table_val(tanh_idx_mask));
+    h->vsubps(ymm_src, ymm_src, ymm_src_shift);
+
+    // we gather and evaluate the polynonials
+    gather_coefficient(ymm_pol, 6, ymm_indices);
+    for (int deg = 5; deg >= 0; --deg) {
+      gather_coefficient(ymm_coeff, deg, ymm_indices);
+      h->vfmadd213ps(ymm_pol, ymm_src, ymm_coeff);
+    }
+
+    // we restore src with cleared sign, and keep sign
+    h->vmovups(ymm_src, ymm_src_original);
+    h->vandps(ymm_sign, ymm_sign, table_val(sign_mask));
+    h->vandps(ymm_src, ymm_src, table_val(positive_mask));
+
+    // Now we blend the results
+    // [saturation_ubound; +inf[ : we return +/- 1
+    h->vmovups(ymm_dst, table_val(one));
+    // [linear_ubound; saturation_lbound] : we return +/- P(x)
+    h->vmovups(ymm_mask, table_val(tanh_saturation_lbound));
+    h->vcmpps(ymm_mask, ymm_mask, ymm_src, _cmp_nle_us);
+    h->vblendvps(ymm_dst, ymm_dst, ymm_pol, ymm_mask);
+    // [0; linear_ubound]  : we return x
+    h->vmovups(ymm_mask, table_val(tanh_linear_ubound));
+    h->vcmpps(ymm_mask, ymm_mask, ymm_src, _cmp_nle_us);
+    h->vblendvps(ymm_dst, ymm_dst, ymm_src, ymm_mask);
+
+    // We reapply the sign and return
+    h->vxorps(ymm_dst, ymm_dst, ymm_sign);
+    h->vmovups(ymm_src, ymm_dst);
   }
   void tanh_compute_vector_fwd(const Xbyak::Zmm& zmm_src) {
     // register mapping
@@ -573,6 +767,23 @@ class eltwise_injector {
     h->vpxord(zmm_dst, zmm_dst, zmm_sign);
     h->vmovups(zmm_src, zmm_dst);
   }
+  void gelu_compute_vector_fwd(const Xbyak::Ymm& ymm_src) {
+    h->vmovups(ymm_aux0, ymm_src);
+    // compute G(x) = sqrt_root_two_over_pi * x * (1 + fitting_const * x * x)
+    h->vmulps(ymm_src, ymm_src, ymm_src);
+    h->vmovups(ymm_aux1, table_val(gelu_tanh_fitting_const));
+    h->vfmadd213ps(ymm_src, ymm_aux1, table_val(one));
+    h->vmulps(ymm_src, ymm_src, ymm_aux0);
+    h->vmulps(ymm_src, ymm_src, table_val(gelu_tanh_sqrt_two_over_pi));
+
+    // compute tanh(G(x))
+    tanh_compute_vector_fwd(ymm_src);
+
+    // compute 0.5 * x * (1 + tanh(G(x)))
+    h->vaddps(ymm_src, ymm_src, table_val(one));
+    h->vmulps(ymm_src, ymm_src, table_val(half));
+    h->vmulps(ymm_src, ymm_src, ymm_aux0);
+  }
   void gelu_compute_vector_fwd(const Xbyak::Zmm& zmm_src) {
     h->vmovups(zmm_aux0, zmm_src);
     // compute G(x) = sqrt_root_two_over_pi * x * (1 + fitting_const * x * x)
@@ -604,9 +815,19 @@ class eltwise_injector {
   void assign_zmm(const std::set<int>& used_zmm_idx, Zmm* zmm) {
     constexpr int max_zmm_idx = 32;
     for (int idx = 0; idx < max_zmm_idx; idx++) {
-      if (used_zmm_idx.count(idx) == 0 && assign_zmm_idx.count(idx) == 0) {
+      if (used_zmm_idx.count(idx) == 0 && assign_vmm_idx.count(idx) == 0) {
         *zmm = Zmm(idx);
-        assign_zmm_idx.insert(idx);
+        assign_vmm_idx.insert(idx);
+        break;
+      }
+    }
+  }
+  void assign_ymm(const std::set<int>& used_ymm_idx, Ymm* ymm) {
+    constexpr int max_ymm_idx = 16;
+    for (int idx = 0; idx < max_ymm_idx; idx++) {
+      if (used_ymm_idx.count(idx) == 0 && assign_vmm_idx.count(idx) == 0) {
+        *ymm = Ymm(idx);
+        assign_vmm_idx.insert(idx);
         break;
       }
     }
@@ -622,8 +843,9 @@ class eltwise_injector {
   /*register for fwd*/
   Xbyak::Reg64 p_table;
   Xbyak::Reg64 reg_rt_const_p;
-  std::set<int> assign_zmm_idx;
+  std::set<int> assign_vmm_idx;  // use for zmm (in avx512) or ymm (in avx2)
   Zmm zmm_mask, zmm_aux0, zmm_aux1, zmm_aux2, zmm_aux3, zmm_aux4;
+  Ymm ymm_mask, ymm_aux0, ymm_aux1, ymm_aux2, ymm_aux3, ymm_aux4;
   Xbyak::Opmask k_mask;
   static constexpr int n_mantissa_bits = 23;
 
@@ -650,6 +872,7 @@ class eltwise_injector {
     minus_two,                            // -2.f
     minus_three,                          // -3.f
     ln2f,                                 // 0.69314718f
+    one_epi32,                            // 1 in int32
     positive_mask,                        // changes sign to positive
     sign_mask,                            // gets sign value
     exponent_bias,                        // (127 = 2^7 - 1), gets exponent bits

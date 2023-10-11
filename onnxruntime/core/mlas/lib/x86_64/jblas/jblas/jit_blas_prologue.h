@@ -23,72 +23,148 @@
 
 namespace jblas {
 namespace prologue {
-enum class WeightPrologueType : int {
+enum class PrologueBIDs : int {
   Undef = -1,
   Begin = 0,
   WeightPack = Begin,
   End,
 };
-class PackedWeight {
+
+class ISerialObject {
+ protected:
+  virtual size_t getSerializedSize() = 0;
+
+  virtual void serializeToBuffer(int8_t*& wptr) = 0;
+
+  virtual void deserializeBuffer(int8_t*& rptr, bool map_buf) = 0;
+};
+
+class ISerializable : public ISerialObject {
  public:
-  PackedWeight(jblas::gemm::GemmCoreType type) {
-    mNPad = 0;
-    mKPad = 0;
-    mSize = 0;
-    mCoreType = type;
+  virtual ~ISerializable() = default;
+
+  virtual void assign(int8_t* buf) = 0;
+
+  virtual void serialize(int8_t* wptr) = 0;
+
+  virtual void deserialize(int8_t* rptr) = 0;
+  size_t mSize = 0;
+
+ protected:
+  virtual size_t getSerializedSize() override {
+    size_t totalsize = 0;
+    totalsize += sizeof(mSize);
+    return totalsize;
+  }
+  virtual void serializeToBuffer(int8_t*& wptr) override { utils::serialize(wptr, mSize); }
+  virtual void deserializeBuffer(int8_t*& rptr, bool map_buf) override {
+    if (!map_buf) {
+      mSize = utils::deserialize<size_t>(rptr);
+    } else {
+      utils::serialize<size_t>(rptr, mSize);
+    }
+  }
+};
+
+class ISerialBuffer : public ISerialObject {
+ public:
+  template <typename T>
+  inline constexpr T* get() {
+    return (T*)mBufPtr;
+  };
+  template <typename T>
+  inline size_t size() {
+    return mBufSize / sizeof(T);
+  };
+
+  void resize(size_t bytes) { mBufSize = bytes; }
+
+ protected:
+  virtual size_t getSerializedSize() override {
+    size_t totalsize = 0;
+    totalsize += sizeof(mBufSize);
+    totalsize += mBufSize;
+    return totalsize;
+  }
+  virtual void serializeToBuffer(int8_t*& wptr) override {
+    utils::serialize(wptr, mBufSize);
+    if (wptr != (int8_t*)mBufPtr) {
+      std::memcpy(wptr, mBufPtr, mBufSize);
+    }
+    wptr += mBufSize;
+  }
+  virtual void deserializeBuffer(int8_t*& rptr, bool map_buf) override {
+    if (!map_buf) {
+      mBufSize = utils::deserialize<size_t>(rptr);
+    } else {
+      utils::serialize<size_t>(rptr, mBufSize);
+    }
+    mBufPtr = (int8_t*)rptr;
+    rptr += mBufSize;
   }
 
-  virtual ~PackedWeight() {}
+  int8_t* mBufPtr = NULL;
+  size_t mBufSize = 0;
+};
 
+namespace gemm {
+
+class WeightBase : public ISerializable {
+ public:
+  int mPrologueID = -1;
+  // To many dummy codes to make these read-only, just use these members
+  jblas::gemm::GemmCoreType mCoreType = jblas::gemm::GemmCoreType::Undef;
+  int mNPad = 0, mKPad = 0;
+
+  WeightBase(jblas::gemm::GemmCoreType _type) {
+    mNPad = 0;
+    mKPad = 0;
+    mCoreType = _type;
+  }
+
+  // bytes offset to mPrologueID
+  static constexpr inline size_t offset() { return sizeof(mSize); }
+
+ protected:
   void resize(int NPad, int KPad) {
     mNPad = NPad;
     mKPad = KPad;
   }
 
-  virtual size_t getSerializedSize() {
-    size_t totalsize = 0;
-    totalsize += sizeof(mSize);
-    totalsize += sizeof(mCoreType);
-    totalsize += sizeof(mType);
-    totalsize += sizeof(mNPad);
-    totalsize += sizeof(mKPad);
-    totalsize += getDataSerializedSize();
-    return totalsize;
-  }
+  virtual size_t getSerializedSize() { return ISerializable::getSerializedSize() + getMiscSize(); }
 
-  virtual void serializeToBuffer(void* buf) {
-    auto wptr = reinterpret_cast<int8_t*>(buf);
-    mSize = getSerializedSize();
-    utils::serialize(wptr, mSize);
+  virtual void serializeToBuffer(int8_t*& wptr) {
+    ISerializable::serializeToBuffer(wptr);
+    utils::serialize(wptr, mPrologueID);
     utils::serialize(wptr, mCoreType);
-    utils::serialize(wptr, mType);
     utils::serialize(wptr, mNPad);
     utils::serialize(wptr, mKPad);
-    serializeDataToBuffer(wptr);
   }
 
-  virtual void deserializeBuffer(void* buf, int memalloc) {
-    auto rptr = reinterpret_cast<int8_t*>(buf);
-    mSize = utils::deserialize<size_t>(rptr);
-    mCoreType = utils::deserialize<jblas::gemm::GemmCoreType>(rptr);
-    mType = utils::deserialize<int>(rptr);
-    mNPad = utils::deserialize<int>(rptr);
-    mKPad = utils::deserialize<int>(rptr);
-    deserializeDataBuffer(rptr, memalloc);
+  virtual void deserializeBuffer(int8_t*& rptr, bool map_buf) {
+    ISerializable::deserializeBuffer(rptr, map_buf);
+    if (!map_buf) {
+      mPrologueID = utils::deserialize<int>(rptr);
+      mCoreType = utils::deserialize<jblas::gemm::GemmCoreType>(rptr);
+      mNPad = utils::deserialize<int>(rptr);
+      mKPad = utils::deserialize<int>(rptr);
+    } else {
+      utils::serialize<int>(rptr, mPrologueID);
+      utils::serialize<jblas::gemm::GemmCoreType>(rptr, mCoreType);
+      utils::serialize<int>(rptr, mNPad);
+      utils::serialize<int>(rptr, mKPad);
+    }
   }
-  size_t mSize = 0;
-  jblas::gemm::GemmCoreType mCoreType = jblas::gemm::GemmCoreType::Undef;
-  int mType = -1;
-  int mNPad = 0, mKPad = 0;
-  static int constexpr TypeOffset = sizeof(mSize) + sizeof(mCoreType);
 
- protected:
-  virtual size_t getDataSerializedSize() = 0;
-  virtual void serializeDataToBuffer(void* buf) = 0;
-  virtual void deserializeDataBuffer(void* buf, int memalloc) = 0;
+  inline constexpr size_t getMiscSize() {
+    size_t totalsize = 0;
+    totalsize += sizeof(mPrologueID);
+    totalsize += sizeof(mCoreType);
+    totalsize += sizeof(mNPad);
+    totalsize += sizeof(mKPad);
+    return totalsize;
+  }
 };
-
-namespace gemm {
 
 template <class _GemmCore_T, JBLAS_ISA ISA_T>
 class ActivationBase {
@@ -157,63 +233,171 @@ using ActivationConverterFp32 = ActivationConverter<_GemmCore_T, ISA_T, float>;
 template <class _GemmCore_T, JBLAS_ISA ISA_T>
 using ActivationConverterBf16 = ActivationConverter<_GemmCore_T, ISA_T, utils::bf16>;
 
-template <typename QT_T, typename ST_T>
-class StorageQuantActivation {
+template <typename SCA_T, typename DST_T, typename RED_T>
+class StorageWeightCorrection : public ISerialObject {
  public:
-  QT_T *mWPtr = NULL, *mZPtr = NULL;
-  ST_T* mSPtr = NULL;
-  int lda = 0, lds = 0;
-  void resize(int m, int _lda, int _lds, int8_t* ptr) {
-    if (ptr) {
-      setPtr(m, _lda, _lds, ptr);
-    } else {
-      auto size = getSize(m, _lda, _lds);
-      mBuffer.resize(size);
-      setPtr(m, _lda, _lds, mBuffer.data());
+  SCA_T* mSPtr = nullptr;
+  DST_T* mZPtr = nullptr;
+  RED_T* mRPtr = nullptr;
+  size_t mCSize = 0;
+  int mCStep = 0;
+  bool mIsAsym = false;
+  bool mHasReduce = false;
+
+  size_t resize(int NPad, int KBlks, bool _is_asym = false, bool _has_reduce = true) {
+    mIsAsym = _is_asym;
+    mHasReduce = _has_reduce;
+    mCStep = NPad;
+    mCSize = (size_t)NPad * KBlks;
+    return getSerializedSize();
+  }
+
+ protected:
+  inline constexpr size_t getMiscSize() {
+    size_t totalsize = 0;
+    totalsize += sizeof(mIsAsym);
+    totalsize += sizeof(mHasReduce);
+    totalsize += sizeof(mCStep);
+    totalsize += sizeof(mCSize);
+    return totalsize;
+  }
+  virtual size_t getSerializedSize() override {
+    size_t totalsize = getMiscSize();
+    totalsize += mCSize * sizeof(mSPtr[0]);
+    if (mIsAsym) totalsize += mCSize * sizeof(mZPtr[0]);
+    if (mHasReduce) totalsize += mCSize * sizeof(mRPtr[0]);
+    return totalsize;
+  }
+  virtual void serializeToBuffer(int8_t*& wptr) override {
+    utils::serialize(wptr, mIsAsym);
+    utils::serialize(wptr, mHasReduce);
+    utils::serialize(wptr, mCStep);
+    utils::serialize(wptr, mCSize);
+    if (wptr != (int8_t*)mSPtr) {
+      std::memcpy(wptr, mSPtr, mCSize * sizeof(mSPtr[0]));
+    }
+    wptr += mCSize * sizeof(mSPtr[0]);
+    if (mIsAsym) {
+      if (wptr != (int8_t*)mZPtr) {
+        std::memcpy(wptr, mZPtr, mCSize * sizeof(mZPtr[0]));
+      }
+      wptr += mCSize * sizeof(mZPtr[0]);
+    }
+    if (mHasReduce) {
+      if (wptr != (int8_t*)mRPtr) {
+        std::memcpy(wptr, mRPtr, mCSize * sizeof(mRPtr[0]));
+      }
+      wptr += mCSize * sizeof(mRPtr[0]);
     }
   }
-
-  static size_t getSize(int m, int _lda, int _lds) {
-    size_t total = 0;
-    total = size_t(m) * _lda * sizeof(QT_T) + (size_t)m * _lds * (sizeof(QT_T) + sizeof(ST_T));
-    return total;
+  virtual void deserializeBuffer(int8_t*& rptr, bool locate_buf) override {
+    if (!locate_buf) {
+      mIsAsym = utils::deserialize<bool>(rptr);
+      mHasReduce = utils::deserialize<bool>(rptr);
+      mCStep = utils::deserialize<int>(rptr);
+      mCSize = utils::deserialize<size_t>(rptr);
+    } else {
+      utils::serialize<bool>(rptr, mIsAsym);
+      utils::serialize<bool>(rptr, mHasReduce);
+      utils::serialize<int>(rptr, mCStep);
+      utils::serialize<size_t>(rptr, mCSize);
+    }
+    mSPtr = reinterpret_cast<SCA_T*>(rptr);
+    rptr += mCSize * sizeof(mSPtr[0]);
+    if (mIsAsym) {
+      mZPtr = reinterpret_cast<DST_T*>(rptr);
+      rptr += mCSize * sizeof(mZPtr[0]);
+    }
+    if (mHasReduce) {
+      mRPtr = reinterpret_cast<RED_T*>(rptr);
+      rptr += mCSize * sizeof(mRPtr[0]);
+    }
   }
+};
 
-  void setPtr(int m, int _lda, int _lds, int8_t* ptr) {
-    lds = _lds;
-    lda = _lda;
-    mWPtr = (QT_T*)ptr;
-    mZPtr = (QT_T*)(mWPtr + m * lda);
-    mSPtr = (ST_T*)(mZPtr + m * lds);
+template <typename SCA_T, typename DST_T, typename RED_T>
+class StorageActivationCorrection : public StorageWeightCorrection<SCA_T, DST_T, RED_T> {
+ public:
+  size_t resize(int _m, int _kblks, bool _is_asym = false, bool _has_reduce = true) {
+    this->mIsAsym = _is_asym;
+    this->mHasReduce = _has_reduce;
+    this->mCStep = _kblks;
+    this->mCSize = (size_t)_m * _kblks;
+    return this->getSerializedSize();
   }
-
-  utils::avector<int8_t> mBuffer;
 };
 
 template <typename QT_T, typename ST_T>
-class StorageQuantActivationKblock : public StorageQuantActivation<QT_T, ST_T> {
+class StorageQuantActivation : public ISerializable,
+                               public ISerialBuffer,
+                               public StorageActivationCorrection<ST_T, QT_T, float> {
  public:
-  int kblock = 0;
-  void resize(int m, int k, int _kblock, int8_t* ptr) {
-    if (ptr) {
-      setPtr(m, k, _kblock, ptr);
+  using CorrectionType = StorageActivationCorrection<ST_T, QT_T, float>;
+  int m = 0, lda = 0, kblock = 1;
+  size_t resize(int _m, int _lda, int _kblock, bool is_asym) {
+    kblock = _kblock;
+    lda = _lda;
+    m = _m;
+    CorrectionType::resize(_m, utils::updiv(_lda, _kblock), is_asym, true);
+    size_t bufsize = size_t(m) * lda * sizeof(QT_T);
+    ISerialBuffer::resize(bufsize);
+    mSize = getSerializedSize();
+    return mSize;
+  }
+
+  inline QT_T* APtr() { return get<QT_T>(); }
+
+  virtual void assign(int8_t* buf) override {
+    ISerializable::deserializeBuffer(buf, true);
+    deserializeBuffer(buf, true);
+    ISerialBuffer::deserializeBuffer(buf, true);
+    CorrectionType::deserializeBuffer(buf, true);
+  }
+
+  virtual void serialize(int8_t* wptr) {
+    ISerializable::serializeToBuffer(wptr);
+    serializeToBuffer(wptr);
+    ISerialBuffer::serializeToBuffer(wptr);
+    CorrectionType::serializeToBuffer(wptr);
+  }
+
+  virtual void deserialize(int8_t* rptr) override {
+    ISerializable::deserializeBuffer(rptr, false);
+    deserializeBuffer(rptr, false);
+    ISerialBuffer::deserializeBuffer(rptr, false);
+    CorrectionType::deserializeBuffer(rptr, false);
+  }
+
+ protected:
+  virtual size_t getSerializedSize() {
+    return ISerializable::getSerializedSize() + getMiscSize() + ISerialBuffer::getSerializedSize() +
+           CorrectionType::getSerializedSize();
+  }
+
+  virtual void serializeToBuffer(int8_t*& wptr) {
+    utils::serialize(wptr, m);
+    utils::serialize(wptr, lda);
+    utils::serialize(wptr, kblock);
+  }
+
+  virtual void deserializeBuffer(int8_t*& rptr, bool map_buf) {
+    if (!map_buf) {
+      m = utils::deserialize<int>(rptr);
+      lda = utils::deserialize<int>(rptr);
+      kblock = utils::deserialize<int>(rptr);
     } else {
-      auto size = getSize(m, k, _kblock);
-      this->mBuffer.resize(size);
-      setPtr(m, k, _kblock, this->mBuffer.data());
+      utils::serialize(rptr, m);
+      utils::serialize(rptr, lda);
+      utils::serialize(rptr, kblock);
     }
   }
 
-  static size_t getSize(int m, int k, int kblock) {
-    int lda = k;
-    int lds = utils::updiv(k, kblock);
-    return StorageQuantActivation<QT_T, ST_T>::getSize(m, lda, lds);
-  }
-
-  void setPtr(int m, int k, int _kblock, int8_t* ptr) {
-    kblock = _kblock;
-    auto tmplds = utils::updiv(k, kblock);
-    StorageQuantActivation<QT_T, ST_T>::setPtr(m, k, tmplds, ptr);
+  inline constexpr size_t getMiscSize() {
+    size_t totalsize = 0;
+    totalsize += sizeof(m);
+    totalsize += sizeof(lda);
+    totalsize += sizeof(kblock);
+    return totalsize;
   }
 };
 
@@ -222,7 +406,7 @@ class ActivationU8KBlockQuantize {
  public:
   using AType = typename _GemmCore_T::AType;
   using SType = float;
-  using QParam = StorageQuantActivationKblock<AType, SType>;
+  using QParam = StorageQuantActivation<AType, SType>;
   using SRCType = SRC_T;
   struct Param {
     const SRC_T* A;
@@ -238,17 +422,11 @@ class ActivationU8KBlockQuantize {
     return _paral;
   }
 
-  size_t getWorkSpaceSize(int m, int k, int kblock) {
+  inline QParam createStorage(int m, int k, int kblock) {
+    QParam tmp;
     int kpad = utils::padto(k, _GemmCore_T::KTILE);
-    size_t totalsize = QParam::getSize(m, kpad, kblock);
-    return totalsize;
-  }
-
-  QParam* createStorage(int m, int k, int kblock, int8_t* workspace) {
-    auto ptr = new QParam;
-    int kpad = utils::padto(k, _GemmCore_T::KTILE);
-    ptr->resize(m, kpad, kblock, workspace);
-    return ptr;
+    tmp.resize(m, kpad, kblock, true);
+    return tmp;
   }
 
   void launch(const Param& _param, int tidx, Parallel& para) {
@@ -261,11 +439,11 @@ class ActivationU8KBlockQuantize {
       auto srcptr = const_cast<SRC_T*>(_param.A) + rowidx * _param.lda + colidx;
       int rowremain = utils::remainsize(rowidx, para.mRows, rowsize);
       int colremain = utils::remainsize(colidx, para.mCols, colsize);
-      auto thdqptr = quan->mWPtr + rowidx * quan->lda + colidx;
-      auto thdsptr = quan->mSPtr + rowidx * quan->lds + blkidx;
-      auto thdzptr = quan->mZPtr + rowidx * quan->lds + blkidx;
+      auto thdqptr = quan->APtr() + rowidx * quan->lda + colidx;
+      auto thdsptr = quan->mSPtr + rowidx * quan->mCStep + blkidx;
+      auto thdzptr = quan->mZPtr + rowidx * quan->mCStep + blkidx;
       kernel::wrapper::QuantizeU8ColBlock::template forward<ISA_T, SRC_T>(
-          rowremain, colremain, srcptr, _param.lda, thdqptr, quan->lda, thdsptr, quan->lds, thdzptr, para.mColBlock);
+          rowremain, colremain, srcptr, _param.lda, thdqptr, quan->lda, thdsptr, quan->mCStep, thdzptr, para.mColBlock);
     }
   }
 
@@ -287,7 +465,7 @@ class ActivationU8KBlockQuantize {
     (void)m_size;
     (void)k_size;
     auto quan = _param.quan;
-    auto aptr = const_cast<AType*>(quan->mWPtr);
+    auto aptr = const_cast<AType*>(quan->APtr());
     *dstptr = aptr + m_offset * _param.lda + k_offset;
     *dststep = _param.lda;
     return JblasSuccess;
@@ -299,8 +477,8 @@ class ActivationU8KBlockQuantize {
     (void)k_size;
     auto quan = _param.quan;
     auto ptr = const_cast<SType*>(quan->mSPtr);
-    *dstptr = ptr + m_offset * quan->lds + k_offset / quan->kblock;
-    *dststep = quan->lds;
+    *dstptr = ptr + m_offset * quan->mCStep + k_offset / quan->kblock;
+    *dststep = quan->mCStep;
     return JblasSuccess;
   }
 
@@ -309,8 +487,8 @@ class ActivationU8KBlockQuantize {
     (void)m_size;
     (void)k_size;
     auto quan = _param.quan;
-    *dstptr = &quan->mZPtr[(m_offset)*quan->lds + k_offset / quan->kblock];
-    *dststep = quan->lds;
+    *dstptr = &quan->mZPtr[(m_offset)*quan->mCStep + k_offset / quan->kblock];
+    *dststep = quan->mCStep;
     return JblasSuccess;
   }
 };
@@ -341,17 +519,11 @@ class ActivationAsymU8Quantize {
     return _paral;
   }
 
-  size_t getWorkSpaceSize(int m, int k) {
+  inline QParam createStorage(int m, int k) {
+    QParam tmp;
     int kpad = utils::padto(k, _GemmCore_T::KTILE);
-    size_t totalsize = QParam::getSize(m, kpad, 1);
-    return totalsize;
-  }
-
-  QParam* createStorage(int m, int k, int8_t* workspace) {
-    auto ptr = new QParam;
-    int kpad = utils::padto(k, _GemmCore_T::KTILE);
-    ptr->resize(m, kpad, 1, workspace);
-    return ptr;
+    tmp.resize(m, kpad, kpad, true);
+    return tmp;
   }
 
   void launch(const Param& _param, int tidx, Parallel& para) {
@@ -363,11 +535,11 @@ class ActivationAsymU8Quantize {
       auto srcptr = const_cast<SRC_T*>(_param.A) + rowidx * _param.lda + colidx;
       int rowremain = utils::remainsize(rowidx, para.mRows, rowsize);
       int colremain = utils::remainsize(colidx, para.mCols, colsize);
-      auto thdqptr = quan->mWPtr + rowidx * quan->lda + colidx;
-      auto thdsptr = quan->mSPtr + rowidx * quan->lds;
-      auto thdzptr = quan->mZPtr + rowidx * quan->lds;
+      auto thdqptr = quan->APtr() + rowidx * quan->lda + colidx;
+      auto thdsptr = quan->mSPtr + rowidx * quan->mCStep;
+      auto thdzptr = quan->mZPtr + rowidx * quan->mCStep;
       kernel::wrapper::QuantizeU8ColBlock::template forward<ISA_T, SRC_T>(
-          rowremain, colremain, srcptr, _param.lda, thdqptr, quan->lda, thdsptr, quan->lds, thdzptr, para.mCols);
+          rowremain, colremain, srcptr, _param.lda, thdqptr, quan->lda, thdsptr, quan->mCStep, thdzptr, para.mCols);
     }
   }
 
@@ -383,7 +555,7 @@ class ActivationAsymU8Quantize {
 
   JBLAS_CODE getActivation(AType** dstptr, int* dststep, const Param& _param, int m_size, int k_size, int m_offset,
                            int k_offset) {
-    auto aptr = const_cast<AType*>(_param.Q->mWPtr);
+    auto aptr = _param.Q->APtr();
     *dstptr = aptr + m_offset * _param.Q->lda + k_offset;
     *dststep = _param.Q->lda;
     return JblasSuccess;
@@ -400,7 +572,7 @@ class ActivationS8KBlockQuantize {
  public:
   using AType = typename _GemmCore_T::AType;
   using SType = float;
-  using QParam = StorageQuantActivationKblock<AType, SType>;
+  using QParam = StorageQuantActivation<AType, SType>;
   using Parallel = utils::parallel::Parallel2DRowMajorColBlock;
   using SRCType = SRC_T;
 
@@ -417,17 +589,11 @@ class ActivationS8KBlockQuantize {
     return _paral;
   }
 
-  size_t getWorkSpaceSize(int m, int k, int kblock) {
+  inline QParam createStorage(int m, int k, int kblock) {
+    QParam tmp;
     int kpad = utils::padto(k, _GemmCore_T::KTILE);
-    size_t totalsize = QParam::getSize(m, kpad, kblock);
-    return totalsize;
-  }
-
-  QParam* createStorage(int m, int k, int kblock, int8_t* workspace) {
-    auto ptr = new QParam;
-    int kpad = utils::padto(k, _GemmCore_T::KTILE);
-    ptr->resize(m, kpad, kblock, workspace);
-    return ptr;
+    tmp.resize(m, kpad, kblock, false);
+    return tmp;
   }
 
   void launch(const Param& _param, int tidx, Parallel& para) {
@@ -440,10 +606,10 @@ class ActivationS8KBlockQuantize {
       auto srcptr = const_cast<SRC_T*>(_param.A) + rowidx * _param.lda + colidx;
       int rowremain = utils::remainsize(rowidx, para.mRows, rowsize);
       int colremain = utils::remainsize(colidx, para.mCols, colsize);
-      auto thdqptr = quan->mWPtr + rowidx * quan->lda + colidx;
-      auto thdsptr = quan->mSPtr + rowidx * quan->lds + blkidx;
+      auto thdqptr = quan->APtr() + rowidx * quan->lda + colidx;
+      auto thdsptr = quan->mSPtr + rowidx * quan->mCStep + blkidx;
       kernel::wrapper::QuantizeS8ColBlock::template forward<ISA_T, SRC_T>(
-          rowremain, colremain, srcptr, _param.lda, thdqptr, quan->lda, thdsptr, quan->lds, para.mColBlock);
+          rowremain, colremain, srcptr, _param.lda, thdqptr, quan->lda, thdsptr, quan->mCStep, para.mColBlock);
     }
   }
 
@@ -465,7 +631,7 @@ class ActivationS8KBlockQuantize {
     (void)m_size;
     (void)k_size;
     auto quan = _param.quan;
-    auto aptr = const_cast<AType*>(quan->mWPtr);
+    auto aptr = const_cast<AType*>(quan->APtr());
     *dstptr = aptr + m_offset * quan->lda + k_offset;
     *dststep = quan->lda;
     return JblasSuccess;
@@ -477,8 +643,8 @@ class ActivationS8KBlockQuantize {
     (void)k_size;
     auto quan = _param.quan;
     auto ptr = const_cast<SType*>(quan->mSPtr);
-    *dstptr = ptr + m_offset * quan->lds + k_offset / quan->kblock;
-    *dststep = quan->lds;
+    *dstptr = ptr + m_offset * quan->mCStep + k_offset / quan->kblock;
+    *dststep = quan->mCStep;
     return JblasSuccess;
   }
 
@@ -527,11 +693,11 @@ class ActivationSymS8Quantize {
     return totalsize;
   }
 
-  QParam* createStorage(int m, int k, int8_t* workspace) {
-    auto ptr = new QParam;
+  inline QParam createStorage(int m, int k) {
+    QParam tmp;
     int kpad = utils::padto(k, _GemmCore_T::KTILE);
-    ptr->resize(m, kpad, 1, workspace);
-    return ptr;
+    tmp.resize(m, kpad, kpad, false);
+    return tmp;
   }
 
   void launch(const Param& _param, int tidx, Parallel& para) {
@@ -543,10 +709,10 @@ class ActivationSymS8Quantize {
       auto srcptr = const_cast<SRC_T*>(_param.A) + rowidx * _param.lda + colidx;
       int rowremain = utils::remainsize(rowidx, para.mRows, rowsize);
       int colremain = utils::remainsize(colidx, para.mCols, colsize);
-      auto thdqptr = quan->mWPtr + rowidx * quan->lda + colidx;
-      auto thdsptr = quan->mSPtr + rowidx * quan->lds;
+      auto thdqptr = quan->APtr() + rowidx * quan->lda + colidx;
+      auto thdsptr = quan->mSPtr + rowidx * quan->mCStep;
       kernel::wrapper::QuantizeS8ColBlock::template forward<ISA_T, SRC_T>(
-          rowremain, colremain, srcptr, _param.lda, thdqptr, quan->lda, thdsptr, quan->lds, para.mCols);
+          rowremain, colremain, srcptr, _param.lda, thdqptr, quan->lda, thdsptr, quan->mCStep, para.mCols);
     }
   }
 
@@ -562,7 +728,7 @@ class ActivationSymS8Quantize {
 
   JBLAS_CODE getActivation(AType** dstptr, int* dststep, const Param& _param, int m_size, int k_size, int m_offset,
                            int k_offset) {
-    auto aptr = const_cast<AType*>(_param.Q->mWPtr);
+    auto aptr = const_cast<AType*>(_param.Q->APtr());
     *dstptr = aptr + m_offset * _param.Q->lda + k_offset;
     *dststep = _param.Q->lda;
     return JblasSuccess;
@@ -570,28 +736,25 @@ class ActivationSymS8Quantize {
 };
 
 template <typename T, JBLAS_ISA ISA_T>
-class WeightBase {
- public:
-  static void transposeWeight(const int Row, const int Col, const T* src, const int ld_src, T* dst, const int ld_dst) {
-    utils::parallel::Parallel2DRowMajor _para;
-    utils::CpuBase cb;
-    _para.update(Row, Col, 16, 16, cb.mNumThreads);
-    omp_set_num_threads(cb.mNumThreads);
+static void transposeWeight(const int Row, const int Col, const T* src, const int ld_src, T* dst, const int ld_dst) {
+  utils::parallel::Parallel2DRowMajor _para;
+  utils::CpuBase cb;
+  _para.update(Row, Col, 16, 16, cb.mNumThreads);
+  omp_set_num_threads(cb.mNumThreads);
 #pragma omp parallel
-    {
-      int tidx = omp_get_thread_num();
-      int colidx, rowidx, rowsize, colsize;
-      _para.getIndex(tidx, &rowidx, &colidx, &rowsize, &colsize);
-      if (rowsize > 0 && colsize > 0) {
-        // rowremain: src valid size. rowsize: padded size
-        int rowremain = utils::remainsize(rowidx, Row, rowsize);
-        int colremain = utils::remainsize(colidx, Col, colsize);
-        kernel::wrapper::Transpose2D<T>::template forward<ISA_T>(
-            src + rowidx * ld_src + colidx, dst + rowidx + colidx * ld_dst, rowremain, colremain, ld_src, ld_dst);
-      }
+  {
+    int tidx = omp_get_thread_num();
+    int colidx, rowidx, rowsize, colsize;
+    _para.getIndex(tidx, &rowidx, &colidx, &rowsize, &colsize);
+    if (rowsize > 0 && colsize > 0) {
+      // rowremain: src valid size. rowsize: padded size
+      int rowremain = utils::remainsize(rowidx, Row, rowsize);
+      int colremain = utils::remainsize(colidx, Col, colsize);
+      kernel::wrapper::Transpose2D<T>::template forward<ISA_T>(
+          src + rowidx * ld_src + colidx, dst + rowidx + colidx * ld_dst, rowremain, colremain, ld_src, ld_dst);
     }
   }
-};
+}
 
 template <class _GemmCore_T, JBLAS_ISA ISA_T>
 using ActivationFp32SymS8Quantize = ActivationSymS8Quantize<_GemmCore_T, ISA_T, float>;
@@ -599,77 +762,44 @@ template <class _GemmCore_T, JBLAS_ISA ISA_T>
 using ActivationBf16SymS8Quantize = ActivationSymS8Quantize<_GemmCore_T, ISA_T, utils::bf16>;
 
 // Storage class has real weight memory, PackedWeight provides interface
-class StorageWeight : public prologue::PackedWeight {
+class StoragePackedWeight : public WeightBase, public ISerialBuffer {
  public:
-  StorageWeight(jblas::gemm::GemmCoreType _type) : PackedWeight(_type) {
-    mRawPtr = NULL;
-    mRawSize = 0;
-    mType = int(WeightPrologueType::WeightPack);
+  StoragePackedWeight(jblas::gemm::GemmCoreType _type) : WeightBase(_type) {
+    mPrologueID = int(PrologueBIDs::WeightPack);
   }
 
-  void resize(int NPad, int KPad, int8_t* ptr) {
-    mNPad = NPad;
-    mKPad = KPad;
-    mRawSize = getSize(NPad, KPad, jblas::gemm::getWeightSize(mCoreType));
-    if (ptr) {
-      mRawPtr = ptr;
-    } else {
-      mBuffer.resize((size_t)NPad * KPad * jblas::gemm::getWeightSize(mCoreType));
-      mRawPtr = mBuffer.data();
-    }
+  size_t resize(int NPad, int KPad) {
+    WeightBase::resize(NPad, KPad);
+    auto bsize = (size_t)NPad * KPad * jblas::gemm::getWeightSize(mCoreType);
+    ISerialBuffer::resize(bsize);
+    mSize = WeightBase::getSerializedSize() + ISerialBuffer::getSerializedSize();
+    return mSize;
   }
 
-  static size_t getSize(size_t NPad, size_t KPad, size_t EleBytes) { return NPad * KPad * EleBytes; }
-
-  template <typename WT>
-  inline WT* getPtr() const {
-    return reinterpret_cast<WT*>(mRawPtr);
+  virtual void assign(int8_t* buf) override {
+    WeightBase::deserializeBuffer(buf, true);
+    ISerialBuffer::deserializeBuffer(buf, true);
   }
 
-  template <typename WT>
-  inline size_t getSize() const {
-    return mRawSize / sizeof(WT);
+  virtual void serialize(int8_t* wptr) {
+    WeightBase::serializeToBuffer(wptr);
+    ISerialBuffer::serializeToBuffer(wptr);
   }
 
-  int8_t* mRawPtr;
-  size_t mRawSize;
-
- protected:
-  virtual size_t getDataSerializedSize() override {
-    size_t totalsize = 0;
-    totalsize += sizeof(mRawSize);
-    totalsize += mRawSize;
-    return totalsize;
+  virtual void deserialize(int8_t* rptr) override {
+    WeightBase::deserializeBuffer(rptr, false);
+    ISerialBuffer::deserializeBuffer(rptr, false);
   }
-  virtual void serializeDataToBuffer(void* buf) override {
-    auto wptr = reinterpret_cast<int8_t*>(buf);
-    utils::serialize(wptr, mRawSize);
-    std::memcpy(mRawPtr, wptr, mRawSize);
-  }
-  virtual void deserializeDataBuffer(void* buf, int memalloc) override {
-    auto rptr = reinterpret_cast<int8_t*>(buf);
-    size_t rsize = utils::deserialize<size_t>(rptr);
-    if (memalloc) {
-      mBuffer.resize(rsize);
-      std::memcpy(mBuffer.data(), rptr, rsize);
-      mRawPtr = mBuffer.data();
-      mRawSize = mBuffer.size();
-    } else {
-      mRawPtr = (int8_t*)rptr;
-      mRawSize = rsize;
-    }
-  }
-  utils::aligned_vector<int8_t> mBuffer;
 };
 
 template <class _GemmCore_T, JBLAS_ISA ISA_T>
-class WeightPack : public WeightBase<typename _GemmCore_T::BType, ISA_T> {
+class WeightPack {
  public:
   using WType = typename _GemmCore_T::BType;
   struct Param {
     const WType* B;
     const int ldb;
-    StorageWeight* packedW;
+    StoragePackedWeight* packedW;
   };
   using Parallel = utils::parallel::Parallel2DRowMajor;
 
@@ -680,23 +810,17 @@ class WeightPack : public WeightBase<typename _GemmCore_T::BType, ISA_T> {
     return _paral;
   }
 
-  size_t getWorkSpaceSize(int n, int k) {
+  StoragePackedWeight createStorage(int n, int k) {
     int KPad = utils::padto(k, _GemmCore_T::KTILE);
     int NPad = utils::padto(n, _GemmCore_T::NTILE);
-    return StorageWeight::getSize(NPad, KPad, jblas::gemm::getWeightSize(_GemmCore_T::TYPE));
-  }
-
-  StorageWeight* createStorage(int n, int k, int8_t* workspace) {
-    int KPad = utils::padto(k, _GemmCore_T::KTILE);
-    int NPad = utils::padto(n, _GemmCore_T::NTILE);
-    auto ptr = new StorageWeight(_GemmCore_T::TYPE);
-    ptr->resize(NPad, KPad, workspace);
-    return ptr;
+    StoragePackedWeight tmp(_GemmCore_T::TYPE);
+    tmp.resize(NPad, KPad);
+    return tmp;
   }
 
   void packWeightTranspose(const int N, const int K, const Param& _param) {
     utils::aligned_vector<WType> B_NT(N * K);
-    WeightBase<WType, ISA_T>::transposeWeight(N, K, _param.B, _param.ldb, B_NT.data(), N);
+    transposeWeight<WType, ISA_T>(N, K, _param.B, _param.ldb, B_NT.data(), N);
     return packWeight(N, K, {B_NT.data(), N, _param.packedW});
   }
 
@@ -721,7 +845,7 @@ class WeightPack : public WeightBase<typename _GemmCore_T::BType, ISA_T> {
                                         rowsize);  // rowremain: src valid size. rowsize: padded size
       int colremain = utils::remainsize(colidx, para.mCols, colsize);
       const auto src = _param.B + rowidx * _param.ldb + colidx;
-      const auto dst = packedw->template getPtr<WType>() + rowidx * _GemmCore_T::NTILE + colidx * packedw->mKPad;
+      const auto dst = packedw->template get<WType>() + rowidx * _GemmCore_T::NTILE + colidx * packedw->mKPad;
       using PaddingInterleaveMNWType = kernel::wrapper::PaddingInterleaveMN<_GemmCore_T::NTILE, _GemmCore_T::PACK_ROW>;
       auto ret = PaddingInterleaveMNWType::template forward<ISA_T>(  //
           src, dst, rowremain, colremain, rowsize, colsize, _param.ldb, packedw->mKPad);
@@ -734,7 +858,7 @@ class WeightPack : public WeightBase<typename _GemmCore_T::BType, ISA_T> {
                               const Param param) {
     auto wptr = param.packedW;
     auto KPad = wptr->mKPad;
-    auto bptr = wptr->template getPtr<WType>() + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
+    auto bptr = wptr->template get<WType>() + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
     kernel::wrapper::Memcpy2D::template forward<ISA_T, WType, WType>(
         bptr, *dstptr, n_size / _GemmCore_T::NTILE, _GemmCore_T::NTILE * k_size, _GemmCore_T::NTILE * KPad,
         _GemmCore_T::NTILE * k_size);
@@ -743,20 +867,19 @@ class WeightPack : public WeightBase<typename _GemmCore_T::BType, ISA_T> {
   }
 };
 
-}  // namespace gemm
 class PackedWeightParser {
  public:
-  static PackedWeight* deserialBuffer(void* serialized_buf, int memalloc = 0) {
+  static gemm::WeightBase* deserialBuffer(void* serialized_buf) {
     auto rptr = reinterpret_cast<int8_t*>(serialized_buf);
-    rptr += PackedWeight::TypeOffset;
-    int mType = utils::deserialize<int>(rptr);
-    if (mType >= int(WeightPrologueType::Begin) && mType < int(WeightPrologueType::End)) {
+    rptr += WeightBase::offset();
+    int mProID = utils::deserialize<int>(rptr);
+    if (mProID >= int(PrologueBIDs::Begin) && mProID < int(PrologueBIDs::End)) {
       rptr = reinterpret_cast<int8_t*>(serialized_buf);
-      auto type = static_cast<WeightPrologueType>(mType);
+      auto type = static_cast<PrologueBIDs>(mProID);
       switch (type) {
-        case jblas::prologue::WeightPrologueType::WeightPack: {
-          auto ptr = new gemm::StorageWeight(jblas::gemm::GemmCoreType::Undef);
-          ptr->deserializeBuffer(rptr, memalloc);
+        case jblas::prologue::PrologueBIDs::WeightPack: {
+          auto ptr = new gemm::StoragePackedWeight(jblas::gemm::GemmCoreType::Undef);
+          ptr->deserialize(rptr);
           return ptr;
         }
         default:
@@ -766,6 +889,6 @@ class PackedWeightParser {
     return nullptr;
   }
 };
-
+}  // namespace gemm
 }  // namespace prologue
 }  // namespace jblas

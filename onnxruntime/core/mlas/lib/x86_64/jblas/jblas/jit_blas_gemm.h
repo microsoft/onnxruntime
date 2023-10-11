@@ -25,6 +25,7 @@ enum class GemmCoreType : int {
   AVX2_4X24,
   AVX2_2X48,
   AVX_VNNI_2x48,
+  AVX_VNNI_4x24,
   AVX_VNNI_1x48_KBLOCK,
   AVX512F_8x48,
   AVX512_VNNI_8x48,
@@ -486,7 +487,7 @@ class GemmCore_Row_NN_4x24_AVX_VNNI {
   typedef int8_t BType;
   typedef int32_t CType;
   static JBLAS_ISA constexpr ISA = JblasAVX_VNNI;
-  static GemmCoreType constexpr TYPE = GemmCoreType::AVX_VNNI_2x48;
+  static GemmCoreType constexpr TYPE = GemmCoreType::AVX_VNNI_4x24;
   static int constexpr NTILE = 24, MTILE = 4, KTILE = 4 / sizeof(BType);
   static int constexpr PACK_ROW = KTILE;
   static int constexpr KUNROLL = 2;
@@ -513,7 +514,6 @@ class GemmCore_Row_NN_4x24_AVX_VNNI {
    protected:
     void generate_mtile(int _mtile) {
       CRegCount = _mtile * NRegs;
-      BRegCount = NRegs;
       BReg = CReg + CRegCount;
       AReg = BReg + BRegCount;
       TmpReg = AReg + ARegCount;
@@ -600,14 +600,12 @@ class GemmCore_Row_NN_4x24_AVX_VNNI {
     void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& _reg_matBptr) {
       for (int kk = 0; kk < _kunroll; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
-        for (int i = 0; i < _NRegs; i++) {
-          vmovups(Xbyak::Ymm(BReg + i), ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
-        }
         for (int mm = 0; mm < _mtile; mm++) {
           vpbroadcastd(Xbyak::Ymm(AReg), ptr[reg_tmp]);
           add(reg_tmp, reg_astep);
           for (int i = 0; i < _NRegs; i++) {
-            vpdpbusds(Xbyak::Ymm(CReg + mm * NRegs + i), Xbyak::Ymm(AReg), Xbyak::Ymm(BReg + i));
+            vpdpbusds_vex(Xbyak::Ymm(CReg + mm * NRegs + i), Xbyak::Ymm(AReg),
+                          ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
           }
         }
       }
@@ -724,7 +722,6 @@ class GemmCore_Row_NN_2x48_AVX_VNNI {
    protected:
     void generate_mtile(int _mtile) {
       CRegCount = _mtile * NRegs;
-      BRegCount = NRegs;
       BReg = CReg + CRegCount;
       AReg = BReg + BRegCount;
       TmpReg = AReg + ARegCount;
@@ -811,14 +808,12 @@ class GemmCore_Row_NN_2x48_AVX_VNNI {
     void generate_fma(int _mtile, int _NRegs, int _kunroll, const Xbyak::Reg64& _reg_matBptr) {
       for (int kk = 0; kk < _kunroll; kk++) {
         lea(reg_tmp, ptr[reg_matAptr + kk * AKStepSize]);
-        for (int i = 0; i < _NRegs; i++) {
-          vmovups(Xbyak::Ymm(BReg + i), ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
-        }
         for (int mm = 0; mm < _mtile; mm++) {
           vpbroadcastd(Xbyak::Ymm(AReg), ptr[reg_tmp]);
           add(reg_tmp, reg_astep);
           for (int i = 0; i < _NRegs; i++) {
-            vpdpbusds(Xbyak::Ymm(CReg + mm * NRegs + i), Xbyak::Ymm(AReg), Xbyak::Ymm(BReg + i));
+            vpdpbusds_vex(Xbyak::Ymm(CReg + mm * NRegs + i), Xbyak::Ymm(AReg),
+                          ptr[_reg_matBptr + kk * BKStepSize + i * VecBytes]);
           }
         }
       }
@@ -1721,7 +1716,7 @@ class GemmCore_Row_NN_8x48_AVX512_VNNI {
           vpbroadcastd(Xbyak::Zmm(AReg), ptr[reg_tmp]);
           add(reg_tmp, reg_astep);
           for (int i = 0; i < _NRegs; i++) {
-            vpdpbusds(Xbyak::Zmm(CReg + mm * NRegs + i), Xbyak::Zmm(AReg), Xbyak::Zmm(BReg + i));
+            vpdpbusds_evex(Xbyak::Zmm(CReg + mm * NRegs + i), Xbyak::Zmm(AReg), Xbyak::Zmm(BReg + i));
           }
         }
       }
@@ -3071,7 +3066,7 @@ class GemmCore_Row_NN_3x48_AVX512_VNNI_KBLOCK {
           vpbroadcastd(Xbyak::Zmm(AReg), ptr[reg_tmp]);
           add(reg_tmp, reg_astep);
           for (int i = 0; i < _NRegs; i++) {
-            vpdpbusds(Xbyak::Zmm(CReg + mm * NRegs + i), Xbyak::Zmm(AReg), Xbyak::Zmm(BReg + i));
+            vpdpbusds_evex(Xbyak::Zmm(CReg + mm * NRegs + i), Xbyak::Zmm(AReg), Xbyak::Zmm(BReg + i));
           }
         }
       }
@@ -3085,7 +3080,7 @@ class GemmCore_Row_NN_3x48_AVX512_VNNI_KBLOCK {
         for (int mm = 0; mm < _mtile; mm++) {
           for (int i = 0; i < _NRegs; i++) {
             vpxorq(Xbyak::Zmm(ZpTmp), Xbyak::Zmm(ZpTmp), Xbyak::Zmm(ZpTmp));
-            vpdpbusds(Xbyak::Zmm(ZpTmp), Xbyak::Zmm(ZpAReg + mm), Xbyak::Zmm(BReg + i));
+            vpdpbusds_evex(Xbyak::Zmm(ZpTmp), Xbyak::Zmm(ZpAReg + mm), Xbyak::Zmm(BReg + i));
             vpsubd(Xbyak::Zmm(CReg + mm * NRegs + i), Xbyak::Zmm(CReg + mm * NRegs + i), Xbyak::Zmm(ZpTmp));
           }
         }
@@ -3398,7 +3393,7 @@ class GemmCore_Row_NN_4x48_AVX512_VNNI_KBLOCK {
           vpbroadcastd(Xbyak::Zmm(AReg), ptr[reg_tmp]);
           add(reg_tmp, reg_astep);
           for (int i = 0; i < _NRegs; i++) {
-            vpdpbusds(Xbyak::Zmm(CReg + mm * NRegs + i), Xbyak::Zmm(AReg), Xbyak::Zmm(BReg + i));
+            vpdpbusds_evex(Xbyak::Zmm(CReg + mm * NRegs + i), Xbyak::Zmm(AReg), Xbyak::Zmm(BReg + i));
           }
         }
       }
@@ -3705,8 +3700,8 @@ class GemmCore_Row_NN_1x48_AVX_VNNI_KBLOCK {
             add(reg_tmp, reg_astep);
           }
           for (int i = 0; i < _NRegs; i++) {
-            vpdpbusds(Xbyak::Ymm(CReg + mm * NRegs + i), Xbyak::Ymm(AReg),
-                      ptr[reg_matBptr + kk * BKStepSize + i * VecBytes]);
+            vpdpbusds_vex(Xbyak::Ymm(CReg + mm * NRegs + i), Xbyak::Ymm(AReg),
+                          ptr[reg_matBptr + kk * BKStepSize + i * VecBytes]);
           }
         }
       }
@@ -3764,7 +3759,8 @@ class GemmCore_Row_NN_1x48_AVX_VNNI_KBLOCK {
         vpbroadcastb(Xbyak::Xmm(AReg), ptr[reg_zpA]);
         vpmovzxbd(Xbyak::Ymm(AReg), Xbyak::Xmm(AReg));
         vcvtdq2ps(Xbyak::Ymm(AReg), Xbyak::Ymm(AReg));
-        vmulps(Xbyak::Ymm(AReg), Xbyak::Ymm(AReg), zword_b[reg_scaleA]);
+        vbroadcastss(Xbyak::Ymm(BReg), ptr[reg_scaleA]);
+        vmulps(Xbyak::Ymm(AReg), Xbyak::Ymm(AReg), Xbyak::Ymm(BReg));
         for (int j = 0; j < NRegs; j++) {
           vmulps(Xbyak::Ymm(CReg + j), Xbyak::Ymm(AReg), ptr[reg_redB + j * VecBytes]);
           vsubps(Xbyak::Ymm(CF32Reg + i * NRegs + j), Xbyak::Ymm(CReg + j));
@@ -4251,6 +4247,7 @@ static inline size_t getWeightSize(GemmCoreType _type) {
     case jblas::gemm::GemmCoreType::AVX512F_8x48:
       return 4;
     case jblas::gemm::GemmCoreType::AVX_VNNI_2x48:
+    case jblas::gemm::GemmCoreType::AVX_VNNI_4x24:
     case jblas::gemm::GemmCoreType::AVX_VNNI_1x48_KBLOCK:
     case jblas::gemm::GemmCoreType::AVX512_VNNI_8x48:
     case jblas::gemm::GemmCoreType::AMX_INT8_16x64:

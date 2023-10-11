@@ -196,10 +196,16 @@ class JitAvx512_fp16 : protected JitAvx512f {};
 
 class JitAvx512vnni : protected JitAvx512f {
  protected:
+  void vpdpbusds_evex(const Xbyak::Xmm& x1, const Xbyak::Xmm& x2, const Xbyak::Operand& op) {
+    vpdpbusds(x1, x2, op, Xbyak::EvexEncoding);
+  }
 };
 
 class JitAvxvnni : protected JitAvx2 {
  protected:
+  void vpdpbusds_vex(const Xbyak::Xmm& x1, const Xbyak::Xmm& x2, const Xbyak::Operand& op) {
+    vpdpbusds(x1, x2, op, Xbyak::VexEncoding);
+  }
 };
 
 class JitAmxtile : protected JitAvx512f {

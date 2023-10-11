@@ -332,9 +332,13 @@ class aligned_vector {
   void resize(size_t size) {
     mRawsize = size;
     mAlignedsize = (mRawsize + _Alignment - 1) / _Alignment * _Alignment + _Alignment;
-    mVec.resize(mAlignedsize);
-    auto uptr = reinterpret_cast<uint64_t>(mVec.data());
-    mPtr = reinterpret_cast<_T*>((uptr + _Alignment - 1) / _Alignment * _Alignment);
+    if (size) {
+      mVec.resize(mAlignedsize);
+      auto uptr = reinterpret_cast<uint64_t>(mVec.data());
+      mPtr = reinterpret_cast<_T*>((uptr + _Alignment - 1) / _Alignment * _Alignment);
+    } else {
+      mPtr = NULL;
+    }
   }
   _T* data() const { return mPtr; }
   _T& operator[](size_t _n) noexcept { return mPtr[_n]; }

@@ -168,20 +168,20 @@ JblasQ4GemmBatchDriver(const size_t M,
         const_cast<void*>(DataParams->B));
     GetCPUDevice();
     if (ptr) {
-        if (ptr->mType == int(jblas::prologue::weight_comp::gemm_kblcok::WeightCompType::
-                                  WeightS4ClipScaleFp32PerChannelN)) {
+        if (ptr->mPrologueID == int(jblas::prologue::weight_comp::gemm_kblcok::PrologueBIDs::
+                                        WeightS4ClipScaleFp32PerChannelN)) {
             auto weiptr = reinterpret_cast<
                 jblas::prologue::weight_comp::gemm_kblcok::StorageWeightS4ScaleFp32PerChannelN*>(
                 ptr);
             if (ptr->mCoreType == jblas::gemm::GemmCoreType::AVX512_VNNI_8x48) {
                 if (_cd->AVX512_VNNI()) {
-                    auto quanA =
-                        avx512vnni_s4pernkernl.getActivationPtr()->createStorage(M, K, NULL);
+                    auto quanA = avx512vnni_s4pernkernl.getActivationPtr()->createStorage(M, K);
+                    std::vector<int8_t> quanBuf(quanA.mSize);
+                    quanA.assign(quanBuf.data());
                     avx512vnni_s4pernkernl.template compute<true, false>(
                         {int(M * BatchN), int(N), int(K), DataParams->A, int(DataParams->lda),
-                         quanA, weiptr, DataParams->C, int(DataParams->ldc), quanA->mZPtr,
-                         quanA->mSPtr, quanA->lds, weiptr->mRPtr, weiptr->mSPtr});
-                    delete quanA;
+                         &quanA, weiptr, DataParams->C, int(DataParams->ldc), quanA.mZPtr,
+                         quanA.mSPtr, quanA.mCStep, weiptr->mRPtr, weiptr->mSPtr});
                 }
             }
         }

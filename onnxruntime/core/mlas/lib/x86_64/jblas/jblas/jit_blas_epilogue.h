@@ -69,9 +69,8 @@ class CustomAccumulatorWriteBackWithEltop {
     auto COffset = M_offset * _param.ldc + N_offset;
     auto cptr = _param.C + COffset;
     if constexpr (std::is_same<_SRC_T, float>::value && std::is_same<_DST_T, float>::value) {
-      return kernel::jit::CustomMemCpy::template forward<_OP>(cacheptr, cptr, M, N * sizeof(_DST_T),
-                                                              cachestep * sizeof(_SRC_T), _param.ldc * sizeof(_DST_T),
-                                                              _param.elt_const_v);
+      return kernel::wrapper::Memcpy2D::template forward1<ISA_T, float, float, _OP>(cacheptr, cptr, M, N, cachestep,
+                                                                                    _param.ldc, _param.elt_const_v);
     } else {
       assert(false);
     }
@@ -90,6 +89,9 @@ using AccumulatorWriteBackFp32Bf16 = AccumulatorWriteBack<ISA_T, float, utils::b
 
 template <JBLAS_ISA ISA_T>
 using AccumulatorWriteBackWithGeluFp32 = CustomAccumulatorWriteBackWithEltop<ISA_T, float, float, GELU>;
+
+template <JBLAS_ISA ISA_T>
+using AccumulatorWriteBackWithSwishFp32 = CustomAccumulatorWriteBackWithEltop<ISA_T, float, float, SWISH>;
 
 template <JBLAS_ISA ISA_T>
 class AlphaBetaProcessFp32 {
