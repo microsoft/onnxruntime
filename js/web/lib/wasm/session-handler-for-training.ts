@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env, InferenceSession, SessionHandler, TrainingSessionHandler} from 'onnxruntime-common';
+import {env, InferenceSession, SessionHandler, TrainingSessionHandler, Tensor} from 'onnxruntime-common';
 
 import {SerializableModeldata} from './proxy-messages';
 import {createSessionAllocate, initRuntime, isOrtEnvInitialized} from './wasm-core-impl';
-import {createCheckpointHandle, createTrainingSessionHandle, releaseTrainingSessionAndCheckpoint} from './wasm-training-core-impl';
+import {createCheckpointHandle, createTrainingSessionHandle, runTrainStep,
+  releaseTrainingSessionAndCheckpoint} from './wasm-training-core-impl';
+import { encodeTensorMetadata, decodeTensorMetadata } from './session-handler';
 
 export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
   async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {
@@ -60,14 +62,52 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
         createTrainingSessionHandle(this.checkpointId, trainModelData, evalModelData, optimizerModelData, options);
   }
 
+  async runTrainStep(
+      feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
+      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
+    const inputArray: Tensor[] = [];
+    const inputIndices: number[] = [];
+    Object.entries(feeds).forEach(kvp => {
+      const name = kvp[0];
+      const tensor = kvp[1];
+      const index = this.inputNames.indexOf(name);
+      if (index === -1) {
+        throw new Error(`invalid input '${name}'`);
+      }
+      inputArray.push(tensor);
+      inputIndices.push(index);
+    });
+
+    const outputArray: Array<Tensor|null> = [];
+    const outputIndices: number[] = [];
+    Object.entries(fetches).forEach(kvp => {
+      const name = kvp[0];
+      const tensor = kvp[1];
+      const index = this.outputNames.indexOf(name);
+      if (index === -1) {
+        throw new Error(`invalid output '${name}'`);
+      }
+      outputArray.push(tensor);
+      outputIndices.push(index);
+    });
+
+    const inputs =
+        inputArray.map((t, i) => encodeTensorMetadata(t, () => `input "${this.inputNames[inputIndices[i]]}"`));
+    const outputs = outputArray.map(
+        (t, i) => t ? encodeTensorMetadata(t, () => `output "${this.outputNames[outputIndices[i]]}"`) : null);
+
+    const results = await runTrainStep(this.sessionId, inputIndices, inputs, outputIndices, outputs, options);
+
+    const resultMap: SessionHandler.ReturnType = {};
+    for (let i = 0; i < results. length; i++) {
+      resultMap[this.outputNames[outputIndices[i]]] = outputArray[i] ?? decodeTensorMetadata(results[i]);
+    }
+    return resultMap;
+  }
+
   async dispose(): Promise<void> {
     return releaseTrainingSessionAndCheckpoint(
         this.checkpointId, this.sessionId, this.inputEncodedNames, this.outputEncodedNames);
   }
 
-  async runTrainStep(
-      _feeds: SessionHandler.FeedsType, _fetches: SessionHandler.FetchesType,
-      _options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
-    throw new Error('Method not implemented yet.');
-  }
 }

@@ -10,7 +10,7 @@ import {isGpuBufferSupportedType} from './wasm-common';
 
 let runtimeInitializationPromise: Promise<void>|undefined;
 
-const encodeTensorMetadata = (tensor: Tensor, getName: () => string): TensorMetadata => {
+export const encodeTensorMetadata = (tensor: Tensor, getName: () => string): TensorMetadata => {
   switch (tensor.location) {
     case 'cpu':
       return [tensor.type, tensor.dims, tensor.data, 'cpu'];
@@ -21,7 +21,7 @@ const encodeTensorMetadata = (tensor: Tensor, getName: () => string): TensorMeta
   }
 };
 
-const decodeTensorMetadata = (tensor: TensorMetadata): Tensor => {
+export const decodeTensorMetadata = (tensor: TensorMetadata): Tensor => {
   switch (tensor[3]) {
     case 'cpu':
       return new Tensor(tensor[0], tensor[2], tensor[1]);
