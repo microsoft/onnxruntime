@@ -770,11 +770,13 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
       if (disabled_tests.find(test_case_name) != disabled_tests.end()) return true;
 
-      for (auto iter2 = broken_tests_keyword_set->begin(); iter2 != broken_tests_keyword_set->end(); ++iter2) {
-        std::string keyword = *iter2;
-        if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
-          LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(test_case_name) << " as it is in broken test keywords";
-          return true;
+      if (broken_tests_keyword_set) {
+        for (auto iter2 = broken_tests_keyword_set->begin(); iter2 != broken_tests_keyword_set->end(); ++iter2) {
+          std::string keyword = *iter2;
+          if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
+            LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(test_case_name) << " as it is in broken test keywords";
+            return true;
+          }
         }
       }
 
@@ -795,9 +797,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
 
       auto test_case_dir = model_info->GetDir();
-      namespace fs = std::filesystem;
-      fs::path test_case_path = test_case_dir;
-      auto full_test_case_name = (test_case_path /= test_case_name).string();
+      auto full_test_case_name = test_case_name + L" in " + test_case_dir;
 
 #if !defined(ORT_MINIMAL_BUILD)
       // to skip some models like *-int8 or *-qdq
@@ -809,25 +809,29 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
 #endif
 
       bool has_test_data = false;
-      for (auto& entry : fs::directory_iterator(test_case_dir)) {
-        if (fs::is_directory(entry.path())) {
+      LoopDir(test_case_dir, [&](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
+        if (filename[0] == '.') return true;
+        if (f_type == OrtFileType::TYPE_DIR) {
           has_test_data = true;
-          break;
+          return false;
         }
-      }
+        return true;
+      });
       if (!has_test_data) {
         LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(full_test_case_name) << " due to no test data";
         return true;
       }
 
-      BrokenTest t = {ToUTF8String(test_case_name), ""};
-      auto iter = broken_tests->find(t);
-      auto opset_version = model_info->GetNominalOpsetVersion();
-      if (iter != broken_tests->end() &&
-          (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
-           iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end())) {
-        LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(full_test_case_name) << " due to broken_tests";
-        return true;
+      if (broken_tests) {
+        BrokenTest t = {ToUTF8String(test_case_name), ""};
+        auto iter = broken_tests->find(t);
+        auto opset_version = model_info->GetNominalOpsetVersion();
+        if (iter != broken_tests->end() &&
+            (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
+             iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end())) {
+          LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(full_test_case_name) << " due to broken_tests";
+          return true;
+        }
       }
 
       const auto tolerance_key = ToUTF8String(my_dir_name);
