@@ -207,7 +207,9 @@ Ort::Status CopyTensorArrayCombined(const Ort::Custom::Tensor<float>& first_inpu
 }
 
 void RegisterOps(Ort::CustomOpDomain& domain) {
+#ifndef USE_CUDA
   static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CPUExecutionProvider", KernelOne)};
+#endif
   static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", "CPUExecutionProvider", KernelTwo)};
   static const std::unique_ptr<OrtLiteCustomOp> c_MulTopOpFloat{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<float>)};
   static const std::unique_ptr<OrtLiteCustomOp> c_MulTopOpInt32{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<int32_t>)};
@@ -223,7 +225,9 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
   static const std::unique_ptr<OrtLiteCustomOp> c_FilterFloat8{Ort::Custom::CreateLiteCustomOp("FilterFloat8", "CPUExecutionProvider", FilterFloat8)};
 #endif
 
+#ifndef USE_CUDA
   domain.Add(c_CustomOpOne.get());
+#endif
   domain.Add(c_CustomOpTwo.get());
   domain.Add(c_MulTopOpFloat.get());
   domain.Add(c_MulTopOpInt32.get());
