@@ -372,4 +372,54 @@ void TorchProxy::Backward(
       returned_ortvalues);
 }
 
+void TorchProxy::RunInputAliasFunction(
+    void* input_alias_function,
+    const std::string& node_proto_str,
+    std::vector<int64_t>& fw_output_to_input_alias_map,
+    std::vector<int64_t>& bw_output_to_input_alias_map) {
+  PyObject* input_alias_func = reinterpret_cast<PyObject*>(input_alias_function);
+  ORT_ENFORCE(PyCallable_Check(input_alias_func), "input_alias_func is not callable.");
+
+  // All arguments created for Python call will be destroyed along with PythonObjectPtr.
+  PythonObjectPtr args(Ort_PyTuple_New(1, "input_alias_func_arguments_tuple"), PythonObjectDeleter);
+  PyObject* node_proto_ptr_arg = PyBytes_FromStringAndSize(node_proto_str.c_str(), node_proto_str.size());
+  Ort_PyTuple_SetItem_NoIncref(args.get(), 0, node_proto_ptr_arg, "node_proto_ptr_arg");
+
+  PythonObjectPtr result_ptr(PyObject_CallObject(input_alias_func, args.get()), PythonObjectDeleter);
+  if (PyErr_Occurred()) {
+    PyErr_Print();
+    ORT_THROW("Python function execution fails with the above information.");
+  }
+
+  bool is_tuple = PyTuple_Check(result_ptr.get());
+  bool is_list = PyList_Check(result_ptr.get());
+  ORT_ENFORCE(is_tuple || is_list, "Python function must return a tuple or a list. is_tuple: ",
+              is_tuple, ", is_list: ", is_list);
+  Py_ssize_t ret_tuple_size =
+      is_tuple ? PyTuple_Size(result_ptr.get()) : PyList_Size(result_ptr.get());
+  ORT_ENFORCE(ret_tuple_size == 2, "Input alias function must return a tuple/list of size 2.");
+
+  for (Py_ssize_t tuple_index = 0; tuple_index < ret_tuple_size; ++tuple_index) {
+    PyObject* alias_map = is_tuple ? PyTuple_GetItem(result_ptr.get(), tuple_index)
+                                   : PyList_GetItem(result_ptr.get(), tuple_index);
+
+    std::vector<int64_t>& output_to_input_alias_map =
+        tuple_index == 0 ? fw_output_to_input_alias_map : bw_output_to_input_alias_map;
+
+    bool is_elem_tuple = PyTuple_Check(alias_map);
+    bool is_elem_list = PyList_Check(alias_map);
+
+    ORT_ENFORCE(is_elem_tuple || is_elem_list, "Input alias map must be a tuple or a list. is_elem_list: ",
+                is_elem_list, ", is_elem_tuple: ", is_elem_tuple);
+    Py_ssize_t output_count = is_elem_tuple ? PyTuple_Size(alias_map) : PyList_Size(alias_map);
+    for (Py_ssize_t output_index = 0; output_index < output_count; ++output_index) {
+      PyObject* input_index =
+          is_elem_tuple ? PyTuple_GetItem(alias_map, output_index) : PyList_GetItem(alias_map, output_index);
+      ORT_ENFORCE(PyLong_Check(input_index), "Alias input index must be an integer.");
+      int64_t alias_index_int = PyLong_AsLongLong(input_index);
+      output_to_input_alias_map.push_back(alias_index_int);
+    }
+  }
+}
+
 }  // namespace onnxruntime::language_interop_ops::torch
