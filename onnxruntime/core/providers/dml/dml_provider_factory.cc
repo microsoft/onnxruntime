@@ -289,8 +289,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
   return onnxruntime::DMLProviderFactoryCreator::CreateFromAdapterList(std::move(adapters));
 }
 
-static std::optional<OrtDmlPerformancePreference> ParsePerformancePreference(const ProviderOptions& provider_options)
-{
+static std::optional<OrtDmlPerformancePreference> ParsePerformancePreference(const ProviderOptions& provider_options) {
   static const std::string PerformancePreference = "performance_preference";
   static const std::string Default = "default";
   static const std::string HighPerformance = "high_performance";
@@ -316,8 +315,7 @@ static std::optional<OrtDmlPerformancePreference> ParsePerformancePreference(con
   return {};
 }
 
-static std::optional<OrtDmlDeviceFilter> ParseFilter(const ProviderOptions& provider_options)
-{
+static std::optional<OrtDmlDeviceFilter> ParseFilter(const ProviderOptions& provider_options) {
   static const std::string Filter = "filter";
   static const std::string Any = "any";
   static const std::string Gpu = "gpu";
@@ -343,8 +341,7 @@ static std::optional<OrtDmlDeviceFilter> ParseFilter(const ProviderOptions& prov
   return {};
 }
 
-static std::optional<int> ParseDeviceId(const ProviderOptions& provider_options)
-{
+static std::optional<int> ParseDeviceId(const ProviderOptions& provider_options) {
   static const std::string DeviceId = "device_id";
 
   auto preference_it = provider_options.find(DeviceId);
@@ -369,18 +366,15 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
   auto filter = ParseFilter(provider_options);
 
   // If no preference/filters are specified then create with default preference/filters.
-  if (!preference.has_value() && !filter.has_value())
-  {
+  if (!preference.has_value() && !filter.has_value()) {
     return onnxruntime::DMLProviderFactoryCreator::CreateFromOptions(nullptr);
   }
 
-  if (!preference.has_value())
-  {
+  if (!preference.has_value()) {
     preference = OrtDmlPerformancePreference::Default;
   }
 
-  if (!filter.has_value())
-  {
+  if (!filter.has_value()) {
     filter = OrtDmlDeviceFilter::Gpu;
   }
 
@@ -390,8 +384,9 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
   return onnxruntime::DMLProviderFactoryCreator::CreateFromOptions(&device_options);
 }
 
-Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Device(int device_id, bool skip_software_device_check)
-{
+Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Device(
+  int device_id,
+  bool skip_software_device_check) {
 #ifdef _GAMING_XBOX
     ComPtr<ID3D12Device> d3d12_device;
     D3D12XBOX_CREATE_DEVICE_PARAMETERS params = {};
@@ -422,8 +417,7 @@ Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Devic
   return d3d12_device;
 }
 
-Microsoft::WRL::ComPtr<IDMLDevice> DMLProviderFactoryCreator::CreateDMLDevice(ID3D12Device* d3d12_device)
-{
+Microsoft::WRL::ComPtr<IDMLDevice> DMLProviderFactoryCreator::CreateDMLDevice(ID3D12Device* d3d12_device) {
   DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
 
   // In debug builds, enable the DML debug layer if the D3D12 debug layer is also enabled
