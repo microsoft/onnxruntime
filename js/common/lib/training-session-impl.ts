@@ -34,9 +34,8 @@ export class TrainingSession implements TrainingSessionInterface {
     const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
     const backend = await resolveBackend(backendHints);
     if (backend.createTrainingSessionHandler) {
-      const handler =
-          await backend.createTrainingSessionHandler(trainingOptions.checkpointState, trainingOptions.trainModel,
-            evalModel, optimizerModel, options);
+      const handler = await backend.createTrainingSessionHandler(
+          trainingOptions.checkpointState, trainingOptions.trainModel, evalModel, optimizerModel, options);
       return new TrainingSession(handler);
     } else {
       throw new Error(noBackendErrMsg);

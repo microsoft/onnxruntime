@@ -8,8 +8,7 @@ import {setSessionOptions} from './session-options';
 import {getInstance} from './wasm-factory';
 import {checkLastError} from './wasm-utils';
 
-const NO_TRAIN_FUNCS_MSG =
-    'Built without training APIs enabled. ' +
+const NO_TRAIN_FUNCS_MSG = 'Built without training APIs enabled. ' +
     'Make sure to use the onnxruntime-training package for training functionality.';
 
 export const createCheckpointHandle = (checkpointData: SerializableModeldata): number => {
@@ -37,67 +36,6 @@ export const createCheckpointHandle = (checkpointData: SerializableModeldata): n
     // free buffer from wasm heap
     wasm._OrtFree(checkpointData[0]);
   }
-};
-
-export const createTrainingSessionHandle =
-    (checkpointHandle: number, trainModelData: SerializableModeldata, evalModelData: SerializableModeldata,
-     optimizerModelData: SerializableModeldata,
-     options: InferenceSession.SessionOptions): [SerializableSessionMetadata, number[], number[]] => {
-      const wasm = getInstance();
-
-      let trainingSessionHandle = 0;
-      let sessionOptionsHandle = 0;
-      let allocs: number[] = [];
-      let inputNamesUTF8Encoded: number[] = [];
-      let outputNamesUTF8Encoded: number[] = [];
-
-      let inputNames: string[] = [];
-      let outputNames: string[] = [];
-
-      try {
-        [sessionOptionsHandle, allocs] = setSessionOptions(options);
-        if (wasm._OrtTrainingCreateSession) {
-          trainingSessionHandle = wasm._OrtTrainingCreateSession(
-              sessionOptionsHandle, checkpointHandle, trainModelData[0], trainModelData[1], evalModelData[0],
-              evalModelData[1], optimizerModelData[0], optimizerModelData[1]);
-        } else {
-          throw new Error(NO_TRAIN_FUNCS_MSG);
-        }
-
-        if (trainingSessionHandle === 0) {
-          checkLastError('Error occurred when trying to create a TrainingSession.');
-        }
-
-        [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded] =
-            getTrainingModelInputOutputNames(trainingSessionHandle);
-
-        return [[trainingSessionHandle, inputNames, outputNames], inputNamesUTF8Encoded, outputNamesUTF8Encoded];
-      } catch (e) {
-        if (wasm._OrtTrainingReleaseSession && trainingSessionHandle !== 0) {
-          wasm._OrtTrainingReleaseSession(trainingSessionHandle);
-        }
-        throw e;
-      } finally {
-        wasm._free(trainModelData[0]);
-        wasm._free(evalModelData[0]);
-        wasm._free(optimizerModelData[0]);
-
-        if (sessionOptionsHandle !== 0) {
-          wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
-        }
-        allocs.forEach(alloc => wasm._free(alloc));
-        inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-        outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-      }
-    };
-
-const getTrainingModelInputOutputNames = (trainingSessionId: number): [string[], number[], string[], number[]] => {
-  const [inputCount, outputCount] = getTrainingModelInputOutputCount(trainingSessionId);
-
-  const [inputNames, inputNamesUTF8Encoded] = getTrainingNamesLoop(trainingSessionId, inputCount, true);
-  const [outputNames, outputNamesUTF8Encoded] = getTrainingNamesLoop(trainingSessionId, outputCount, false);
-
-  return [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded];
 };
 
 const getTrainingModelInputOutputCount = (trainingSessionId: number): [number, number] => {
@@ -139,7 +77,68 @@ const getTrainingNamesLoop = (trainingSessionId: number, count: number, isInput:
     }
   }
   return [names, namesUTF8Encoded];
-}
+};
+
+const getTrainingModelInputOutputNames = (trainingSessionId: number): [string[], number[], string[], number[]] => {
+  const [inputCount, outputCount] = getTrainingModelInputOutputCount(trainingSessionId);
+
+  const [inputNames, inputNamesUTF8Encoded] = getTrainingNamesLoop(trainingSessionId, inputCount, true);
+  const [outputNames, outputNamesUTF8Encoded] = getTrainingNamesLoop(trainingSessionId, outputCount, false);
+
+  return [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded];
+};
+
+export const createTrainingSessionHandle =
+    (checkpointHandle: number, trainModelData: SerializableModeldata, evalModelData: SerializableModeldata,
+     optimizerModelData: SerializableModeldata,
+     options: InferenceSession.SessionOptions): [SerializableSessionMetadata, number[], number[]] => {
+      const wasm = getInstance();
+
+      let trainingSessionHandle = 0;
+      let sessionOptionsHandle = 0;
+      let allocs: number[] = [];
+      let inputNamesUTF8Encoded: number[] = [];
+      let outputNamesUTF8Encoded: number[] = [];
+
+      let inputNames: string[] = [];
+      let outputNames: string[] = [];
+
+      try {
+        [sessionOptionsHandle, allocs] = setSessionOptions(options);
+        if (wasm._OrtTrainingCreateSession) {
+          trainingSessionHandle = wasm._OrtTrainingCreateSession(
+              sessionOptionsHandle, checkpointHandle, trainModelData[0], trainModelData[1], evalModelData[0],
+              evalModelData[1], optimizerModelData[0], optimizerModelData[1]);
+        } else {
+          throw new Error(NO_TRAIN_FUNCS_MSG);
+        }
+
+        if (trainingSessionHandle === 0) {
+          checkLastError('Error occurred when trying to create a TrainingSession.');
+        }
+
+        [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded] =
+            getTrainingModelInputOutputNames(trainingSessionHandle);
+        return [[trainingSessionHandle, inputNames, outputNames], inputNamesUTF8Encoded, outputNamesUTF8Encoded];
+
+      } catch (e) {
+        if (wasm._OrtTrainingReleaseSession && trainingSessionHandle !== 0) {
+          wasm._OrtTrainingReleaseSession(trainingSessionHandle);
+        }
+        throw e;
+      } finally {
+        wasm._free(trainModelData[0]);
+        wasm._free(evalModelData[0]);
+        wasm._free(optimizerModelData[0]);
+
+        if (sessionOptionsHandle !== 0) {
+          wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+        }
+        allocs.forEach(alloc => wasm._free(alloc));
+        inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+        outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+      }
+    };
 
 export const releaseTrainingSessionAndCheckpoint =
     (checkpointId: number, sessionId: number, inputNamesUTF8Encoded: number[], outputNamesUTF8Encoded: number[]):
@@ -154,4 +153,4 @@ export const releaseTrainingSessionAndCheckpoint =
           if (wasm._OrtTrainingReleaseSession) {
             wasm._OrtTrainingReleaseSession(sessionId);
           }
-        }
+        };

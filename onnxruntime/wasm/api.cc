@@ -493,7 +493,7 @@ char* OrtEndProfiling(ort_session_handle_t session) {
 #define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
 
-#define RETURN_TRAINING_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...)          \
+#define RETURN_TRAINING_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...)         \
   do {                                                                 \
     int error_code = CHECK_TRAINING_STATUS(ORT_API_NAME, __VA_ARGS__); \
     if (error_code != ORT_OK) {                                        \

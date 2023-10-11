@@ -97,9 +97,7 @@ type SessionMetadata = [
 
 const activeSessions = new Map<number, SessionMetadata>();
 
-export const isOrtEnvInitialized = (): boolean => {
-  return ortEnvInitialized;
-};
+export const isOrtEnvInitialized = (): boolean => ortEnvInitialized;
 
 /**
  * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.
