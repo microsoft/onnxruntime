@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Load onnxruntime-web and testdata-config.
+// Load onnxruntime-common and testdata-config.
 // NOTE: this need to be called before import any other library.
-const ort = require('..');
+import * as ort from 'onnxruntime-common';
+
 const ORT_WEB_TEST_CONFIG = require('./testdata-config.json') as Test.Config;
 
 import * as platform from 'platform';
