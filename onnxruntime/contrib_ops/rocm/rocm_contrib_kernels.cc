@@ -161,6 +161,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   return info;
 }
 
+// clang-format off
 Status RegisterRocmContribKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
     BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
@@ -323,6 +324,7 @@ Status RegisterRocmContribKernels(KernelRegistry& kernel_registry) {
 
   return Status::OK();
 }
+// clang-format on
 
 }  // namespace rocm
 }  // namespace contrib
