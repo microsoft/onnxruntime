@@ -12,10 +12,7 @@ import {checkLastError} from './wasm-utils';
 // import {allocWasmString, checkLastError} from './wasm-utils';
 // import { prepareInputOutputTensor } from './wasm-core-impl';
 
-const throwNoTrainingFuncsError = (): void => {
-  throw TypeError(
-      'Built without training APIs enabled. Make sure to use the onnxruntime-training package for training functionality.');
-};
+const NO_TRAIN_FUNCS_MSG = 'Built without training APIs enabled. Make sure to use the onnxruntime-training package for training functionality.');
 
 export const createCheckpointHandle = (checkpointData: SerializableModeldata): number => {
   const wasm = getInstance();
@@ -26,7 +23,7 @@ export const createCheckpointHandle = (checkpointData: SerializableModeldata): n
     if (wasm._OrtTrainingLoadCheckpoint) {
       checkpointHandle = wasm._OrtTrainingLoadCheckpoint(checkpointData[0], checkpointData[1]);
     } else {
-      throwNoTrainingFuncsError();
+      throw new Error(NO_TRAIN_FUNCS_MSG);
     }
 
     if (checkpointHandle === 0) {
@@ -66,7 +63,7 @@ export const createTrainingSessionHandle =
               sessionOptionsHandle, checkpointHandle, trainModelData[0], trainModelData[1], evalModelData[0],
               evalModelData[1], optimizerModelData[0], optimizerModelData[1]);
         } else {
-          throwNoTrainingFuncsError();
+          throw new Error(NO_TRAIN_FUNCS_MSG);
         }
 
         if (trainingSessionHandle === 0) {
@@ -117,9 +114,7 @@ export const createTrainingSessionHandle =
       }
       return [wasm.HEAP32[dataOffset / 4], wasm.HEAP32[dataOffset / 4 + 1]];
     } else {
-      throwNoTrainingFuncsError();
-      // unreachable code -- placeholder to prevent linting errors
-      return [0, 0];
+      throw new Error(NO_TRAIN_FUNCS_MSG);
     }
   } finally {
     wasm.stackRestore(stack);
@@ -142,7 +137,7 @@ const getTrainingNamesLoop = (trainingSessionId: number, count: number, isInput:
       namesUTF8Encoded.push(name);
       names.push(wasm.UTF8ToString(name));
     } else {
-      throwNoTrainingFuncsError;
+      throw new Error(NO_TRAIN_FUNCS_MSG);
     }
   }
   return [names, namesUTF8Encoded];
