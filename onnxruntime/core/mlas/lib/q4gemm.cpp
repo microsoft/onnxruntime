@@ -145,7 +145,7 @@ using WeiS4ClipFp32PerN =
     jblas::prologue::weight_comp::gemm_kblcok::WeightS4ClipScaleFp32PerN<T, ISA>;
 
 template <template <class GC, JBLAS_ISA ISA> class ProB>
-using AVX512VNNIPerNFp32Fp32 = jblas::wrapper::gemm_pack_weight::GemmInterfaceParallelAB<
+using AVX512VNNIFp32Fp32 = jblas::wrapper::gemm_pack_weight::GemmInterfaceParallelAB<
     jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<
         JblasAVX512_VNNI,
         jblas::gemm::GemmCore_Row_NN_8x48_AVX512_VNNI,
@@ -154,7 +154,18 @@ using AVX512VNNIPerNFp32Fp32 = jblas::wrapper::gemm_pack_weight::GemmInterfacePa
         jblas::epilogue::gemm::ZpDequantInt32ToFp32>,
     jblas::utils::parallel::Parallel2DGemm>;
 
-static AVX512VNNIPerNFp32Fp32<WeiS4ClipFp32PerN> avx512vnni_s4pernkernl;
+template <template <class GC, JBLAS_ISA ISA> class ProB>
+using AMXINT8Fp32Fp32 = jblas::wrapper::gemm_pack_weight::GemmInterfaceParallelAB<
+    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<
+        JblasAMX_INT8,
+        jblas::gemm::GemmCore_Row_NN_16x48_AMX_S8S8,
+        jblas::prologue::gemm::ActivationFp32SymS8Quantize,
+        ProB,
+        jblas::epilogue::gemm::DequantInt32ToFp32>,
+    jblas::utils::parallel::Parallel2DGemm>;
+
+static AVX512VNNIFp32Fp32<WeiS4ClipFp32PerN> avx512vnni_s4pernkernl;
+static AMXINT8Fp32Fp32<WeiS4ClipFp32PerN> amxint8_s4pernkernl;
 
 void
 JblasQ4GemmBatchDriver(const size_t M,
@@ -164,26 +175,39 @@ JblasQ4GemmBatchDriver(const size_t M,
                        const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
                        MLAS_THREADPOOL* ThreadPool)
 {
-    auto ptr = jblas::prologue::weight_comp::gemm_kblcok::PackedWeightParser::deserialBuffer(
-        const_cast<void*>(DataParams->B));
     GetCPUDevice();
-    if (ptr) {
-        if (ptr->mPrologueID == int(jblas::prologue::weight_comp::gemm_kblcok::PrologueBIDs::
-                                        WeightS4ClipScaleFp32PerChannelN)) {
-            auto weiptr = reinterpret_cast<
-                jblas::prologue::weight_comp::gemm_kblcok::StorageWeightS4ScaleFp32PerChannelN*>(
-                ptr);
-            if (ptr->mCoreType == jblas::gemm::GemmCoreType::AVX512_VNNI_8x48) {
-                if (_cd->AVX512_VNNI()) {
-                    auto quanA = avx512vnni_s4pernkernl.getActivationPtr()->createStorage(M, K);
-                    std::vector<int8_t> quanBuf(quanA.mSize);
-                    quanA.assign(quanBuf.data());
-                    avx512vnni_s4pernkernl.template compute<true, false>(
-                        {int(M * BatchN), int(N), int(K), DataParams->A, int(DataParams->lda),
-                         &quanA, weiptr, DataParams->C, int(DataParams->ldc), quanA.mZPtr,
-                         quanA.mSPtr, quanA.mCStep, weiptr->mRPtr, weiptr->mSPtr});
+    for (size_t i = 0; i < BatchN; i++) {
+        auto ptr = jblas::prologue::weight_comp::gemm_kblcok::PackedWeightParser::deserialBuffer(
+            const_cast<void*>(DataParams[i].B));
+        if (ptr) {
+            if (ptr->mPrologueID == int(jblas::prologue::weight_comp::gemm_kblcok::PrologueBIDs::
+                                            WeightS4ClipScaleFp32PerChannelN)) {
+                auto weiptr = (jblas::prologue::weight_comp::gemm_kblcok::
+                                   StorageWeightS4ScaleFp32PerChannelN*)(ptr);
+                if (ptr->mCoreType == jblas::gemm::GemmCoreType::AVX512_VNNI_8x48) {
+                    if (_cd->AMX_INT8()) {
+                        jblas::utils::request_perm_xtile_data();//TODO(yu) move to framework level, call once.
+                        auto quanA = amxint8_s4pernkernl.getActivationPtr()->createStorage(M, K);
+                        std::vector<int8_t> quanBuf(quanA.mSize);
+                        quanA.assign(quanBuf.data());
+                        amxint8_s4pernkernl.template compute<true, false>(
+                            {int(M * BatchN), int(N), int(K), DataParams[i].A,
+                             int(DataParams[i].lda), &quanA, weiptr, DataParams[i].C,
+                             int(DataParams[i].ldc), quanA.mSPtr, quanA.mCStep, weiptr->mRPtr,
+                             weiptr->mSPtr});
+                    } else if (_cd->AVX512_VNNI()) {
+                        auto quanA = avx512vnni_s4pernkernl.getActivationPtr()->createStorage(M, K);
+                        std::vector<int8_t> quanBuf(quanA.mSize);
+                        quanA.assign(quanBuf.data());
+                        avx512vnni_s4pernkernl.template compute<true, false>(
+                            {int(M * BatchN), int(N), int(K), DataParams[i].A,
+                             int(DataParams[i].lda), &quanA, weiptr, DataParams[i].C,
+                             int(DataParams[i].ldc), quanA.mZPtr, quanA.mSPtr, quanA.mCStep,
+                             weiptr->mRPtr, weiptr->mSPtr});
+                    }
                 }
             }
+            delete ptr;
         }
     }
 }
