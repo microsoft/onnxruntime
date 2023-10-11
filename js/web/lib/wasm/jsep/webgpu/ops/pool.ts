@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -254,10 +254,9 @@ const createAveragePoolProgramInfo =
       }
       return {
         name,
-        inputTypes: [GpuDataType.default],
         shaderCache: {hint: attributes.cacheKey},
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: input.dataType, gpuDataType: GpuDataType.default}],
+          outputs: [{dims: outputShape, dataType: input.dataType}],
           dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
         }),
         getShaderSource: shaderHelper =>
@@ -320,10 +319,9 @@ const createMaxPoolProgramInfo =
       const x = inputVariable('x', input.dataType, input.dims);
       return {
         name,
-        inputTypes: [GpuDataType.default],
         shaderCache: {hint: attributes.cacheKey},
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: input.dataType, gpuDataType: GpuDataType.default}],
+          outputs: [{dims: outputShape, dataType: input.dataType}],
           dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
         }),
         getShaderSource: shaderHelper =>

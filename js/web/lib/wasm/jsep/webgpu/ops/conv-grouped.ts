@@ -3,7 +3,7 @@
 
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {GpuDataType, ProgramInfo} from '../types';
+import {ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
@@ -85,14 +85,11 @@ export const createGroupedConvProgramInfo =
   }`;
       return {
         name: 'GroupedConv',
-        inputTypes: hasBias ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
-                              [GpuDataType.default, GpuDataType.default],
         shaderCache: {hint: attributes.cacheKey},
         getRunData: () => ({
           outputs: [{
             dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
-            dataType: inputs[0].dataType,
-            gpuDataType: GpuDataType.default
+            dataType: inputs[0].dataType
           }],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
         }),
