@@ -797,13 +797,13 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       }
 
       auto test_case_dir = model_info->GetDir();
-      auto full_test_case_name = test_case_name + ORT_TSTR(" in ") + test_case_dir;
+      auto test_case_name_in_log = test_case_name + ORT_TSTR(" in ") + test_case_dir;
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_QNN)
       // to skip some models like *-int8 or *-qdq
       if ((reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
           (reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-        LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(full_test_case_name) << " as it has training domain";
+        LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(test_case_name_in_log) << " as it has training domain";
         return true;
       }
 #endif
@@ -818,7 +818,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
         return true;
       });
       if (!has_test_data) {
-        LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(full_test_case_name) << " due to no test data";
+        LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(test_case_name_in_log) << " due to no test data";
         return true;
       }
 
@@ -829,7 +829,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
         if (iter != broken_tests->end() &&
             (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
              iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end())) {
-          LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(full_test_case_name) << " due to broken_tests";
+          LOGS_DEFAULT(ERROR) << "Skip test case: " << ToUTF8String(test_case_name_in_log) << " due to broken_tests";
           return true;
         }
       }
@@ -839,7 +839,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                         tolerances.absolute(tolerance_key),
                                                         tolerances.relative(tolerance_key));
-      fprintf(stdout, "Load Test Case: %s\n", ToUTF8String(full_test_case_name).c_str());
+      fprintf(stdout, "Load Test Case: %s\n", ToUTF8String(test_case_name_in_log).c_str());
       process_function(std::move(l));
       return true;
     });
