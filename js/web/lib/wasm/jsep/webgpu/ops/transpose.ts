@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -56,15 +56,14 @@ export const createTransposeProgramInfo =
   }`;
       return {
         name: 'Transpose',
-        inputTypes: [GpuDataType.default],
         shaderCache: {hint: `${permAttr}`, inputDependencies: ['rank']},
         getRunData: (inputs) => {
           const outputShape = getOutputShape(inputs[0].dims, perm);
           const outputSize = ShapeUtil.size(outputShape);
           return {
-            outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+            outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
             dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-            variables: [
+            programUniforms: [
               {type: 'uint32', data: outputSize},
               ...createTensorShapeVariables(inputs[0].dims),
               ...createTensorShapeVariables(outputShape),

@@ -21,11 +21,10 @@ export interface GpuData {
 export interface TensorInfo {
   dims: readonly number[];
   dataType: number;
-  gpuDataType: GpuDataType;
 }
 
 
-export interface ProgramVariable {
+export interface ProgramUniform {
   type: 'int32'|'float32'|'uint32';
   data: number|readonly number[];
 }
@@ -89,11 +88,6 @@ export interface ProgramInfo {
   name: string;
 
   /**
-   * gpu data types for each input
-   */
-  inputTypes: GpuDataType[];
-
-  /**
    * an optional object describing the cache information of the program shader.
    *
    * If this is not specified, assume hint is empty and inputDependencies are ['dims'] for all inputs.
@@ -115,7 +109,7 @@ export interface ProgramInfo {
   getRunData: (inputs: readonly TensorView[]) => {
     outputs: readonly TensorInfo[];
     dispatchGroup: {x: number; y?: number; z?: number};
-    variables?: readonly ProgramVariable[];
+    programUniforms?: readonly ProgramUniform[];
   };
 }
 

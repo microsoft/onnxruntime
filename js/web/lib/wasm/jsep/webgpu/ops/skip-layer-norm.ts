@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
@@ -135,20 +135,19 @@ const createSkipLayerNormProgramInfo =
           output[offset + i] = (output[offset + i] - mean) / variance * gamma[i] + ${hasBetaInput ? 'beta[i]' : '0.0'};
         }
       }`;
-      const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
+      const outputs = [{dims: outputShape, dataType: inputs[0].dataType}];
       if (outputCount > 1) {
-        outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+        outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType});
       }
       if (outputCount > 2) {
-        outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+        outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType});
       }
       if (outputCount > 3) {
-        outputs.push({dims: inputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+        outputs.push({dims: inputShape, dataType: inputs[0].dataType});
       }
 
       return {
         name: 'SkipLayerNormalization',
-        inputTypes: new Array(inputs.length).fill(GpuDataType.default),
         shaderCache: {hint: attributes.cacheKey},
         getShaderSource,
         getRunData: () => ({outputs, dispatchGroup: {x: Math.ceil(outputSize / hiddenSize / 64)}}),

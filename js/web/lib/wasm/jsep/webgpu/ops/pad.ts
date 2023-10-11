@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -198,10 +198,9 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
   const outputShape = ShapeUtil.padShape(inputs[0].dims.slice(), attributes.pads);
   return {
     name: 'Pad',
-    inputTypes: [GpuDataType.default],
     shaderCache: {hint: attributes.cacheKey},
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
     }),
     getShaderSource: shaderHelper => generatePadCode(shaderHelper, inputs, attributes, 'f32'),

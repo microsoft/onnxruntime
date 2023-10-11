@@ -3,7 +3,7 @@
 
 import {DataType} from '../../../wasm-common';
 import {ShapeUtil} from '../../util';
-import {ProgramVariable} from '../types';
+import {ProgramUniform} from '../types';
 
 /**
  * constant value for a workgroup size.
@@ -259,7 +259,7 @@ export const tensorTypeToWsglValueType = (type: DataType, components: 1|2|3|4 = 
 };
 
 export const createTensorShapeVariables = (dims: readonly number[]):
-    ProgramVariable[] => [{type: 'uint32', data: dims}, {type: 'uint32', data: ShapeUtil.computeStrides(dims)}];
+    ProgramUniform[] => [{type: 'uint32', data: dims}, {type: 'uint32', data: ShapeUtil.computeStrides(dims)}];
 
 /**
  * A helper function to get a IndicesHelper for a given input or output.

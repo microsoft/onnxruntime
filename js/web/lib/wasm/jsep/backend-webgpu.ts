@@ -259,10 +259,6 @@ export class WebGpuBackend {
   run(program: ProgramInfo, inputTensorViews: readonly TensorView[], outputIndices: readonly number[],
       createKernelOutput: (index: number, dataType: number, dims: readonly number[]) => TensorView,
       createIntermediateOutput: (dataType: number, dims: readonly number[]) => TensorView): TensorView[] {
-    if (inputTensorViews.length !== program.inputTypes.length) {
-      throw new Error(`Input size must be equal to ${program.inputTypes.length}.`);
-    }
-
     // create info for inputs
     const inputDatas: GpuData[] = [];
     for (let i = 0; i < inputTensorViews.length; ++i) {
@@ -277,7 +273,7 @@ export class WebGpuBackend {
     const key = getProgramInfoUniqueKey(program, inputTensorViews);
     let artifact = this.programManager.getArtifact(key);
 
-    const {outputs, dispatchGroup, variables} = program.getRunData(inputTensorViews);
+    const {outputs, dispatchGroup, programUniforms} = program.getRunData(inputTensorViews);
 
     // check output indices
     const validatedOutputIndices = outputIndices.length === 0 ? outputs.map((_, i) => i) : outputIndices;
@@ -328,12 +324,12 @@ export class WebGpuBackend {
     // TODO: add cache for uniform (is it necessary?)
     //
     let uniformBufferBinding: GPUBindingResource|undefined;
-    if (variables) {
+    if (programUniforms) {
       let currentOffset = 0;
       let preLength = 0;
       const offsets: number[] = [];
       let maxAlignmentOfField = 1;
-      variables.forEach(v => {
+      programUniforms.forEach(v => {
         const data = typeof v.data === 'number' ? [v.data] : v.data;
         // https://www.w3.org/TR/WGSL/#alignof
         let baseAlignment: number;
@@ -374,7 +370,7 @@ export class WebGpuBackend {
 
       currentOffset = Math.ceil(currentOffset / maxAlignmentOfField) * maxAlignmentOfField;
       const arrayBuffer = new ArrayBuffer(currentOffset);
-      variables.forEach((v, i) => {
+      programUniforms.forEach((v, i) => {
         const offset = offsets[i];
         const data = typeof v.data === 'number' ? [v.data] : v.data;
         if (v.type === 'int32') {

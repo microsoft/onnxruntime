@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
@@ -14,8 +14,7 @@ export interface InstanceNormAttributes extends AttributeWithCacheKey {
 }
 
 const metadata = {
-  name: 'InstanceNormalization',
-  inputTypes: [GpuDataType.default, GpuDataType.default, GpuDataType.default],
+  name: 'InstanceNormalization'
 };
 
 const createInstanceNormProgramInfo =
@@ -104,7 +103,7 @@ const createInstanceNormProgramInfo =
         shaderCache: {hint: attributes.cacheKey},
         getRunData: () => ({
           outputs: [
-            {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+            {dims: outputShape, dataType: inputs[0].dataType},
           ],
           dispatchGroup: {x: normCount}
         }),
@@ -169,7 +168,7 @@ const createInstanceNormNHWCProgramInfo =
         shaderCache: {hint: attributes.cacheKey},
         getRunData: () => ({
           outputs: [
-            {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+            {dims: outputShape, dataType: inputs[0].dataType},
           ],
           dispatchGroup: {x: Math.ceil(normCount / 64 /* workgroup size */)}
         }),

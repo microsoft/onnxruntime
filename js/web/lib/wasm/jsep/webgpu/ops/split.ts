@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, TensorInfo} from '../types';
+import {ComputeContext, ProgramInfo, TensorInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -81,7 +81,7 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
     outputShape[attributes.axis] = attributes.splitSizes[i];
     outputShapes.push(outputShape);
     outputs[i] = outputVariable(`output${i}`, dataType, outputShapes[i]);
-    outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+    outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType});
   }
   const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
   const getShaderSource = (shaderHelper: ShaderHelper) => `
@@ -102,7 +102,6 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
   }`;
   return {
     name: 'Split',
-    inputTypes: [GpuDataType.default],
     shaderCache: {hint: attributes.cacheKey},
     getShaderSource,
     getRunData: () => ({

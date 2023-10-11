@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, TensorInfo} from '../types';
+import {ComputeContext, ProgramInfo, TensorInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -137,8 +137,7 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
     outputShape[axis] = Math.ceil((ends[axis] - starts[axis]) / steps[axis]);
   });
 
-  const outputTensorInfo:
-      TensorInfo = {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default};
+  const outputTensorInfo: TensorInfo = {dims: outputShape, dataType: inputs[0].dataType};
 
   const output = outputVariable('output', inputs[0].dataType, outputShape);
   const input = inputVariable('input', inputs[0].dataType, inputShape);
@@ -161,7 +160,6 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
       }`;
   return {
     name: 'Slice',
-    inputTypes: [GpuDataType.default],
     shaderCache: {hint: `${attributes.cacheKey}|${inputs[4]?.dims ?? ''}`},
     getShaderSource,
     getRunData: () => ({
