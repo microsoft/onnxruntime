@@ -3,21 +3,13 @@
 
 // This file serve as a simple example for adding a tunable op to onnxruntime.
 
-#if USE_CUDA
 #include <cuda_runtime_api.h>
 #include <cuda_fp16.h>
-#elif USE_ROCM
-#include <hip/hip_fp16.h>
-#endif
 #include <pybind11/pybind11.h>
 
 #include <string>
 
-#if USE_CUDA
 #include "core/providers/cuda/tunable/cuda_tunable.h"
-#elif USE_ROCM
-#include "core/providers/rocm/tunable/rocm_tunable.h"
-#endif
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 #include "python/tools/kernel_explorer/kernels/vector_add_kernel.cuh"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
@@ -28,13 +20,7 @@ namespace onnxruntime {
 
 // Extend the OpParams so that all specializations have the same parameter passing interface
 template <typename T>
-struct MatrixFloatInt4Params :
-#if USE_CUDA
-    cuda::tunable::OpParams
-#elif USE_ROCM
-    rocm::tunable::OpParams
-#endif
-{
+struct MatrixFloatInt4Params : cuda::tunable::OpParams {
   std::string Signature() const override { return std::to_string(n_); }
 
   T* output_;

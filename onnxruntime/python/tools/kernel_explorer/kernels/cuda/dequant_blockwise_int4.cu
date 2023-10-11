@@ -3,21 +3,13 @@
 
 // This file serve as a simple example for adding a tunable op to onnxruntime.
 
-#if USE_CUDA
 #include <cuda_runtime_api.h>
 #include <cuda_fp16.h>
-#elif USE_ROCM
-#include <hip/hip_fp16.h>
-#endif
 #include <pybind11/pybind11.h>
 
 #include <string>
 
-#if USE_CUDA
 #include "core/providers/cuda/tunable/cuda_tunable.h"
-#elif USE_ROCM
-#include "core/providers/rocm/tunable/rocm_tunable.h"
-#endif
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
@@ -28,13 +20,7 @@ namespace onnxruntime {
 
 // Extend the OpParams so that all specializations have the same parameter passing interface
 template <typename T>
-struct DequantizeInt4Params :
-#if USE_CUDA
-    cuda::tunable::OpParams
-#elif USE_ROCM
-    rocm::tunable::OpParams
-#endif
-{
+struct DequantizeInt4Params : cuda::tunable::OpParams {
   std::string Signature() const override { return std::to_string(n_); }
 
   T* output_;
@@ -77,11 +63,11 @@ class DequantizeInt4 : public IKernelExplorer {
   ParamsT params_{};
 };
 
-#define REGISTER_OP(name, type)                                                               \
-  py::class_<name<type>>(m, #name "_" #type)                                                  \
+#define REGISTER_OP(name, type)                                            \
+  py::class_<name<type>>(m, #name "_" #type)                               \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int, int>()) \
-      .def("SetRepeats", &name<type>::SetRepeats)                                             \
-      .def("Profile", &name<type>::Profile)                                                   \
+      .def("SetRepeats", &name<type>::SetRepeats)                          \
+      .def("Profile", &name<type>::Profile)                                \
       .def("Run", &name<type>::Run);
 
 KE_REGISTER(m) {

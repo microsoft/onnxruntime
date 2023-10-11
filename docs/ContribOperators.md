@@ -2596,7 +2596,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MatMulNBits"></a><a name="com.microsoft.matmulnbits">**com.microsoft.MatMulNBits**</a>
 
-  MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7).It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
+  MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7).It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
     1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
     2. Input B is quantized with x bits which is specified by attribute 'bits'. It is quantized blockwisely along dimension 0 (e.g. column) with block size specified by attribute block_size.
        And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
@@ -2608,9 +2608,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   
     For a block blob. It is stored in format:
     struct Blob {
-      uint8 one_bits[(bits & 0x1) * 1 * block_size / 8];
-      uint8 two_bits[(bits & 0x2) * 2 * block_size / 8];
-      uint8 four_bits[(bits & 0x4) * 4 * block_size / 8];
+      uint8 one_bits[(bits & 0x1) * 1 * block_size / 8];  // highest 1 bit for 3, 5, 7 bits quantization
+      uint8 two_bits[(bits & 0x2) * 2 * block_size / 8];  // high 2 bits for 2, 6, 7 bits quantization
+      uint8 four_bits[(bits & 0x4) * 4 * block_size / 8]; // low 4 bits for 4, 5, 6 bits quantization
     }
   
   Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
@@ -2633,7 +2633,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bits</tt> : int (required)</dt>
 <dd>number of bits used for weight quantization (default 4)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
-<dd>number of groupsize used for weight quantization,(default 128). It needs to be a multiplier of 8.</dd>
+<dd>number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.</dd>
 </dl>
 
 #### Inputs (3 - 4)

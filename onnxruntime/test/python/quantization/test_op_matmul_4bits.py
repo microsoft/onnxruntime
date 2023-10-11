@@ -22,7 +22,7 @@ from onnxruntime.quantization import quant_utils
 class TestOpMatMul4Bits(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_matmulfpq4.")
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_matmul4bits.")
 
     @classmethod
     def tearDownClass(cls):
@@ -71,7 +71,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         output_name = "output"
         initializers = []
 
-        def make_gemm(input_name, weight_shape: Union[int, Tuple[int, ...]], weight_name: str, output_name: str):
+        def make_matmul(input_name, weight_shape: Union[int, Tuple[int, ...]], weight_name: str, output_name: str):
             weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
             return onnx.helper.make_node(
@@ -82,8 +82,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
 
         in_features = 52
         out_features = 288
-        # make MatMulFpQ4 node
-        matmul_node = make_gemm(
+        # make MatMul node
+        matmul_node = make_matmul(
             input_name,
             [in_features, out_features],
             "linear1.weight",
@@ -93,7 +93,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         # make graph
         input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [-1, in_features])
         output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [-1, out_features])
-        graph_name = "matmul_test"
+        graph_name = "matmul_4bits_test"
         graph = helper.make_graph(
             [matmul_node],
             graph_name,

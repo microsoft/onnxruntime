@@ -9,4 +9,3 @@ protobuf==3.20.2
 sympy==1.12
 flatbuffers
 neural-compressor>=2.2.1
-coloredlogs

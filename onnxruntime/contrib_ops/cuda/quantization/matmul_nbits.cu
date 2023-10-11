@@ -23,15 +23,23 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   half2 zp_adjust2 = {zp_adjust, zp_adjust};
   uint4 vec_a = *(reinterpret_cast<const uint4*>(a));
 
-  half2 v0 = __hfma2(__halves2half2(__uint2half_rn(values_quant & 0xF), __uint2half_rn((values_quant >> 4) & 0xF)), scale_half2, zp_adjust2);
-  half2 v1 = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 8) & 0xF), __uint2half_rn((values_quant >> 12) & 0xF)), scale_half2, zp_adjust2);
-  half2 v2 = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 16) & 0xF), __uint2half_rn((values_quant >> 20) & 0xF)), scale_half2, zp_adjust2);
-  half2 v3 = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 24) & 0xF), __uint2half_rn((values_quant >> 28) & 0xF)), scale_half2, zp_adjust2);
-  v0 = __hmul2(v0, *(reinterpret_cast<half2*>(&(vec_a.x))));
-  v1 = __hmul2(v1, *(reinterpret_cast<half2*>(&(vec_a.y))));
-  v2 = __hfma2(v2, *(reinterpret_cast<half2*>(&(vec_a.z))), v0);
-  v3 = __hfma2(v3, *(reinterpret_cast<half2*>(&(vec_a.w))), v1);
-  v3 = __hadd2(v2, v3);
+  half2 element01 = __halves2half2(__uint2half_rn(values_quant & 0xF), __uint2half_rn((values_quant >> 4) & 0xF));
+  half2 v0 = element01 * scale_half2 + zp_adjust2;
+
+  half2 element23 = __halves2half2(__uint2half_rn((values_quant >> 8) & 0xF), __uint2half_rn((values_quant >> 12) & 0xF));
+  half2 v1 = element23 * scale_half2 + zp_adjust2;
+
+  half2 element45 = __halves2half2(__uint2half_rn((values_quant >> 16) & 0xF), __uint2half_rn((values_quant >> 20) & 0xF));
+  half2 v2 = element45 * scale_half2 + zp_adjust2;
+
+  half2 element67 = __halves2half2(__uint2half_rn((values_quant >> 24) & 0xF), __uint2half_rn((values_quant >> 28) & 0xF));
+  half2 v3 = element67 * scale_half2 + zp_adjust2;
+
+  v0 = v0 * (*(reinterpret_cast<half2*>(&(vec_a.x))));
+  v1 = v1 * (*(reinterpret_cast<half2*>(&(vec_a.y))));
+  v2 = v2 * (*(reinterpret_cast<half2*>(&(vec_a.z)))) + v0;
+  v3 = v3 * (*(reinterpret_cast<half2*>(&(vec_a.w)))) + v1;
+  v3 = v2 + v3;
   return float(v3.x) + float(v3.y);
 }
 
@@ -91,7 +99,7 @@ __global__ void MatMulFloatInt4Kernel(
     b_scale_vec[i] = scales_data[offset + i];
   }
   for (int i = thread_id; i < BLOCKSIZEN * blocks_per_K / 2; i += 256) {
-    b_zp_vec[i] = zero_points != nullptr ? zero_points[offset/2 + i] : uint8_t(0x88);
+    b_zp_vec[i] = zero_points != nullptr ? zero_points[offset / 2 + i] : uint8_t(0x88);
   }
   __syncthreads();
 
@@ -104,7 +112,7 @@ __global__ void MatMulFloatInt4Kernel(
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + (k_id >> 1) + lane_id * 4));
     int32_t block_idx = warp_id * blocks_per_K + (k_id + lane_id * 8) / block_size;
     T scale = b_scale_vec[block_idx];
-    uint8_t zp = (block_idx & 0x01) ? (b_zp_vec[block_idx/2] >> 4) : (b_zp_vec[block_idx/2] & 0x0f);
+    uint8_t zp = (block_idx & 0x01) ? (b_zp_vec[block_idx / 2] >> 4) : (b_zp_vec[block_idx / 2] & 0x0f);
     sum += AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3));
   }
 
@@ -113,7 +121,7 @@ __global__ void MatMulFloatInt4Kernel(
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_iter * 128 + lane_id * 4));
     int32_t block_idx = warp_id * blocks_per_K + (k_id + lane_id * 8) / block_size;
     T scale = b_scale_vec[block_idx];
-    uint8_t zp = (block_idx & 0x01) ? (b_zp_vec[block_idx/2] >> 4) : (b_zp_vec[block_idx/2] & 0x0f);
+    uint8_t zp = (block_idx & 0x01) ? (b_zp_vec[block_idx / 2] >> 4) : (b_zp_vec[block_idx / 2] & 0x0f);
     sum += AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3));
   }
 

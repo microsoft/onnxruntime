@@ -83,7 +83,6 @@ class MatMul4BitsQuantizer:
             logger.info("MatMul doesn't have const weight. Skip to quantize")
             return node  # only care about constant weight
 
-        # TODO!! assume B is not used by any other node
         B_array = onnx.numpy_helper.to_array(B)  # noqa: N806
         if len(B_array.shape) != 2:
             logger.info("MatMul weight is not 2D. Skip to quantize")
@@ -200,8 +199,6 @@ set of 4b integers with a scaling factor and an optional offset.
     )
     parser.add_argument("-v", "--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
-    parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
-    parser.set_defaults(use_external_data_format=False)
     parser.add_argument(
         "--nodes_to_exclude",
         nargs="+",

@@ -24,10 +24,21 @@ __device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, h
   half2 zp_adjust2 = {zp_adjust, zp_adjust};
 
   alignas(16) half2 results[4];
-  results[0] = __hfma2(__halves2half2(__uint2half_rn(values_quant & 0xF), __uint2half_rn((values_quant >> 4) & 0xF)), scale_half2, zp_adjust2);
-  results[1] = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 8) & 0xF), __uint2half_rn((values_quant >> 12) & 0xF)), scale_half2, zp_adjust2);
-  results[2] = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 16) & 0xF), __uint2half_rn((values_quant >> 20) & 0xF)), scale_half2, zp_adjust2);
-  results[3] = __hfma2(__halves2half2(__uint2half_rn((values_quant >> 24) & 0xF), __uint2half_rn((values_quant >> 28) & 0xF)), scale_half2, zp_adjust2);
+  half v0 = __uint2half_rn(values_quant & 0xF);
+  half v1 = __uint2half_rn((values_quant >> 4) & 0xF);
+  results[0] = __halves2half2(v0, v1) * scale_half2 + zp_adjust2;
+
+  half v2 = __uint2half_rn((values_quant >> 8) & 0xF);
+  half v3 = __uint2half_rn((values_quant >> 12) & 0xF);
+  results[1] = __halves2half2(v2, v3) * scale_half2 + zp_adjust2;
+
+  half v4 = __uint2half_rn((values_quant >> 16) & 0xF);
+  half v5 = __uint2half_rn((values_quant >> 20) & 0xF);
+  results[2] = __halves2half2(v4, v5) * scale_half2 + zp_adjust2;
+
+  half v6 = __uint2half_rn((values_quant >> 24) & 0xF);
+  half v7 = __uint2half_rn((values_quant >> 28) & 0xF);
+  results[3] = __halves2half2(v6, v7) * scale_half2 + zp_adjust2;
   *(reinterpret_cast<float4*>(output)) = *(reinterpret_cast<float4*>(results));
 }
 

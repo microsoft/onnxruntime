@@ -17,24 +17,10 @@ namespace contrib {
 #endif
 
 template <typename T, int32_t block_size, int32_t bits>
-struct BlockwiseQuantBlock {
-  FORCEINLINE void dequant(T* dst, T scale, int32_t k_idx, int32_t K) const;
-  FORCEINLINE void dequant(T* dst, T scale, uint8_t zp, int32_t k_idx, int32_t K) const;
-
-  FORCEINLINE void quant(const T* src, T& scale, int32_t k_idx, int32_t K, int32_t N);
-  FORCEINLINE void quant(const T* src, T& scale, uint8_t& zp, int32_t k_idx, int32_t K, int32_t N);
-};
-
-template <typename T, int32_t block_size>
-struct BlockwiseQuantBlock<T, block_size, 3> {
+struct alignas(1) BlockwiseQuantBlock {
   static_assert(block_size % 8 == 0);
 
-  BlockwiseQuantBlock<T, block_size, 3>() : low_2bits(main_blob),
-                                            high_1bit(main_blob + block_size / 4) {}
-
-  uint8_t main_blob[block_size / 8 * 3];
-  uint8_t* low_2bits;
-  uint8_t* high_1bit;
+  uint8_t blob_data[block_size / 8 * bits];
 
   FORCEINLINE void dequant(T* dst, T scale, int32_t k_idx, int32_t K) const;
   FORCEINLINE void dequant(T* dst, T scale, uint8_t zp, int32_t k_idx, int32_t K) const;
@@ -44,20 +30,20 @@ struct BlockwiseQuantBlock<T, block_size, 3> {
 };
 
 template <typename T, int32_t block_size>
-struct BlockwiseQuantBlock<T, block_size, 4> {
+struct alignas(1) BlockwiseQuantBlock<T, block_size, 4> {
   static_assert(block_size % 8 == 0);
 
-  uint8_t main_blob[block_size / 2];
+  uint8_t blob_data[block_size / 2];
 
   FORCEINLINE void dequant(T* dst, T scale, uint8_t zp, int32_t k_idx, int32_t K) const {
     for (int i = 0; i < block_size; i += 2) {
       T zp_t = static_cast<T>(float(zp));
       if (k_idx + i < K) {
-        T x0 = static_cast<T>(float(main_blob[i / 2] & 0xF));
+        T x0 = static_cast<T>(float(blob_data[i / 2] & 0xF));
         dst[i] = scale * (x0 - zp_t);
       }
       if (k_idx + i + 1 < K) {
-        T x1 = static_cast<T>(float(main_blob[i / 2] >> 4));
+        T x1 = static_cast<T>(float(blob_data[i / 2] >> 4));
         dst[i + 1] = scale * (x1 - zp_t);
       }
     }
@@ -105,7 +91,7 @@ struct BlockwiseQuantBlock<T, block_size, 4> {
       const float v1 = static_cast<float>((kk + 1 < klen) ? src[N * (kk + 1)] : 0.f);
       const uint8_t vi1 = (uint8_t)std::min(15.0f, std::max(0.0f, roundf(v1 * reciprocal_scale + zp)));
 
-      main_blob[kk / 2] = vi0 | (vi1 << 4);
+      blob_data[kk / 2] = vi0 | (vi1 << 4);
     }
   }
 
@@ -134,65 +120,9 @@ struct BlockwiseQuantBlock<T, block_size, 4> {
       const float v1 = (kk + 1 < klen) ? src[N * (kk + 1)] * reciprocal_scale : 0;
       const uint8_t vi1 = (uint8_t)std::min(15.0f, std::max(0.0f, roundf(v1 + 8.f)));
 
-      main_blob[kk / 2] = vi0 | (vi1 << 4);
+      blob_data[kk / 2] = vi0 | (vi1 << 4);
     }
   }
-};
-
-template <typename T, int32_t block_size>
-struct BlockwiseQuantBlock<T, block_size, 5> {
-  static_assert(block_size % 8 == 0);
-
-  BlockwiseQuantBlock<T, block_size, 5>() : low_4bits(main_blob),
-                                            high_1bit(main_blob + block_size / 2) {}
-
-  uint8_t main_blob[block_size / 8 * 5];
-  uint8_t* low_4bits;
-  uint8_t* high_1bit;
-
-  FORCEINLINE void dequant(T* dst, T scale, int32_t k_idx, int32_t K) const;
-  FORCEINLINE void dequant(T* dst, T scale, uint8_t zp, int32_t k_idx, int32_t K) const;
-
-  FORCEINLINE void quant(const T* src, T& scale, int32_t k_idx, int32_t K, int32_t N);
-  FORCEINLINE void quant(const T* src, T& scale, uint8_t& zp, int32_t k_idx, int32_t K, int32_t N);
-};
-
-template <typename T, int32_t block_size>
-struct BlockwiseQuantBlock<T, block_size, 6> {
-  static_assert(block_size % 8 == 0);
-
-  BlockwiseQuantBlock<T, block_size, 6>() : low_4bits(main_blob),
-                                            high_2bits(main_blob + block_size / 2) {}
-
-  uint8_t main_blob[block_size / 8 * 6];
-  uint8_t* low_4bits;
-  uint8_t* high_2bits;
-
-  FORCEINLINE void dequant(T* dst, T scale, int32_t k_idx, int32_t K) const;
-  FORCEINLINE void dequant(T* dst, T scale, uint8_t zp, int32_t k_idx, int32_t K) const;
-
-  FORCEINLINE void quant(const T* src, T& scale, int32_t k_idx, int32_t K, int32_t N);
-  FORCEINLINE void quant(const T* src, T& scale, uint8_t& zp, int32_t k_idx, int32_t K, int32_t N);
-};
-
-template <typename T, int32_t block_size>
-struct BlockwiseQuantBlock<T, block_size, 7> {
-  static_assert(block_size % 8 == 0);
-
-  BlockwiseQuantBlock<T, block_size, 7>() : low_4bits(main_blob),
-                                            middle_2bits(main_blob + block_size / 2),
-                                            high_1bit(main_blob + block_size / 8 * 6) {}
-
-  uint8_t main_blob[block_size / 8 * 7];
-  uint8_t* low_4bits;
-  uint8_t* middle_2bits;
-  uint8_t* high_1bit;
-
-  FORCEINLINE void dequant(T* dst, T scale, int32_t k_idx, int32_t K) const;
-  FORCEINLINE void dequant(T* dst, T scale, uint8_t zp, int32_t k_idx, int32_t K) const;
-
-  FORCEINLINE void quant(const T* src, T& scale, int32_t k_idx, int32_t K, int32_t N);
-  FORCEINLINE void quant(const T* src, T& scale, uint8_t& zp, int32_t k_idx, int32_t K, int32_t N);
 };
 
 }  // namespace contrib
