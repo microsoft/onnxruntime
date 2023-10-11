@@ -18,8 +18,9 @@
 				<div class="col-span-3 text-black">
 					<h1 class="text-2xl pb-2">Large Model Training</h1>
 					<p class="text-lg">
-						ORTModule accelerates training of large transformer PyTorch models, reducing training
-						time and cost with a single line code change.
+						ORT Training can be used to accelerate training for a large number of popular models,
+						including <a href="https://huggingface.co/" class="text-blue-500">Hugging Face</a> models like Llama-2-7b and curated models from the <a href="https://ml.azure.com/" class="text-blue-500">Azure AI |
+						Machine Learning Studio</a> model catalog.
 					</p>
 				</div>
 				<div class="hidden xl:grid">
@@ -32,10 +33,9 @@
 				<div class="col-span-3 text-black">
 					<h1 class="text-2xl pb-2">On-Device Training</h1>
 					<p class="text-lg">
-						On-Device Training refers to the process of training a model on an edge device, such as
-						mobile phones, embedded devices, gaming consoles, web browsers, etc. This is useful for
-						when performance, connectivity, or privacy is a consideration and server-based training
-						is not an option.
+						On-device training extends ORT Mobile inferencing to enable training on edge devices.
+						Developers can take an inference model and train it locally on-device to provide an
+						improved user experience for end customers.
 					</p>
 				</div>
 				<div class="hidden xl:grid">

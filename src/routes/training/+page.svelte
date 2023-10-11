@@ -4,6 +4,7 @@
 	import ImageOndevtraining from '../../images/undraw/image_ondevtraining.svelte';
 	import ImageTraining1 from '../../images/undraw/image_training1.svelte';
 	import ImageTraining2 from '../../images/undraw/image_training2.svelte';
+	import foundationmodels from '../../images/foundationmodels.png';
 	const title = 'ONNX Runtime for Training';
 	const description =
 		'ONNX Runtime can be used to accelerate both large model training and on-device training.';
@@ -42,7 +43,23 @@
 </div>
 <div class="container mx-auto px-10 my-10">
 	<h1 class="text-4xl pb-4">Benefits</h1>
-	<div class="grid gap-10 grid-cols-1 md:grid-cols-2 lg:grid-cols-4 pb-10">
+	<div class="grid gap-10 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 pb-10">
+		<div class="card bg-base-300">
+			<div class="card-body items-center text-center">
+				<h2 class="card-title">Faster training</h2>
+				<p>Optimized kernels and memory optimizations provides >1.5X speed up in training time.</p>
+			</div>
+		</div>
+		<div class="card bg-base-300">
+			<div class="card-body items-center text-center">
+				<h2 class="card-title">Flexible & extensible hardware support</h2>
+				<p>
+					The same model and API works with NVIDIA and AMD GPUs, and the extensible "execution
+					provider" architecture allow you to plug-in custom operators, optimizer and hardware
+					accelerators.
+				</p>
+			</div>
+		</div>
 		<div class="card bg-base-300">
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Part of the PyTorch ecosystem</h2>
@@ -62,90 +79,58 @@
 		</div>
 		<div class="card bg-base-300">
 			<div class="card-body items-center text-center">
-				<h2 class="card-title">Flexible & extensible hardware support</h2>
+				<h2 class="card-title">Composable with popular acceleration systems</h2>
 				<p>
-					The same model and API works with NVIDIA and AMD GPUs, and the extensible <a rel="external" class="text-blue-500" href="./docs/execution-providers/">execution
-						provider</a> architecture allow you to plug-in custom operators, optimizer and hardware
-					accelerators.
+					Compose with <a href="https://github.com/microsoft/DeepSpeed" class="text-blue-500"
+						>DeepSpeed</a
+					>,
+					<a href="https://github.com/facebookresearch/fairscale" class="text-blue-500">FairScale</a
+					>, <a href="https://github.com/NVIDIA/Megatron-LM" class="text-blue-500">Megatron</a>, and
+					more for even faster and more efficient training.
 				</p>
 			</div>
 		</div>
 		<div class="card bg-base-300">
 			<div class="card-body items-center text-center">
-				<h2 class="card-title">Faster training</h2>
-				<p>Optimized kernels and memory optimizations provides >1.5X speed up in training time.</p>
+				<h2 class="card-title">Works with Azure AI curated models</h2>
+				<p>
+					ORT Training is turned on for curated models in the <a
+						href="https://ml.azure.com/"
+						class="text-blue-500">Azure AI | Machine Learning Studio</a
+					> model catalog.
+				</p>
 			</div>
 		</div>
 		<div class="card bg-base-300">
 			<div class="card-body items-center text-center">
-				<h2 class="card-title">Composable with popular acceleration systems</h2>
+				<h2 class="card-title">Can be used to accelerate popular models like Llama-2-7b</h2>
 				<p>
-					Compose with DeepSpeed, FairScale, Megatron, and more for even faster and more efficient
-					training.
+					ORT Training can be used to accelerate Hugging Face models like Llama-2-7b through <a
+						href="https://github.com/huggingface/optimum/blob/main/examples/onnxruntime/training/text-classification/README.md#onnx-runtime-training"
+						class="text-blue-500">these scripts</a
+					>.
 				</p>
 			</div>
 		</div>
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">
-	<div class="bg-secondary rounded p-4">
-		<h1 class="text-3xl pb-4">Examples</h1>
-		<div class="overflow-x-auto p-4">
-			<table class="table">
-				<thead>
-					<tr>
-						<th>Example</th>
-						<th>Performance Comparison</th>
-						<th>Model Change</th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr>
-						<td>HuggingFace BART</td>
-						<td
-							>See <a
-								class="text-blue-200"
-								href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/BART.md"
-								>BART</a
-							></td
-						>
-						<td>No model change required</td>
-					</tr>
-					<tr>
-						<td>HuggingFace BERT</td>
-						<td
-							>See <a
-								class="text-blue-200"
-								href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/BERT.md"
-								>BERT</a
-							></td
-						>
-						<td>No model change required</td>
-					</tr>
-					<tr>
-						<td>HuggingFace DistilBERT</td>
-						<td
-							>See <a
-								class="text-blue-200"
-								href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/DistilBERT.md"
-								>DistilBERT</a
-							></td
-						>
-						<td>No model change required</td>
-					</tr>
-					<tr>
-						<td>HuggingFace GPT2</td>
-						<td
-							>See <a
-								class="text-blue-200"
-								href="https://github.com/microsoft/onnxruntime-training-examples/blob/master/huggingface/GPT2.md"
-								>GPT2</a
-							></td
-						>
-						<td>No model change required</td>
-					</tr>
-				</tbody>
-			</table>
+	<h1 class="text-4xl pb-4">Improved Foundation Model Performance with ORT Training</h1>
+	<div class="grid lg:grid-cols-3 grid-cols-1 lg:gap-4">
+		<img class="col-span-2" src={foundationmodels} alt="Foundation Model Throughput chart" />
+		<div class="my-auto flex flex-col gap-4 mt-4 lg:mt-auto">
+			<div class="card bg-base-300">
+				<div class="card-body items-center text-center">
+					<div class="card-title">Average throughput improvement:</div>
+					<div class="stat-value">2.7x</div>	
+				</div>
+			</div>
+			<div class="card bg-base-300">
+				<div class="card-body items-center text-center">
+					<div class="card-title">Median throughput improvement:</div>
+					<div class="stat-value">1.7x</div>	
+				</div>
+			</div>
 		</div>
 	</div>
 </div>
@@ -172,12 +157,7 @@
 </div>
 <div class="container mx-auto px-10 my-10">
 	<h1 class="text-4xl pb-4">Benefits</h1>
-	<div class="grid gap-10 grid-cols-1 md:grid-cols-3 pb-10">
-		<div class="card bg-base-300">
-			<div class="card-body items-center text-center">
-				<h2 class="card-title">Extends the ONNX Runtime Inference solution</h2>
-			</div>
-		</div>
+	<div class="grid gap-10 grid-cols-1 md:grid-cols-2 pb-10">
 		<div class="card bg-base-300">
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Memory and performance efficiency</h2>
@@ -190,8 +170,6 @@
 				<p>make it easy to scale across multiple platform targets</p>
 			</div>
 		</div>
-	</div>
-	<div class="grid gap-10 grid-cols-1 md:grid-cols-2 mx-auto">
 		<div class="card bg-base-300">
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Improves data privacy & security</h2>
