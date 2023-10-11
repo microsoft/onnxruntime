@@ -199,7 +199,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
       )
     endif()
-    add_subdirectory(${MLAS_SRC_DIR}/X86_64/jblas jblas) 
+    add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas) 
     target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
   else()
     target_sources(onnxruntime_mlas PRIVATE
@@ -564,7 +564,7 @@ else()
             )
           set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
           set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-	      add_subdirectory(${MLAS_SRC_DIR}/X86_64/jblas jblas) 
+	      add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas) 
           target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
         endif()
 
