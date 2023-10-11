@@ -8,7 +8,7 @@ However, there are some special restrictions on this. If a thread local variable
 
 
 ## No undefined symbols
-On Windows, you can't build a DLL with undefined symbols. Every symbol must be get resolved at link time. On Linux, you can.
+On Windows, you can't build a DLL with undefined symbols. Every symbol must get resolved at link time. On Linux, you can.
 In order to simplify things, we require every symbol must get resolved at link time. The same rule applies for all the platforms. And this is easier for us to control symbol visibility.
 
 
