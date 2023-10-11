@@ -41,11 +41,8 @@ struct KernelOne {
       return Ort::Status("input count should be 2", OrtErrorCode::ORT_INVALID_ARGUMENT);
     }
     Ort::ShapeInferContext::Shape shape_3_5 = {{3}, {5}};
-    Ort::ShapeInferContext::Shape shape_1_1 = {{-1}, {-1}};
-    if (ctx.GetInputShape(0) == shape_3_5 &&
-        ctx.GetInputShape(1) == shape_3_5) {
-      ctx.SetOutputShape(0, shape_1_1);
-    } else {
+    if (ctx.GetInputShape(0) != shape_3_5 ||
+        ctx.GetInputShape(1) != shape_3_5) {
       return Ort::Status("input shape mismatch", OrtErrorCode::ORT_INVALID_ARGUMENT);
     }
     return Ort::Status{nullptr};
