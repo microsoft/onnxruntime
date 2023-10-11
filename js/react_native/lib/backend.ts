@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, InferenceSessionHandler, SessionHandler, Tensor} from 'onnxruntime-common';
+import {type Backend, InferenceSession, type InferenceSessionHandler, type SessionHandler, Tensor} from 'onnxruntime-common';
 import {Platform} from 'react-native';
 
-import {binding, Binding, JSIBlob, jsiHelper} from './binding';
+import {binding, type Binding, type JSIBlob, jsiHelper} from './binding';
 
 type SupportedTypedArray = Exclude<Tensor.DataType, string[]>;
 

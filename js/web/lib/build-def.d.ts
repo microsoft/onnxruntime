@@ -6,7 +6,7 @@
 /**
  * The interface BuildDefinitions contains a set of flags which are defined at build time.
  *
- * Those flags are processed in terser for tree shaking to remove unused code.
+ * Those flags are processed in bundler for tree shaking to remove unused code.
  * No flags in this file should present in production build.
  */
 interface BuildDefinitions {
