@@ -89,6 +89,7 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                        const logging::Logger& logger,
                                        std::vector<std::string>& input_names,
                                        bool do_op_validation) const {
+  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   const auto& inputs = node_unit.Inputs();
   assert(inputs.size() == 1);
 
@@ -101,7 +102,7 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   const size_t input_rank = input_info.shape.size();
 
   // If the axis attribute refers to the last dimension, then process the input as normal.
-  if (axis == static_cast<int32_t>(input_rank) - 1) {
+  if (!is_npu_backend || axis == static_cast<int32_t>(input_rank) - 1) {
     return ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names);
   }
 
@@ -121,35 +122,26 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   op_input_shape[input_rank - 1] = input_info.shape[axis];
   op_input_shape[axis] = input_info.shape[input_rank - 1];
 
-  std::vector<uint8_t> initializer_bytes;
-  if (input_info.is_initializer) {  // Input is an initializer, so transpose initializer bytes.
-    std::vector<size_t> perm_size_t;
-    perm_size_t.reserve(transpose_perm.size());
+  ORT_RETURN_IF(input_info.is_initializer, "QNN EP does not support (Log)Softmax with an initializer input, ",
+                "which should be optimized away by the ORT optimizer");
 
-    for (auto p : transpose_perm) {
-      perm_size_t.push_back(static_cast<size_t>(p));
-    }
+  // Input is dynamic, so add transpose node before input.
+  const bool is_graph_input = qnn_model_wrapper.IsGraphInput(input_name);
 
-    ORT_RETURN_IF_ERROR(TransposeInitializer(qnn_model_wrapper, *input_info.initializer_tensor, perm_size_t,
-                                             initializer_bytes));
-  } else {  // Input is dynamic, so add transpose node before input.
-    const bool is_graph_input = qnn_model_wrapper.IsGraphInput(input_name);
-
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTransposeNode(node_unit.Index(),
-                                                           input_name,
-                                                           op_input_name,
-                                                           input_info.shape,
-                                                           transpose_perm,
-                                                           op_input_shape,
-                                                           input_info.qnn_data_type,
-                                                           input_info.quant_param,
-                                                           do_op_validation,
-                                                           is_graph_input));
-  }
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTransposeNode(node_unit.Index(),
+                                                         input_name,
+                                                         op_input_name,
+                                                         input_info.shape,
+                                                         transpose_perm,
+                                                         op_input_shape,
+                                                         input_info.qnn_data_type,
+                                                         input_info.quant_param,
+                                                         do_op_validation,
+                                                         is_graph_input));
 
   Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, op_input_name);
   QnnTensorWrapper input_tensorwrapper(op_input_name, tensor_type, input_info.qnn_data_type, input_info.quant_param,
-                                       std::move(op_input_shape), std::move(initializer_bytes));
+                                       std::move(op_input_shape), {});
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   return Status::OK();
@@ -160,6 +152,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                                                      std::vector<std::string>&& input_names,
                                                      const logging::Logger& logger,
                                                      bool do_op_validation) const {
+  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   const std::string& op_type = node_unit.OpType();
   const auto& outputs = node_unit.Outputs();
   assert(outputs.size() == 1);
@@ -174,7 +167,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
   const bool axis_is_last_dim = static_cast<size_t>(axis) == output_rank - 1;
 
   // If axis refers to the last dimension, process outputs as usual.
-  if (axis_is_last_dim) {
+  if (!is_npu_backend || axis_is_last_dim) {
     QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_SOFTMAX_PARAM_AXIS, axis_qnn_scalar);
 
     std::vector<std::string> param_tensor_names;
