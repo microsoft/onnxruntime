@@ -31,7 +31,7 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
   const TensorPartitionSpec& spec_starts = input_shard_specs_[1];
   const TensorPartitionSpec& spec_ends = input_shard_specs_[2];
   const TensorPartitionSpec& spec_Y = output_shard_specs_[0];
-  
+
   const auto tensor_shard_axes = context->Input<Tensor>(3);
   const TensorPartitionSpec& spec_axes = input_shard_specs_[3];
 
