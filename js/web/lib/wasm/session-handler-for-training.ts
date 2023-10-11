@@ -8,10 +8,10 @@ import {createSessionAllocate, initRuntime, isOrtEnvInitialized} from './wasm-co
 import {createCheckpointHandle, createTrainingSessionHandle, releaseTrainingSessionAndCheckpoint} from './wasm-training-core-impl';
 
 export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
-  loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void> {
+  async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {
     throw new Error('Method not implemented.');
   }
-  getContiguousParameters(trainableOnly: boolean): Promise<Uint8Array> {
+  async getContiguousParameters(_trainableOnly: boolean): Promise<Uint8Array> {
     throw new Error('Method not implemented.');
   }
   private sessionId: number;
@@ -42,8 +42,8 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     if (!isOrtEnvInitialized()) {
       await initRuntime(env);
     }
-    let checkpointData: SerializableModeldata = await this.uriOrBufferToHeap(checkpointStateUriOrBuffer);
-    let trainModelData: SerializableModeldata = await this.uriOrBufferToHeap(trainModelUriOrBuffer);
+    const checkpointData: SerializableModeldata = await this.uriOrBufferToHeap(checkpointStateUriOrBuffer);
+    const trainModelData: SerializableModeldata = await this.uriOrBufferToHeap(trainModelUriOrBuffer);
     // 0 is supposed to be the nullptr
     let evalModelData: SerializableModeldata = [0, 0];
     let optimizerModelData: SerializableModeldata = [0, 0];

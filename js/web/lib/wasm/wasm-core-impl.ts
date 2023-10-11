@@ -10,6 +10,8 @@ import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType
 import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
 
+let ortEnvInitialized = false;
+
 /**
  * get the input/output count of the session.
  * @param sessionHandle the handle representing the session. should be non-zero.
@@ -94,7 +96,6 @@ type SessionMetadata = [
 ];
 
 const activeSessions = new Map<number, SessionMetadata>();
-let ortEnvInitialized = false;
 
 export const isOrtEnvInitialized = (): boolean => {
   return ortEnvInitialized;

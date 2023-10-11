@@ -25,11 +25,9 @@ export class TrainingSession implements TrainingSessionInterface {
 
   static async create(trainingOptions: TrainingSessionCreateOptions, sessionOptions?: SessionOptions):
       Promise<TrainingSession> {
-    let checkpointState: string|Uint8Array = trainingOptions.checkpointState;
-    let trainModel: string|Uint8Array = trainingOptions.trainModel;
-    let evalModel: string|Uint8Array = trainingOptions.evalModel ? trainingOptions.evalModel : '';
-    let optimizerModel: string|Uint8Array = trainingOptions.optimizerModel ? trainingOptions.optimizerModel : '';
-    let options: SessionOptions = sessionOptions ? sessionOptions : {};
+    const evalModel: string|Uint8Array = trainingOptions.evalModel || '';
+    const optimizerModel: string|Uint8Array = trainingOptions.optimizerModel || '';
+    const options: SessionOptions = sessionOptions || {};
 
     // get backend hints
     const eps = options.executionProviders || [];
@@ -37,7 +35,8 @@ export class TrainingSession implements TrainingSessionInterface {
     const backend = await resolveBackend(backendHints);
     if (backend.createTrainingSessionHandler) {
       const handler =
-          await backend.createTrainingSessionHandler(checkpointState, trainModel, evalModel, optimizerModel, options);
+          await backend.createTrainingSessionHandler(trainingOptions.checkpointState, trainingOptions.trainModel,
+            evalModel, optimizerModel, options);
       return new TrainingSession(handler);
     } else {
       throw new Error(noBackendErrMsg);

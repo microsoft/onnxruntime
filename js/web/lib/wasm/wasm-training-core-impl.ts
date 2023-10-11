@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-// import {InferenceSession, Tensor} from 'onnxruntime-common';
+
 import {InferenceSession} from 'onnxruntime-common';
 
 import {SerializableModeldata, SerializableSessionMetadata} from './proxy-messages';
@@ -9,7 +9,8 @@ import {getInstance} from './wasm-factory';
 import {checkLastError} from './wasm-utils';
 
 const NO_TRAIN_FUNCS_MSG =
-    'Built without training APIs enabled. Make sure to use the onnxruntime-training package for training functionality.';
+    'Built without training APIs enabled. ' +
+    'Make sure to use the onnxruntime-training package for training functionality.';
 
 export const createCheckpointHandle = (checkpointData: SerializableModeldata): number => {
   const wasm = getInstance();
@@ -97,7 +98,7 @@ const getTrainingModelInputOutputNames = (trainingSessionId: number): [string[],
   const [outputNames, outputNamesUTF8Encoded] = getTrainingNamesLoop(trainingSessionId, outputCount, false);
 
   return [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded];
-}
+};
 
 const getTrainingModelInputOutputCount = (trainingSessionId: number): [number, number] => {
   const wasm = getInstance();
@@ -116,7 +117,7 @@ const getTrainingModelInputOutputCount = (trainingSessionId: number): [number, n
   } finally {
     wasm.stackRestore(stack);
   }
-}
+};
 
 const getTrainingNamesLoop = (trainingSessionId: number, count: number, isInput: boolean): [string[], number[]] => {
   const names = [];
