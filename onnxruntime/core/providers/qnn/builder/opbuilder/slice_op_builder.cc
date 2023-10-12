@@ -92,14 +92,12 @@ static Status GetInitializerInputData(const NodeUnitIODef& input, const QnnModel
 
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-      gsl::span<const int64_t> elements = qnn::utils::ReinterpretBytesAsSpan<int64_t>(initializer_bytes.data(),
-                                                                                      initializer_bytes.size());
+      gsl::span<const int64_t> elements = qnn::utils::ReinterpretBytesAsSpan<int64_t>(initializer_bytes);
       output.insert(output.end(), elements.begin(), elements.end());
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-      gsl::span<const int32_t> elements = qnn::utils::ReinterpretBytesAsSpan<int32_t>(initializer_bytes.data(),
-                                                                                      initializer_bytes.size());
+      gsl::span<const int32_t> elements = qnn::utils::ReinterpretBytesAsSpan<int32_t>(initializer_bytes);
       output.insert(output.end(), elements.begin(), elements.end());
       break;
     }

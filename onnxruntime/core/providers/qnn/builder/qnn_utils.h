@@ -16,10 +16,10 @@ class QnnOpConfigWrapper;
 
 namespace utils {
 
-// Reinterprets an array of contiguous bytes in the target's endianness to a span of elements.
+// Reinterprets an array of contiguous, aligned bytes in the target's endianness to a span of elements.
 template <typename T>
-inline gsl::span<const T> ReinterpretBytesAsSpan(const uint8_t* data, size_t num_bytes) {
-  return gsl::span<const T>(reinterpret_cast<const T*>(data), num_bytes / sizeof(T));
+inline gsl::span<const T> ReinterpretBytesAsSpan(gsl::span<const uint8_t> bytes_span) {
+  return gsl::span<const T>(reinterpret_cast<const T*>(bytes_span.data()), bytes_span.size() / sizeof(T));
 }
 
 size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
