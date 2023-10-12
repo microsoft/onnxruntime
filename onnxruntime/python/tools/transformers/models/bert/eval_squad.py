@@ -7,13 +7,13 @@
 # Example to evaluate raw and optimized model for CUDA in Linux:
 #   pip3 install datasets evaluate optimum transformers onnxruntime-gpu
 #
-#   python3 eval_squad.py -m bert-large-uncased-whole-word-masking-finetuned-squad -s 384 -b 1 -t 10 --use_io_binding
+#   python3 eval_squad.py -m bert-large-uncased-whole-word-masking-finetuned-squad -s 384 -b 1 --use_io_binding
 #
 #   python3 -m onnxruntime.transformers.optimizer \
 #           --input ./bert-large-uncased-whole-word-masking-finetuned-squad/model.onnx \
 #           --output ./bert-large-uncased-whole-word-masking-finetuned-squad/optimized_model.onnx
 #
-#   python3 eval_squad.py -m bert-large-uncased-whole-word-masking-finetuned-squad -s 384 -b 1 -t 10 --use_io_binding \
+#   python3 eval_squad.py -m bert-large-uncased-whole-word-masking-finetuned-squad -s 384 -b 1 --use_io_binding \
 #           --onnx ./bert-large-uncased-whole-word-masking-finetuned-squad/optimized_model.onnx
 #
 #   Snippet of example output in A100:
@@ -85,7 +85,11 @@ def load_onnx_model(
         print("Model is exported to onnx file:", onnx_path)
     else:
         model = ORTModelForQuestionAnswering.from_pretrained(
-            os.path.dirname(onnx_path), file_name=Path(onnx_path).name, provider=provider, use_io_binding=use_io_binding
+            os.path.dirname(onnx_path),
+            file_name=Path(onnx_path).name,
+            provider=provider,
+            use_io_binding=use_io_binding,
+            # provider_options={"enable_skip_layer_norm_strict_mode": True},
         )
 
     return model, onnx_path
@@ -217,12 +221,12 @@ def main():
     for sequence_length in args.sequence_lengths:
         tokenizer.model_max_length = sequence_length
         tokenizer.doc_stride = min(sequence_length // 2, 128)
-
-        print("Loading model...")
+        if args.onnx is None:
+            print("Exporting onnx model. It might take a few minutes...")
         start_time = time.time()
         ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, args.provider, args.use_io_binding)
         latency = time.time() - start_time
-        print(f"Onnx model loaded in {latency:.1f} seconds")
+        print(f"Onnx model exported or loaded in {latency:.1f} seconds")
 
         print(ort_model.config)
         if sequence_length > ort_model.config.max_position_embeddings:
@@ -239,7 +243,7 @@ def main():
         latency = time.time() - start_time
         print(f"Dataset loaded in {latency:.1f} seconds")
 
-        print("Evaluating squad_v2 with ORT. It might take a minute...")  # About 85 seconds in A100 with bert-large.
+        print("Evaluating squad_v2 with ORT. It might take a few minutes...")
         start_time = time.time()
         result = task_evaluator.compute(
             model_or_pipeline=qa_pipeline,
