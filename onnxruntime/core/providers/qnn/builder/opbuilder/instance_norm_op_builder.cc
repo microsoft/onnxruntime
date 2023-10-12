@@ -100,18 +100,10 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   // HTP backend can only handle rank 3 inputs if the batch size is 1. If the batch size is not 1,
   // QNN EP must reshape the input and output to (N, 1, W, C) and process the InstanceNorm as rank 4.
-  if (input0_info.shape.size() != 3 || input0_info.shape[0] == 1) {
-    return BaseOpBuilder::ProcessInputs(qnn_model_wrapper, node_unit, logger, input_names, do_op_validation);
-  }
-
-  //
-  // Input 0 is rank 3 with batch size != 1. Must reshape the input to rank 4.
-  //
-
-  {
-    const std::string& input0_name = inputs[0].node_arg.Name();
-    const std::string op_input0_name = input0_info.is_initializer ? input0_name
-                                                                  : input0_name + "_ort_qnn_ep_reshape";
+  if (input0_info.shape.size() == 3 && input0_info.shape[0] != 1) {
+    const std::string& orig_input0_name = inputs[0].node_arg.Name();
+    const std::string op_input0_name = input0_info.is_initializer ? orig_input0_name
+                                                                  : orig_input0_name + "_ort_qnn_ep_reshape";
     input_names.push_back(op_input0_name);
 
     std::vector<uint8_t> initializer_data;
@@ -131,8 +123,8 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       // Add Reshape node to transform 1D input to 2D (i.e., set height to 1).
       // We don't need to do this for initializers, because the element layout does not change. We can just
       // modify the shape dimensions.
-      bool is_graph_input = qnn_model_wrapper.IsGraphInput(input0_name);
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(input0_name,
+      bool is_graph_input = qnn_model_wrapper.IsGraphInput(orig_input0_name);
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(orig_input0_name,
                                                            op_input0_name,
                                                            input0_info.shape,
                                                            op_shape,
@@ -146,6 +138,8 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     QnnTensorWrapper input_tensorwrapper(op_input0_name, tensor_type, input0_info.qnn_data_type, input0_info.quant_param,
                                          std::move(op_shape), std::move(initializer_data));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+  } else {
+    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));  // Input 0
   }
 
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[1], logger, input_names));  // Scale
