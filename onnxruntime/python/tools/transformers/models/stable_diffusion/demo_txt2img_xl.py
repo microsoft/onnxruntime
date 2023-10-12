@@ -29,7 +29,11 @@ from pipeline_img2img_xl import Img2ImgXLPipeline
 from pipeline_txt2img_xl import Txt2ImgXLPipeline
 
 
-def run_xl_demo(args):
+def run_xl_base_refiner():
+    """Run Stable Diffusion XL Base + Refiner together (known as ensemble of expert denoisers) to generate an image."""
+
+    args = parse_arguments(is_xl=True, description="Options for Stable Diffusion XL Demo")
+
     prompt, negative_prompt = repeat_prompt(args, is_sd_xl=True)
 
     image_height = args.height
@@ -54,31 +58,22 @@ def run_xl_demo(args):
             f"Batch size {len(prompt)} is larger than allowed {max_batch_size}. If dynamic shape is used, then maximum batch size is 4"
         )
 
-    enable_refiner = True
-    base_info = PipelineInfo(args.version, use_vae_in_xl_base=not enable_refiner)
+    base_info = PipelineInfo(args.version, use_vae_in_xl_base=False)  # Do not run VAE in base when there is refiner.
     base = init_pipeline(Txt2ImgXLPipeline, base_info, engine_type, args, max_batch_size, batch_size)
 
-    if enable_refiner:
-        refiner_info = PipelineInfo(args.version, is_sd_xl_refiner=True)
-        refiner = init_pipeline(Img2ImgXLPipeline, refiner_info, engine_type, args, max_batch_size, batch_size)
+    refiner_info = PipelineInfo(args.version, is_sd_xl_refiner=True)
+    refiner = init_pipeline(Img2ImgXLPipeline, refiner_info, engine_type, args, max_batch_size, batch_size)
 
-        if engine_type == EngineType.TRT:
-            max_device_memory = max(base.backend.max_device_memory(), refiner.backend.max_device_memory())
-            _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
-            base.backend.activate_engines(shared_device_memory)
-            refiner.backend.activate_engines(shared_device_memory)
+    if engine_type == EngineType.TRT:
+        max_device_memory = max(base.backend.max_device_memory(), refiner.backend.max_device_memory())
+        _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
+        base.backend.activate_engines(shared_device_memory)
+        refiner.backend.activate_engines(shared_device_memory)
 
-        base.load_resources(image_height, image_width, batch_size)
-        refiner.load_resources(image_height, image_width, batch_size)
-    else:
-        if engine_type == EngineType.TRT:
-            max_device_memory = max(base.backend.max_device_memory(), base.backend.max_device_memory())
-            _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
-            base.backend.activate_engines(shared_device_memory)
+    base.load_resources(image_height, image_width, batch_size)
+    refiner.load_resources(image_height, image_width, batch_size)
 
-        base.load_resources(image_height, image_width, batch_size)
-
-    def run_sd_xl_inference(enable_refiner: bool, warmup=False):
+    def run_sd_xl_inference(warmup=False):
         images, time_base = base.run(
             prompt,
             negative_prompt,
@@ -88,51 +83,46 @@ def run_xl_demo(args):
             denoising_steps=args.denoising_steps,
             guidance=args.guidance,
             seed=args.seed,
-            return_type="latents" if enable_refiner else "images",
+            return_type="latents",
         )
 
-        if enable_refiner:
-            images, time_refiner = refiner.run(
-                prompt,
-                negative_prompt,
-                images,
-                image_height,
-                image_width,
-                warmup=warmup,
-                denoising_steps=args.denoising_steps,
-                guidance=args.guidance,
-                seed=args.seed,
-            )
-            return images, time_base + time_refiner
-        else:
-            return images, time_base
+        images, time_refiner = refiner.run(
+            prompt,
+            negative_prompt,
+            images,
+            image_height,
+            image_width,
+            warmup=warmup,
+            denoising_steps=args.denoising_steps,
+            guidance=args.guidance,
+            seed=args.seed,
+        )
+
+        return images, time_base + time_refiner
 
     if not args.disable_cuda_graph:
         # inference once to get cuda graph
-        images, _ = run_sd_xl_inference(enable_refiner, warmup=True)
+        images, _ = run_sd_xl_inference(warmup=True)
 
     print("[I] Warming up ..")
     for _ in range(args.num_warmup_runs):
-        images, _ = run_sd_xl_inference(enable_refiner, warmup=True)
+        images, _ = run_sd_xl_inference(warmup=True)
 
     print("[I] Running StableDiffusion XL pipeline")
     if args.nvtx_profile:
         cudart.cudaProfilerStart()
-    images, pipeline_time = run_sd_xl_inference(enable_refiner, warmup=False)
+    images, pipeline_time = run_sd_xl_inference(warmup=False)
     if args.nvtx_profile:
         cudart.cudaProfilerStop()
 
     base.teardown()
 
-    if enable_refiner:
-        print("|------------|--------------|")
-        print("| {:^10} | {:>9.2f} ms |".format("e2e", pipeline_time))
-        print("|------------|--------------|")
-        refiner.teardown()
+    print("|------------|--------------|")
+    print("| {:^10} | {:>9.2f} ms |".format("e2e", pipeline_time))
+    print("|------------|--------------|")
+    refiner.teardown()
 
 
 if __name__ == "__main__":
     coloredlogs.install(fmt="%(funcName)20s: %(message)s")
-    args = parse_arguments(is_xl=True, description="Options for Stable Diffusion XL Demo")
-
-    run_xl_demo(args)
+    run_xl_base_refiner()
