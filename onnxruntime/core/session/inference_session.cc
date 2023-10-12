@@ -996,7 +996,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // Run Ahead Of time function inlining
   GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_);
-  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.IntelligentAotFunctionInlining(graph, execution_providers_, kernel_registry_manager_));
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.InlineFunctionsAOT(graph, execution_providers_, kernel_registry_manager_));
 
   auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
                                    Graph& graph) {
