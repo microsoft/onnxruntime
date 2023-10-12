@@ -201,30 +201,6 @@ struct ScalarAdd {
   }
 };
 
-//template <typename T>
-//struct Broadcast {
-//  void operator()(Tensor& tensor, const onnxruntime::TensorShape& destShape) const {
-//    ToNumeric<T> to_numeric;
-//    
-//    size_t newSize = Tensor::CalculateTensorStorageSize(tensor.DataType(), destShape);
-//    std::shared_ptr<IAllocator> allocator = std::make_shared<CPUAllocator>();
-//    void* newData = nullptr;
-//    if (len > 0) {
-//      newData = allocator->Alloc(newSize);
-//    }
-//    Tensor newTensor(tensor.DataType(), destShape, newData, allocator);
-//    
-//    // because broadcasting only works for 1-D tensor
-//    const size_t block_size = tensor.Shape().GetDims().front();
-//    const size_t num_blocks = destShape.Size() / block_size;
-//
-//    auto span = tensor.MutableDataAsSpan<T>();
-//    for (auto& dst : span) {
-//      dst = T(to_numeric(dst) + v);
-//    }
-//  }
-//};
-
 template <typename T>
 struct Sqrt {
   void operator()(Tensor& tensor) const {
@@ -303,26 +279,6 @@ Initializer& Initializer::div(const Initializer& other) {
   t_disp.Invoke<ElementWiseDiv>(data_, other.data_);
   return *this;
 }
-
-/*
-* It only broadcast 1-D tensor if the dimension of that 1-d tensor either equals to
-* 1st or last dimension of destShape.
-*/
-//Initializer& Initializer::mulBy1dInitialer(const Initializer& other) {
-//  ORT_ENFORCE(other.size() == 1, "The multipier tensor should be 1-D tensor");
-//  ORT_ENFORCE(other.dims().front() == dims().front() || other.dims().front() == dims().back(), 
-//      "Dimension of the multiplier tensor should be equal to either 1st or last dimension of the multiplicand tensor.");
-//  
-//  const size_t block_size = narrow<size_t>(data_.Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
-//  const size_t num_blocks = size() / block_size;
-//  ORT_ENFORCE(scalers.size() == 1 || scalers.size() == num_blocks, "Invalid other(scalers) size");
-//  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
-//  t_disp.Invoke<ScaleByAxis>(data_, scalers.data_, block_size, num_blocks);
-//  
-//  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
-//  //data_ = t_disp.Invoke<Broadcast>(data_, destShape);
-//  return *this;
-//}
 
 Initializer& Initializer::sqrt() {
   utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double> t_disp(data_.GetElementType());
