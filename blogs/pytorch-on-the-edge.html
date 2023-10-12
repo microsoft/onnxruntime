@@ -90,7 +90,7 @@
                                         <li>High cost of cloud resources (especially when device capabilities are underutilized)</li>
                                         <li>Application requirements to operate without internet connectivity</li>
                                     </ul>
-                                    <p>In this article, we’ll demystify running PyTorch models on the edge. We define ‘edge’ as anywhere that is outside of the cloud, ranging from large, well-resourced personal computers to small footprint devices such as mobile phones. This has been a challenging task to accomplish in the past, but new advances in model optimization and software like ONNX Runtime make it more feasible – even for new generative AI and large language models like Stable Diffusion, Whisper, and Llama2.</p>
+                                    <p>In this article, we’ll demystify running PyTorch models on the edge. We define ‘edge’ as anywhere that is outside of the cloud, ranging from large, well-resourced personal computers to small footprint devices such as mobile phones. This has been a challenging task to accomplish in the past, but new advances in model optimization and software like <a href="https://onnxruntime.ai/pytorch">ONNX Runtime</a> make it more feasible – even for new generative AI and large language models like Stable Diffusion, Whisper, and Llama2.</p>
                                     <img src="../images/pytorch-on-the-edge-with-ort.png" alt="Diagram showing the PyTorch logo representing a PyTorch model, fanning out to icons for web, mobile and browser devices running ONNX Runtime" class="img-fluid">
 
                                     <h2 class="blue-text">Considerations for PyTorch models on the edge</h2>
@@ -109,9 +109,9 @@
 
                                     <p>We mentioned ONNX Runtime several times above. ONNX Runtime is a compact, standards-based engine that has deep integration with PyTorch. By using PyTorch’s ONNX APIs, your PyTorch models can run on a spectrum of edge devices with ONNX Runtime.</p>
                                     
-                                    <p>The first step for running PyTorch models on the edge is to get them into a lightweight format that doesn’t require the PyTorch framework and its gigabytes of dependencies. PyTorch has thought about this and includes an API that enables exactly this - torch.onnx. ONNX is an open standard that defines the operators that make up models. The PyTorch ONNX APIs take the Pythonic PyTorch code and turn it into a functional graph that captures the operators that are needed to run the model without Python. As with everything in machine learning, there are some limitations to be aware of. Some PyTorch models cannot be represented as a single graph – in this case you may need to output several graphs and stitch them together in your own pipeline.</p>
+                                    <p>The first step for running PyTorch models on the edge is to get them into a lightweight format that doesn’t require the PyTorch framework and its gigabytes of dependencies. PyTorch has thought about this and includes an API that enables exactly this - <a href="https://pytorch.org/docs/stable/onnx.html">torch.onnx</a>. <a href="https://onnx.ai/">ONNX</a> is an open standard that defines the operators that make up models. The PyTorch ONNX APIs take the Pythonic PyTorch code and turn it into a functional graph that captures the operators that are needed to run the model without Python. As with everything in machine learning, there are some limitations to be aware of. Some PyTorch models cannot be represented as a single graph – in this case you may need to output several graphs and stitch them together in your own pipeline.</p>
 
-                                    <p>The popular Hugging Face library also has APIs that build on top of this torch.onnx functionality to export models to the ONNX format. Over 130,000 models are supported making it very likely that the model you care about is one of them.</p>
+                                    <p>The popular Hugging Face library also has APIs that build on top of this torch.onnx functionality to export models to the ONNX format. Over <a href="https://huggingface.co/blog/ort-accelerating-hf-models">130,000 models</a> are supported making it very likely that the model you care about is one of them.</p>
 
                                     <p>In this article, we’ll show you several examples involving state-of-the-art PyTorch models (like Whisper and Stable Diffusion) on popular devices (like Windows laptops, mobile phones, and web browsers) via various languages (from C# to Javascript to Swift).</p>
 
@@ -129,7 +129,7 @@ pipeline = ORTStableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-
 pipeline.save_pretrained("./onnx-stable-diffusion")
                                     </pre></code>
 
-                                    <p>You don’t have to export the fifth model, ClipTokenizer, as it is available in ONNX Runtime extensions, a library for pre and post processing PyTorch models.</p>
+                                    <p>You don’t have to export the fifth model, ClipTokenizer, as it is available in <a href="https://onnxruntime.ai/docs/extensions">ONNX Runtime extensions</a>, a library for pre and post processing PyTorch models.</p>
 
                                     <p>To run this pipeline of models as a .NET application, we built the pipeline code in C#. This code can be run on CPU, GPU, or NPU, if they are available on your machine, using ONNX Runtime’s device-specific hardware accelerators. This is configured with the ExecutionProviderTarget below.</p>
 
@@ -163,11 +163,11 @@ static void Main(string[] args)
 
                                     <img src="../images/pytorch-on-the-edge-puppies.png" alt="Two golden retriever puppies playing in the grass" class="img-fluid">
 
-                                    <p>You can build the application and run it on Windows with the detailed steps shown in this tutorial.</p>
+                                    <p>You can build the application and run it on Windows with the detailed steps shown in this <a href="https://onnxruntime.ai/docs/tutorials/csharp/stable-diffusion-csharp.html">tutorial</a>.</p>
 
                                     <h3 class="r-heading">Text generation in the browser </h3>
 
-                                    <p>Running a PyTorch model locally in the browser is not only possible but super simple with the transformers.js library. Transformers.js uses ONNX Runtime Web as a backend. Many models are already converted to ONNX and served by the tranformers.js CDN, making inference in the browser a matter of writing a few lines of HTML.</p>
+                                    <p>Running a PyTorch model locally in the browser is not only possible but super simple with the <a href="https://huggingface.co/docs/transformers.js/index">transformers.js</a> library. Transformers.js uses ONNX Runtime Web as a backend. Many models are already converted to ONNX and served by the tranformers.js CDN, making inference in the browser a matter of writing a few lines of HTML.</p>
 
                                     <code><pre>
 &lt;html&gt;
@@ -220,11 +220,11 @@ static void Main(string[] args)
 
                                     <h3 class="r-heading">Speech recognition with Whisper on mobile</h3>
 
-                                    <p>Whisper from OpenAI is a transformer-based speech recognition PyTorch model. Whisper has a number of different size variants, the smallest: Whisper Tiny,  is suitable to run on mobile. All components of the Whisper Tiny model (audio decoder, encoder, decoder and text sequence generation) can be composed and exported to a single ONNX model using the Olive framework. To run this model as part of a mobile application, you can use ONNX Runtime mobile, which has support for Android, iOS, react-native and MAUI/Xamarin. </p>
+                                    <p>Whisper from OpenAI is a transformer-based speech recognition PyTorch model. Whisper has a number of different size variants, the smallest: Whisper Tiny,  is suitable to run on mobile. All components of the Whisper Tiny model (audio decoder, encoder, decoder and text sequence generation) can be composed and exported to a single ONNX model using the <a href="https://github.com/microsoft/Olive/tree/main/examples/whisper">Olive framework</a>. To run this model as part of a mobile application, you can use ONNX Runtime mobile, which has support for Android, iOS, react-native and MAUI/Xamarin. </p>
 
                                     <p>ONNX Runtime mobile supports hardware acceleration via NNAPI (on Android)  and CoreML (on iOS) and XNNPACK (both iOS and Android). </p>
 
-                                    <p>As an example, the relevant snippet of an Android mobile app to perform speech transcription on short samples of audio, is shown below.</p>
+                                    <p>As an example, the relevant snippet of an <a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/speech_recognition">Android mobile app</a> to perform speech transcription on short samples of audio, is shown below.</p>
 
                                     <code><pre>
 init {
@@ -319,7 +319,7 @@ func trainStep(inputData: [Data], labels: [Int64]) throws  {
 
                                     <img src="../images/pytorch-on-the-edge-training.png" alt="A screenshot of an iPhone app to perform speaker verification by recording a number of speech samples of the speaker" class="img-fluid">
 
-                                    <p>You can read the full Speaker Verification tutorial, and build the application from source.</p>
+                                    <p>You can read the full <a href="https://onnxruntime.ai/docs/tutorials/on-device-training/ios-app.html">Speaker Verification tutorial</a>, and <a href="https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training/mobile/ios">build and run the application from source</a>.</p>
 
                                     <h3 class="r-heading">Where to next?</h3>
 
