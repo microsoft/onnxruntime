@@ -238,22 +238,25 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 initializer_input_lookup,
                                                 qnn_backend_manager_->GetQnnBackendType());
 
-  for (const auto& node : graph_viewer.Nodes()) {
-    const NodeUnit* node_unit = node_unit_map.at(&node);
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
+
+    const NodeUnit* node_unit = node_unit_map.at(node);
     const bool supported = IsNodeSupported(qnn_model_wrapper,
                                            *node_unit,
                                            node_unit_supported_result,
                                            logger);
     LOGS(logger, VERBOSE) << "Node supported: [" << supported
-                          << "] index: [" << node.Index()
-                          << "] name: [" << node.Name()
-                          << "] Operator type: [" << node.OpType()
+                          << "] index: [" << node->Index()
+                          << "] name: [" << node->Name()
+                          << "] Operator type: [" << node->OpType()
                           << "] as part of the NodeUnit type: [" << node_unit->OpType()
                           << "] index: [" << node_unit->Index()
                           << "] name: [" << node_unit->Name()
                           << "]";
     if (supported) {
-      supported_nodes.insert(&node);
+      supported_nodes.insert(node);
     }
   }
 

@@ -447,8 +447,9 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Log_U16) {
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
 // Test that the default axis (-1) for SoftMax opset 13 works.
 TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_DefaultAxis) {
+  const std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
   RunQDQOpTest<uint8_t>("Softmax",
-                        {TestInputDef<float>({1, 2, 3}, false, -5.0f, 5.0f)},
+                        {TestInputDef<float>({1, 2, 3}, false, input_data)},
                         {},  // Uses default axis of -1 for opset 13
                         13,
                         ExpectedEPNodeAssignment::All);
@@ -466,14 +467,43 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_U16_DefaultAxis) {
                          true);        // Use com.microsoft domain for Q/DQ ops
 }
 
-// Check that QNN compiles DQ -> Softmax -> Q as a single unit.
-// Test that an axis != -1 is not supported.
-TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_UnsupportedAxis) {
+// Test that 8-bit QDQ Softmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_NonLastAxis) {
+  const std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 10.0f, 11.0f, 12.0f, 100.0f, 110.0f, 120.0f,
+                                         1.0856307f, 0.99734545f, 0.2829785f, 1.5062947f, 0.5786002f, 1.6514366f,
+                                         2.4266791f, 0.42891264f, 1.2659363f};
   RunQDQOpTest<uint8_t>("Softmax",
-                        {TestInputDef<float>({1, 2, 3}, false, -5.0f, 5.0f)},
+                        {TestInputDef<float>({1, 2, 3, 3}, false, input_data)},
                         {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
                         13,
-                        ExpectedEPNodeAssignment::None);
+                        ExpectedEPNodeAssignment::All);
+}
+
+// Test that 8-bit QDQ Softmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+// This is a configuration used in one of our partner's models.
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_NonLastAxis_LargeInput) {
+  const std::vector<float> input_data = GetFloatDataInRange(-50.0f, 50.0f, 124);
+  RunQDQOpTest<uint8_t>("Softmax",
+                        {TestInputDef<float>({1, 124, 1}, false, input_data)},
+                        {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
+// Test that 16-bit QDQ Softmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+// This is a configuration used in one of our partner's models.
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_U16_NonLastAxis_LargeInput) {
+  const std::vector<float> input_data = GetFloatDataInRange(-50.0f, 50.0f, 124);
+  RunQDQOpTest<uint16_t>("Softmax",
+                         {TestInputDef<float>({1, 124, 1}, false, input_data)},
+                         {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                         13,
+                         ExpectedEPNodeAssignment::All,
+                         kOnnxDomain,
+                         true);
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
@@ -507,15 +537,15 @@ TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax13_DefaultAxis) {
                         ExpectedEPNodeAssignment::All);
 }
 
-// Check that QNN compiles DQ -> LogSoftmax -> Q as a single unit.
-// Test that an axis != -1 is not supported.
-TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax13_UnsupportedAxis) {
+// Test that 8-bit QDQ LogSoftmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax13_NonLastAxis) {
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
   RunQDQOpTest<uint8_t>("LogSoftmax",
                         {TestInputDef<float>({1, 2, 3}, false, input_data)},
                         {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
                         13,
-                        ExpectedEPNodeAssignment::None);
+                        ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> LogSoftmax -> Q as a single unit.
