@@ -451,12 +451,16 @@ Return Value:
 
 #if defined(_WIN32)
     HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-#elif !defined(__APPLE__)  // The next few lines result in an EXC_BAD_INSTRUCTION runtime error on a M1 Mac so we
-                           // disable it there.
-    uint64_t isar0_el1;
-    asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
-    HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
 #else
+    // Use the cpuinfo value which is read from sysctl and has some additional special cases.
+    // https://github.com/pytorch/cpuinfo/blob/959002f82d7962a473d8bf301845f2af720e0aa4/src/arm/mach/init.c#L369-L379
+    // Do NOT use ID_AA64ISAR0_EL1. It causes illegal instruction errors on Mac M1 and ARMv8-A chips
+    // as well as failing on other ARM chips as it is an EL1 level register that requires extra
+    // privileges to read.
+    //
+    // uint64_t isar0_el1;
+    // asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
+    // HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
     HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 #endif
 
