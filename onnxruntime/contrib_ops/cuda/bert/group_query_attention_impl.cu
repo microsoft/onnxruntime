@@ -157,7 +157,6 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
 
   assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
-  // Note that Flash Attention kv-caching operates in place on a buffer... therefore this path is inneficient
   const int H = head_size / 4;
   if (H * kv_num_heads <= max_threads_per_block) {
     const dim3 grid(present_sequence_length, batch_size, 1);
@@ -224,6 +223,41 @@ __global__ void ConcatKVInPlace(const int past_seqlen,
   kv_buff[out_offset] = new_kv[in_offset];
 }
 
+template <typename T>
+__global__ void ConcatKVInPlaceLarge(const int past_seqlen,
+                                     const int present_seqlen,
+                                     const int H,
+                                     T* kv_buff,
+                                     const T* new_kv,
+                                     const bool is_bsnh) {  // refers to kv buff; otherwise bnsh
+  int h = threadIdx.x;
+  const int n = threadIdx.y;
+  const int s = blockIdx.x;
+  const int b = blockIdx.y;
+
+  const int new_seqlen = gridDim.x;
+  const int num_heads = blockDim.y;
+  const int thread_stride = blockDim.x;
+
+  const int present_batch_stride = present_seqlen * num_heads * H;
+  const int present_row_stride = is_bsnh ? num_heads * H : H;
+  const int present_head_stride = is_bsnh ? H : present_seqlen * H;
+
+  // kv_buff:     BTNH or BNTH with buffered memory for new
+  // new_kv:      BLNH or BNLH
+
+  while (h < H) {
+    int out_offset = b * present_batch_stride + (s + past_seqlen) * present_row_stride + n * present_head_stride + h;
+    // Note: new KV always BSNH
+    const int new_batch_stride = new_seqlen * num_heads * H;
+    const int new_row_stride = num_heads * H;
+    const int new_head_stride = H;
+    const int in_offset = b * new_batch_stride + s * new_row_stride + n * new_head_stride + h;
+    kv_buff[out_offset] = new_kv[in_offset];
+    h += thread_stride;
+  }
+}
+
 // Concat new to past in present. Supports past BSNH or past BNSH
 template <typename T>
 Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
@@ -255,25 +289,21 @@ Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
                                                           reinterpret_cast<const float2*>(data.value),
                                                           past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
   } else {
-    assert(false);
+    const dim3 grid(kv_sequence_length, batch_size, 1);
+    const dim3 block(max_threads_per_block / kv_num_heads, kv_num_heads, 1);
+    ConcatKVInPlaceLarge<float2><<< grid, block, 0, stream >>>(past_sequence_length,
+                                                               present_sequence_length,
+                                                               H,
+                                                               reinterpret_cast<float2*>(data.present_key),
+                                                               reinterpret_cast<const float2*>(data.key),
+                                                               past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    ConcatKVInPlaceLarge<float2><<< grid, block, 0, stream >>>(past_sequence_length,
+                                                               present_sequence_length,
+                                                               H,
+                                                               reinterpret_cast<float2*>(data.present_value),
+                                                               reinterpret_cast<const float2*>(data.value),
+                                                               past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
   }
-  // TODO(aciddelgado): big gulp version
-  // } else {
-  //   const dim3 grid(present_sequence_length, batch_size, 1);
-  //   const dim3 block(max_threads_per_block / kv_num_heads, kv_num_heads, 1);
-  //   ConcatNewToPastKVLarge<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-  //                                                                 H,
-  //                                                                 reinterpret_cast<const float2*>(data.past_key),
-  //                                                                 reinterpret_cast<const float2*>(data.key),
-  //                                                                 reinterpret_cast<float2*>(data.present_key),
-  //                                                                 past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-  //   ConcatNewToPastKVLarge<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-  //                                                                 H,
-  //                                                                 reinterpret_cast<const float2*>(data.past_value),
-  //                                                                 reinterpret_cast<const float2*>(data.value),
-  //                                                                 reinterpret_cast<float2*>(data.present_value),
-  //                                                                 past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-  // }
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -308,8 +338,41 @@ __global__ void UngroupAndTranspose(const T* kv_in,
   kv_out[out_offset] = kv_in[in_offset];
 }
 
+template <typename T>
+__global__ void UngroupAndTransposeLarge(const T* kv_in,
+                                         T* kv_out,
+                                         const int H,
+                                         const int in_seqlen,
+                                         const int kv_num_heads,
+                                         const bool is_bsnh) {
+  int h = threadIdx.x;
+  const int out_n = threadIdx.y;
+  const int s = blockIdx.x;
+  const int b = blockIdx.y;
+
+  const int out_seqlen = gridDim.x;
+  const int q_num_heads = blockDim.y;
+  const int thread_stride = blockDim.x;
+
+  const int q_kv_head_ratio = q_num_heads / kv_num_heads;
+  const int out_batch_stride = out_seqlen * q_num_heads * H;
+  const int out_row_stride = q_num_heads * H;
+  const int out_head_stride = H;
+
+  const int in_batch_stride = in_seqlen * kv_num_heads * H;
+  const int in_row_stride = is_bsnh ? kv_num_heads * H : H;
+  const int in_head_stride = is_bsnh ? H : in_seqlen * H;
+  const int in_n = out_n / q_kv_head_ratio;
+
+  while (h < H) {
+    const int out_offset = out_batch_stride * b + out_row_stride * s + out_head_stride * out_n + h;
+    const int in_offset = in_batch_stride * b + in_row_stride * s + in_head_stride * in_n + h;
+    kv_out[out_offset] = kv_in[in_offset];
+    h += thread_stride;
+  }
+}
+
 // Ungroup kv or present kv for use in Memory Efficient kernel. If present kv is not null and is BNSH, transposes it.
-// TODO(aciddelgado): if T == float32 (yet unsupported), then H is head_size/2
 Status LaunchUngroupAndTranspose(contrib::GroupQueryAttentionParameters& parameters,
                                  float2* k_buff, float2* v_buff,
                                  const float2* k_og, const float2* v_og,
@@ -340,25 +403,21 @@ Status LaunchUngroupAndTranspose(contrib::GroupQueryAttentionParameters& paramet
                                                               kv_num_heads,
                                                               is_bsnh);
   } else {
-    assert(false);
+    const dim3 grid(buff_seqlen, batch_size, 1);
+    const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+    UngroupAndTransposeLarge<float2><<< grid, block, 0, stream >>>(k_og,
+                                                                   k_buff,
+                                                                   H,
+                                                                   og_seqlen,
+                                                                   kv_num_heads,
+                                                                   is_bsnh);
+    UngroupAndTransposeLarge<float2><<< grid, block, 0, stream >>>(v_og,
+                                                                   v_buff,
+                                                                   H,
+                                                                   og_seqlen,
+                                                                   kv_num_heads,
+                                                                   is_bsnh);
   }
-  // TODO(aciddelgado): can i have a large pls?
-  // } else {
-  //   const dim3 grid(present_sequence_length, batch_size, 1);
-  //   const dim3 block(max_threads_per_block / kv_num_heads, kv_num_heads, 1);
-  //   UngroupAndTransposeLarge<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-  //                                                                 H,
-  //                                                                 reinterpret_cast<const float2*>(data.past_key),
-  //                                                                 reinterpret_cast<const float2*>(data.key),
-  //                                                                 reinterpret_cast<float2*>(data.present_key),
-  //                                                                 past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-  //   UngroupAndTransposeLarge<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-  //                                                                 H,
-  //                                                                 reinterpret_cast<const float2*>(data.past_value),
-  //                                                                 reinterpret_cast<const float2*>(data.value),
-  //                                                                 reinterpret_cast<float2*>(data.present_value),
-  //                                                                 past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-  // }
   return CUDA_CALL(cudaGetLastError());
 }
 

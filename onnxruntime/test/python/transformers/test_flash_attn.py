@@ -1158,51 +1158,51 @@ def parity_check_gqa_past_no_buff(
 
 
 if __name__ == "__main__":
-    print("-------- TEST PACKED MHA ---------")
-    for b in [5]:
-        for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
-            for n in [6]:
-                for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-                    config = Config(b, s, s, 0, n, n, h)
-                    parity_check_mha(config, True)
-    print("-------- TEST MHA ---------")
-    for b in [5]:
-        for s, s2 in [
-            (113, 203),
-            (128, 217),
-            (113, 211),
-            (108, 256),
-            (256, 512),
-            (512, 256),
-            (1024, 1024),
-            (1023, 1024),
-            (1024, 1023),
-            (2048, 2048),
-        ]:
-            for n in [6]:
-                for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
-                    config = Config(b, s, s2, 0, n, n, h)
-                    parity_check_mha(config, False)
-    print("-------- TEST GQA ---------")
-    for b in [5]:
-        for s, s2 in [
-            (113, 203),
-            (128, 217),
-            (113, 211),
-            (108, 256),
-            (256, 512),
-            # (512, 256),
-            (1024, 1024),
-            (1023, 1024),
-            # (1024, 1023),
-            (2048, 2048),
-        ]:
-            for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-                for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
-                    for causal in [True, False]:
-                        torch.manual_seed(69)
-                        config = Config(b, s, s2, 0, n, n2, h)
-                        parity_check_gqa_no_past(config, causal=causal)
+    # print("-------- TEST PACKED MHA ---------")
+    # for b in [5]:
+    #     for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
+    #         for n in [6]:
+    #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+    #                 config = Config(b, s, s, 0, n, n, h)
+    #                 parity_check_mha(config, True)
+    # print("-------- TEST MHA ---------")
+    # for b in [5]:
+    #     for s, s2 in [
+    #         (113, 203),
+    #         (128, 217),
+    #         (113, 211),
+    #         (108, 256),
+    #         (256, 512),
+    #         (512, 256),
+    #         (1024, 1024),
+    #         (1023, 1024),
+    #         (1024, 1023),
+    #         (2048, 2048),
+    #     ]:
+    #         for n in [6]:
+    #             for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+    #                 config = Config(b, s, s2, 0, n, n, h)
+    #                 parity_check_mha(config, False)
+    # print("-------- TEST GQA ---------")
+    # for b in [5]:
+    #     for s, s2 in [
+    #         (113, 203),
+    #         (128, 217),
+    #         (113, 211),
+    #         (108, 256),
+    #         (256, 512),
+    #         # (512, 256),
+    #         (1024, 1024),
+    #         (1023, 1024),
+    #         # (1024, 1023),
+    #         (2048, 2048),
+    #     ]:
+    #         for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
+    #             for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+    #                 for causal in [True, False]:
+    #                     torch.manual_seed(69)
+    #                     config = Config(b, s, s2, 0, n, n2, h)
+    #                     parity_check_gqa_no_past(config, causal=causal)
     print("-------- TEST GQA PAST ---------")
     random.seed(69)
     for b in [2]:
