@@ -5,7 +5,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -435,8 +435,8 @@ const bicubicInterpolation =
     };
 
 const createResizeProgramInfo =
-    (metadata: ProgramMetadata, inputTensor: TensorView, attributes: ResizeAttributes, opsetVersion: number,
-     scalesInput: readonly number[], sizes: readonly number[], roiInput: readonly number[]): ProgramInfo => {
+    (inputTensor: TensorView, attributes: ResizeAttributes, opsetVersion: number, scalesInput: readonly number[],
+     sizes: readonly number[], roiInput: readonly number[]): ProgramInfo => {
       const inputShape = inputTensor.dims;
       const roi = updateRoI(roiInput, attributes.axes, inputShape.length);
 
@@ -512,26 +512,16 @@ const createResizeProgramInfo =
       }`;
 
       return {
-        ...metadata,
-        getShaderSource,
-        outputs: [{dims: outputShape, dataType: inputTensor.dataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
-      };
-    };
-
-export const createResizeProgramInfoLoader =
-    (input: TensorView, attributes: ResizeAttributes, opsetVersion: number, scales: readonly number[],
-     sizes: readonly number[], roi: readonly number[]): ProgramInfoLoader => {
-      const metadata: ProgramMetadata = {
         name: 'Resize',
-        inputTypes: [GpuDataType.default],
-        cacheHint: attributes.cacheKey + opsetVersion.toString() +
-            (scales.length > 0 ? '_scales_' + scales.toString() : '') +
-            (sizes.length > 0 ? '_sizes_' + sizes.toString() : ''),
-      };
-      return {
-        ...metadata,
-        get: () => createResizeProgramInfo(metadata, input, attributes, opsetVersion, scales, sizes, roi)
+        shaderCache: {
+          hint: `${attributes.cacheKey}|${opsetVersion}|${scales.length > 0 ? scales : ''}|${
+              sizes.length > 0 ? sizes : ''}`
+        },
+        getShaderSource,
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: inputTensor.dataType}],
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+        })
       };
     };
 
@@ -549,7 +539,7 @@ export const resize = (context: ComputeContext, attributes: ResizeAttributes): v
   const opsetVersion = getOpsetVersionFromCustomDataBuffer(context);
   validateInputs(context.inputs, attributes, opsetVersion, scales, sizes, roi);
   context.compute(
-      createResizeProgramInfoLoader(context.inputs[0], attributes, opsetVersion, scales, sizes, roi), {inputs: [0]});
+      createResizeProgramInfo(context.inputs[0], attributes, opsetVersion, scales, sizes, roi), {inputs: [0]});
 };
 
 export const parseResizeAttributes = (attributes: Record<string, unknown>): ResizeAttributes => {

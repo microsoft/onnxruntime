@@ -3919,6 +3919,17 @@ Return true if all elements are true and false otherwise.
           AttributeProto::INTS,
           false)
       .Attr(
+          "bw_tensor_reuse_map",
+          "Used for backward op only."
+          "A int array indicating whether output at each index is reusing specific input or now."
+          "If the given index is -1, it means the output is not reusing any input."
+          "For example, there are 3 inputs (including ctx) and 2 outputs, tensor_reuse_map = [2, 1] means"
+          "- the output 0 reuses the input 2."
+          "- the output 1 reuses the input 1."
+          "Be noted: the input 0 is ctx.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
           "training_mode",
           "Indicate if the model is exported in training_mode, by default, False.",
           AttributeProto::INT,
