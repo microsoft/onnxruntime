@@ -32,7 +32,7 @@ private:
     Status Apply(
         Graph& graph,
         Node& matmulNode,
-        RewriteRuleEffect& rule_effect,
+        RewriteRuleEffect& ruleEffect,
         const logging::Logger& logger) const override;
 
     bool MatchPath(

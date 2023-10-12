@@ -98,7 +98,6 @@ namespace onnxruntime
     *   - B tensor of MatMul should be constant.
     *   - scale, B, mean, var tensors of BatchNormalization should be constant.
     *   - Every node in the path except first and last node, should have only 1 output edge.
-    *     
     */
     bool MatmulBNFusion::SatisfyCondition(
         const Graph& graph,
@@ -172,7 +171,7 @@ namespace onnxruntime
     Status MatmulBNFusion::Apply(
         Graph& graph,
         Node& matmulNode,
-        RewriteRuleEffect& rule_effect,
+        RewriteRuleEffect& ruleEffect,
         const logging::Logger&) const
     {
         auto childNodeIterator = matmulNode.OutputNodesBegin();
@@ -223,19 +222,9 @@ namespace onnxruntime
         }
         
         /*
-        * 
-        * perform bn in terms of [N,H,W,C]
         * temp = scale / sqrt(var + epsilon)
         * output = (temp * Input) - ((temp * mean) + bias)
-        * Create a copy of the initializer to perform the above described calculation
-        * 
-        * 
-        * matmulB = [1792, 512]
-        * scalar of BN = [512] (temp) // 512 is my channel
-        * perform BN in terms of [N,H,W,C]
-        * 
         */
-        // creates copy of the initializer
         Initializer scale(*scaleTensor, graph.ModelPath());
         Initializer bias(*biasTensor, graph.ModelPath());
         Initializer mean(*meanTensor, graph.ModelPath());
@@ -249,8 +238,6 @@ namespace onnxruntime
 
         mean.mul(scale);
         bias.sub(mean);
-        
-        // remove redundant initializer ???
         
         // create B tensorProto for new Gemm node from <matmulB> initializer.
         ONNX_NAMESPACE::TensorProto newGemmBTensor(*matmulBTensor);
@@ -277,10 +264,6 @@ namespace onnxruntime
             nullptr,
             kOnnxDomain);
         
-        // Do we want to verify whether every node in the path should have only output
-        // because if any of the node's output is used by any other node, then
-        // we can't remove all of these nodes.
-
         std::vector<NodeIndex> nodesToRemove;
         nodesToRemove.push_back(matmulNode.Index());
 
@@ -305,14 +288,7 @@ namespace onnxruntime
             graph.RemoveNode(nodeIndex);
         }
 
-        //scale.broadcast(utils::GetTensorShapeFromTensorProto(*matmulBTensor));
-        //matmulB.mul(scale); //[1, 512]
-        //scale.scale_by_axis(matmulB, 0);
-        //matmulB.scale_by_axis(scale, 1);
-        //matmulB.mul(scale);
-        
-        rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
-
+        ruleEffect = RewriteRuleEffect::kRemovedCurrentNode;
         return Status::OK();
     }
 }
