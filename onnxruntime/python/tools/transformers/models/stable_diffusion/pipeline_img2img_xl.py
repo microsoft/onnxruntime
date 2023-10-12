@@ -68,6 +68,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         image_height,
         image_width,
         denoising_steps=30,
+        denoising_start=0.8,
         guidance=5.0,
         seed=None,
         warmup=False,
@@ -95,7 +96,11 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
             e2e_tic = time.perf_counter()
 
             # Initialize timesteps
-            timesteps, t_start = self.initialize_timesteps(self.denoising_steps, strength)
+            if denoising_start is None:
+                timesteps, t_start = self.initialize_timesteps(self.denoising_steps, strength)
+            else:
+                timesteps, t_start = self.get_timesteps(self.denoising_steps, strength, denoising_start)
+
             latent_timestep = timesteps[:1].repeat(batch_size)
 
             # CLIP text encoder 2
@@ -171,6 +176,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         image_height,
         image_width,
         denoising_steps=30,
+        denoising_start=0.8,
         guidance=5.0,
         seed=None,
         warmup=False,
@@ -214,6 +220,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
                     image_height,
                     image_width,
                     denoising_steps=denoising_steps,
+                    denoising_start=denoising_start,
                     guidance=guidance,
                     seed=seed,
                     warmup=warmup,
@@ -227,6 +234,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
                 image_height,
                 image_width,
                 denoising_steps=denoising_steps,
+                denoising_start=denoising_start,
                 guidance=guidance,
                 seed=seed,
                 warmup=warmup,

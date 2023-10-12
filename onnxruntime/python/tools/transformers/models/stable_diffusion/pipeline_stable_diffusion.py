@@ -129,6 +129,7 @@ class StableDiffusionPipeline:
 
         self.generator = None
         self.denoising_steps = None
+        self.actual_steps = None
 
         # backend engine
         self.engine_type = engine_type
@@ -202,28 +203,25 @@ class StableDiffusionPipeline:
         init_timestep = int(denoising_steps * strength) + offset
         init_timestep = min(init_timestep, denoising_steps)
         t_start = max(denoising_steps - init_timestep + offset, 0)
+
         timesteps = self.scheduler.timesteps[t_start:].to(self.device)
         return timesteps, t_start
 
-    def get_timesteps(self, num_inference_steps, strength, device, denoising_start=None):
-        # get the original timestep using init_timestep
-        if denoising_start is None:
-            init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
-            t_start = max(num_inference_steps - init_timestep, 0)
-        else:
-            t_start = 0
-
-        timesteps = self.scheduler.timesteps[t_start:]
-
+    def get_timesteps(self, num_inference_steps, strength, denoising_start=None):
         # Strength is irrelevant if we directly request a timestep to start at;
         # that is, strength is determined by the denoising_start instead.
         if denoising_start is not None:
+            timesteps = self.scheduler.timesteps[0:]
             discrete_timestep_cutoff = int(
                 round(self.scheduler.num_train_timesteps - (denoising_start * self.scheduler.num_train_timesteps))
             )
             timesteps = list(filter(lambda ts: ts < discrete_timestep_cutoff, timesteps))
-            return torch.tensor(timesteps), len(timesteps)
+            return torch.tensor(timesteps).to(self.device), len(timesteps)
 
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.scheduler.timesteps[t_start:].to(self.device)
         return timesteps, num_inference_steps - t_start
 
     def preprocess_images(self, batch_size, images=()):
@@ -399,6 +397,10 @@ class StableDiffusionPipeline:
 
         latents = 1.0 / self.vae_scaling_factor * latents
         cudart.cudaEventRecord(self.events["denoise-stop"], 0)
+
+        # The actual number of steps. It is different from denoising_steps when denoising_end is not None.
+        self.actual_steps = len(timesteps)
+
         return latents
 
     def encode_image(self, init_image):
@@ -441,7 +443,7 @@ class StableDiffusionPipeline:
         )
         print(
             "| {:^10} | {:>9.2f} ms |".format(
-                "UNet x " + str(self.denoising_steps),
+                "UNet x " + str(self.actual_steps),
                 cudart.cudaEventElapsedTime(self.events["denoise-start"], self.events["denoise-stop"])[1],
             )
         )

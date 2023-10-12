@@ -56,6 +56,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
         image_height,
         image_width,
         denoising_steps=30,
+        denoising_end=0.8,
         guidance=5.0,
         seed=None,
         warmup=False,
@@ -113,7 +114,12 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
 
             # UNet denoiser
             latents = self.denoise_latent(
-                latents, text_embeddings, denoiser="unetxl", guidance=guidance, add_kwargs=add_kwargs
+                latents,
+                text_embeddings,
+                denoiser="unetxl",
+                guidance=guidance,
+                denoising_end=denoising_end,
+                add_kwargs=add_kwargs,
             )
 
             # VAE decode latent
@@ -140,6 +146,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
         image_height,
         image_width,
         denoising_steps=30,
+        denoising_end=0.8,
         guidance=5.0,
         seed=None,
         warmup=False,
@@ -180,6 +187,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                     image_height,
                     image_width,
                     denoising_steps=denoising_steps,
+                    denoising_end=denoising_end,
                     guidance=guidance,
                     seed=seed,
                     warmup=warmup,
@@ -192,6 +200,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                 image_height,
                 image_width,
                 denoising_steps=denoising_steps,
+                denoising_end=denoising_end,
                 guidance=guidance,
                 seed=seed,
                 warmup=warmup,
