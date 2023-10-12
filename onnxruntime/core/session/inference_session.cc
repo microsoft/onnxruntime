@@ -1631,7 +1631,8 @@ common::Status InferenceSession::Initialize() {
         // This transformer applies DML-specific fusions that go beyond what ORT offers by default
         bool dml_operator_fusion_enabled = session_options_.graph_optimization_level >= TransformerLevel::Level2;
         if (dml_operator_fusion_enabled) {
-          std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer");
+          std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer",
+                                                                                                                                execution_providers_.Get(kDmlExecutionProvider));
           if (dmlOperatorFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
           }
