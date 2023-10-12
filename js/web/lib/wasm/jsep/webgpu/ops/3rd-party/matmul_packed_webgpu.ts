@@ -21,7 +21,7 @@
 
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
-import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
+import {ProgramInfo} from '../../types';
 import {getBroadcastDims, IndicesHelper, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
 import {getActicationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
@@ -340,19 +340,20 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
 
 const matMulReadWriteFnSource =
     (component: number, hasBias: boolean, applyActivation: string, variables: IndicesHelper[],
-     isChannelsLast = false): string => {
-      const batchAVariable = variables[0];
-      const batchBVariable = variables[1];
-      const batchVariable = variables[2];
-      const aVariable = variables[3];
-      const bVariable = variables[4];
-      const outputVariable = variables[5];
-      const broadCastADims = getBroadcastDims(batchAVariable.shape, batchVariable.shape);
-      const broadCastBDims = getBroadcastDims(batchBVariable.shape, batchVariable.shape);
+     batchShapes: Array<readonly number[]>, isChannelsLast = false): string => {
+      const batchAShape = batchShapes[0];
+      const batchBShape = batchShapes[1];
+      const batchShape = batchShapes[2];
+      const batchVariable = variables[0];
+      const aVariable = variables[1];
+      const bVariable = variables[2];
+      const outputVariable = variables[3];
+      const broadCastADims = getBroadcastDims(batchAShape, batchShape);
+      const broadCastBDims = getBroadcastDims(batchBShape, batchShape);
       const dataType = tensorTypeToWsglStorageType(variables[0].type.tensor);
       const getAIndices = () => {
-        const aRank = aVariable.shape.length;
-        const batchRank = batchVariable.shape.length;
+        const aRank = aVariable.rank;
+        const batchRank = batchVariable.rank;
         let resStr = `var aIndices: ${aVariable.type.indices};`;
         for (let i = aRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
           resStr += `\naIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
@@ -365,8 +366,8 @@ const matMulReadWriteFnSource =
         return resStr;
       };
       const getBIndices = () => {
-        const bRank = bVariable.shape.length;
-        const batchRank = batchVariable.shape.length;
+        const bRank = bVariable.rank;
+        const batchRank = batchVariable.rank;
         let resStr = `var bIndices: ${bVariable.type.indices};`;
         for (let i = bRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
           resStr += `\nbIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
@@ -421,8 +422,8 @@ const matMulReadWriteFnSource =
     };
 
 export const createMatmulProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes,
-     outputShape: readonly number[], reshapedOutputShape?: readonly number[],
+    (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
+     reshapedOutputShape?: readonly number[],
      isChannelsLast = false /* only used for conv2dByMatMul*/): ProgramInfo => {
       const aShape = inputs[0].dims;
       const bShape = inputs[1].dims;
@@ -431,9 +432,8 @@ export const createMatmulProgramInfo =
       const outerDimsB = bShape.slice(0, -2);
       const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
       const batchDims = inputVariable('batchDims', inputs[0].dataType, outerDims);
-      const batchADims = inputVariable('batchADims', inputs[0].dataType, outerDimsA);
-      const batchBDims = inputVariable('batchBDims', inputs[0].dataType, outerDimsB);
-      const variables = [batchADims, batchBDims, batchDims];
+      const variables = [batchDims];
+      const batchShapes = [outerDimsA, outerDimsB, outerDims];
       const batchSize = ShapeUtil.size(outerDims);
 
       const dimAOuter = aShape[aShape.length - 2];
@@ -462,7 +462,8 @@ export const createMatmulProgramInfo =
       variables.push(output);
       const inputVariables = [A, B];
       const hasBias = inputs.length > 2;
-      const declareFunctions = matMulReadWriteFnSource(components, hasBias, applyActivation, variables, isChannelsLast);
+      const declareFunctions =
+          matMulReadWriteFnSource(components, hasBias, applyActivation, variables, batchShapes, isChannelsLast);
       if (hasBias) {
         const biasComponents = isChannelsLast ? components : 1;
         inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims, biasComponents));
@@ -479,9 +480,12 @@ export const createMatmulProgramInfo =
                    makeMatMulPackedSource(elementsPerThread, workgroupSize, dataType, batchDims)}
                    ${batchDims.impl()}`;
       return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+        name: 'MatMul',
+        shaderCache: {hint: activationAttributes.activationCacheKey},
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]}
+        }),
         getShaderSource,
-        dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]})
       };
     };

@@ -20,7 +20,7 @@
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
-import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
+import {ProgramInfo} from '../../types';
 import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 
@@ -239,7 +239,7 @@ const createConvTranspose2DOpProgramShaderSource =
     };
 
 export const createConvTranspose2DProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvTransposeAttributes,
+    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
      squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
       const hasBias = inputs.length > 2;
       // const isChannelsLast = attributes.format === 'NHWC';
@@ -259,13 +259,15 @@ export const createConvTranspose2DProgramInfo =
 
       const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
       return {
-        ...metadata,
-        outputs: [{
-          dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
-          dataType: inputs[0].dataType,
-          gpuDataType: GpuDataType.default
-        }],
-        dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
+        name: 'ConvTranspose2D',
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
+          outputs: [{
+            dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+            dataType: inputs[0].dataType
+          }]
+        }),
         getShaderSource: (shaderHelper: ShaderHelper) => createConvTranspose2DOpProgramShaderSource(
             shaderHelper, inputs, attributes, outputShape, hasBias, dispatch[1] === 1 && dispatch[2] === 1, false,
             dataType),
