@@ -31,7 +31,7 @@ steps:
       fi
     displayName: Check emulator.pid does not exist
 
-  # Add -verbose to --emulator-extra-args to additional logging.
+  # Add -verbose to --emulator-extra-args to enable additional logging.
   - script: |
       set -e -x
       python3 tools/python/run_android_emulator.py \
