@@ -217,7 +217,7 @@ public class OnnxruntimeModuleTest {
         JavaOnlyMap options = new JavaOnlyMap();
         byte[] modelBuffer = getInputModelBuffer(modelStream);
         ReadableMap loadMap = ortModule.loadModel(modelBuffer, options);
-        sessionKey = resultMap.getString("key");
+        sessionKey = loadMap.getString("key");
 
         int[] dims = new int[] {1, 7};
         float[] inputData = new float[] {1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE, 5f, -6f};
@@ -276,7 +276,7 @@ public class OnnxruntimeModuleTest {
                reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float)){
         byte[] modelBuffer = getInputModelBuffer(modelStream);
         ReadableMap loadMap = ortModule.loadModel(modelBuffer, options);
-        sessionKey = resultMap.getString("key");
+        sessionKey = loadMap.getString("key");
 
         int[] dims = new int[] {1, 1, 7};
         float[] inputData = new float[] {1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE, 5f, -6f};
