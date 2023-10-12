@@ -207,9 +207,7 @@ def start_emulator(
             elif datetime.datetime.now() > end_time:
                 raise RuntimeError("Emulator startup timeout. sys.boot_completed was not set.")
 
-            _log.debug(
-                f"sys.boot_completed='{getprop_value}'. Sleeping for {sleep_interval_seconds} before retrying."
-            )
+            _log.debug(f"sys.boot_completed='{getprop_value}'. Sleeping for {sleep_interval_seconds} before retrying.")
             time.sleep(sleep_interval_seconds)
 
         return emulator_process
