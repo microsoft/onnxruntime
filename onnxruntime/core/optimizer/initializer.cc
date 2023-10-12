@@ -289,7 +289,7 @@ Initializer& Initializer::sqrt() {
 namespace {
 template <typename T>
 struct ScaleByAxis {
-  void operator()(Tensor& data, const Tensor& scalers, const size_t block_size, const size_t num_blocks) const {
+  void operator()(Tensor& data, const Tensor& scalers, const size_t block_size, const size_t num_blocks, const bool columnMajor) const {
     ToNumeric<T> to_numeric;
     const auto scaler_size = scalers.Shape().Size();
     T* dst = data.MutableData<T>();
@@ -301,32 +301,19 @@ struct ScaleByAxis {
       }
     } else {
       for (size_t block_offset = 0, i = 0; i < num_blocks; i++) {
-        const auto numeric_scaler = to_numeric(scalers_data[i]);
-        for (size_t j = 0; j < block_size; ++j, ++block_offset) {
-          dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+        if (columnMajor)
+        {
+            for (size_t j = 0; j < block_size; ++j, ++block_offset) {
+                const auto numeric_scaler = to_numeric(scalers_data[j]);
+                dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+            }
         }
-      }
-    }
-  }
-};
-
-template <typename T>
-struct ScaleToAxis {
-  void operator()(Tensor& data, const Tensor& scalers, const size_t block_size, const size_t num_blocks) const {
-    ToNumeric<T> to_numeric;
-    const auto scaler_size = scalers.Shape().Size();
-    T* dst = data.MutableData<T>();
-    const T* scalers_data = scalers.Data<T>();
-    if (scaler_size == 1) {
-      const auto numeric_scaler = to_numeric(scalers_data[0]);
-      for (size_t block_offset = 0, limit = block_size * num_blocks; block_offset < limit; ++block_offset) {
-        dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
-      }
-    } else {
-      for (size_t block_offset = 0, i = 0; i < num_blocks; i++) {
-        for (size_t j = 0; j < block_size; ++j, ++block_offset) {
-          const auto numeric_scaler = to_numeric(scalers_data[j]);
-          dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+        else
+        {
+            const auto numeric_scaler = to_numeric(scalers_data[i]);
+            for (size_t j = 0; j < block_size; ++j, ++block_offset) {
+                dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+            }
         }
       }
     }
@@ -334,22 +321,14 @@ struct ScaleToAxis {
 };
 }  // namespace
 
-void Initializer::scale_by_axis(const Initializer& scalers, int axis) {
+void Initializer::scale_by_axis(const Initializer& scalers, int axis, bool columnMajor) {
   ORT_ENFORCE(axis >= 0, "Axis must be non-negative");
   const size_t block_size = narrow<size_t>(data_.Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
   const size_t num_blocks = size() / block_size;
-  ORT_ENFORCE(scalers.size() == 1 || scalers.size() == num_blocks, "Invalid other(scalers) size");
+  ORT_ENFORCE(scalers.size() == 1 || 
+             (columnMajor ? scalers.size() == block_size : scalers.size() == num_blocks), "Invalid other(scalers) size");
   utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
-  t_disp.Invoke<ScaleByAxis>(data_, scalers.data_, block_size, num_blocks);
-}
-
-void Initializer::scale_to_axis(const Initializer& scalers, int axis) {
-  ORT_ENFORCE(axis >= 0, "Axis must be non-negative");
-  const size_t block_size = narrow<size_t>(data_.Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
-  const size_t num_blocks = size() / block_size;
-  ORT_ENFORCE(scalers.size() == 1 || scalers.size() == block_size, "Invalid other(scalers) size");
-  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
-  t_disp.Invoke<ScaleToAxis>(data_, scalers.data_, block_size, num_blocks);
+  t_disp.Invoke<ScaleByAxis>(data_, scalers.data_, block_size, num_blocks, columnMajor);
 }
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
 }  // namespace onnxruntime
