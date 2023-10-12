@@ -429,9 +429,6 @@ Microsoft::WRL::ComPtr<IDMLDevice> DMLProviderFactoryCreator::CreateDMLDevice(ID
   if (is_d3d12_debug_layer_enabled) {
     flags |= DML_CREATE_DEVICE_FLAG_DEBUG;
   }
-
-  ComPtr<ID3D12Device> d3d12_device;
-  ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
 #endif
 
   Microsoft::WRL::ComPtr<IDMLDevice> dml_device;
@@ -444,14 +441,42 @@ Microsoft::WRL::ComPtr<IDMLDevice> DMLProviderFactoryCreator::CreateDMLDevice(ID
   return dml_device;
 }
 
+static D3D12_COMMAND_LIST_TYPE CalculateCommandListType(ID3D12Device* d3d12_device) {
+  D3D12_FEATURE_DATA_FEATURE_LEVELS feature_levels = {};
+
+  D3D_FEATURE_LEVEL feature_levels_list[] = {
+      D3D_FEATURE_LEVEL_1_0_CORE,
+      D3D_FEATURE_LEVEL_11_0,
+      D3D_FEATURE_LEVEL_11_1,
+      D3D_FEATURE_LEVEL_12_0,
+      D3D_FEATURE_LEVEL_12_1
+  };
+
+  feature_levels.NumFeatureLevels = ARRAYSIZE(feature_levels_list);
+  feature_levels.pFeatureLevelsRequested = feature_levels_list;
+  ORT_THROW_IF_FAILED(d3d12_device->CheckFeatureSupport(
+      D3D12_FEATURE_FEATURE_LEVELS,
+      &feature_levels,
+      sizeof(feature_levels)
+      ));
+
+  auto is_feature_level_1_0_core = (feature_levels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE);
+  if (is_feature_level_1_0_core) {
+    return D3D12_COMMAND_LIST_TYPE_COMPUTE;
+  }
+
+  return D3D12_COMMAND_LIST_TYPE_DIRECT;
+}
+
+
 std::shared_ptr<IExecutionProviderFactory> CreateDMLDeviceAndProviderFactory(ID3D12Device* d3d12_device) {
   D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
-  cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+  cmd_queue_desc.Type = CalculateCommandListType(d3d12_device);
   cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 
   ComPtr<ID3D12CommandQueue> cmd_queue;
   ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
-
+        
   auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device);
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
 }
@@ -462,14 +487,18 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
 }
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFromAdapterList(
-    std::vector<ComPtr<IDXCoreAdapter>>&& dxcore_devices) {
+    std::vector<ComPtr<IDXCoreAdapter>>&& adapters) {
   // Choose the first device from the list since it's the highest priority
-  auto dxcore_device = dxcore_devices[0];
+  auto adapter = adapters[0];
+
+  auto feature_level = D3D_FEATURE_LEVEL_11_0;
+  if (IsNPU(adapter.Get())) {
+    feature_level = D3D_FEATURE_LEVEL_1_0_CORE;
+  }
 
   // Create D3D12 Device from DXCore Adapter
   ComPtr<ID3D12Device> d3d12_device;
-  ORT_THROW_IF_FAILED(D3D12CreateDevice(dxcore_device.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
-
+  ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), feature_level, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
   return CreateDMLDeviceAndProviderFactory(d3d12_device.Get());
 }
 
