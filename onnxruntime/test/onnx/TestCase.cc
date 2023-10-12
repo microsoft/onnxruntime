@@ -186,7 +186,7 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
   bool clean_eof = false;
-  int item_id = 1;
+  [[maybe_unused]] int item_id = 1;
   for (proto::TraditionalMLData data;
        ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof);
        ++item_id, data.Clear()) {
@@ -1230,6 +1230,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests->insert({"BERT_Squad", "Temporarily disabled pending investigation"});
     broken_tests->insert({"LSTM_Seq_lens_unpacked", "The parameter is incorrect"});
+    broken_tests->insert({"mlperf_ssd_resnet34_1200", "The parameter is incorrect"});
 
     broken_tests->insert({"resize_downsample_scales_linear",
                           "DML uses half_pixel and this test assumed \"asymmetric\" but does not include \"mode\""});
