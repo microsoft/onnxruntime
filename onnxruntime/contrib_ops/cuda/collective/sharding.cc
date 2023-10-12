@@ -252,7 +252,6 @@ DistributedKernel::DistributedKernel(const OpKernelInfo& info) : NcclKernel(info
   }
 }
 
-
 #endif
 
 }  // namespace cuda

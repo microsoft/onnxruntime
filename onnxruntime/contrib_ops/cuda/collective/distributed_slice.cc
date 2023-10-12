@@ -35,9 +35,9 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
   const auto tensor_shard_axes = context->Input<Tensor>(3);
   const TensorPartitionSpec& spec_axes = input_shard_specs_[3];
 
-  if (spec_starts.HasShard() || 
-      spec_ends.HasShard() || 
-      spec_axes.HasShard() || 
+  if (spec_starts.HasShard() ||
+      spec_ends.HasShard() ||
+      spec_axes.HasShard() ||
       (input_shard_specs_.size() > 4 && input_shard_specs_[4].HasShard()))
     ORT_THROW("DistributedSlice: shard on starts / ends / axes / steps are not supported yet.");
 
@@ -51,7 +51,7 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
   std::copy(ends_data.begin(), ends_data.end(), input_ends.begin());
 
   std::vector<int64_t> input_axes;
-  if (tensor_shard_axes){
+  if (tensor_shard_axes) {
     auto axes_data = tensor_shard_axes->DataAsSpan<Tind>();
     input_axes.resize(axes_data.size());
     std::copy(axes_data.begin(), axes_data.end(), input_axes.begin());
@@ -59,19 +59,18 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
 
   std::vector<int64_t> input_steps;
   const auto tensor_shard_steps = context->Input<Tensor>(4);
-  if (tensor_shard_steps){
+  if (tensor_shard_steps) {
     const TensorPartitionSpec& spec_steps = input_shard_specs_[4];
     if (spec_steps.HasShard())
-        ORT_THROW("Not supported yet.");
+      ORT_THROW("Not supported yet.");
 
     auto steps_data = tensor_shard_steps->DataAsSpan<Tind>();
     input_steps.resize(steps_data.size());
     std::copy(steps_data.begin(), steps_data.end(), input_steps.begin());
   }
 
-
   if (spec_data.GetPartitionAxis() != -1 &&
-      std::find(input_axes.begin(), input_axes.end(), spec_data.GetPartitionAxis()) != input_axes.end()){
+      std::find(input_axes.begin(), input_axes.end(), spec_data.GetPartitionAxis()) != input_axes.end()) {
     // shard on slice axes, reshard first
     auto tmp_spec_data = TensorPartitionSpec::CreateAllReplica(spec_data);
     auto tensor_data = ReshardTensor(this, context, spec_data, tmp_spec_data, nccl_->Rank(), tensor_shard_data);
@@ -84,7 +83,7 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
     ORT_RETURN_IF_ERROR(SliceBase::PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
     TensorShape output_shape(compute_metadata.output_dims_);
 
-    if (spec_Y.HasNoShard()){
+    if (spec_Y.HasNoShard()) {
       ORT_RETURN_IF_ERROR(FuncSlice(this,
                                     context,
                                     tensor_data.get(),
@@ -93,7 +92,7 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
                                     input_axes,
                                     input_steps,
                                     context->Output(0, output_shape)));
-    } else{
+    } else {
       AllocatorPtr alloc;
       ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc) == Status::OK());
       auto dst_tensor = Tensor::Create(tensor_data->DataType(), output_shape, alloc);
@@ -108,7 +107,7 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
       auto tmp_spec_output = TensorPartitionSpec::CreateAllReplica(spec_Y);
       ReshardTensor(this, context, tmp_spec_output, spec_Y, nccl_->Rank(), dst_tensor.get(), 0);
     }
-  } else{
+  } else {
     const auto& input_shape = tensor_shard_data->Shape();
     const auto input_dimensions = input_shape.GetDims();
     if (input_dimensions.empty()) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
@@ -117,7 +116,7 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
     ORT_RETURN_IF_ERROR(SliceBase::PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
     TensorShape output_shape(compute_metadata.output_dims_);
 
-    if (spec_Y.GetPartitionAxis() == spec_data.GetPartitionAxis()){
+    if (spec_Y.GetPartitionAxis() == spec_data.GetPartitionAxis()) {
       ORT_RETURN_IF_ERROR(FuncSlice(this,
                                     context,
                                     tensor_shard_data,
@@ -126,7 +125,7 @@ Status DistributedSlice<T, Tind>::ComputeInternal(OpKernelContext* context) cons
                                     input_axes,
                                     input_steps,
                                     context->Output(0, output_shape)));
-    } else{
+    } else {
       AllocatorPtr alloc;
       ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc) == Status::OK());
       auto dst_tensor = Tensor::Create(tensor_shard_data->DataType(), output_shape, alloc);

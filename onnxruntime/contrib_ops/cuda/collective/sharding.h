@@ -66,7 +66,6 @@ std::unique_ptr<Tensor> ReshardTensor(
     const int64_t device_id,
     const Tensor* src);
 
-
 class TensorPartitionSpec;
 
 class DistributedKernel : public NcclKernel {

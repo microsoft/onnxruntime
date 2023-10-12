@@ -9,7 +9,6 @@
 #include <sstream>
 #include <vector>
 
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
