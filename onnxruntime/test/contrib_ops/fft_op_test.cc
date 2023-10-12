@@ -8,14 +8,15 @@
 namespace onnxruntime {
 namespace test {
 TEST(ContribOpTest, Rfft) {
+  if (DefaultCudaExecutionProvider() == nullptr && DefaultRocmExecutionProvider() == nullptr) return;
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif defined(USE_ROCM)
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#else
-  return;
-#endif
+  if (DefaultCudaExecutionProvider() != nullptr) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  if (DefaultRocmExecutionProvider() != nullptr) {
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+  }
 
   OpTester test("Rfft", 1, onnxruntime::kMSDomain);
   test.AddAttribute("signal_ndim", static_cast<int64_t>(1));
@@ -28,14 +29,15 @@ TEST(ContribOpTest, Rfft) {
 }
 
 TEST(ContribOpTest, Irfft) {
+  if (DefaultCudaExecutionProvider() == nullptr && DefaultRocmExecutionProvider() == nullptr) return;
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif defined(USE_ROCM)
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#else
-  return;
-#endif
+  if (DefaultCudaExecutionProvider() != nullptr) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  if (DefaultRocmExecutionProvider() != nullptr) {
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+  }
 
   OpTester test("Irfft", 1, onnxruntime::kMSDomain);
   test.AddAttribute("signal_ndim", static_cast<int64_t>(1));
