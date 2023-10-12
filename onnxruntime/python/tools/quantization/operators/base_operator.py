@@ -4,10 +4,7 @@ class QuantOperatorBase:
         self.node = onnx_node
 
     def should_quantize(self):
-        if not self.quantizer.should_quantize_node(self.node):
-            return False
-
-        return self.quantizer.is_float_tensor(self.node.input[0])
+        return self.quantizer.should_quantize_node(self.node) and self.quantizer.is_float_tensor(self.node.input[0])
 
     def quantize(self):
         """
