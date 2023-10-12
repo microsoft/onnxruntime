@@ -201,6 +201,30 @@ struct ScalarAdd {
   }
 };
 
+//template <typename T>
+//struct Broadcast {
+//  void operator()(Tensor& tensor, const onnxruntime::TensorShape& destShape) const {
+//    ToNumeric<T> to_numeric;
+//    
+//    size_t newSize = Tensor::CalculateTensorStorageSize(tensor.DataType(), destShape);
+//    std::shared_ptr<IAllocator> allocator = std::make_shared<CPUAllocator>();
+//    void* newData = nullptr;
+//    if (len > 0) {
+//      newData = allocator->Alloc(newSize);
+//    }
+//    Tensor newTensor(tensor.DataType(), destShape, newData, allocator);
+//    
+//    // because broadcasting only works for 1-D tensor
+//    const size_t block_size = tensor.Shape().GetDims().front();
+//    const size_t num_blocks = destShape.Size() / block_size;
+//
+//    auto span = tensor.MutableDataAsSpan<T>();
+//    for (auto& dst : span) {
+//      dst = T(to_numeric(dst) + v);
+//    }
+//  }
+//};
+
 template <typename T>
 struct Sqrt {
   void operator()(Tensor& tensor) const {
@@ -280,6 +304,26 @@ Initializer& Initializer::div(const Initializer& other) {
   return *this;
 }
 
+/*
+* It only broadcast 1-D tensor if the dimension of that 1-d tensor either equals to
+* 1st or last dimension of destShape.
+*/
+//Initializer& Initializer::mulBy1dInitialer(const Initializer& other) {
+//  ORT_ENFORCE(other.size() == 1, "The multipier tensor should be 1-D tensor");
+//  ORT_ENFORCE(other.dims().front() == dims().front() || other.dims().front() == dims().back(), 
+//      "Dimension of the multiplier tensor should be equal to either 1st or last dimension of the multiplicand tensor.");
+//  
+//  const size_t block_size = narrow<size_t>(data_.Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
+//  const size_t num_blocks = size() / block_size;
+//  ORT_ENFORCE(scalers.size() == 1 || scalers.size() == num_blocks, "Invalid other(scalers) size");
+//  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
+//  t_disp.Invoke<ScaleByAxis>(data_, scalers.data_, block_size, num_blocks);
+//  
+//  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
+//  //data_ = t_disp.Invoke<Broadcast>(data_, destShape);
+//  return *this;
+//}
+
 Initializer& Initializer::sqrt() {
   utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double> t_disp(data_.GetElementType());
   t_disp.Invoke<Sqrt>(data_);
@@ -310,6 +354,28 @@ struct ScaleByAxis {
   }
 };
 
+template <typename T>
+struct ScaleToAxis {
+  void operator()(Tensor& data, const Tensor& scalers, const size_t block_size, const size_t num_blocks) const {
+    ToNumeric<T> to_numeric;
+    const auto scaler_size = scalers.Shape().Size();
+    T* dst = data.MutableData<T>();
+    const T* scalers_data = scalers.Data<T>();
+    if (scaler_size == 1) {
+      const auto numeric_scaler = to_numeric(scalers_data[0]);
+      for (size_t block_offset = 0, limit = block_size * num_blocks; block_offset < limit; ++block_offset) {
+        dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+      }
+    } else {
+      for (size_t block_offset = 0, i = 0; i < num_blocks; i++) {
+        for (size_t j = 0; j < block_size; ++j, ++block_offset) {
+          const auto numeric_scaler = to_numeric(scalers_data[j]);
+          dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+        }
+      }
+    }
+  }
+};
 }  // namespace
 
 void Initializer::scale_by_axis(const Initializer& scalers, int axis) {
@@ -319,6 +385,15 @@ void Initializer::scale_by_axis(const Initializer& scalers, int axis) {
   ORT_ENFORCE(scalers.size() == 1 || scalers.size() == num_blocks, "Invalid other(scalers) size");
   utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
   t_disp.Invoke<ScaleByAxis>(data_, scalers.data_, block_size, num_blocks);
+}
+
+void Initializer::scale_to_axis(const Initializer& scalers, int axis) {
+  ORT_ENFORCE(axis >= 0, "Axis must be non-negative");
+  const size_t block_size = narrow<size_t>(data_.Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
+  const size_t num_blocks = size() / block_size;
+  ORT_ENFORCE(scalers.size() == 1 || scalers.size() == block_size, "Invalid other(scalers) size");
+  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
+  t_disp.Invoke<ScaleToAxis>(data_, scalers.data_, block_size, num_blocks);
 }
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
 }  // namespace onnxruntime
