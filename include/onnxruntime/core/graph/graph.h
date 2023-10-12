@@ -1155,19 +1155,6 @@ class Graph {
 
   Status FunctionToGraph(const ONNX_NAMESPACE::FunctionProto& func_to_inline);
 
-  /**
-   Inline a graph into this graph. Constant nodes are converted into initializers.
-   The function copies graph initializers and the graph nodes into this graph.
-   It makes all the names unique using the unique_id.
-
-   @param graph_to_inline to be inlined
-   @param callnode, the node that is being inlined
-   @param unique_id - optional unique id to be appended to the node names if present.
-    copied into this graph.
-  */
-  Status InlineSubgraph(const Graph& graph_to_inline, const Node& callnode,
-                        std::optional<std::string> unique_id);
-
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node.
   e.g. when creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to
