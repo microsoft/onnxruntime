@@ -20,7 +20,7 @@
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
-import {GpuDataType, ProgramInfo} from '../../types';
+import {ProgramInfo} from '../../types';
 import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 
@@ -260,15 +260,12 @@ export const createConvTranspose2DProgramInfo =
       const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
       return {
         name: 'ConvTranspose2D',
-        inputTypes: hasBias ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
-                              [GpuDataType.default, GpuDataType.default],
         shaderCache: {hint: attributes.cacheKey},
         getRunData: () => ({
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
           outputs: [{
             dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
-            dataType: inputs[0].dataType,
-            gpuDataType: GpuDataType.default
+            dataType: inputs[0].dataType
           }]
         }),
         getShaderSource: (shaderHelper: ShaderHelper) => createConvTranspose2DOpProgramShaderSource(
