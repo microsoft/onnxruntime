@@ -323,7 +323,8 @@ bool PerformanceRunner::Initialize() {
   if (performance_test_config_.run_config.generate_model_input_binding) {
     return static_cast<OnnxRuntimeTestSession*>(
                session_.get())
-        ->PopulateGeneratedInputTestData(performance_test_config_.run_config.random_seed_for_input_data);
+        ->PopulateGeneratedInputTestData(performance_test_config_.run_config.random_seed_for_input_data,
+            performance_test_config_.run_config.native_inputs);
   }
 
   // TODO: Place input tensor on cpu memory if dnnl provider type to avoid CopyTensor logic in CopyInputAcrossDevices

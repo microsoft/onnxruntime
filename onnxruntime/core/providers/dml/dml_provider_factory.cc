@@ -542,6 +542,27 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(GetDeviceForSessionInput, _In_ OrtSession* session, _In_ const char* input, _Out_ ID3D12Device** device) {
+  API_IMPL_BEGIN
+  *device = nullptr;
+#ifdef USE_DML
+
+#endif
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(GetDeviceForSessionOutput, _In_ OrtSession* session, _In_ const char* output, _Out_ ID3D12Device** device) {
+  API_IMPL_BEGIN
+  *device = nullptr;
+#ifdef USE_DML
+
+#endif
+  return nullptr;
+  API_IMPL_END
+}
+
+
 static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProvider_DML,
   &OrtSessionOptionsAppendExecutionProviderEx_DML,
@@ -549,6 +570,8 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &FreeGPUAllocation,
   &GetD3D12ResourceFromAllocation,
   &OrtSessionOptionsAppendExecutionProvider_DML2,
+  &OrtGetDeviceForSessionInput,
+  &OrtGetDeviceForSessionOutput,
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {

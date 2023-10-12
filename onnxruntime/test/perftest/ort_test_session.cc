@@ -7,9 +7,14 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
+#include "core/providers/dml/dml_provider_factory.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
+
+
+#include <wrl/client.h>
+#include <d3d12.h>
 
 #ifdef _WIN32
 #define strdup _strdup
@@ -909,9 +914,65 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
 #undef CASE_FOR_TYPE
 }
 
-bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
+size_t GetSizeFromType(ONNXTensorElementDataType type) {
+  return 4;
+}
+
+Microsoft::WRL::ComPtr<ID3D12Resource> CreateD3D12Resource(
+  ID3D12Device* device,
+  ONNXTensorElementDataType type,
+  const std::vector<int64_t>& shape) {
+  // Try to allocate the backing memory for the caller
+  auto bufferSize =
+    std::accumulate(
+        std::begin(shape),
+        std::end(shape),
+        static_cast<int64_t>(1),
+        std::multiplies<int64_t>());
+
+  auto bufferByteSize = GetSizeFromType(type) * bufferSize;
+
+  // DML needs the resources' sizes to be a multiple of 4 bytes
+  if (bufferByteSize % 4 != 0) {
+    bufferByteSize += 4 - (bufferByteSize % 4);
+  }
+
+  D3D12_HEAP_PROPERTIES heapProperties = {
+    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+  D3D12_RESOURCE_DESC resourceDesc = {
+    D3D12_RESOURCE_DIMENSION_BUFFER,
+    0,
+    static_cast<uint64_t>(bufferByteSize),
+    1,
+    1,
+    1,
+    DXGI_FORMAT_UNKNOWN,
+    {1, 0},
+    D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+  };
+
+  Microsoft::WRL::ComPtr<ID3D12Resource> resource;
+  device->CreateCommittedResource(
+    &heapProperties,
+    D3D12_HEAP_FLAG_NONE,
+    &resourceDesc,
+    D3D12_RESOURCE_STATE_COMMON,
+    nullptr,
+    __uuidof(ID3D12Resource),
+    &resource);
+
+  return resource;
+}
+
+
+bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool use_native_inputs) {
+  auto allocator = Ort::AllocatorWithDefaultOptions();
+
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
+
+    auto input_name = session_.GetInputNameAllocated(i, allocator);
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
@@ -925,11 +986,47 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
         }
       }
 
-      auto allocator = Ort::AllocatorWithDefaultOptions();
-      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
-                                                         input_node_dim.size(), tensor_info.GetElementType());
-      InitializeTensorWithSeed(seed, input_tensor);
-      PreLoadTestData(0, i, std::move(input_tensor));
+      if (use_native_inputs) {
+        auto& ort_api = Ort::GetApi();
+        const OrtDmlApi* ort_dml_api;
+        ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api));
+        auto dml_memory_info = Ort::MemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault);
+        auto dml_allocator = Ort::Allocator(session_, dml_memory_info);
+
+        Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
+        ort_dml_api->GetDeviceForSessionInput(session_, input_name.get(), &device);
+        auto d3d_resource = CreateD3D12Resource(device.Get(), tensor_info.GetElementType(), input_node_dim);
+
+        void* dml_allocator_resource;
+        ort_dml_api->CreateGPUAllocationFromD3DResource(d3d_resource.Get(), &dml_allocator_resource);
+
+        using DmlAllocatorResource = std::unique_ptr<void, void (*)(void*)>;
+        auto unique_dml_allocator_resource = DmlAllocatorResource(dml_allocator_resource, [](void* ptr) {
+          auto& ort_api = Ort::GetApi();
+          const OrtDmlApi* ort_dml_api;
+          ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api));
+          ort_dml_api->FreeGPUAllocation(ptr);
+        });
+
+        // create the OrtValue as a tensor letting ort know that we own the data buffer
+        OrtValue* input_tensor_ptr;
+        ort_api.CreateTensorWithDataAsOrtValue(
+            dml_memory_info,
+            unique_dml_allocator_resource.get(),
+            static_cast<size_t>(d3d_resource->GetDesc().Width),
+            input_node_dim.data(),
+            input_node_dim.size(),
+            tensor_info.GetElementType(),
+            &input_tensor_ptr);
+        Ort::Value input_tensor(input_tensor_ptr);
+
+        PreLoadTestData(0, i, std::move(input_tensor));
+      } else {
+        Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
+                                                           input_node_dim.size(), tensor_info.GetElementType());
+        InitializeTensorWithSeed(seed, input_tensor);
+        PreLoadTestData(0, i, std::move(input_tensor));
+      }
     }
   }
   return true;

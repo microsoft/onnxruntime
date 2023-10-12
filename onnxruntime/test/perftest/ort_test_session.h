@@ -25,7 +25,7 @@ class OnnxRuntimeTestSession : public TestSession {
     test_inputs_[test_data_id][input_id] = std::move(value);
   }
 
-  bool PopulateGeneratedInputTestData(int32_t seed);
+  bool PopulateGeneratedInputTestData(int32_t seed, bool use_native_inputs);
 
   ~OnnxRuntimeTestSession() = default;
 

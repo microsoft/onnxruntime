@@ -131,6 +131,20 @@ struct OrtDmlApi {
    * (high power, low power, or defult) and a device filter (None, GPU, or NPU).
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
+
+  /**
+   * GetDeviceForSessionInput
+   * Get the obtain the optimal device for a given model input.
+   * The device returned will be nullptr when the input should be created on CPU.
+   */
+  ORT_API2_STATUS(GetDeviceForSessionInput, _In_ OrtSession* session, _In_ const char* input, _Out_ ID3D12Device** device);
+
+  /**
+   * GetDeviceForSessionOutput
+   * Get the obtain the optimal device for a given model output.
+   * The device returned will be nullptr when the output should be created on CPU.
+   */
+  ORT_API2_STATUS(GetDeviceForSessionOutput, _In_ OrtSession* session, _In_ const char* output, _Out_ ID3D12Device** device);
 };
 
 #ifdef __cplusplus
