@@ -54,9 +54,7 @@ def run_xl_base_refiner():
 
     batch_size = len(prompt)
     if batch_size > max_batch_size:
-        raise ValueError(
-            f"Batch size {len(prompt)} is larger than allowed {max_batch_size}. If dynamic shape is used, then maximum batch size is 4"
-        )
+        raise ValueError(f"Batch size {batch_size} is larger than allowed {max_batch_size}.")
 
     base_info = PipelineInfo(args.version, use_vae_in_xl_base=False)  # Do not run VAE in base when there is refiner.
     base = init_pipeline(Txt2ImgXLPipeline, base_info, engine_type, args, max_batch_size, batch_size)
@@ -102,23 +100,23 @@ def run_xl_base_refiner():
 
     if not args.disable_cuda_graph:
         # inference once to get cuda graph
-        images, _ = run_sd_xl_inference(warmup=True)
+        _, _ = run_sd_xl_inference(warmup=True)
 
     print("[I] Warming up ..")
     for _ in range(args.num_warmup_runs):
-        images, _ = run_sd_xl_inference(warmup=True)
+        _, _ = run_sd_xl_inference(warmup=True)
 
     print("[I] Running StableDiffusion XL pipeline")
     if args.nvtx_profile:
         cudart.cudaProfilerStart()
-    images, pipeline_time = run_sd_xl_inference(warmup=False)
+    _, latency = run_sd_xl_inference(warmup=False)
     if args.nvtx_profile:
         cudart.cudaProfilerStop()
 
     base.teardown()
 
     print("|------------|--------------|")
-    print("| {:^10} | {:>9.2f} ms |".format("e2e", pipeline_time))
+    print("| {:^10} | {:>9.2f} ms |".format("e2e", latency))
     print("|------------|--------------|")
     refiner.teardown()
 
