@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
@@ -13,8 +13,12 @@ export interface InstanceNormAttributes extends AttributeWithCacheKey {
   format: 'NHWC'|'NCHW';
 }
 
+const metadata = {
+  name: 'InstanceNormalization'
+};
+
 const createInstanceNormProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
+    (inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
       const xShape = inputs[0].dims;
 
       const outputShape = xShape;
@@ -96,16 +100,19 @@ const createInstanceNormProgramInfo =
   }`;
       return {
         ...metadata,
-        outputs: [
-          {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-        ],
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          outputs: [
+            {dims: outputShape, dataType: inputs[0].dataType},
+          ],
+          dispatchGroup: {x: normCount}
+        }),
         getShaderSource,
-        dispatchGroup: () => ({x: normCount})
       };
     };
 
 const createInstanceNormNHWCProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
+    (inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
       const xShape = inputs[0].dims;
       const outputShape = xShape;
       const outputSize = ShapeUtil.size(outputShape);
@@ -158,11 +165,14 @@ const createInstanceNormNHWCProgramInfo =
   }`;
       return {
         ...metadata,
-        outputs: [
-          {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-        ],
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          outputs: [
+            {dims: outputShape, dataType: inputs[0].dataType},
+          ],
+          dispatchGroup: {x: Math.ceil(normCount / 64 /* workgroup size */)}
+        }),
         getShaderSource,
-        dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
       };
     };
 
@@ -170,15 +180,9 @@ export const parseInstanceNormAttributes = (attributes: InstanceNormAttributes):
     createAttributeWithCacheKey({epsilon: attributes.epsilon, format: attributes.format});
 
 export const instanceNorm = (context: ComputeContext, attributes: InstanceNormAttributes): void => {
-  const metadata = {
-    name: 'InstanceNormalization',
-    inputTypes: [GpuDataType.default, GpuDataType.default, GpuDataType.default],
-    cacheHint: attributes.cacheKey,
-  };
-
   if (attributes.format === 'NHWC') {
-    context.compute(createInstanceNormNHWCProgramInfo(metadata, context.inputs, attributes));
+    context.compute(createInstanceNormNHWCProgramInfo(context.inputs, attributes));
   } else {
-    context.compute(createInstanceNormProgramInfo(metadata, context.inputs, attributes));
+    context.compute(createInstanceNormProgramInfo(context.inputs, attributes));
   }
 };

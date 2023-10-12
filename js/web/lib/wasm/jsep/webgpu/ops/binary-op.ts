@@ -4,7 +4,7 @@
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -134,7 +134,7 @@ const createBinaryOpProgramShader =
     };
 
 const createBinaryOpProgramInfo =
-    (metadata: ProgramMetadata, a: TensorView, b: TensorView, funcCall: BinaryFunctionCall,
+    (name: string, cacheKey: string, a: TensorView, b: TensorView, funcCall: BinaryFunctionCall,
      additionalImplementation?: string, outputDataType: number = a.dataType): ProgramInfo => {
       const isBroadcast = !ShapeUtil.areEqual(a.dims, b.dims);
       let outputShape = a.dims;
@@ -174,51 +174,49 @@ const createBinaryOpProgramInfo =
       }
 
       return {
-        ...metadata,
+        name,
+        shaderCache: {hint: cacheKey},
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
             shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, a.dataType, b.dataType,
             outputDataType, additionalImplementation),
-        outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)})
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: outputDataType}],
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)}
+        }),
       };
     };
 
-const createBinaryOpProgramInfoLoader =
-    (inputs: readonly TensorView[], name: string, funcCall: BinaryFunctionCall, additionalImplementation?: string,
-     cacheKey?: string, outputDataType?: number): ProgramInfoLoader => {
-      const metadata:
-          ProgramMetadata = {name, inputTypes: [GpuDataType.default, GpuDataType.default], cacheHint: cacheKey};
-      return {
-        ...metadata,
-        get: () => createBinaryOpProgramInfo(
-            metadata, inputs[0], inputs[1], funcCall, additionalImplementation, outputDataType)
-      };
+const runBinaryOp =
+    (context: ComputeContext, name: string, funcCall: BinaryFunctionCall, additionalImplementation?: string,
+     cacheKey?: string, outputDataType?: number): void => {
+      context.compute(createBinaryOpProgramInfo(
+          name, cacheKey ?? '', context.inputs[0], context.inputs[1], funcCall, additionalImplementation,
+          outputDataType));
     };
 
 export const add = (context: ComputeContext): void => {
-  context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Add', (a, b) => `${a}+${b}`));
+  runBinaryOp(context, 'Add', (a, b) => `${a}+${b}`);
 };
 
 export const div = (context: ComputeContext): void => {
-  context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Div', (a, b) => `${a}/${b}`));
+  runBinaryOp(context, 'Div', (a, b) => `${a}/${b}`);
 };
 
 export const equal = (context: ComputeContext): void => {
-  context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'Equal', ({scalar: (a, b) => `u32(${a}==${b})`, vector: (a, b) => `vec4<u32>(${a}==${b})`}),
-      undefined, undefined, DataType.bool));
+  runBinaryOp(
+      context, 'Equal', ({scalar: (a, b) => `u32(${a}==${b})`, vector: (a, b) => `vec4<u32>(${a}==${b})`}), undefined,
+      undefined, DataType.bool);
 };
 
 export const mul = (context: ComputeContext): void => {
-  context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Mul', (a, b) => `${a}*${b}`));
+  runBinaryOp(context, 'Mul', (a, b) => `${a}*${b}`);
 };
 
 export const pow = (context: ComputeContext): void => {
   const type = inputVariable('input', context.inputs[0].dataType, context.inputs[0].dims).type.value;
   const roundStr = type === 'i32' ? 'round' : '';
-  context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'Pow',
-      ({scalar: (a, b) => `pow_custom(${a},${b})`, vector: (a, b) => `pow_vector_custom(${a},${b})`}),
+  runBinaryOp(
+      context, 'Pow', ({scalar: (a, b) => `pow_custom(${a},${b})`, vector: (a, b) => `pow_vector_custom(${a},${b})`}),
       `
     fn pow_custom(a : ${type}, b : ${type}) -> ${type} {
       if (b == ${type}(0.0)) {
@@ -233,34 +231,33 @@ export const pow = (context: ComputeContext): void => {
       // TODO: implement vectorized pow
       return vec4<${type}>(pow_custom(a.x, b.x), pow_custom(a.y, b.y), pow_custom(a.z, b.z), pow_custom(a.w, b.w));
     }
-      `));
+      `);
 };
 
 export const sub = (context: ComputeContext): void => {
-  context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Sub', (a, b) => `${a}-${b}`));
+  runBinaryOp(context, 'Sub', (a, b) => `${a}-${b}`);
 };
 
 export const greater = (context: ComputeContext): void => {
-  context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'Greater', ({scalar: (a, b) => `u32(${a}>${b})`, vector: (a, b) => `vec4<u32>(${a}>${b})`}),
-      undefined, undefined, DataType.bool));
+  runBinaryOp(
+      context, 'Greater', ({scalar: (a, b) => `u32(${a}>${b})`, vector: (a, b) => `vec4<u32>(${a}>${b})`}), undefined,
+      undefined, DataType.bool);
 };
 
 export const less = (context: ComputeContext): void => {
-  context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'Less', ({scalar: (a, b) => `u32(${a}<${b})`, vector: (a, b) => `vec4<u32>(${a}<${b})`}),
-      undefined, undefined, DataType.bool));
+  runBinaryOp(
+      context, 'Less', ({scalar: (a, b) => `u32(${a}<${b})`, vector: (a, b) => `vec4<u32>(${a}<${b})`}), undefined,
+      undefined, DataType.bool);
 };
 
 export const greaterOrEqual = (context: ComputeContext): void => {
-  context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'GreaterOrEqual',
-      ({scalar: (a, b) => `u32(${a}>=${b})`, vector: (a, b) => `vec4<u32>(${a}>=${b})`}), undefined, undefined,
-      DataType.bool));
+  runBinaryOp(
+      context, 'GreaterOrEqual', ({scalar: (a, b) => `u32(${a}>=${b})`, vector: (a, b) => `vec4<u32>(${a}>=${b})`}),
+      undefined, undefined, DataType.bool);
 };
 
 export const lessOrEqual = (context: ComputeContext): void => {
-  context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'LessOrEqual', ({scalar: (a, b) => `u32(${a}<=${b})`, vector: (a, b) => `vec4<u32>(${a}<=${b})`}),
-      undefined, undefined, DataType.bool));
+  runBinaryOp(
+      context, 'LessOrEqual', ({scalar: (a, b) => `u32(${a}<=${b})`, vector: (a, b) => `vec4<u32>(${a}<=${b})`}),
+      undefined, undefined, DataType.bool);
 };

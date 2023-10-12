@@ -32,9 +32,11 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputsTensorView: readonly TensorView[], inputs: GpuData[], outputs: GpuData[],
-      dispatchGroup: [number, number, number]): void {
+  run(buildArtifact: Artifact, inputTensorViews: readonly TensorView[], outputTensorViews: readonly TensorView[],
+      inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
+      uniformBufferBinding: GPUBindingResource|undefined): void {
     const device = this.backend.device;
+
     const computePassEncoder = this.backend.getComputePassEncoder();
     const webgpuEnv = this.backend.env.webgpu;
     const profilingEnabled = this.backend.supportTimestampQuery &&
@@ -54,6 +56,9 @@ export class ProgramManager {
     }
     for (const output of outputs) {
       entries.push({binding: entries.length, resource: {buffer: output.buffer}});
+    }
+    if (uniformBufferBinding) {
+      entries.push({binding: entries.length, resource: uniformBufferBinding});
     }
     const bindGroup = device.createBindGroup(
         {layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries, label: buildArtifact.programInfo.name});
@@ -109,9 +114,9 @@ export class ProgramManager {
         if (this.backend.env.webgpu.profiling?.ondata) {
           this.backend.env.webgpu.profiling.ondata({
             version: 1,
-            inputsMetadata: inputsTensorView.map(
+            inputsMetadata: inputTensorViews.map(
                 value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
-            outputsMetadata: buildArtifact.programInfo.outputs.map(
+            outputsMetadata: outputTensorViews.map(
                 value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
             kernelId,
             kernelType: kernelInfo[0],
@@ -122,11 +127,11 @@ export class ProgramManager {
         } else {
           // if no callback is provided, print the profiling message to console
           let inputShapes = '';
-          inputsTensorView.forEach((value, i) => {
+          inputTensorViews.forEach((value, i) => {
             inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
           });
           let outputShapes = '';
-          buildArtifact.programInfo.outputs.forEach((value, i) => {
+          inputTensorViews.forEach((value, i) => {
             outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
           });
           // eslint-disable-next-line no-console
@@ -161,7 +166,8 @@ export class ProgramManager {
     return {programInfo, computePipeline};
   }
 
-  normalizeDispatchGroupSize(dispatchGroup: ReturnType<ProgramInfo['dispatchGroup']>): [number, number, number] {
+  normalizeDispatchGroupSize(dispatchGroup: ReturnType<ProgramInfo['getRunData']>['dispatchGroup']):
+      [number, number, number] {
     const x = typeof dispatchGroup === 'number' ? dispatchGroup : dispatchGroup.x;
     const y = typeof dispatchGroup === 'number' ? 1 : (dispatchGroup.y || 1);
     const z = typeof dispatchGroup === 'number' ? 1 : (dispatchGroup.z || 1);
