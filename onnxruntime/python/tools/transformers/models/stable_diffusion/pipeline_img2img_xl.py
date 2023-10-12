@@ -73,7 +73,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         warmup=False,
         return_type="images",
     ):
-        assert len(prompt) == len(negative_prompt)
+        assert negative_prompt is None or len(prompt) == len(negative_prompt)
 
         # In inference, we condition as no crop. To get best result, it is recommended to output image size
         # same as one of those used in training (see Appendix I in https://arxiv.org/pdf/2307.01952.pdf).

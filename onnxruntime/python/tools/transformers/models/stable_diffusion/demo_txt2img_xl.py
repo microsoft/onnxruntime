@@ -28,9 +28,8 @@ from engine_builder import EngineType, get_engine_type
 from pipeline_img2img_xl import Img2ImgXLPipeline
 from pipeline_txt2img_xl import Txt2ImgXLPipeline
 
-if __name__ == "__main__":
-    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
-    args = parse_arguments(is_xl=True, description="Options for Stable Diffusion XL Demo")
+
+def run_xl_demo(args):
     prompt, negative_prompt = repeat_prompt(args, is_sd_xl=True)
 
     image_height = args.height
@@ -44,7 +43,9 @@ if __name__ == "__main__":
         init_trt_plugins()
 
     max_batch_size = 16
-    if args.build_dynamic_shape or image_height > 512 or image_width > 512:
+    if (engine_type in [EngineType.ORT_TRT, EngineType.TRT]) and (
+        args.build_dynamic_shape or image_height > 512 or image_width > 512
+    ):
         max_batch_size = 4
 
     batch_size = len(prompt)
@@ -53,10 +54,11 @@ if __name__ == "__main__":
             f"Batch size {len(prompt)} is larger than allowed {max_batch_size}. If dynamic shape is used, then maximum batch size is 4"
         )
 
-    base_info = PipelineInfo(args.version, use_vae_in_xl_base=not args.enable_refiner)
+    enable_refiner = True
+    base_info = PipelineInfo(args.version, use_vae_in_xl_base=not enable_refiner)
     base = init_pipeline(Txt2ImgXLPipeline, base_info, engine_type, args, max_batch_size, batch_size)
 
-    if args.enable_refiner:
+    if enable_refiner:
         refiner_info = PipelineInfo(args.version, is_sd_xl_refiner=True)
         refiner = init_pipeline(Img2ImgXLPipeline, refiner_info, engine_type, args, max_batch_size, batch_size)
 
@@ -107,23 +109,30 @@ if __name__ == "__main__":
 
     if not args.disable_cuda_graph:
         # inference once to get cuda graph
-        images, _ = run_sd_xl_inference(args.enable_refiner, warmup=True)
+        images, _ = run_sd_xl_inference(enable_refiner, warmup=True)
 
     print("[I] Warming up ..")
     for _ in range(args.num_warmup_runs):
-        images, _ = run_sd_xl_inference(args.enable_refiner, warmup=True)
+        images, _ = run_sd_xl_inference(enable_refiner, warmup=True)
 
     print("[I] Running StableDiffusion XL pipeline")
     if args.nvtx_profile:
         cudart.cudaProfilerStart()
-    images, pipeline_time = run_sd_xl_inference(args.enable_refiner, warmup=False)
+    images, pipeline_time = run_sd_xl_inference(enable_refiner, warmup=False)
     if args.nvtx_profile:
         cudart.cudaProfilerStop()
 
     base.teardown()
 
-    if args.enable_refiner:
+    if enable_refiner:
         print("|------------|--------------|")
         print("| {:^10} | {:>9.2f} ms |".format("e2e", pipeline_time))
         print("|------------|--------------|")
         refiner.teardown()
+
+
+if __name__ == "__main__":
+    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+    args = parse_arguments(is_xl=True, description="Options for Stable Diffusion XL Demo")
+
+    run_xl_demo(args)

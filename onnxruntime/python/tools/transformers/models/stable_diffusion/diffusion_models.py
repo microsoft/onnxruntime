@@ -24,7 +24,7 @@
 import logging
 import os
 import tempfile
-from typing import List, Optional, Dict, Tuple
+from typing import Dict, List, Optional
 
 import onnx
 import onnx_graphsurgeon as gs
@@ -272,7 +272,7 @@ class BaseModel:
         if isinstance(sample_input[-1], dict) and "added_cond_kwargs" in sample_input[-1]:
             platten_input = sample_input[:-1]
             kwargs = sample_input[-1]["added_cond_kwargs"]
-            for key, value in kwargs.items():
+            for _key, value in kwargs.items():
                 platten_input += (value,)
             sample_input = platten_input
 

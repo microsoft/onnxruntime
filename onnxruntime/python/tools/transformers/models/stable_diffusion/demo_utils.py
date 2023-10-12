@@ -158,12 +158,6 @@ def parse_arguments(is_xl: bool, description: str):
         "--build-all-tactics", action="store_true", help="Build TensorRT engines using all tactic sources."
     )
 
-    # Pipeline options
-    if is_xl:
-        parser.add_argument(
-            "--enable-refiner", action="store_true", help="Enable refiner and run both base and refiner pipelines."
-        )
-
     args = parser.parse_args()
 
     if (

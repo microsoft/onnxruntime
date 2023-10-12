@@ -378,9 +378,6 @@ class StableDiffusionPipeline:
 
             noise_pred = self.run_engine(denoiser, params)["latent"]
 
-            if self.pipeline_info.is_sd_xl_refiner() and step_index in [0, 29] and not warmup:
-                print("noise_pred after unet", noise_pred)
-
             if self.nvtx_profile:
                 nvtx.end_range(nvtx_unet)
 
@@ -396,9 +393,6 @@ class StableDiffusionPipeline:
                 latents = self.scheduler.step(noise_pred, timestep, latents, return_dict=False)[0]
             else:
                 latents = self.scheduler.step(noise_pred, latents, step_offset + step_index, timestep)
-
-            if self.pipeline_info.is_sd_xl_refiner() and step_index in [0, 29] and not warmup:
-                print("latents after scheduler", latents)
 
             if self.nvtx_profile:
                 nvtx.end_range(nvtx_latent_step)
