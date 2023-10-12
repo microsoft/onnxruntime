@@ -123,11 +123,11 @@
 
                                     <p>To run on the edge, four of the models can be exported to ONNX format from HuggingFace.</p>
 
-                                    <code><pre>
+                                    <pre><code class="language-python">
 from optimum.onnxruntime import ORTStableDiffusionPipeline
 pipeline = ORTStableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", export=True)
 pipeline.save_pretrained("./onnx-stable-diffusion")
-                                    </pre></code>
+                                    </code></pre>
 
                                     <p>You don’t have to export the fifth model, ClipTokenizer, as it is available in <a href="https://onnxruntime.ai/docs/extensions">ONNX Runtime extensions</a>, a library for pre and post processing PyTorch models.</p>
 
@@ -349,6 +349,7 @@ func trainStep(inputData: [Data], labels: [Int64]) throws  {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/js/bootstrap.min.js"
 	integrity="sha512-7rusk8kGPFynZWu26OKbTeI+QPoYchtxsmPeBqkHIEXJxeun4yJ4ISYe7C6sz9wdxeE1Gk3VxsIWgCZTc+vX3g=="
 	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="../js/custom.js"></script>
     <script src="../js/prism.js"></script>
 
 </body>
