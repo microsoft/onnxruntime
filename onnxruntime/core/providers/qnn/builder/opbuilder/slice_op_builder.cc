@@ -44,9 +44,6 @@ Status SliceOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const 
 
   // Opset < 10: Only has 1 data input. The starts, ends, and axes values are attributes.
   // Opset >= 10: Everything is an input. The data, starts, and ends inputs are required.
-
-  ORT_RETURN_IF(node_unit.SinceVersion() >= 10 && input_count < 3);
-
   if (input_count > 1) {
     // Skip the first input. All other input need to be initializer
     for (size_t i = 1; i < input_count; i++) {
