@@ -93,6 +93,12 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         endProfilingCallbacks.shift()![0]();
       }
       break;
+    case 'is-ort-env-initialized':
+      if (ev.data.err) {
+        isOrtEnvInitializedCallbacks.shift()![1](ev.data.err);
+      } else {
+        isOrtEnvInitializedCallbacks.shift()![0](ev.data.out!);
+      }
     default:
   }
 };
