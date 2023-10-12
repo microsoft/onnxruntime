@@ -542,7 +542,7 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(GetDeviceForSessionInput, _In_ OrtSession* session, _In_ const char* input, _Out_ ID3D12Device** device) {
+ORT_API_STATUS_IMPL(OrtGetDeviceForSessionInput, _In_ OrtSession* session, _In_ const char* input, _Out_ ID3D12Device** device) {
   API_IMPL_BEGIN
   *device = nullptr;
 #ifdef USE_DML
@@ -552,7 +552,7 @@ ORT_API_STATUS_IMPL(GetDeviceForSessionInput, _In_ OrtSession* session, _In_ con
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(GetDeviceForSessionOutput, _In_ OrtSession* session, _In_ const char* output, _Out_ ID3D12Device** device) {
+ORT_API_STATUS_IMPL(OrtGetDeviceForSessionOutput, _In_ OrtSession* session, _In_ const char* output, _Out_ ID3D12Device** device) {
   API_IMPL_BEGIN
   *device = nullptr;
 #ifdef USE_DML
