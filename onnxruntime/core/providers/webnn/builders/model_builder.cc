@@ -139,6 +139,9 @@ Status ModelBuilder::RegisterInitializers() {
       }
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+        case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+          desc.set("type", emscripten::val("uint8"));
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                                reinterpret_cast<uint8_t*>(tensor_ptr))};
           break;
@@ -294,6 +297,8 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint8_t),
                                                            reinterpret_cast<const uint8_t*>(dest))};
       break;

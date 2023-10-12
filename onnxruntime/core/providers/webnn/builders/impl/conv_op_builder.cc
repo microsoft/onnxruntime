@@ -183,6 +183,11 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   size_t element_size{0};
   switch (data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      element_size = sizeof(uint8_t);
+      break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       element_size = sizeof(uint16_t);
       break;
@@ -257,7 +262,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& weight_name = input_defs[1]->Name();
   emscripten::val options = emscripten::val::object();
   ORT_RETURN_IF_ERROR(SetConvBaseOptions(model_builder, node, options, strides, dilations, pads, logger));
-  if (op_type == "Conv") {
+  if (op_type == "Conv" || op_type == "ConvInteger") {
     int groups = options["groups"].as<int>();
     std::vector<int64_t> input_shape;
     ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
@@ -271,9 +276,25 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         options.set("filterLayout", emscripten::val("ihwo"));
       }
     }
-    emscripten::val filter = model_builder.GetOperand(input_defs[1]->Name());
+    emscripten::val filter = model_builder.GetOperand(weight);
+    if (op_type == "Conv")
+      output = model_builder.GetBuilder().call<emscripten::val>("conv2d", input, filter, options);
+    else {
+      emscripten::val x_zero_point = emscripten::val::null();
+      emscripten::val w_zero_point = emscripten::val::null();
+      if (input_defs.size() >= 3) {
+        x_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
+      } else {
+        x_zero_point = model_builder.GetBuilder().call<emscripten::val>("constant", emscripten::val("float32"), 0);
+      }
+      if (input_defs.size() >= 4) {
+        w_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
+      } else {
+        w_zero_point = model_builder.GetBuilder().call<emscripten::val>("constant", emscripten::val("float32"), 0);
+      }
+      output = model_builder.GetBuilder().call<emscripten::val>("conv2dInteger", input, x_zero_point, filter, w_zero_point, options);
+    }
 
-    output = model_builder.GetBuilder().call<emscripten::val>("conv2d", input, filter, options);
   } else {
     if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
       options.set("inputLayout", emscripten::val("nhwc"));
@@ -341,6 +362,7 @@ void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
   static std::vector<std::string> op_types =
       {
           "Conv",
+          "ConvInteger",
           "ConvTranspose",
       };
 

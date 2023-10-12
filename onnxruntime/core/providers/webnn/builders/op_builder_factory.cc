@@ -72,11 +72,17 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Conv
     CreateConvOpBuilder("Conv", op_registrations);
+    CreateConvOpBuilder("ConvInteger", op_registrations);
     CreateConvOpBuilder("ConvTranspose", op_registrations);
   }
 
   {  // Concat
     CreateConcatOpBuilder("Concat", op_registrations);
+  }
+
+  {  // Quantize/Dequantize
+    CreateDynamicQuantizeLinearOpBuilder("DynamicQuantizeLinear", op_registrations);
+    CreateDequantizeLinearOpBuilder("DequantizeLinear", op_registrations);
   }
 
   {  // Expand
@@ -94,6 +100,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {  // Gemm/MatMul
     CreateGemmOpBuilder("Gemm", op_registrations);
     CreateGemmOpBuilder("MatMul", op_registrations);
+    CreateGemmOpBuilder("MatMulInteger", op_registrations);
   }
 
   {  // Logical

@@ -98,6 +98,8 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
   }
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       scalar = emscripten::val{*reinterpret_cast<uint8_t*>(unpacked_tensor.data())};
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
@@ -145,9 +147,12 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Clip", {"clamp", true}},
     {"Concat", {"concat", true}},
     {"Conv", {"conv2d", true}},
+    {"ConvInteger", {"conv2dInteger", false}},
     {"ConvTranspose", {"convTranspose2d", true}},
     {"Cos", {"cos", false}},
     {"Div", {"div", true}},
+    {"DequantizeLinear", {"dequantizeLinear", false}},
+    {"DynamicQuantizeLinear", {"dynamicQuantizeLinear", false}},
     {"Elu", {"elu", true}},
     {"Equal", {"equal", false}},
     {"Erf", {"erf", false}},
@@ -174,6 +179,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Log", {"log", false}},
     {"LpPool", {"l2Pool2d", false}},
     {"MatMul", {"matmul", false}},
+    {"MatMulInteger", {"matmulInteger", false}},
     {"Max", {"max", true}},
     {"MaxPool", {"maxPool2d", true}},
     {"Min", {"min", true}},
@@ -240,8 +246,10 @@ constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 1> supported_cpu_data
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
 };
 
-constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 7> supported_gpu_data_types = {
+constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 9> supported_gpu_data_types = {
     ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+    ONNX_NAMESPACE::TensorProto_DataType_INT8,
+    ONNX_NAMESPACE::TensorProto_DataType_UINT8,
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
     ONNX_NAMESPACE::TensorProto_DataType_INT32,
