@@ -234,7 +234,7 @@ namespace onnxruntime
         var.add(epsilon);
         var.sqrt();
         scale.div(var); // this is the temp
-        matmulB.scale_to_axis(scale, 1);
+        matmulB.scale_by_axis(scale, 1, true);
 
         mean.mul(scale);
         bias.sub(mean);
