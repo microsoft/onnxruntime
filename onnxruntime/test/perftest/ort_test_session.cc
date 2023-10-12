@@ -144,7 +144,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       }
       auto pos = token.find("|");
       if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-        ORT_THROW("[ERROR] [CUDA] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+        ORT_THROW(
+            "[ERROR] [CUDA] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
       }
 
       auto key = token.substr(0, pos);

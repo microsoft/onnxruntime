@@ -2,6 +2,8 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
+#include <utility>
+
 #include "conv_transpose.h"
 #include "core/providers/cuda/tensor/transpose.h"
 
@@ -19,23 +21,13 @@ namespace cuda {
 
 // Op Set 11 for ConvTranspose only update document to clarify default dilations and strides value.
 // which are already covered by op set 11 cpu version, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                             \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      ConvTranspose,                                                                       \
-      DOMAIN,                                                                              \
-      1, 10,                                                                               \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T, NHWC>);                                                             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      ConvTranspose,                                                                       \
-      DOMAIN,                                                                              \
-      11,                                                                                  \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T, NHWC>);
+#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                                                       \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                           \
+      ConvTranspose, DOMAIN, 1, 10, T, kCudaExecutionProvider,                                                       \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), ConvTranspose<T, NHWC>);  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(ConvTranspose, DOMAIN, 11, T, kCudaExecutionProvider,                                \
+                                (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+                                ConvTranspose<T, NHWC>);
 
 REGISTER_KERNEL_TYPED(float, kOnnxDomain, false)
 REGISTER_KERNEL_TYPED(double, kOnnxDomain, false)
@@ -52,8 +44,8 @@ Status ConvTranspose<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
 }
 
 template <typename T, bool NHWC>
-Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                                       bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
+Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed,
+                                       [[maybe_unused]] PrePackedWeights* prepacked_weights) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
   if (NHWC) {  // InputTensors::IN_W
@@ -63,15 +55,10 @@ Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, Allo
 
       InlinedVector<size_t> perm{0, 2, 3, 1};
       gsl::span<size_t> permutation(perm.data(), 4);
-      TensorShapeVector new_dims{orig_shape[0],
-                                 orig_shape[2],
-                                 orig_shape[3],
-                                 orig_shape[1]};
+      TensorShapeVector new_dims{orig_shape[0], orig_shape[2], orig_shape[3], orig_shape[1]};
       W_ = Tensor::Create(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
 
-      auto status = cuda::Transpose::DoTranspose(GetDeviceProp(),
-                                                 DefaultCudaStream(),
-                                                 DefaultCublasHandle(),
+      auto status = cuda::Transpose::DoTranspose(GetDeviceProp(), DefaultCudaStream(), DefaultCublasHandle(),
                                                  permutation, tensor, *W_);
 
       if (!status.IsOK()) {
@@ -126,8 +113,7 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
     bool input_dims_changed = (s_.last_x_dims.AsShapeVector() != x_dims);
     bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);
     if (input_dims_changed || w_dims_changed) {
-      if (input_dims_changed)
-        s_.last_x_dims = gsl::make_span(x_dims);
+      if (input_dims_changed) s_.last_x_dims = gsl::make_span(x_dims);
 
       if (w_dims_changed) {
         s_.last_w_dims = gsl::make_span(w_dims);
@@ -135,7 +121,8 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
       }
 
       ConvTransposeAttributes::Prepare p;
-      ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding, &w_shape, NHWC));
+      ORT_RETURN_IF_ERROR(
+          conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding, &w_shape, NHWC));
 
       auto y_dims = p.Y->Shape().AsShapeVector();
       if (x_dimensions == 3) {
@@ -150,12 +137,9 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
 
       if (w_dims_changed) {
         if (NHWC) {
-          ORT_RETURN_IF_ERROR(s_.w_desc.Set(CUDNN_TENSOR_NHWC,
-                                            CudnnTensor::GetDataType<CudaT>(),
-                                            static_cast<int>(w_dims[0]),
-                                            static_cast<int>(w_dims[3]),
-                                            static_cast<int>(w_dims[1]),
-                                            static_cast<int>(w_dims[2])));
+          ORT_RETURN_IF_ERROR(s_.w_desc.Set(CUDNN_TENSOR_NHWC, CudnnTensor::GetDataType<CudaT>(),
+                                            static_cast<int>(w_dims[0]), static_cast<int>(w_dims[3]),
+                                            static_cast<int>(w_dims[1]), static_cast<int>(w_dims[2])));
         } else {
           ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
         }
@@ -170,15 +154,11 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
       }
       if (NHWC) {
         ORT_RETURN_IF_ERROR(s_.x_tensor.Set(CUDNN_TENSOR_NHWC, CudnnTensor::GetDataType<CudaT>(),
-                                            static_cast<int>(x_dims[0]),
-                                            static_cast<int>(x_dims[3]),
-                                            static_cast<int>(x_dims[1]),
-                                            static_cast<int>(x_dims[2])));
+                                            static_cast<int>(x_dims[0]), static_cast<int>(x_dims[3]),
+                                            static_cast<int>(x_dims[1]), static_cast<int>(x_dims[2])));
         ORT_RETURN_IF_ERROR(s_.y_tensor.Set(CUDNN_TENSOR_NHWC, CudnnTensor::GetDataType<CudaT>(),
-                                            static_cast<int>(y_dims[0]),
-                                            static_cast<int>(y_dims[3]),
-                                            static_cast<int>(y_dims[1]),
-                                            static_cast<int>(y_dims[2])));
+                                            static_cast<int>(y_dims[0]), static_cast<int>(y_dims[3]),
+                                            static_cast<int>(y_dims[1]), static_cast<int>(y_dims[2])));
       } else {
         ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims, CudnnTensor::GetDataType<CudaT>()));
         ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
@@ -186,8 +166,8 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations,
-                                           gsl::narrow_cast<int>(conv_transpose_attrs_.group),
-                                           mode, CudnnTensor::GetDataType<CudaT>()));
+                                           gsl::narrow_cast<int>(conv_transpose_attrs_.group), mode,
+                                           CudnnTensor::GetDataType<CudaT>()));
 
       if (has_bias) {
         const auto& b_shape = p.B->Shape();
@@ -195,8 +175,7 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
         TensorShapeVector b_dims(2 + p.kernel_shape.size());
         b_dims[0] = 1;                      // N
         b_dims[NHWC ? 3 : 1] = b_shape[0];  // C
-        for (size_t i = 0; i < p.kernel_shape.size(); i++)
-          b_dims[(NHWC ? 1 : 2) + i] = 1;
+        for (size_t i = 0; i < p.kernel_shape.size(); i++) b_dims[(NHWC ? 1 : 2) + i] = 1;
 
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>(), NHWC));
       }
@@ -204,7 +183,8 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
       y_data = reinterpret_cast<CudaT*>(p.Y->MutableData<T>());
 
       if (!s_.cached_benchmark_results.contains(x_dims)) {
-        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize, context->GetComputeStream());
+        IAllocatorUniquePtr<void> algo_search_workspace =
+            GetScratchBuffer<void>(AlgoSearchWorkspaceSize, context->GetComputeStream());
 
         // set math type to tensor core before algorithm search
         if constexpr (std::is_same<T, MLFloat16>::value)
@@ -213,19 +193,8 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
         cudnnConvolutionBwdDataAlgoPerf_t perf;
         int algo_count = 1;
         CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
-            GetCudnnHandle(context),
-            s_.w_desc,
-            w_data,
-            s_.x_tensor,
-            x_data,
-            s_.conv_desc,
-            s_.y_tensor,
-            y_data,
-            1,
-            &algo_count,
-            &perf,
-            algo_search_workspace.get(),
-            AlgoSearchWorkspaceSize));
+            GetCudnnHandle(context), s_.w_desc, w_data, s_.x_tensor, x_data, s_.conv_desc, s_.y_tensor, y_data, 1,
+            &algo_count, &perf, algo_search_workspace.get(), AlgoSearchWorkspaceSize));
         s_.cached_benchmark_results.insert(x_dims, {perf.algo, perf.memory, perf.mathType});
       }
 
@@ -256,26 +225,15 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
 
     IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, context->GetComputeStream());
 
-    CUDNN_RETURN_IF_ERROR(
-        cudnnConvolutionBackwardData(
-            GetCudnnHandle(context),
-            &alpha,
-            s_.w_desc,
-            w_data,
-            s_.x_tensor,
-            x_data,
-            s_.conv_desc,
-            s_.algo,
-            workspace.get(),
-            s_.workspace_bytes,
-            &beta,
-            s_.y_tensor,
-            y_data));
+    CUDNN_RETURN_IF_ERROR(cudnnConvolutionBackwardData(GetCudnnHandle(context), &alpha, s_.w_desc, w_data, s_.x_tensor,
+                                                       x_data, s_.conv_desc, s_.algo, workspace.get(),
+                                                       s_.workspace_bytes, &beta, s_.y_tensor, y_data));
 
     if (has_bias) {
       const Tensor* B = dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2);
       auto b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
-      CUDNN_RETURN_IF_ERROR(cudnnAddTensor(GetCudnnHandle(context), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
+      CUDNN_RETURN_IF_ERROR(
+          cudnnAddTensor(GetCudnnHandle(context), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
     }
   }
 

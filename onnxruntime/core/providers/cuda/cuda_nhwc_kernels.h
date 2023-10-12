@@ -6,12 +6,8 @@
 
 #include "core/common/status.h"
 
-using namespace onnxruntime::common;
+namespace onnxruntime::cuda {
 
-namespace onnxruntime {
-namespace cuda {
+onnxruntime::common::Status RegisterCudaNhwcKernels(onnxruntime::KernelRegistry& kernel_registry);
 
-Status RegisterCudaNhwcKernels(KernelRegistry& kernel_registry);
-
-}  // namespace cuda
-}  // namespace onnxruntime
+}  // namespace onnxruntime::cuda

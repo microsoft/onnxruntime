@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"

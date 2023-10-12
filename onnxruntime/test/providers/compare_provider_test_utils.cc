@@ -193,7 +193,8 @@ void CompareOpTester::CompareEPs(const std::shared_ptr<IExecutionProvider>& sour
     // compare
     ASSERT_TRUE(source_fetches.size() == target_fetches.size());
     for (size_t i = 0; i < source_fetches.size(); i++) {
-      auto ret = CompareOrtValue(target_fetches[i], source_fetches[i], per_sample_tolerance, relative_per_sample_tolerance, false);
+      auto ret = CompareOrtValue(target_fetches[i], source_fetches[i], per_sample_tolerance,
+                                 relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }

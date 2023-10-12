@@ -2,6 +2,8 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
+#include <utility>
+
 #include "core/providers/cuda/nn/conv.h"
 #include "core/common/span_utils.h"
 #include "core/providers/cuda/cuda_common.h"

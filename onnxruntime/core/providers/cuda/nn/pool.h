@@ -22,7 +22,7 @@ class Pool : public CudaKernel, public PoolBase {
 template <typename T, bool NHWC>
 class Pool<T, MaxPool<8>, NHWC> final : public Pool<T, MaxPool<1>, NHWC> {
  public:
-  Pool(const OpKernelInfo& info) : Pool<T, MaxPool<1>, NHWC>(info) {}
+  explicit Pool(const OpKernelInfo& info) : Pool<T, MaxPool<1>, NHWC>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };

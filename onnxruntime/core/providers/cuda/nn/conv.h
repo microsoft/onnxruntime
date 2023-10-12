@@ -4,11 +4,13 @@
 
 #pragma once
 
+#include <list>
+#include <memory>
+
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
-#include <list>
 
 namespace onnxruntime {
 

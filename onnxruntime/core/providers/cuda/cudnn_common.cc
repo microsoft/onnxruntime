@@ -2,7 +2,9 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
-#include "cudnn_common.h"
+#include <utility>
+
+#include "core/providers/cuda/cudnn_common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/gsl.h"
 #include "shared_inc/cuda_call.h"

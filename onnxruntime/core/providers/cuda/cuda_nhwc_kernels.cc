@@ -4,13 +4,14 @@
 
 #ifdef ENABLE_CUDA_NHWC_OPS
 
+#include <utility>
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_fwd.h"
 
 #include "core/providers/cuda/cuda_nhwc_kernels.h"
 
-namespace onnxruntime {
-namespace cuda {
+namespace onnxruntime::cuda {
 
 // When adding new supported NHWC operations make sure to also integrate them into: ConvertNodeLayout
 // in onnxruntime/core/optimizer/layout_transformation/layout_transformation.cc
@@ -164,6 +165,5 @@ Status RegisterCudaNhwcKernels(KernelRegistry& kernel_registry) {
   }
   return Status::OK();
 }
-}  // namespace cuda
-}  // namespace onnxruntime
+}  // namespace onnxruntime::cuda
 #endif

@@ -3,6 +3,9 @@
 // Licensed under the MIT License.
 
 #include <vector>
+#include <utility>
+#include <memory>
+
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/common.h"
 
