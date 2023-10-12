@@ -231,5 +231,8 @@ bool IsSupportedDataType(const int32_t data_type, const WebnnDeviceType device_t
 bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
                                       std::vector<int64_t>& shape_b,
                                       const logging::Logger& logger);
+
+bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
+
 }  // namespace webnn
 }  // namespace onnxruntime
