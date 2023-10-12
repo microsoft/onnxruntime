@@ -90,12 +90,11 @@ export class ProgramManager {
 
       const kernelId = this.backend.currentKernelId!;
       const kernelInfo = this.backend.kernels.get(kernelId)!;
-      const kernelName = `[${kernelInfo[0]}] ${kernelInfo[1]}`;
 
       syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
         const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
-        const startTimeU64 = mappedData[0];
-        const endTimeU64 = mappedData[1];
+        const [startTimeU64, endTimeU64] = mappedData;
+        const [kernelType, kernelName] = kernelInfo;
 
         syncData.buffer.unmap();
 
@@ -119,8 +118,8 @@ export class ProgramManager {
             outputsMetadata: outputTensorViews.map(
                 value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
             kernelId,
-            kernelType: kernelInfo[0],
-            kernelName: kernelInfo[1],
+            kernelType,
+            kernelName,
             startTime,
             endTime,
           });
@@ -135,8 +134,8 @@ export class ProgramManager {
             outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
           });
           // eslint-disable-next-line no-console
-          console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
-              endTime - startTime} ns`);
+          console.log(`[profiling] kernel "${kernelId}|[${kernelType}] ${kernelName}" ${inputShapes}${
+              outputShapes}execution time: ${endTime - startTime} ns`);
         }
       });
     }
