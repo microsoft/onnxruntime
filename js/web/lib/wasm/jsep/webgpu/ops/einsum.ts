@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -260,10 +260,9 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
       }`;
   return {
     name: 'Einsum',
-    inputTypes: Array(inputs.length).fill(GpuDataType.default),
     shaderCache: {hint: einsumEquation.equation},
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
     }),
     getShaderSource,

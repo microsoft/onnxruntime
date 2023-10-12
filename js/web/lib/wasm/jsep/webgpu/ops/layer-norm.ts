@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
@@ -96,22 +96,20 @@ const createLayerNormProgramInfo =
     ${hasMeanDataOutput ? 'meanDataOutput[global_idx] = mean' : ''};
     ${hasInvStdOutput ? 'invStdOutput[global_idx] = 1 / meanSquare' : ''};
   }`;
-      const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
+      const outputs = [{dims: outputShape, dataType: inputs[0].dataType}];
       if (hasMeanDataOutput) {
         outputs.push(
-            {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+            {dims: meanInvStdDevDim, dataType: inputs[0].dataType},
         );
       }
       if (hasInvStdOutput) {
         outputs.push(
-            {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+            {dims: meanInvStdDevDim, dataType: inputs[0].dataType},
         );
       }
 
       return {
         name: 'LayerNormalization',
-        inputTypes: inputs.length === 2 ? [GpuDataType.default, GpuDataType.default] :
-                                          [GpuDataType.default, GpuDataType.default, GpuDataType.default],
         shaderCache: {hint: `${attributes.cacheKey}|${outputCount}|${inputs.length}`},
         getRunData: () => ({outputs, dispatchGroup: {x: Math.ceil(normCount / 64 /* workgroup size */)}}),
         getShaderSource,
