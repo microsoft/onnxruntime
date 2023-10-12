@@ -49,7 +49,17 @@
 		'VitisAI',
 		'XNNPACK'
 	];
-
+	// Training
+	const TrainingScenarios = ['Large Model Training', 'On-Device Training'];
+	const TrainingScenarioIds = ['ot_large_model', 'ot_on_device'];
+	const TrainingPlatforms = ['Linux', 'Windows', 'Mac', 'Android', 'iOS'];
+	const TrainingPlatformIds = ['ot_linux', 'ot_windows', 'ot_mac', 'ot_android', 'ot_ios'];
+	const TrainingAPIs = ['Python', 'C', 'C++', 'C#', 'Java', 'Obj-C'];
+	const TrainingAPIIds = ['ot_python', 'ot_c', 'ot_cplusplus', 'ot_csharp', 'ot_java', 'ot_objc'];
+	const Versions = ['CUDA 11.8', 'ROCm', 'CPU'];
+	const VersionIds = ['ot_CUDA118', 'ot_ROCm', 'ot_CPU'];
+	const Builds = ['Stable', 'Preview (Nightly)'];
+	const BuildIds = ['ot_stable', 'ot_nightly'];
 	onMount(() => {
 		var supportedOperatingSystemsNew = [
 			{ key: 'linux', value: 'linux' },
@@ -241,7 +251,7 @@
 			for (var i = 0; i < os.length; i++) {
 				//disable other selections once item in category selected
 				// if(os[i].id!=current_os && current_os!=''){
-				//     jq(os[i]).addClass("gray");
+				//     jq(os[i]).addClass("btn-disabled");
 				//     continue;
 				// }
 				var isvalidcombo = false;
@@ -257,7 +267,7 @@
 					}
 				}
 				if (isvalidcombo == false && os[i].id != current_os) {
-					jq(os[i]).addClass('gray');
+					jq(os[i]).addClass('btn-disabled');
 				}
 			}
 
@@ -265,7 +275,7 @@
 			for (var i = 0; i < language.length; i++) {
 				//disable other selections once item in category selected
 				//  if(language[i].id!=current_lang && current_lang!=''){
-				//     jq(language[i]).addClass("gray");
+				//     jq(language[i]).addClass("btn-disabled");
 				//      continue;
 				//   }
 				var isvalidcombo = false;
@@ -281,7 +291,7 @@
 					}
 				}
 				if (isvalidcombo == false && language[i].id != current_lang) {
-					jq(language[i]).addClass('gray');
+					jq(language[i]).addClass('btn-disabled');
 				}
 			}
 
@@ -289,7 +299,7 @@
 			for (var i = 0; i < architecture.length; i++) {
 				//disable other selections once item in category selected
 				//     if(architecture[i].id!=current_arch && current_arch!=''){
-				//         jq(architecture[i]).addClass("gray");
+				//         jq(architecture[i]).addClass("btn-disabled");
 				//         continue;
 				//     }
 				var isvalidcombo = false;
@@ -305,7 +315,7 @@
 					}
 				}
 				if (isvalidcombo == false && architecture[i].id != current_arch) {
-					jq(architecture[i]).addClass('gray');
+					jq(architecture[i]).addClass('btn-disabled');
 				}
 			}
 
@@ -313,7 +323,7 @@
 			for (var i = 0; i < hardwareAcceleration.length; i++) {
 				//disable other selections once item in category selected
 				//      if(hardwareAcceleration[i].id!=current_hw && current_hw!=''){
-				//       jq(hardwareAcceleration[i]).addClass("gray");
+				//       jq(hardwareAcceleration[i]).addClass("btn-disabled");
 				//       continue;
 				// }
 				var isvalidcombo = false;
@@ -332,7 +342,7 @@
 				}
 
 				if (isvalidcombo == false && hardwareAcceleration[i].id != current_hw) {
-					jq(hardwareAcceleration[i]).addClass('gray');
+					jq(hardwareAcceleration[i]).addClass('btn-disabled');
 				}
 			}
 		}
@@ -364,7 +374,7 @@
 					}
 				}
 				if (isvalidcombo == false && ot_scenario[i].id != current_scenario) {
-					jq(ot_scenario[i]).addClass('gray');
+					jq(ot_scenario[i]).addClass('btn-disabled');
 				}
 			}
 
@@ -372,7 +382,7 @@
 			for (var i = 0; i < ot_os.length; i++) {
 				//disable other selections once item in category selected
 				// if(ot_os[i].id!=current_os && current_os!=''){
-				//     jq(ot_os[i]).addClass("gray");
+				//     jq(ot_os[i]).addClass("btn-disabled");
 				//     continue;
 				// }
 				var isvalidcombo = false;
@@ -390,7 +400,7 @@
 					}
 				}
 				if (isvalidcombo == false && ot_os[i].id != current_os) {
-					jq(ot_os[i]).addClass('gray');
+					jq(ot_os[i]).addClass('btn-disabled');
 				}
 			}
 
@@ -398,7 +408,7 @@
 			for (var i = 0; i < ot_language.length; i++) {
 				//disable other selections once item in category selected
 				//  if(ot_language[i].id!=current_lang && current_lang!=''){
-				//     jq(ot_language[i]).addClass("gray");
+				//     jq(ot_language[i]).addClass("btn-disabled");
 				//      continue;
 				//   }
 				var isvalidcombo = false;
@@ -416,7 +426,7 @@
 					}
 				}
 				if (isvalidcombo == false && ot_language[i].id != current_lang) {
-					jq(ot_language[i]).addClass('gray');
+					jq(ot_language[i]).addClass('btn-disabled');
 				}
 			}
 
@@ -424,7 +434,7 @@
 			for (var i = 0; i < ot_architecture.length; i++) {
 				//      //disable other selections once item in category selected
 				// if(ot_architecture[i].id!=current_arch && current_arch!=''){
-				//     jq(ot_architecture[i]).addClass("gray");
+				//     jq(ot_architecture[i]).addClass("btn-disabled");
 				//     continue;
 				// }
 				var isvalidcombo = false;
@@ -442,7 +452,7 @@
 					}
 				}
 				if (isvalidcombo == false && ot_architecture[i].id != current_arch) {
-					jq(ot_architecture[i]).addClass('gray');
+					jq(ot_architecture[i]).addClass('btn-disabled');
 				}
 			}
 
@@ -450,7 +460,7 @@
 			for (var i = 0; i < ot_hardwareAcceleration.length; i++) {
 				//disable other selections once item in category selected
 				//      if(ot_hardwareAcceleration[i].id!=current_hw && current_hw!=''){
-				//       jq(ot_hardwareAcceleration[i]).addClass("gray");
+				//       jq(ot_hardwareAcceleration[i]).addClass("btn-disabled");
 				//       continue;
 				// }
 				var isvalidcombo = false;
@@ -469,7 +479,7 @@
 				}
 
 				if (isvalidcombo == false && ot_hardwareAcceleration[i].id != current_hw) {
-					jq(ot_hardwareAcceleration[i]).addClass('gray');
+					jq(ot_hardwareAcceleration[i]).addClass('btn-disabled');
 				}
 			}
 
@@ -490,7 +500,7 @@
 					}
 				}
 				if (isvalidcombo == false && ot_build[i].id != current_build) {
-					jq(ot_build[i]).addClass('gray');
+					jq(ot_build[i]).addClass('btn-disabled');
 				}
 			}
 		}
@@ -542,7 +552,7 @@
 
 			checkValidity();
 
-			//if full selection is valid, don't gray out other options
+			//if full selection is valid, don't btn-disabled out other options
 			if (
 				opts['os'] != '' &&
 				opts['architecture'] != '' &&
@@ -588,7 +598,7 @@
 
 			ot_checkValidity();
 
-			//if full selection is valid, don't gray out other options
+			//if full selection is valid, don't btn-disabled out other options
 			if (
 				ot_opts['scenario'] != '' &&
 				ot_opts['os'] != '' &&
@@ -604,37 +614,37 @@
 
 		function resetOptions() {
 			for (var i = 0; i < os.length; i++) {
-				jq(os[i]).removeClass('gray');
+				jq(os[i]).removeClass('btn-disabled');
 			}
 			for (var i = 0; i < language.length; i++) {
-				jq(language[i]).removeClass('gray');
+				jq(language[i]).removeClass('btn-disabled');
 			}
 			for (var i = 0; i < architecture.length; i++) {
-				jq(architecture[i]).removeClass('gray');
+				jq(architecture[i]).removeClass('btn-disabled');
 			}
 			for (var i = 0; i < hardwareAcceleration.length; i++) {
-				jq(hardwareAcceleration[i]).removeClass('gray');
+				jq(hardwareAcceleration[i]).removeClass('btn-disabled');
 			}
 		}
 
 		function ot_resetOptions() {
 			for (var i = 0; i < ot_os.length; i++) {
-				jq(ot_os[i]).removeClass('gray');
+				jq(ot_os[i]).removeClass('btn-disabled');
 			}
 			for (var i = 0; i < ot_scenario.length; i++) {
-				jq(ot_scenario[i]).removeClass('gray');
+				jq(ot_scenario[i]).removeClass('btn-disabled');
 			}
 			for (var i = 0; i < ot_language.length; i++) {
-				jq(ot_language[i]).removeClass('gray');
+				jq(ot_language[i]).removeClass('btn-disabled');
 			}
 			for (var i = 0; i < ot_architecture.length; i++) {
-				jq(ot_architecture[i]).removeClass('gray');
+				jq(ot_architecture[i]).removeClass('btn-disabled');
 			}
 			for (var i = 0; i < ot_hardwareAcceleration.length; i++) {
-				jq(ot_hardwareAcceleration[i]).removeClass('gray');
+				jq(ot_hardwareAcceleration[i]).removeClass('btn-disabled');
 			}
 			for (var i = 0; i < ot_build.length; i++) {
-				jq(ot_build[i]).removeClass('gray');
+				jq(ot_build[i]).removeClass('btn-disabled');
 			}
 			ot_defaultSelection = false;
 		}
@@ -794,6 +804,7 @@
 			jq('#ot_command').removeClass('valid');
 			jq('#ot_command').removeClass('invalid');
 
+			console.log(key)
 			if (
 				ot_opts['ot_os'] == '' ||
 				ot_opts['ot_scenario'] == '' ||
@@ -1111,19 +1122,19 @@
 				"Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
 			'windows,Java,X64,DNNL':
-				"Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+				"Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
 			'windows,Java,X64,OpenVINO':
-				"Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+				"Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
 			'linux,Java,X64,TensorRT':
 				"Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
 			'linux,Java,X64,DNNL':
-				"Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+				"Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
 			'linux,Java,X64,OpenVINO':
-				"Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+				"Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
 			'android,C-API,ARM64,NNAPI':
 				"Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
@@ -1333,11 +1344,6 @@
 			'mac,Java,ARM64,CoreML':
 				"Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
 
-			'mac,C-API,ARM64,CoreML':
-				"Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'mac,Python,ARM64,DefaultCPU': 'pip install onnxruntime',
-
 			'mac,Python,ARM64,DefaultCPU': 'pip install onnxruntime',
 
 			'mac,Java,ARM64,DefaultCPU':
@@ -1481,6 +1487,7 @@
 			SPACE: 32,
 			UP: 38
 		};
+
 		window.addEventListener('load', function () {
 			var radiobuttons = document.querySelectorAll('[role=option]');
 			for (var i = 0; i < radiobuttons.length; i++) {
@@ -1798,6 +1805,8 @@
 			});
 		});
 	});
+	let tabs = ['Optimize Inferencing', 'Optimize Training'];
+	let activeTab = 0;
 </script>
 
 <section class="pb-4" id="getStartedTable">
@@ -1825,31 +1834,29 @@
 		<br />ONNX Runtime supports a variety of hardware and architectures to fit any need.
 	</p>
 	<div>
-		<!-- <div class="nav flex" role="tablist">
-			<li
-				class="nav-item mr-1 active"
-				id="OI_tab"
-				data-toggle="pill"
-				aria-selected="true"
-				role="tab"
-				tabindex="0"
-				aria-controls="panel1"
-			>
-				Optimize Inferencing
-			</li>
-			<li
-				class="nav-item"
-				id="OT_tab"
-				data-toggle="pill"
-				aria-selected="false"
-				aria-controls="panel2"
-				role="tab"
-				tabindex="0"
-			>
-				Optimize Training
-			</li>
-		</div> -->
-		<div id="panel1" aria-labelledby="tab1" role="tabpanel" aria-hidden="false">
+		<div class="tabs">
+			{#each tabs as tab, index}
+				<li
+					class="nav-item tab tab-bordered tab-lg"
+					class:tab-active={activeTab == index}
+					on:click={() => (activeTab = index)}
+					id={index == 0 ? 'OI_tab' : 'OT_tab'}
+					data-toggle="pill"
+					aria-controls="panel{index}"
+					tabindex={0}
+					role="tab"
+				>
+					{tab}
+				</li>
+			{/each}
+		</div>
+		<div
+			class:hidden={activeTab != 0}
+			id="panel1"
+			aria-labelledby="tab1"
+			role="tabpanel"
+			aria-hidden="false"
+		>
 			<div class="grid grid-cols-5 gap-4 container mx-auto p-5">
 				<div class="col-span-1 bg-success rounded p-2">
 					<div class="r-heading text-xl">
@@ -1865,21 +1872,21 @@
 						aria-labelledby="selectOS"
 						aria-describedby="decriptionOS"
 					>
-							{#each platforms as platform, i}
-								<input
-									class="r-option version btn rounded"
-									role="option"
-									aria-selected="false"
-									type="radio"
-									name="platform"
-									value={platform}
-									aria-label={platform}
-									id={platformIDs[i]}
-								/>
-							{/each}
+						{#each platforms as platform, i}
+							<input
+								class="r-option version btn rounded"
+								role="option"
+								aria-selected="false"
+								type="radio"
+								name="platform"
+								value={platform}
+								aria-label={platform}
+								id={platformIDs[i]}
+							/>
+						{/each}
 					</div>
 				</div>
-                
+
 				<div class="col-span-1 bg-success rounded p-2 text-xl">
 					<div class="r-heading">
 						<h3 id="selectLanguage">API</h3>
@@ -1891,20 +1898,21 @@
 						role="listbox"
 						id="listbox-2"
 						aria-labelledby="selectLanguage"
-						aria-describedby="decriptionLanguage" 
-                        class="r-content language grid grid-cols-8 gap-4">
-							{#each apis as api, i}
-								<input
-									class="r-option btn rounded w-full"
-									role="option"
-									aria-selected="false"
-									type="radio"
-									name="api"
-									value={api}
-									aria-label={api}
-									id={apiIDs[i]}
-								/>
-							{/each}
+						aria-describedby="decriptionLanguage"
+						class="r-content language grid grid-cols-8 gap-4"
+					>
+						{#each apis as api, i}
+							<input
+								class="r-option btn rounded w-full"
+								role="option"
+								aria-selected="false"
+								type="radio"
+								name="api"
+								value={api}
+								aria-label={api}
+								id={apiIDs[i]}
+							/>
+						{/each}
 					</div>
 				</div>
 				<div class="col-span-1 bg-success rounded p-2 text-xl">
@@ -1915,24 +1923,24 @@
 				</div>
 				<div class="col-span-4">
 					<div
-						class="r-content architecture grid grid-cols-5 gap-4 "
+						class="r-content architecture grid grid-cols-5 gap-4"
 						role="listbox"
 						id="listbox-3"
 						aria-labelledby="selectArchitecture"
 						aria-describedby="decriptionArchitecture"
 					>
-							{#each architectures as architecture, i}
-								<input
-									class="r-option join-item btn rounded"
-									role="option"
-									aria-selected="false"
-									type="radio"
-									name="architecture"
-									value={architecture}
-									aria-label={architecture}
-									id={architecturesIDs[i]}
-								/>
-							{/each}
+						{#each architectures as architecture, i}
+							<input
+								class="r-option join-item btn rounded"
+								role="option"
+								aria-selected="false"
+								type="radio"
+								name="architecture"
+								value={architecture}
+								aria-label={architecture}
+								id={architecturesIDs[i]}
+							/>
+						{/each}
 					</div>
 				</div>
 				<div class="col-span-1 bg-success rounded p-2 text-xl">
@@ -1951,255 +1959,190 @@
 						aria-labelledby="selectHardwareAcceleration"
 						aria-describedby="decriptionHardwareAcceleration"
 					>
-							{#each hardwareAcceleration as hardware, i}
-								<input
-									class="r-option version join-item btn rounded"
-									role="option"
-									aria-selected="false"
-									type="radio"
-									name="hardware"
-									value={hardware}
-									aria-label={hardware}
-									id={hardwareAccelerationIDs[i]}
-								/>
-							{/each}
+						{#each hardwareAcceleration as hardware, i}
+							<input
+								class="r-option version join-item btn rounded"
+								role="option"
+								aria-selected="false"
+								type="radio"
+								name="hardware"
+								value={hardware}
+								aria-label={hardware}
+								id={hardwareAccelerationIDs[i]}
+							/>
+						{/each}
 					</div>
 				</div>
 				<div class="col-span-1 r-heading bg-success rounded p-2 text-xl">
 					<h3 id="selectRunCommand">Installation Instructions</h3>
 				</div>
 				<div class="col-span-4 r-content bg-base-300 rounded">
-					<div class="command-container p-2" id="command" role="status">
+					<div class="command-container p-4" id="command" role="status">
 						<span class=""> Please select a combination of resources </span>
 					</div>
 				</div>
 			</div>
 		</div>
 
-		<!-- <div
+		<div
 			id="panel2"
-			class="flex flex-col"
+			class="grid grid-cols-5 gap-4 container mx-auto p-5"
 			aria-labelledby="tab2"
 			role="tabpanel"
 			aria-hidden="true"
+			class:hidden={activeTab != 1}
 		>
-			<div class="flex ml-0">
-				<div class="flex">
-					<div class="flex flex-col mb-1 mb-md-0 mr-0">
-						<div class="r-heading">
-							<h3 id="ot_selectScenario">Scenario</h3>
-							<p id="ot_decriptionScenario" class="sr-only">Scenario list contains two items</p>
-						</div>
-						<div
-							class="r-content pr-0 pl-4"
-							role="listbox"
-							id="ot_listbox-4"
-							aria-labelledby="ot_selectScenario"
-							aria-describedby="ot_decriptionScenario"
-						>
-							<div class="ot_scenario flex flex-col">
-								<div
-									class="version"
-									role="option"
-									tabindex="0"
-									aria-selected="true"
-									id="ot_large_model"
-								>
-									<span><abbr>Large Model Training</abbr></span>
-								</div>
-								<div
-									class="version"
-									role="option"
-									tabindex="-1"
-									aria-selected="false"
-									id="ot_on_device"
-								>
-									<span><abbr>On-Device Training</abbr></span>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div class="flex flex-col mb-1 mb-md-0 mr-0">
-						<div class="r-heading">
-							<h3 id="ot_selectOS">Platform</h3>
-							<p id="ot_decriptionOS" class="sr-only">Platform list contains five items</p>
-						</div>
-						<div
-							class="r-content pr-0 pl-4"
-							role="listbox"
-							id="ot_listbox-1"
-							aria-labelledby="ot_selectOS"
-							aria-describedby="ot_decriptionOS"
-						>
-							<div class="ot_os flex flex-col">
-								<div class="r-option" role="option" tabindex="0" aria-selected="true" id="ot_linux">
-									<span>Linux</span>
-								</div>
-								<div
-									class="r-option"
-									role="option"
-									tabindex="0"
-									aria-selected="true"
-									id="ot_windows"
-								>
-									<span>Windows</span>
-								</div>
-								<div class="r-option" role="option" tabindex="0" aria-selected="true" id="ot_mac">
-									<span>Mac</span>
-								</div>
-								<div
-									class="r-option"
-									role="option"
-									tabindex="0"
-									aria-selected="true"
-									id="ot_android"
-								>
-									<span>Android</span>
-								</div>
-								<div class="r-option" role="option" tabindex="0" aria-selected="true" id="ot_ios">
-									<span>iOS</span>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div class="flex flex-col mb-1 mb-md-0 mr-0">
-						<div class="r-heading">
-							<h3 id="ot_selectLanguage">API</h3>
-							<p id="ot_decriptionLanguage" class="sr-only">API list contains six items</p>
-						</div>
-						<div
-							class="r-content pr-0 pl-4"
-							role="listbox"
-							id="ot_listbox-2"
-							aria-labelledby="ot_selectLanguage"
-							aria-describedby="ot_decriptionLanguage"
-						>
-							<div class="ot_language flex flex-col">
-								<div
-									class="r-option"
-									role="option"
-									tabindex="0"
-									aria-selected="true"
-									id="ot_python"
-								>
-									<span>Python</span>
-								</div>
-								<div class="r-option" role="option" tabindex="0" aria-selected="true" id="ot_c">
-									<span>C</span>
-								</div>
-								<div
-									class="r-option"
-									role="option"
-									tabindex="0"
-									aria-selected="true"
-									id="ot_cplusplus"
-								>
-									<span>C++</span>
-								</div>
-								<div
-									class="r-option"
-									role="option"
-									tabindex="0"
-									aria-selected="true"
-									id="ot_csharp"
-								>
-									<span>C#</span>
-								</div>
-								<div class="r-option" role="option" tabindex="0" aria-selected="true" id="ot_java">
-									<span>Java</span>
-								</div>
-								<div class="r-option" role="option" tabindex="0" aria-selected="true" id="ot_objc">
-									<span>Obj-C</span>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div class="flex flex-col mb-1 mb-md-0 mr-0">
-						<div class="r-heading">
-							<h3 id="ot_selectHardwareAcceleration">Hardware Acceleration</h3>
-							<p id="ot_decriptionHardwareAcceleration" class="sr-only">
-								Hardware Acceleration list contains three items
-							</p>
-						</div>
-						<div
-							class="r-content pr-0 pl-4"
-							role="listbox"
-							id="ot_listbox-4"
-							aria-labelledby="ot_selectHardwareAcceleration"
-							aria-describedby="ot_decriptionHardwareAcceleration"
-						>
-							<div class="ot_hardwareAcceleration flex flex-col">
-								<div
-									class="version"
-									role="option"
-									tabindex="0"
-									aria-selected="true"
-									id="ot_CUDA118"
-								>
-									<span><abbr>CUDA 11.8</abbr></span>
-								</div>
-								<div class="version" role="option" tabindex="-1" aria-selected="false" id="ot_ROCm">
-									<span><abbr>ROCm</abbr></span>
-								</div>
-								<div class="version" role="option" tabindex="-1" aria-selected="false" id="ot_CPU">
-									<span><abbr>CPU</abbr></span>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div class="flex flex-col mb-1 mb-md-0 mr-0">
-						<div class="r-heading">
-							<h3 id="ot_selectBuild">Build</h3>
-							<p id="ot_decriptionBuild" class="sr-only">Build list contains two items</p>
-						</div>
-						<div
-							class="r-content pr-0 pl-4"
-							role="listbox"
-							id="ot_listbox-4"
-							aria-labelledby="ot_selectBuild"
-							aria-describedby="ot_decriptionBuild"
-						>
-							<div class="ot_build flex flex-col">
-								<div class="version" role="option" tabindex="0" aria-selected="true" id="ot_stable">
-									<span><abbr>Stable</abbr></span>
-								</div>
-								<div
-									class="version"
-									role="option"
-									tabindex="-1"
-									aria-selected="true"
-									id="ot_nightly"
-								>
-									<span><abbr>Preview (Nightly)</abbr></span>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div class="flex flex-col mb-1 mb-md-0 mr-0">
-						<div class="r-heading">
-							<h3 class="text-white" id="ot_selectRunCommand">Installation Instructions</h3>
-						</div>
-						<div class="r-content pr-0 pl-4">
-							<div class="flex">
-								<div class="command-container" id="ot_command" role="status">
-									<span class="py-2"> Please select a combination of resources </span>
-								</div>
-							</div>
-						</div>
-					</div>
+			<div class="col-span-1 bg-success rounded p-2">
+				<div class="r-heading text-xl">
+					<h3 id="ot_selectScenario">Scenario</h3>
+					<p id="ot_decriptionScenario" class="sr-only">Scenario list contains two items</p>
 				</div>
 			</div>
-		</div> -->
+			<div class="col-span-4 w-full">
+				<div
+					class="ot_scenario r-content grid grid-cols-2 gap-4"
+					role="listbox"
+					aria-labelledby="ot_selectScenario"
+					aria-describedby="ot_decriptionScenario"
+				>
+					{#each TrainingScenarios as trainingscenario, i}
+						<input
+							class="r-option version join-item btn rounded"
+							role="option"
+							aria-selected="false"
+							type="radio"
+							name="ot_scenario"
+							value={trainingscenario}
+							aria-label={trainingscenario}
+							id={TrainingScenarioIds[i]}
+							
+						/>
+					{/each}
+				</div>
+			</div>
+			<div class="col-span-1 bg-success rounded p-2">
+				<div class="r-heading text-xl">
+					<h3 id="ot_selectOS">Platform</h3>
+					<p id="ot_decriptionOS" class="sr-only">Platform list contains five items</p>
+				</div>
+			</div>
+			<div class="col-span-4 w-full">
+				<div
+					class="ot_scenario ot_os r-content grid grid-cols-5 gap-4"
+					role="listbox"
+					aria-labelledby="ot_selectOS"
+					aria-describedby="ot_decriptionOS"
+				>
+					{#each TrainingPlatforms as trainingplatform, i}
+						<input
+							class="r-option version join-item btn rounded"
+							role="option"
+							aria-selected="false"
+							type="radio"
+							name="ot_os"
+							value={trainingplatform}
+							aria-label={trainingplatform}
+							id={TrainingPlatformIds[i]}
+						/>
+					{/each}
+				</div>
+			</div>
+			<div class="col-span-1 bg-success rounded p-2">
+				<div class="r-heading text-xl">
+					<h3 id="ot_selectLanguage">API</h3>
+					<p id="ot_decriptionLanguage" class="sr-only">API list contains six items</p>
+				</div>
+			</div>
+			<div class="col-span-4 w-full">
+				<div
+					class="ot_scenario ot_language r-content grid grid-cols-6 gap-4"
+					role="listbox"
+					aria-labelledby="ot_selectLanguage"
+					aria-describedby="ot_decriptionLanguage"
+				>
+					{#each TrainingAPIs as trainingapi, i}
+						<input
+							class="r-option version join-item btn rounded"
+							role="option"
+							aria-selected="false"
+							type="radio"
+							name="ot_language"
+							value={trainingapi}
+							aria-label={trainingapi}
+							id={TrainingAPIIds[i]}
+						/>
+					{/each}
+				</div>
+			</div>
+			<div class="col-span-1 bg-success rounded p-2">
+				<h3 class="r-content text-xl" id="ot_selectHardwareAcceleration">Hardware Acceleration</h3>
+						<p id="ot_decriptionHardwareAcceleration" class="sr-only">
+							Hardware Acceleration list contains three items
+						</p>
+			</div>
+			<div class="col-span-4 w-full">
+				<div
+					class="ot_scenario ot_hardwareAcceleration r-content grid grid-cols-3 gap-4"
+					role="listbox"
+					aria-labelledby="ot_selectHardwareAcceleration"
+						aria-describedby="ot_decriptionHardwareAcceleration"
+				>
+				{#each Versions as version, i}
+						<input
+							class="r-option version join-item btn rounded"
+							role="option"
+							aria-selected="false"
+							type="radio"
+							name="ot_hardwareAcceleration"
+							value={version}
+							aria-label={version}
+							id={VersionIds[i]}
+						/>
+					{/each}
+				</div>
+			</div>
+			<div class="col-span-1 bg-success rounded p-2">
+				<h3 class="text-xl r-heading" id="ot_selectBuild">Build</h3>
+						<p id="ot_decriptionBuild" class="sr-only">Build list contains two items</p>
+			</div>
+			<div class="col-span-4 w-full">
+				<div
+					class="ot_scenario ot_build r-content grid grid-cols-2 gap-4"
+					role="listbox"
+					aria-labelledby="ot_selectBuild"
+					aria-describedby="ot_decriptionBuild"
+				>
+				{#each Builds as build, i}
+								<input
+									class="r-option version join-item btn rounded"
+									role="option"
+									aria-selected="false"
+									type="radio"
+									name="ot_decriptionBuild"
+									value={build}
+									aria-label={build}
+									id={BuildIds[i]}
+								/>
+							{/each}
+				</div>
+			</div>
+			<div class="col-span-1 bg-success rounded p-2">
+				<h3 class="text-xl r-heading" id="ot_selectRunCommand">Installation Instructions</h3>
+			</div>
+			<div class="col-span-4 w-full bg-base-300 rounded">
+				<div class="r-content">
+						<div class="command-container p-4" id="ot_command" role="status">
+							<span> Please select a combination of resources </span>
+						</div>
+				</div>
+			</div>
+		</div>
 	</div>
 </section>
+
 <style>
-    a{
-        color: blue !important;
-        text-decoration: underline;
-    }
+	a {
+		color: blue !important;
+		text-decoration: underline;
+	}
 </style>
