@@ -93,14 +93,14 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                             std::vector<std::string>& input_names,
                                             bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
-  assert(inputs.size() == 3);
 
   OnnxInputInfo input0_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], input0_info));
 
   // HTP backend can only handle rank 3 inputs if the batch size is 1. If the batch size is not 1,
   // QNN EP must reshape the input and output to (N, 1, W, C) and process the InstanceNorm as rank 4.
-  if (input0_info.shape.size() == 3 && input0_info.shape[0] != 1) {
+  if (IsNpuBackend(qnn_model_wrapper.GetQnnBackendType()) &&
+      input0_info.shape.size() == 3 && input0_info.shape[0] != 1) {
     const std::string& orig_input0_name = inputs[0].node_arg.Name();
     const std::string op_input0_name = input0_info.is_initializer ? orig_input0_name
                                                                   : orig_input0_name + "_ort_qnn_ep_reshape";
@@ -111,7 +111,6 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input0_info.initializer_tensor, initializer_data));
     }
 
-    assert(node_unit.Domain() == kMSInternalNHWCDomain);
     std::vector<uint32_t> op_shape = {
         input0_info.shape[0],  // N
         1,                     // Height == 1
@@ -168,14 +167,14 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
   qnn_model_wrapper.AddParamWrapper(std::move(epsilon_param_wrapper));
 
   const auto& outputs = node_unit.Outputs();
-  assert(outputs.size() == 1);
 
   OnnxInputInfo output_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(outputs[0], output_info));
 
   // HTP backend can only handle rank 3 inputs/outputs if the batch size is 1. If the batch size is not 1,
   // QNN EP must reshape the input and output to (N, 1, W, C) and process the InstanceNorm as rank 4.
-  if (output_info.shape.size() != 3 || output_info.shape[0] == 1) {
+  if (!IsNpuBackend(qnn_model_wrapper.GetQnnBackendType()) ||
+      output_info.shape.size() != 3 || output_info.shape[0] == 1) {
     return ProcessOutputs(qnn_model_wrapper, node_unit,
                           std::move(input_names),
                           std::move(param_tensor_names),
@@ -190,7 +189,6 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
   const std::string& orig_output_name = outputs[0].node_arg.Name();
   std::string op_output_name = orig_output_name + "_ort_qnn_ep_reshape";
 
-  assert(node_unit.Domain() == kMSInternalNHWCDomain);
   std::vector<uint32_t> op_output_shape = {
       output_info.shape[0],  // N
       1,                     // H == 1
