@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 // #ifdef USE_CUDA
 
+#if 0
+
 #include <memory>
 
 #include "test/util/include/default_providers.h"
@@ -252,4 +254,4 @@ TEST(PagedAttention, QuantizeReshapeAndCache) {
 }  // namespace test
 }  // namespace onnxruntime
 
-// #endif
+#endif

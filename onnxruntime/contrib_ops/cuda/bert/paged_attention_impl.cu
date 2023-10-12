@@ -535,6 +535,7 @@ __global__ void single_query_cached_kv_attention_kernel(
               reinterpret_cast<const K_vec*>(k_ptr + offset1 * BLOCK_SIZE * x + offset2),
               physical_block_number,
               physical_block_offset,
+              valid_tokens_in_block,
               kv_head_idx,
               vec_idx * VEC_SIZE);
         }
