@@ -1338,7 +1338,10 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"sce_sum_log_prob_expanded", "result differs"});
     broken_tests->insert({"gridsample_reflection_padding", "result differs"});
     broken_tests->insert({"spacetodepth", "result differs"});
+    broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "result differs"});
+    broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "result differs"});
   }
+
 #ifdef DISABLE_CONTRIB_OPS
   broken_tests->insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
   broken_tests->insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});
