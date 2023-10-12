@@ -53,7 +53,7 @@ namespace cuda {
 // Kernel for seqlens_k
 __global__ void repeat_seqlen(int32_t* seqlens_k, int32_t seqlen, int batch_size) {
   int id = blockDim.x * blockIdx.x + threadIdx.x;
-  if(id < batch_size) seqlens_k[id] = seqlen;
+  if (id < batch_size) seqlens_k[id] = seqlen;
 }
 
 // Kernel to append new and past kv in either BSNH or BNSH format

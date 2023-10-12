@@ -1034,7 +1034,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(5,
                "past_sequence_length",
                "When buffered past_key and past_value is used (present_key uses same tensor as past_key), required"
-               "to specify past_sequence_length (could be 0). Otherwise, past_sequence_length infered from past_key.",
+               "to specify past_sequence_length (could be 0). Otherwise, past_sequence_length inferred from past_key.",
                "M",
                OpSchema::Optional)
         .Output(0,
