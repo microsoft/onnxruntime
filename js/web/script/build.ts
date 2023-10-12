@@ -408,7 +408,7 @@ async function main() {
     });
     // ort.wasm-core[.min].js
     await addAllWebBuildTasks({
-      outputBundleName: 'ort.wasm-core.min',
+      outputBundleName: 'ort.wasm-core',
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_WEBGPU': 'true',
@@ -417,9 +417,9 @@ async function main() {
         'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
       },
     });
-    // ort.training.wasm.min.js
+    // ort.training.wasm[.min].js
     await addAllWebBuildTasks({
-      outputBundleName: 'ort.training.wasm.min',
+      outputBundleName: 'ort.training.wasm',
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_TRAINING': 'false',
