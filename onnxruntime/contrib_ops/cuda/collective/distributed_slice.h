@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "sharding.h"
+#pragma once
 
 #include <algorithm>
 #include <tuple>
@@ -9,7 +9,7 @@
 #include <nccl.h>
 #include <sstream>
 
-#pragma once
+#include "sharding.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -17,10 +17,10 @@ namespace cuda {
 
 #if defined(ORT_USE_NCCL)
 
-template <typename T>
-class DistributedMatMul final : public DistributedKernel {
+template <typename T, typename Tind>
+class DistributedSlice final : public DistributedKernel {
  public:
-  explicit DistributedMatMul(const OpKernelInfo& info);
+  explicit DistributedSlice(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };

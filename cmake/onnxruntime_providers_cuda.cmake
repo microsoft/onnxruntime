@@ -37,6 +37,7 @@
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding_spec.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_matmul.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_slice.cc"
       )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio

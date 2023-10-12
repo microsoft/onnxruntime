@@ -212,6 +212,46 @@ std::unique_ptr<Tensor> ReshardTensor(
   return dst;
 }
 
+void ReshardTensor(
+    const NcclKernel* nccl_kernel,
+    OpKernelContext* ctx,
+    const TensorPartitionSpec& src_spec,
+    const TensorPartitionSpec& dst_spec,
+    const int64_t device_id,
+    const Tensor* src,
+    int output_idx) {
+  // Implement ReshardTensor but returning a unique_ptr to Tensor instead.
+  const auto origin_shape = ComputeOriginShape(src->Shape(), src_spec);
+  const auto dst_shape = ComputeShardShape(origin_shape, dst_spec);
+  ORT_ENFORCE(CanShard(origin_shape, dst_spec), "Cannot shard tensor. Shape:", origin_shape, ", sharding spec: ", dst_spec.ToString());
+
+  auto* dst = ctx->Output(output_idx, dst_shape);
+  ReshardTensor(
+      nccl_kernel,
+      ctx,
+      src_spec,
+      dst_spec,
+      device_id,
+      src,
+      dst);
+}
+
+DistributedKernel::DistributedKernel(const OpKernelInfo& info) : NcclKernel(info) {
+  std::vector<int64_t> device_mesh_elements = info.GetAttrsOrDefault<int64_t>("device_mesh_elements");
+  std::vector<int64_t> device_mesh_shape = info.GetAttrsOrDefault<int64_t>("device_mesh_shape");
+  std::vector<std::string> input_shard_specs = info.GetAttrsOrDefault<std::string>("input_shard_specs");
+  std::vector<std::string> output_shard_specs = info.GetAttrsOrDefault<std::string>("output_shard_specs");
+
+  for (size_t i = 0; i < input_shard_specs.size(); ++i) {
+    auto spec = CreateTensorPartitionSpec(input_shard_specs[i], device_mesh_shape, device_mesh_elements);
+    input_shard_specs_.push_back(spec);
+  }
+  for (size_t i = 0; i < output_shard_specs.size(); ++i) {
+    auto spec = CreateTensorPartitionSpec(output_shard_specs[i], device_mesh_shape, device_mesh_elements);
+    output_shard_specs_.push_back(spec);
+  }
+}
+
 #endif
 
 }  // namespace cuda

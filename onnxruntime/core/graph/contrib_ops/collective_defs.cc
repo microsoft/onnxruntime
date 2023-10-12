@@ -105,6 +105,74 @@ void RegisterCollectiveOps() {
               "tensor(float)",
           },
           "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DistributedSlice)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("device_mesh_elements",
+            "",
+            AttributeProto::INTS)
+      .Attr("device_mesh_shape",
+            "",
+            AttributeProto::INTS)
+      .Attr("input_shard_specs",
+            "The sharding spec of \"Y\"; e.g., \"RRR\" if Y is not sharded.",
+            AttributeProto::STRINGS)
+      .Attr("output_shard_specs",
+            "The sharding spec of \"Y\"; e.g., \"RRR\" if Y is not sharded.",
+            AttributeProto::STRINGS)
+      .Input(
+          0,
+          "data",
+          "Tensor of data to extract slices from.",
+          "T",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .Input(
+          1,
+          "starts",
+          "1-D tensor of starting indices of corresponding axis in `axes`",
+          "Tind",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Input(
+          2,
+          "ends",
+          "1-D tensor of ending indices (exclusive) of corresponding axis in `axes`",
+          "Tind",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Input(
+          3,
+          "axes",
+          "1-D tensor of axes that `starts` and `ends` apply to. Negative value means counting dimensions "
+          "from the back. Accepted range is [-r, r-1] where r = rank(data). Behavior is undefined if an "
+          "axis is repeated.",
+          "Tind",
+          OpSchema::Optional,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Input(
+          4,
+          "steps",
+          "1-D tensor of slice step of corresponding axis in `axes`. "
+          "Negative value means slicing backward. 'steps' cannot be 0. "
+          "Defaults to 1s.",
+          "Tind",
+          OpSchema::Optional,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(0, "output", "Sliced data tensor.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "Constrain input and output types to all tensor types.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types");
 }
 
 }  // namespace contrib
