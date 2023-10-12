@@ -10,7 +10,7 @@ nav_order: 1
 
 # C# Tutorial: Basic
 
-Learn how to get started with inference with the C# API. Run an ONNX model for a given input data. The model is typically trained using any of the well-known training frameworks and then exported into the ONNX format.
+Learn how to get started with inference with the C# API.
 
 ## OrtValue API
 
@@ -55,10 +55,10 @@ that buffer pinned in memory indefinitely. Such a buffer can not be garbage coll
 GC can not operate on native memory or any other native resources.
 
 The `using` statement or a block is a convenient way to ensure that the objects are disposed.
-`InferenceSession` can be a long lived object and a member of another class. It eventually must also need to be disposed. This means, the containing class also would have to be made disposable to achieve this.
+`InferenceSession` can be a long lived object and a member of another class. It eventually must be disposed. This means, the containing class also would have to be made disposable to achieve this.
 
 OrtValue API also provides visitor like API to walk ONNX maps and sequences.
-This is a more efficient way to access Onnxruntime data.
+This is a more efficient way to access ONNX Runtime data.
 
 ## Code example to run a model
 
@@ -140,7 +140,7 @@ for (long i = 0; i < elementsNum; ++i)
 ## More examples
 
 * [Stable Diffusion](stable-diffusion-csharp.md)
-* [BERT NLP example](bert-nlp-csharp-console-app.md)
+* [BERT NLP](bert-nlp-csharp-console-app.md)
 * [Run on GPU](csharp-gpu.md)
 * [Yolov3](yolov3_object_detection_csharp.md)
 * [Faster CNN](fasterrcnn_csharp.md)
