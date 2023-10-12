@@ -78,28 +78,29 @@ static Status GetInitializerInputData(const NodeUnitIODef& input, const QnnModel
   OnnxInputInfo input_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(input, input_info));
   ORT_RETURN_IF_NOT(input_info.is_initializer,
-                    "QNN requires the starts, ends, axes, and steps inputs to "
-                    "be initializers");
+                    "QNN requires the starts, ends, axes, and steps inputs to be initializers");
 
   std::vector<uint8_t> initializer_bytes;
+
+  // Note: UnpackInitializerData() uses ORT's protobuf utilities, which ensure that the initializer bytes are
+  // contiguous, aligned, and in the appropriate endianness. This is necessary to be able to reinterpret bytes
+  // as an array of larger elements.
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, initializer_bytes));
 
-  size_t tensor_byte_size = initializer_bytes.size();
   const auto data_type = input_info.initializer_tensor->data_type();
-
   Status status;
 
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-      const int64_t* tensor_data = reinterpret_cast<const int64_t*>(initializer_bytes.data());
-      size_t size = tensor_byte_size / sizeof(int64_t);
-      output.insert(output.end(), tensor_data, tensor_data + size);
+      gsl::span<const int64_t> elements = qnn::utils::ReinterpretBytesAsSpan<int64_t>(initializer_bytes.data(),
+                                                                                      initializer_bytes.size());
+      output.insert(output.end(), elements.begin(), elements.end());
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-      const int32_t* tensor_data = reinterpret_cast<const int32_t*>(initializer_bytes.data());
-      size_t size = tensor_byte_size / sizeof(int32_t);
-      output.insert(output.end(), tensor_data, tensor_data + size);
+      gsl::span<const int32_t> elements = qnn::utils::ReinterpretBytesAsSpan<int32_t>(initializer_bytes.data(),
+                                                                                      initializer_bytes.size());
+      output.insert(output.end(), elements.begin(), elements.end());
       break;
     }
     default:
@@ -174,9 +175,12 @@ Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
   onnxruntime::SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
 
-  std::vector<uint32_t> ranges_dims{static_cast<uint32_t>(input_dimensions.size()), 3};
+  const size_t input_rank = input_dimensions.size();
+  std::vector<uint32_t> ranges_dims{static_cast<uint32_t>(input_rank), 3};
   std::vector<uint32_t> ranges_data;
-  for (size_t i = 0; i < input_dimensions.size(); i++) {
+  ranges_data.reserve(input_rank);
+
+  for (size_t i = 0; i < input_rank; i++) {
     ranges_data.push_back(static_cast<uint32_t>(compute_metadata.starts_[i]));
     ranges_data.push_back(static_cast<uint32_t>(compute_metadata.ends_[i]));
     ranges_data.push_back(static_cast<uint32_t>(compute_metadata.steps_[i]));

@@ -8,12 +8,20 @@
 #include <numeric>
 #include <vector>
 #include <string>
+#include <gsl/span>
 
 namespace onnxruntime {
 namespace qnn {
 class QnnOpConfigWrapper;
 
 namespace utils {
+
+// Reinterprets an array of contiguous bytes in the target's endianness to a span of elements.
+template <typename T>
+inline gsl::span<const T> ReinterpretBytesAsSpan(const uint8_t* data, size_t num_bytes) {
+  return gsl::span<const T>(reinterpret_cast<const T*>(data), num_bytes / sizeof(T));
+}
+
 size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
 
 size_t GetElementSizeByType(ONNXTensorElementDataType elem_type);
