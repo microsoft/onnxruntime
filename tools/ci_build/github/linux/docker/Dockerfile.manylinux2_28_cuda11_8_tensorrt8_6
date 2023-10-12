@@ -163,8 +163,8 @@ CMD ["/bin/bash"]
 #Build manylinux2014 docker image end
 
 #Install TensorRT 8.6.1.6
-RUN v="8.6.1.6-1.cuda11.8" &&\
-    dnf -y install libcudnn8-devel libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} libnvinfer-vc-plugin8-${v}\
+RUN v="8.6.1.6-1.cuda11.8" && CUDA_VERSION=$(nvcc --version | sed -n 's/^.*release \([0-9]\+\.[0-9]\+\).*$/\1/p') \
+    && dnf -y install libcudnn8-devel-*cuda$CUDA_VERSION* libcudnn8-*cuda$CUDA_VERSION* libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} libnvinfer-vc-plugin8-${v}\
         libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v} libnvinfer-vc-plugin-devel-${v} libnvinfer-headers-devel-${v}  libnvinfer-headers-plugin-devel-${v}
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 #Add our own dependencies
