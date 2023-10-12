@@ -67,18 +67,17 @@
         <div class="top-banner-bg">
 
             <!-- Partial header.html Start-->
-            <div w3-include-html="./header.html"></div>
+            <div w3-include-html="header.html"></div>
             <!-- Partial header.html End-->
 
-            <div role="main" id="skipMain" tabindex="-1">
+            <div id="skipMain" role="main">
+                <div class="outer-container mx-auto py-5">
 
-                <div class="container px-md-4 px-lg-5 pt-5 mx-auto text-left">
-                    <h1 class="pt-3 pb-3 pt-md-5 pb-lg-3 px-md-4 px-lg-5 mt-5 mb-0">Run PyTorch models on the edge</h1>
-                </div>
+                    <section>
 
-                <div class="outer-container mx-auto">
-                    <section class="py-md-5 pb-4 pt-4 mt-5">
-                        <div class="container-fluid">
+                    <div class="container-fluid">
+                        <h1 class="r-heading">Run PyTorch models on the edge</h1>
+    
                             <div class="row">
                                 <div class="col-12 col-md-9">
                                     <p>
@@ -327,44 +326,13 @@ func trainStep(inputData: [Data], labels: [Int64]) throws  {
 
                                     <p>You can read more about how to run your PyTorch model on the edge here: https://onnxruntime.ai/docs/</p>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                                     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                </div>
+            </div>
+                    </section>
                 </div>
             </div>
         </div>
+    </div
     </div>
     <!-- Partial footer.html Start-->
     <div w3-include-html="footer.html"></div>
