@@ -78,7 +78,7 @@ __global__ void ConcatNewToPastKV(const int new_seqlen,
   const int present_head_stride = is_bsnh ? H : present_seqlen * H;
 
   // past_kv:     BPNH or BNPH
-  // new_kv:      BLNH or BNLH
+  // new_kv:      BLNH
   // present_kv:  BTNH or BNTH, where T = P + L
   const int past_seqlen = present_seqlen - new_seqlen;
 
@@ -98,6 +98,7 @@ __global__ void ConcatNewToPastKV(const int new_seqlen,
   }
 }
 
+// Use when (H*)*num_heads > 1024
 template <typename T>
 __global__ void ConcatNewToPastKVLarge(const int new_seqlen,
                                        const int H,
@@ -105,7 +106,6 @@ __global__ void ConcatNewToPastKVLarge(const int new_seqlen,
                                        const T* new_kv,
                                        T* present_kv,
                                        const bool is_bsnh) {
-  // Use when (H*)*num_heads > 1024
   int h = threadIdx.x;
   const int n = threadIdx.y;
   const int s = blockIdx.x;
@@ -120,7 +120,7 @@ __global__ void ConcatNewToPastKVLarge(const int new_seqlen,
   const int present_head_stride = is_bsnh ? H : present_seqlen * H;
 
   // past_kv:     BPNH or BNPH
-  // new_kv:      BLNH or BNLH
+  // new_kv:      BLNH
   // present_kv:  BTNH or BNTH, where T = P + L
   const int past_seqlen = present_seqlen - new_seqlen;
 
@@ -148,7 +148,6 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
                                GroupQueryAttentionData<T>& data,
                                cudaStream_t stream,
                                const int max_threads_per_block) {
-
   const int batch_size = parameters.batch_size;
   const int kv_sequence_length = parameters.kv_sequence_length;
   const int present_sequence_length = parameters.present_sequence_length;
@@ -161,37 +160,36 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
   if (H * kv_num_heads <= max_threads_per_block) {
     const dim3 grid(present_sequence_length, batch_size, 1);
     const dim3 block(H, kv_num_heads, 1);
-    ConcatNewToPastKV<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-                                                            reinterpret_cast<const float2*>(data.past_key),
-                                                            reinterpret_cast<const float2*>(data.key),
-                                                            reinterpret_cast<float2*>(data.present_key),
-                                                            past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-    ConcatNewToPastKV<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-                                                            reinterpret_cast<const float2*>(data.past_value),
-                                                            reinterpret_cast<const float2*>(data.value),
-                                                            reinterpret_cast<float2*>(data.present_value),
-                                                            past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    ConcatNewToPastKV<float2><<<grid, block, 0, stream>>>(kv_sequence_length,
+                                                          reinterpret_cast<const float2*>(data.past_key),
+                                                          reinterpret_cast<const float2*>(data.key),
+                                                          reinterpret_cast<float2*>(data.present_key),
+                                                          past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    ConcatNewToPastKV<float2><<<grid, block, 0, stream>>>(kv_sequence_length,
+                                                          reinterpret_cast<const float2*>(data.past_value),
+                                                          reinterpret_cast<const float2*>(data.value),
+                                                          reinterpret_cast<float2*>(data.present_value),
+                                                          past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
   } else {
     const dim3 grid(present_sequence_length, batch_size, 1);
     const dim3 block(max_threads_per_block / kv_num_heads, kv_num_heads, 1);
-    ConcatNewToPastKVLarge<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-                                                                  H,
-                                                                  reinterpret_cast<const float2*>(data.past_key),
-                                                                  reinterpret_cast<const float2*>(data.key),
-                                                                  reinterpret_cast<float2*>(data.present_key),
-                                                                  past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-    ConcatNewToPastKVLarge<float2><<< grid, block, 0, stream >>>(kv_sequence_length,
-                                                                  H,
-                                                                  reinterpret_cast<const float2*>(data.past_value),
-                                                                  reinterpret_cast<const float2*>(data.value),
-                                                                  reinterpret_cast<float2*>(data.present_value),
-                                                                  past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    ConcatNewToPastKVLarge<float2><<<grid, block, 0, stream>>>(kv_sequence_length,
+                                                               H,
+                                                               reinterpret_cast<const float2*>(data.past_key),
+                                                               reinterpret_cast<const float2*>(data.key),
+                                                               reinterpret_cast<float2*>(data.present_key),
+                                                               past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    ConcatNewToPastKVLarge<float2><<<grid, block, 0, stream>>>(kv_sequence_length,
+                                                               H,
+                                                               reinterpret_cast<const float2*>(data.past_value),
+                                                               reinterpret_cast<const float2*>(data.value),
+                                                               reinterpret_cast<float2*>(data.present_value),
+                                                               past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
   }
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Kernel to append new and past kv in either BSNH or BNSH format
-// Adapted from ConcatTensorToTensor kernel in attention_kv_cache.cu file
+// Kernel to append new kv to kv buffer in place
 template <typename T>
 __global__ void ConcatKVInPlace(const int past_seqlen,
                                 const int present_seqlen,
@@ -212,7 +210,7 @@ __global__ void ConcatKVInPlace(const int past_seqlen,
   const int present_head_stride = is_bsnh ? H : present_seqlen * H;
 
   // kv_buff:     BTNH or BNTH with buffered memory for new
-  // new_kv:      BLNH or BNLH
+  // new_kv:      BLNH
 
   int out_offset = b * present_batch_stride + (s + past_seqlen) * present_row_stride + n * present_head_stride + h;
   // Note: new KV always BSNH
@@ -244,7 +242,7 @@ __global__ void ConcatKVInPlaceLarge(const int past_seqlen,
   const int present_head_stride = is_bsnh ? H : present_seqlen * H;
 
   // kv_buff:     BTNH or BNTH with buffered memory for new
-  // new_kv:      BLNH or BNLH
+  // new_kv:      BLNH
 
   while (h < H) {
     int out_offset = b * present_batch_stride + (s + past_seqlen) * present_row_stride + n * present_head_stride + h;
@@ -258,13 +256,12 @@ __global__ void ConcatKVInPlaceLarge(const int past_seqlen,
   }
 }
 
-// Concat new to past in present. Supports past BSNH or past BNSH
+// Concat new to kv buffer in place
 template <typename T>
 Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
                              GroupQueryAttentionData<T>& data,
                              cudaStream_t stream,
                              const int max_threads_per_block) {
-
   const int batch_size = parameters.batch_size;
   const int kv_sequence_length = parameters.kv_sequence_length;
   const int present_sequence_length = parameters.present_sequence_length;
@@ -273,36 +270,35 @@ Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
   const int head_size = parameters.head_size;
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
   assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
-  // Note that Flash Attention kv-caching operates in place on a buffer... therefore this path is inneficient
   const int H = head_size / 4;
   if (H * kv_num_heads <= max_threads_per_block) {
     const dim3 grid(kv_sequence_length, batch_size, 1);
     const dim3 block(H, kv_num_heads, 1);
-    ConcatKVInPlace<float2><<< grid, block, 0, stream >>>(past_sequence_length,
-                                                          present_sequence_length,
-                                                          reinterpret_cast<float2*>(data.present_key),
-                                                          reinterpret_cast<const float2*>(data.key),
-                                                          past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-    ConcatKVInPlace<float2><<< grid, block, 0, stream >>>(past_sequence_length,
-                                                          present_sequence_length,
-                                                          reinterpret_cast<float2*>(data.present_value),
-                                                          reinterpret_cast<const float2*>(data.value),
-                                                          past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    ConcatKVInPlace<float2><<<grid, block, 0, stream>>>(past_sequence_length,
+                                                        present_sequence_length,
+                                                        reinterpret_cast<float2*>(data.present_key),
+                                                        reinterpret_cast<const float2*>(data.key),
+                                                        past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    ConcatKVInPlace<float2><<<grid, block, 0, stream>>>(past_sequence_length,
+                                                        present_sequence_length,
+                                                        reinterpret_cast<float2*>(data.present_value),
+                                                        reinterpret_cast<const float2*>(data.value),
+                                                        past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
   } else {
     const dim3 grid(kv_sequence_length, batch_size, 1);
     const dim3 block(max_threads_per_block / kv_num_heads, kv_num_heads, 1);
-    ConcatKVInPlaceLarge<float2><<< grid, block, 0, stream >>>(past_sequence_length,
-                                                               present_sequence_length,
-                                                               H,
-                                                               reinterpret_cast<float2*>(data.present_key),
-                                                               reinterpret_cast<const float2*>(data.key),
-                                                               past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-    ConcatKVInPlaceLarge<float2><<< grid, block, 0, stream >>>(past_sequence_length,
-                                                               present_sequence_length,
-                                                               H,
-                                                               reinterpret_cast<float2*>(data.present_value),
-                                                               reinterpret_cast<const float2*>(data.value),
-                                                               past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    ConcatKVInPlaceLarge<float2><<<grid, block, 0, stream>>>(past_sequence_length,
+                                                             present_sequence_length,
+                                                             H,
+                                                             reinterpret_cast<float2*>(data.present_key),
+                                                             reinterpret_cast<const float2*>(data.key),
+                                                             past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
+    ConcatKVInPlaceLarge<float2><<<grid, block, 0, stream>>>(past_sequence_length,
+                                                             present_sequence_length,
+                                                             H,
+                                                             reinterpret_cast<float2*>(data.present_value),
+                                                             reinterpret_cast<const float2*>(data.value),
+                                                             past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
   }
   return CUDA_CALL(cudaGetLastError());
 }
@@ -392,31 +388,31 @@ Status LaunchUngroupAndTranspose(contrib::GroupQueryAttentionParameters& paramet
   if (H * num_heads <= max_threads_per_block) {
     const dim3 grid(buff_seqlen, batch_size, 1);
     const dim3 block(H, num_heads, 1);
-    UngroupAndTranspose<float2><<< grid, block, 0, stream >>>(k_og,
-                                                              k_buff,
-                                                              og_seqlen,
-                                                              kv_num_heads,
-                                                              is_bsnh);
-    UngroupAndTranspose<float2><<< grid, block, 0, stream >>>(v_og,
-                                                              v_buff,
-                                                              og_seqlen,
-                                                              kv_num_heads,
-                                                              is_bsnh);
+    UngroupAndTranspose<float2><<<grid, block, 0, stream>>>(k_og,
+                                                            k_buff,
+                                                            og_seqlen,
+                                                            kv_num_heads,
+                                                            is_bsnh);
+    UngroupAndTranspose<float2><<<grid, block, 0, stream>>>(v_og,
+                                                            v_buff,
+                                                            og_seqlen,
+                                                            kv_num_heads,
+                                                            is_bsnh);
   } else {
     const dim3 grid(buff_seqlen, batch_size, 1);
     const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-    UngroupAndTransposeLarge<float2><<< grid, block, 0, stream >>>(k_og,
-                                                                   k_buff,
-                                                                   H,
-                                                                   og_seqlen,
-                                                                   kv_num_heads,
-                                                                   is_bsnh);
-    UngroupAndTransposeLarge<float2><<< grid, block, 0, stream >>>(v_og,
-                                                                   v_buff,
-                                                                   H,
-                                                                   og_seqlen,
-                                                                   kv_num_heads,
-                                                                   is_bsnh);
+    UngroupAndTransposeLarge<float2><<<grid, block, 0, stream>>>(k_og,
+                                                                 k_buff,
+                                                                 H,
+                                                                 og_seqlen,
+                                                                 kv_num_heads,
+                                                                 is_bsnh);
+    UngroupAndTransposeLarge<float2><<<grid, block, 0, stream>>>(v_og,
+                                                                 v_buff,
+                                                                 H,
+                                                                 og_seqlen,
+                                                                 kv_num_heads,
+                                                                 is_bsnh);
   }
   return CUDA_CALL(cudaGetLastError());
 }
@@ -431,7 +427,6 @@ Status FlashAttention(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data,
     float scale) {
-
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -460,8 +455,8 @@ Status FlashAttention(
 
     // Launch kernel to copy seqlen
     int thr_per_blk = 256;
-    int blk_in_grid = ceil( float(batch_size) / thr_per_blk );
-    repeat_seqlen<<< blk_in_grid, thr_per_blk, 0, stream >>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
+    int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
+    repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
 
     bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
@@ -480,15 +475,15 @@ Status FlashAttention(
 
     // Launch kernel to copy seqlen
     int thr_per_blk = 256;
-    int blk_in_grid = ceil( float(batch_size) / thr_per_blk );
-    repeat_seqlen<<< blk_in_grid, thr_per_blk, 0, stream >>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
+    int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
+    repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
 
     bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
-          device_prop, stream, query, present_key, present_value, data.output, reinterpret_cast<void*>(data.softmax_lse),
-          batch_size, num_heads, kv_num_heads, head_size,
-          sequence_length, present_sequence_length, scale, is_causal, parameters.num_splits,
-          reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum), past_bsnh));
+        device_prop, stream, query, present_key, present_value, data.output, reinterpret_cast<void*>(data.softmax_lse),
+        batch_size, num_heads, kv_num_heads, head_size,
+        sequence_length, present_sequence_length, scale, is_causal, parameters.num_splits,
+        reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum), past_bsnh));
   }
 
   DUMP_TENSOR_INIT();
@@ -506,7 +501,6 @@ Status EfficientAttention(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data,
     float scale) {
-
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -537,7 +531,7 @@ Status EfficientAttention(
       key = reinterpret_cast<const void*>(data.present_key);
       value = reinterpret_cast<const void*>(data.present_value);
     } else {
-      // Otherwise we use intermediate buffers to run memory efficient attention... BEST AVOID THIS PATH
+      // Otherwise we use intermediate buffers to run memory efficient attention... best avoid this path
       float2* k_buff = reinterpret_cast<float2*>(data.k);
       float2* v_buff = reinterpret_cast<float2*>(data.v);
       const float2* k_og = reinterpret_cast<const float2*>(data.present_key);
@@ -605,7 +599,6 @@ Status QkvToContext(
     Stream* ort_stream,
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data) {
-
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
 
