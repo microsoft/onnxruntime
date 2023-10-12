@@ -99,7 +99,6 @@ size_t GetSequenceOffsetSize(int batch_size, bool has_padding) {
   // There are batch_size + 1 offsets Without padding (or padding removed), and 2 * batch_size + 1 with padding.
   size_t bytes = sizeof(int) * ((has_padding ? 2 * batch_size : batch_size) + 1);
   return AlignSize(bytes);
-  ;
 }
 
 size_t GetAttentionWorkspaceSize(

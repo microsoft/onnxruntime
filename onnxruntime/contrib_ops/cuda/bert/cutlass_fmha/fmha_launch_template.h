@@ -51,7 +51,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.num_keys = params.kv_sequence_length;
 
     if (params.causal) {
-      p.custom_mask_type = Attention::CausalFromTopLeft;
+      p.custom_mask_type = Attention::CausalFromBottomRight;
     }
 
     // Input format is BxSxNxH, output is BxSxNxH
