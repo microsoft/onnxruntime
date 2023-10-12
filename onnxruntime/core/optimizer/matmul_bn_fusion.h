@@ -10,34 +10,17 @@ namespace onnxruntime
 *   precedding MatMul operator, if and only if MatmulBNFusion::SatisfyCondition()
 *   is true.
 */
-class MatmulBNFusion : public RewriteRule
-{
-public:
-    MatmulBNFusion() : RewriteRule("MatMul_BatchNormalization_Fusion")
-    {
+class MatmulBNFusion : public RewriteRule {
+ public:
+  MatmulBNFusion() : RewriteRule("MatMul_BatchNormalization_Fusion") {}
 
-    }
+  std::vector<std::string> TargetOpTypes() const noexcept {
+    return {"MatMul"};
+  }
 
-    std::vector<std::string> TargetOpTypes() const noexcept
-    {
-      return {"MatMul"};
-    }
+ private:
+  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
 
-private:
-    bool SatisfyCondition(
-        const Graph& graph,
-        const Node& node,
-        const logging::Logger& logger) const override;
-
-    Status Apply(
-        Graph& graph,
-        Node& matmulNode,
-        RewriteRuleEffect& ruleEffect,
-        const logging::Logger& logger) const override;
-
-    bool MatchPath(
-        const Node& parentNode,
-        const gsl::span<std::pair<std::string, std::initializer_list<int>>>& path,
-        const Node& childNode) const;
+  Status Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 }
