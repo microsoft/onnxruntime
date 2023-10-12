@@ -72,7 +72,7 @@ $(document).ready(function () {
   $('.nav-tabs').responsiveTabs();
 
   //populate blogs
- $.getJSON("js/blogs.json", function (json) {
+ $.getJSON("../js/blogs.json", function (json) {
 
     var template = document.querySelector('#blog-item');
     var blogList = document.querySelector('#blog-list');
