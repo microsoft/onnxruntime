@@ -3,7 +3,7 @@
 
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -51,9 +51,8 @@ const createBiasAddProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
 
   return {
     name: 'BiasAdd',
-    inputTypes: Array(inputs.length).fill(GpuDataType.default),
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
     }),
     getShaderSource,
