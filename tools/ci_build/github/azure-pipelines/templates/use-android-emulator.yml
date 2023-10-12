@@ -49,6 +49,7 @@ steps:
     condition: always()
 
   - script: |
+      set -e -x
       if test -f $(Build.BinariesDirectory)/emulator.pid; then
         echo "Emulator PID:"`cat $(Build.BinariesDirectory)/emulator.pid`
         python3 tools/python/run_android_emulator.py \
