@@ -40,4 +40,8 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
 
 }  // namespace Rocm
 
+#else
+
+void RegisterOps(Ort::CustomOpDomain&) {}
+
 #endif

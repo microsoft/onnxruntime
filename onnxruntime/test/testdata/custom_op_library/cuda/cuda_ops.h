@@ -5,6 +5,14 @@
 
 namespace Cuda {
 
+#ifdef USE_CUDA
+
 void RegisterOps(Ort::CustomOpDomain& domain);
 
-}
+#else
+
+void RegisterOps(Ort::CustomOpDomain&) {}
+
+#endif
+
+}  // namespace Cuda

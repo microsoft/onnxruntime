@@ -13,12 +13,8 @@
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "cpu/cpu_ops.h"
-#if USE_CUDA
 #include "cuda/cuda_ops.h"
-#endif 
-#if USE_ROCM
 #include "rocm/rocm_ops.h"
-#endif
 #include "onnxruntime_lite_custom_op.h"
 
 static const char* c_OpDomain = "test.customop";
@@ -40,15 +36,11 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     Ort::CustomOpDomain domain_v2{"v2"};
     Cpu::RegisterOps(domain_v2);
 
-#if USE_CUDA
     Cuda::RegisterOps(domain);
     Cuda::RegisterOps(domain_v2);
-#endif
 
-#if USE_ROCM
     Rocm::RegisterOps(domain);
     Rocm::RegisterOps(domain_v2);
-#endif
 
     Ort::UnownedSessionOptions session_options(options);
     session_options.Add(domain);

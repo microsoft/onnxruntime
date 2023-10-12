@@ -49,13 +49,13 @@ struct CudaContext : public CustomOpContext {
     resource = {};
     status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::deferred_cpu_allocator_t, &resource);
     if (status) {
-      ORT_CXX_API_THROW("failed to fetch cublas handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      ORT_CXX_API_THROW("failed to fetch deferred cpu allocator", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     deferred_cpu_allocator = reinterpret_cast<OrtAllocator*>(resource);
   }
 
   void* AllocDeferredCpuMem(size_t size) const {
-    if (0 == size)  {
+    if (0 == size) {
       return {};
     }
     const auto& ort_api = Ort::GetApi();
