@@ -86,9 +86,7 @@ class Initializer final {
 
   Initializer& sqrt();
 
-  void scale_by_axis(const Initializer& other, int axis);
-
-  void scale_to_axis(const Initializer& other, int axis);
+  void scale_by_axis(const Initializer& other, int axis, bool columnMajor = false);
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
  private:
   std::string name_;
