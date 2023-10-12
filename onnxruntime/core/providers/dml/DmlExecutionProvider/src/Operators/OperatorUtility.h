@@ -40,7 +40,8 @@ namespace Dml
             int candidateOpInputCount,
             std::string_view activationOpType,
             std::string_view activationOpDomain,
-            int activationOpSinceVersion);
+            int activationOpSinceVersion,
+            bool isMcdmDevice);
 
         // Returns true if the given activation operator type supports being fused with a fusable operator, false
         // otherwise.

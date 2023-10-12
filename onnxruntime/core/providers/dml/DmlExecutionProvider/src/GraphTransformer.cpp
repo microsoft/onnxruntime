@@ -17,6 +17,14 @@
 
 namespace Dml
 {
+    GraphTransformer::GraphTransformer(
+        const std::string& name,
+		const onnxruntime::IExecutionProvider* provider
+    ) : onnxruntime::GraphTransformer(name),
+        m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl())
+    {
+    }
+
     onnxruntime::common::Status GraphTransformer::ApplyImpl(
         onnxruntime::Graph& graph,
         bool& modified,
@@ -27,7 +35,7 @@ namespace Dml
       // Perform fusion
       {
         bool transformModifiedGraph = false;
-        PerformOperatorFusion(&graph, &transformModifiedGraph);
+        PerformOperatorFusion(&graph, m_providerImpl->IsMcdmDevice(), &transformModifiedGraph);
         modified |= transformModifiedGraph;
 
         if (modified)
@@ -50,7 +58,7 @@ namespace Dml
         return ss.str();
     }
 
-    void GraphTransformer::PerformOperatorFusion(onnxruntime::Graph* graph, bool* modified) const
+    void GraphTransformer::PerformOperatorFusion(onnxruntime::Graph* graph, bool isMcdmDevice, bool* modified) const
     {
         struct NodeToAdd
         {
@@ -112,7 +120,8 @@ namespace Dml
                 gsl::narrow_cast<uint32_t>(node.InputDefs().size()),
                 outputNode.OpType(),
                 outputNode.Domain(),
-                outputNode.Op()->SinceVersion());
+                outputNode.Op()->SinceVersion(),
+                isMcdmDevice);
 
             if (!fusedOpProperties)
             {
