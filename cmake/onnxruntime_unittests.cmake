@@ -1018,10 +1018,10 @@ if(NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
 
     if(MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-      file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/*.so" "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.so" "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/*.dll" "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.dll")
+      file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/*.so" "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/*.dll")
 
       if(${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc")
-        file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so" "${onnxruntime_QNN_HOME}/target/hexagon-v68/lib/unsigned/libQnnHtpV68Skel.so")
+        file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so" "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so")
         list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
       endif()
 

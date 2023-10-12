@@ -121,9 +121,18 @@ export const initializeWebAssemblyInstance = async(): Promise<void> => {
 
     return new Promise<void>((resolve, reject) => {
       proxyWorker?.terminate();
-      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
-      proxyWorker = require('worker-loader?inline=no-fallback!./proxy-worker/main').default() as Worker;
+
+      const workerUrl = URL.createObjectURL(new Blob(
+          [
+            // This require() function is handled by esbuild plugin to load file content as string.
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            require('./proxy-worker/main')
+          ],
+          {type: 'text/javascript'}));
+      proxyWorker = new Worker(workerUrl, {name: 'ort-wasm-proxy-worker'});
+      proxyWorker.onerror = (ev: ErrorEvent) => reject(ev);
       proxyWorker.onmessage = onProxyWorkerMessage;
+      URL.revokeObjectURL(workerUrl);
       initWasmCallbacks = [resolve, reject];
       const message: OrtWasmMessage = {type: 'init-wasm', in : env.wasm};
       proxyWorker.postMessage(message);
