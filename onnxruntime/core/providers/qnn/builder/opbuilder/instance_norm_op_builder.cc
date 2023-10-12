@@ -129,7 +129,7 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     if (!input0_info.is_initializer) {
       // Add Reshape node to transform 1D input to 2D (i.e., set height to 1).
-      // We don't need to do this for initializers, because the number of elements does not change. We can just
+      // We don't need to do this for initializers, because the element layout does not change. We can just
       // modify the shape dimensions.
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input0_name);
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(input0_name,
