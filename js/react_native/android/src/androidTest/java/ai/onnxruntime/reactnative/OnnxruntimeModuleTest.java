@@ -210,11 +210,14 @@ public class OnnxruntimeModuleTest {
       when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
+      String sessionKey = null;
 
       try (InputStream modelStream =
                reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float)) {
         JavaOnlyMap options = new JavaOnlyMap();
-        ReadableMap loadMap = ortModule.loadModel("test", modelStream, options);
+        byte[] modelBuffer = getInputModelBuffer(modelStream);
+        ReadableMap loadMap = ortModule.loadModel(modelBuffer, options);
+        sessionKey = resultMap.getString("key");
 
         int[] dims = new int[] {1, 7};
         float[] inputData = new float[] {1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE, 5f, -6f};
@@ -253,6 +256,7 @@ public class OnnxruntimeModuleTest {
         Assert.assertTrue(e.getMessage().contains("Got invalid dimensions for input"));
       }
     } finally {
+      ortModule.dispose(sessionKey);
       mockSession.finishMocking();
     }
   }
@@ -265,11 +269,14 @@ public class OnnxruntimeModuleTest {
       when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
+      String sessionKey = null;
 
       JavaOnlyMap options = new JavaOnlyMap();
       try (InputStream modelStream =
                reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float)){
-        ReadableMap loadMap = ortModule.loadModel("test", modelStream, options);
+        byte[] modelBuffer = getInputModelBuffer(modelStream);
+        ReadableMap loadMap = ortModule.loadModel(modelBuffer, options);
+        sessionKey = resultMap.getString("key");
 
         int[] dims = new int[] {1, 1, 7};
         float[] inputData = new float[] {1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE, 5f, -6f};
@@ -308,6 +315,7 @@ public class OnnxruntimeModuleTest {
         Assert.assertTrue(e.getMessage().contains("Invalid rank for input"));
       }
     } finally {
+      ortModule.dispose(sessionKey);
       mockSession.finishMocking();
     }
   }
