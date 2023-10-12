@@ -34,7 +34,7 @@ class InstanceNormHelper {
     if (scale->Shape().Size() != in_channels) {
       std::ostringstream ostr;
       ostr << "Mismatch between input data and scale: size of scale != input channel count " << scale->Shape().Size()
-           << " vs. " << input->Shape().GetDims()[1];
+           << " vs. " << in_channels;
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
     }
 
@@ -47,7 +47,7 @@ class InstanceNormHelper {
     if (B->Shape().Size() != in_channels) {
       std::ostringstream ostr;
       ostr << "Mismatch between input data and B: size of B != input channel count " << B->Shape().Size() << " vs. "
-           << input->Shape().GetDims()[1];
+           << in_channels;
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
     }
 
