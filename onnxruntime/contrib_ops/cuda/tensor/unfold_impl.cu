@@ -34,7 +34,6 @@ __global__ void UnfoldTensorKernel(
   const int64_t idx_tailing = n / unfold_size;
   const int64_t idx_append = n % unfold_size;
 
-  // stride_tailing_dim_src = 1
   int64_t idx_src = idx_leading * stride_leading_src + idx_fold * stride_fold_dim_src + idx_tailing + idx_append * tailing_dims_size;
   output[idx] = input[idx_src];
 }
@@ -57,13 +56,8 @@ Status LaunchUnfoldTensor(
   int64_t N = leading_dims_size * unfold_dim_size_dst * tailing_dims_size * unfold_size;
   int64_t num_blocks = (N + TPB - 1) / TPB;
 
-  //   int64_t stride_append_dim_dst = 1;
-  //   int64_t stride_tailing_dim_dst = unfold_size;
-  //   int64_t stride_fold_dim_dst = unfold_size * tailing_dims_size;
   int64_t stride_leading_dst = unfold_size * tailing_dims_size * unfold_dim_size_dst;
 
-  //   int64_t stride_append_dim_src = tailing_dims_size;
-  //   int64_t stride_tailing_dim_src = 1;
   int64_t stride_fold_dim_src = tailing_dims_size * step_size;
   int64_t stride_leading_src = tailing_dims_size * unfold_dim_size;
 
