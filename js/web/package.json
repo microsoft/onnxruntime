@@ -151,6 +151,20 @@
         "development": "./dist/ort.webgpu.js",
         "default": "./dist/ort.webgpu.min.js"
       }
+    },
+    "./training": {
+      "import": {
+        "development": "./dist/esm/ort.training.wasm.js",
+        "default": "./dist/esm/ort.training.wasm.min.js"
+      },
+      "require": {
+        "development": "./dist/cjs/ort.training.wasm.js",
+        "default": "./dist/cjs/ort.training.wasm.min.js"
+      },
+      "default": {
+        "development": "./dist/ort.training.wasm.js",
+        "default": "./dist/ort.training.wasm.min.js"
+      }
     }
   },
   "types": "./types.d.ts",
