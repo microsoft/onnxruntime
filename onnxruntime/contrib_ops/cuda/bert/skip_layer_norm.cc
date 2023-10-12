@@ -3,6 +3,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/nn/layer_norm_impl.h"
+#include "core/common/narrow.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_impl.h"
 #include "contrib_ops/cpu/skip_layer_norm_helper.h"
@@ -68,7 +69,8 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
 
-  int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
+  int hidden_size = onnxruntime::narrow<int>(input_dims[input_dims_size - 1]);
+
   ORT_RETURN_IF_ERROR(onnxruntime::contrib::skip_layer_norm_helper::CheckInputs<Tensor>(input,
                                                                                         skip,
                                                                                         gamma,
@@ -77,14 +79,14 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
                                                                                         hidden_size,
                                                                                         input_dims_size));
 
-  int row_count = gsl::narrow<int>(input->Shape().SizeToDimension(input_dims_size - 1));
+  int row_count = onnxruntime::narrow<int>(input->Shape().SizeToDimension(input_dims_size - 1));
   if (row_count == 0) {
     return Status::OK();
   }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  const int skip_size = static_cast<int>(skip->Shape().Size());
+  const int skip_size = onnxruntime::narrow<int>(skip->Shape().Size());
 
   if (strict_) {
     HostApplyLayerNorm<CudaT, float, CudaT, Simplified>(
