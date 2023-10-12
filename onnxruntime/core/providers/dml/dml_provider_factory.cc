@@ -514,7 +514,7 @@ ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_options) {
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_options) {
 API_IMPL_BEGIN
 #ifdef USE_DML
   auto factory = onnxruntime::DMLProviderFactoryCreator::CreateFromOptions(device_options);
@@ -547,7 +547,8 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProviderEx_DML,
   &CreateGPUAllocationFromD3DResource,
   &FreeGPUAllocation,
-  &GetD3D12ResourceFromAllocation
+  &GetD3D12ResourceFromAllocation,
+  &OrtSessionOptionsAppendExecutionProvider_DML2,
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {
