@@ -273,11 +273,11 @@ fun run(audioTensor: OnnxTensor): Result {
                                     
                                     <h3 class="r-heading">Train a model to recognize your voice on mobile</h3>
 
-                                    <p>ONNX Runtime can also take a pre-trained model and adapt it to data that you provide. It can do this on the edge, on mobile specifically where it is easy to record your voice, access your photos and other personalized data. Importantly, your data does not leave the device during training.</p>
+                                    <p>ONNX Runtime can also take a pre-trained model and adapt it to new data. It can do this on the edge - on mobile specifically where it is easy to record your voice, access your photos and other personalized data. Importantly, your data does not leave the device during training.</p>
 
                                     <p>For example, you can train a PyTorch model to recognize just your own voice on your mobile phone, for authentication scenarios.</p>
 
-                                    <p>The PyTorch model is obtained from HuggingFace, and extra layers are added to perform the speaker classification.</p>
+                                    <p>The PyTorch model is obtained from HuggingFace in your development environment, and extra layers are added to perform the speaker classification:</p>
 
                                     <pre><code class="language-python">
 from transformers import Wav2Vec2ForSequenceClassification, AutoConfig
@@ -290,7 +290,7 @@ model.classifier = torch.nn.Linear(256, 2)
                                         
                                     </code></pre>
 
-                                    <p>The model and other components necessary for training (a loss function to measure the quality of the model and an optimizer to instruct how the weights are adjusted during training) are exported with the ONNX Runtime training Python API.</p>
+                                    <p>The model and other components necessary for training (a loss function to measure the quality of the model and an optimizer to instruct how the weights are adjusted during training) are exported with ONNX Runtime Training:</p>
 
                                     <pre><code class="language-python">
 artifacts.generate_artifacts(
@@ -303,7 +303,7 @@ artifacts.generate_artifacts(
 )                                        
                                     </code></pre>
 
-                                    <p>This set of artifacts is now ready to be loaded by the mobile application, shown here as iOS Swift code. Within the application, a number of samples of the speaker's audio are provided to the application and the model is trained with the samples.</p>
+                                    <p>This set of artifacts is now ready to be loaded by the mobile app, shown here as iOS Swift code. The app asks the user for samples of their voice and the model is trained with the samples.</p>
 
                                     <pre><code class="language-swift">
 func trainStep(inputData: [Data], labels: [Int64]) throws  {
@@ -325,8 +325,8 @@ func trainStep(inputData: [Data], labels: [Int64]) throws  {
 
                                     <h3 class="r-heading">Where to next?</h3>
 
-                                    <p>In this article we've shown why you would run PyTorch models on the edge and what aspects to consider. We also shared several examples with code that you can use for running state-of-the-art PyTorch model on the edge with ONNX Runtime. We also showed how ONNX Runtime was built for performance and cross-platform execution, making it the ideal way to run PyTorch models on the edge. You may have noticed that we didn't include a Llama2 example even though ONNX Runtime is optimized to run it. That's because the amazing Llama2 model deserves its own article, so stay tuned for that! </p>
-
+                                    <p>In this article we've shown why you would run PyTorch models on the edge and what aspects to consider. We also shared several examples with code that you can use for running state-of-the-art PyTorch models on the edge with ONNX Runtime. We also showed how ONNX Runtime was built for performance and cross-platform execution, making it the ideal way to run PyTorch models on the edge. Have fun running PyTorch models on the edge with ONNX Runtime!</p>
+                                    <p>You may have noticed that we didn't include a Llama2 example even though ONNX Runtime is optimized to run it. That's because the amazing Llama2 model deserves its own article, so stay tuned for that!</p>
                 </div>
             </div>
                     </section>
