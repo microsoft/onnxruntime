@@ -127,7 +127,7 @@ Status ModelBuilder::RegisterInitializers() {
       emscripten::val view = emscripten::val::undefined();
       std::byte* tensor_ptr = nullptr;
       if (tensor.has_raw_data()) {
-        tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char *>(tensor.raw_data().c_str()));
+        tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char*>(tensor.raw_data().c_str()));
       } else {
         unpacked_tensors_.push_back({});
         std::vector<uint8_t>& unpacked_tensor = unpacked_tensors_.back();
