@@ -2156,6 +2156,9 @@ struct Op : detail::Base<OrtOp> {
               size_t output_count);
 };
 
+/// <summary>
+/// Provide access to per-node attributes and input shapes, so one could compute and set output shapes.
+/// </summary>
 struct ShapeInferContext {
   struct SymbolicInteger {
     SymbolicInteger(int64_t i) : i_(i), is_int_(true){};
