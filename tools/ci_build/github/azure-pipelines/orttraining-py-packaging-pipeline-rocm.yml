@@ -24,24 +24,23 @@ stages:
       PythonVersion: '3.10'
       RocmVersion: '5.7'
 
-- stage: "Python_Packaging_ROCm57_RelWithDebInfo"
-  condition: ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')
+- stage: "Python_Packaging_ROCm57_Debug"
   jobs:
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
       RocmVersion: '5.7'
-      BuildConfig: 'RelWithDebInfo'
+      BuildConfig: 'Debug'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
       RocmVersion: '5.7'
-      BuildConfig: 'RelWithDebInfo'
+      BuildConfig: 'Debug'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.10'
       RocmVersion: '5.7'
-      BuildConfig: 'RelWithDebInfo'
+      BuildConfig: 'Debug'
 
 - stage: "Python_Packaging_ROCm56_Release"
   condition: ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')
