@@ -82,10 +82,10 @@
                             <div class="row">
                                 <div class="col-12 col-md-9">
                                     <p>
-                                        Most modern ML models are developed with PyTorch. The agility and flexibility that PyTorch provides for creating and training models has made it the most popular deep learning framework today. The typical workflow is to train these models in the cloud and run them from the cloud as well. However, many scenarios are arising that make it more attractive - or in some cases, required - to run locally on device. These include:
+                                        Most modern ML models are developed with PyTorch. The agility and flexibility that PyTorch provides for creating and training models has made it the most popular deep learning framework today. The typical workflow is to train these models in the cloud and run them from the cloud as well. However, many scenarios are arising that make it more attractive – or in some cases, required – to run locally on device. These include:
                                     </p>
                                     <ul>
-                                        <li>Avoiding network roundtrips to the cloud (for example in audio and video processing)</li>
+                                        <li>Avoiding network round-trips to the cloud (for example in audio and video processing)</li>
                                         <li>Keeping user data on device (for privacy protection or regulatory requirements)</li>
                                         <li>High cost of cloud resources (especially when device capabilities are underutilized)</li>
                                         <li>Application requirements to operate without internet connectivity</li>
@@ -269,6 +269,8 @@ fun run(audioTensor: OnnxTensor): Result {
 
                                     <img src="../images/pytorch-on-the-edge-speechrec.png" alt="Screenshot of an Android app to perform speech recognition using ONNX Runtime, running a PyTorch Whisper model" class="img-fluid">
 
+                                    <p></p>
+                                    
                                     <h3 class="r-heading">Train a model to recognize your voice on mobile</h3>
 
                                     <p>ONNX Runtime can also take a pre-trained model and adapt it to data that you provide. It can do this on the edge, on mobile specifically where it is easy to record your voice, access your photos and other personalized data. Importantly, your data does not leave the device during training.</p>
