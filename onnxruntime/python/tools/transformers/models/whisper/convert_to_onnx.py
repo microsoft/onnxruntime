@@ -206,7 +206,8 @@ def parse_arguments(argv=None):
         "--no_speech_token_id",
         default=50362,
         type=int,
-        help="specify no_speech_token_id. Default is 50362. if >= 0, will be add into beam search attr",
+        help="specify no_speech_token_id. Default is 50362. if >= 0, will be add into beam search attr. \
+              Note that default value maybe different between the multilingual and English-only models.",
     )
 
     parser.add_argument(

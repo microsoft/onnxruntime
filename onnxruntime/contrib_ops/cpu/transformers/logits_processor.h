@@ -155,6 +155,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override {
+    // TODO: translate_token_id_ and transcribe_token_id_ need to support both multilingual and English-only models.
     const int beg_token_id_ = eos_token_id_ + 107;
     const int not_token_id_ = eos_token_id_ + 106;
     const int solm_token_id_ = eos_token_id_ + 105;
