@@ -157,8 +157,8 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
 * Expanding out the terms:
 *   Output = (Scale / sqrt(Variance + Epsilon)) * Input + (Scale / sqrt(Variance + Epsilon)) * -Mean + Bias
 * Here,
-*   Scale/sqrt(Variance + Epsilon) = alpha (constant)
-*   (Scale / sqrt(Variance + Epsilon)) * -Mean + Bias = beta (constant)
+*   [Scale/sqrt(Variance + Epsilon)] is constant, and let's call it `alpha`
+*   [(Scale / sqrt(Variance + Epsilon)) * -Mean + Bias] is also constant, and let's call it `beta`
 * Output = alpha * Input + beta, Input = B tensor of MatMul.
 * 
 */
