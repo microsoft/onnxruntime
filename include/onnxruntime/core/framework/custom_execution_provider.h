@@ -9,6 +9,8 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/stream_handles.h"
+#include "core/framework/op_kernel.h"
+
 #include <climits>
 
 namespace Ort {
@@ -41,10 +43,15 @@ namespace onnxruntime {
 ////////////////////////////////////////////////// lite tensors //////////////////////////////////////////////////
 namespace lite {
 
-template<typename T>
-struct Tensor {
+struct Arg {};
+
+using ArgPtr = std::unique_ptr<Arg>;
+using ArgPtrs = std::vector<ArgPtr>;
+
+template <typename T>
+struct Tensor : public Arg {
   using MyType = Tensor<T>;
-  Tensor(void* kernel_ctx) : kernel_ctx_(kernel_ctx){};
+  Tensor(onnxruntime::OpKernelContext* ctx, size_t index, bool is_input) : ctx_(ctx), index_(index), is_input_(is_input){};
   std::vector<int64_t> Shape() {
     return {};
   }
@@ -54,14 +61,17 @@ struct Tensor {
   T* Allocate(MyType* reuse) {
     return {};
   }
+
  private:
-  void* kernel_ctx_ = {};
+  onnxruntime::OpKernelContext* ctx_ = {};
+  size_t index_;
+  bool is_input_;
 };
 
-template<typename T, int64_t ith_input_to_copy_from = 0>
-struct Reused: Tensor<T> {
+template <typename T, int64_t ith_input_to_copy_from = 0>
+struct Reused : Tensor<T> {
   using MyType = Tensor<T>;
-  Reused(const MyType* source) {}
+  Reused(onnxruntime::OpKernelContext* ctx, size_t index) : Tensor(ctx, index, false) {}
   T* Data() {
     return {};
   }
@@ -70,22 +80,69 @@ struct Reused: Tensor<T> {
 template <typename T, int64_t ith_input_to_alias_from = 0>
 struct Aliasd : Reused<T, ith_input_to_alias_from> {
   using MyType = Tensor<T>;
-  Aliasd(const MyType* source) : Reused(source) {}
+  Aliasd(onnxruntime::OpKernelContext* ctx, size_t index) : Reused(ctx, index) {}
   T* Data() {
     return {};
   }
 };
 
-onnxruntime::Status Conv(const Tensor<float>& /*X*/,
-                         const Tensor<float>& /*W*/,
-                         const Tensor<float>& /*B*/,
-                         Tensor<float>& /*Y*/);
+// onnxruntime::Status Conv(const Tensor<float>& /*X*/,
+//                          const Tensor<float>& /*W*/,
+//                          const Tensor<float>& /*B*/,
+//                          Tensor<float>& /*Y*/);
+//
+// onnxruntime::Status Relu(const Tensor<float>& /*X*/, Reused<float>& /*Y*/);
+//
+// onnxruntime::Status Identity(const Tensor<float>& /*X*/, Aliasd<float>& /*Y*/);
 
-onnxruntime::Status Relu(const Tensor<float>& /*X*/, Reused<float>& /*Y*/);
+struct Kernel {};
 
-onnxruntime::Status Identity(const Tensor<float>& /*X*/, Aliasd<float>& /*Y*/);
+template <typename... Args>
+struct LiteKernelFn : public onnxruntime::OpKernel {
+  using ComputeFn = onnxruntime::Status (*)(Args...);
+  LiteKernelFn(const OpKernelInfo& info, ComputeFn compute_fn) : OpKernel(info), compute_fn_(compute_fn) {}
 
+  template <size_t ith_input, size_t ith_output, typename... Ts>
+  static typename std::enable_if<sizeof...(Ts) == 0, std::tuple<>>::type
+  CreateTuple(OrtKernelContext*, ArgPtrs&) {
+    return std::make_tuple();
+  }
+
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, const Tensor<float>&>::value, std::tuple <T, Ts...>> ::type
+  CreateTuple(onnxruntime::OpKernelContext* context, ArgPtrs& args) {
+    args.push_back(std::make_unique<Tensor<float>>(context, ith_input, True));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
+    auto next = CreateTuple<ith_input + 1, ith_output, Ts...>(context, args);
+    return std::tuple_cat(current, next);
+  }
+
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, Reused<float>&>::value, std::tuple <T, Ts...>> ::type
+  CreateTuple(onnxruntime::OpKernelContext* context, ArgPtrs& args) {
+    args.push_back(std::make_unique<Reused<float>>(context, ith_output, True));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
+    auto next = CreateTuple<ith_input, ith_output + 1, Ts...>(context, args);
+    return std::tuple_cat(current, next);
+  }
+
+  onnxruntime::Status Compute(onnxruntime::OpKernelContext* context) const override {
+    ArgPtrs args;
+    auto t = CreateTuple<0, 0, Args...>(context, args);
+    return std::apply([this](Args const&... t_args) { compute_fn_(t_args...); }, t);
+  }
+
+ private:
+  ComputeFn compute_fn_;
+};
+
+template <typename... Args>
+onnxruntime::KernelDefBuilder& RegisterKernel(onnxruntime::Status (*)(Args...)) {
+  onnxruntime::KernelCreateInfo;
+  return {};
 }
+
+}  // namespace lite
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class CustomExecutionProvider {
  public:
