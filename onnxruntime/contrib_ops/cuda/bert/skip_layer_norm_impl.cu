@@ -218,6 +218,7 @@ void LaunchSkipLayerNormKernel(
     }                                                                         \
   } break
 
+// TODO: Add back the small TensorRT kernel for 32. No need to use vertorized kernel for such small size.
 #define CASE_FIRST_SIZE()                   \
   case kSizes[0]: {                         \
     constexpr int block_size = kSizes[0];   \
@@ -231,6 +232,7 @@ void LaunchSkipLayerNormKernel(
     CASE_NEXT_SIZE(kSizes[3]);
     CASE_NEXT_SIZE(kSizes[4]);
     CASE_NEXT_SIZE(kSizes[5]);
+    // kMaxSize shall not run vectorized kernel since ld might be larger than kMaxSize.
     default: {
       constexpr int block_size = 256;
       LAUNCH_SKIP_LAYER_NORM_KERNEL();
