@@ -21,7 +21,7 @@ void RegisterCollectiveOps() {
       .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(int64)"},
           "Constrain to float, float16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);

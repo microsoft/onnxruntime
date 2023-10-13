@@ -381,7 +381,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     AllReduce);
 
 ONNX_OPERATOR_KERNEL_EX(
