@@ -37,4 +37,4 @@ jobs:
         parameters:
           DockerImageTag: ${{ parameters.DockerImageTag }}
           BuildConfig: Release
-    - template: steps/clean-agent-build-directory-step.yml
+    - template: steps/clean-agent-build-directory-steps.yml

@@ -91,7 +91,7 @@ stages:
 
       - template: stages/jobs/steps/clean-agent-build-directory-steps.yml
 
-- template: templates/py-packaging-stage.yml
+- template: stages/py-packaging-stages.yml
   parameters:
     build_py_parameters: --enable_training
     enable_linux_gpu: false

@@ -238,7 +238,7 @@ stages:
 
     # get-docker-image-steps.yml will move the $(Build.SourcesDirectory)/manylinux into $(Build.SourcesDirectory)/onnxruntime,
     # then rename $(Build.SourcesDirectory)/onnxruntime as $(Build.SourcesDirectory)
-    - template: templates/get-docker-image-steps.yml
+    - template: stages/jobs/steps/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
         Context: tools/ci_build/github/linux/docker
@@ -252,7 +252,7 @@ stages:
           --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
         Repository: onnxruntimetrainingrocmbuild-rocm$(RocmVersion)
 
-    - template: templates/set-version-number-variables-step.yml
+    - template: stages/jobs/steps/set-version-number-variables-steps.yml
 
     - task: Bash@3
       displayName: 'Build'
@@ -273,7 +273,7 @@ stages:
        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts for CustomOp'  # libcustom_op_library.so from cpu build is built with fp8, ROCm does not support it.
 
-    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+    - template: stages/jobs/steps/c-api-artifacts-package-and-publish-posix-steps.yml
       parameters:
         buildConfig: 'Release'
         artifactName: 'onnxruntime-linux-x64-rocm-$(OnnxRuntimeVersion)'
@@ -283,7 +283,7 @@ stages:
     - template: templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: stages/jobs/steps/clean-agent-build-directory-steps.yml
 
 - stage: Jar_Packaging_GPU
   dependsOn:
@@ -425,7 +425,7 @@ stages:
       submodules: false
     - template: stages/jobs/steps/set-version-number-variables-steps.yml
 
-    - template: templates/flex-downloadPipelineArtifact.yml
+    - template: stages/jobs/steps/flex-downloadPipelineArtifact-steps.yml
       parameters:
         StepName: 'Download Final Jar'
         ArtifactName: onnxruntime-java-gpu
@@ -433,7 +433,7 @@ stages:
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - template: templates/get-docker-image-steps.yml
+    - template: stages/jobs/steps/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
         Context: tools/ci_build/github/linux/docker/
@@ -874,7 +874,7 @@ stages:
       submodules: true
       fetchDepth: 1
 
-    - template: templates/flex-downloadPipelineArtifact.yml
+    - template: stages/jobs/steps/flex-downloadPipelineArtifact-steps.yml
       parameters:
         StepName: 'Download Pipeline Artifact - NuGet'
         ArtifactName: 'onnxruntime-linux-x64-rocm'
@@ -974,7 +974,7 @@ stages:
           -p:IsMacOSBuild=false
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - template: templates/win-esrp-dll.yml
+    - template: stages/jobs/steps/win-esrp-dll-steps.yml
       parameters:
         FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
         DisplayName: 'ESRP - Sign C# dlls'
@@ -1019,13 +1019,13 @@ stages:
         Contents: '*.nupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - template: templates/esrp_nuget.yml
+    - template: stages/jobs/steps/esrp_nuget-steps.yml
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - template: templates/validate-package.yml
+    - template: stages/jobs/steps/validate-package-steps.yml
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'

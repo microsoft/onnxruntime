@@ -74,7 +74,7 @@ stages:
           vmImage: 'macOS-13'
       steps:
       - checkout: none
-      - template: flex-downloadPipelineArtifact.yml
+      - template: jobs/steps/flex-downloadPipelineArtifact-steps.yml
         parameters:
           StepName: 'Download Pipeline onnxruntime-osx-x86_64'
           ArtifactName: 'onnxruntime-osx-x86_64'
@@ -83,14 +83,14 @@ stages:
           BuildId: ${{ parameters.BuildId }}
 
       - ${{ if eq(parameters.BuildForAllArchs, true) }}:
-        - template: flex-downloadPipelineArtifact.yml
+        - template: jobs/steps/flex-downloadPipelineArtifact-steps.yml
           parameters:
             StepName: 'Download Pipeline onnxruntime-osx-arm64'
             ArtifactName: 'onnxruntime-osx-arm64'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
-        - template: flex-downloadPipelineArtifact.yml
+        - template: jobs/steps/flex-downloadPipelineArtifact-steps.yml
           parameters:
             StepName: 'Download Pipeline onnxruntime-osx-universal2'
             ArtifactName: 'onnxruntime-osx-universal2'

@@ -49,7 +49,7 @@ jobs:
     clean: true
     submodules: recursive
 
-  - template: templates/get-docker-image-steps.yml
+  - template: stages/jobs/steps/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
       Context: tools/ci_build/github/linux/docker
@@ -143,7 +143,7 @@ jobs:
     clean: true
     submodules: recursive
 
-  - template: templates/get-docker-image-steps.yml
+  - template: stages/jobs/steps/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
@@ -237,7 +237,7 @@ jobs:
     clean: true
     submodules: recursive
 
-  - template: templates/get-docker-image-steps.yml
+  - template: stages/jobs/steps/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
@@ -371,4 +371,4 @@ jobs:
     displayName: 'Clean ROCm Environment'
     condition: always()
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: stages/jobs/steps/clean-agent-build-directory-steps.yml
