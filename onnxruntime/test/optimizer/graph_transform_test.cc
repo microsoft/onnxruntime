@@ -991,6 +991,7 @@ TEST_F(GraphTransformationTests, FuseMatmulBN) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["BatchNormalization"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["Gemm"] == 1);
 
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Gemm") {
@@ -1029,6 +1030,7 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutput) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["BatchNormalization"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["Gemm"] == 1);
 
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Gemm") {
