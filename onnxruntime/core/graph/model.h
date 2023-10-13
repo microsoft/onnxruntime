@@ -315,6 +315,9 @@ class Model {
   // this is the map from function id to the local function template.
   // this map will be used by graph to instantiate the function body.
   InlinedHashMap<std::string, std::unique_ptr<FunctionTemplate>> model_local_function_templates_maps_;
+
+  void RemoveLocalFunctionsProtos();
+
 #else
   // properties that would normally come from ModelProto
   std::string producer_version_;

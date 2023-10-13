@@ -42,9 +42,9 @@ class GraphPartitioner {
   // and inlines any functions that are not claimed by any of the execution providers.
   // This function does not attempt to run layout transformation, and it does not assign EPs.
   // The latter will be done by graph partitioning.
-  Status IntelligentAotFunctionInlining(Graph& graph,
-                                        const ExecutionProviders& execution_providers,
-                                        const KernelRegistryManager& kernel_registry_manager) const;
+  Status InlineFunctionsAOT(Graph& graph,
+                            const ExecutionProviders& execution_providers,
+                            const KernelRegistryManager& kernel_registry_manager) const;
 #endif
 
  private:

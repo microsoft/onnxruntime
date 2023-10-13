@@ -242,7 +242,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
 
 // This function queries the capabilities for a given EP, but it does not assign the nodes.
 // It also does not perform layout transformation. This will be done during normal partitioning.
-static Status GetCapabilityForEPForAotInlining(const Graph& graph,
+static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                                const KernelRegistryManager& kernel_registry_mgr,
                                                const IExecutionProvider& current_ep,
                                                std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
@@ -253,7 +253,7 @@ static Status GetCapabilityForEPForAotInlining(const Graph& graph,
                                    kernel_registries_for_ep,
                                    kernel_registry_mgr.GetKernelTypeStrResolver()};
 
-  const GraphViewer graph_viewer(graph);
+  // TODO: Provide EP with a capability to look inside the functions.
   capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
 
   return Status::OK();
@@ -545,10 +545,6 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
     }
   }
 
-  // if (!nodes_to_inline.empty()) {
-  //   DebugBreak();
-  // }
-
   for (auto* node : nodes_to_inline) {
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
     modified_graph = true;
@@ -557,10 +553,10 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
   return Status::OK();
 }
 
-static Status IntelligentAotFunctionInliningImpl(const ExecutionProviders& execution_providers,
-                                                 const KernelRegistryManager& kernel_registry_mgr,
-                                                 Graph& graph,
-                                                 size_t& inlined_round_count) {
+static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
+                                     const KernelRegistryManager& kernel_registry_mgr,
+                                     Graph& graph,
+                                     size_t& inlined_count) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -571,10 +567,10 @@ static Status IntelligentAotFunctionInliningImpl(const ExecutionProviders& execu
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
       // we pass through the FuncManager from the top level graph
-      ORT_RETURN_IF_ERROR(IntelligentAotFunctionInliningImpl(execution_providers,
-                                                             kernel_registry_mgr,
-                                                             *subgraph,
-                                                             inlined_round_count));
+      ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
+                                                 kernel_registry_mgr,
+                                                 *subgraph,
+                                                 inlined_count));
     }
   }
 
@@ -591,28 +587,29 @@ static Status IntelligentAotFunctionInliningImpl(const ExecutionProviders& execu
   }
 
   // Find out all the nodes that are already taken
+  const GraphViewer graph_viewer(graph);
+
   InlinedHashSet<NodeIndex> claimed_by_ep;
   for (const auto& ep : execution_providers) {
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph, kernel_registry_mgr, *ep, capabilities));
+    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep, capabilities));
     for (auto& capability : capabilities) {
       const auto& nodes = capability->sub_graph->nodes;
       if (nodes.size() == 1) {
         // Single node capability.
         ORT_IGNORE_RETURN_VALUE(claimed_by_ep.insert(nodes[0]));
       } else {
-        auto unclaimed_count = std::count_if(nodes.cbegin(), nodes.cend(), [&claimed_by_ep](NodeIndex node_index) {
-          return claimed_by_ep.count(node_index) == 0;
-        });
-
-        if (nodes.size() == narrow<size_t>(unclaimed_count)) {
+        // Make sure none is claimed by other EPs mirroring the logic in PartitionOnnxFormatModelImpl.
+        if (std::all_of(nodes.cbegin(), nodes.cend(), [&claimed_by_ep](NodeIndex node_index) {
+              return claimed_by_ep.count(node_index) == 0;
+            })) {
           claimed_by_ep.insert(nodes.cbegin(), nodes.cend());
         }
       }
     }
   }
 
-  // XXX: Insert version check. We need to collect all the versions
+  // TODO: Insert version check. We need to collect all the versions
   // that imported by the model. If the version is not supported by
   // the model, we can not inline it.
 
@@ -621,7 +618,7 @@ static Status IntelligentAotFunctionInliningImpl(const ExecutionProviders& execu
       auto* node = graph.GetNode(node_index);
       if (node != nullptr) {
         ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
-        ++inlined_round_count;
+        ++inlined_count;
       }
     }
   }
@@ -650,7 +647,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
-    // modified_graph = false;
+    modified_graph = false;
     ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
 
     // Resolve and rerun graph partitioning and inlining if there was a change
@@ -791,26 +788,24 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 
 #ifndef ORT_MINIMAL_BUILD
 
-Status GraphPartitioner::IntelligentAotFunctionInlining(Graph& graph,
-                                                        const ExecutionProviders& execution_providers,
-                                                        const KernelRegistryManager& kernel_registry_manager) const {
+Status GraphPartitioner::InlineFunctionsAOT(Graph& graph,
+                                            const ExecutionProviders& execution_providers,
+                                            const KernelRegistryManager& kernel_registry_manager) const {
   do {
-    size_t inlined_round_count = 0;
-    ORT_RETURN_IF_ERROR(IntelligentAotFunctionInliningImpl(execution_providers,
-                                                           kernel_registry_manager,
-                                                           graph,
-                                                           inlined_round_count));
+    size_t inlined_count = 0;
+    ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
+                                               kernel_registry_manager,
+                                               graph,
+                                               inlined_count));
 
-    if (inlined_round_count == 0) {
+    if (inlined_count == 0) {
       break;
     }
 
     ORT_RETURN_IF_ERROR(graph.Resolve());
   } while (true);
 
-  // XXX: Consider removing local model functions
-  // Currently the model is const as viewed from the graph.
-  // However, inlined functions contribute the most to resulting model size.
+  graph.RemoveLocalFunctions();
 
   return Status::OK();
 }

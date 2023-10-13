@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
@@ -216,12 +217,6 @@ class Node {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.input_defs);
   }
 
-  /** Gets the Node's input definitions as span.
-   */
-  gsl::span<NodeArg* const> InputDefsAsSpan() const noexcept {
-    return definitions_.input_defs;
-  }
-
   /** Gets the implicit inputs to this Node.
   If this Node contains a subgraph, these are the NodeArg's that are implicitly consumed by Nodes within that
   subgraph. e.g. If and Loop operators.*/
@@ -229,22 +224,10 @@ class Node {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.implicit_input_defs);
   }
 
-  /** Gets the Node's implicit input definitions as span.
-   */
-  gsl::span<NodeArg* const> ImplicitInputDefsAsSpan() const noexcept {
-    return definitions_.implicit_input_defs;
-  }
-
   /** Gets the Node's output definitions.
   @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
   ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.output_defs);
-  }
-
-  /** Gets the Node's output definitions as span.
-   */
-  gsl::span<NodeArg* const> OutputDefsAsSpan() const noexcept {
-    return definitions_.output_defs;
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1175,36 +1158,21 @@ class Graph {
   Status InlineFunction(Node& node);
 
   /**
-  Directly insert the nodes in the function proto provided into the dest graph.
-  The function converts Constant nodes into the initializers in the destination graph.
-  It then creates a node in the destination graph for each of the function nodes.
-  The function names are expected to be specialized, and, therefore unique.
+  Directly insert the nodes in the function proto provided into the graph.
+  The function converts Constant nodes into the initializers in the graph.
+  It then creates a node in the graph for each of the function nodes.
+  All of the names are expected to be specialized, and, therefore unique.
+  See function_utils::Specialize().
 
   The Graph needs to be Resolve()d after this call.
   @param func_to_inline
-  @param model_path model path of the graph where func_to_inline is from
-  @param dest_graph graph where we want node copies to appear
   @returns Status indicating success or providing an error message.
   */
 
-  Status FunctionToGraph(const ONNX_NAMESPACE::FunctionProto& func_to_inline, const Path& model_path, Graph& dest_graph);
-
-  /**
-   Inline a graph into this graph. This function copies nodes and initializers of graph_to_inline into
-   this graph. Constant nodes are converted into initializers. Names of all the entities are expected
-   to be updated to be unique as well as the Defs.
-   @param graph_to_inline to be inlined
-   @param model_path model path of the subgraph
-   @param unique_id - optinal unique id to be appended to the node names if present.
-   @param inlined_to_target_map - optional map of indices of the graph_to_inline to indices of nodes
-    copied into this graph.
-  */
-  Status InlineSubgraph(const Graph& graph_to_inline,
-                        const Path& model_path,
-                        std::optional<std::string> unique_id);
+  Status FunctionToGraph(const ONNX_NAMESPACE::FunctionProto& func_to_inline);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
-  be used as a GraphProto attribute in another Node..
+  be used as a GraphProto attribute in another Node.
   e.g. when creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to
   define placeholder NodeArgs for outer scope values. This prevents these values from becoming explicit graph inputs
   when the Graph is resolved.
@@ -1431,7 +1399,8 @@ class Graph {
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         const logging::Logger& logger,
-        bool strict_shape_type_inference);
+        bool strict_shape_type_inference,
+        std::function<void()> model_functions_remover);
 
   // internal use by the Graph class only
   Graph(const Model& owning_model,
@@ -1442,9 +1411,16 @@ class Graph {
         Graph* parent_graph,
         const Node* parent_node,
         const logging::Logger& logger,
-        bool strict_shape_type_inference);
+        bool strict_shape_type_inference,
+        std::function<void()> model_functions_remover);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
+
+  void RemoveLocalFunctions() {
+    if (model_functions_remover_) {
+      model_functions_remover_();
+    }
+  }
 
  private:
   void InitializeStateFromModelFileGraphProto();
@@ -1454,18 +1430,11 @@ class Graph {
                 const ArgNameToTypeMap& name_to_type);
 
   /** Helper that converts and adds constant node proto to an initializer in the graph.
-      The function requires that all of the nodes names in the constant_node_proto has already been specialized.
    @param constant_node_proto Constant node to convert
-   @param model_path model path where constant_node_proto is from
+   @param new_name use the new name for the initializer.
   */
-  Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto, const Path& model_path);
-
-  /*
-   * The function will create copies of the initializers in this graph.
-   * @param from_graph initializers source
-   * @param unique_id used to make unique_names for the initializers
-   */
-  void CopyInitializers(const Graph& from_graph, std::optional<std::string> unique_id);
+  Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
+                                       std::optional<std::string_view> new_name);
 
 #endif
 
@@ -1668,6 +1637,12 @@ class Graph {
   // to store reusable-schema in lookup.
   InlinedHashMap<std::string, std::reference_wrapper<ONNX_NAMESPACE::OpSchema>> reusable_fused_schema_map_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // A function to call into the model to remove local functions which
+  // are inlined.
+  std::function<void()> model_functions_remover_;
+#endif
 
   // Graph nodes.
   // Element in <nodes_> may be nullptr due to graph optimization.
