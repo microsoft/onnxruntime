@@ -3,8 +3,8 @@
         {
             "title": "Run PyTorch models on the edge",
             "date": "October 12th, 2023",
-            "blurb": "Learn how to ONNX Runtime helps users accelerate open source machine learning models from Hugging Face.",
-            "link": "https://onnxruntime.ai/blogs/pytorch-on-the-edge"
+            "blurb": "Everything you need to know about running PyTorch models on the edge with ONNX Runtime.",
+            "link": "./pytorch-on-the-edge"
         },
         {
 	        "title": "Accelerating over 130,000 Hugging Face models with ONNX Runtime",
