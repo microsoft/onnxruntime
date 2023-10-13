@@ -13,6 +13,8 @@
 #include <cuda_runtime.h>
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cpu/transformers/logits_processor.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
@@ -203,7 +205,7 @@ Status AddToFeeds(Stream* ort_stream,
   ORT_ENFORCE(total_bytes > 0);
 
   cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
-  auto pinned_buffer = IAllocator::MakeUniquePtr<void>(host_allocator, total_bytes);
+  auto pinned_buffer = IAllocator::MakeUniquePtr<void>(host_allocator, total_bytes, false, ort_stream);
   char* pinned_data = static_cast<char*>(pinned_buffer.get());
   // Copy tensors to one pinned memory buffer (so that we only need copy to GPU once)
   char* destination = pinned_data;
@@ -419,11 +421,21 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
 
+  const bool is_whisper_model = (parameters->model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper);
+  if (step == 1 && is_whisper_model && parameters->no_speech_probs) {
+    cuda::LaunchSaveNoSpeechProbs<T>(
+        (T*)parameters->no_speech_probs, Y_data, batch_size, num_beams, vocab_size, parameters->no_speech_token, cuda_stream);
+  }
+
+  // NOTE: currently we treat extra decoding ids are same
+  int extra_decoding_len = static_cast<int>(parameters->extra_decoding_ids.size() / parameters->batch_size);
+  const bool need_handle_extra_decoding_ids = is_whisper_model && (!parameters->extra_decoding_ids.empty()) && (extra_decoding_len >= step);
+
   cuda::LaunchLogitsProcessKernel<float>(
       next_token_scores.data(),
       parameters->vocab_mask.data(),
-      step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
-      nullptr,                                                    // parameters->presence_mask.data(),
+      (step > extra_decoding_len + 1) ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
+      nullptr,                                                                           // parameters->presence_mask.data(),
       parameters->presence_penalty,
       parameters->temperature,
       parameters->batch_size,
@@ -437,6 +449,50 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       parameters->repetition_penalty,
       parameters->no_repeat_ngram_size,
       cuda_stream);
+
+  // Whisper time stamp generation.
+  // TODO: implement it on GPU
+  bool gen_timestamp = is_whisper_model &&
+                       (parameters->logits_processor == onnxruntime::contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper);
+  if (gen_timestamp) {
+    // Copy next token scores to cpu memory, copy Sequences to cpu
+    std::vector<float> cpu_next_token_scores(next_token_scores.size());
+    gsl::span<float> cpu_next_token_scores_span(cpu_next_token_scores.data(), cpu_next_token_scores.size());
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_next_token_scores.data(),
+                                         next_token_scores.data(),
+                                         next_token_scores.size_bytes(),
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(const_cast<int32_t*>(sequences->GetSequence(0).data()),
+                                         sequences->GetCurrentDeviceSequences().data(),
+                                         sequences->GetSequence(0).size_bytes() * batch_beam_size,
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
+    constexpr int max_initial_timestamp_index = 50;
+    onnxruntime::contrib::transformers::TimestampLogitsProcessor<float> time_logit_processor(parameters->eos_token_id, max_initial_timestamp_index);
+    onnxruntime::contrib::transformers::NextTokenScores<float> next_token_scores_timestamp({cpu_next_token_scores_span, batch_beam_size, vocab_size});
+
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    time_logit_processor.Process(sequences, next_token_scores_timestamp);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(next_token_scores.data(),
+                                         cpu_next_token_scores.data(),
+                                         next_token_scores.size_bytes(),
+                                         cudaMemcpyHostToDevice,
+                                         cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+  }
+
+  if (need_handle_extra_decoding_ids && !parameters->extra_decoding_ids.empty()) {
+    cuda::LaunchForceDecodingIds(
+        next_token_scores.data(),
+        parameters->batch_size,
+        parameters->num_beams,
+        parameters->vocab_size,
+        parameters->extra_decoding_ids.data(),
+        static_cast<int>(parameters->extra_decoding_ids.size() / parameters->batch_size),
+        step - 1,
+        cuda_stream);
+  }
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
@@ -800,13 +856,11 @@ Status GreedySearchProcessLogits(
 
   // Sequences generated by beam scorer is currently stored in CPU.
   // Copy sequences to device only when repetition penalty or no repeat ngram is used in kernel
-  BufferUniquePtr sequences_buffer;
+  IAllocatorUniquePtr<void> sequences_buffer;
   int current_sequence_length = sequences->GetSequenceLength();
   if (parameters->repetition_penalty != 1.0f) {
     size_t bytes = SafeInt<size_t>(sizeof(int32_t)) * batch_beam_size * parameters->max_length;
-    void* data = allocator->Alloc(bytes);
-    BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
-    sequences_buffer = std::move(temp_buffer);
+    sequences_buffer = IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sequences_buffer.get(), sequences->GetSequence(0).data(), bytes,
                                          cudaMemcpyHostToDevice, cuda_stream));
   }
@@ -1189,14 +1243,14 @@ Status UpdateDecoderFeeds(
 
   if (past_present_share_buffer) {
     // Update past sequence length input
-    const ptrdiff_t past_sequence_length_idx = 2 * (static_cast<ptrdiff_t>(last_outputs.size()) - t5_decoder_first_present_output_idx) + t5_decoder_first_past_input_idx;
+    const ptrdiff_t past_sequence_length_idx = 2 * num_present_tensors + t5_decoder_first_past_input_idx;
     *(next_inputs[past_sequence_length_idx].GetMutable<Tensor>()->MutableData<int32_t>()) = current_length - 1;
 
     // Update beam search specific input for DecoderMaskedSelfAttention (cache indirection) if present
 
     // If the last input is not `past_sequence_length`, then the beam search specific inputs
     // for `DecoderMaskedSelfAttention` is present
-    if (need_cache_indir) {
+    if (need_cache_indir && num_beams > 1) {
       ORT_ENFORCE(!beam_indices_gpu.empty(), "Beam indices must be present on CUDA while using DecoderMaskedMultiHeadAttention with BeamSearch");
 
       // The cache indirection feed comes 2 feeds after the `past_sequence_length` feed
@@ -1521,6 +1575,93 @@ template Status ExpandBuffer<MLFloat16>(
     OrtValue& expanded,
     bool only_copy_shape,
     int max_sequence_length);
+
+Status UpdateDecoderCrossQK(
+    int iteration_number,
+    Stream* stream,
+    OrtValue* cross_qks,
+    IAllocatorUniquePtr<float*>& qk_layer_pointers,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    float* cross_qk_buffer_data,
+    int max_length,
+    AllocatorPtr allocator) {
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+
+  if (qk_layer_pointers.get() == nullptr) {
+    // Put all the qk pointers into gpu, as they did not change in following decoding steps
+    // also this help to use single kernel to process each step
+    qk_layer_pointers = IAllocator::MakeUniquePtr<float*>(allocator, static_cast<size_t>(num_layers), false, stream);
+    std::vector<float*> qk_layer_data(num_layers, nullptr);
+    for (int layer = 0; layer < num_layers; layer++) {
+      qk_layer_data[layer] = cross_qks[layer].GetMutable<Tensor>()->MutableData<float>();
+    }
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync((void*)qk_layer_pointers.get(), qk_layer_data.data(), sizeof(qk_layer_data[0]) * num_layers,
+                                         cudaMemcpyHostToDevice, cuda_stream));
+  }
+
+  auto cross_qk_layer_shape = cross_qks[0].GetMutable<Tensor>()->Shape();
+  int64_t batchxbeam = cross_qk_layer_shape[0];
+  int64_t num_heads = cross_qk_layer_shape[1];
+  int64_t frames = cross_qk_layer_shape[3];
+
+  cuda::LaunchCopyCrossQKSingleDecodeStep(
+      cuda_stream,
+      cross_qk_buffer_data,
+      qk_layer_pointers.get(),
+      iteration_number - 2,
+      static_cast<int>(batchxbeam),
+      num_layers,
+      static_cast<int>(num_heads),
+      cross_qk_layer_head_pair_count,
+      cross_qk_layer_head_pairs,
+      static_cast<int>(frames),
+      max_length);
+
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  return Status::OK();
+}
+
+Status FinalizeDecoderCrossQK(
+    Stream* stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data,
+    gsl::span<const int32_t> beam_indices_gpu) {
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+
+  cuda::LaunchFinalizeCrossQK(
+      cuda_stream,
+      iteration_number,
+      context_decoding_len,
+      batch_size,
+      num_beams,
+      max_length,
+      cross_qk_layer_head_pair_count,
+      cross_qk_layer_head_pairs,
+      frames_of_k,
+      cross_qk_buffer_data,
+      cross_qk_output,
+      num_return_sequences,
+      cache_indir_data,
+      beam_indices_gpu.data());
+
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  return Status::OK();
+}
+
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime
