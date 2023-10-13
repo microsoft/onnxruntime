@@ -178,7 +178,7 @@ def start_emulator(
 
             if waiter_ret is not None:
                 if waiter_ret == 0:
-                    _log.debug(f"adb wait-for-device process has completed.")
+                    _log.debug("adb wait-for-device process has completed.")
                     break
                 raise RuntimeError(f"Waiter process exited with return code: {waiter_ret}")
 
