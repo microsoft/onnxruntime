@@ -344,7 +344,7 @@ class ONNXModel:
         graph_path = [self.graph()]
         ONNXModel.__replace_gemm_with_matmul(graph_path)
 
-    def save_model_to_file(self, output_path, use_external_data_format=False, convert_attribute=False):
+    def save_model_to_file(self, output_path, use_external_data_format=False, include_attribute=False):
         """
         Save model to external data, which is needed for model size > 2GB
         """
@@ -354,7 +354,7 @@ class ONNXModel:
                 self.model,
                 all_tensors_to_one_file=True,
                 location=Path(output_path).name + ".data",
-                convert_attribute=convert_attribute
+                convert_attribute=include_attribute
             )
         for init in self.model.graph.initializer:
             self._check_init(init, "end")
