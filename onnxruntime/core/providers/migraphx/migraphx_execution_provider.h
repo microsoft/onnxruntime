@@ -22,6 +22,7 @@ static const std::string kFP16Enable = "ORT_MIGRAPHX_FP16_ENABLE";
 static const std::string kINT8Enable = "ORT_MIGRAPHX_INT8_ENABLE";
 static const std::string dumpModelOps = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
 static const std::string kINT8CalibrationTableName = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME";
+static const std::string kCachePath = "ORT_MIGRAPHX_CACHE_PATH";
 static const std::string kINT8UseNativeMIGraphXCalibrationTable = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE";
 };  // namespace migraphx_env_vars
 
@@ -40,6 +41,7 @@ struct MIGraphXFuncState {
   bool fp16_enable = false;
   bool int8_enable = false;
   bool int8_calibration_cache_available = false;
+  std::unordered_map<std::string, float> dynamic_range_map;
   bool dump_model_ops = false;
 };
 
@@ -78,6 +80,8 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   std::string int8_calibration_cache_name_;
   bool int8_calibration_cache_available_ = false;
   bool int8_use_native_migraphx_calibration_table_ = false;
+  std::string calibration_cache_path_;
+  std::unordered_map<std::string, float> dynamic_range_map;
   bool dump_model_ops_ = false;
   int device_id_;
   migraphx::target t_;

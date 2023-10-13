@@ -7,13 +7,14 @@
 #include <unordered_map>
 #include <string>
 #include <iostream>
-#include <experimental/filesystem>
+#include <filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
 #include "core/common/path_string.h"
 
+namespace fs = std::filesystem;
 
 namespace onnxruntime {
 
@@ -226,6 +227,20 @@ bool ReadDynamicRange(const std::string file_name, const bool is_calibration_tab
     }
   }
   return true;
+}
+
+/*
+ * Get cache by name
+ *
+ */
+std::string GetCachePath(const std::string& root, const std::string& name) {
+  if (root.empty()) {
+    return name;
+  } else {
+    fs::path path = root;
+    path.append(name);
+    return path.string();
+  }
 }
 
 }  // namespace onnxruntime

@@ -125,6 +125,11 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
       int8_calibration_cache_name_ = int8_calibration_cache_name_env;
     }
 
+    const std::string cache_path = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kCachePath);
+    if (!cache_path.empty()) {
+      calibration_cache_path_ = cache_path;
+    }
+
     const std::string int8_use_native_migraphx_calibration_table_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8UseNativeMIGraphXCalibrationTable);
     if (!int8_use_native_migraphx_calibration_table_env.empty()) {
       int8_use_native_migraphx_calibration_table_ = (std::stoi(int8_use_native_migraphx_calibration_table_env) == 0 ? false : true);
@@ -133,6 +138,15 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
 
   if (int8_enable_) {
     int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
+  }
+
+  // Load INT8 calibration table
+  std::unordered_map<std::string, float> dynamic_range_map;
+  if (int8_enable_ && int8_calibration_cache_available_) {
+    const std::string calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
+    if (!ReadDynamicRange(calibration_cache_path, int8_use_native_migraphx_calibration_table_, dynamic_range_map)) {
+      throw std::runtime_error("Failed to read INT8 calibration table " + calibration_cache_path);
+    }
   }
 
   // dump unsupported ops
@@ -1014,7 +1028,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
-            map_no_input_shape_[context->node_name], fp16_enable_, int8_enable_, dump_model_ops_};
+            map_no_input_shape_[context->node_name], fp16_enable_, int8_enable_, int8_calibration_cache_available_, dynamic_range_map, dump_model_ops_};
       *state = p.release();
       return 0;
     };
@@ -1029,6 +1043,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
 
       std::unordered_map<std::string, std::size_t>& map_input_name_index = mgx_state->input_name_indexes;
+      std::unordered_map<std::string, float>& map_dynamic_range = mgx_state->dynamic_range_map;
       migraphx::target t = mgx_state->t;
       migraphx::program& prog = mgx_state->prog;
       std::string& onnx_string = mgx_state->onnx_string;
@@ -1036,6 +1051,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       bool& no_input_shape = mgx_state->no_input_shape;
       bool fp16_enable = mgx_state->fp16_enable;
       bool int8_enable = mgx_state->int8_enable;
+      bool int8_calibration_cache_available = mgx_state->int8_calibration_cache_available;
+
 
       // mean no program at all, so need to get the input shape info
       // from input data
@@ -1091,23 +1108,25 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           migraphx::quantize_fp16(prog);
         }
 
-        if (int8_enable)
+        //Read in the calibration data and map it to an migraphx paramater map for the calibration ops
+        if (int8_enable && int8_calibration_cache_available)
         {
-          std::vector<float> calib_dig;
           migraphx::quantize_int8_options quant_opts;
           migraphx::program_parameters quant_params;
 
           auto param_shapes = prog.get_parameter_shapes();
-          std::vector<std::vector<char>> calib_dig;
-          calib_dig.reserve(param_shapes.size());
+
           for(auto&& name : param_shapes.names())
           {
-              
-              quant_params.add(name, migraphx::argument(param_shapes[name], calib_dig.data()));
+              auto dynamic_range_i = map_dynamic_range.find(name);
+              if(dynamic_range_i != map_dynamic_range.end())
+              {
+                quant_params.add(name, migraphx::argument(param_shapes[name], &(dynamic_range_i->second)));
+              }
           }
 
           quant_opts.add_calibration_data(quant_params);
-          //perform static quantization on the program
+          //perform static quantization on the programs
           migraphx::quantize_int8(prog, t, quant_opts);
         }
 
