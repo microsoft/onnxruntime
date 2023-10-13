@@ -618,6 +618,11 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   std::vector<OrtCustomOpDomain*> candidate_custom_op_domains;
   p_exec_provider->GetCustomOpDomainList(candidate_custom_op_domains);
 
+
+#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  // ONNX_NAMESPACE::OpSchemaRegistry is not declared in ORT_MINIMAL_BUILD_CUSTOM_OPS build
+  custom_op_domains = candidate_custom_op_domains;
+#else
   // If the domain is already in DomainToVersion ONNX map, don't add it twice.
   auto& domain_to_version_range_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
   const auto& domain_to_version_map = domain_to_version_range_instance.Map();
@@ -626,6 +631,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
       custom_op_domains.push_back(candidate);
     }
   }
+#endif
 
   if (!custom_op_domains.empty()) {
     if (AddCustomOpDomains(custom_op_domains) != Status::OK()) {
