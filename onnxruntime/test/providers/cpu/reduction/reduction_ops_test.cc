@@ -5654,5 +5654,88 @@ TEST(ReductionOpTest, ReduceSum_RKRK_keepdims) {
   test.Run();
 }
 
+void test_empty_set(const std::string& op, int opset, bool axes_as_input, float empty_value) {
+  OpTester test(op, opset);
+  std::vector<int64_t> input_shape = {2, 0, 4};
+  int input_size = std::accumulate(input_shape.begin(), input_shape.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
+  std::vector<float> data(input_size);
+  test.AddInput("data", input_shape, data);
+  std::vector<int64_t> axes = {1};
+  if (axes_as_input) {
+    test.AddInput("axes", {(int64_t)(axes.size())}, axes);
+  } else {
+    test.AddAttribute("axes", axes);
+  }
+
+  std::vector<int64_t> output_shape = {2, 1, 4};
+  int output_size = std::accumulate(output_shape.begin(), output_shape.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
+  std::vector<float> reduced(output_size, empty_value);
+  test.AddOutput<float>("reduced", output_shape, reduced);
+  test.Run();
+}
+
+TEST(ReductionOpTest, empty_set_ReduceL1) {
+  test_empty_set("ReduceL1", 20, true, 0);
+}
+
+TEST(ReductionOpTest, empty_set_ReduceL1_13) {
+  test_empty_set("ReduceL1", 13, false, 0);
+}
+
+TEST(ReductionOpTest, empty_set_ReduceL2) {
+  test_empty_set("ReduceL2", 20, true, 0);
+}
+
+TEST(ReductionOpTest, empty_set_ReduceL2_13) {
+  test_empty_set("ReduceL2", 13, false, 0);
+}
+
+TEST(ReductionOpTest, empty_set_ReduceLogSum) {
+  test_empty_set("ReduceLogSum", 20, true, -std::numeric_limits<float>::infinity());
+}
+
+TEST(ReductionOpTest, empty_set_ReduceLogSum_13) {
+  test_empty_set("ReduceLogSum", 13, false, -std::numeric_limits<float>::infinity());
+}
+
+TEST(ReductionOpTest, empty_set_ReduceLogSumExp) {
+  test_empty_set("ReduceLogSumExp", 20, true, -std::numeric_limits<float>::infinity());
+}
+
+TEST(ReductionOpTest, empty_set_ReduceLogSumExp_13) {
+  test_empty_set("ReduceLogSumExp", 13, false, -std::numeric_limits<float>::infinity());
+}
+
+TEST(ReductionOpTest, empty_set_ReduceMin) {
+  test_empty_set("ReduceMin", 20, true, std::numeric_limits<float>::infinity());
+}
+
+TEST(ReductionOpTest, empty_set_ReduceMin_13) {
+  test_empty_set("ReduceMin", 13, false, std::numeric_limits<float>::infinity());
+}
+
+TEST(ReductionOpTest, empty_set_ReduceProd) {
+  test_empty_set("ReduceProd", 20, true, 1.0f);
+}
+
+TEST(ReductionOpTest, empty_set_ReduceProd_13) {
+  test_empty_set("ReduceProd", 13, false, 1.0f);
+}
+
+TEST(ReductionOpTest, empty_set_ReduceSum) {
+  test_empty_set("ReduceSum", 20, true, 0.0f);
+}
+
+TEST(ReductionOpTest, empty_set_ReduceSum_13) {
+  test_empty_set("ReduceSum", 11, false, 0.0f);
+}
+
+TEST(ReductionOpTest, empty_set_ReduceSumSquare) {
+  test_empty_set("ReduceSumSquare", 20, true, 0.0f);
+}
+
+TEST(ReductionOpTest, empty_set_ReduceSumSquare_13) {
+  test_empty_set("ReduceSumSquare", 13, false, 0.0f);
+}
 }  // namespace test
 }  // namespace onnxruntime

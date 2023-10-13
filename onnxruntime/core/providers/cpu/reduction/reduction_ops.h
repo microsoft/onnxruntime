@@ -7,6 +7,7 @@
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/optional.h"
+#include "core/framework/math.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/containers.h"
 #include "core/util/math.h"
@@ -178,6 +179,8 @@ class ReduceAggregator : public ReduceAggregatorBase {
   inline void update0(const T&) {}
   inline TVAL aggall(const T*) {}
   inline TVAL get_value() { return accumulator_; }
+  static void fill_for_empty_set(Tensor&) { ORT_NOT_IMPLEMENTED(); }
+
 
  protected:
   static void CommonFastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
@@ -215,6 +218,10 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
   }
   inline T aggall(const T* from_data) {
     return aggall(from_data, this->N_);
+  }
+
+  static void fill_for_empty_set(Tensor& output) {
+    EigenMap<T>(output).array() = static_cast<T>(0);
   }
 
   // Fast reduction
@@ -290,6 +297,9 @@ class ReduceAggregatorSumSquare : public ReduceAggregator<T, TVAL> {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).squaredNorm();
   }
   inline void update(const T& v) { this->accumulator_ += v * v; }
+  static void fill_for_empty_set(Tensor& output) {
+    EigenMap<T>(output).array() = static_cast<T>(0);
+  }
 };
 
 template <typename T>
@@ -635,6 +645,10 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
   }
   inline void update(const T& v) { this->accumulator_ = v < this->accumulator_ ? v : this->accumulator_; }
 
+  static void fill_for_empty_set(Tensor& output) {
+    EigenMap<T>(output).array() = std::numeric_limits<T>::infinity();
+  }
+
   // Fast reduction
   static inline FastReduceKind WhichFastReduce() {
     return FastReduceKind::kKR | FastReduceKind::kRK | FastReduceKind::kKRK | FastReduceKind::kRKR;
@@ -805,6 +819,9 @@ class ReduceAggregatorProd : public ReduceAggregator<T, T> {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).prod();
   }
   inline void update(const T& v) { this->accumulator_ *= v; }
+  static void fill_for_empty_set(Tensor& output) {
+    EigenMap<T>(output).array() = static_cast<T>(1);
+  }
 };
 
 template <typename T>
@@ -815,6 +832,10 @@ class ReduceAggregatorL1 : public ReduceAggregator<T, T> {
     return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).cwiseAbs().sum();
   }
   inline void update(const T& v) { this->accumulator_ += v > 0 ? v : -v; }
+
+  static void fill_for_empty_set(Tensor& output) {
+    EigenMap<T>(output).array() = static_cast<T>(0);
+  }
 };
 
 template <typename T>
@@ -826,6 +847,9 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
   }
   inline void update(const T& v) { this->accumulator_ += v * v; }
   inline T get_value() { return reduce_sqrt<T>(this->accumulator_); }
+  static void fill_for_empty_set(Tensor& output) {
+    EigenMap<T>(output).array() = static_cast<T>(0);
+  }
 };
 
 template <typename T>
@@ -837,6 +861,9 @@ class ReduceAggregatorLogSum : public ReduceAggregator<T, T> {
   }
   inline void update(const T& v) { this->accumulator_ += v; }
   inline T get_value() { return reduce_log<T>(this->accumulator_); }
+  static void fill_for_empty_set(Tensor& output) {
+    EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
+  }
 };
 
 template <typename T>
@@ -860,6 +887,9 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, T> {
   }
   inline void update(const T& v) { this->accumulator_ += reduce_exp(v - max_); }
   inline T get_value() { return reduce_log<T>(this->accumulator_) + max_; }
+  static void fill_for_empty_set(Tensor& output) {
+    EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
+  }
 };
 
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,

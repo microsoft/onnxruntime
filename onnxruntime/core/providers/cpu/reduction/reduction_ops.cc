@@ -843,9 +843,58 @@ static void ValidateKeepDims(const Tensor* input, int64_t keepdims) {
 }
 
 template <typename AGG>
+bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<const int64_t>& axes, bool keepdims) {
+  const Tensor* input = ctx->Input<Tensor>(0);
+  const TensorShape& input_shape = input->Shape();
+  if (input_shape.Size() != 0) {
+    return false;
+  }
+
+  // input is an empty set
+  std::vector<int64_t> input_axes;
+  if (ctx->InputCount() == 2) {
+    ORT_ENFORCE(axes.empty(), "Axes input and attribute should not both present for reduction.");
+    // second input holds the axes.
+    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
+    ValidateCommonFastReduce(axes_tensor);
+    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
+    const auto* data = axes_tensor->Data<int64_t>();
+    input_axes.insert(input_axes.begin(), data, data + nDims);
+  } else {
+    input_axes.resize(axes.size());
+    std::copy(axes.begin(), axes.end(), input_axes.begin());
+  }
+
+  gsl::span<const int64_t> shape_dims = input_shape.GetDims();
+  const int64_t input_shape_size = narrow<int64_t>(shape_dims.size());
+  TensorShapeVector output_shape_vector;
+
+  for (int64_t i = 0; i < input_shape_size; ++i) {
+    if (std::find(input_axes.begin(), input_axes.end(), i) != input_axes.end()) {
+      if (keepdims) {
+        output_shape_vector.push_back(1);
+      }
+    } else {
+      output_shape_vector.push_back(input_shape[onnxruntime::narrow<size_t>(i)]);
+    }
+  }
+
+  TensorShape output_shape(output_shape_vector);
+  Tensor* output = ctx->Output(0, output_shape);
+  if (output_shape.Size() != 0) {
+    AGG::fill_for_empty_set(*output);
+  }
+  return true;
+}
+
+template <typename AGG>
 void CommonReduce1Loop(OpKernelContext* ctx,
                        const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                        bool noop_with_empty_axes) {
+  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
+    return;
+  }
+
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape;
   TensorShapeVector output_shape;
@@ -856,10 +905,10 @@ void CommonReduce1Loop(OpKernelContext* ctx,
   }
 
   const Tensor* input = ctx->Input<Tensor>(0);
+  const TensorShape& input_shape = input->Shape();
   Tensor* output = ctx->Output(0, output_shape);
   if (fast_kind == FastReduceKind::kEmpty) {
-    const TensorShape& new_input_shape = input->Shape();
-    if (new_input_shape.Size() == 1) {
+    if (input_shape.Size() == 1) {
       const typename AGG::input_type* from_data = input->Data<typename AGG::input_type>();
       typename AGG::value_type* to_data = output->MutableData<typename AGG::value_type>();
       AGG agg(1, *from_data);
@@ -879,6 +928,10 @@ template <typename AGG>
 void CommonReduce2Loops(OpKernelContext* ctx,
                         const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                         bool noop_with_empty_axes) {
+  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_)) {
+    return;
+  }
+
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape, output_shape, fast_axes;
   if (CommonFastReduce<AGG>(ctx, axes_, keepdims_, noop_with_empty_axes,
@@ -887,10 +940,10 @@ void CommonReduce2Loops(OpKernelContext* ctx,
   }
 
   const Tensor* input = ctx->Input<Tensor>(0);
+  const TensorShape& input_shape = input->Shape();
   Tensor* output = ctx->Output(0, output_shape);
   if (fast_kind == FastReduceKind::kEmpty) {
-    const TensorShape& new_input_shape = input->Shape();
-    if (new_input_shape.Size() == 1) {
+    if (input_shape.Size() == 1) {
       const typename AGG::input_type* from_data = input->Data<typename AGG::input_type>();
       typename AGG::value_type* to_data = output->MutableData<typename AGG::value_type>();
       AGG agg(1, *from_data);
