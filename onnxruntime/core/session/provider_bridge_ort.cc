@@ -1317,6 +1317,10 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) {
   return nullptr;
 }
 
+void TensorrtProviderSetCustomOpDomainList(IExecutionProviderFactory* factory, std::vector<OrtCustomOpDomain*>& custom_op_domains_ptr) {
+  s_library_tensorrt.Get().SetCustomOpDomainList(factory, custom_op_domains_ptr);
+}
+
 // Adapter to convert the legacy OrtCUDAProviderOptions to the latest OrtCUDAProviderOptionsV2
 OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const OrtCUDAProviderOptions* legacy_cuda_options) {
   OrtCUDAProviderOptionsV2 cuda_options_converted{};
@@ -1652,7 +1656,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
     options->custom_op_domains_.push_back(ptr);
   }
 
-  factory.SetCustomOpDomainList(custom_op_domains);
+  TensorrtProviderSetCustomOpDomainList(factory, custom_op_domain);
 
   return nullptr;
   API_IMPL_END
@@ -1686,7 +1690,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
     options->custom_op_domains_.push_back(ptr);
   }
 
-  factory.SetCustomOpDomainList(custom_op_domains);
+  TensorrtProviderSetCustomOpDomainList(factory, custom_op_domain);
 
   return nullptr;
   API_IMPL_END
@@ -1798,7 +1802,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
     options->custom_op_domains_.push_back(ptr);
   }
 
-  factory.SetCustomOpDomainList(custom_op_domains);
+  TensorrtProviderSetCustomOpDomainList(factory, custom_op_domain);
 
   return nullptr;
   API_IMPL_END
