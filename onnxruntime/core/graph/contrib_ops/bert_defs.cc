@@ -799,6 +799,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("output_qk",
+              "Need output the cross attention MatMul(Q, K)",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, 1, hidden_size) or packed QKV with shape "
@@ -890,6 +894,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
                 "T",
                 OpSchema::Optional)
+        .Output(3,
+                "qk",
+                "normalized Q * K, of shape (batch_size, num_heads, 1, head_size). ",
+                "V",
+                OpSchema::Optional)
+        .TypeConstraint("V", {"tensor(float)"}, "Constrain qk output types to float32 tensors.")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")

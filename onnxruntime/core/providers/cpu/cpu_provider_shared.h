@@ -8,8 +8,13 @@ class LongformerAttentionBase;
 class AttentionBase;
 namespace transformers {
 class BeamSearch;
+class WhisperBeamSearch;
 class GreedySearch;
 class Sampling;
+struct BeamSearchParameters;
+struct GreedySearchParameters;
+struct SamplingParameters;
+struct WhisperBeamSearchParameters;
 }  // namespace transformers
 }  // namespace contrib
 
@@ -169,6 +174,15 @@ struct ProviderHostCPU {
                                                         const SessionState& session_state,
                                                         const std::string& attribute_name,
                                                         const SessionState& subgraph_session_state) = 0;
+  virtual Status WhisperBeamSearch__Compute(const contrib::transformers::WhisperBeamSearch* p, OpKernelContext* ctx) = 0;
+
+  virtual void BeamSearchParameters__ParseFromAttributes(contrib::transformers::BeamSearchParameters* p, const OpKernelInfo& info) = 0;
+
+  virtual void GreedySearchParameters__ParseFromAttributes(contrib::transformers::GreedySearchParameters* p, const OpKernelInfo& info) = 0;
+
+  virtual void SamplingParameters__ParseFromAttributes(contrib::transformers::SamplingParameters* p, const OpKernelInfo& info) = 0;
+
+  virtual void WhisperBeamSearchParameters__ParseFromAttributes(contrib::transformers::WhisperBeamSearchParameters* p, const OpKernelInfo& info) = 0;
 
   // GreedySearch
   virtual void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) = 0;
