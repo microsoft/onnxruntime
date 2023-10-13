@@ -80,6 +80,10 @@ _stop_signal = signal.CTRL_BREAK_EVENT if is_windows() else signal.SIGTERM
 
 
 def _stop_process(proc: subprocess.Popen):
+    if proc.returncode is not None:
+        # process has exited
+        return
+
     _log.debug(f"Stopping process - args: {proc.args}")
     proc.send_signal(_stop_signal)
 
@@ -174,6 +178,7 @@ def start_emulator(
 
             if waiter_ret is not None:
                 if waiter_ret == 0:
+                    _log.debug(f"adb wait-for-device process has completed.")
                     break
                 raise RuntimeError(f"Waiter process exited with return code: {waiter_ret}")
 

@@ -69,7 +69,7 @@ stages:
       inputs:
         versionSpec: "3.9"
         addToPath: true
-        rchitecture: "x64"
+        architecture: "x64"
 
     - task: JavaToolInstaller@0
       displayName: Use jdk 11
