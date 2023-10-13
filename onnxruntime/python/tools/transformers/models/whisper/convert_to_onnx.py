@@ -170,6 +170,79 @@ def parse_arguments(argv=None):
     parser.set_defaults(chain_model=True)
 
     parser.add_argument(
+        "--use_whisper_beamsearch",
+        required=False,
+        action="store_true",
+        help="When chain_model, using WhisperBeamSearch operator rather than BeamSearch operator. \
+              It will be set to true when collect_cross_qk, extra_decoding_ids or output_no_speech_probs is set.",
+    )
+    parser.set_defaults(use_whisper_beamsearch=False)
+
+    parser.add_argument(
+        "--extra_decoding_ids",
+        required=False,
+        action="store_true",
+        help="Need extra starting decoding ids for some feature like cross qk. Default if false.",
+    )
+    parser.set_defaults(extra_decoding_ids=False)
+
+    parser.add_argument(
+        "--collect_cross_qk",
+        required=False,
+        action="store_true",
+        help="Beam search model collect stacked cross QK.",
+    )
+    parser.set_defaults(collect_cross_qk=False)
+
+    parser.add_argument(
+        "--output_cross_qk",
+        required=False,
+        action="store_true",
+        help="Beam search model output collected qk as output. Also hint collect_cross_qk",
+    )
+    parser.set_defaults(output_cross_qk=False)
+
+    parser.add_argument(
+        "--no_speech_token_id",
+        default=50362,
+        type=int,
+        help="specify no_speech_token_id. Default is 50362. if >= 0, will be add into beam search attr. \
+              Note that default value maybe different between the multilingual and English-only models.",
+    )
+
+    parser.add_argument(
+        "--output_no_speech_probs",
+        required=False,
+        action="store_true",
+        help="Beam search model output no speech probs which is computed from the encoder/context-decoder graph.",
+    )
+    parser.set_defaults(output_no_speech_probs=False)
+
+    parser.add_argument(
+        "--output_scores",
+        required=False,
+        action="store_true",
+        help="Beam search model output scores over vocab per generated token.",
+    )
+    parser.set_defaults(output_scores=False)
+
+    parser.add_argument(
+        "--output_sequence_scores",
+        required=False,
+        action="store_true",
+        help="Beam search model output scores for each generated sequence.",
+    )
+    parser.set_defaults(output_sequence_scores=False)
+
+    parser.add_argument(
+        "--cross_qk_onnx_model",
+        required=False,
+        type=str,
+        default=None,
+        help="the model which consume cross_qk.",
+    )
+
+    parser.add_argument(
         "--beam_output_model",
         type=str,
         default="whisper_beamsearch.onnx",
@@ -220,6 +293,7 @@ def parse_arguments(argv=None):
     )
 
     args = parser.parse_args(argv)
+    args.collect_cross_qk = args.collect_cross_qk or args.output_cross_qk
 
     return args
 
