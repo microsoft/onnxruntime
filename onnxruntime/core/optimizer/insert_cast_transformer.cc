@@ -32,7 +32,7 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
                                   int64_t to_type,
                                   onnxruntime::ProviderType providerType) {
   // insert cast op to cast input
-  std::string node_name = graph.GenerateNodeName("InsertedCast_" + old_arg->Name());
+  std::string node_name = graph.GenerateNodeName("InsertedPrecisionFreeCast_" + old_arg->Name());
 
   auto* new_arg = &graph.GetOrCreateNodeArg(node_name, new_type);
 
@@ -234,8 +234,9 @@ static Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph, cons
 enum TypeGroup {
   Unknown = -1,
   Bool = 0,
-  Integer = 1,
-  Float = 2,
+  UnsignedInteger = 1,
+  Integer = 2,
+  Float = 3,
 };
 
 TypeGroup GetTypeGroup(DataType type) {
@@ -243,8 +244,11 @@ TypeGroup GetTypeGroup(DataType type) {
     return Bool;
   }
 
-  if (*type == "tensor(int16)" || *type == "tensor(int32)" || *type == "tensor(int64)" || *type == "tensor(int8)" ||
-      *type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
+  if (*type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
+    return UnsignedInteger;
+  }
+
+  if (*type == "tensor(int16)" || *type == "tensor(int32)" || *type == "tensor(int64)" || *type == "tensor(int8)") {
     return Integer;
   }
 
@@ -253,6 +257,41 @@ TypeGroup GetTypeGroup(DataType type) {
   }
 
   return Unknown;
+}
+
+int TypeWidth(DataType type) {
+  if (*type == "tensor(bool)") {
+    return 1;
+  }
+
+  if (*type == "tensor(uint8)" || *type == "tensor(int8)") {
+    return 8;
+  }
+
+  if (*type == "tensor(uint16)" || *type == "tensor(int16)" || *type == "tensor(uint16)" || *type == "tensor(int16)" || *type == "tensor(bfloat16)" || *type == "tensor(float16)") {
+    return 16;
+  }
+
+  if (*type == "tensor(uint32)" || *type == "tensor(int32)" || *type == "tensor(float)") {
+    return 32;
+  }
+
+  if (*type == "tensor(uint64)" || *type == "tensor(int64)" || *type == "tensor(double)") {
+    return 64;
+  }
+
+  return -1;
+}
+
+inline bool LossOfPrecision(DataType src_type, DataType dst_type, const Node& node) {
+  TypeGroup src_type_group = GetTypeGroup(src_type);
+  TypeGroup dst_type_group = GetTypeGroup(dst_type);
+  if (src_type_group == TypeGroup::Unknown || dst_type_group == TypeGroup::Unknown) {
+    return true;
+  }
+  // The comparison with "InsertedPrecisionFreeCast_" reflects cast nodes that are inserted by InsertCastTransforme.
+  // Such casts should not be considered as loss of precision - the inserted upcasts (f16 -> f32) and downcasts (f32 -> f16) are inserted to support kernels when on a CPU EP without F16 support.
+  return (dst_type_group < src_type_group) || (TypeWidth(dst_type) < TypeWidth(src_type) && (node.Name().compare(0, 26, "InsertedPrecisionFreeCast_")));
 }
 
 /** Transformer to remove duplicate Cast nodes. */
@@ -293,16 +332,8 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         //     - for each consumer cast node, it meets above condition for this optimization.
         auto src_type = node.InputDefs()[0]->Type();
         auto dst_type = node.OutputDefs()[0]->Type();
-        TypeGroup src_type_group = GetTypeGroup(src_type);
-        TypeGroup dst_type_group = GetTypeGroup(dst_type);
-        if (src_type_group == Unknown || dst_type_group == Unknown) {
-          continue;
-        }
 
-        bool loss_precision_cast = false;
-        if (src_type_group > dst_type_group) {
-          loss_precision_cast = true;
-        }
+        bool loss_precision_cast = LossOfPrecision(src_type, dst_type, node);
 
         size_t num_children = node.GetOutputEdgesCount();
 
@@ -312,10 +343,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           if (output_node.OpType() == "Cast") {
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
-            TypeGroup src_type_group1 = GetTypeGroup(src_type1);
-            TypeGroup dst_type_group1 = GetTypeGroup(dst_type1);
-            if (src_type_group1 == Unknown || dst_type_group1 == Unknown ||
-                (loss_precision_cast && dst_type_group1 > src_type_group1)) {
+            if (loss_precision_cast && LossOfPrecision(dst_type1, src_type1, output_node)) {
               inconsistent_casts = true;
               break;
             }

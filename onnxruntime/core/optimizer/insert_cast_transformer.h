@@ -40,4 +40,5 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
   // Here for simplify, we only force the single-node-float16 sub-graph to float32
   const bool force_cpu_fp32_;
 };
+
 }  // namespace onnxruntime
