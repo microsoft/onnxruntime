@@ -123,39 +123,45 @@ Status ModelBuilder::RegisterInitializers() {
     emscripten::val operand = emscripten::val::object();
     if (IsSupportedDataType(data_type, wnn_device_type_)) {
       ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
-      unpacked_tensors_.push_back({});
-      std::vector<uint8_t>& unpacked_tensor = unpacked_tensors_.back();
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
       auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
       emscripten::val view = emscripten::val::undefined();
+      std::byte* tensor_ptr = nullptr;
+      if (tensor.has_raw_data()) {
+        tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char*>(tensor.raw_data().c_str()));
+      } else {
+        unpacked_tensors_.push_back({});
+        std::vector<uint8_t>& unpacked_tensor = unpacked_tensors_.back();
+        ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
+        tensor_ptr = reinterpret_cast<std::byte*>(unpacked_tensor.data());
+      }
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
-                                                               reinterpret_cast<uint8_t*>(unpacked_tensor.data()))};
+                                                               reinterpret_cast<uint8_t*>(tensor_ptr))};
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
-                                                               reinterpret_cast<uint16_t*>(unpacked_tensor.data()))};
+                                                               reinterpret_cast<uint16_t*>(tensor_ptr))};
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
-                                                               reinterpret_cast<float*>(unpacked_tensor.data()))};
+                                                               reinterpret_cast<float*>(tensor_ptr))};
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_INT32:
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
-                                                               reinterpret_cast<int32_t*>(unpacked_tensor.data()))};
+                                                               reinterpret_cast<int32_t*>(tensor_ptr))};
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_INT64:
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
-                                                               reinterpret_cast<int64_t*>(unpacked_tensor.data()))};
+                                                               reinterpret_cast<int64_t*>(tensor_ptr))};
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
-                                                               reinterpret_cast<uint32_t*>(unpacked_tensor.data()))};
+                                                               reinterpret_cast<uint32_t*>(tensor_ptr))};
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
-                                                               reinterpret_cast<uint64_t*>(unpacked_tensor.data()))};
+                                                               reinterpret_cast<uint64_t*>(tensor_ptr))};
           break;
         default:
           break;
