@@ -51,18 +51,20 @@ half maybe2half(float x) {
 
 // Using only power of 2 numbers will lead to waste of compute for same size such as 768, which is a very common case
 // in BERT. Ideally we can step by wrap_size * num_unroll, but listing too many steps will cause long compile time.
-constexpr int kSizes[] = {32, 64, 128, 384, 768, 1024, 2048};
+//constexpr int kSizes[] = {32, 64, 128, 384, 768, 1024, 2048};
+constexpr int kSizes[] = {128, 320, 640, 768, 1024, 1280, 2048};
+constexpr size_t kNumOfSizes = sizeof(kSizes) / sizeof(kSizes[0]);
+constexpr int kMaxSize = kSizes[kNumOfSizes - 1];
 constexpr int kMinBlockSize = 32;
 constexpr int kMaxBlockSize = 256;
 
 int NextSize(int x) {
-  size_t len = sizeof(kSizes) / sizeof(kSizes[0]);
-  for (size_t i = 0; i < len; ++i) {
+  for (size_t i = 0; i < kNumOfSizes; ++i) {
     if (x <= kSizes[i]) {
       return kSizes[i];
     }
   }
-  return kSizes[len - 1];
+  return kMaxSize;
 }
 
 template <typename T, int NumUnroll>
@@ -77,8 +79,9 @@ bool CanVectorized(T* output, T* sum_output, const T* input, const T* skip, cons
          reinterpret_cast<uint64_t>(bias) % alignment == 0 &&
          reinterpret_cast<uint64_t>(gamma) % alignment == 0 &&
          reinterpret_cast<uint64_t>(beta) % alignment == 0 &&
-         next_size / NumUnroll >= kMinBlockSize &&
-         next_size / NumUnroll <= kMaxBlockSize;
+        //  next_size / NumUnroll >= kMinBlockSize &&
+        //  next_size / NumUnroll <= kMaxBlockSize;
+        next_size < kMaxSize;
 }
 }  // namespace
 
@@ -129,25 +132,26 @@ __global__ void SkipLayerNormKernelSmall(
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;
 
   using VecT = aligned_vector<T, ILP>;
-
-  T skip_v[ILP], bias_v[ILP], sum_v[ILP];
-
-  // load input to sum_v
-  VecT* sum_val = reinterpret_cast<VecT*>(&sum_v);
-  *sum_val = *reinterpret_cast<const VecT*>(&input[idx]);
-
-  VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
-  *skip_val = *reinterpret_cast<const VecT*>(&skip[idx % skip_size]);
-
-  const bool has_bias = (bias != nullptr);
-  if (has_bias) {
-    VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
-    *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
-  }
+  T sum_v[ILP];
 
   cub::KeyValuePair<T, T> thread_data(T(0.f), T(0.f));
 
-  if (ILP * threadIdx.x < ld) {
+  if (ILP * threadIdx.x < ld) { // load data under this guard to avoid reading out-of-bounds
+    T skip_v[ILP], bias_v[ILP];
+
+    // load input to sum_v
+    VecT* sum_val = reinterpret_cast<VecT*>(&sum_v);
+    *sum_val = *reinterpret_cast<const VecT*>(&input[idx]);
+
+    VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
+    *skip_val = *reinterpret_cast<const VecT*>(&skip[idx % skip_size]);
+
+    const bool has_bias = (bias != nullptr);
+    if (has_bias) {
+      VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
+      *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
+    }
+
     T rldval_sum = T(0.f);
     T rldvalsq_sum = T(0.f);
     const bool has_sum_output = (sum_output != nullptr);
@@ -192,8 +196,8 @@ void LaunchSkipLayerNormKernel(
   SkipLayerNormKernelSmall<T, block_size, num_unroll, Simplified><<<grid_size, block_size, 0, stream>>>( \
       output, sum_output, input, skip, bias, gamma, beta, maybe2half<T>(epsilon), ld, skip_size)
 
-#define LAUNCH_SKIP_LAYER_NORM_KERNEL()                                                       \
-  SkipLayerNormKernel<T, kMaxBlockSize, Simplified><<<grid_size, kMaxBlockSize, 0, stream>>>( \
+#define LAUNCH_SKIP_LAYER_NORM_KERNEL()                                                 \
+  SkipLayerNormKernel<T, block_size, Simplified><<<grid_size, block_size, 0, stream>>>( \
       output, sum_output, input, skip, bias, gamma, beta, maybe2half<T>(epsilon), ld, skip_size)
 
 #define CASE_NEXT_SIZE(next_size_value)               \
@@ -209,6 +213,7 @@ void LaunchSkipLayerNormKernel(
         constexpr int block_size = next_size_value;   \
         LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(1);       \
       } else {                                        \
+        constexpr int block_size = 256;               \
         LAUNCH_SKIP_LAYER_NORM_KERNEL();              \
       }                                               \
     }                                                 \
