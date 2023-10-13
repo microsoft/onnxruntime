@@ -161,7 +161,7 @@ static void Main(string[] args)
 
                                     <p>This is the output of the model pipeline, running with 50 inference iterations:</p>
 
-                                    <img src="../images/pytorch-on-the-edge-puppies.png" alt="Two golden retriever puppies playing in the grass" class="img-fluid">
+                                    <img src="../images/pytorch-on-the-edge-puppies.png" alt="Two golden retriever puppies playing in the grass" class="img-fluid"/>
 
                                     <p>You can build the application and run it on Windows with the detailed steps shown in this <a href="https://onnxruntime.ai/docs/tutorials/csharp/stable-diffusion-csharp.html">tutorial</a>.</p>
 
@@ -212,19 +212,19 @@ static void Main(string[] args)
                                         
                                     </code></pre>
 
-                                    <p>You can also embed the call to the transformers pipeline using vanilla JS, or in a web application, with React, or Next.js, or write a browser extension.</p>
+                                    <p>You can also embed the call to the transformers pipeline using vanilla JavaScript, or in a web application, with React or Next.js, or write a browser extension.</p>
                                     
-                                    <p>Transformers.js currently uses web assembly to execute the model. Support for WebGPU, which will increase performance significantly, is coming *very* soon.</p>
+                                    <p>ONNX Runtime Web currently uses web assembly to execute the model on the CPU. This is fine for many models but leveraging the GPU, if one exists on the device, can improve the user experience. ONNX Runtime Web support for WebGPU is coming *very* soon and enables you to tap into the GPU while use the same inference APIs.</p>
 
-                                    <img src="../images/pytorch-on-the-edge-textgen.png" alt="Text generation in the browser using transformers.js. The prompt is Two golden retriever puppies are playing in the grass, and the response is playing in the grasslands. They are known for their playful nature and they have a playful face." class="img-fluid">
+                                    <img src="../images/pytorch-on-the-edge-textgen.png" alt="Text generation in the browser using transformers.js. The prompt is Two golden retriever puppies are playing in the grass, and the response is playing in the grasslands. They are known for their playful nature and they have a playful face." class="img-fluid"/>
 
                                     <h3 class="r-heading">Speech recognition with Whisper on mobile</h3>
 
-                                    <p>Whisper from OpenAI is a transformer-based speech recognition PyTorch model. Whisper has a number of different size variants, the smallest: Whisper Tiny,  is suitable to run on mobile. All components of the Whisper Tiny model (audio decoder, encoder, decoder and text sequence generation) can be composed and exported to a single ONNX model using the <a href="https://github.com/microsoft/Olive/tree/main/examples/whisper">Olive framework</a>. To run this model as part of a mobile application, you can use ONNX Runtime mobile, which has support for Android, iOS, react-native and MAUI/Xamarin. </p>
+                                    <p>Whisper from OpenAI is a PyTorch speech recognition model. Whisper comes in a number of different size variants - the smallest, Whisper Tiny, is suitable to run on mobile devices. All components of the Whisper Tiny model (audio decoder, encoder, decoder, and text sequence generation) can be composed and exported to a single ONNX model using the <a href="https://github.com/microsoft/Olive/tree/main/examples/whisper">Olive framework</a>. To run this model as part of a mobile application, you can use ONNX Runtime Mobile, which supports Android, iOS, react-native, and MAUI/Xamarin.</p>
 
-                                    <p>ONNX Runtime mobile supports hardware acceleration via NNAPI (on Android)  and CoreML (on iOS) and XNNPACK (both iOS and Android). </p>
+                                    <p>ONNX Runtime Mobile supports hardware acceleration via NNAPI (on Android), CoreML (on iOS), and XNNPACK (both iOS and Android).</p>
 
-                                    <p>As an example, the relevant snippet of an <a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/speech_recognition">Android mobile app</a> to perform speech transcription on short samples of audio, is shown below.</p>
+                                    <p>The relevant snippet of a example <a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/speech_recognition">Android mobile app</a> that performs speech transcription on short samples of audio is shown below:</p>
 
                                     <pre><code class="language-swift">
 init {
@@ -323,9 +323,9 @@ func trainStep(inputData: [Data], labels: [Int64]) throws  {
 
                                     <h3 class="r-heading">Where to next?</h3>
 
-                                    <p>In this article we’ve shown why you would run PyTorch models on the edge and what aspects to consider. We also shared several examples with code that you can use for running state-of-the-art PyTorch model on the edge with ONNX Runtime. We also showed how ONNX Runtime was built for performance and cross-platform execution, making it the ideal way to run PyTorch models on the edge. You may have noticed that we didn’t include a Llama2 example even though ONNX Runtime is optimized to run it. That’s because the amazing Llama2 model deserves its own article, so stay tuned for that! </p>
+                                    <p>In this article we’ve shown why you would run PyTorch models on the edge and what aspects to consider. We also shared several examples with code that you can use for running state-of-the-art PyTorch models on the edge with ONNX Runtime. We also showed how ONNX Runtime was built for performance and cross-platform execution, making it the ideal way to run PyTorch models on the edge. You may have noticed that we didn’t include a Llama2 example even though ONNX Runtime is optimized to run it. That’s because the amazing Llama2 model deserves its own article, so stay tuned for that!</p>
 
-                                    <p>You can read more about how to run your PyTorch model on the edge here: https://onnxruntime.ai/docs/</p>
+                                    <p>You can read more about how to run your PyTorch models on the edge here: https://onnxruntime.ai/docs/</p>
 
                 </div>
             </div>
