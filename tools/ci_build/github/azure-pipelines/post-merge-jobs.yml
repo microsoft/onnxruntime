@@ -84,7 +84,7 @@ stages:
   - stage: trt_multi_gpu
     dependsOn: []
     jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_trt.bat

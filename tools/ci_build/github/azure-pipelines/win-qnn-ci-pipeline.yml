@@ -71,7 +71,7 @@ jobs:
   # '_Ret &std::_Visit_strategy<1>::_Visit2<_Ret,_ListOfIndexVectors,_Callable,const
   # std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver>&>(size_t,_Callable &&,
   # const std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver> &)'
-  - template: templates/jobs/win-ci-build-steps.yml
+  - template: stages/jobs/win-ci-build-steps.yml
     parameters:
       WithCache: True
       Today: $(TODAY)

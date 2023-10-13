@@ -17,7 +17,7 @@ jobs:
   workspace:
     clean: all
   steps:
-  - template: templates/jobs/win-ci-prebuild-steps.yml
+  - template: stages/jobs/win-ci-prebuild-steps.yml
     parameters:
       EnvSetupScript: $(EnvSetupScript)
       DownloadCUDA: true
@@ -27,7 +27,7 @@ jobs:
       WithCache: true
       Today: $(Today)
 
-  - template: templates/jobs/win-ci-build-steps.yml
+  - template: stages/jobs/win-ci-build-steps.yml
     parameters:
       WithCache: True
       Today: $(TODAY)

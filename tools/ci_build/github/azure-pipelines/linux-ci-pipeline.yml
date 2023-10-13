@@ -196,7 +196,7 @@ stages:
 - stage: arm64_test
   dependsOn: ['arm64_build']
   jobs:
-  - template: templates/py-packaging-linux-test-cpu.yml
+  - template: stages/jobs/py-packaging-linux-test-cpu-jobs.yml
 #  - template: stages/jobs/py-packaging-linux-test-jobs.yml
     parameters:
       arch: 'aarch64'
