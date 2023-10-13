@@ -180,16 +180,6 @@ __global__ void SkipLayerNormKernelSmall(
   LayerNormSmall<T, TPB, ILP>(sum_v, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
-template <typename T, bool Simplified>
-void LaunchSkipLayerNormKernel(
-    cudaStream_t stream, T* output, T* sum_output,
-    const T* input, const T* skip, const T* bias, const T* gamma, const T* beta, float epsilon,
-    int ld, int row_count, int skip_size) {
-  const int next_size = NextSize(ld);
-  const int grid_size = row_count;
-  bool flag_vec2 = CanVectorized<T, 2>(output, sum_output, input, skip, bias, gamma, beta, ld, next_size);
-  bool flag_vec4 = CanVectorized<T, 4>(output, sum_output, input, skip, bias, gamma, beta, ld, next_size);
-
 #define LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(num_unroll)                                                  \
   SkipLayerNormKernelSmall<T, block_size, num_unroll, Simplified><<<grid_size, block_size, 0, stream>>>( \
       output, sum_output, input, skip, bias, gamma, beta, maybe2half<T>(epsilon), ld, skip_size)
@@ -201,12 +191,9 @@ void LaunchSkipLayerNormKernel(
 #define CASE_NEXT_SIZE(next_size_value)                                       \
   case next_size_value: {                                                     \
     static_assert(next_size_value > kSizes[0] && next_size_value < kMaxSize); \
-    if (flag_vec4) {                                                          \
-      constexpr int block_size = next_size_value / 4;                         \
-      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(4);                                 \
-    } else if (flag_vec2) {                                                   \
-      constexpr int block_size = next_size_value / 2;                         \
-      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(2);                                 \
+    if (flag_vec) {                                                           \
+      constexpr int block_size = next_size_value / vec_size;                  \
+      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(vec_size);                          \
     } else {                                                                  \
       if (next_size_value <= kMaxBlockSize) {                                 \
         constexpr int block_size = next_size_value;                           \
@@ -218,18 +205,28 @@ void LaunchSkipLayerNormKernel(
     }                                                                         \
   } break
 
+template <typename T, bool Simplified>
+void LaunchSkipLayerNormKernel(
+    cudaStream_t stream, T* output, T* sum_output,
+    const T* input, const T* skip, const T* bias, const T* gamma, const T* beta, float epsilon,
+    int ld, int row_count, int skip_size) {
+  const int next_size = NextSize(ld);
+  const int grid_size = row_count;
+  constexpr int vec_size = 16 / sizeof(T);
+  bool flag_vec = CanVectorized<T, vec_size>(output, sum_output, input, skip, bias, gamma, beta, ld, next_size);
+
   switch (next_size) {
     case kSizes[0]: {
       constexpr int block_size = kSizes[0];
-      // TODO: Add back the small TensorRT kernel for 32. No need to use vertorized kernel for such small size.
+      // TODO(tianleiwu): No need to use vertorized kernel for ld=32.
       LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(1);
       break;
     }
-    CASE_NEXT_SIZE(kSizes[1]);
-    CASE_NEXT_SIZE(kSizes[2]);
-    CASE_NEXT_SIZE(kSizes[3]);
-    CASE_NEXT_SIZE(kSizes[4]);
-    CASE_NEXT_SIZE(kSizes[5]);
+      CASE_NEXT_SIZE(kSizes[1]);
+      CASE_NEXT_SIZE(kSizes[2]);
+      CASE_NEXT_SIZE(kSizes[3]);
+      CASE_NEXT_SIZE(kSizes[4]);
+      CASE_NEXT_SIZE(kSizes[5]);
     // kMaxSize shall not run vectorized kernel since ld might be larger than kMaxSize.
     default: {
       constexpr int block_size = 256;
@@ -237,11 +234,11 @@ void LaunchSkipLayerNormKernel(
       break;
     }
   }
+}
 
 #undef CASE_NEXT_SIZE
 #undef LAUNCH_SKIP_LAYER_NORM_KERNEL
 #undef LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL
-}
 
 #define SKIPLAYERNORM_IMPL(T, Simplified)                                                                 \
   template void LaunchSkipLayerNormKernel<T, Simplified>(cudaStream_t stream, T * output, T * sum_output, \
