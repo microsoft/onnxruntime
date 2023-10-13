@@ -613,9 +613,19 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  // Create Custom Op if EP requests it
+  // Register Custom Op if EP requests it
   std::vector<OrtCustomOpDomain*> custom_op_domains;
-  p_exec_provider->GetCustomOpDomainList(custom_op_domains);
+  std::vector<OrtCustomOpDomain*> candidate_custom_op_domains;
+  p_exec_provider->GetCustomOpDomainList(candidate_custom_op_domains);
+
+  // If the domain is already in DomainToVersion ONNX map, don't add it twice.
+  auto& domain_to_version_range_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+  const auto& domain_to_version_map = domain_to_version_range_instance.Map();
+  for (auto candidate : candidate_custom_op_domains) {
+    if (domain_to_version_map.find(candidate->domain_) == domain_to_version_map.end()) {
+      custom_op_domains.push_back(candidate);
+    }
+  }
 
   if (!custom_op_domains.empty()) {
     if (AddCustomOpDomains(custom_op_domains) != Status::OK()) {

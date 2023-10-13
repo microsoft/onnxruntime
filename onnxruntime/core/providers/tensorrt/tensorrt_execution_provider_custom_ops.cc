@@ -49,36 +49,32 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     is_loaded = true;
   }
 
-  static bool is_created = false;
   try {
-    if (!is_created) {
-      // Get all registered TRT plugins from registry
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from TRT plugin registry ...";
-      TensorrtLogger trt_logger = GetTensorrtLogger();
-      initLibNvInferPlugins(&trt_logger, "");
+    // Get all registered TRT plugins from registry
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from TRT plugin registry ...";
+    TensorrtLogger trt_logger = GetTensorrtLogger();
+    initLibNvInferPlugins(&trt_logger, "");
 
-      int num_plugin_creator = 0;
-      auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
-      std::unordered_set<std::string> registered_plugin_names;
+    int num_plugin_creator = 0;
+    auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
+    std::unordered_set<std::string> registered_plugin_names;
 
-      for (int i = 0; i < num_plugin_creator; i++) {
-        auto plugin_creator = plugin_creators[i];
-        std::string plugin_name(plugin_creator->getPluginName());
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
+    for (int i = 0; i < num_plugin_creator; i++) {
+      auto plugin_creator = plugin_creators[i];
+      std::string plugin_name(plugin_creator->getPluginName());
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
 
-        // plugin has different versions and we only register once
-        if (registered_plugin_names.find(plugin_name) != registered_plugin_names.end()) {
-          continue;
-        }
-
-        std::unique_ptr<TensorRTCustomOp> trt_custom_op = std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr);
-        trt_custom_op->SetName(plugin_creator->getPluginName());
-        custom_op_domain->custom_ops_.push_back(trt_custom_op.release());
-        registered_plugin_names.insert(plugin_name);
+      // plugin has different versions and we only register once
+      if (registered_plugin_names.find(plugin_name) != registered_plugin_names.end()) {
+        continue;
       }
-      domain_list.push_back(custom_op_domain.release());
-      is_created = true;
+
+      std::unique_ptr<TensorRTCustomOp> trt_custom_op = std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr);
+      trt_custom_op->SetName(plugin_creator->getPluginName());
+      custom_op_domain->custom_ops_.push_back(trt_custom_op.release());
+      registered_plugin_names.insert(plugin_name);
     }
+    domain_list.push_back(custom_op_domain.release());
   } catch (const std::exception&) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration. Therefore, TRT EP can't create custom ops for TRT plugins";
   }

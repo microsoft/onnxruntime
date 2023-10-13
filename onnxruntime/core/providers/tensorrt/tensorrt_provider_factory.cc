@@ -75,11 +75,6 @@ struct Tensorrt_Provider : Provider {
     info.device_id = device_id;
     info.has_trt_options = false;
 
-    common::Status status = CreateTensorRTCustomOpDomainList(info);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
-    }
-
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -120,11 +115,6 @@ struct Tensorrt_Provider : Provider {
     info.profile_max_shapes = options.trt_profile_max_shapes == nullptr ? "" : options.trt_profile_max_shapes;
     info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
     info.cuda_graph_enable = options.trt_cuda_graph_enable != 0;
-
-    common::Status status = CreateTensorRTCustomOpDomainList(info);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
-    }
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }
