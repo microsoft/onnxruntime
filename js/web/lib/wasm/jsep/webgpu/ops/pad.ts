@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -182,7 +182,6 @@ const generatePadCode =
           const padSnippet = getPadSnippet(output, outputDims, inputDims, inputStrides, attributes, dataType);
           const padCode = `
               ${shaderHelper.declareVariables(input, output)}
-              ${output.impl()}
               ${shaderHelper.mainStart()}
               ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
@@ -195,16 +194,18 @@ const generatePadCode =
           return padCode;
         };
 
-const createPadProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: PadAttributes): ProgramInfo => {
-      const outputShape = ShapeUtil.padShape(inputs[0].dims.slice(), attributes.pads);
-      return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        getShaderSource: shaderHelper => generatePadCode(shaderHelper, inputs, attributes, 'f32'),
-        dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
-      };
-    };
+const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttributes): ProgramInfo => {
+  const outputShape = ShapeUtil.padShape(inputs[0].dims.slice(), attributes.pads);
+  return {
+    name: 'Pad',
+    shaderCache: {hint: attributes.cacheKey},
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+      dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
+    }),
+    getShaderSource: shaderHelper => generatePadCode(shaderHelper, inputs, attributes, 'f32'),
+  };
+};
 
 const createPadAttributesFromInputs = (inputs: readonly TensorView[], attributes: PadAttributes): PadAttributes => {
   if (inputs.length > 1) {
@@ -232,16 +233,10 @@ const createPadAttributesFromInputs = (inputs: readonly TensorView[], attributes
   }
 };
 
-const createPadProgramInfoLoader = (inputs: readonly TensorView[], attributes: PadAttributes): ProgramInfoLoader => {
-  const updatedAttributes = createPadAttributesFromInputs(inputs, attributes);
-  const metadata:
-      ProgramMetadata = {name: 'Pad', inputTypes: [GpuDataType.default], cacheHint: updatedAttributes.cacheKey};
-  return {...metadata, get: () => createPadProgramInfo(inputs, metadata, updatedAttributes)};
-};
-
 export const pad = (context: ComputeContext, attributes: PadAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createPadProgramInfoLoader(context.inputs, attributes), {inputs: [0]});
+  const updatedAttributes = createPadAttributesFromInputs(context.inputs, attributes);
+  context.compute(createPadProgramInfo(context.inputs, updatedAttributes), {inputs: [0]});
 };
 
 export const parsePadAttributes = (attributes: Record<string, unknown>): PadAttributes => {

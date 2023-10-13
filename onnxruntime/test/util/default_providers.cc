@@ -268,10 +268,7 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 #ifdef USE_DML
-  OrtDmlProviderOptions provider_options{};
-  provider_options.device_id = 0;
-
-  if (auto factory = DMLProviderFactoryCreator::Create(provider_options))
+  if (auto factory = DMLProviderFactoryCreator::Create(0, false, false, false))
     return factory->CreateProvider();
 #endif
   return nullptr;

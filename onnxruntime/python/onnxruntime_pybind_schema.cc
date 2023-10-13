@@ -60,10 +60,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #endif
 #ifdef USE_DML
             []() {
-              OrtDmlProviderOptions provider_options{};
-              provider_options.device_id = 0;
-              provider_options.skip_software_device_check = true;
-              return onnxruntime::DMLProviderFactoryCreator::Create(provider_options);
+              return onnxruntime::DMLProviderFactoryCreator::Create(0, false, false, false);
             }(),
 #endif
 #ifdef USE_NNAPI
