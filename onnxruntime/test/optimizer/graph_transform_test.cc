@@ -966,7 +966,7 @@ TEST_F(GraphTransformationTests, FuseConvBNNoBias) {
 }
 
 TEST_F(GraphTransformationTests, FuseMatmulBN) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/matmul_bn.onnx";
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
@@ -1001,7 +1001,7 @@ TEST_F(GraphTransformationTests, FuseMatmulBN) {
 }
 
 TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutput) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/matmul_bn.onnx";
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
@@ -1040,7 +1040,7 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutput) {
 
 // should not fuse
 TEST_F(GraphTransformationTests, FuseMatmulBNWithOptionalOutput) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/matmul_bn.onnx";
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
