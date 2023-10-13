@@ -489,13 +489,13 @@ def call_python_forward_function(
                 #   For inference mode, we don't need to do the copy because ctx will be None,
                 #   so nothing will be saved for ctx.
                 # Note3:
-                #   If it's not first-time kernel invocation, tensor_input_indices_for_mark_dirty is None, we do the
-                #   copy for all tensors to generate grad for it. Otherwise, we only mul by one for the tensors whose indices are in
-                #   tensor_input_indices_for_mark_dirty.
+                # To fix this issue:
+                # "a leaf Variable that requires grad has been used in an in-place operation."
+                # If it's first-time kernel invocation, tensor_input_indices_for_mark_dirty is None, we do the
+                # copy for all tensors to generate grad for it. Otherwise, we only clone (to generate grad) for
+                # the tensors whose indices are in tensor_input_indices_for_mark_dirty.
                 if is_training_mode:
                     if is_first_time_run:
-                        # To fix this issue:
-                        # "a leaf Variable that requires grad has been used in an in-place operation."
                         with torch.set_grad_enabled(True):
                             wrapped_arg = wrapped_arg.clone()
                     else:
@@ -508,8 +508,6 @@ def call_python_forward_function(
                             or tensor_input_index in tensor_input_indices_for_mark_dirty
                         )
                         if is_input_index_saved_in_ctx or is_input_index_marked_dirty:
-                            # Enable grad to fix this issue:
-                            # "a leaf Variable that requires grad has been used in an in-place operation."
                             with torch.set_grad_enabled(is_input_index_marked_dirty):
                                 wrapped_arg = wrapped_arg.clone()
 
