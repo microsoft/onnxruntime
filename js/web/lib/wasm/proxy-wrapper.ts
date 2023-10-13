@@ -99,6 +99,7 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
       } else {
         isOrtEnvInitializedCallbacks.shift()![0](ev.data.out!);
       }
+      break;
     default:
   }
 };
