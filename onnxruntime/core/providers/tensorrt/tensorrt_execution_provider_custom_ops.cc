@@ -81,7 +81,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   return Status::OK();
 }
 
-common::Status CreateTensorRTCustomOpDomainList(const TensorrtExecutionProviderInfo& info) {
+common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& info) {
   std::vector<OrtCustomOpDomain*> domain_list;
   std::string extra_plugin_lib_paths{""};
   if (info.has_trt_options) {
