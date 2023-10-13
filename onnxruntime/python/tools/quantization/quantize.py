@@ -265,6 +265,7 @@ def quantize_static(
     nodes_to_quantize=None,
     nodes_to_exclude=None,
     use_external_data_format=False,
+    convert_attribute=False,
     calibrate_method=CalibrationMethod.MinMax,
     extra_options=None,
 ):
@@ -313,6 +314,8 @@ def quantize_static(
             List of nodes names to exclude. The nodes in this list will be excluded from quantization
             when it is not None.
         use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+        convert_attribute (bool): If true, convert all tensors to external data
+                If false, convert only non-attribute tensors to external data
         extra_options:
             key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
@@ -489,7 +492,7 @@ def quantize_static(
         )
 
     quantizer.quantize_model()
-    quantizer.model.save_model_to_file(model_output, use_external_data_format)
+    quantizer.model.save_model_to_file(model_output, use_external_data_format, convert_attribute)
     if not pre_processed:
         logging.warning(
             "Please consider pre-processing before quantization. See "
@@ -511,6 +514,7 @@ def quantize_dynamic(
     nodes_to_quantize=None,
     nodes_to_exclude=None,
     use_external_data_format=False,
+    convert_attribute=False,
     extra_options=None,
 ):
     """Given an onnx model, create a quantized onnx model and save it into a file
@@ -540,6 +544,8 @@ def quantize_dynamic(
             List of nodes names to exclude. The nodes in this list will be excluded from quantization
             when it is not None.
         use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+        convert_attribute (bool): If true, convert all tensors to external data
+                If false, convert only non-attribute tensors to external data
         extra_options:
             key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
@@ -594,7 +600,7 @@ def quantize_dynamic(
     )
 
     quantizer.quantize_model()
-    quantizer.model.save_model_to_file(model_output, use_external_data_format)
+    quantizer.model.save_model_to_file(model_output, use_external_data_format, convert_attribute)
 
 
 def quantize(
