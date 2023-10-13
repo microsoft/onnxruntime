@@ -8,6 +8,8 @@
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
 
+#include "core/framework/tensorprotoutils.h"
+
 #include "base_op_builder.h"
 
 namespace onnxruntime {
@@ -75,36 +77,38 @@ void SliceOpBuilder::GetDataFromAttribute(const NodeUnit& node_unit,
 // Gets the data from initializer inputs (e.g., starts, ends, axes, or steps) as a TensorShapeVector.
 static Status GetInitializerInputData(const NodeUnitIODef& input, const QnnModelWrapper& qnn_model_wrapper,
                                       TensorShapeVector& output) {
-  OnnxInputInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(input, input_info));
-  ORT_RETURN_IF_NOT(input_info.is_initializer,
-                    "QNN requires the starts, ends, axes, and steps inputs to be initializers");
+  const auto& input_name = input.node_arg.Name();
+  const bool is_initializer = qnn_model_wrapper.IsInitializerInput(input_name);
+  ORT_RETURN_IF_NOT(is_initializer, "Expected input ", input_name.c_str(), " to be an initializer.");
+  gsl::not_null<const ONNX_NAMESPACE::TensorProto*> initializer_proto = qnn_model_wrapper
+                                                                            .GetInitializerTensors()
+                                                                            .at(input_name);
+  ORT_RETURN_IF_NOT(initializer_proto->has_data_type(), "Expected initializer ", input_name.c_str(),
+                    " to have a proto data type.");
 
-  std::vector<uint8_t> initializer_bytes;
+  // Create empty Tensor.
+  const auto* dtype = DataTypeImpl::TensorTypeFromONNXEnum(initializer_proto->data_type())->GetElementType();
+  TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(*initializer_proto);
+  Tensor tensor(dtype, shape, std::make_shared<CPUAllocator>());
 
-  // Note: UnpackInitializerData() uses ORT's protobuf utilities, which ensure that the initializer bytes are
-  // contiguous, aligned, and in the appropriate endianness. This is necessary to be able to reinterpret bytes
-  // as an array of larger elements.
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, initializer_bytes));
+  // Deserialize initializer into Tensor.
+  const auto& model_path = qnn_model_wrapper.GetGraphViewer().ModelPath();
+  const ORTCHAR_T* model_path_str = model_path.IsEmpty() ? nullptr : model_path.ToPathString().c_str();
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(onnxruntime::Env::Default(), model_path_str,
+                                                              *initializer_proto, tensor));
 
-  const auto data_type = input_info.initializer_tensor->data_type();
   Status status;
 
-  switch (data_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-      gsl::span<const int64_t> elements = qnn::utils::ReinterpretBytesAsSpan<int64_t>(initializer_bytes);
-      output.insert(output.end(), elements.begin(), elements.end());
-      break;
-    }
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-      gsl::span<const int32_t> elements = qnn::utils::ReinterpretBytesAsSpan<int32_t>(initializer_bytes);
-      output.insert(output.end(), elements.begin(), elements.end());
-      break;
-    }
-    default:
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type ", data_type,
-                               " is not supported for Slice initializer input ", input.node_arg.Name().c_str());
-      break;
+  // Copy Tensor of int32_t or int64_t elems into output (int64_ts).
+  if (tensor.IsDataType<int64_t>()) {
+    gsl::span<const int64_t> tensor_elems = tensor.DataAsSpan<int64_t>();
+    output.insert(output.end(), tensor_elems.begin(), tensor_elems.end());
+  } else if (tensor.IsDataType<int32_t>()) {
+    gsl::span<const int32_t> tensor_elems = tensor.DataAsSpan<int32_t>();
+    output.insert(output.end(), tensor_elems.begin(), tensor_elems.end());
+  } else {
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type ", DataTypeImpl::ToString(dtype),
+                             " is not supported for Slice initializer input ", input.node_arg.Name().c_str());
   }
 
   return status;
