@@ -46,7 +46,7 @@ jobs:
       --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70
       "
     RunInjectedPipeline: 'true'
-    InjectedPipeline: 'orttraining-linux-gpu-test-ci-pipeline.yml'
+    InjectedPipeline: '../../orttraining-linux-gpu-test-ci-pipeline.yml'
     DockerImageTag: 'onnxruntime_orttraining_ortmodule_tests_image'
     TimeoutInMinutes: 140
     # Enable unreleased onnx opsets in CI builds
