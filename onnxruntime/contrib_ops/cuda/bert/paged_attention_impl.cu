@@ -640,12 +640,12 @@ void single_query_cached_kv_attention_launcher(
       break;                               \
   }
 
-void single_query_cached_kv_attention(
+void single_query_cached_kv_attention_quant(
     const cudaStream_t stream,
-    const void* out,           // [num_seqs, num_heads, head_size]
-    const void* query,         // [num_seqs, num_heads, head_size]
-    const void* key_cache,     // [num_blocks, num_kv_heads, head_size/x, block_size, x]
-    const void* value_cache,   // [num_blocks, num_kv_heads, head_size, block_size]
+    const void* out,          // [num_seqs, num_heads, head_size]
+    const void* query,        // [num_seqs, num_heads, head_size]
+    const void* key_cache,    // [num_blocks, num_kv_heads, head_size/x, block_size, x]
+    const void* value_cache,  // [num_blocks, num_kv_heads, head_size, block_size]
     const int* head_mapping,  // [num_heads]
     float scale,
     const int* block_tables,  // [num_seqs, max_num_blocks_per_seq]
@@ -656,20 +656,80 @@ void single_query_cached_kv_attention(
     const float* __restrict__ alibi_slopes_ptr,
     const int64_t* query_shapes,
     int num_queries_per_kv,
-    int dtype) {
+    int dtype,
+    const void* kv_quant_params,  // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
+    int kv_quant_chunk_size,
+    int kv_quant_param_dtype);
+
+void single_query_cached_kv_attention(
+    const cudaStream_t stream,
+    const void* out,          // [num_seqs, num_heads, head_size]
+    const void* query,        // [num_seqs, num_heads, head_size]
+    const void* key_cache,    // [num_blocks, num_kv_heads, head_size/x, block_size, x]
+    const void* value_cache,  // [num_blocks, num_kv_heads, head_size, block_size]
+    const int* head_mapping,  // [num_heads]
+    float scale,
+    const int* block_tables,  // [num_seqs, max_num_blocks_per_seq]
+    const int max_num_blocks_per_seq,
+    const int* context_lens,  // [num_seqs]
+    int block_size,
+    int max_context_len,
+    const float* __restrict__ alibi_slopes_ptr,
+    const int64_t* query_shapes,
+    int num_queries_per_kv,
+    int dtype,
+    const void* kv_quant_params,  // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
+    int kv_quant_chunk_size,
+    int kv_quant_param_dtype) {
+  if (kv_quant_params != nullptr) {
+    single_query_cached_kv_attention_quant(
+        stream,
+        out,
+        query,
+        key_cache,
+        value_cache,
+        head_mapping,
+        scale,
+        block_tables,
+        max_num_blocks_per_seq,
+        context_lens,
+        block_size,
+        max_context_len,
+        alibi_slopes_ptr,
+        query_shapes,
+        num_queries_per_kv,
+        dtype,
+        kv_quant_params,
+        kv_quant_chunk_size,
+        kv_quant_param_dtype);
+    return;
+  }
   // static_assert(std::is_same_v<T, float> || std::is_same_v<T, BFloat16> || std::is_same_v<T, MLFloat16>, "Unsupported data type: ");
   // if constexpr (std::is_same_v<T, float>) {
-  if (dtype == 0) {
+  if (dtype == 0) {  // float
     CALL_KERNEL_LAUNCHER_BLOCK_SIZE(float);
-    //} else if constexpr (std::is_same_v<T, MLFloat16>) {
-  } else if (dtype == 1) {
-    // half
+  } else if (dtype == 1) {  // half
     CALL_KERNEL_LAUNCHER_BLOCK_SIZE(uint16_t);
-    //} else if constexpr (std::is_same_v<T, BFloat16>) {
-  } else if (dtype == 2) {
+  } else if (dtype == 2) {  //} else if constexpr (std::is_same_v<T, BFloat16>) {
     // CALL_KERNEL_LAUNCHER_BLOCK_SIZE(__nv_bfloat16);
   }
 }
+
+void reshape_and_cache_quant(
+    const cudaStream_t stream,
+    const void* key,          // [num_tokens, num_heads, head_size]
+    const void* value,        // [num_tokens, num_heads, head_size]
+    const void* key_cache,    // [num_blocks, num_heads, head_size/x, block_size, x]
+    const void* value_cache,  // [num_blocks, num_heads, head_size, block_size]
+    const int* slot_mapping,  // [num_tokens]
+    const int64_t* key_shapes,
+    const int64_t* value_shapes,
+    const int64_t block_size,
+    const int vec_x,
+    const int dtype,
+    void* kv_quant_param,
+    const int kv_quant_chunk_size,
+    const int kv_quant_param_dtype);
 
 void reshape_and_cache(
     const cudaStream_t stream,
@@ -682,7 +742,28 @@ void reshape_and_cache(
     const int64_t* value_shapes,
     const int64_t block_size,
     const int vec_x,
-    int dtype) {
+    const int dtype,
+    void* kv_quant_param,
+    const int kv_quant_chunk_size,
+    const int kv_quant_param_dtype) {
+  if (kv_quant_param != nullptr) {
+    reshape_and_cache_quant(
+        stream,
+        key,
+        value,
+        key_cache,
+        value_cache,
+        slot_mapping,
+        key_shapes,
+        value_shapes,
+        block_size,
+        vec_x,
+        dtype,
+        kv_quant_param,
+        kv_quant_chunk_size,
+        kv_quant_param_dtype);
+    return;
+  }
   int num_tokens = key_shapes[0];
   int num_heads = key_shapes[1];
   int head_size = key_shapes[2];

@@ -11,7 +11,16 @@
 #include <memory>
 #include <string>
 
+#include <unistd.h>
+#include <cstring>
+#include <ctime>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include "nccl_kernels.h"
+#include "core/platform/env_var_utils.h"
+
 #include "mpi_include.h"
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cuda/tensor/slice.h"
@@ -210,10 +219,9 @@ NcclContext::NcclContext() {
     int mpi_threads_provided = 0;
     MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided);
   }
-
+  world_size_ = -1;
   // get world_size and rank from MPI
   MPI_Comm_size(MPI_COMM_WORLD, &world_size_);
-
   MPI_Comm_rank(MPI_COMM_WORLD, &rank_);
 #endif
   // world_size_ would be zero if MPI is being compiled but not launched by MPI.

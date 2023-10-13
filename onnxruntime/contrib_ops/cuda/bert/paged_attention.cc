@@ -508,7 +508,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* kv_quant_param = (context->InputCount() > 8) ? context->Input<Tensor>(8) : nullptr;
   ORT_UNUSED_PARAMETER(kv_quant_param);
 
-  int seq_len = query->Shape().NumDimensions() == 3? query->Shape()[1] : query->Shape()[0];
+  int seq_len = query->Shape().NumDimensions() == 3 ? query->Shape()[1] : query->Shape()[0];
   auto meta_data_space = this->template GetScratchBuffer<int8_t>(std::max(1024, seq_len * 3) * sizeof(int32_t), context->GetComputeStream());
   InputMetadata self_build_input_metadata;
   InputMetadata* input_metadata = GetOrCreateMedataFromInput(context, &self_build_input_metadata, meta_data_space.get());
@@ -559,6 +559,20 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     CHECK_CUDA_ERROR();
   }
 
+  int kv_quant_chunk_size = 0;
+  int kv_quant_param_dtype = 0;  // fp32
+  if (kv_quant_param != nullptr && kv_quant_param->Shape().Size() > 0) {
+    ORT_ENFORCE(key_cache && key_cache->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8);
+    ORT_ENFORCE(value_cache && value_cache->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8);
+    ORT_ENFORCE(query->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, "Current only support fp16 with quant kv cache");
+    if (kv_quant_param->GetElementType() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      kv_quant_param_dtype = 1;  // fp16
+    }
+    auto kv_quant_param_shape = kv_quant_param->Shape();  // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
+    ORT_ENFORCE(kv_quant_param_shape.NumDimensions() == 5 && kv_quant_param_shape[3] > 0 && head_size_ % kv_quant_param_shape[3] == 0);
+    kv_quant_chunk_size = head_size_ / kv_quant_param_shape[4];
+    ORT_ENFORCE(kv_quant_chunk_size > 0 && kv_quant_chunk_size % 4 == 0);
+  }
   auto key_cache_shape = key_cache->Shape();
   if (num_valid_tokens > 0 && key_cache_shape.Size() > 3) {
     int64_t key_shape_r[3] = {num_valid_tokens, num_kv_heads_, head_size_};
@@ -574,7 +588,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                       value_shape_r,
                       block_size,
                       key_cache_shape[4],
-                      1);
+                      1,
+                      (kv_quant_param != nullptr) ? (void*)kv_quant_param->DataRaw() : (void*)nullptr,
+                      kv_quant_chunk_size,
+                      kv_quant_param_dtype);
     CHECK_CUDA_ERROR();
   }
 
@@ -586,24 +603,29 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (input_metadata->num_generation_tokens > 0) {
     int64_t generation_qeury_shape[3] = {num_valid_tokens - num_prompt_tokens, num_heads_, head_size_};
     single_query_cached_kv_attention(Stream(context),
-                                     output->MutableData<MLFloat16>() + num_prompt_tokens * num_heads_ * head_size_,
-                                     query_data + num_prompt_tokens * num_heads_ * head_size_,
-                                     key_cache->Data<MLFloat16>(),
-                                     value_cache->Data<MLFloat16>(),
-                                     head_mapping_.get(),
-                                     scale_,
-                                     reinterpret_cast<const int32_t*>(input_metadata->block_tables),
-                                     input_metadata->max_num_blocks_per_seq,
-                                     reinterpret_cast<const int32_t*>(input_metadata->context_lens),
-                                     value_cache->Shape()[3],
-                                     input_metadata->max_context_len,
-                                     nullptr,
-                                     generation_qeury_shape,
-                                     num_queries_per_kv_, 1);
+                                      output->MutableData<MLFloat16>() + num_prompt_tokens * num_heads_ * head_size_,
+                                      query_data + num_prompt_tokens * num_heads_ * head_size_,
+                                      key_cache->DataRaw(),
+                                      value_cache->DataRaw(),
+                                      head_mapping_.get(),
+                                      scale_,
+                                      reinterpret_cast<const int32_t*>(input_metadata->block_tables),
+                                      input_metadata->max_num_blocks_per_seq,
+                                      reinterpret_cast<const int32_t*>(input_metadata->context_lens),
+                                      value_cache->Shape()[3],
+                                      input_metadata->max_context_len,
+                                      nullptr,
+                                      generation_qeury_shape,
+                                      num_queries_per_kv_,
+                                      1,
+                                      kv_quant_param ? kv_quant_param->DataRaw() : nullptr,
+                                      kv_quant_chunk_size,
+                                      kv_quant_param_dtype);
     CHECK_CUDA_ERROR();
   }
   return Status::OK();
 }
+
 
 }  // namespace cuda
 }  // namespace contrib

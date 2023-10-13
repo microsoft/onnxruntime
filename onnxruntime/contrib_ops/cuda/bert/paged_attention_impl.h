@@ -27,7 +27,10 @@ void single_query_cached_kv_attention(
     const float* __restrict__ alibi_slopes_ptr,
     const int64_t* query_shapes,
     int num_queries_per_kv,
-    int dtype);
+    int dtype,
+    const void* kv_quant_params_cache = nullptr, // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
+    int kv_quant_chunk_size = 0,
+    int kv_quant_param_dtype = 0);
 
 void reshape_and_cache(
     const cudaStream_t stream,
@@ -40,7 +43,10 @@ void reshape_and_cache(
     const int64_t* value_shapes,
     const int64_t block_size,
     const int vec_x,
-    int dtype);
+    const int dtype,
+    void* kv_quant_param = nullptr, // [num_blocks, 2, num_heads, head_size / kv_quant_chunk_size, block_size]
+    const int kv_quant_chunk_size = 0,
+    const int kv_quant_param_dtype = 1);
 
 template <typename T>
 void gather_cached_kv(
