@@ -1652,6 +1652,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
     options->custom_op_domains_.push_back(ptr);
   }
 
+  factory.SetCustomOpDomainList(custom_op_domains);
+
   return nullptr;
   API_IMPL_END
 }
@@ -1683,6 +1685,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
   for (auto ptr : custom_op_domains) {
     options->custom_op_domains_.push_back(ptr);
   }
+
+  factory.SetCustomOpDomainList(custom_op_domains);
 
   return nullptr;
   API_IMPL_END
@@ -1793,6 +1797,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   for (auto ptr : custom_op_domains) {
     options->custom_op_domains_.push_back(ptr);
   }
+
+  factory.SetCustomOpDomainList(custom_op_domains);
 
   return nullptr;
   API_IMPL_END

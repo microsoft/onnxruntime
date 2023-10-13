@@ -1206,11 +1206,13 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
 }
 
 void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
-  common::Status status = CreateTensorRTCustomOpDomainList(info_);
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+  if (info_.custom_op_domain_list.empty()) {
+    common::Status status = CreateTensorRTCustomOpDomainList(info_);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+    }
+    custom_op_domain_list = info_.custom_op_domain_list;
   }
-  custom_op_domain_list = info_.custom_op_domain_list;
 }
 
 // Check the graph is the subgraph of control flow op

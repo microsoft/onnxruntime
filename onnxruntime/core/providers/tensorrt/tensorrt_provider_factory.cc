@@ -53,6 +53,10 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
+  void SetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list) {
+    info_.custom_op_domain_list = domain_list;
+  };
+
  private:
   TensorrtExecutionProviderInfo info_;
 };

@@ -618,7 +618,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   std::vector<OrtCustomOpDomain*> candidate_custom_op_domains;
   p_exec_provider->GetCustomOpDomainList(candidate_custom_op_domains);
 
-
 #if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // ONNX_NAMESPACE::OpSchemaRegistry is not declared in ORT_MINIMAL_BUILD_CUSTOM_OPS build
   custom_op_domains = candidate_custom_op_domains;
