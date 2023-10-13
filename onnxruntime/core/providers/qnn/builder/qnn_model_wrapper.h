@@ -181,6 +181,8 @@ class QnnModelWrapper {
 
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
+  const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
+
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
                                    const std::vector<std::string>& names,
