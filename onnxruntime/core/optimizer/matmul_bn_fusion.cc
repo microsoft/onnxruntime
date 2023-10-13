@@ -6,12 +6,12 @@
 
 namespace onnxruntime
 {
-void AddNodesToRemove(Node::NodeConstIterator curr_iterator,
+void AddNodesToRemove(Node::NodeConstIterator current_iterator,
                       const NodeIndex& dest_node_index,
                       std::vector<NodeIndex>& nodes_to_remove) {
-  while (curr_iterator->Index() != dest_node_index) {
-    nodes_to_remove.push_back(curr_iterator->Index());
-    curr_iterator = curr_iterator->OutputNodesBegin();
+  while (current_iterator->Index() != dest_node_index) {
+    nodes_to_remove.push_back(current_iterator->Index());
+    current_iterator = current_iterator->OutputNodesBegin();
   }
 }
 
@@ -262,10 +262,10 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
     nodes_to_remove.push_back(non_matmul_parent_of_first_reshape);
   }
 
-  auto curr_iterator = matmul_node.OutputNodesBegin();
-  AddNodesToRemove(curr_iterator, last_reshape_node_index, nodes_to_remove);
-  ++curr_iterator;
-  AddNodesToRemove(curr_iterator, last_reshape_node_index, nodes_to_remove);
+  auto current_iterator = matmul_node.OutputNodesBegin();
+  AddNodesToRemove(current_iterator, last_reshape_node_index, nodes_to_remove);
+  ++current_iterator;
+  AddNodesToRemove(current_iterator, last_reshape_node_index, nodes_to_remove);
   nodes_to_remove.push_back(last_reshape_node_index);
 
   for (const auto& node_index : nodes_to_remove) {
