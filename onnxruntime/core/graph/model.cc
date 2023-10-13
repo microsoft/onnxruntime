@@ -804,7 +804,6 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 }
 
 void Model::RemoveLocalFunctionsProtos() {
-
   model_local_function_templates_maps_.clear();
   model_local_functions_.clear();
 
