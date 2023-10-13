@@ -242,7 +242,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
 
 // This function queries the capabilities for a given EP, but it does not assign the nodes.
 // It also does not perform layout transformation. This will be done during normal partitioning.
-static Status GetCapabilityForEPForAotInlining(const Graph& graph,
+static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                                const KernelRegistryManager& kernel_registry_mgr,
                                                const IExecutionProvider& current_ep,
                                                std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
@@ -254,7 +254,6 @@ static Status GetCapabilityForEPForAotInlining(const Graph& graph,
                                    kernel_registry_mgr.GetKernelTypeStrResolver()};
 
   // TODO: Provide EP with a capability to look inside the functions.
-  const GraphViewer graph_viewer(graph);
   capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
 
   return Status::OK();
@@ -588,10 +587,12 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   }
 
   // Find out all the nodes that are already taken
+  const GraphViewer graph_viewer(graph);
+
   InlinedHashSet<NodeIndex> claimed_by_ep;
   for (const auto& ep : execution_providers) {
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph, kernel_registry_mgr, *ep, capabilities));
+    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep, capabilities));
     for (auto& capability : capabilities) {
       const auto& nodes = capability->sub_graph->nodes;
       if (nodes.size() == 1) {
