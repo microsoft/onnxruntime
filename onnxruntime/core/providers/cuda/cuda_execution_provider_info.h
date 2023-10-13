@@ -72,6 +72,8 @@ struct CUDAExecutionProviderInfo {
 
   bool enable_skip_layer_norm_strict_mode{false};
 
+  bool use_ep_level_unified_stream{false};
+
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtCUDAProviderOptionsV2& info);
