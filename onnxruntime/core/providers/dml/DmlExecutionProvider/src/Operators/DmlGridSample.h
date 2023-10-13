@@ -51,16 +51,6 @@ namespace GridSample_float_float
     #include "GeneratedShaders/grid_sample_float_float.h"
 }
 
-namespace GridSample_double_float
-{
-    #include "GeneratedShaders/grid_sample_double_float.h"
-}
-
-namespace GridSample_bool_float
-{
-    #include "GeneratedShaders/grid_sample_bool_float.h"
-}
-
 namespace GridSample_uint16_fp16
 {
     #include "GeneratedShaders/grid_sample_uint16_fp16.h"
@@ -99,66 +89,6 @@ namespace GridSample_fp16_fp16
 namespace GridSample_float_fp16
 {
     #include "GeneratedShaders/grid_sample_float_fp16.h"
-}
-
-namespace GridSample_double_fp16
-{
-    #include "GeneratedShaders/grid_sample_double_fp16.h"
-}
-
-namespace GridSample_bool_fp16
-{
-    #include "GeneratedShaders/grid_sample_bool_fp16.h"
-}
-
-namespace GridSample_uint16_double
-{
-    #include "GeneratedShaders/grid_sample_uint16_double.h"
-}
-
-namespace GridSample_uint_double
-{
-    #include "GeneratedShaders/grid_sample_uint_double.h"
-}
-
-namespace GridSample_uint64_double
-{
-    #include "GeneratedShaders/grid_sample_uint64_double.h"
-}
-
-namespace GridSample_int16_double
-{
-    #include "GeneratedShaders/grid_sample_int16_double.h"
-}
-
-namespace GridSample_int_double
-{
-    #include "GeneratedShaders/grid_sample_int_double.h"
-}
-
-namespace GridSample_int64_double
-{
-    #include "GeneratedShaders/grid_sample_int64_double.h"
-}
-
-namespace GridSample_fp16_double
-{
-    #include "GeneratedShaders/grid_sample_fp16_double.h"
-}
-
-namespace GridSample_float_double
-{
-    #include "GeneratedShaders/grid_sample_float_double.h"
-}
-
-namespace GridSample_double_double
-{
-    #include "GeneratedShaders/grid_sample_double_double.h"
-}
-
-namespace GridSample_bool_double
-{
-    #include "GeneratedShaders/grid_sample_bool_double.h"
 }
 
 
@@ -471,14 +401,6 @@ public:
                 computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_float_float::g_GridSample, sizeof(GridSample_float_float::g_GridSample));
                 break;
 
-                case MLOperatorTensorDataType::Double:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_double_float::g_GridSample, sizeof(GridSample_double_float::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::Bool:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_bool_float::g_GridSample, sizeof(GridSample_bool_float::g_GridSample));
-                break;
-
                 default:
                 ORT_THROW_HR(E_INVALIDARG);
                 }
@@ -518,63 +440,6 @@ public:
 
                 case MLOperatorTensorDataType::Float:
                 computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_float_fp16::g_GridSample, sizeof(GridSample_float_fp16::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::Double:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_double_fp16::g_GridSample, sizeof(GridSample_double_fp16::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::Bool:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_bool_fp16::g_GridSample, sizeof(GridSample_bool_fp16::g_GridSample));
-                break;
-
-                default:
-                ORT_THROW_HR(E_INVALIDARG);
-                }
-                break;
-            }
-            case MLOperatorTensorDataType::Double:
-            {
-                switch (inputDataType)
-                {
-                case MLOperatorTensorDataType::UInt16:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_uint16_double::g_GridSample, sizeof(GridSample_uint16_double::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::UInt32:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_uint_double::g_GridSample, sizeof(GridSample_uint_double::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::UInt64:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_uint64_double::g_GridSample, sizeof(GridSample_uint64_double::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::Int16:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_int16_double::g_GridSample, sizeof(GridSample_int16_double::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::Int32:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_int_double::g_GridSample, sizeof(GridSample_int_double::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::Int64:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_int64_double::g_GridSample, sizeof(GridSample_int64_double::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::Float16:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_fp16_double::g_GridSample, sizeof(GridSample_fp16_double::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::Float:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_float_double::g_GridSample, sizeof(GridSample_float_double::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::Double:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_double_double::g_GridSample, sizeof(GridSample_double_double::g_GridSample));
-                break;
-
-                case MLOperatorTensorDataType::Bool:
-                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(GridSample_bool_double::g_GridSample, sizeof(GridSample_bool_double::g_GridSample));
                 break;
 
                 default:
@@ -901,6 +766,7 @@ public:
         kernelDescription.executionType = MLOperatorExecutionType::D3D12;
 
         // T1: tensor(float16), tensor(float), tensor(double), tensor(bfloat16)
+        // tensor(double) is not supported for GPU
         MLOperatorEdgeTypeConstrant t1Constraint;
         t1Constraint.typeLabel = "T1";
         std::vector<MLOperatorEdgeDescription> t1AllowedEdges
