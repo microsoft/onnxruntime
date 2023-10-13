@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
@@ -1383,7 +1384,8 @@ class Graph {
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         const logging::Logger& logger,
-        bool strict_shape_type_inference);
+        bool strict_shape_type_inference,
+        std::function<void()> model_functions_remover);
 
   // internal use by the Graph class only
   Graph(const Model& owning_model,
@@ -1394,9 +1396,16 @@ class Graph {
         Graph* parent_graph,
         const Node* parent_node,
         const logging::Logger& logger,
-        bool strict_shape_type_inference);
+        bool strict_shape_type_inference,
+        std::function<void()> model_functions_remover);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
+
+  void RemoveLocalFunctions() {
+    if (model_functions_remover_) {
+      model_functions_remover_();
+    }
+  }
 
  private:
   void InitializeStateFromModelFileGraphProto();
@@ -1613,6 +1622,12 @@ class Graph {
   // to store reusable-schema in lookup.
   InlinedHashMap<std::string, std::reference_wrapper<ONNX_NAMESPACE::OpSchema>> reusable_fused_schema_map_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // A function to call into the model to remove local functions which
+  // are inlined.
+  std::function<void()> model_functions_remover_;
+#endif
 
   // Graph nodes.
   // Element in <nodes_> may be nullptr due to graph optimization.

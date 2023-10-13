@@ -113,10 +113,13 @@ Model::Model(const std::string& graph_name,
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), std::move(func_template_ptr));
   }
 
+  std::function<void()> model_functions_remover = [this]() {
+    RemoveLocalFunctionsProtos();
+  };
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r.11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         logger, options.strict_shape_type_inference));
+                         logger, options.strict_shape_type_inference, std::move(model_functions_remover)));
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -233,10 +236,13 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), std::move(func_template_ptr));
   }
 
+  std::function<void()> model_functions_remover = [this]() {
+    RemoveLocalFunctionsProtos();
+  };
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r.11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry,
-                         logger, options.strict_shape_type_inference));
+                         logger, options.strict_shape_type_inference, std::move(model_functions_remover)));
 }
 
 const InlinedHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetModelLocalFunctionTemplates() const {
@@ -795,6 +801,17 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   fbs_model = mb.Finish();
 
   return Status::OK();
+}
+
+void Model::RemoveLocalFunctionsProtos() {
+
+  model_local_function_templates_maps_.clear();
+  model_local_functions_.clear();
+
+  auto* local_functions = model_proto_.mutable_functions();
+  for (auto it = local_functions->begin(); it != local_functions->end();) {
+    it = local_functions->erase(it);
+  }
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

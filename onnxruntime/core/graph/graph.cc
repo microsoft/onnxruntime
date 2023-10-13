@@ -1144,14 +1144,18 @@ Graph::Graph(const Model& owning_model,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
              const logging::Logger& logger,
-             bool strict_shape_type_inference)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger, strict_shape_type_inference) {}
+             bool strict_shape_type_inference,
+             std::function<void()> model_functions_remover)
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version,
+            schema_registry, nullptr, nullptr, logger,
+            strict_shape_type_inference, std::move(model_functions_remover)) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
              const logging::Logger& logger,
-             bool strict_shape_type_inference)
+             bool strict_shape_type_inference,
+             std::function<void()> model_functions_remover)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1159,6 +1163,7 @@ Graph::Graph(const Model& owning_model,
       runtime_optimizations_(*runtime_optimizations_ptr_),
 #endif
       schema_registry_(schema_registry),
+      model_functions_remover_(std::move(model_functions_remover)),
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
       ir_version_(ir_version),
@@ -1323,7 +1328,8 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             &parent_graph,
             &parent_node,
             parent_graph.logger_,
-            parent_graph.strict_shape_type_inference_) {
+            parent_graph.strict_shape_type_inference_,
+            std::function<void()>()) {
 }
 
 Graph::Graph(const Model& owning_model,
@@ -1340,7 +1346,8 @@ Graph::Graph(const Model& owning_model,
             nullptr,
             nullptr,
             logger,
-            strict_shape_type_inference) {
+            strict_shape_type_inference,
+            std::function<void()>()) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {

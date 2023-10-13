@@ -804,9 +804,8 @@ Status GraphPartitioner::InlineFunctionsAOT(Graph& graph,
     ORT_RETURN_IF_ERROR(graph.Resolve());
   } while (true);
 
-  // TODO: Consider removing local model functions
-  // Currently the model is const as viewed from the graph.
-  // However, inlined functions contribute the most to resulting model size.
+  graph.RemoveLocalFunctions();
+
   return Status::OK();
 }
 
