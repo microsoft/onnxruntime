@@ -62,7 +62,7 @@
 #endif
 #if defined(__GNUC__) and __cplusplus >= 202002L
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Werror=deprecated"
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 #include "unsupported/Eigen/CXX11/Tensor"
 #if defined(__GNUC__) and __cplusplus >= 202002L
