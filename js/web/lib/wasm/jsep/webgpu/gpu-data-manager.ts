@@ -133,6 +133,8 @@ class GpuDataManagerImpl implements GpuDataManager {
 
   // The reusable storage buffers for computing.
   private freeBuffers: Map<number, GPUBuffer[]>;
+  // The reusable uniform buffers
+  private freeUniformBuffers: Map<number, GPUBuffer[]>;
 
   // The external buffers registered users for IO Binding.
   private externalBuffers: Map<GPUBuffer, GpuDataId>;
@@ -140,6 +142,7 @@ class GpuDataManagerImpl implements GpuDataManager {
   constructor(private backend: WebGpuBackend) {
     this.storageCache = new Map();
     this.freeBuffers = new Map();
+    this.freeUniformBuffers = new Map();
     this.buffersForUploadingPending = [];
     this.buffersPending = [];
     this.externalBuffers = new Map();
@@ -247,11 +250,15 @@ class GpuDataManagerImpl implements GpuDataManager {
     let gpuBuffer;
     // Currently, only storage buffers are reused.
     // eslint-disable-next-line no-bitwise
-    if ((usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
-      let buffers = this.freeBuffers.get(bufferSize);
+    const isStorage = (usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE;
+    // eslint-disable-next-line no-bitwise
+    const isUniform = (usage & GPUBufferUsage.UNIFORM) === GPUBufferUsage.UNIFORM;
+    if (isStorage || isUniform) {
+      const freeBuffers = isStorage ? this.freeBuffers : this.freeUniformBuffers;
+      let buffers = freeBuffers.get(bufferSize);
       if (!buffers) {
         buffers = [];
-        this.freeBuffers.set(bufferSize, buffers);
+        freeBuffers.set(bufferSize, buffers);
       }
       if (buffers.length > 0) {
         gpuBuffer = buffers.pop() as GPUBuffer;
@@ -310,6 +317,10 @@ class GpuDataManagerImpl implements GpuDataManager {
       if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
         // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
         this.freeBuffers.get(buffer.size)!.push(buffer);
+        // eslint-disable-next-line no-bitwise
+      } else if ((buffer.usage & GPUBufferUsage.UNIFORM) === GPUBufferUsage.UNIFORM) {
+        // Put the pending buffer to freeUniformBuffers list instead of really destroying it for buffer reusing.
+        this.freeUniformBuffers.get(buffer.size)!.push(buffer);
       } else {
         buffer.destroy();
       }
@@ -323,6 +334,11 @@ class GpuDataManagerImpl implements GpuDataManager {
         buffer.destroy();
       });
     });
+    this.freeUniformBuffers.forEach((buffers) => {
+      buffers.forEach(buffer => {
+        buffer.destroy();
+      });
+    });
 
     this.storageCache.forEach((storage) => {
       storage.gpuData.buffer.destroy();
@@ -330,6 +346,7 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     this.storageCache = new Map();
     this.freeBuffers = new Map();
+    this.freeUniformBuffers = new Map();
   }
 }
 

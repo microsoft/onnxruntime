@@ -245,6 +245,26 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                                             subgraph_session_state);
   }
 
+  Status WhisperBeamSearch__Compute(const contrib::transformers::WhisperBeamSearch* p, OpKernelContext* ctx) override {
+    return p->contrib::transformers::WhisperBeamSearch::Compute(ctx);
+  }
+
+  void BeamSearchParameters__ParseFromAttributes(contrib::transformers::BeamSearchParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::BeamSearchParameters::ParseFromAttributes(info);
+  }
+
+  void GreedySearchParameters__ParseFromAttributes(contrib::transformers::GreedySearchParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::GreedySearchParameters::ParseFromAttributes(info);
+  }
+
+  void SamplingParameters__ParseFromAttributes(contrib::transformers::SamplingParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::SamplingParameters::ParseFromAttributes(info);
+  }
+
+  void WhisperBeamSearchParameters__ParseFromAttributes(contrib::transformers::WhisperBeamSearchParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::WhisperBeamSearchParameters::ParseFromAttributes(info);
+  }
+
   void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) override {
     p->contrib::transformers::GreedySearch::Init(info);
   }

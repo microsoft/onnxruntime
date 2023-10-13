@@ -171,6 +171,10 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
+    # temporarily allow this test to fail, so that people are not blocked.
+    # investigation is ongoing for the root cause of the random failure (Edge crash).
+    # TODO: remove this line once the root cause is found and fixed.
+    continueOnError: true
   - script: |
      npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'

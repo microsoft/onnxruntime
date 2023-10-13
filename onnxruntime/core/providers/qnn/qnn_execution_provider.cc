@@ -238,22 +238,36 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 initializer_input_lookup,
                                                 qnn_backend_manager_->GetQnnBackendType());
 
-  for (const auto& node : graph_viewer.Nodes()) {
-    const NodeUnit* node_unit = node_unit_map.at(&node);
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
+
+    // Get the node_unit associated with the node. Note that the node may not be the node_unit's target node.
+    const NodeUnit* node_unit = node_unit_map.at(node);
+
+    // Visiting 'nodes' in topological order does not guarantee that 'node_units' are
+    // also visited in topological order. Skip this node if it is not the node_unit's target node
+    // to ensure 'node_units' are visited in topological order.
+    if (node != &node_unit->GetNode()) {
+      continue;
+    }
     const bool supported = IsNodeSupported(qnn_model_wrapper,
                                            *node_unit,
                                            node_unit_supported_result,
                                            logger);
     LOGS(logger, VERBOSE) << "Node supported: [" << supported
-                          << "] index: [" << node.Index()
-                          << "] name: [" << node.Name()
-                          << "] Operator type: [" << node.OpType()
+                          << "] index: [" << node->Index()
+                          << "] name: [" << node->Name()
+                          << "] Operator type: [" << node->OpType()
                           << "] as part of the NodeUnit type: [" << node_unit->OpType()
                           << "] index: [" << node_unit->Index()
                           << "] name: [" << node_unit->Name()
                           << "]";
     if (supported) {
-      supported_nodes.insert(&node);
+      // If the node_unit is supported, add all of its nodes to the supported list.
+      for (const auto* node_in_group : node_unit->GetAllNodesInGroup()) {
+        supported_nodes.insert(node_in_group);
+      }
     }
   }
 
