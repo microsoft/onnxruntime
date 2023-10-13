@@ -53,10 +53,6 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
-  void SetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list) {
-    info_.custom_op_domain_list = domain_list;
-  };
-
  private:
   TensorrtExecutionProviderInfo info_;
 };
@@ -130,11 +126,6 @@ struct Tensorrt_Provider : Provider {
   ProviderOptions GetProviderOptions(const void* provider_options) override {
     auto& options = *reinterpret_cast<const OrtTensorRTProviderOptionsV2*>(provider_options);
     return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(options);
-  }
-
-  void SetCustomOpDomains(IExecutionProviderFactory* factory, std::vector<OrtCustomOpDomain*>& custom_op_domains_ptr) {
-    TensorrtProviderFactory* trt_factory = reinterpret_cast<TensorrtProviderFactory*>(factory);
-    trt_factory->SetCustomOpDomainList(custom_op_domains_ptr);
   }
 
   void Initialize() override {
