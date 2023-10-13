@@ -371,10 +371,14 @@ Status SimpleOpBuilder::ProcessSigmoidOrTanhOutput(QnnModelWrapper& qnn_model_wr
       const float scale = output_info.quant_param.scaleOffsetEncoding.scale;
 
       LOGS(logger, VERBOSE) << "QNN requires that 16-bit quantized " << op_type << " operators use offset/scale values "
-                            << "of <" << offset << ", " << scale << ">. QNN EP will override the original values.";
+                            << "of <" << offset << ", " << scale << ">. QNN EP will override the original values for output "
+                            << output_name;
     }
   }
 
+  ORT_RETURN_IF(qnn_model_wrapper.IsQnnTensorWrapperExist(output_name),
+                "QNN EP is unable to override output quantization parameters for ", op_type.c_str(),
+                " operator. Node name: ", node_unit.Name().c_str(), ", output name: ", output_name.c_str());
   Qnn_TensorType_t tensor_type = qnn_model_wrapper.IsGraphOutput(output_name) ? QNN_TENSOR_TYPE_APP_READ
                                                                               : QNN_TENSOR_TYPE_NATIVE;
   QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, output_info.qnn_data_type, output_info.quant_param,
