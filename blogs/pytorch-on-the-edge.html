@@ -133,7 +133,7 @@ pipeline.save_pretrained("./onnx-stable-diffusion")
 
                                     <p>To run this pipeline of models as a .NET application, we built the pipeline code in C#. This code can be run on CPU, GPU, or NPU, if they are available on your machine, using ONNX Runtime’s device-specific hardware accelerators. This is configured with the ExecutionProviderTarget below.</p>
 
-                                    <code><pre>
+                                    <pre><code class="language-csharp">
 static void Main(string[] args)
 {
     var prompt = "Two golden retriever puppies playing in the grass.";
@@ -157,7 +157,7 @@ static void Main(string[] args)
         Console.WriteLine("Unable to create image, please try again.");
     }
 }                               
-                                    </pre></code> 
+                                    </code></pre> 
 
                                     <p>This is the output of the model pipelines, running with 50 inference iterations</p>
 
@@ -169,7 +169,7 @@ static void Main(string[] args)
 
                                     <p>Running a PyTorch model locally in the browser is not only possible but super simple with the <a href="https://huggingface.co/docs/transformers.js/index">transformers.js</a> library. Transformers.js uses ONNX Runtime Web as a backend. Many models are already converted to ONNX and served by the tranformers.js CDN, making inference in the browser a matter of writing a few lines of HTML.</p>
 
-                                    <code><pre>
+                                    <pre><code class="language-html">
 &lt;html&gt;
     &lt;body&gt;
         &lt;h1&gt;Enter starting text …&lt;/h1&gt;
@@ -210,7 +210,7 @@ static void Main(string[] args)
     &lt;/body&gt;
 &lt;/html&gt;
                                         
-                                    </pre></code>
+                                    </code></pre>
 
                                     <p>You can also embed the call to the transformers pipeline using vanilla JS, or in a web application, with React, or Next.js, or write a browser extension.</p>
                                     
@@ -226,7 +226,7 @@ static void Main(string[] args)
 
                                     <p>As an example, the relevant snippet of an <a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/speech_recognition">Android mobile app</a> to perform speech transcription on short samples of audio, is shown below.</p>
 
-                                    <code><pre>
+                                    <pre><code class="language-swift">
 init {
     val env = OrtEnvironment.getEnvironment()
     val sessionOptions = OrtSession.SessionOptions()
@@ -263,7 +263,7 @@ fun run(audioTensor: OnnxTensor): Result {
     return Result(recognizedText, elapsedTimeInMs)
 }
 
-                                    </pre></code>
+                                    </code></pre>
 
                                     <p>You can record a short audio clip to transcribe.</p>
 
@@ -277,7 +277,7 @@ fun run(audioTensor: OnnxTensor): Result {
 
                                     <p>The PyTorch model is obtained from HuggingFace, and extra layers are added to perform the speaker classification.</p>
 
-                                    <code><pre>
+                                    <pre><code class="language-python">
 from transformers import Wav2Vec2ForSequenceClassification, AutoConfig
 import torch
 
@@ -286,11 +286,11 @@ model = Wav2Vec2ForSequenceClassification.from_pretrained("superb/wav2vec2-base-
 
 model.classifier = torch.nn.Linear(256, 2)
                                         
-                                    </pre></code>
+                                    </code></pre>
 
                                     <p>The model and other components necessary for training (a loss function to measure the quality of the model and an optimizer to instruct how the weights are adjusted during training) are exported with the ONNX Runtime training Python API.</p>
 
-                                    <code><pre>
+                                    <pre><code class="language-python">
 artifacts.generate_artifacts(
     onnx_model,
     requires_grad=requires_grad,
@@ -299,11 +299,11 @@ artifacts.generate_artifacts(
     optimizer=artifacts.OptimType.AdamW,
     artifact_directory="MyVoice/artifacts",
 )                                        
-                                    </pre></code>
+                                    </code></pre>
 
                                     <p>This set of artifacts is now ready to be loaded by the mobile application, shown here as iOS Swift code. Within the application, a number of samples of the speaker’s audio are provided to the application and the model is trained with the samples.</p>
 
-                                    <code><pre>
+                                    <pre><code class="language-swift">
 func trainStep(inputData: [Data], labels: [Int64]) throws  {
 
     let inputs = [try getORTValue(dataList: inputData), try getORTValue(labels: labels)]
@@ -313,7 +313,7 @@ func trainStep(inputData: [Data], labels: [Int64]) throws  {
     
     try trainingSession.lazyResetGrad()
 }                                    
-                                    </pre></code>
+                                    </code></pre>
 
                                     <p>Once the model is trained, you can run it to verify that a voice sample is you!</p>
 
