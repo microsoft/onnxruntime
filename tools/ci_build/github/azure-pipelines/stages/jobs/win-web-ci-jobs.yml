@@ -29,6 +29,7 @@ jobs:
   pool: ${{ parameters.PoolName }}
 
   variables:
+    webgpuCommandlineExtraFlags: '--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de'
     runCodesignValidationInjection: false
   timeoutInMinutes: 60
   workspace:
@@ -72,7 +73,7 @@ jobs:
     displayName: 'Testing: force EOL to lf on windows for /js/**'
   - task: NodeTool@0
     inputs:
-      versionSpec: '16.x'
+      versionSpec: '18.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: '${{ parameters.BuildConfig }}_*/**/*'
@@ -159,12 +160,26 @@ jobs:
      npm test -- -e=edge -b=webgl,wasm,xnnpack
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (wasm,webgl,xnnpack backend)'
-    condition: ne('${{ parameters.RunWebGpuTests }}', 'true')
+    condition: eq('${{ parameters.RunWebGpuTests }}', 'false')
   - script: |
-     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu --chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de
+     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
-    condition: ne('${{ parameters.RunWebGpuTests }}', 'false')
+    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
+  - script: |
+     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags)
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
+    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
+    # temporarily allow this test to fail, so that people are not blocked.
+    # investigation is ongoing for the root cause of the random failure (Edge crash).
+    # TODO: remove this line once the root cause is found and fixed.
+    continueOnError: true
+  - script: |
+     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags)
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
+    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
   - script: |
      npm test -- --webgl-texture-pack-mode -b=webgl -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'

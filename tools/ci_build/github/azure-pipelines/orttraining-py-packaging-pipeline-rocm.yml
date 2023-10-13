@@ -9,7 +9,37 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- stage: Python_Packaging
+- stage: "Python_Packaging_ROCm57_Release"
+  jobs:
+  - template: stages/jobs/rocm-jobs.yml
+    parameters:
+      PythonVersion: '3.8'
+      RocmVersion: '5.7'
+  - template: stages/jobs/rocm-jobs.yml
+    parameters:
+      PythonVersion: '3.9'
+      RocmVersion: '5.7'
+  - template: stages/jobs/rocm-jobs.yml
+    parameters:
+      PythonVersion: '3.10'
+      RocmVersion: '5.7'
+  - template: stages/jobs/rocm-jobs.yml
+    parameters:
+      PythonVersion: '3.8'
+      RocmVersion: '5.7'
+  - template: stages/jobs/rocm-jobs.yml
+    parameters:
+      PythonVersion: '3.9'
+      RocmVersion: '5.7'
+  - template: stages/jobs/rocm-jobs.yml
+    parameters:
+      PythonVersion: '3.10'
+      RocmVersion: '5.7'
+
+      BuildConfig: 'Debug'
+
+- stage: "Python_Packaging_ROCm56_Release"
+  condition: ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')
   jobs:
   - template: stages/jobs/rocm-jobs.yml
     parameters:
@@ -23,30 +53,3 @@ stages:
     parameters:
       PythonVersion: '3.10'
       RocmVersion: '5.6'
-  - template: stages/jobs/rocm-jobs.yml
-    parameters:
-      PythonVersion: '3.8'
-      RocmVersion: '5.7'
-  - template: stages/jobs/rocm-jobs.yml
-    parameters:
-      PythonVersion: '3.9'
-      RocmVersion: '5.7'
-  - template: stages/jobs/rocm-jobs.yml
-    parameters:
-      PythonVersion: '3.10'
-      RocmVersion: '5.7'
-  - template: stages/jobs/rocm-jobs.yml
-    parameters:
-      PythonVersion: '3.8'
-      RocmVersion: '5.7'
-      BuildConfig: 'RelWithDebInfo'
-  - template: stages/jobs/rocm-jobs.yml
-    parameters:
-      PythonVersion: '3.9'
-      RocmVersion: '5.7'
-      BuildConfig: 'RelWithDebInfo'
-  - template: stages/jobs/rocm-jobs.yml
-    parameters:
-      PythonVersion: '3.10'
-      RocmVersion: '5.7'
-      BuildConfig: 'RelWithDebInfo'

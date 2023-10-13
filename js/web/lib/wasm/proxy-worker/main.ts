@@ -25,7 +25,6 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
                                                                                                 type: 'init-ort',
                                                                                                 err
                                                                                               } as OrtWasmMessage));
-        postMessage({type: 'init-ort'} as OrtWasmMessage);
       } catch (err) {
         postMessage({type: 'init-ort', err} as OrtWasmMessage);
       }

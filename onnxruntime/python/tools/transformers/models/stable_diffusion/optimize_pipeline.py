@@ -13,7 +13,7 @@
 #    python optimize_pipeline.py -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
 #
 # Note that the optimizations are carried out for CUDA Execution Provider at first, other EPs may not have the support
-# for the fused opeartors. The users could disable the operator fusion manually to workaround.
+# for the fused operators. The users could disable the operator fusion manually to workaround.
 
 import argparse
 import logging
@@ -49,7 +49,6 @@ def has_external_data(onnx_model_path):
 def _optimize_sd_pipeline(
     source_dir: Path,
     target_dir: Path,
-    overwrite: bool,
     use_external_data_format: Optional[bool],
     float16: bool,
     force_fp32_ops: List[str],
@@ -61,7 +60,6 @@ def _optimize_sd_pipeline(
     Args:
         source_dir (Path): Root of input directory of stable diffusion onnx pipeline with float32 models.
         target_dir (Path): Root of output directory of stable diffusion onnx pipeline with optimized models.
-        overwrite (bool): Overwrite files if exists.
         use_external_data_format (Optional[bool]): use external data format.
         float16 (bool): use half precision
         force_fp32_ops(List[str]): operators that are forced to run in float32.
@@ -144,6 +142,7 @@ def _optimize_sd_pipeline(
             opt_level=0,
             optimization_options=fusion_options,
             use_gpu=True,
+            provider=args.provider,
         )
 
         if float16:
@@ -168,6 +167,7 @@ def _optimize_sd_pipeline(
                 optimize_by_onnxruntime(
                     str(tmp_model_path),
                     use_gpu=True,
+                    provider=args.provider,
                     optimized_model_path=str(ort_optimized_model_path),
                     save_as_external_data=use_external_data_format,
                 )
@@ -233,7 +233,7 @@ def optimize_stable_diffusion_pipeline(
     args,
 ):
     if os.path.exists(output_dir):
-        if args.overwrite:
+        if overwrite:
             shutil.rmtree(output_dir, ignore_errors=True)
         else:
             raise RuntimeError("output directory existed:{output_dir}. Add --overwrite to empty the directory.")
@@ -247,7 +247,6 @@ def optimize_stable_diffusion_pipeline(
     _optimize_sd_pipeline(
         source_dir,
         target_dir,
-        overwrite,
         use_external_data_format,
         float16,
         args.force_fp32_ops,
@@ -319,10 +318,18 @@ def parse_arguments(argv: Optional[List[str]] = None):
         required=False,
         action="store_true",
         help="Onnx model larger than 2GB need to use external data format. "
-        "If specifed, save each onnx model to two files: one for onnx graph, another for weights. "
+        "If specified, save each onnx model to two files: one for onnx graph, another for weights. "
         "If not specified, use same format as original model by default. ",
     )
     parser.set_defaults(use_external_data_format=None)
+
+    parser.add_argument(
+        "--provider",
+        required=False,
+        type=str,
+        default=None,
+        help="Execution provider to use.",
+    )
 
     FusionOptions.add_arguments(parser)
 

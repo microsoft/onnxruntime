@@ -243,7 +243,7 @@ struct CUDA_Provider : Provider {
     cuda_options.arena_extend_strategy = internal_options.arena_extend_strategy;
     cuda_options.do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
     cuda_options.has_user_compute_stream = internal_options.has_user_compute_stream;
-    // The 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance can be set byC API UpdateCUDAProviderOptionsWithValue() as well.
+    // The 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance can be set by C API UpdateCUDAProviderOptionsWithValue() as well.
     // We only set the 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance if it is provided in options
     if (options.find("has_user_compute_stream") != options.end()) {
       cuda_options.user_compute_stream = internal_options.user_compute_stream;
