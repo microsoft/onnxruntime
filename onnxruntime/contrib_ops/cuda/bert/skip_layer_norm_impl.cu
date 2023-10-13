@@ -134,7 +134,7 @@ __global__ void SkipLayerNormKernelSmall(
 
   cub::KeyValuePair<T, T> thread_data(T(0.f), T(0.f));
 
-  if (ILP * threadIdx.x < ld) { // load data under this guard to avoid reading out-of-bounds
+  if (ILP * threadIdx.x < ld) {  // load data under this guard to avoid reading out-of-bounds
     T skip_v[ILP], bias_v[ILP];
 
     // load input to sum_v
@@ -218,15 +218,13 @@ void LaunchSkipLayerNormKernel(
     }                                                                         \
   } break
 
-// TODO: Add back the small TensorRT kernel for 32. No need to use vertorized kernel for such small size.
-#define CASE_FIRST_SIZE()                   \
-  case kSizes[0]: {                         \
-    constexpr int block_size = kSizes[0];   \
-    LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(1); \
-  } break
-
   switch (next_size) {
-    CASE_FIRST_SIZE();
+    case kSizes[0]: {
+      constexpr int block_size = kSizes[0];
+      // TODO: Add back the small TensorRT kernel for 32. No need to use vertorized kernel for such small size.
+      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(1);
+      break;
+    }
     CASE_NEXT_SIZE(kSizes[1]);
     CASE_NEXT_SIZE(kSizes[2]);
     CASE_NEXT_SIZE(kSizes[3]);
@@ -240,7 +238,6 @@ void LaunchSkipLayerNormKernel(
     }
   }
 
-#undef CASE_FIRST_SIZE
 #undef CASE_NEXT_SIZE
 #undef LAUNCH_SKIP_LAYER_NORM_KERNEL
 #undef LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL
