@@ -358,7 +358,11 @@ void RunTest(int64_t max_iterations,
     // we want the CUDA provider to be first, and the CPU provider second. all except the Loop node should run on
     // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Loop node correctly.
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_CUDA)
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif defined(USE_ROCM)
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
     test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
@@ -1038,8 +1042,8 @@ TEST(Loop, IterationCountAsOutput) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-#ifdef USE_CUDA
-// test that when part of the subgraph run on CUDA it executes successfully
+#if defined(USE_CUDA) || defined(USE_ROCM)
+// test that when part of the subgraph run on CUDA/ROCm it executes successfully
 TEST(Loop, MixedExecutionProviders) {
   RunOptions options{};
   options.mixed_execution_providers = true;

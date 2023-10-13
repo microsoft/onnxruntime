@@ -10,8 +10,8 @@ namespace onnxruntime {
 
 class GPUDataTransfer : public IDataTransfer {
  public:
-  GPUDataTransfer() = default;
-  ~GPUDataTransfer() = default;
+  GPUDataTransfer();
+  ~GPUDataTransfer();
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 

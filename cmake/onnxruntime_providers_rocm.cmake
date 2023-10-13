@@ -10,6 +10,7 @@
   find_package(hiprand REQUIRED)
   find_package(rocblas REQUIRED)
   find_package(MIOpen REQUIRED)
+  find_package(hipfft REQUIRED)
 
   # MIOpen version
   if(NOT DEFINED ENV{MIOPEN_PATH})
@@ -48,7 +49,7 @@
 
   find_library(RCCL_LIB rccl REQUIRED)
   find_library(ROCTRACER_LIB roctracer64 REQUIRED)
-  set(ONNXRUNTIME_ROCM_LIBS roc::rocblas MIOpen ${RCCL_LIB} ${ROCTRACER_LIB})
+  set(ONNXRUNTIME_ROCM_LIBS roc::rocblas MIOpen hip::hipfft ${RCCL_LIB} ${ROCTRACER_LIB})
 
   file(GLOB_RECURSE onnxruntime_providers_rocm_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.h"
