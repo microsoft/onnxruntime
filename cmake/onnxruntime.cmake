@@ -217,6 +217,7 @@ if (onnxruntime_USE_EXTENSIONS)
   list(APPEND onnxruntime_INTERNAL_LIBRARIES
     onnxruntime_extensions
     ocos_operators
+    noexcep_operators
   )
 endif()
 
@@ -240,7 +241,7 @@ install(TARGETS onnxruntime
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime
         ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
         FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 
