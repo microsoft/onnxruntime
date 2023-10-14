@@ -16,7 +16,7 @@ to its use in its converted from.
 Train a logistic regression
 +++++++++++++++++++++++++++
 
-The first step consists in retrieving the iris datset.
+The first step consists in retrieving the iris dataset.
 """
 
 from sklearn.datasets import load_iris

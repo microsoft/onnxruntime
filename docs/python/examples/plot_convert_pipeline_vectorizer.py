@@ -94,4 +94,4 @@ print(r2_score(pred, pred_onx))
 
 #########################
 # Very similar. *ONNX Runtime* uses floats instead of doubles,
-# that explains the small discrepencies.
+# that explains the small discrepancies.
