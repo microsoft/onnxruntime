@@ -60,26 +60,27 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
   return Status::OK();
 }
 
-Status GetEpContextFromModel(const std::string& ctx_onnx_model_path,
-                             std::string& ep_cache_context,
-                             const logging::Logger& logger) {
+const std::string& QnnCacheModelHandler::GetEpContextFromModel(const std::string& ctx_onnx_model_path,
+                                                               const logging::Logger& logger) {
   using namespace onnxruntime;
   std::shared_ptr<Model> model;
-  ORT_RETURN_IF_ERROR(Model::Load(ToPathString(ctx_onnx_model_path), model, {}, logger));
+  auto status = Model::Load(ToPathString(ctx_onnx_model_path), model, {}, logger);
+  if (Status::OK() != status) {
+    ep_engine_context_.clear();
+    return ep_engine_context_;
+  }
   const auto& graph = model->MainGraph();
-  ORT_RETURN_IF_ERROR(GetEpContextFromGraph(GraphViewer(graph), ctx_onnx_model_path, ep_cache_context));
-
-  return Status::OK();
+  return GetEpContextFromGraph(GraphViewer(graph), ctx_onnx_model_path);
 }
 
-Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
-                             const std::string& ctx_onnx_model_path,
-                             std::string& ep_cache_context) {
+const std::string& QnnCacheModelHandler::GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
+                                                               const std::string& ctx_onnx_model_path) {
+  ep_engine_context_.clear();
   const auto& node = graph_viewer.Nodes().begin();
   NodeAttrHelper node_helper(*node);
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
   if (is_embed_mode) {
-    ep_cache_context = node_helper.Get(EP_CACHE_CONTEXT, "");
+    return node_helper.Get(EP_CACHE_CONTEXT, "");
   } else {
     std::string external_qnn_context_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
 
@@ -87,19 +88,26 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
                                     "/" + external_qnn_context_binary_file_name);
     size_t buffer_size{0};
     std::ifstream cache_file(context_binary_path.c_str(), std::ifstream::binary);
-    ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
+    if (!cache_file || !cache_file.good()) {  // "Failed to open cache file."
+      return ep_engine_context_;
+    }
     cache_file.seekg(0, cache_file.end);
     buffer_size = static_cast<size_t>(cache_file.tellg());
-    ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
+    // ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
+    if (0 == buffer_size) {
+      return ep_engine_context_;
+    }
     cache_file.seekg(0, cache_file.beg);
-    ep_cache_context.reserve(buffer_size);
+    ep_engine_context_.reserve(buffer_size);
     // Load file into buffer
-    ep_cache_context.assign(std::istreambuf_iterator<char>(cache_file), std::istreambuf_iterator<char>());
+    ep_engine_context_.assign(std::istreambuf_iterator<char>(cache_file), std::istreambuf_iterator<char>());
     cache_file.close();
-    ORT_RETURN_IF(ep_cache_context.length() != buffer_size, "Failed to read contents from cached context file.");
+    // ORT_RETURN_IF(ep_cache_context.length() != buffer_size, "Failed to read contents from cached context file.");
+    if (ep_engine_context_.length() != buffer_size) {
+      return ep_engine_context_;
+    }
   }
-  ORT_RETURN_IF(ep_cache_context.empty(), "Cached context empty.");
-  return Status::OK();
+  return ep_engine_context_;
 }
 
 Status QnnCacheModelHandler::GetMetadataFromEpContextModel(const std::string& ctx_onnx_model_path,
@@ -196,7 +204,7 @@ Status QnnCacheModelHandler::GenerateCtxCacheOnnxModel(unsigned char* buffer,
                                                        const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
                                                        const logging::Logger& logger) {
   std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
-  Model model(model_name_, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+  Model model(qdq_model_graph_name_, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               domain_to_version, {}, logger);
   auto& graph = model.MainGraph();
   graph.SetDescription(model_description_);

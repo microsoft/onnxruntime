@@ -487,13 +487,11 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support single partition for context cache feature.");
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager_.get());
     bool loaded_from_cache = false;
-    std::string ep_engine_cache;
-    ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->GetEpContext(graph_viewer,
-                                                               context_cache_path_,
-                                                               is_qnn_ctx_model,
-                                                               qnn_cache_model_handler_->GetIsContextCacheFileExists(),
-                                                               ep_engine_cache,
-                                                               logger));
+    const std::string& ep_engine_cache = qnn_cache_model_handler_->GetEpContext(graph_viewer,
+                                                                                context_cache_path_,
+                                                                                is_qnn_ctx_model,
+                                                                                qnn_cache_model_handler_->GetIsContextCacheFileExists(),
+                                                                                logger);
     ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnCtxFromOnnxModel(ep_engine_cache,
                                                                             *(qnn_model.get()),
                                                                             loaded_from_cache));
@@ -508,6 +506,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
 
       ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+      qnn_cache_model_handler_.reset();
       return Status::OK();
     }
   }
