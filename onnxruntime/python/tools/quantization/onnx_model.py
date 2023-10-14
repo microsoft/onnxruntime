@@ -354,6 +354,7 @@ class ONNXModel:
                 self.model,
                 all_tensors_to_one_file=True,
                 location=Path(output_path).name + ".data",
+                convert_attribute=True,
             )
         for init in self.model.graph.initializer:
             self._check_init(init, "end")
