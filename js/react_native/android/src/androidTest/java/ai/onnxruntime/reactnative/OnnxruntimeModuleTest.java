@@ -254,9 +254,10 @@ public class OnnxruntimeModuleTest {
         Assert.fail("Should have thrown exception");
       } catch (Exception e) {
         Assert.assertTrue(e.getMessage().contains("Got invalid dimensions for input"));
+      } finally {
+        ortModule.dispose(sessionKey);
       }
     } finally {
-      ortModule.dispose(sessionKey);
       mockSession.finishMocking();
     }
   }
@@ -313,9 +314,10 @@ public class OnnxruntimeModuleTest {
         Assert.fail("Should have thrown exception");
       } catch (Exception e) {
         Assert.assertTrue(e.getMessage().contains("Invalid rank for input"));
+      } finally {
+        ortModule.dispose(sessionKey);
       }
     } finally {
-      ortModule.dispose(sessionKey);
       mockSession.finishMocking();
     }
   }
