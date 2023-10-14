@@ -618,20 +618,31 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   std::vector<OrtCustomOpDomain*> candidate_custom_op_domains;
   p_exec_provider->GetCustomOpDomainList(candidate_custom_op_domains);
 
-#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  // ONNX_NAMESPACE::OpSchemaRegistry is not declared in ORT_MINIMAL_BUILD_CUSTOM_OPS build
-  custom_op_domains = candidate_custom_op_domains;
-#else
-  // If the domain is already in DomainToVersion ONNX map, don't add it twice.
-  auto& domain_to_version_range_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-  const auto& domain_to_version_map = domain_to_version_range_instance.Map();
-  for (auto candidate : candidate_custom_op_domains) {
-    if (domain_to_version_map.find(candidate->domain_) == domain_to_version_map.end()) {
-      custom_op_domains.push_back(candidate);
+  auto registry_kernels = kernel_registry_manager_.GetKernelRegistriesByProviderType(p_exec_provider->Type());
+
+  // Register the custom op domain only if it has not been registered before
+  if (registry_kernels.empty()) {
+    custom_op_domains = candidate_custom_op_domains;
+  } else {
+    for (auto candidate_custom_op_domain : candidate_custom_op_domains) {
+      for (auto registry_kernel : registry_kernels) {
+        const auto& kerlnel_map = registry_kernel->GetKernelCreateMap();
+        bool need_resigter = true;
+        for (auto iter = kerlnel_map.begin(); iter != kerlnel_map.end(); iter++) {
+          if (iter->second.kernel_def->Domain() == candidate_custom_op_domain->domain_) {
+            // We don't really need to iterate all the kernels, for ep's custom op domain,
+            // all kernels in one kernel registry should have the same domain name. 
+            need_resigter = false;
+            break;
+          }
+        }
+        if (need_resigter) {
+          custom_op_domains.push_back(candidate_custom_op_domain);
+        }
+      }
     }
   }
-#endif
-
+ 
   if (!custom_op_domains.empty()) {
     if (AddCustomOpDomains(custom_op_domains) != Status::OK()) {
       LOGS(*session_logger_, WARNING) << "Can't register custom op domains with ORT for " << provider_type;
