@@ -89,14 +89,14 @@ stages:
       displayName: "Set common variables"
       name: SetCommonVariables
 
-- template: templates/stages/mac-ios-packaging-build-stage.yml
+- template: stages/mac-ios-packaging-build-stage.yml
   parameters:
     packageVariant: Mobile
 
-- template: templates/stages/mac-ios-packaging-build-stage.yml
+- template: stages/mac-ios-packaging-build-stage.yml
   parameters:
     packageVariant: Full
 
-- template: templates/stages/mac-ios-packaging-build-stage.yml
+- template: stages/mac-ios-packaging-build-stage.yml
   parameters:
     packageVariant: Training

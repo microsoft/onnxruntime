@@ -37,8 +37,8 @@ jobs:
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 150
   steps:
-    - template: templates/use-xcode-version.yml
-    - template: templates/mac-build-step-with-cache.yml
+    - template: stages/jobs/steps/use-xcode-version.yml
+    - template: stages/jobs/steps/mac-build-step-with-cache.yml
       parameters:
         WithCache: true
         Today: $(TODAY)

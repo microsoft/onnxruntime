@@ -1,6 +1,6 @@
 stages:
 - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-  - template: templates/web-ci.yml
+  - template: stages/web-ci-stages.yml
     parameters:
       NpmPackagingMode: 'dev'
       IsReleasePipeline: true
@@ -14,7 +14,7 @@ stages:
 # o Windows x64
 # o Windows x86
 # Now we don't have coverage for ARM64EC yet. Will add it.
-- template: templates/win-ci.yml
+- template: stages/win-ci-stages.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -29,7 +29,7 @@ stages:
     buildNodejs: false
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: stages/win-ci-stages.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -44,7 +44,7 @@ stages:
     buildNodejs: true
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: stages/win-ci-stages.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -64,7 +64,7 @@ stages:
   - stage: cuda_multi_gpu
     dependsOn: []
     jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
@@ -84,7 +84,7 @@ stages:
   - stage: trt_multi_gpu
     dependsOn: []
     jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_trt.bat
@@ -102,7 +102,7 @@ stages:
 - stage: Mimalloc
   dependsOn: [ ]
   jobs:
-  - template: templates/jobs/win-ci-vs-2022-job.yml
+  - template: stages/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -121,7 +121,7 @@ stages:
 - stage: MemoryProfiling
   dependsOn: [ ]
   jobs:
-  - template: templates/jobs/win-ci-vs-2022-job.yml
+  - template: stages/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -140,7 +140,7 @@ stages:
 - stage: MinimalBuildWithNoExceptions
   dependsOn: [ ]
   jobs:
-  - template: templates/jobs/win-ci-vs-2022-job.yml
+  - template: stages/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -159,7 +159,7 @@ stages:
 - stage: DebugNodeInputsOutputs
   dependsOn: [ ]
   jobs:
-  - template: templates/jobs/win-ci-vs-2022-job.yml
+  - template: stages/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -187,7 +187,7 @@ stages:
       skipComponentGovernanceDetection: true
     pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
     steps:
-    - template: templates/set-version-number-variables-step.yml
+    - template: stages/jobs/steps/set-version-number-variables-steps.yml
 
     - task: CmdLine@2
       inputs:
@@ -223,7 +223,7 @@ stages:
           targetPath: '$(Build.ArtifactStagingDirectory)'
           artifact: html
   - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-    - template: templates/upload-code-coverage-data.yml
+    - template: stages/jobs/steps/upload-code-coverage-data-jobs.yml
 
 - stage: AndroidCustomBuildScript
   dependsOn: [ ]
@@ -277,7 +277,7 @@ stages:
         addToPath: true
         architecture: "x64"
 
-    - template: templates/use-xcode-version.yml
+    - template: steps/use-xcode-version-steps.yml
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt

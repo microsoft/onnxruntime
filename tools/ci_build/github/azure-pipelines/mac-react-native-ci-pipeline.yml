@@ -57,7 +57,7 @@ variables:
     NpmPackagingMode: '$(VersionSuffix)'
 
 stages:
-- template: templates/react-native-ci.yml
+- template: stages/react-native-ci-stages.yml
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     BuildConfig: 'Release'

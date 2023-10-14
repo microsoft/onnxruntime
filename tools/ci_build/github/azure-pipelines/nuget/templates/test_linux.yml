@@ -25,7 +25,7 @@ stages:
       value: '$(Build.BinariesDirectory)'
 
     steps:
-    - template: ../../templates/flex-downloadPipelineArtifact.yml
+    - template: ../../stages/jobs/steps/flex-downloadPipelineArtifact-steps.yml
       parameters:
         StepName: 'Download Signed NuGet'
         ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
@@ -33,7 +33,7 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - template: ../../templates/flex-downloadPipelineArtifact.yml
+    - template: ../../stages/jobs/steps/flex-downloadPipelineArtifact-steps.yml
       parameters:
         StepName: 'Download Linux CustomOp TestData'
         ArtifactName: ${{ parameters.CustomOpArtifactName }}
@@ -52,7 +52,7 @@ stages:
           ln -sf /data/models $(Build.BinariesDirectory)
 
     - ${{if contains(parameters.StageSuffix , 'GPU') }}:
-      - template: ../../templates/get-docker-image-steps.yml
+      - template: ../../stages/jobs/steps/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_cuda11_8_tensorrt8_6
           Context: tools/ci_build/github/linux/docker/
@@ -102,4 +102,4 @@ stages:
       parameters:
         condition: 'always'
 
-    - template: ../../templates/clean-agent-build-directory-step.yml
+    - template: ../../stages/jobs/steps/clean-agent-build-directory-steps.yml

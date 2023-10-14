@@ -61,7 +61,7 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- template: templates/py-packaging-stage.yml
+- template: stages/py-packaging-stages.yml
   parameters:
     enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
     enable_linux_cpu: ${{ parameters.enable_linux_cpu }}

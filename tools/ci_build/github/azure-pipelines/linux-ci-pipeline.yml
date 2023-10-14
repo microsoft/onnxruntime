@@ -61,14 +61,14 @@ stages:
           versionSpec: '3.8'
           addToPath: true
 
-      - template: templates/get-docker-image-steps.yml
+      - template: stages/jobs/steps/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
           Context: tools/ci_build/github/linux/docker/
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
           Repository: onnxruntimecpubuild
 
-      - template: templates/linux-build-step-with-cache.yml
+      - template: stages/jobs/steps/linux-build-step-with-cache-steps.yml
         parameters:
           WithCache: true
           Today: $(TODAY)
@@ -182,7 +182,7 @@ stages:
 - stage: arm64_build
   dependsOn: []
   jobs:
-  - template: templates/py-linux.yml
+  - template: stages/jobs/py-linux-jobs.yml
     parameters:
       arch: 'aarch64'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
@@ -196,7 +196,8 @@ stages:
 - stage: arm64_test
   dependsOn: ['arm64_build']
   jobs:
-  - template: templates/py-packaging-linux-test-cpu.yml
+  - template: stages/jobs/py-packaging-linux-test-cpu-jobs.yml
+#  - template: stages/jobs/py-packaging-linux-test-jobs.yml
     parameters:
       arch: 'aarch64'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'

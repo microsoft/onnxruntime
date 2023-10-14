@@ -28,7 +28,7 @@ pr:
 #### end trigger ####
 
 stages:
-- template: templates/mac-cpu-packaging-pipeline.yml
+- template: stages/mac-cpu-packaging-stages.yml
   parameters:
     AllowReleasedOpsetOnly: 0
     BuildForAllArchs: false

@@ -37,7 +37,7 @@ stages:
 - stage: x64_debug
   dependsOn: []
   jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'Debug'
         EnvSetupScript: setup_env.bat
@@ -56,7 +56,7 @@ stages:
 - stage: x64_release
   dependsOn: []
   jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -77,7 +77,7 @@ stages:
 - stage: x64_release_dnnl
   dependsOn: []
   jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -98,7 +98,7 @@ stages:
 - stage: x64_release_xnnpack
   dependsOn: []
   jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -117,7 +117,7 @@ stages:
 - stage: x64_release_winml
   dependsOn: []
   jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -138,7 +138,7 @@ stages:
 - stage: x86_release
   dependsOn: []
   jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_x86.bat
@@ -157,7 +157,7 @@ stages:
 - stage: training_x64_debug
   dependsOn: []
   jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'Debug'
         EnvSetupScript: setup_env.bat
@@ -176,7 +176,7 @@ stages:
 - stage: training_x64_release
   dependsOn: []
   jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -195,7 +195,7 @@ stages:
 - stage: ort_training_apis_x64_release
   dependsOn: []
   jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -215,7 +215,7 @@ stages:
 - stage: x64_release_azure
   dependsOn: []
   jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: stages/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_azure.bat

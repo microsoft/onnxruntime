@@ -15,7 +15,8 @@ resources:
 stages:
 - stage: Linux_Test_CPU_x86_64_stage
   jobs:
-  - template: templates/py-packaging-linux-test-cpu.yml
+#  - template: stages/jobs/py-packaging-linux-test-jobs.yml
+  - template: stages/jobs/py-packaging-linux-test-cpu-jobs.yml
     parameters:
       arch: 'x86_64'
       machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
@@ -27,7 +28,8 @@ stages:
 - stage: Linux_Test_CPU_aarch64_stage
   dependsOn: []
   jobs:
-  - template: templates/py-packaging-linux-test-cpu.yml
+  - template: stages/jobs/py-packaging-linux-test-cpu-jobs.yml
+#  - template: stages/jobs/py-packaging-linux-test-jobs.yml
     parameters:
       arch: 'aarch64'
       machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
@@ -39,13 +41,13 @@ stages:
 - stage: Packages_Somking_Test
   dependsOn: []
   jobs:
-    - template: templates/py-package-smoking-test.yml
+    - template: stages/jobs/py-package-smoking-test-jobs.yml
       parameters:
         job_name: Test_MAC_Wheels
         machine_pool:
           vmImage: 'macOS-13'
         itemPattern: '*/*mac*x86_64.whl'
-    - template: templates/py-package-smoking-test.yml
+    - template: stages/jobs/py-package-smoking-test-jobs.yml
       parameters:
         job_name: Test_LINUX_x86_64_Wheels
         itemPattern: '*/*manylinux*x86_64.whl'
@@ -62,7 +64,8 @@ stages:
     - Linux_Test_CPU_aarch64_stage
     - Packages_Somking_Test
   jobs:
-  - template: templates/py-packaging-linux-test-cuda.yml
+  - template: stages/jobs/py-packaging-linux-test-cuda-jobs.yml
+#  - template: stages/jobs/py-packaging-linux-test-jobs.yml
     parameters:
       arch: 'x86_64'
       machine_pool: 'Onnxruntime-Linux-GPU'

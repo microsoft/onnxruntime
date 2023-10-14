@@ -34,9 +34,9 @@ stages:
         clean: true
         submodules: recursive
 
-      - template: templates/set-python-manylinux-variables-step.yml
+      - template: stages/jobs/steps/set-python-manylinux-variables-steps.yml
 
-      - template: templates/get-docker-image-steps.yml
+      - template: stages/jobs/steps/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
           Context: tools/ci_build/github/linux/docker
@@ -89,9 +89,9 @@ stages:
         parameters:
           condition: 'succeeded'
 
-      - template: templates/clean-agent-build-directory-step.yml
+      - template: stages/jobs/steps/clean-agent-build-directory-steps.yml
 
-- template: templates/py-packaging-stage.yml
+- template: stages/py-packaging-stages.yml
   parameters:
     build_py_parameters: --enable_training
     enable_linux_gpu: false

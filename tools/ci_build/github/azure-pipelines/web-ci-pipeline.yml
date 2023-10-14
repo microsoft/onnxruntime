@@ -49,14 +49,14 @@ variables:
     NpmPackagingMode: '$(VersionSuffix)'
 
 stages:
-- template: templates/web-ci.yml
+- template: stages/web-ci-stages.yml
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: false
     PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
     BuildStaticLib: true
     ExtraBuildArgs: $(ExtraBuildArgs)
-    WASMTemplate: linux-wasm-ci.yml
+    WASMTemplate: jobs/linux-wasm-ci.yml
     UseWebPoolName: true
     RunWebGpuTestsForDebugBuild: false
     RunWebGpuTestsForReleaseBuild: true

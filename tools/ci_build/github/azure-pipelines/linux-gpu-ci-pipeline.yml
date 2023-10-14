@@ -36,7 +36,7 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 variables:
-  - template: templates/common-variables.yml
+  - template: stages/jobs/steps/common-variables.yml
 
 jobs:
 - job: Linux_Build
@@ -56,7 +56,7 @@ jobs:
     clean: true
     submodules: none
 
-  - template: templates/get-docker-image-steps.yml
+  - template: stages/jobs/steps/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11
       Context: tools/ci_build/github/linux/docker
@@ -129,7 +129,7 @@ jobs:
       artifactName: 'drop-linux'
       targetPath: '$(Build.BinariesDirectory)/Release'
 
-  - template: templates/explicitly-defined-final-tasks.yml
+  - template: stages/jobs/steps/explicitly-defined-final-steps.yml
 
 - job: Linux_Test
   timeoutInMinutes: 180
@@ -152,7 +152,7 @@ jobs:
     clean: true
     submodules: none
 
-  - template: templates/get-docker-image-steps.yml
+  - template: stages/jobs/steps/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11
       Context: tools/ci_build/github/linux/docker
@@ -185,4 +185,4 @@ jobs:
               --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
               --enable_pybind --build_java --ctest_path '' "
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: stages/jobs/steps/clean-agent-build-directory-steps.yml

@@ -9,7 +9,7 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- template: templates/py-packaging-training-cuda-stage.yml
+- template: stages/py-packaging-training-cuda-stages.yml
   parameters:
     build_py_parameters: --enable_training --update --build
     torch_version: '2.0.0'
@@ -21,8 +21,7 @@ stages:
     upload_wheel: 'yes'
     debug_build: false
 
-# Added for triton compiler team. Can be potentially removed.
-- template: templates/py-packaging-training-cuda-stage.yml
+- template: stages/py-packaging-training-cuda-stages.yml
   parameters:
     build_py_parameters: --enable_training --update --build
     torch_version: '2.0.0'

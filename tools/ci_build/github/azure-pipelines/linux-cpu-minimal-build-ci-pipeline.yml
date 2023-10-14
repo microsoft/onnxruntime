@@ -74,7 +74,7 @@ jobs:
     clean: true
     submodules: none
 
-  - template: templates/get-docker-image-steps.yml
+  - template: stages/jobs/steps/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       Context: tools/ci_build/github/linux/docker
@@ -91,7 +91,7 @@ jobs:
         touch $(test_data_directory)/include_no_operators.config
       workingDirectory: $(Build.SourcesDirectory)
 
-  - template: templates/linux-build-step-with-cache.yml
+  - template: stages/jobs/steps/linux-build-step-with-cache-steps.yml
     parameters:
       WithCache: true
       Today: $(TODAY)
@@ -342,4 +342,4 @@ jobs:
               --skip_tests --path_to_protoc_exe /usr/bin/protoc
       workingDirectory: $(Build.SourcesDirectory)
 
-  - template: templates/explicitly-defined-final-tasks.yml
+  - template: stages/jobs/steps/explicitly-defined-final-steps.yml
