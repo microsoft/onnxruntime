@@ -91,7 +91,8 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
 }
 
 // This function inlines the appropriate subgraph. It does not literally fold it.
-static bool ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Logger& logger) {
+static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Logger& logger, bool& folded) {
+  folded = false;
   // First, find out which subgraph to inline
   // We need to fetch the constant argument.
   ORT_ENFORCE(if_node.InputDefs().size() == 1, "Expecting one input");
@@ -101,7 +102,7 @@ static bool ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Logge
   constexpr bool check_outer_scope_true = true;
   const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(condition_def->Name(), check_outer_scope_true);
   if (initializer == nullptr) {
-    return false;
+    return Status::OK();
   }
 
   // This is a boolean initializer with a single element.
@@ -118,7 +119,7 @@ static bool ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Logge
     LOGS(logger, WARNING) << "Unable to constant fold. Can't fetch constant value tensor for 'If' "
                           << " node '" << if_node.Name() << "': "
                           << status.ErrorMessage();
-    return false;
+    return Status::OK();
   }
 
   const bool condition_value = *tensor.Data<bool>();
@@ -133,17 +134,26 @@ static bool ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Logge
   }
 
   if (graph_to_inline == nullptr) {
-    LOGS(logger, WARNING) << "Unable to constant fold If node: '" << if_node.Name() << "' Unable to fetch: "
-                          << (condition_value ? then_branch : else_branch);
-    return false;
+    auto str = MakeString("Unable to constant fold If node: '", if_node.Name(), "' Unable to fetch: ",
+                          (condition_value ? then_branch : else_branch));
+    LOGS(logger, WARNING) << str;
+    return Status::OK();
   }
 
-  graph.InlineIfSubgraph(*graph_to_inline, if_node);
+  status = graph.InlineIfSubgraph(*graph_to_inline, if_node);
+
+  if (!status.IsOK()) {
+    LOGS(logger, WARNING) << "Unable to constant fold. InlineIfSubgraph failed "
+                          << " node '" << if_node.Name() << "': "
+                          << status.ErrorMessage();
+    return status;
+  }
 
   LOGS(logger, INFO) << "Constant folded (inlined) " << (condition_value ? then_branch : else_branch)
                      << " for If node: " << if_node.Name();
 
-  return true;
+  folded = true;
+  return status;
 }
 
 Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
@@ -180,7 +190,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // It does not convert the node to a constant in a common sense.
       // We call it constant folding because the `If` node constant condition
       // may enable use to inline the corresponding branch graph.
-      if (ConstantFoldIfNode(graph, *node, logger)) {
+      bool folded = false;
+      ORT_RETURN_IF_ERROR(ConstantFoldIfNode(graph, *node, logger, folded));
+      if (folded) {
         // We do not remove any of the upstream nodes, because we actually
         // do not know whether any of the upstream nodes provide constant implicit inputs
         // We let the next round of constant folding check of that.

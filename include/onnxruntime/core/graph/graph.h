@@ -1137,17 +1137,20 @@ class Graph {
   /**
     Directly insert one of the If node branches into this Graph.
     `If` node condition must be a constant. The function would
-    rename the nodes of the graph to make sure there is no conflict.
-    The implicit inputs of the graph should be detected, if so they would not
-    be renamed.
+    rename the nodes of the corresponding subgraph to make sure there is no conflict.
+
+    Explicit and implicit inputs references stay the same.
 
     All of the outputs of the subgraph being inlined should be renamed
     to the outputs of the If node.
 
+    The function will process any subgraphs in each of the nodes being inlined,
+    and will rename any references to the new names introduced.
+
     @param callnode - the node that contains the graph_to_inline. This node is going
     to be deleted and replaced by the corresponding graph (either then or else)
   */
-  void InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node);
+  Status InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node);
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.

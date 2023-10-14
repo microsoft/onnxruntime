@@ -4052,98 +4052,81 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   return Status::OK();
 }
 
-Status Graph::FunctionToGraph(const ONNX_NAMESPACE::FunctionProto& func_to_inline) {
-void Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
+Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
   std::string unique_id{if_node.Name()};
-  unique_id.append("_if_subgraph_").append(graph_to_inline.Name()).append("_");
+  unique_id.append("/if_subgraph/").append(graph_to_inline.Name());
 
   unique_id = GenerateNodeName(unique_id);
 
   auto make_unique = [&unique_id](const std::string& name) {
-    return unique_id + name;
+    return unique_id + '/' + name;
   };
 
+  InlinedHashSet<std::string_view> if_all_inputs;
+  const auto if_inputs = if_node.InputDefs();
   const auto if_implicit_inputs = if_node.ImplicitInputDefs();
-  InlinedHashSet<std::string_view> if_node_implicit_inputs;
-  if_node_implicit_inputs.reserve(if_implicit_inputs.size());
+  if_all_inputs.reserve(if_inputs.size() + if_implicit_inputs.size());
+  for (const auto* input : if_inputs) {
+    const auto& name = input->Name();
+    ORT_IGNORE_RETURN_VALUE(if_all_inputs.emplace(name));
+  }
+
   for (const auto* input : if_implicit_inputs) {
     const auto& name = input->Name();
-    ORT_IGNORE_RETURN_VALUE(if_node_implicit_inputs.emplace(name));
+    ORT_IGNORE_RETURN_VALUE(if_all_inputs.emplace(name));
   }
 
-  const auto if_output_defs = if_node.OutputDefs();
-  const auto& graph_output_defs = graph_to_inline.GetOutputs();
-  ORT_ENFORCE(if_output_defs.size() == graph_output_defs.size(),
-              "The number of If node outputs: ", if_output_defs.size(),
-              " does not match the number of graph outputs: ", graph_output_defs.size());
+  // Name mapping from the graph to inline to the graph we are inlining into
+  // we also use this to process any subgraphs in the graph we are inlining
+  InlinedHashMap<std::string, std::string> name_mapping;
 
-  // Not converting Constant nodes to initializers, these will be taken care of by constant folding
-  // in due course. If the node has been inlined, Constant nodes have already been converted to initializers.
+  // We are going to map the inputs of the graph to inline to the inputs of the If node
+  // assuming they are in the same order
+  const auto node_output_defs = if_node.OutputDefs();
+  const auto graph_output_defs = graph_to_inline.GetOutputs();
+  ORT_ENFORCE(node_output_defs.size() >= graph_output_defs.size());
+  for (size_t i = 0; i < graph_output_defs.size(); ++i) {
+    name_mapping.emplace(graph_output_defs[i]->Name(), node_output_defs[i]->Name());
+  }
+
+  // Process constant nodes and initializers first
+  // to create defs from them and make renaming easier
+  InlinedVector<NodeIndex> nonconstant_nodes;
   for (const auto& node : graph_to_inline.Nodes()) {
-    const auto& node_name = node.Name();
-    const auto input_defs = node.InputDefs();
+    if (node.OpType() == kConstant) {
+      // Copy constant nodes _value to name_to_initial_tensor_
+      ONNX_NAMESPACE::NodeProto constant_node_proto{};
+      node.ToProto(constant_node_proto);
 
-    InlinedVector<NodeArg*> inlined_input_defs;
-    inlined_input_defs.reserve(input_defs.size());
-    for (const auto* input_def : input_defs) {
-      // If the node input is If implicit input, we are not renaming it
-      // And its NodeArg should already be present
-      const auto& def_name = input_def->Name();
-      if (if_node_implicit_inputs.count(def_name) > 0) {
-        auto* node_arg = GetNodeArgIncludingParentGraphs(def_name);
-        ORT_ENFORCE(node_arg != nullptr, "Implicit input node arg expected to be present");
-        inlined_input_defs.push_back(node_arg);
+      const auto& constant_name = constant_node_proto.output(0);
+      // Check if this is an output of the graph
+      std::string new_name;
+      auto hit = name_mapping.find(constant_name);
+      if (hit != name_mapping.cend()) {
+        new_name = hit->second;
       } else {
-        // This input is from another node in the inlined graph
-        const auto uniq_name = make_unique(def_name);
-        inlined_input_defs.push_back(&GetOrCreateNodeArg(uniq_name, input_def->TypeAsProto()));
+        new_name = GenerateNodeArgName(make_unique(constant_name));
+        name_mapping.emplace(constant_name, std::move(new_name));
       }
+
+      ORT_RETURN_IF_ERROR(AddConstantProtoAsInitializer(constant_node_proto, new_name));
+    } else {
+      nonconstant_nodes.push_back(node.Index());
     }
-
-    // Create output defs for the node
-    // if the output is among graph outputs, we want to rename it to the if_node output
-    // otherwise, make it unique so it goes to another node in the inlined graph
-    InlinedVector<NodeArg*> inlined_output_defs;
-    const auto output_defs = node.OutputDefs();
-    inlined_output_defs.reserve(output_defs.size());
-
-    for (const auto* output_def : output_defs) {
-      const auto& def_name = output_def->Name();
-      auto hit = std::find_if(graph_output_defs.cbegin(), graph_output_defs.cend(),
-                              [&def_name](const auto* def) { return def->Name() == def_name; });
-      // Output that produces graph output we rename to if_node output
-      if (hit != graph_output_defs.cend()) {
-        auto idx = static_cast<int>(std::distance(graph_output_defs.cbegin(), hit));
-        auto* node_arg = GetNodeArg(if_output_defs[idx]->Name());
-        ORT_ENFORCE(node_arg != nullptr, "If node output def must exist");
-        inlined_output_defs.push_back(node_arg);
-      } else {
-        // This is an output to another node in the inlined graph
-        const auto uniq_name = make_unique(def_name);
-        inlined_output_defs.push_back(&GetOrCreateNodeArg(uniq_name, output_def->TypeAsProto()));
-      }
-    }
-
-    const auto& new_attr_map = node.GetAttributes();
-    ORT_IGNORE_RETURN_VALUE(AddNode(make_unique(node_name), node.OpType(), node.Description(),
-                                    inlined_input_defs, inlined_output_defs, &new_attr_map, node.Domain()));
   }
 
-  // Transfer initializers.
   for (const auto& init : graph_to_inline.name_to_initial_tensor_) {
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     *tensor = *init.second;
 
-    // Initializers that produce output for the graph, we rename to the corresponding if_node output
-    const auto& orig_name = init.second->name();
-    auto hit = std::find_if(graph_output_defs.cbegin(), graph_output_defs.cend(),
-                            [&orig_name](const auto* def) { return def->Name() == orig_name; });
-
-    if (hit != graph_output_defs.cend()) {
-      auto idx = static_cast<int>(std::distance(graph_output_defs.cbegin(), hit));
-      tensor->set_name(if_output_defs[idx]->Name());
+    const auto& init_name = init.second->name();
+    // Check if this is an output of the graph
+    auto hit = name_mapping.find(init_name);
+    if (hit != name_mapping.cend()) {
+      tensor->set_name(hit->second);
     } else {
-      auto new_name = make_unique(orig_name);
+      auto new_name = GenerateNodeArgName(make_unique(init_name));
+      ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(init_name, new_name));
       tensor->set_name(std::move(new_name));
     }
 
@@ -4151,13 +4134,10 @@ void Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
     ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " from graph: ",
                 graph_to_inline.Name(), " conflicts with graph initializer. Check Specializing code.");
 
-    const NodeArg* node_arg = graph_to_inline.GetNodeArg(orig_name);
-    if (node_arg != nullptr) {
-      ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), node_arg->TypeAsProto()));
-    } else {
-      TypeProto t{TypeProtoFromTensorProto(*tensor)};
-      ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
-    }
+    const NodeArg* node_arg = graph_to_inline.GetNodeArg(init_name);
+    ORT_ENFORCE(node_arg != nullptr,
+                "The graph being inlined is expected to have NodeArg for initializer: ", init.second->name());
+    ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), node_arg->TypeAsProto()));
 
 #if !defined(DISABLE_SPARSE_TENSORS)
     if (graph_to_inline.IsSparseInitializer(init.first)) {
@@ -4165,8 +4145,68 @@ void Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
     }
 #endif
   }
+
+  for (const auto node_idx : nonconstant_nodes) {
+    const auto* node = graph_to_inline.GetNode(node_idx);
+    if (node == nullptr) {
+      continue;
+    }
+
+    InlinedVector<NodeArg*> new_node_input_defs;
+    for (const auto* input_def : node->InputDefs()) {
+      // Check if this is one of the implicit graph inputs
+      // then leave the name as is and reuse the NodeArg
+      const auto& input_name = input_def->Name();
+      if (if_all_inputs.count(input_name) > 0) {
+        auto* node_arg = GetNodeArg(input_name);
+        ORT_ENFORCE(node_arg != nullptr,
+                    "Implicit input expected to have existing node_arg: ", input_name);
+        new_node_input_defs.push_back(node_arg);
+      } else {
+        auto hit = name_mapping.find(input_name);
+        if (hit != name_mapping.cend()) {
+          auto* node_arg = GetNodeArg(hit->second);
+          ORT_ENFORCE(node_arg != nullptr,
+                      "Expecting to exist node_arg: ", input_name);
+          new_node_input_defs.push_back(node_arg);
+        } else {
+          // This requires the nodes to be in topological order
+          auto new_name = GenerateNodeArgName(make_unique(input_name));
+          new_node_input_defs.push_back(&GetOrCreateNodeArg(input_name, input_def->TypeAsProto()));
+          ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(input_name, std::move(new_name)));
+        }
+      }
+    }
+
+    InlinedVector<NodeArg*> new_node_output_defs;
+    for (const auto* output_def : node->OutputDefs()) {
+      const auto& output_name = output_def->Name();
+      auto hit = name_mapping.find(output_name);
+      if (hit != name_mapping.cend()) {
+        auto* node_arg = GetNodeArg(hit->second);
+        ORT_ENFORCE(node_arg != nullptr,
+                    "Expecting to exist output node_arg: ", output_name);
+        new_node_output_defs.push_back(node_arg);
+      } else {
+        // This requires the nodes to be in topological order
+        auto new_name = GenerateNodeArgName(make_unique(output_name));
+        new_node_output_defs.push_back(&GetOrCreateNodeArg(output_name, output_def->TypeAsProto()));
+        ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(output_name, std::move(new_name)));
+      }
+    }
+
+    const auto new_node_name = GenerateNodeName(make_unique(node->Name()));
+    ORT_IGNORE_RETURN_VALUE(AddNode(new_node_name, node->OpType(), node->Description(),
+                                    new_node_input_defs,
+                                    new_node_output_defs,
+                                    &node->GetAttributes(),
+                                    node->Domain()));
+  }
+
+  return Status::OK();
 }
 
+Status Graph::FunctionToGraph(const ONNX_NAMESPACE::FunctionProto& func_to_inline) {
   auto to_node_arg = [this](const std::string& name) {
     return &this->GetOrCreateNodeArg(name, nullptr);
   };
@@ -4218,7 +4258,7 @@ Status Graph::InlineFunction(Node& callnode) {
 
   // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
-  std::string base_uniq_identifier{"_inline_"};
+  std::string base_uniq_identifier{"_inline/"};
   base_uniq_identifier.append(callnode.OpType());
   const auto uniq_identifier = GenerateNodeName(base_uniq_identifier);
 
