@@ -126,7 +126,7 @@ Add path to directory (e.g. "C:\Program Files\OpenSSL-Win64\bin") with executabl
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 Check by `openssl version` in prompt command line.<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-3. Correct build of ipp-crytpo requires specific environment variables for supported MSVC compiler. Long way to adjust the environment is to follow to instructions [here](https://docs.microsoft.com/en-us/cpp/build/building-on-the-command-line?view=msvc-170&viewFallbackFrom=vs-2017). Quick way is to use VS Developer command prompt where the environment have been already adjusted or add some paths to standard Windows command prompt:
+3. Correct build of ipp-crypto requires specific environment variables for supported MSVC compiler. Long way to adjust the environment is to follow to instructions [here](https://docs.microsoft.com/en-us/cpp/build/building-on-the-command-line?view=msvc-170&viewFallbackFrom=vs-2017). Quick way is to use VS Developer command prompt where the environment have been already adjusted or add some paths to standard Windows command prompt:
 ```cmd
 set INCLUDE=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.32.31326\include;C:\Program Files (x86)\Windows Kits\10\include\10.0.22621.0\ucrt
 ```
