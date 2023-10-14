@@ -32,7 +32,7 @@ class OrtCudaEngine(CudaSession):
         self.onnx_path = onnx_path
         self.provider = "CUDAExecutionProvider"
         self.provider_options = CudaSession.get_cuda_provider_options(device_id, enable_cuda_graph)
-        self.provider_options["enable_skip_layer_norm_strict_mode"] = True
+        # self.provider_options["enable_skip_layer_norm_strict_mode"] = True
 
         session_options = ort.SessionOptions()
         if free_dimension_override:

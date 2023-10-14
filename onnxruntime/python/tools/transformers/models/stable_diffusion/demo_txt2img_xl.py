@@ -71,7 +71,7 @@ def run_xl_base_refiner():
     base.load_resources(image_height, image_width, batch_size)
     refiner.load_resources(image_height, image_width, batch_size)
 
-    def run_sd_xl_inference(warmup=False):
+    def run_sd_xl_inference(warmup=False, base_ratio=None):
         images, time_base = base.run(
             prompt,
             negative_prompt,
@@ -79,6 +79,7 @@ def run_xl_base_refiner():
             image_width,
             warmup=warmup,
             denoising_steps=args.denoising_steps,
+            denoising_end=base_ratio,
             guidance=args.guidance,
             seed=args.seed,
             return_type="latents",
@@ -92,6 +93,7 @@ def run_xl_base_refiner():
             image_width,
             warmup=warmup,
             denoising_steps=args.denoising_steps,
+            denoising_start=base_ratio,
             guidance=args.guidance,
             seed=args.seed,
         )
