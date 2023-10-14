@@ -425,7 +425,7 @@ An input as above will be packed into 3 tensors like below:
 
 Input tensors contains the hidden embedding of real tokens.
 Token_offset records the offset of token in the unpacked input.
-cumulated_token_count records cumulated length of each sequnces length.
+cumulated_token_count records cumulated length of each sequences length.
 
 The operator only supports BERT like model with padding on right now.
 
@@ -554,7 +554,7 @@ An input as above will be packed into 3 tensors like below:
 
 The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
 Token_offset records the offset of token in the unpacked input.
-cumulative_sequence_length records cumulated length of each sequnces length.
+cumulative_sequence_length records cumulated length of each sequences length.
 
 The operator only supports BERT like model with padding on right now.
 )DOC";
