@@ -68,7 +68,22 @@ struct Tensor : public Arg {
   bool is_input_;
 };
 
-template <typename T, int64_t ith_input_to_copy_from = 0>
+template <typename T>
+struct TensorT : Tensor<T> {
+  TensorT(onnxruntime::OpKernelContext* ctx, size_t index) : Tensor(ctx, index, true) {}
+};
+
+template <typename T>
+struct TensorT1 : Tensor<T> {
+  TensorT1(onnxruntime::OpKernelContext* ctx, size_t index) : Tensor(ctx, index, true) {}
+};
+
+template <typename T>
+struct TensorV : Tensor<T> {
+  TensorV(onnxruntime::OpKernelContext* ctx, size_t index) : Tensor(ctx, index, true) {}
+};
+
+template <typename T, int ith_input_to_copy_from = 0>
 struct Reused : Tensor<T> {
   using MyType = Tensor<T>;
   Reused(onnxruntime::OpKernelContext* ctx, size_t index) : Tensor(ctx, index, false) {}
@@ -77,25 +92,15 @@ struct Reused : Tensor<T> {
   }
 };
 
-template <typename T, int64_t ith_input_to_alias_from = 0>
-struct Aliasd : Reused<T, ith_input_to_alias_from> {
+template <typename T, int ith_input_to_alias_from = 0>
+struct Aliased : Reused<T, ith_input_to_alias_from> {
   using MyType = Tensor<T>;
-  Aliasd(onnxruntime::OpKernelContext* ctx, size_t index) : Reused(ctx, index) {}
+  Aliased(onnxruntime::OpKernelContext* ctx, size_t index) : Reused(ctx, index) {}
   T* Data() {
     return {};
   }
+  static int InputIndice() { return ith_input_to_alias_from; }
 };
-
-// onnxruntime::Status Conv(const Tensor<float>& /*X*/,
-//                          const Tensor<float>& /*W*/,
-//                          const Tensor<float>& /*B*/,
-//                          Tensor<float>& /*Y*/);
-//
-// onnxruntime::Status Relu(const Tensor<float>& /*X*/, Reused<float>& /*Y*/);
-//
-// onnxruntime::Status Identity(const Tensor<float>& /*X*/, Aliasd<float>& /*Y*/);
-
-struct Kernel {};
 
 template <typename... Args>
 struct LiteKernelFn : public onnxruntime::OpKernel {
@@ -104,23 +109,43 @@ struct LiteKernelFn : public onnxruntime::OpKernel {
 
   template <size_t ith_input, size_t ith_output, typename... Ts>
   static typename std::enable_if<sizeof...(Ts) == 0, std::tuple<>>::type
-  CreateTuple(OrtKernelContext*, ArgPtrs&) {
+  CreateTuple(onnxruntime::OpKernelContext*, ArgPtrs&) {
     return std::make_tuple();
   }
 
+  // inputs
   template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
-  static typename std::enable_if<std::is_same<T, const Tensor<float>&>::value, std::tuple <T, Ts...>> ::type
+  static typename std::enable_if<std::is_same<T, const Tensor<float>&>::value, std::tuple<T, Ts...>>::type
   CreateTuple(onnxruntime::OpKernelContext* context, ArgPtrs& args) {
-    args.push_back(std::make_unique<Tensor<float>>(context, ith_input, True));
+    args.push_back(std::make_unique<Tensor<float>>(context, ith_input, true));
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
     auto next = CreateTuple<ith_input + 1, ith_output, Ts...>(context, args);
     return std::tuple_cat(current, next);
   }
 
   template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, const TensorT<float>&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(onnxruntime::OpKernelContext* context, ArgPtrs& args) {
+    args.push_back(std::make_unique<TensorT<float>>(context, ith_input));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
+    auto next = CreateTuple<ith_input + 1, ith_output, Ts...>(context, args);
+    return std::tuple_cat(current, next);
+  }
+
+  // outputs
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
   static typename std::enable_if<std::is_same<T, Reused<float>&>::value, std::tuple <T, Ts...>> ::type
   CreateTuple(onnxruntime::OpKernelContext* context, ArgPtrs& args) {
-    args.push_back(std::make_unique<Reused<float>>(context, ith_output, True));
+    args.push_back(std::make_unique<Reused<float>>(context, ith_output));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
+    auto next = CreateTuple<ith_input, ith_output + 1, Ts...>(context, args);
+    return std::tuple_cat(current, next);
+  }
+
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, Aliased<float>&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(onnxruntime::OpKernelContext* context, ArgPtrs& args) {
+    args.push_back(std::make_unique<Aliased<float>>(context, ith_output));
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
     auto next = CreateTuple<ith_input, ith_output + 1, Ts...>(context, args);
     return std::tuple_cat(current, next);
@@ -129,7 +154,7 @@ struct LiteKernelFn : public onnxruntime::OpKernel {
   onnxruntime::Status Compute(onnxruntime::OpKernelContext* context) const override {
     ArgPtrs args;
     auto t = CreateTuple<0, 0, Args...>(context, args);
-    return std::apply([this](Args const&... t_args) { compute_fn_(t_args...); }, t);
+    return std::apply([this](Args const&... t_args) { return compute_fn_(t_args...); }, t);
   }
 
  private:
@@ -137,10 +162,12 @@ struct LiteKernelFn : public onnxruntime::OpKernel {
 };
 
 template <typename... Args>
-onnxruntime::KernelDefBuilder& RegisterKernel(onnxruntime::Status (*)(Args...)) {
-  onnxruntime::KernelCreateInfo;
-  return {};
-}
+onnxruntime::KernelDefBuilder RegisterKernel(const char* ep,
+                                             const char* domain,
+                                             const char* op,
+                                             int since_ver,
+                                             int end_ver,
+                                             onnxruntime::Status (*compute_fn)(Args...));
 
 }  // namespace lite
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
