@@ -58,7 +58,7 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
         initializers = [
             float_tensor("cos_cache", [self.max_sequence_length, self.head_size]),
             float_tensor("sin_cache", [self.max_sequence_length, self.head_size]),
-            float_tensor("pos_ids_new_shape", [self.batch_size, self.sequence_length]),
+            helper.make_tensor("pos_ids_new_shape", TensorProto.FLOAT, [2], np.array([self.batch_size, self.sequence_length], dtype=np.int64)),
             helper.make_tensor("zero", TensorProto.FLOAT, [1], np.array([0], dtype=np.int64)),
             helper.make_tensor("one", TensorProto.FLOAT, [1], np.array([1], dtype=np.int64)),
             helper.make_tensor("two", TensorProto.FLOAT, [1], np.array([2], dtype=np.int64)),
