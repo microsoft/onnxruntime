@@ -1900,7 +1900,7 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
 
   const TensorProto* b_shape_tensor = ctx.getInputData(input_bshape_idx);
   if (nullptr == b_shape_tensor) {
-    // Can't find shape info, quiting
+    // Can't find shape info, quitting
     return;
   }
 
@@ -1974,7 +1974,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MatMulFpQ4, 1,
                                 .SetDoc(R"DOC(
 Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
 During quantization, the matrix is divided into blocks, where each block is a
-continguous subset inside each column. Each block is quantized into a
+contiguous subset inside each column. Each block is quantized into a
 sequence of 4b integers with a scaling factor and an optional offset.
 Currently 3 quantization types are supported:
 (0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
@@ -2812,7 +2812,7 @@ void RegisterContribSchemas() {
         }
       });
 
-  // ORT will not regsiter TRT plugins as contrib ops, instead it will use custom ops handled by TRT EP.
+  // ORT will not register TRT plugins as contrib ops, instead it will use custom ops handled by TRT EP.
   // In order not to break the old models using those TRT plugins which were registered with ONNX domain and maintain backward compatible,
   // we still keep EfficientNMS_TRT, MultilevelCropAndResize_TRT, PyramidROIAlign_TRT and DisentangledAttention_TRT as legacy code.
   // We don't need to add new schema definition when a new TRT plugin is introduced, TRT EP will register it as custom op for us.
