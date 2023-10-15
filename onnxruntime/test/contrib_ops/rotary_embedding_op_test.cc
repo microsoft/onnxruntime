@@ -153,8 +153,8 @@ static void RunTests(const std::vector<float>& input_data,
     }
 }
 
-// Prompt step, interleaved = true, pos ids shape = (1)
-TEST(RotaryEmbeddingTest, RotaryEmbeddingInterleaved_Prompt_SmallData_LlamaMSFT) {
+// Interleaved = true, pos ids shape = (1)
+TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
     int batch_size = 1;
     int sequence_length = 3;
     int num_heads = 2;
@@ -202,8 +202,8 @@ TEST(RotaryEmbeddingTest, RotaryEmbeddingInterleaved_Prompt_SmallData_LlamaMSFT)
              interleaved);
 }
 
-// Prompt step, interleaved = true, pos ids shape = (1)
-TEST(RotaryEmbeddingTest, RotaryEmbeddingInterleaved_Prompt_LargeData_LlamaMSFT) {
+// Interleaved = true, pos ids shape = (1)
+TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
     int batch_size = 2;
     int sequence_length = 8;
     int num_heads = 4;
@@ -407,8 +407,8 @@ TEST(RotaryEmbeddingTest, RotaryEmbeddingInterleaved_Prompt_LargeData_LlamaMSFT)
              interleaved);
 }
 
-// Prompt step, interleaved = false, pos ids shape = (1)
-TEST(RotaryEmbeddingTest, RotaryEmbeddingNotInterleaved_Prompt_LargeData_LlamaMSFT) {
+// Interleaved = false, pos ids shape = (1)
+TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
     int batch_size = 2;
     int sequence_length = 8;
     int num_heads = 4;
@@ -612,7 +612,8 @@ TEST(RotaryEmbeddingTest, RotaryEmbeddingNotInterleaved_Prompt_LargeData_LlamaMS
              interleaved);
 }
 
-TEST(RotaryEmbeddingTest, RotaryEmbeddingNotInterleaved_Prompt_SmallData_LlamaMSFT) {
+// Interleaved = false, pos ids shape = (batch_size, sequence_length)
+TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
   int batch_size = 1;
   int sequence_length = 2;
   int num_heads = 3;
@@ -664,46 +665,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbeddingNotInterleaved_Prompt_SmallData_LlamaMS
            interleaved);
 }
 
-// TEST(RotaryEmbeddingTest, RotaryEmbedding_PerToken_LlamaMSFT) {
-//     int batch_size = 1;
-//     int sequence_length = 1;
-//     int num_heads = 2;
-//     int head_size = 4;
-//     int hidden_size = num_heads * head_size;
-//     int max_sequence_length = 8;
-
-//     std::vector<float> input_data = {
-        
-//     };
-
-//     std::vector<int64_t> position_ids = {?}; // new_pos_id = old_pos_id + prompt_seq_len
-//                                              // Using values from RotaryEmbedding_Prompt_WithPosIdsInt test: 0 + 4 = 4
-
-//     std::vector<float> cos_cache = {
-        
-//     };
-
-//     std::vector<float> sin_cache = {
-        
-//     };
-
-//     std::vector<float> output_data = {
-        
-//     };
-
-//     RunTests(input_data,
-//              position_ids,
-//              cos_cache,
-//              sin_cache,
-//              output_data,
-//              epsilon_,
-//              batch_size,
-//              sequence_length,
-//              hidden_size,
-//              head_size,
-//              num_heads,
-//              max_sequence_length);
-// }
 
 }  // namespace test
 }  // namespace onnxruntime

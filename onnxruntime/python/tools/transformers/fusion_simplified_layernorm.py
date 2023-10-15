@@ -18,9 +18,9 @@ class FusionSimplifiedLayerNormalization(Fusion):
             return
 
         sim_ln_nodes = None
-        # Note: The notation used below is from https://onnx.ai/onnx/operators/onnx__LayerNormalization.html#summary
-
-        # sim_ln_nodes_1 and sim_ln_nodes_2 use the following calculation in SimplifiedLayerNorm:
+        # SimplifiedLayerNorm calculation (notation from https://onnx.ai/onnx/operators/onnx__LayerNormalization.html#summary):
+        # DD = Pow(D, 2)
+        # Var = ReduceMean(DD)
         # VarEps = Add(Var, epsilon)
         # StdDev = Sqrt(VarEps)
         # InvStdDev = Div(1, StdDev)
@@ -79,36 +79,6 @@ class FusionSimplifiedLayerNormalization(Fusion):
             [0, 1, 1, 0, 0, 0],
         )
 
-        # # For LLaMA from Hugging Face:
-        # # sim_ln_nodes_5 and sim_ln_nodes_6 use the following calculation in SimplifiedLayerNorm:
-        # # VarEps = Add(Var, epsilon)
-        # # StdDev = Sqrt(VarEps)
-        # # Normalized = Div(D, StdDev)
-        # # NormalizedScaled = Mul(Normalized, Scale)
-
-        # #                          SimplifiedLayerNorm
-        # #          +-----------------------------------------------+
-        # #          |                                               |
-        # # Add --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
-        # #                                                          |
-        # #                                                         node
-        # sim_ln_nodes_5 = self.model.match_parent_path(
-        #     node,
-        #     ["Div", "Sqrt", "Add", "ReduceMean", "Pow", "Add"],
-        #     [1, 1, 0, 0, 0, 0],
-        # )
-        # #                             SimplifiedLayerNorm
-        # #             +-----------------------------------------------+
-        # #             |                                               |
-        # # Gather --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
-        # #                                                             |
-        # #                                                            node
-        # sim_ln_nodes_6 = self.model.match_parent_path(
-        #     node,
-        #     ["Div", "Sqrt", "Add", "ReduceMean", "Pow", "Gather"],
-        #     [1, 1, 0, 0, 0, 0],
-        # )
-
         add_node, pow_node = None, None
         if sim_ln_nodes_1 is not None:
             sim_ln_nodes = sim_ln_nodes_1
@@ -129,14 +99,6 @@ class FusionSimplifiedLayerNormalization(Fusion):
             # Verify that parent input to Pow node is graph_input
             if pow_node.input[0] not in self.model.get_graphs_input_names():
                 return
-        # elif sim_ln_nodes_5 is not None:
-        #     sim_ln_nodes = sim_ln_nodes_5
-        #     add_node = sim_ln_nodes[2]
-        #     pow_node = sim_ln_nodes[-2]
-        # elif sim_ln_nodes_6 is not None:
-        #     sim_ln_nodes = sim_ln_nodes_6
-        #     add_node = sim_ln_nodes[2]
-        #     pow_node = sim_ln_nodes[-2]
         else:
             return
 
@@ -157,12 +119,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
             return
 
         self.nodes_to_remove.extend(sim_ln_nodes[:-1] if not starts_with_graph_input else sim_ln_nodes)
-        # if not extra_mul:
         self.nodes_to_remove.append(node)
-
-        # logger.info(f"Node inputs: {root_input}, {node.input[layernorm_weight_index]}")
-        # logger.info(f"Node outputs: {node.output[0]}")
-        # logger.info(f"Nodes to remove: {(sim_ln_nodes[:-1] if not starts_with_graph_input else sim_ln_nodes) + [node]}")
 
         normalize_node = helper.make_node(
             "SimplifiedLayerNormalization",

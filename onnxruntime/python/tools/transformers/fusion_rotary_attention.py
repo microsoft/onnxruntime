@@ -694,7 +694,7 @@ class FusionRotaryEmbeddings(Fusion):
             inputs=rotary_emb_inputs,
             outputs=rotary_emb_outputs,
             name=rotary_emb_node_name,
-            interleaved=True,
+            interleaved=1,
         )
         rotary_emb_node.domain = "com.microsoft"
 
@@ -776,6 +776,7 @@ class FusionRotaryEmbeddings(Fusion):
             inputs=[root_input, position_ids, cos_cache_name, sin_cache_name],
             outputs=[output],
             name=rotary_emb_node_name,
+            interleaved=0,
         )
         rotary_emb_node.domain = "com.microsoft"
         return rotary_emb_node
