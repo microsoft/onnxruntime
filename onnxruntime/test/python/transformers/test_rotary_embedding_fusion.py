@@ -58,6 +58,7 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
         initializers = [
             float_tensor("cos_cache", [self.max_sequence_length, self.head_size]),
             float_tensor("sin_cache", [self.max_sequence_length, self.head_size]),
+            float_tensor("pos_ids_new_shape", [self.batch_size, self.sequence_length]),
             helper.make_tensor("zero", TensorProto.FLOAT, [1], np.array([0], dtype=np.int64)),
             helper.make_tensor("one", TensorProto.FLOAT, [1], np.array([1], dtype=np.int64)),
             helper.make_tensor("two", TensorProto.FLOAT, [1], np.array([2], dtype=np.int64)),
@@ -119,7 +120,7 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
         # Create position ids path
         reshape_node = helper.make_node(
             "Reshape",
-            inputs=["position_ids", "pos_ids_new_shape"], # TODO: add initializer for pos_ids_new_shape
+            inputs=["position_ids", "pos_ids_new_shape"],
             outputs=["pos_ids_reshaped"],
             name="Reshape_0",
         )
@@ -403,15 +404,6 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
         interleaved = False  # HF model does not use interleaving
         model_type = "merged"
         self.check_models(interleaved, model_type)
-
-
-    # def create_test_model_pattern_2(self, interleaved: bool, initializers: List[TensorProto]):
-    #     # TODO for new patterns from PR: https://github.com/huggingface/transformers/pull/26162
-    #     pass
-
-    # def create_test_model_pattern_3(self, interleaved: bool, initializers: List[TensorProto]):
-    #     # TODO for new patterns from PR: https://github.com/huggingface/transformers/pull/26307
-    #     pass
 
 
 if __name__ == "__main__":

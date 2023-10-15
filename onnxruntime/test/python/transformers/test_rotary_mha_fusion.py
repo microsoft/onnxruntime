@@ -73,10 +73,6 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             helper.make_tensor("two", TensorProto.FLOAT, [1], np.array([2], dtype=np.int64)),
             helper.make_tensor("three", TensorProto.FLOAT, [1], np.array([3], dtype=np.int64)),
         ]
-        if not fused_model:
-            # TODO: update names and sizes of cache to 'cached' and self.head_size respectively
-            pass
-
         return initializers
 
     def create_inputs_and_outputs(self, model_type: str):
@@ -155,7 +151,6 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             interleaved=int(interleaved),
         )
 
-        k_rope_input = ""
         k_rope_node = helper.make_node(
             "RotaryEmbedding",
             inputs=[get_first_rope_input("k"), inputs[1].name, initializers[0].name, initializers[1].name],
