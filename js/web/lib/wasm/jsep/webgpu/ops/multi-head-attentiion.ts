@@ -8,7 +8,7 @@ import {ComputeContext, GpuDataType} from '../types';
 
 import {applyAttention, AttentionAttrs, AttentionMaskType, AttentionParameters, AttentionQkvFormat} from './attention';
 import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
-import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
+import {createTransposeProgramInfo, TransposeAttributes} from './transpose';
 
 const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttrs): AttentionParameters => {
   const query = inputs[0];
@@ -237,12 +237,6 @@ const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKe
 const addBiasTranspose =
     (context: ComputeContext, qkv: TensorView, bias: TensorView, batchSize: number, sequenceLength: number,
      hiddenSize: number, biasOffset: number) => {
-      const addBiasTransposeMetadata = {
-        name: 'addBiasTranspose',
-        inputTypes: [GpuDataType.default, GpuDataType.default],
-        cacheHint: JSON.stringify({batchSize, sequenceLength, hiddenSize, biasOffset}),
-      };
-
       const outputShape = [batchSize, sequenceLength, hiddenSize];
       const outputSize = ShapeUtil.size(outputShape);
 
@@ -264,10 +258,13 @@ const addBiasTranspose =
 
       return context.compute(
           {
-            ...addBiasTransposeMetadata,
-            outputs: [{dims: outputShape, dataType: qkv.dataType, gpuDataType: GpuDataType.default}],
+            name: 'MultiHeadAttentionAddBias',
+            shaderCache: {hint: JSON.stringify({batchSize, sequenceLength, hiddenSize, biasOffset})},
+            getRunData: () => ({
+              outputs: [{dims: outputShape, dataType: qkv.dataType, gpuDataType: GpuDataType.default}],
+              dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+            }),
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
           },
           {inputs: [qkv, bias], outputs: [-1]})[0];
     };
@@ -283,11 +280,7 @@ const maybeTransposeToBNSHAndAddBias =
           reshapedInput = input.reshape([batchSize, sequenceLength, numHeads, headSize]);
         }
         return context.compute(
-            {
-              ...transposeProgramMetadata,
-              cacheHint: weightTransposeAttribute.cacheKey,
-              get: () => createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm)
-            },
+          createTransposeProgramInfo(input.dataType, reshapedInput.dims.length, weightTransposeAttribute.perm),
             {inputs: [reshapedInput], outputs: [-1]})[0];
       } else {
         if (sequenceLength === 1) {
@@ -297,11 +290,7 @@ const maybeTransposeToBNSHAndAddBias =
               addBiasTranspose(context, input, bias, batchSize, sequenceLength, numHeads * headSize, biasOffset!);
           reshapedInput = reshapedInput.reshape([batchSize, sequenceLength, numHeads, headSize]);
           return context.compute(
-              {
-                ...transposeProgramMetadata,
-                cacheHint: weightTransposeAttribute.cacheKey + biasOffset!.toString() + Math.random().toString(10),
-                get: () => createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm)
-              },
+              createTransposeProgramInfo(input.dataType, reshapedInput.dims.length, weightTransposeAttribute.perm),
               {inputs: [reshapedInput], outputs: [-1]})[0];
         }
       }

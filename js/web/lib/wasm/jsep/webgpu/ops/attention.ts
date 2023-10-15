@@ -7,7 +7,7 @@ import {ComputeContext, GpuDataType} from '../types';
 
 import {castToF32, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common';
 
-export enum AttentionQkvFormat {
+export const enum AttentionQkvFormat {
   unknown,          // enum value not set, or depends on qkv projection implementation details
   qkvBNSH,          // for non-packed qkv, permuted
   qkvBSNH,          // for non-packed qkv, not permuted, used by memory efficient attention or MultiHeadAttention
@@ -18,7 +18,7 @@ export enum AttentionQkvFormat {
   qkvTN3H,          // for TRT fused attention, qkv are packed and paddings are removed
 }
 
-export enum AttentionMaskType {
+export const enum AttentionMaskType {
   none,                  // No mask
   mask1dKeySeqLen,       // [batch_size], key sequence length
   mask1dEndStart,        // [2 * batch_size] with end positions and start positions
@@ -305,12 +305,13 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
 
   context.compute(
       {
-        name: 'computeAttentionProbsSoftmax',
-        cacheHint: '0',
-        inputTypes: [GpuDataType.default],
-        outputs: [],
+        name: 'AttentionProbsSoftmax',
+        shaderCache: {hint: `${d}`},
         getShaderSource,
-        dispatchGroup: () => ({x: n})
+        getRunData: () => ({
+          outputs: [],
+          dispatchGroup: {x: n},
+        }),
       },
       {inputs: [input], outputs: []});
 };
@@ -400,16 +401,15 @@ const computeAttentionProbs =
     }
   }`;
 
-      const inputTypes = inputs.map(_ => GpuDataType.default);
-
       const probs = context.compute(
           {
-            name: 'computeAttentionProbs',
-            cacheHint: JSON.stringify(parameters),
-            inputTypes,
-            outputs: [{dims: probsShape, dataType: q.dataType, gpuDataType: GpuDataType.default}],
+            name: 'AttentionProbs',
+            shaderCache: {hint: JSON.stringify(parameters)},
+            getRunData: () => ({
+              outputs: [{dims: probsShape, dataType: q.dataType, gpuDataType: GpuDataType.default}],
+              dispatchGroup: dispatch,
+            }),
             getShaderSource,
-            dispatchGroup: () => (dispatch)
           },
           {inputs, outputs: [-1]})[0];
 
@@ -491,11 +491,12 @@ const computeVxAttentionScore =
       return context.compute(
           {
             name: 'AttentionScore',
-            inputTypes: [GpuDataType.default, GpuDataType.default],
-            cacheHint: JSON.stringify(params),
-            outputs: [{dims: outputShape, dataType: probs.dataType, gpuDataType: GpuDataType.default}],
+            shaderCache: {hint: JSON.stringify(params)},
+            getRunData: () => ({
+              outputs: [{dims: outputShape, dataType: probs.dataType, gpuDataType: GpuDataType.default}],
+              dispatchGroup: dispatch,
+            }),
             getShaderSource,
-            dispatchGroup: () => (dispatch)
           },
           {inputs: [probs, v], outputs: [0]})[0];
     };
@@ -605,21 +606,21 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
     }
   }`;
 
-  const inputTypes = [GpuDataType.default, GpuDataType.default, GpuDataType.default];
   const inputs = [context.inputs[0], context.inputs[1], context.inputs[2]];
 
   return context.compute(
       {
-        name: 'computeAttentionPrepare',
-        cacheHint: JSON.stringify(parameters),
-        inputTypes,
-        outputs: [
-          {dims: outputShape, dataType: context.inputs[0].dataType, gpuDataType: GpuDataType.default},
-          {dims: outputShape, dataType: context.inputs[0].dataType, gpuDataType: GpuDataType.default},
-          {dims: outputShape, dataType: context.inputs[0].dataType, gpuDataType: GpuDataType.default},
-        ],
+        name: 'AttentionPrepare',
+        shaderCache: {hint: JSON.stringify(parameters)},
+        getRunData: () => ({
+          outputs: [
+            {dims: outputShape, dataType: context.inputs[0].dataType, gpuDataType: GpuDataType.default},
+            {dims: outputShape, dataType: context.inputs[0].dataType, gpuDataType: GpuDataType.default},
+            {dims: outputShape, dataType: context.inputs[0].dataType, gpuDataType: GpuDataType.default},
+          ],
+          dispatchGroup: dispatch,
+        }),
         getShaderSource,
-        dispatchGroup: () => (dispatch)
       },
       {inputs, outputs: [-1, -1, -1]});
 };
