@@ -161,13 +161,14 @@ const computeMean =
       const meanValues = context.compute(
           {
             name: 'InstanceNormComputeMean',
-            inputTypes: [GpuDataType.default],
-            cacheHint: JSON.stringify({components, n, h, c}),
-            outputs: [
-              {dims: [n, c, WG, 2], dataType: DataType.float, gpuDataType: GpuDataType.default},
-            ],
+            shaderCache: {hint: JSON.stringify({components, n, h, c})},
+            getRunData: () => ({
+              outputs: [
+                {dims: [n, c, WG, 2], dataType: DataType.float},
+              ],
+              dispatchGroup: {x: n * c / components},
+            }),
             getShaderSource: getMeanShaderSource,
-            dispatchGroup: () => ({x: n * c / components})
           },
           {inputs: [input], outputs: [-1]})[0];
       const getShaderSource = (shaderHelper: ShaderHelper) => `
@@ -206,20 +207,20 @@ const computeMean =
       return context.compute(
           {
             name: 'InstanceNormComputeChannelScaleShift',
-            inputTypes: [GpuDataType.default, GpuDataType.default, GpuDataType.default],
-            cacheHint: JSON.stringify({components, n, h, c, epsilon}),
-            outputs: [
-              {dims: [n, c, 2], dataType: DataType.float, gpuDataType: GpuDataType.default},
-            ],
+            shaderCache: {hint: JSON.stringify({components, n, h, c, epsilon})},
+            getRunData: () => ({
+              outputs: [
+                {dims: [n, c, 2], dataType: DataType.float},
+              ],
+              dispatchGroup: {x: Math.ceil(unitsOfWork / 64 /* workgroup size */)},
+            }),
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil(unitsOfWork / 64 /* workgroup size */)})
           },
           {inputs: [meanValues, scale, bias], outputs: [-1]})[0];
     };
 
 const createInstanceNormNHWCProgramInfo =
-    (context: ComputeContext, metadata: ProgramMetadata, inputs: readonly TensorView[],
-     attributes: InstanceNormAttributes) => {
+    (context: ComputeContext, inputs: readonly TensorView[], attributes: InstanceNormAttributes) => {
       const xShape = inputs[0].dims;
       const outputShape = xShape;
       const N = xShape[0];
@@ -255,13 +256,13 @@ const createInstanceNormNHWCProgramInfo =
   }`;
       context.compute(
           {
-            ...metadata,
-            inputTypes: [GpuDataType.default, GpuDataType.default],
-            outputs: [
-              {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-            ],
+            name: 'InstanceNormalization',
+            shaderCache: {hint: `${attributes.cacheKey}`},
+            getRunData: () => ({
+              outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+              dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+            }),
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
           },
           {inputs: [inputs[0], channelScaleShift]});
     };

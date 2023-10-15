@@ -26,50 +26,50 @@ const createLayerNormProgramInfo =
       const scale = inputs[1];
       const bias = inputs[2];
 
-          const outputShape = xShape;
-          const axis = ShapeUtil.normalizeAxis(attributes.axis, xShape.length);
-          const normCount = ShapeUtil.sizeToDimension(xShape, axis);
-          const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
+      const outputShape = xShape;
+      const axis = ShapeUtil.normalizeAxis(attributes.axis, xShape.length);
+      const normCount = ShapeUtil.sizeToDimension(xShape, axis);
+      const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
 
-          const scaleSize = ShapeUtil.size(scale.dims);
-          const biasSize = bias ? ShapeUtil.size(bias.dims) : 0;
-          if (scaleSize !== normSize || (bias && biasSize !== normSize)) {
-            throw new Error(`Size of X.shape()[axis:] == ${normSize}.
+      const scaleSize = ShapeUtil.size(scale.dims);
+      const biasSize = bias ? ShapeUtil.size(bias.dims) : 0;
+      if (scaleSize !== normSize || (bias && biasSize !== normSize)) {
+        throw new Error(`Size of X.shape()[axis:] == ${normSize}.
        Size of scale and bias (if provided) must match this.
        Got scale size of ${scaleSize} and bias size of ${biasSize}`);
-          }
+      }
 
-          const meanInvStdDevDim = [];
-          for (let i = 0; i < xShape.length; ++i) {
-            if (i < axis) {
-              meanInvStdDevDim.push(xShape[i]);
-            } else {
-              meanInvStdDevDim.push(1);
-            }
-          }
+      const meanInvStdDevDim = [];
+      for (let i = 0; i < xShape.length; ++i) {
+        if (i < axis) {
+          meanInvStdDevDim.push(xShape[i]);
+        } else {
+          meanInvStdDevDim.push(1);
+        }
+      }
 
-          const components = getMaxComponents(normSize);
-          const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-          const variables = [
-            inputVariable('x', inputs[0].dataType, inputs[0].dims, components),
-            inputVariable('scale', scale.dataType, scale.dims, components),
-          ];
-          if (bias) {
-            variables.push(inputVariable('bias', bias.dataType, bias.dims, components));
-          }
-          variables.push(outputVariable('output', inputs[0].dataType, outputShape, components));
+      const components = getMaxComponents(normSize);
+      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+      const variables = [
+        inputVariable('x', inputs[0].dataType, inputs[0].dims, components),
+        inputVariable('scale', scale.dataType, scale.dims, components),
+      ];
+      if (bias) {
+        variables.push(inputVariable('bias', bias.dataType, bias.dims, components));
+      }
+      variables.push(outputVariable('output', inputs[0].dataType, outputShape, components));
 
-          const hasMeanDataOutput = outputCount > 1;
-          const hasInvStdOutput = outputCount > 2;
+      const hasMeanDataOutput = outputCount > 1;
+      const hasInvStdOutput = outputCount > 2;
 
-          if (hasMeanDataOutput) {
-            variables.push(outputVariable('meanDataOutput', DataType.float, meanInvStdDevDim));
-          }
-          if (hasInvStdOutput) {
-            variables.push(outputVariable('invStdOutput', DataType.float, meanInvStdDevDim));
-          }
+      if (hasMeanDataOutput) {
+        variables.push(outputVariable('meanDataOutput', DataType.float, meanInvStdDevDim));
+      }
+      if (hasInvStdOutput) {
+        variables.push(outputVariable('invStdOutput', DataType.float, meanInvStdDevDim));
+      }
 
-          const getShaderSource = (shaderHelper: ShaderHelper) => `
+      const getShaderSource = (shaderHelper: ShaderHelper) => `
   const normSize: f32 = ${normSize};
   const normSizeVectorized: u32 = ${normSize / components};
   const epsilon: f32 = ${attributes.epsilon};
@@ -101,13 +101,13 @@ const createLayerNormProgramInfo =
     ${hasMeanDataOutput ? 'meanDataOutput[global_idx] = mean' : ''};
     ${hasInvStdOutput ? 'invStdOutput[global_idx] = 1 / meanSquare' : ''};
   }`;
-          const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
-          if (hasMeanDataOutput) {
-            outputs.push({dims: meanInvStdDevDim, dataType: DataType.float, gpuDataType: GpuDataType.default});
-          }
-          if (hasInvStdOutput) {
-            outputs.push({dims: meanInvStdDevDim, dataType: DataType.float, gpuDataType: GpuDataType.default});
-          }
+      const outputs = [{dims: outputShape, dataType: inputs[0].dataType}];
+      if (hasMeanDataOutput) {
+        outputs.push({dims: meanInvStdDevDim, dataType: DataType.float});
+      }
+      if (hasInvStdOutput) {
+        outputs.push({dims: meanInvStdDevDim, dataType: DataType.float});
+      }
 
       return {
         name: 'LayerNormalization',
