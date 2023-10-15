@@ -451,7 +451,7 @@ void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOpti
     std::vector<OrtCustomOpDomain*> domain_list;
     tensorrt_provider_info->GetTensorRTCustomOpDomainList(domain_list, trt_extra_plugin_lib_paths);
     for (auto ptr : domain_list) {
-      if (!is_already_in_domains(ptr->domain_, so->custom_op_domains_)) {
+      if (!is_already_in_domains(ptr->domain_, so.custom_op_domains_)) {
         so.custom_op_domains_.push_back(ptr);
       }
     }
