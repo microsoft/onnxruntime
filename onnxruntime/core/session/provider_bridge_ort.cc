@@ -1624,19 +1624,20 @@ ProviderOptions GetProviderInfo_Cuda(const OrtCUDAProviderOptionsV2* provider_op
 }  // namespace onnxruntime
 
 void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, std::string extra_plugin_lib_paths) {
-  auto is_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
+  auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
     for (auto ptr : domains) {
       if (domain_name == ptr->domain_) {
-        return false;
+        return true;
       }
     }
+    return false;
   };
 
   std::vector<OrtCustomOpDomain*> custom_op_domains;
   onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
   provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
   for (auto ptr : custom_op_domains) {
-    if (!is_in_domains(ptr->domain_, options->custom_op_domains_)) {
+    if (!is_already_in_domains(ptr->domain_, options->custom_op_domains_)) {
       options->custom_op_domains_.push_back(ptr);
     }
   }
