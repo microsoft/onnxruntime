@@ -73,7 +73,7 @@ def apply_filters(filters, category):
     opset_version = f"opset{onnx.defs.onnx_opset_version()}"
     validated_filters = []
     for f in filters[category]:
-        if type(f) is list:
+        if type(f) is list:  # noqa: E721
             opset_regex = f[0]
             filter_regex = f[1]
             opset_match = re.match(opset_regex, opset_version)

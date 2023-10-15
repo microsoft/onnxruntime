@@ -30,6 +30,7 @@ import {parseSplitAttributes, split} from './ops/split';
 import {tile} from './ops/tile';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
+import {where} from './ops/where';
 import {ComputeContext} from './types';
 
 export type RunFunction = (context: ComputeContext, attribute?: unknown) => void;
@@ -120,4 +121,5 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['ThresholdedRelu', [unaryOps.thresholdedRelu, unaryOps.parseAlphaAttributes]],
   ['Tile', [tile]],
   ['Transpose', [transpose, parseTransposeAttributes]],
+  ['Where', [where]],
 ]);
