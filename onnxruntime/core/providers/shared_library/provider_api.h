@@ -350,6 +350,9 @@ void InitProviderOrtApi();
   if ((logger).OutputIsEnabled(::onnxruntime::logging::Severity::k##severity, ::onnxruntime::logging::DataType::SYSTEM)) \
   CREATE_MESSAGE(logger, severity, category, ::onnxruntime::logging::DataType::SYSTEM)->Stream()
 
+#define LOGS(logger, severity) \
+  LOGS_CATEGORY(logger, severity, ::onnxruntime::logging::Category::onnxruntime)
+
 #define LOGS_DEFAULT_CATEGORY(severity, category) \
   LOGS_CATEGORY(::onnxruntime::logging::LoggingManager::DefaultLogger(), severity, category)
 

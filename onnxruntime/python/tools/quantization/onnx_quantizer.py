@@ -597,7 +597,7 @@ class ONNXQuantizer:
             if params is None or len(params) != 2:
                 raise ValueError(
                     "Quantization parameters should contain zero point and scale. "
-                    "Specified values for output {}: {}".format(param_name, params)
+                    f"Specified values for output {param_name}: {params}"
                 )
 
             zero_point_values = [params["zero_point"]]
@@ -645,6 +645,7 @@ class ONNXQuantizer:
         :return: List of newly created nodes in NodeProto format.
         """
         input_name = node.input[input_index]
+        assert input_name != "", "Cannot access undefined variable in graph."
         output_name = input_name + TENSOR_NAME_QUANT_SUFFIX
         ql_node_name = input_name + "_QuantizeLinear"
 

@@ -76,9 +76,9 @@ ONNX_CPU_OPERATOR_KERNEL(
 // e.g. if input shape is { 2, 2, 2, 2, 2 }, output shape is { 2, 2, 1, 2, 2 },
 // and the 'steps' value for all dims is 1 except dim-2, then the input shape is coalesced to { 4, 2, 4 }
 // and the output shape is coalesced to { 4, 1, 4 }.
-static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
-                              TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
-                              TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
+Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
+                                    TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
+                                    TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
   size_t cur = 0;
   size_t nxt = 0;
   while (true) {
@@ -131,6 +131,8 @@ static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::sp
     ends.resize(cur);
     steps.resize(cur);
   }
+
+  return Status::OK();
 }
 
 // Slice V1-9 & DynamicSlice
@@ -138,9 +140,9 @@ Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::sp
                                     gsl::span<const int64_t> raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, compute_metadata));
-  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
-                    compute_metadata.p_flattened_output_dims_);
+  ORT_RETURN_IF_ERROR(FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
+                                        compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
+                                        compute_metadata.p_flattened_output_dims_));
   return Status::OK();
 }
 
@@ -149,9 +151,9 @@ Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::sp
                                     gsl::span<const int64_t> raw_axes, gsl::span<const int64_t> raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
-  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
-                    compute_metadata.p_flattened_output_dims_);
+  ORT_RETURN_IF_ERROR(FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
+                                        compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
+                                        compute_metadata.p_flattened_output_dims_));
 
   return Status::OK();
 }

@@ -3597,6 +3597,12 @@ struct OrtApi {
    *   "rpc_control_latency": QNN RPC control latency.
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
    *   "high_power_saver", "low_balanced", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
+   *   "qnn_context_embed_mode", 1 means dump the QNN context binary into node attribute EPContext->ep_cache_context in the Onnx skeleton model.
+   *   0 means dump the QNN context binary into separate bin file and set the path to EPContext->ep_cache_context.
+   *   The path is relative path to the Onnx skeleton model file.
+   *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
+   *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
+   *   may alter model/EP partitioning. Use only for debugging.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
@@ -4568,6 +4574,14 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessio
  * \param use_arena zero: false. non-zero: true.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
+
+/*
+ * This is the old way to add the TensorRT provider to the session, please use SessionOptionsAppendExecutionProvider_TensorRT_V2 above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with TensorRT support and the TensorRT provider shared library exists
+ *
+ * \param device_id CUDA device id, starts from zero.
+ */
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id);
 
 #ifdef __cplusplus
 }

@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {castToF32, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType,} from './common';
 
@@ -21,11 +21,10 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const createLayerNormProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: LayerNormAttributes, outputCount: number):
-        ProgramInfo => {
-          const xShape = inputs[0].dims;
-          const scale = inputs[1];
-          const bias = inputs[2];
+    (inputs: readonly TensorView[], attributes: LayerNormAttributes, outputCount: number): ProgramInfo => {
+      const xShape = inputs[0].dims;
+      const scale = inputs[1];
+      const bias = inputs[2];
 
           const outputShape = xShape;
           const axis = ShapeUtil.normalizeAxis(attributes.axis, xShape.length);
@@ -110,26 +109,18 @@ const createLayerNormProgramInfo =
             outputs.push({dims: meanInvStdDevDim, dataType: DataType.float, gpuDataType: GpuDataType.default});
           }
 
-          return {
-            ...metadata,
-            outputs,
-            getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
-          };
-        };
+      return {
+        name: 'LayerNormalization',
+        shaderCache: {hint: `${attributes.cacheKey}|${outputCount}|${inputs.length}`},
+        getRunData: () => ({outputs, dispatchGroup: {x: Math.ceil(normCount / 64 /* workgroup size */)}}),
+        getShaderSource,
+      };
+    };
 
 export const parseLayerNormAttributes = (attributes: LayerNormAttributes): LayerNormAttributes =>
     createAttributeWithCacheKey({axis: attributes.axis, epsilon: attributes.epsilon});
 
 export const layerNorm = (context: ComputeContext, attributes: LayerNormAttributes): void => {
   validateInputs(context.inputs);
-
-  const metadata = {
-    name: 'LayerNormalization',
-    inputTypes: context.inputs.length === 2 ? [GpuDataType.default, GpuDataType.default] :
-                                              [GpuDataType.default, GpuDataType.default, GpuDataType.default],
-    cacheHint: attributes.cacheKey + context.outputCount.toString(10) + context.inputs.length.toString(10),
-  };
-
-  context.compute(createLayerNormProgramInfo(metadata, context.inputs, attributes, context.outputCount));
+  context.compute(createLayerNormProgramInfo(context.inputs, attributes, context.outputCount));
 };

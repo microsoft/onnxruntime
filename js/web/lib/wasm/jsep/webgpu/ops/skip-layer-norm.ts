@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {castToF32, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType,} from './common';
 
@@ -71,7 +71,7 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const createSkipLayerNormProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number,
+    (inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number,
      isTraining: boolean): ProgramInfo => {
       const inputShape = inputs[0].dims;
       const inputSize = ShapeUtil.size(inputShape);
@@ -140,39 +140,24 @@ const createSkipLayerNormProgramInfo =
            + ${hasBetaInput ? 'beta[i]' : '0.0'};
         }
       }`;
-      const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
+      const outputs = [{dims: outputShape, dataType: inputs[0].dataType}];
       if (outputCount > 1) {
-        outputs.push({dims: meanInvStdDevDim, dataType: DataType.float, gpuDataType: GpuDataType.default});
+        outputs.push({dims: meanInvStdDevDim, dataType: DataType.float});
       }
       if (outputCount > 2) {
-        outputs.push({dims: meanInvStdDevDim, dataType: DataType.float, gpuDataType: GpuDataType.default});
+        outputs.push({dims: meanInvStdDevDim, dataType: DataType.float});
       }
       if (outputCount > 3) {
-        outputs.push({dims: inputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
+        outputs.push({dims: inputShape, dataType: inputs[0].dataType});
       }
 
       return {
-        ...metadata,
+        name: 'SkipLayerNormalization',
+        shaderCache: {hint: attributes.cacheKey},
         getShaderSource,
-        outputs,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / hiddenSize / 64)})
+        getRunData: () => ({outputs, dispatchGroup: {x: Math.ceil(outputSize / hiddenSize / 64)}}),
       };
     };
-
-const createSkipLayerNormProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number, isTraining: boolean):
-        ProgramInfoLoader => {
-          const inputTypes = new Array(inputs.length).fill(GpuDataType.default);
-          const metadata: ProgramMetadata = {
-            name: 'SkipLayerNormalization',
-            inputTypes,
-            cacheHint: attributes.cacheKey,
-          };
-          return {
-            ...metadata,
-            get: () => createSkipLayerNormProgramInfo(metadata, inputs, attributes, outputCount, isTraining)
-          };
-        };
 
 export const skipLayerNorm = (context: ComputeContext, attributes: SkipLayerNormAttributes): void => {
   // TODO: initialize isTraining from ComputeContext
@@ -191,7 +176,7 @@ export const skipLayerNorm = (context: ComputeContext, attributes: SkipLayerNorm
     outputs.push(3);
   }
   context.compute(
-      createSkipLayerNormProgramInfoLoader(context.inputs, attributes, context.outputCount, isTraining), {outputs});
+      createSkipLayerNormProgramInfo(context.inputs, attributes, context.outputCount, isTraining), {outputs});
 };
 
 export const parseSkipLayerNormAttributes = (attributes: Record<string, unknown>): SkipLayerNormAttributes => {
