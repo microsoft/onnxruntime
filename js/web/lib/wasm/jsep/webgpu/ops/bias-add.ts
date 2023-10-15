@@ -3,7 +3,7 @@
 
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -25,7 +25,7 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   }
 };
 
-const createBiasAddProgramInfo = (metadata: ProgramMetadata, inputs: readonly TensorView[]): ProgramInfo => {
+const createBiasAddProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => {
   const outputShape = inputs[0].dims;
 
   const channels = inputs[0].dims[2];
@@ -50,20 +50,16 @@ const createBiasAddProgramInfo = (metadata: ProgramMetadata, inputs: readonly Te
   }`;
 
   return {
-    ...metadata,
-    outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+    name: 'BiasAdd',
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+    }),
     getShaderSource,
-    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
   };
 };
 
 export const biasAdd = (context: ComputeContext): void => {
   validateInputs(context.inputs);
-  const inputTypes = Array(context.inputs.length).fill(GpuDataType.default);
-  const metadata = {
-    name: 'BiasAdd',
-    inputTypes,
-  };
-
-  context.compute(createBiasAddProgramInfo(metadata, context.inputs));
+  context.compute(createBiasAddProgramInfo(context.inputs));
 };

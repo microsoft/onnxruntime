@@ -27,12 +27,10 @@ constexpr const char* kTunableOpMaxTuningDurationMs = "tunable_op_max_tuning_dur
 }  // namespace provider_option_names
 }  // namespace rocm
 
-namespace {
 const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
 };
-}  // namespace
 
 ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   ROCMExecutionProviderInfo info{};
@@ -81,7 +79,9 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToEnumReference(
               rocm::provider_option_names::kArenaExtendStrategy,
               arena_extend_strategy_mapping, info.arena_extend_strategy)
-          .AddAssignmentToReference(rocm::provider_option_names::kMiopenConvExhaustiveSearch, info.miopen_conv_exhaustive_search)
+          .AddAssignmentToReference(
+              rocm::provider_option_names::kMiopenConvExhaustiveSearch,
+              info.miopen_conv_exhaustive_search)
           .AddAssignmentToReference(rocm::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .AddAssignmentToReference(rocm::provider_option_names::kMiopenConvUseMaxWorkspace, info.miopen_conv_use_max_workspace)
           .AddValueParser(

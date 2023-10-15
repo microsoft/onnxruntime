@@ -224,6 +224,7 @@ struct CUDA_Provider : Provider {
     info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
     info.tunable_op.max_tuning_duration_ms = params->tunable_op_max_tuning_duration_ms;
     info.enable_skip_layer_norm_strict_mode = params->enable_skip_layer_norm_strict_mode != 0;
+    info.use_ep_level_unified_stream = params->use_ep_level_unified_stream != 0;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -245,7 +246,7 @@ struct CUDA_Provider : Provider {
     cuda_options.arena_extend_strategy = internal_options.arena_extend_strategy;
     cuda_options.do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
     cuda_options.has_user_compute_stream = internal_options.has_user_compute_stream;
-    // The 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance can be set byC API UpdateCUDAProviderOptionsWithValue() as well.
+    // The 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance can be set by C API UpdateCUDAProviderOptionsWithValue() as well.
     // We only set the 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance if it is provided in options
     if (options.find("has_user_compute_stream") != options.end()) {
       cuda_options.user_compute_stream = internal_options.user_compute_stream;
@@ -256,6 +257,7 @@ struct CUDA_Provider : Provider {
     cuda_options.cudnn_conv1d_pad_to_nc1d = internal_options.cudnn_conv1d_pad_to_nc1d;
     cuda_options.enable_skip_layer_norm_strict_mode = internal_options.enable_skip_layer_norm_strict_mode;
     cuda_options.prefer_nhwc = internal_options.prefer_nhwc;
+    cuda_options.use_ep_level_unified_stream = internal_options.use_ep_level_unified_stream;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
