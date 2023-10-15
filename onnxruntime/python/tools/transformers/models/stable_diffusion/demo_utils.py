@@ -95,7 +95,7 @@ def parse_arguments(is_xl: bool, description: str):
         "--denoising-steps",
         type=int,
         default=30 if is_xl else 50,
-        help="Number of denoising steps" + (" in each of base and refiner." if is_xl else "."),
+        help="Number of denoising steps" + (" in base." if is_xl else "."),
     )
 
     parser.add_argument(

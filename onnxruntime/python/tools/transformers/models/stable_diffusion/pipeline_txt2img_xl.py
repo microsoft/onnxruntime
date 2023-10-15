@@ -88,7 +88,12 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
 
             # CLIP text encoder
             text_embeddings = self.encode_prompt(
-                prompt, negative_prompt, encoder="clip", tokenizer=self.tokenizer, output_hidden_states=True
+                prompt,
+                negative_prompt,
+                encoder="clip",
+                tokenizer=self.tokenizer,
+                output_hidden_states=True,
+                force_zeros_for_empty_prompt=True,
             )
             # CLIP text encoder 2
             text_embeddings2, pooled_embeddings2 = self.encode_prompt(
@@ -98,6 +103,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                 tokenizer=self.tokenizer2,
                 pooled_outputs=True,
                 output_hidden_states=True,
+                force_zeros_for_empty_prompt=True,
             )
 
             # Merged text embeddings
@@ -124,9 +130,9 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
 
             # VAE decode latent
             if return_type == "latents":
-                images = latents * self.vae_scaling_factor
+                images = latents
             else:
-                images = self.decode_latent(latents)
+                images = self.decode_latent(latents / self.vae_scaling_factor)
 
             torch.cuda.synchronize()
             e2e_toc = time.perf_counter()

@@ -245,6 +245,7 @@ class StableDiffusionPipeline:
         tokenizer=None,
         pooled_outputs=False,
         output_hidden_states=False,
+        force_zeros_for_empty_prompt=False,
     ):
         if tokenizer is None:
             tokenizer = self.tokenizer
@@ -275,7 +276,7 @@ class StableDiffusionPipeline:
         # Note: negative prompt embedding is not needed for SD XL when guidance < 1
 
         # For SD XL, handle force_zeros_for_empty_prompt
-        if self.pipeline_info.is_sd_xl() and negative_prompt is None:
+        if force_zeros_for_empty_prompt and negative_prompt is None:
             uncond_embeddings = torch.zeros_like(text_embeddings)
             if output_hidden_states:
                 uncond_hidden_states = torch.zeros_like(hidden_states)
@@ -283,7 +284,7 @@ class StableDiffusionPipeline:
             # Tokenize negative prompt
             uncond_input_ids = (
                 tokenizer(
-                    negative_prompt,
+                    negative_prompt or "",
                     padding="max_length",
                     max_length=tokenizer.model_max_length,
                     truncation=True,
@@ -337,7 +338,8 @@ class StableDiffusionPipeline:
             timesteps = self.scheduler.timesteps
 
         # Apply denoising_end
-        if denoising_end is not None and type(denoising_end) == float and denoising_end > 0 and denoising_end < 1:
+        if denoising_end is not None:
+            assert isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1
             discrete_timestep_cutoff = int(
                 round(self.scheduler.num_train_timesteps - (denoising_end * self.scheduler.num_train_timesteps))
             )
@@ -366,11 +368,11 @@ class StableDiffusionPipeline:
 
             timestep_float = timestep.float() if timestep.dtype != torch.float32 else timestep
 
-            sample_inp = latent_model_input
-            timestep_inp = timestep_float
-            embeddings_inp = text_embeddings
-
-            params = {"sample": sample_inp, "timestep": timestep_inp, "encoder_hidden_states": embeddings_inp}
+            params = {
+                "sample": latent_model_input,
+                "timestep": timestep_float,
+                "encoder_hidden_states": text_embeddings,
+            }
             if add_kwargs:
                 params.update(add_kwargs)
 
@@ -395,7 +397,6 @@ class StableDiffusionPipeline:
             if self.nvtx_profile:
                 nvtx.end_range(nvtx_latent_step)
 
-        latents = 1.0 / self.vae_scaling_factor * latents
         cudart.cudaEventRecord(self.events["denoise-stop"], 0)
 
         # The actual number of steps. It is different from denoising_steps when denoising_end is not None.

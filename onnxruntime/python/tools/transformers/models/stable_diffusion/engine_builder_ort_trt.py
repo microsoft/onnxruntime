@@ -8,12 +8,11 @@ import logging
 import os
 import shutil
 
-import __init__  # noqa: F401. Walk-around to import io_binding_helper directly
 import torch
 from cuda import cudart
 from diffusion_models import PipelineInfo
 from engine_builder import EngineBuilder, EngineType
-from io_binding_helper import CudaSession
+from ort_utils import CudaSession
 
 import onnxruntime as ort
 

@@ -272,7 +272,7 @@ class BaseModel:
         if isinstance(sample_input[-1], dict) and "added_cond_kwargs" in sample_input[-1]:
             platten_input = sample_input[:-1]
             kwargs = sample_input[-1]["added_cond_kwargs"]
-            for _key, value in kwargs.items():
+            for value in kwargs.values():
                 platten_input += (value,)
             sample_input = platten_input
 

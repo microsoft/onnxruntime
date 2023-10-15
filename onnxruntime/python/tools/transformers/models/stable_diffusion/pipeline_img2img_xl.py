@@ -137,8 +137,13 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
                 init_latents = self.encode_image(init_image)
 
             # Add noise to latents using timesteps
-            noise = torch.randn(init_latents.shape, device=self.device, dtype=torch.float32, generator=self.generator)
-            latents = self.scheduler.add_noise(init_latents, noise, t_start, latent_timestep)
+            if denoising_start is None:
+                noise = torch.randn(
+                    init_latents.shape, device=self.device, dtype=torch.float32, generator=self.generator
+                )
+                latents = self.scheduler.add_noise(init_latents, noise, t_start, latent_timestep)
+            else:
+                latents = init_latents
 
             # UNet denoiser
             latents = self.denoise_latent(
@@ -154,9 +159,9 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         with torch.inference_mode():
             # VAE decode latent
             if return_type == "latents":
-                images = latents * self.vae_scaling_factor
+                images = latents
             else:
-                images = self.decode_latent(latents)
+                images = self.decode_latent(latents / self.vae_scaling_factor)
 
             torch.cuda.synchronize()
             e2e_toc = time.perf_counter()
