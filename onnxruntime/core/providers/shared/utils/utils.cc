@@ -32,7 +32,8 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
   if (!GetType(*node.InputDefs()[0], input_type, logger))
     return false;
 
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     LOGS(logger, VERBOSE) << "GetClipMinMax() only support Clip node with float inputs for now. "
                           << "The node [" << node_name << "] has input 0 type: " << input_type;
     return false;
@@ -43,6 +44,7 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
 
   if (node.SinceVersion() < 11) {  // Clip opset 1, 6 is using attributes for min/max
     NodeAttrHelper helper(node);
+    // attributes will be always float
     min = helper.Get("min", std::numeric_limits<float>::lowest());
     max = helper.Get("max", std::numeric_limits<float>::max());
   } else {
@@ -53,7 +55,11 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
         return false;
       }
       Initializer unpacked_tensor(*initializers.at(min_name));
-      min = unpacked_tensor.DataAsSpan<float>()[0];
+      if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        min = (unpacked_tensor.DataAsSpan<MLFloat16>()[0]).ToFloat();
+      } else {
+        min = unpacked_tensor.DataAsSpan<float>()[0];
+      }
     }
 
     if (node.InputDefs().size() > 2) {  // we have input max
@@ -63,7 +69,11 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
         return false;
       }
       Initializer unpacked_tensor(*initializers.at(max_name));
-      max = unpacked_tensor.DataAsSpan<float>()[0];
+      if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        max = (unpacked_tensor.DataAsSpan<MLFloat16>()[0]).ToFloat();
+      } else {
+        max = unpacked_tensor.DataAsSpan<float>()[0];
+      }
     }
   }
 
