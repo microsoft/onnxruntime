@@ -35,32 +35,32 @@ namespace Dml
     onnxruntime::common::Status DmlRuntimeGraphFusionTransformer::ApplyImpl(
         onnxruntime::Graph& graph,
         bool& modified,
-        int graph_level,
+        int graphLevel,
         const onnxruntime::logging::Logger& logger) const
     {
-        return ApplyImplHelper(graph, modified, graph_level, logger, {});
+        return ApplyImplHelper(graph, modified, graphLevel, logger, {});
     }
 
     onnxruntime::common::Status DmlRuntimeGraphFusionTransformer::ApplyImplHelper(
         onnxruntime::Graph& graph,
         bool& modified,
-        int graph_level,
+        int graphLevel,
         const onnxruntime::logging::Logger& logger,
         const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputDefs) const
     {
-        onnxruntime::ProviderType provider_type = onnxruntime::kDmlExecutionProvider;
+        onnxruntime::ProviderType providerType = onnxruntime::kDmlExecutionProvider;
         const gsl::not_null<const onnxruntime::KernelRegistry*> registry = m_providerImpl->GetKernelRegistry().get();
-        const auto kernel_type_str_resolver = onnxruntime::OpSchemaKernelTypeStrResolver{};
-        const auto kernel_lookup = onnxruntime::KernelLookup{provider_type,
+        const auto kernelTypeStrResolver = onnxruntime::OpSchemaKernelTypeStrResolver{};
+        const auto kernelLookup = onnxruntime::KernelLookup{providerType,
                                                              gsl::make_span(&registry, 1),
-                                                             kernel_type_str_resolver};
+                                                             kernelTypeStrResolver};
 
-        onnxruntime::GraphViewer graph_viewer(graph);
-        const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+        onnxruntime::GraphViewer graphViewer(graph);
+        const auto& nodeTopologyList = graphViewer.GetNodesInTopologicalOrder();
 
-        for (auto node_index : node_topology_list)
+        for (auto nodeIndex : nodeTopologyList)
         {
-            auto* node = graph.GetNode(node_index);
+            auto* node = graph.GetNode(nodeIndex);
             if (!node)
             {
                 continue;  // node was removed
@@ -75,7 +75,7 @@ namespace Dml
             for (auto& entry : node->GetAttributeNameToMutableSubgraphMap())
             {
                 auto& subgraph = *entry.second;
-                ORT_RETURN_IF_ERROR(ApplyImplHelper(subgraph, modified, graph_level + 1, logger, subgraphImplicitInputDefs));
+                ORT_RETURN_IF_ERROR(ApplyImplHelper(subgraph, modified, graphLevel + 1, logger, subgraphImplicitInputDefs));
             }
         }
 
@@ -84,11 +84,10 @@ namespace Dml
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties> graphNodePropertyMap;
         std::unordered_set<std::string> requiredInitializerMap;
         std::unordered_set<std::string> dynamicCpuInputMap;
-        onnxruntime::GraphViewer graphViewer(graph);
         std::vector<std::unique_ptr<GraphPartition>> partitions = BuildPartitions(
             graphViewer,
             *m_providerImpl->GetInternalRegistrationInfoMap(),
-            kernel_lookup,
+            kernelLookup,
             m_providerImpl->GetSupportedDeviceDataTypeMask(),
             graphNodePropertyMap,
             requiredInitializerMap,

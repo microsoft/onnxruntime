@@ -319,7 +319,7 @@ namespace Dml
                 persistentResourceBinding,
                 inputBindings,
                 outputBindings));
-            }
+        }
 
     private:
         ComPtr<IWinmlExecutionProvider> m_winmlProvider;
