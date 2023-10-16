@@ -2698,7 +2698,8 @@ for beta != 0.)DOC")
                                     "TR",
                                     GEMM_FLOAT8_TYPES,
                                     "Constrain type to result type.")
-                                .TypeConstraint("TS", {"tensor(float)"}, "Constrain type for all input scales (scaleA, scaleB, scaleY).")
+                                .TypeConstraint("TS", {"tensor(float)"},
+                                                "Constrain type for all input scales (scaleA, scaleB, scaleY).")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0, TensorProto::FLOAT);
                                   if (!hasNInputShapes(ctx, 2)) {
@@ -2716,7 +2717,8 @@ for beta != 0.)DOC")
                                   if (second_input_shape.dim_size() != 2) {
                                     fail_shape_inference("Second input does not have rank 2");
                                   }
-                                  updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
+                                  updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0),
+                                                             second_input_shape.dim(transB ? 0 : 1)});
                                 }));
 
 static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gemm_float8.h"
+#include "core/providers/cuda/math/gemm_float8.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include <algorithm>
@@ -115,7 +115,8 @@ int32_t TypeSize(int32_t element_type) {
   }
 }
 
-void GemmFloat8::set(const TensorShape& a_shape, const TensorShape& b_shape, int& M, int& N, int& K, int& lda, int& ldb, int& ldd, bool row_major) const {
+void GemmFloat8::set(const TensorShape& a_shape, const TensorShape& b_shape,
+                     int& M, int& N, int& K, int& lda, int& ldb, int& ldd, bool row_major) const {
   constexpr int ir = 0;
   constexpr int ic = 1 - ir;
   if (transA_ && !transB_) {  // TN
@@ -420,7 +421,7 @@ Status GemmFloat8::ComputeGemm(
 
   void* workspace = nullptr;
   if (workspaceSize > 0) {
-    CUDA_RETURN_IF_ERROR(cudaMalloc((void**)&workspace, workspaceSize));
+    CUDA_RETURN_IF_ERROR(cudaMalloc(reinterpret_cast<void**>(&workspace), workspaceSize));
   }
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   const void* bias = has_bias ? p_input_c : p_output_y;
