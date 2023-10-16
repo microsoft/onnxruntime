@@ -634,8 +634,8 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
           if (iter->second.kernel_def->Domain() == candidate_custom_op_domain->domain_) {
             need_resigter = false;
             LOGS(*session_logger_, WARNING) << "The domain name " << candidate_custom_op_domain->domain_ << " has already been registered for " << provider_type;
+            break;
           }
-          break;
         }
         if (need_resigter) {
           custom_op_domains.push_back(candidate_custom_op_domain);
