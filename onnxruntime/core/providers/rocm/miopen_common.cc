@@ -75,7 +75,7 @@ Status MiopenTensor::CreateTensorIfNeeded() {
 
 Status MiopenTensor::Set(gsl::span<const int64_t> input_dims, miopenDataType_t dataType, bool is_nhwc) {
   if (is_nhwc) {
-     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "NHWC Tensor usage is not supported in AMD builds for now");
   }
 
