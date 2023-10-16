@@ -231,30 +231,10 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder_4<std::int64_t, std::int64_t>)
 
 template <>
-int64_t LabelEncoder_4<std::int64_t, std::int64_t>::GetDefault(const OpKernelInfo& info) const {
-  ONNX_NAMESPACE::TensorProto attr_tensor_proto;
-  auto result = info.GetAttr("default_tensor", &attr_tensor_proto);
-  if (result.IsOK() && utils::HasDataType(attr_tensor_proto)) {
-    // Return value in singleton tensor
-    ORT_ENFORCE(attr_tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                "LabelEncoder default must be of type int64");
-    ORT_ENFORCE(attr_tensor_proto.int64_data_size() == 1, "LabelEncoder default must be a singleton tensor");
-    return attr_tensor_proto.int64_data()[0];
-  } else {
-    int64_t default_value;
-    result = info.GetAttr<std::int64_t>("default_int64", &default_value);
-    if (result.IsOK()) {
-      return default_value;
-    } else {
-      return -1;
-    }
-  }
-}
-
-template <>
 void LabelEncoder_4<std::int64_t, std::int64_t>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
   _key_field_name = "keys_int64s";
   _value_field_name = "values_int64s";
+  _default_value = GetDefault(kernel_info, "default_int64", static_cast<int64_t>(-1));
 };
 
 }  // namespace ml

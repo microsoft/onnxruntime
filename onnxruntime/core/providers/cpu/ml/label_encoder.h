@@ -120,19 +120,36 @@ std::vector<T> GetAttribute(const OpKernelInfo& info, const std::string& name, c
   return attrs;
 }
 
+template <typename T>
+T GetDefault(const OpKernelInfo& info, const std::string& attr_name, const T& backup) {
+  ONNX_NAMESPACE::TensorProto attr_tensor_proto;
+  auto result = info.GetAttr("default_tensor", &attr_tensor_proto);
+  if (result.IsOK() && utils::HasDataType(attr_tensor_proto)) {
+    auto default_value = utils::ParseData<T>(attr_tensor_proto);
+    ORT_ENFORCE(default_value.size() == 1, "default_tensor must have exactly one element");
+    return default_value[0];
+  } else {
+    T default_value;
+    result = info.GetAttr<T>(attr_name, &default_value);
+    if (result.IsOK()) {
+      return default_value;
+    } else {
+      return backup;
+    }
+  }
+}
+
 template <typename TKey, typename TValue>
 class LabelEncoder_4 final : public OpKernel {
  public:
   LabelEncoder_4(const OpKernelInfo& kernel_info) : OpKernel(kernel_info) {
-    // Determine if we are using tensor based attribute(s) or not.
     InitializeAttrFields(kernel_info);
-    std::vector<TKey> keys = GetAttribute<TKey>(kernel_info, _key_field_name, "keys_tensor");
-    std::vector<TValue> values = GetAttribute<TValue>(kernel_info, _value_field_name, "values_tensor");
+    auto keys = GetAttribute<TKey>(kernel_info, _key_field_name, "keys_tensor");
+    auto values = GetAttribute<TValue>(kernel_info, _value_field_name, "values_tensor");
     ORT_ENFORCE(keys.size() == values.size(), "Keys and values must have the same length.");
     for (size_t i = 0; i < keys.size(); ++i) {
       _map.emplace(keys[i], values[i]);
     }
-    _default_value = GetDefault(kernel_info);
   }
   Status Compute(OpKernelContext* context) const override {
     const auto* tensor_pointer = context->Input<Tensor>(0);
@@ -157,7 +174,6 @@ class LabelEncoder_4 final : public OpKernel {
 
  private:
   void InitializeAttrFields(const OpKernelInfo& kernel_info);
-  TValue GetDefault(const OpKernelInfo& kernel_info) const;
   InlinedHashMap<TKey, TValue> _map;
   TValue _default_value;
   std::string _key_field_name;
