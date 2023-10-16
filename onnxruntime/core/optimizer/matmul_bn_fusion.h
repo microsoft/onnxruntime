@@ -14,7 +14,7 @@ class MatmulBNFusion : public RewriteRule {
  public:
   MatmulBNFusion() : RewriteRule("MatMul_BatchNormalization_Fusion") {}
 
-  std::vector<std::string> TargetOpTypes() const noexcept {
+  std::vector<std::string> TargetOpTypes() const noexcept override {
     return {"MatMul"};
   }
 
