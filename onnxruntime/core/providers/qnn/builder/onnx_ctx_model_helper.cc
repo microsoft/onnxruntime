@@ -208,7 +208,7 @@ Status QnnCacheModelHandler::GenerateCtxCacheOnnxModel(unsigned char* buffer,
                                                        const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
                                                        const logging::Logger& logger) {
   std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
-  Model model(qdq_model_graph_name_, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+  Model model(model_name_, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               domain_to_version, {}, logger);
   auto& graph = model.MainGraph();
   graph.SetDescription(model_description_);

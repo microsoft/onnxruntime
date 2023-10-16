@@ -97,7 +97,6 @@ class QnnCacheModelHandler {
                                QnnModel& qnn_model);
 
  private:
-  std::string qdq_model_graph_name_ = "";
   bool is_metadata_ready_ = false;
   // model_name_ to cache_source_ -- metadata get from generated Qnn context binary Onnx model
   std::string model_name_ = "";
