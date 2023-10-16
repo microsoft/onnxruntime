@@ -78,7 +78,7 @@ Status MiopenTensor::Set(gsl::span<const int64_t> input_dims, miopenDataType_t d
      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "NHWC Tensor usage is not supported in AMD builds for now");
   }
-  
+
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
   int rank = gsl::narrow_cast<int>(input_dims.size());
