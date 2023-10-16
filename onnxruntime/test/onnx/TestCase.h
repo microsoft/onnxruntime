@@ -101,12 +101,6 @@ class TestTolerances {
   const Map relative_overrides_;
 };
 
-void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-               const TestTolerances& tolerances,
-               const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
-               const std::function<void(std::unique_ptr<ITestCase>)>& process_function);
-
 struct BrokenTest {
   std::string test_name_;
   std::string reason_;
@@ -118,6 +112,16 @@ struct BrokenTest {
   }
 };
 
+void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+               const TestTolerances& tolerances,
+               const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
+               std::unique_ptr<std::set<BrokenTest>> broken_test_list,
+               std::unique_ptr<std::set<std::string>> broken_tests_keyword_set,
+               const std::function<void(std::unique_ptr<ITestCase>)>& process_function);
+
 std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider_name);
+
+std::unique_ptr<std::set<std::string>> GetBrokenTestsKeyWordSet(const std::string& provider_name);
 
 std::unique_ptr<std::set<std::string>> GetBrokenTestsKeyWordSet(const std::string& provider_name);

@@ -76,10 +76,10 @@ _GlobalOpKernelInfoMap: Dict[str, CustomFuncOpKernelInfo] = {}
 def _process_inplace_outputs(
     kernel_info: CustomFuncOpKernelInfo,
     func_name: str,
-    input_tensors_of_kernel_run: List[torch.Tensor],
+    input_tensors_of_kernel_run: Dict[int, Union[torch.Tensor, None]],
     all_outputs_of_kernel_run: List[Union[torch.Tensor, any]],
     all_outputs_to_tensor_inputs_reuse_map: List[int],
-    raw_input_tensors_used_inplace: Dict[int, torch.Tensor],
+    raw_input_tensors_used_inplace: Dict[int, Union[torch.Tensor, None]],
     is_backward=False,
 ):
     """Special handling for in-place reusing in forward or backward.
@@ -87,12 +87,12 @@ def _process_inplace_outputs(
     Args:
         kernel_info: kernel-specific information.
         func_name: name of the autograd.Function.
-        input_tensors_of_kernel_run: input tensors used to run the autograd.Function forward/backward.
+        input_tensors_of_kernel_run: all tensor input tensors used to run the autograd.Function forward/backward.
         all_outputs_of_kernel_run: all outputs of the autograd.Function forward/backward.
         all_outputs_to_tensor_inputs_reuse_map: a list of the same length of kernel outputs, each element representing
             which input index it is reusing. If there is no reuse, the value is -1.
         raw_input_tensors_used_inplace: a dict of raw input tensors marked as inplace in
-            `all_outputs_to_tensor_inputs_reuse_map`, the key is the input index, value is the raw input tensor.
+            `all_outputs_to_tensor_inputs_reuse_map`, the key is the tensor input index, value is the raw input tensor.
         is_backward: indicates if this is backward or forward.
 
     Procedures:
@@ -127,7 +127,9 @@ def _process_inplace_outputs(
     """
 
     log_prefix = f"{func_name}->{'Backward' if is_backward else 'Forward'}: "
-    input_tensor_address_list = [t.data_ptr() for t in input_tensors_of_kernel_run]
+    input_tensor_address_list = [
+        t.data_ptr() if isinstance(t, torch.Tensor) else -1 for t in input_tensors_of_kernel_run.values()
+    ]
     if is_backward:
         input_tensor_address_list = [-1, *input_tensor_address_list]  # skip the context input
 
@@ -159,6 +161,14 @@ def _process_inplace_outputs(
             zip(detected_reuse_map, all_outputs_to_tensor_inputs_reuse_map)
         ):
             if inplace_index == detected_inplace_index:
+                continue
+
+            if (
+                inplace_index in raw_input_tensors_used_inplace
+                and raw_input_tensors_used_inplace[inplace_index] is None
+            ):
+                # Use specified inplace input index, but the input tensor is None, which means the input is not
+                # a tensor, so we don't do further checks.
                 continue
 
             # If users register inplace_map (alloc planner will do buffer reuse),
@@ -210,7 +220,8 @@ def _process_inplace_outputs(
     ):
         for raw_tensor_input_index, raw_input_tensor in raw_input_tensors_used_inplace.items():
             # raw_input_tensor can be None for backward run, but backward won't go here.
-            assert isinstance(raw_input_tensor, torch.Tensor)
+            if not isinstance(raw_input_tensor, torch.Tensor):
+                continue
 
             # We did not do the check with tensor_input_indices_to_save_in_ctx/tensor_input_indices_for_mark_dirty
             # because even for those tensor indices not in
@@ -236,8 +247,8 @@ def _process_inplace_outputs(
                     # Only need a copy once.
                     raw_input_tensor.copy_(all_outputs_of_kernel_run[output_index])
                     _log_warning(
-                        f"{log_prefix}Copy output tensor {output_index} to raw input tensor {raw_tensor_input_index}."
-                        "Provide output to input reuse mapping to avoid the copy overhead."
+                        f"{log_prefix}Copy output tensor {output_index} to raw input tensor {raw_tensor_input_index}. "
+                        f"{'Provide output to input reuse mapping to avoid the copy overhead.' if not is_first_time_init else ''}"
                     )
                     copied = True
 
@@ -531,7 +542,7 @@ def call_python_forward_function(
             _process_inplace_outputs(
                 kernel_info,
                 func_name,
-                input_tensors_used_for_fw_run.values(),
+                input_tensors_used_for_fw_run,
                 final_rets,
                 inplace_map,
                 raw_input_tensors_used_inplace,
@@ -624,6 +635,10 @@ def call_python_backward_function(
                             wrapped_arg = torch.zeros(shape, device=device, dtype=dtype)
                         else:
                             wrapped_arg = arg
+
+                        if grad_input_index in inplace_map:
+                            raw_input_tensors_used_inplace[tensor_input_index] = arg
+
                     else:
                         # Assume it's a DLPack tensor# and convert it to PyTorch tensor.
                         wrapped_arg = from_dlpack(arg)
@@ -631,7 +646,8 @@ def call_python_backward_function(
                         if grad_input_index in inplace_map:
                             raw_input_tensors_used_inplace[tensor_input_index] = wrapped_arg
 
-                        input_tensors_used_for_bw_run[tensor_input_index] = wrapped_arg
+                    # This may include None values.
+                    input_tensors_used_for_bw_run[tensor_input_index] = wrapped_arg
 
                     if wrapped_arg is not None:
                         # Only requires gradient when running under training mode
@@ -662,7 +678,7 @@ def call_python_backward_function(
             _process_inplace_outputs(
                 kernel_info,
                 func_name,
-                input_tensors_used_for_bw_run.values(),
+                input_tensors_used_for_bw_run,
                 result,
                 inplace_map,
                 raw_input_tensors_used_inplace,

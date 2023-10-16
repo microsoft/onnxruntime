@@ -8,7 +8,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
@@ -119,11 +119,7 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
       }`;
   return {
     name: 'Softmax',
-    inputTypes: [GpuDataType.default],
-    getRunData: () => ({
-      outputs: [{dims: shape, dataType: input.dataType, gpuDataType: GpuDataType.default}],
-      dispatchGroup: {x: rows}
-    }),
+    getRunData: () => ({outputs: [{dims: shape, dataType: input.dataType}], dispatchGroup: {x: rows}}),
     getShaderSource,
   };
 };
