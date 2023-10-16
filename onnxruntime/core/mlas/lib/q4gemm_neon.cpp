@@ -257,8 +257,74 @@ MlasBlkQ4DequantBNeon<MLAS_Q4TYPE_BLK0>(
     float* FpData, const uint8_t* PackedB, size_t CountN, size_t CountK, size_t ldb)
 {
     using Q4Type = MLAS_Q4TYPE_BLK0;
-    static_cast<void>(FpData, PackedB, CountN, CountK, ldb);
-    // TODO ...
+
+    // unpack B in format suitable for MlasSgemmKernelZero
+
+    auto impl0_reference = [&]() {
+        float* Dst = FpData;
+        const uint8_t* PackedBCol = PackedB;
+
+        for (size_t n = 0; n < CountN; n += 16) {
+            const size_t nnlen = std::min(CountN - n, size_t{16});
+
+            for (size_t nn = 0; nn < nnlen; ++nn) {
+                const uint8_t* PackedBBlock = PackedBCol;
+
+                for (size_t k = 0; k < CountK; k += Q4Type::BlkLen) {
+                    float b_blk_unpacked[32]{};
+
+                    const size_t kblocklen = std::min(CountK - k, Q4Type::BlkLen);
+
+                    const float s = MlasQ4BlkScale<Q4Type>(PackedBBlock);
+                    const uint8_t z = 8;  // MlasQ4BlkZeroPoint<Q4Type>(PackedBBlock);
+                    const uint8_t* PackedBData = MlasQ4BlkData<Q4Type>(PackedBBlock);
+
+                    for (size_t kk = 0; kk < kblocklen; kk += 32) {
+                        const size_t ksubblocklen = std::min(size_t{32}, kblocklen - kk);
+
+                        for (size_t l0 = 0; l0 < 16; ++l0) {
+                            const uint8_t PackedByte = PackedBData[l0];
+
+                            if (l0 < ksubblocklen) {
+                                const int8_t PackedByteLo = PackedByte & 0x0F;
+                                const float UnpackedValue0 = (PackedByteLo - z) * s;
+                                b_blk_unpacked[kk + l0] = UnpackedValue0;
+                            }
+
+                            const size_t l1 = l0 + 16;
+                            if (l1 < ksubblocklen) {
+                                const int8_t PackedByteHi = PackedByte >> 4;
+                                const float UnpackedValue1 = (PackedByteHi - z) * s;
+                                b_blk_unpacked[kk + l1] = UnpackedValue1;
+                            }
+                        }
+
+                        PackedBData += 16;
+                    }
+
+                    for (size_t kk = 0; kk < kblocklen; ++kk) {
+                        Dst[(k + kk) * 16 + nn] = b_blk_unpacked[kk];
+                    }
+
+                    PackedBBlock += Q4Type::BlobSize;
+                }
+
+                PackedBCol += ldb;
+            }
+
+            // zero out any remaining columns
+
+            if (nnlen < 16) {
+                for (size_t k = 0; k < CountK; ++k) {
+                    std::fill_n(Dst + (k * 16) + nnlen, 16 - nnlen, 0.0f);
+                }
+            }
+
+            Dst += CountK * 16;
+        }
+    };
+
+    impl0_reference();
 }
 
 template <>
