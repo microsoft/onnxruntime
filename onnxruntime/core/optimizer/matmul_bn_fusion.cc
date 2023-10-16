@@ -33,7 +33,7 @@ NodeIndex GetOtherParentOfNode(const Node& node, NodeIndex first_parent_index) {
 }
 
 bool MatchPath(const Node& parent_node,
-               const gsl::span<std::pair<std::string, std::initializer_list<int>>>& path,
+               const gsl::span<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>>& path,
                const Node& child_node) {
   if (path.size() == 0) {
     return true;
@@ -99,14 +99,14 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
   ++child_node_iterator;
   const Node& second_child_node = *child_node_iterator;
 
-  std::vector<std::pair<std::string, std::initializer_list<int>>> first_path = 
+  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> first_path = 
   {{"Reshape", {1, 5}},
     {"Transpose", {1}},
     {"BatchNormalization", {1, 6, 7}},
     {"Transpose", {1}},
     {"Reshape", {1, 5}}};
 
-  std::vector<std::pair<std::string, std::initializer_list<int>>> second_path =
+  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> second_path =
   {{"Shape", {1}},
     {"Cast", {1, 6}},
     {"Cast", {1, 6}},
