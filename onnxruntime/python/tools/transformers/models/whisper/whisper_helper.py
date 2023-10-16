@@ -312,6 +312,7 @@ class WhisperHelper:
             "tensor(uint8)": np.uint8,
         }
 
+        use_extra_decoding_ids = "extra_decoding_ids" in ort_names
         for name, dtype in zip(ort_names, ort_dtypes):
             if name == "input_features":
                 inputs[name] = inputs[name].detach().cpu().numpy()
@@ -320,9 +321,18 @@ class WhisperHelper:
             elif name == "prefix_vocab_mask":
                 inputs[name] = np.ones((batch_size, config.vocab_size), dtype=ort_to_np[dtype])
             elif name == "decoder_input_ids":
-                inputs[name] = np.array([[config.decoder_start_token_id, 50259, 50359, 50363]], dtype=ort_to_np[dtype])
+                raw_input_ids = (
+                    [[config.decoder_start_token_id]]
+                    if use_extra_decoding_ids
+                    else [[config.decoder_start_token_id, 50259, 50359, 50363]]
+                )
+                inputs[name] = np.array(raw_input_ids, dtype=ort_to_np[dtype])
             elif name == "logits_processor":
                 inputs[name] = np.array([1], dtype=ort_to_np[dtype])
+            elif name == "cross_qk_layer_head":
+                inputs[name] = np.array([[0, 0]], dtype=ort_to_np[dtype])
+            elif name == "extra_decoding_ids":
+                inputs[name] = np.repeat(np.array([[50259, 50359, 50363]], dtype=ort_to_np[dtype]), batch_size, 0)
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
         ort_outputs = ort_session.run(None, inputs)[0][0]

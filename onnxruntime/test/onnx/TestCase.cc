@@ -186,7 +186,7 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
   bool clean_eof = false;
-  int item_id = 1;
+  [[maybe_unused]] int item_id = 1;
   for (proto::TraditionalMLData data;
        ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof);
        ++item_id, data.Clear()) {
