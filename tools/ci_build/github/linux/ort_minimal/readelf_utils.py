@@ -23,7 +23,7 @@ def get_section_sizes(binary_path, readelf_path, dump_to_file=None):
     """
 
     cmd = [readelf_path, "--sections", "--wide", binary_path]
-    result = subprocess.run(cmd, stdout=subprocess.PIPE)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE)  # noqa: PLW1510
     result.check_returncode()
     output = result.stdout.decode("utf-8")
 

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, SessionHandler, Tensor,} from 'onnxruntime-common';
+import {type Backend, InferenceSession, type InferenceSessionHandler, type SessionHandler, Tensor} from 'onnxruntime-common';
 import {Platform} from 'react-native';
 
-import {binding, Binding, JSIBlob, jsiHelper} from './binding';
+import {binding, type Binding, type JSIBlob, jsiHelper} from './binding';
 
 type SupportedTypedArray = Exclude<Tensor.DataType, string[]>;
 
@@ -43,7 +43,7 @@ const normalizePath = (path: string): string => {
   return path;
 };
 
-class OnnxruntimeSessionHandler implements SessionHandler {
+class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   #inferenceSession: Binding.InferenceSession;
   #key: string;
 
@@ -66,12 +66,14 @@ class OnnxruntimeSessionHandler implements SessionHandler {
       let results: Binding.ModelLoadInfoType;
       // load a model
       if (typeof this.#pathOrBuffer === 'string') {
+        // load model from model path
         results = await this.#inferenceSession.loadModel(normalizePath(this.#pathOrBuffer), options);
       } else {
+        // load model from buffer
         if (!this.#inferenceSession.loadModelFromBlob) {
           throw new Error('Native module method "loadModelFromBlob" is not defined');
         }
-        const modelBlob = jsiHelper.storeArrayBuffer(this.#pathOrBuffer);
+        const modelBlob = jsiHelper.storeArrayBuffer(this.#pathOrBuffer.buffer);
         results = await this.#inferenceSession.loadModelFromBlob(modelBlob, options);
       }
       // resolve promise if onnxruntime session is successfully created
@@ -163,8 +165,8 @@ class OnnxruntimeBackend implements Backend {
     return Promise.resolve();
   }
 
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<SessionHandler> {
+  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+      Promise<InferenceSessionHandler> {
     const handler = new OnnxruntimeSessionHandler(pathOrBuffer);
     await handler.loadModel(options || {});
     return handler;
