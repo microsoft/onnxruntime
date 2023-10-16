@@ -2803,6 +2803,44 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 #ifdef USE_TENSORRT
 class CApiTensorRTTest : public testing::Test, public ::testing::WithParamInterface<std::string> {};
 
+TEST_P(CApiTensorRTTest, TestIOBindingAndExternalStream) {
+  const auto& api = Ort::GetApi();
+  OrtTensorRTProviderOptionsV2* trt_options;
+  OrtAllocator* allocator;
+  char* trt_options_str;
+  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
+  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+
+  // updating provider option with user provided compute stream
+  cudaStream_t compute_stream = nullptr;
+  void* user_compute_stream = nullptr;
+  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptionsWithValue(rel_trt_options.get(), "user_compute_stream", compute_stream) == nullptr);
+  ASSERT_TRUE(api.GetTensorRTProviderOptionsByName(rel_trt_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
+  ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
+
+  // simple inference test
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  std::basic_string<ORTCHAR_T> model_uri = MODEL_URI;
+
+  Ort::SessionOptions session_options;
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(static_cast<OrtSessionOptions*>(session_options), rel_trt_options.get()) == nullptr);
+  Ort::Session session(*ort_env, model_uri.c_str(), session_options);
+
+
+
+  cudaStreamDestroy(compute_stream);
+}
+
 // This test uses CreateTensorRTProviderOptions/UpdateTensorRTProviderOptions APIs to configure and create a TensorRT Execution Provider
 TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
   std::string param = GetParam();
