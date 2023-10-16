@@ -121,5 +121,83 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   }
 }
 
+void CompareOpTester::CompareEPs(const std::shared_ptr<IExecutionProvider>& source_execution_provider,
+                                 std::vector<std::shared_ptr<IExecutionProvider>>& target_execution_providers,
+                                 double per_sample_tolerance,
+                                 double relative_per_sample_tolerance,
+                                 const bool need_cpu_cast,
+                                 const std::unordered_map<std::string, int>& extra_domain_to_version) {
+  SetTestFunctionCalled();
+
+  auto& model = BuildModel(extra_domain_to_version);
+  auto& graph = model.MainGraph();
+
+  // In InferenceSession::Initialize(), the call to graph partitioner, which is responsible
+  // for Inlining function bodies for ops whose kernel is missing happens before the
+  // Cast Transformer. As a result, for MLFloat16 tests where the node is missing a CPU kernel,
+  // the function body is instead used for CPU pass. This option allows the comparison with
+  // the CPU kernel by adding the input/output casts before looking for a registered CPU kernel.
+  if (need_cpu_cast) {
+    InsertCastTransformer transformer("Test", GetExecutionProvider(kCpuExecutionProvider)->GetKernelRegistry().get());
+    bool modified = false;
+    ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+  }
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Hookup the inputs and outputs
+  std::unordered_map<std::string, OrtValue> feeds;
+  std::vector<std::string> output_names;
+  FillFeedsAndOutputNames(feeds, output_names);
+
+  // Run the model
+  SessionOptions so;
+  so.session_logid = Op();
+
+  InferenceSession source_session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(source_session_object.RegisterExecutionProvider(source_execution_provider));
+
+  // first run with source provider
+  std::string s1;
+  model.ToProto().SerializeToString(&s1);
+  std::istringstream model_proto_str(s1);
+
+  ASSERT_STATUS_OK(source_session_object.Load(model_proto_str));
+
+  ASSERT_STATUS_OK(source_session_object.Initialize());
+
+  std::vector<OrtValue> source_fetches;
+  ASSERT_STATUS_OK(source_session_object.Run({}, feeds, output_names, &source_fetches));
+
+  for (auto& target_execution_provider : target_execution_providers) {
+    // run with target provider
+    // build the graph again as the other graphs may be with casts
+    auto& tp_model = BuildModel(extra_domain_to_version);
+    auto& tp_graph = tp_model.MainGraph();
+
+    ASSERT_STATUS_OK(tp_graph.Resolve());
+
+    InferenceSession target_session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(target_session_object.RegisterExecutionProvider(target_execution_provider));
+
+    std::string s2;
+    tp_model.ToProto().SerializeToString(&s2);
+    std::istringstream model_proto_str1(s2);
+    ASSERT_STATUS_OK(target_session_object.Load(model_proto_str1));
+
+    ASSERT_STATUS_OK(target_session_object.Initialize());
+
+    std::vector<OrtValue> target_fetches;
+    ASSERT_STATUS_OK(target_session_object.Run({}, feeds, output_names, &target_fetches));
+
+    // compare
+    ASSERT_TRUE(source_fetches.size() == target_fetches.size());
+    for (size_t i = 0; i < source_fetches.size(); i++) {
+      auto ret = CompareOrtValue(target_fetches[i], source_fetches[i], per_sample_tolerance,
+                                 relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime

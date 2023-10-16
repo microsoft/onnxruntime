@@ -170,6 +170,12 @@ class CudaKernel : public OpKernel {
     return provider_->PerThreadDefaultCudnnHandle();
   }
 
+  inline cudaStream_t DefaultCudaStream() const {
+    // this will return the CUDA EP level stream which can differ from the actual compute tasks stream
+    // the compute task stream is supplied within OpKernelContext during inference
+    return provider_->ComputeStream();
+  }
+
  protected:
   template <typename T>
   inline const T* GetConstOnes(size_t count, cudaStream_t stream) const {

@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #pragma once
@@ -98,28 +99,34 @@ struct PoolAttributes {
 
   TensorShapeVector SetOutputSize(const TensorShape& input_shape,
                                   int64_t output_channel,
-                                  TensorShapeVector* actual_pads) const {
+                                  TensorShapeVector* actual_pads,
+                                  bool is_nhwc = false) const {
     ORT_ENFORCE(input_shape.Size() > 0 || input_shape[0] == 0,
                 "Invalid input shape. Only N can be zero. Got:", input_shape);
     TensorShapeVector output_dims;
     int64_t N = input_shape[0];
-    InferOutputSize(input_shape.GetDims(), &output_dims, actual_pads);
-
-    output_dims.insert(output_dims.begin(), {N, output_channel});
-
+    InferOutputSize(input_shape.GetDims(), &output_dims, actual_pads, is_nhwc);
+    if (is_nhwc) {
+      output_dims.insert(output_dims.begin(), N);
+      output_dims.push_back(output_channel);
+    } else {
+      output_dims.insert(output_dims.begin(), {N, output_channel});
+    }
     return output_dims;
   }
 
   void InferOutputSize(gsl::span<const int64_t> input_dims,
                        TensorShapeVector* output_dims,
-                       TensorShapeVector* actual_pads) const {
+                       TensorShapeVector* actual_pads,
+                       bool is_nhwc = false) const {
     ORT_ENFORCE(input_dims.size() >= 2);
     if (global_pooling) {
       output_dims->assign(input_dims.size() - 2, 1);
     } else {
       for (size_t dim = 0; dim < input_dims.size() - 2; ++dim) {
         int64_t dim_size = 0;
-        ComputeSizePadDilations(static_cast<int>(input_dims[dim + 2]),
+        auto spatial_dim = is_nhwc ? input_dims[dim + 1] : input_dims[dim + 2];
+        ComputeSizePadDilations(static_cast<int>(spatial_dim),
                                 strides[dim],
                                 kernel_shape[dim],
                                 &actual_pads->at(dim),

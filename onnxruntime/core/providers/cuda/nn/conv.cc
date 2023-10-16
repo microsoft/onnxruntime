@@ -1,38 +1,47 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
+
+#include <utility>
 
 #include "core/providers/cuda/nn/conv.h"
 #include "core/common/span_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/tensor/slice.h"
+#include "core/providers/cuda/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 // Op Set 11 for Conv only update document to clearify default dilations and strides value.
 // which are already convered by op set 11 cpu versoin, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T)                                                           \
+#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                             \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Conv,                                                                                \
-      kOnnxDomain,                                                                         \
+      DOMAIN,                                                                              \
       1, 10,                                                                               \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T, false>);                                                                     \
+      Conv<T, NHWC>);                                                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       Conv,                                                                                \
-      kOnnxDomain,                                                                         \
+      DOMAIN,                                                                              \
       11,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T, false>);
+      Conv<T, NHWC>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
-REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(float, kOnnxDomain, false)
+REGISTER_KERNEL_TYPED(double, kOnnxDomain, false)
+REGISTER_KERNEL_TYPED(MLFloat16, kOnnxDomain, false)
+
+#ifdef ENABLE_CUDA_NHWC_OPS
+REGISTER_KERNEL_TYPED(float, kMSInternalNHWCDomain, true)
+REGISTER_KERNEL_TYPED(MLFloat16, kMSInternalNHWCDomain, true)
+#endif
 
 template <typename T, bool NHWC>
 const cudnnConvolutionFwdAlgo_t Conv<T, NHWC>::kAllAlgos[] = {
@@ -87,6 +96,39 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 }
 
 template <typename T, bool NHWC>
+Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                              bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+  // only layout of weight input is adjusted via PrePack
+  if (NHWC && is_nhwc_domain_) {  // InputTensors::IN_W
+    if (input_idx == 1) {
+      // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
+      auto orig_shape = tensor.Shape();
+
+      InlinedVector<size_t> perm{0, 2, 3, 1};
+      gsl::span<size_t> permutation(perm.data(), 4);
+      TensorShapeVector new_dims{orig_shape[0],
+                                 orig_shape[2],
+                                 orig_shape[3],
+                                 orig_shape[1]};
+      W_ = Tensor::Create(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+
+      auto status = cuda::Transpose::DoTranspose(GetDeviceProp(),
+                                                 DefaultCudaStream(),
+                                                 DefaultCublasHandle(),
+                                                 permutation, tensor, *W_);
+      if (!status.IsOK()) {
+        return status;
+      }
+      CUDA_CALL_THROW(cudaStreamSynchronize(DefaultCudaStream()));
+      is_packed = true;
+    }
+  }
+
+  return Status::OK();
+}
+
+template <typename T, bool NHWC>
 Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) const {
   // set X
   const Tensor* X = context->Input<Tensor>(0);
@@ -95,7 +137,12 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
   s_.x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   s_.element_size = X->DataType()->Size();
   // set W
-  const Tensor* W = context->Input<Tensor>(1);
+  const Tensor* W;
+  if (!W_) {
+    W = context->Input<Tensor>(1);
+  } else {
+    W = W_.get();
+  }
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
   s_.w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
