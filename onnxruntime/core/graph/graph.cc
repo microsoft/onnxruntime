@@ -4158,7 +4158,7 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
       // then leave the name as is and reuse the NodeArg
       const auto& input_name = input_def->Name();
       if (if_all_inputs.count(input_name) > 0) {
-        auto* node_arg = GetNodeArg(input_name);
+        auto* node_arg = GetNodeArgIncludingParentGraphs(input_name);
         ORT_ENFORCE(node_arg != nullptr,
                     "Implicit input expected to have existing node_arg: ", input_name);
         new_node_input_defs.push_back(node_arg);
