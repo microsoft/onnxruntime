@@ -604,6 +604,13 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
 } OrtMIGraphXProviderOptions;
 
+/** \brief AMD Unified Provider Options
+ *
+ * \see OrtApi::SessionOptionsAppendExecutionProvider_AMD_Unified
+ */
+typedef struct OrtAMDUnifiedProviderOptions {
+} OrtAMDUnifiedProviderOptions;
+
 /** \brief OpenVINO Provider Options
  *
  * \see OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO

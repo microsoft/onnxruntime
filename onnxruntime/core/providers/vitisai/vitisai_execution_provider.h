@@ -41,11 +41,30 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const IKernelLookup& /*kernel_lookup*/) const override;
 
+  // XXX: Really necesssary?
+  // Eventually, we'll probably "decommission" current separate EPs
+  // from ONNXRuntime once the unified EP is ready.
+  // The decommissioned EPs will still be there as libraries
+  // serving the unified EP.
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability_Internal(const onnxruntime::GraphViewer& graph,
+                const IKernelLookup& /*kernel_lookup*/) const override;
+
   int GetDeviceId() const { return 0; }
 
   common::Status Compile(
       const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
       std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
+  // XXX: Really necesssary?
+  // Eventually, we'll probably "decommission" current separate EPs
+  // from ONNXRuntime once the unified EP is ready.
+  // The decommissioned EPs will still be there as libraries
+  // serving the unified EP.
+  common::Status Compile_Internal(
+      const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+      std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
  private:
