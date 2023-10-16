@@ -1549,5 +1549,20 @@ Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
   return UnpackInitializerData(initializer, Path(), unpacked_tensor);
 }
 
+#define DEFINE_PARSE_DATA(type, typed_data_fetch)                                      \
+  template <>                                                                          \
+  const std::vector<type> ParseData(const ONNX_NAMESPACE::TensorProto& tensor_proto) { \
+    if (tensor_proto.has_raw_data()) {                                                 \
+      ORT_THROW("ParseData is not supported when raw_data is enabled");                \
+    }                                                                                  \
+    const auto& data = tensor_proto.typed_data_fetch();                                \
+    return std::vector<type>(data.cbegin(), data.cend());                              \
+  }
+
+DEFINE_PARSE_DATA(int32_t, int32_data)
+DEFINE_PARSE_DATA(int64_t, int64_data)
+DEFINE_PARSE_DATA(float, float_data)
+DEFINE_PARSE_DATA(double, double_data)
+DEFINE_PARSE_DATA(std::string, string_data)
 }  // namespace utils
 }  // namespace onnxruntime

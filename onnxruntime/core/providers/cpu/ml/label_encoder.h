@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/ml/ml_common.h"
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 namespace ml {
@@ -106,13 +107,27 @@ class LabelEncoder_2 final : public OpKernel {
   std::string _value_field_name;
 };
 
+template <typename T>
+std::vector<T> GetAttribute(const OpKernelInfo& info, const std::string& name, const std::string& tensor_name) {
+  std::vector<T> attrs;
+  auto result = info.GetAttrs<T>(name, attrs);
+  if (!result.IsOK()) {
+    ONNX_NAMESPACE::TensorProto attr_tensor_proto;
+    result = info.GetAttr(tensor_name, &attr_tensor_proto);
+    ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing an attribute");
+    return utils::ParseData<T>(attr_tensor_proto);
+  }
+  return attrs;
+}
+
 template <typename TKey, typename TValue>
 class LabelEncoder_4 final : public OpKernel {
  public:
   LabelEncoder_4(const OpKernelInfo& kernel_info) : OpKernel(kernel_info) {
     // Determine if we are using tensor based attribute(s) or not.
-    auto keys = GetAttribute(kernel_info, "keys");
-    auto values = GetAttribute(kernel_info, "values");
+    InitializeAttrFields(kernel_info);
+    std::vector<TKey> keys = GetAttribute<TKey>(kernel_info, _key_field_name, "keys_tensor");
+    std::vector<TValue> values = GetAttribute<TValue>(kernel_info, _value_field_name, "values_tensor");
     ORT_ENFORCE(keys.size() == values.size(), "Keys and values must have the same length.");
     for (size_t i = 0; i < keys.size(); ++i) {
       _map.emplace(keys[i], values[i]);
@@ -141,10 +156,12 @@ class LabelEncoder_4 final : public OpKernel {
   }
 
  private:
-  std::vector<TKey> GetAttribute(const OpKernelInfo& kernel_info, const std::string& name) const;
+  void InitializeAttrFields(const OpKernelInfo& kernel_info);
   TValue GetDefault(const OpKernelInfo& kernel_info) const;
   InlinedHashMap<TKey, TValue> _map;
   TValue _default_value;
+  std::string _key_field_name;
+  std::string _value_field_name;
 };
 
 }  // namespace ml
