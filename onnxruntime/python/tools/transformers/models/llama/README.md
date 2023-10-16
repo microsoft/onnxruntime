@@ -17,11 +17,30 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 
 To make this option compatible with [Hugging Face's Optimum](https://github.com/huggingface/optimum), you will need to create `config.json` and `generation_config.json` for your model and store them in the same directory as your ONNX models. For example, you can find those JSON files for LLaMA-2 7B on Hugging Face [here](https://huggingface.co/meta-llama/Llama-2-7b-hf).
 
+You will also need to install [the branch for this Optimum PR](https://github.com/huggingface/optimum/pull/1257) instead of Optimum from source or a stable version of Optimum. Once installed, you will need to modify `ORTModelForCausalLM.forward` in `optimum/optimum/onnxruntime/modeling_decoder.py` as follows:
+
+```
+# Before
+if self.use_cache:
+    if past_key_values is not None:
+        input_ids = input_ids[:, -1:]
+        # Flatten the past_key_values (no need to flatten for models using multi-query attn)
+
+
+# After
+if self.use_cache:
+    if past_key_values is not None:
+        input_ids = input_ids[:, -1:] if past_key_values[0][0].shape[2] != 0 else input_ids
+        # Flatten the past_key_values (no need to flatten for models using multi-query attn)
+```
+
 ### Option 2: from [Microsoft's custom export](https://github.com/microsoft/Llama-2-Onnx)
 
 Please follow the [README instructions](https://github.com/microsoft/Llama-2-Onnx#before-you-start) in the custom export of LLaMA-2.
 
 ### Option 3: from [Hugging Face Optimum](https://github.com/huggingface/optimum)
+
+Note that this will produce two ONNX models whereas the above two options produce one ONNX model. 
 
 First, log into the Hugging Face CLI in your terminal:
 
@@ -80,14 +99,12 @@ Note: [Intel's Neural Compressor](https://github.com/intel/neural-compressor) ta
 
 Here are some examples of how you can benchmark LLaMA-2.
 
-Note: In the below examples, `PyTorch` refers to running in PyTorch without `torch.compile` and `PyTorch 2.0` refers to running in PyTorch with `torch.compile`.
-
 ### Variants
 
-1. PyTorch (without `torch.compile`), FP32
+1. PyTorch without `torch.compile`, FP32
 ```
 python3 -m models.llama.benchmark \
-    --benchmark-type hf-pt \
+    --benchmark-type hf-pt-eager \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp32 \
     --batch-sizes "1 2" \
@@ -96,10 +113,10 @@ python3 -m models.llama.benchmark \
     --auth
 ```
 
-2. PyTorch 2.0 (with `torch.compile`), FP16
+2. PyTorch with `torch.compile`, FP16
 ```
 python3 -m models.llama.benchmark \
-    --benchmark-type hf-pt2 \
+    --benchmark-type hf-pt-compile \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp16 \
     --batch-sizes "1 2" \
@@ -112,7 +129,7 @@ python3 -m models.llama.benchmark \
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type hf-ort \
-    --hf-ort-model-path ./Llama-2-7b-hf-onnx/ \
+    --hf-ort-dir-path ./Llama-2-7b-hf-onnx/ \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp32 \
     --batch-sizes "1 2" \
@@ -125,7 +142,7 @@ python3 -m models.llama.benchmark \
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type hf-ort \
-    --hf-ort-model-path ./llama2-7b-fp16/ \
+    --hf-ort-dir-path ./llama2-7b-fp16/ \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp16 \
     --batch-sizes "1 2" \
@@ -134,24 +151,11 @@ python3 -m models.llama.benchmark \
     --auth
 ```
 
-5. Optimum + ONNX Runtime, INT8, export via convert_to_onnx
+5. ONNX Runtime, FP32, Microsoft custom export
 ```
 python3 -m models.llama.benchmark \
-    --benchmark-type hf-ort \
-    --hf-ort-model-path ./llama2-7b-int8/ \
-    --model-name meta-llama/Llama-2-7b-hf \
-    --precision int8 \
-    --batch-sizes "1 2" \
-    --sequence-lengths "8 16" \
-    --device cpu \
-    --auth
-```
-
-6. ONNX Runtime, FP32, Microsoft custom export
-```
-python3 -m models.llama.benchmark \
-    --benchmark-type ort \
-    --ort-model-path llama-2-onnx/7B_float32/ONNX/LlamaV2_7B_float32.onnx \
+    --benchmark-type ort-msft \
+    --ort-model-path ./llama-2-onnx/7B_float32/ONNX/LlamaV2_7B_float32.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp32 \
     --batch-sizes "1 2" \
@@ -159,11 +163,35 @@ python3 -m models.llama.benchmark \
     --device cpu
 ```
 
-7. ONNX Runtime, FP16, Microsoft custom export
+6. ONNX Runtime, FP16, Microsoft custom export
 ```
 python3 -m models.llama.benchmark \
-    --benchmark-type ort \
+    --benchmark-type ort-msft \
     --ort-model-path ./llama-2-onnx/7B_float16/ONNX/LlamaV2_7B_float16.onnx \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --precision fp16 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
+    --device cuda
+```
+
+7. ONNX Runtime, FP32, convert_to_onnx
+```
+python3 -m models.llama.benchmark \
+    --benchmark-type ort-convert-to-onnx \
+    --ort-model-path ./llama2-7b/Llama-2-7b-hf_decoder_merged_model_fp32.onnx \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --precision fp32 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
+    --device cpu
+```
+
+8. ONNX Runtime, FP16, convert_to_onnx
+```
+python3 -m models.llama.benchmark \
+    --benchmark-type ort-convert-to-onnx \
+    --ort-model-path ./llama2-7b/Llama-2-7b-hf_decoder_merged_model_fp16.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp16 \
     --batch-sizes "1 2" \
@@ -174,11 +202,13 @@ python3 -m models.llama.benchmark \
 You can profile a variant by adding the `--profile` flag and providing one batch size and sequence length combination.
 
 ### Benchmark All
-You can use `benchmark_all.py` to benchmark across various platforms and automatically store the results in a CSV file. Here is an example.
+You can use `benchmark_all.py` to benchmark across various options and automatically store the results in a CSV file. Here is an example.
 ```
 python3 -m models.llama.benchmark_all \
-    --hf-ort-model-path ./llama2-7b-fp16/ \
-    --ort-model-path ./llama-2-onnx/7B_float16/ONNX/LlamaV2_7B_float16.onnx \
+    --hf-pt-eager \
+    --hf-pt-compile \
+    --hf-ort-dir-path ./llama2-7b-fp16/ \
+    --ort-msft-model-path ./llama-2-onnx/7B_float16/ONNX/LlamaV2_7B_float16.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp16 \
     --batch-sizes "1 2" \

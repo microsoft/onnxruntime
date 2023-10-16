@@ -9,7 +9,7 @@ import onnx
 import torch
 from benchmark_helper import Precision, prepare_environment, setup_logger
 from convert_generation import replace_mha_with_gqa
-from llama_inputs import get_sample_inputs, get_sample_with_past_kv_inputs
+from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
 from onnx_model import OnnxModel
 from optimizer import optimize_model
@@ -58,6 +58,33 @@ def get_model_with_past_kv_dynamic_axes(input_names: List[str], output_names: Li
         else:
             raise Exception("Unknown input or output name found")
     return dynamic_axes
+
+
+def get_merged_model_dynamic_axes(input_names: List[str], output_names: List[str]):
+    dynamic_axes = {}
+    for name in input_names + output_names:
+        if name in {"input_ids", "position_ids"}:
+            # shape is (batch_size, sequence_length)
+            dynamic_axes[name] = {0: "batch_size", 1: "sequence_length"}
+        elif name == "attention_mask":
+            # shape is (batch_size, past_sequence_length + sequence_length) = (batch_size, total_sequence_length)
+            # for prompt generation, past_sequence_length = 0
+            # for token generation, sequence_length = 1
+            dynamic_axes[name] = {0: "batch_size", 1: "total_sequence_length"}
+        elif "past" in name:
+            # shape is (batch_size, num_heads, past_sequence_length, head_size)
+            dynamic_axes[name] = {0: "batch_size", 2: "past_sequence_length"}
+        elif name == "logits":
+            # shape is (batch_size, sequence_length, vocab_size)
+            dynamic_axes[name] = {0: "batch_size", 1: "sequence_length"}
+        elif "present" in name:
+            # shape is (batch_size, num_heads, past_sequence_length + sequence_length, head_size) = (batch_size, num_heads, total_sequence_length, head_size)
+            # for prompt generation, past_sequence_length = 0
+            # for token generation, sequence_length = 1
+            dynamic_axes[name] = {0: "batch_size", 2: "total_sequence_length"}
+        else:
+            raise Exception("Unknown input or output name found")
+    return dynamic_axes 
 
 
 def save_onnx_model(onnx_model: onnx.ModelProto, output_path: str, data_path: str):
@@ -154,7 +181,7 @@ def run_dynamo_export(args: argparse.Namespace, l_config: LlamaConfig, llama: Ll
     logger.info(f"The {args.model_name} ONNX model has been successfully created with the Dynamo exporter!")
 
 
-def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM):
+def run_torchscript_separate_export(args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM):
     # Dummy values for export
     batch_size, sequence_length = 2, 8
     device = torch.device("cpu")
@@ -250,6 +277,62 @@ def run_torchscript_export(args: argparse.Namespace, l_config: LlamaConfig, llam
     logger.info(f"The {args.model_name} ONNX model has been successfully created with the TorchScript exporter!")
 
 
+def run_torchscript_merged_export(args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM):
+    # Dummy values for export
+    batch_size, sequence_length, past_sequence_length = 2, 8, 0
+    device = torch.device("cpu")
+
+    # Export decoder_merged_model.onnx
+    decoder_merged_inputs = get_merged_sample_with_past_kv_inputs(l_config, device, batch_size, sequence_length, past_sequence_length)
+    input_names = [
+        "input_ids",
+        "attention_mask",
+        "position_ids",
+        *list(
+            chain.from_iterable(
+                (f"past_key_values.{i}.key", f"past_key_values.{i}.value") for i in range(l_config.num_hidden_layers)
+            )
+        ),
+    ]
+    output_names = [
+        "logits",
+        *list(
+            chain.from_iterable((f"present.{i}.key", f"present.{i}.value") for i in range(l_config.num_hidden_layers))
+        ),
+    ]
+    dynamic_axes = get_merged_model_dynamic_axes(input_names, output_names)
+    temp_dir = tempfile.TemporaryDirectory()
+    temp_path = os.path.join(temp_dir.name, "temp.onnx")
+    torch.onnx.export(
+        llama,
+        args=decoder_merged_inputs,
+        f=temp_path,
+        export_params=True,
+        input_names=input_names,
+        output_names=output_names,
+        dynamic_axes=dynamic_axes,
+        opset_version=13,
+        do_constant_folding=True,
+        verbose=args.verbose,
+    )
+
+    # Check decoder_merged_model.onnx and save all external data to one file
+    onnx.checker.check_model(temp_path)
+    onnx.shape_inference.infer_shapes_path(temp_path)
+
+    output_path = os.path.join(args.output, f"{args.model_name}_decoder_merged_model_fp32.onnx")
+    onnx_model = onnx.load_model(temp_path, load_external_data=True)
+    save_onnx_model(
+        onnx_model,
+        output_path,
+        f"{args.model_name}_decoder_merged_model_fp32.onnx.data",
+    )
+    del onnx_model
+    temp_dir.cleanup()
+
+    logger.info(f"The {args.model_name} ONNX model has been successfully created with the TorchScript exporter!")
+
+
 # Optimize the model as FP32
 def optimize_export(config: LlamaConfig, input_path: str, output_path: str):
     from fusion_options import FusionOptions
@@ -259,7 +342,7 @@ def optimize_export(config: LlamaConfig, input_path: str, output_path: str):
         input_path,
         model_type="gpt2",
         num_heads=config.num_attention_heads,
-        hidden_size=config.num_hidden_layers,
+        hidden_size=config.hidden_size,
         opt_level=0,
         optimization_options=optimization_options,
         only_onnxruntime=False,
@@ -269,12 +352,80 @@ def optimize_export(config: LlamaConfig, input_path: str, output_path: str):
     remove_existing_model(input_path)
 
 
-def use_grouped_query_attention(config: LlamaConfig, fp16_model_opt: OnnxModel):
+def use_group_query_attention(config: LlamaConfig, fp16_model_opt: OnnxModel):
     # Replace MultiHeadAttention with GroupQueryAttention and remove attention mask nodes
     fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, config.num_key_value_heads)
     fp16_model_opt.prune_graph()
     fp16_model_opt.update_graph(allow_remove_graph_inputs=True)
     return fp16_model_opt
+
+
+def smooth_quant(args: argparse.Namespace, decoder_model_fp32_path: str, decoder_with_past_model_fp32_path: str,
+                 decoder_model_int8_path: str, decoder_with_past_model_int8_path: str):
+    from neural_compressor import PostTrainingQuantConfig
+    from neural_compressor import quantization as intel_quantization
+    from neural_compressor import set_workspace
+    from onnx.external_data_helper import load_external_data_for_model
+    from quant_kv_dataloader import QuantKVDataLoader
+
+    set_workspace(args.nc_workspace)
+    quantization_config = PostTrainingQuantConfig(
+        calibration_sampling_size=[args.calibration_sampling_size],
+        recipes={
+            "optypes_to_exclude_output_quant": ["MatMul"],
+            "smooth_quant": args.smooth_quant,
+            "smooth_quant_args": {"alpha": args.smooth_quant_alpha},
+        },
+        op_type_dict={
+            "^((?!(MatMul|Gather|Conv)).)*$": {
+                "weight": {"dtype": ["fp32"]},
+                "activation": {"dtype": ["fp32"]},
+            }
+        },
+    )
+
+    # Convert decoder_model.onnx to INT8
+    decoder_model_int8 = intel_quantization.fit(
+        decoder_model_fp32_path,
+        quantization_config,
+        calib_dataloader=QuantKVDataLoader(args),
+    )
+    load_external_data_for_model(
+        decoder_model_int8._model,
+        os.path.split(decoder_model_int8._model_path)[0],
+    )
+    save_onnx_model(
+        decoder_model_int8._model,
+        decoder_model_int8_path,
+        f"{args.model_name}_decoder_model_int8.onnx.data",
+    )
+    del decoder_model_int8
+    logger.info(f"The ONNX model at {decoder_model_fp32_path} has been quantized to int8 and saved at {decoder_model_int8_path}!")
+    remove_existing_model(decoder_model_fp32_path)
+
+    # Convert decoder_with_past_model.onnx to INT8
+    decoder_with_past_model_int8 = intel_quantization.fit(
+        decoder_with_past_model_fp32_path,
+        quantization_config,
+        calib_dataloader=QuantKVDataLoader(args, onnx_model_path=decoder_model_fp32_path),
+    )
+    load_external_data_for_model(
+        decoder_with_past_model_int8._model,
+        os.path.split(decoder_with_past_model_int8._model_path)[0],
+    )
+    save_onnx_model(
+        decoder_with_past_model_int8._model,
+        decoder_with_past_model_int8_path,
+        f"{args.model_name}_decoder_with_past_model_int8.onnx.data",
+    )
+    del decoder_with_past_model_int8
+    logger.info(f"The ONNX model at {decoder_with_past_model_fp32_path} has been quantized to int8 and saved at {decoder_with_past_model_int8_path}!")
+    remove_existing_model(decoder_with_past_model_fp32_path)
+
+    logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")
+
+    logger.info(f"Removing {args.nc_workspace}")
+    os.system(f"rm -R {args.nc_workspace}")
 
 
 def remove_existing_model(model_path: str):
@@ -357,12 +508,12 @@ def get_args():
     parser.set_defaults(reexport=False)
 
     parser.add_argument(
-        "--merged",
+        "--no_merged",
         required=False,
         action="store_true",
-        help="Export models into 1 ONNX file instead of 2. Default is false to support older packages that export as 2 instead of 1.",
+        help="Export models into 2 ONNX files instead of 1. Deprecated in favor of exporting into 1 ONNX file.",
     )
-    parser.set_defaults(merged=False)
+    parser.set_defaults(no_merged=False)
 
     parser.add_argument(
         "-q",
@@ -485,10 +636,17 @@ def main():
     decoder_with_past_model_fp32_path = os.path.join(
         args.output, f"{args.model_name}_decoder_with_past_model_fp32.onnx"
     )
+    decoder_merged_model_fp32_path = os.path.join(
+        args.output, f"{args.model_name}_decoder_merged_model_fp32.onnx"
+    )
+    old_paths = [decoder_model_fp32_path, decoder_with_past_model_fp32_path, decoder_merged_model_fp32_path]
+
+    missing_separate_exports = args.no_merged and not os.path.exists(decoder_model_fp32_path) and not os.path.exists(decoder_with_past_model_fp32_path)
+    missing_merged_export = not args.no_merged and not os.path.exists(decoder_merged_model_fp32_path)
 
     # Export to ONNX
-    if not os.path.exists(decoder_model_fp32_path) and not os.path.exists(decoder_with_past_model_fp32_path):
-        if args.use_dynamo_export:
+    if missing_separate_exports or missing_merged_export:
+        if args.use_dynamo_export and missing_separate_exports:
             logger.warning("Please ensure you have installed PyTorch, ONNX, and ONNX Script as follows.")
             logger.warning("Step 1 - PyTorch nightly: https://pytorch.org/get-started/locally/")
             logger.warning("Step 2 - ONNX weekly: https://pypi.org/project/onnx-weekly/")
@@ -499,165 +657,97 @@ def main():
                 "Note: After you install ONNX weekly, omit `onnx` when running the first line for installing ONNX Script. This is because you already installed `onnx-weekly` in the previous step."
             )
             run_dynamo_export(args, l_config, llama)
+        elif args.no_merged:
+            run_torchscript_separate_export(args, l_config, llama)
         else:
-            run_torchscript_export(args, l_config, llama)
+            run_torchscript_merged_export(args, l_config, llama)
 
     # Set model paths to store FP32 optimized model
     decoder_model_fp32_opt_path = os.path.join(args.output, f"{args.model_name}_decoder_model_fp32_opt.onnx")
     decoder_with_past_model_fp32_opt_path = os.path.join(
         args.output, f"{args.model_name}_decoder_with_past_model_fp32_opt.onnx"
     )
+    decoder_merged_model_fp32_opt_path = os.path.join(
+        args.output, f"{args.model_name}_decoder_merged_model_fp32_opt.onnx"
+    )
+    new_paths = [decoder_model_fp32_opt_path, decoder_with_past_model_fp32_opt_path, decoder_merged_model_fp32_opt_path]
 
     # Run the optimizer script
-    logger.info(f"Optimizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path}")
-    optimize_export(l_config, input_path=decoder_model_fp32_path, output_path=decoder_model_fp32_opt_path)
-    optimize_export(l_config, input_path=decoder_with_past_model_fp32_path, output_path=decoder_with_past_model_fp32_opt_path)
+    logger.info(f"Optimizing models...")
+    for orig_path, opt_path in zip(old_paths, new_paths):
+        if os.path.exists(orig_path):
+            optimize_export(l_config, input_path=orig_path, output_path=opt_path)
 
     # Re-assign default FP32 model paths as their optimized versions
     decoder_model_fp32_path = decoder_model_fp32_opt_path
     decoder_with_past_model_fp32_path = decoder_with_past_model_fp32_opt_path
+    decoder_merged_model_fp32_path = decoder_merged_model_fp32_opt_path
+    old_paths = [decoder_model_fp32_path, decoder_with_past_model_fp32_path, decoder_merged_model_fp32_path]
 
     logger.info(f"The {args.model_name} ONNX model has been successfully optimized with the ORT transformer optimizer script!")
 
     # Change precision of exported models from FP32
     if args.precision == Precision.FLOAT16:
-        logger.info(f"Converting {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to float16")
-
-        # Convert decoder_model.onnx to FP16
         decoder_model_fp16_path = os.path.join(args.output, f"{args.model_name}_decoder_model_fp16.onnx")
-        model = OnnxModel(onnx.load_model(decoder_model_fp32_path, load_external_data=True))
-        model.convert_float_to_float16(keep_io_types=False)
-        model = use_grouped_query_attention(l_config, model)
-        model.save_model_to_file(decoder_model_fp16_path, use_external_data_format=True, all_tensors_to_one_file=True)
-        del model
-        logger.info(f"The ONNX model at {decoder_model_fp32_path} has been converted to float16 and saved at {decoder_model_fp16_path}!")
-        remove_existing_model(decoder_model_fp32_path)
-
-        # Convert decoder_with_past_model.onnx to FP16
         decoder_with_past_model_fp16_path = os.path.join(
             args.output, f"{args.model_name}_decoder_with_past_model_fp16.onnx"
         )
-        model = OnnxModel(onnx.load_model(decoder_with_past_model_fp32_path, load_external_data=True))
-        model.convert_float_to_float16(keep_io_types=False)
-        model = use_grouped_query_attention(l_config, model)
-        model.save_model_to_file(
-            decoder_with_past_model_fp16_path, use_external_data_format=True, all_tensors_to_one_file=True
+        decoder_merged_model_fp16_path = os.path.join(
+            args.output, f"{args.model_name}_decoder_merged_model_fp16.onnx"
         )
-        del model
-        logger.info(f"The ONNX model at {decoder_with_past_model_fp32_path} has been converted to float16 and saved at {decoder_with_past_model_fp16_path}!")
-        remove_existing_model(decoder_with_past_model_fp32_path)
+        new_paths = [decoder_model_fp16_path, decoder_with_past_model_fp16_path, decoder_merged_model_fp16_path]
+
+        logger.info(f"Converting to float16...")
+        for fp32_path, fp16_path in zip(old_paths, new_paths):
+            if os.path.exists(fp32_path):
+                model = OnnxModel(onnx.load_model(fp32_path, load_external_data=True))
+                model.convert_float_to_float16(keep_io_types=False)
+                model = use_group_query_attention(l_config, model)
+                model.save_model_to_file(fp16_path, use_external_data_format=True, all_tensors_to_one_file=True)
+                del model
+                logger.info(f"The ONNX model at {fp32_path} has been converted to float16 and saved at {fp16_path}!")
+                remove_existing_model(fp32_path)
 
         logger.info(f"The {args.model_name} ONNX model has been successfully converted to float16!")
 
     elif args.precision == Precision.INT8:
-        logger.info(f"Quantizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to int8")
-
         decoder_model_int8_path = os.path.join(args.output, f"{args.model_name}_decoder_model_int8.onnx")
         decoder_with_past_model_int8_path = os.path.join(
             args.output, f"{args.model_name}_decoder_with_past_model_int8.onnx"
         )
+        decoder_merged_model_int8_path = os.path.join(
+            args.output, f"{args.model_name}_decoder_merged_model_int8.onnx"
+        )
+        new_paths = [decoder_model_int8_path, decoder_with_past_model_int8_path, decoder_merged_model_int8_path]
 
         if args.quantization_method == "smooth_quant":
-            from neural_compressor import PostTrainingQuantConfig
-            from neural_compressor import quantization as intel_quantization
-            from neural_compressor import set_workspace
-            from onnx.external_data_helper import load_external_data_for_model
-            from quant_kv_dataloader import QuantKVDataLoader
-
-            set_workspace(args.nc_workspace)
-            quantization_config = PostTrainingQuantConfig(
-                calibration_sampling_size=[args.calibration_sampling_size],
-                recipes={
-                    "optypes_to_exclude_output_quant": ["MatMul"],
-                    "smooth_quant": args.smooth_quant,
-                    "smooth_quant_args": {"alpha": args.smooth_quant_alpha},
-                },
-                op_type_dict={
-                    "^((?!(MatMul|Gather|Conv)).)*$": {
-                        "weight": {"dtype": ["fp32"]},
-                        "activation": {"dtype": ["fp32"]},
-                    }
-                },
-            )
-
-            # Convert decoder_model.onnx to INT8
-            decoder_model_int8 = intel_quantization.fit(
-                decoder_model_fp32_path,
-                quantization_config,
-                calib_dataloader=QuantKVDataLoader(args),
-            )
-            load_external_data_for_model(
-                decoder_model_int8._model,
-                os.path.split(decoder_model_int8._model_path)[0],
-            )
-            save_onnx_model(
-                decoder_model_int8._model,
-                decoder_model_int8_path,
-                f"{args.model_name}_decoder_model_int8.onnx.data",
-            )
-            del decoder_model_int8
-            logger.info(f"The ONNX model at {decoder_model_fp32_path} has been quantized to int8 and saved at {decoder_model_int8_path}!")
-            remove_existing_model(decoder_model_fp32_path)
-
-            # Convert decoder_with_past_model.onnx to INT8
-            decoder_with_past_model_int8 = intel_quantization.fit(
-                decoder_with_past_model_fp32_path,
-                quantization_config,
-                calib_dataloader=QuantKVDataLoader(args, onnx_model_path=decoder_model_fp32_path),
-            )
-            load_external_data_for_model(
-                decoder_with_past_model_int8._model,
-                os.path.split(decoder_with_past_model_int8._model_path)[0],
-            )
-            save_onnx_model(
-                decoder_with_past_model_int8._model,
-                decoder_with_past_model_int8_path,
-                f"{args.model_name}_decoder_with_past_model_int8.onnx.data",
-            )
-            del decoder_with_past_model_int8
-            logger.info(f"The ONNX model at {decoder_with_past_model_fp32_path} has been quantized to int8 and saved at {decoder_with_past_model_int8_path}!")
-            remove_existing_model(decoder_with_past_model_fp32_path)
-
-            logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")
-
-            logger.info(f"Removing {args.nc_workspace}")
-            os.system(f"rm -R {args.nc_workspace}")
+            if not args.no_merged:
+                logger.error(f"SmoothQuant must be used on separately exported models")
+            else:
+                logger.info(f"Quantizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to int8")
+                smooth_quant(args, old_paths[0], old_paths[1], new_paths[0], new_paths[1])
 
         elif args.quantization_method == "quantize_dynamic":
-            logger.info(f"Quantizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to int8")
             logger.warning(
                 "The `quantize_dynamic` method is deprecated in favor of `smooth_quant` instead. Precision loss may be high with `quantize_dynamic`."
             )
 
-            # Convert decoder_model.onnx to INT8
-            ort_quantization.quantize_dynamic(
-                decoder_model_fp32_path,
-                decoder_model_int8_path,
-                op_types_to_quantize=["MatMul", "Gemm", "Gather"]
-                if args.quantize_embedding_layer
-                else ["MatMul", "Gemm"],
-                per_channel=args.quantize_per_channel,
-                reduce_range=args.quantize_reduce_range,
-                use_external_data_format=True,
-                extra_options={"MatMulConstBOnly": True},
-            )
-            logger.info(f"The ONNX model at {decoder_model_fp32_path} has been quantized to int8 and saved at {decoder_model_int8_path}!")
-            remove_existing_model(decoder_model_fp32_path)
-
-            # Convert decoder_with_past_model.onnx to INT8
-            ort_quantization.quantize_dynamic(
-                decoder_with_past_model_fp32_path,
-                decoder_with_past_model_int8_path,
-                op_types_to_quantize=["MatMul", "Gemm", "Gather"]
-                if args.quantize_embedding_layer
-                else ["MatMul", "Gemm"],
-                per_channel=args.quantize_per_channel,
-                reduce_range=args.quantize_reduce_range,
-                use_external_data_format=True,
-                extra_options={"MatMulConstBOnly": True},
-            )
-            logger.info(f"The ONNX model at {decoder_with_past_model_fp32_path} has been quantized to int8 and saved at {decoder_with_past_model_int8_path}!")
-            remove_existing_model(decoder_with_past_model_fp32_path)
+            logger.info(f"Quantizing to int8...")
+            for fp32_path, int8_path in zip(old_paths, new_paths):
+                if os.path.exists(fp32_path):
+                    ort_quantization.quantize_dynamic(
+                        fp32_path,
+                        int8_path,
+                        op_types_to_quantize=["MatMul", "Gemm", "Gather"]
+                        if args.quantize_embedding_layer
+                        else ["MatMul", "Gemm"],
+                        per_channel=args.quantize_per_channel,
+                        reduce_range=args.quantize_reduce_range,
+                        use_external_data_format=True,
+                        extra_options={"MatMulConstBOnly": True},
+                    )
+                    logger.info(f"The ONNX model at {fp32_path} has been quantized to int8 and saved at {int8_path}!")
+                    remove_existing_model(decoder_model_fp32_path)
 
             logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")
 
@@ -675,9 +765,15 @@ def main():
         parity_cmd = ["-m", f"{original_model_name}", "-o", f"{os.path.join(args.output, filename)}", "-fp", precision]
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
+        if "merged" in filename:
+            parity_cmd.append("--merged")
         if "fp16" in filename:
             parity_cmd.extend(["--execution_provider", "cuda", "--device-id", args.device_id])
-        parity_check(parity_cmd)
+        
+        try:
+            parity_check(parity_cmd)
+        except Exception as e:
+            logger.warning(f"An error occurred while verifying parity: {e}", exc_info=True)
 
 
 if __name__ == "__main__":

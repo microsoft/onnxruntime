@@ -63,6 +63,36 @@ def get_sample_with_past_kv_inputs(
     return inputs
 
 
+# Inputs for all passes with past_key_values
+def get_merged_sample_with_past_kv_inputs(
+    config: LlamaConfig,
+    device: torch.device,
+    batch_size: int,
+    seq_len: int,
+    past_seq_len: int,
+    use_fp16: bool = False,
+    return_dict: bool = False,
+):
+    input_ids = torch.randint(
+        low=0, high=config.vocab_size, size=(batch_size, seq_len), device=device, dtype=torch.int64
+    )
+    attention_mask = torch.ones(batch_size, past_seq_len + seq_len, device=device, dtype=torch.int64)
+    # position_ids is of shape (batch_size, seq_len) for prompt generation, (batch_size, 1) for token generation
+    position_ids = get_position_ids(attention_mask, use_past_kv=(past_seq_len != 0))
+    past_kv = get_sample_past_kv_inputs(config, device, batch_size, past_seq_len, use_fp16)
+
+    if not return_dict:
+        return (input_ids, attention_mask, position_ids, past_kv)
+
+    inputs = {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "position_ids": position_ids,
+        "past_key_values": past_kv,
+    }
+    return inputs
+
+
 # Create past_key_values
 def get_sample_past_kv_inputs(
     config: LlamaConfig, device: torch.device, batch_size: int, past_seq_len: int, use_fp16: bool

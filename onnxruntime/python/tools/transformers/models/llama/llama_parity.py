@@ -7,25 +7,33 @@ from typing import List
 import numpy as np
 import torch
 from benchmark_helper import create_onnxruntime_session, setup_logger
-from llama_inputs import convert_inputs_for_ort, get_sample_inputs, get_sample_with_past_kv_inputs
+from llama_inputs import convert_inputs_for_ort, get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from transformers import LlamaConfig, LlamaForCausalLM
 
 logger = logging.getLogger("")
 
-
-def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: LlamaForCausalLM):
+def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     # Dummy values for parity
-    batch_size, sequence_length = 2, 8
+    batch_size = 2
 
-    # Run inference with PyTorch
-    inputs = (
-        get_sample_inputs(config, args.device, batch_size, sequence_length, return_dict=True)
-        if not args.use_past_kv
-        else get_sample_with_past_kv_inputs(
+    if args.merged:
+        sequence_length, past_sequence_length = (1, 8) if args.use_past_kv else (8, 0)
+        inputs = get_merged_sample_with_past_kv_inputs(
+            config, args.device, batch_size, sequence_length, past_sequence_length, use_fp16=(args.precision == "fp16"), return_dict=True
+        )
+    elif args.use_past_kv:
+        inputs = get_sample_with_past_kv_inputs(
             config, args.device, batch_size, sequence_length, use_fp16=(args.precision == "fp16"), return_dict=True
         )
-    )
+    else:
+        inputs = get_sample_inputs(config, args.device, batch_size, sequence_length, return_dict=True)
+    return inputs
 
+
+def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: LlamaForCausalLM):
+    inputs = get_inputs(args, config)
+
+    # Run inference with PyTorch
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     start_time = time.time()
@@ -123,6 +131,13 @@ def get_args(argv: List[str]):
     parser.set_defaults(use_past_kv=False)
 
     parser.add_argument(
+        "--merged",
+        action="store_true",
+        help="Use merged model (i.e. decoder_merged_model.onnx).",
+    )
+    parser.set_defaults(merged=False)
+
+    parser.add_argument(
         "-fp",
         "--precision",
         required=True,
@@ -153,7 +168,16 @@ def main(argv: List[str] = []):  # noqa: B006
         use_cache=True,
     ).to(args.device)
 
-    verify_parity(args, config, llama)
+    if not args.merged:
+        verify_parity(args, config, llama)
+    else:
+        # Verify prompt generation in merged model (decoder_model.onnx)
+        args.use_past_kv = False
+        verify_parity(args, config, llama)
+
+        # Verify token generation in merged model (decoder_with_past_model.onnx)
+        args.use_past_kv = True
+        verify_parity(args, config, llama)
 
 
 if __name__ == "__main__":
