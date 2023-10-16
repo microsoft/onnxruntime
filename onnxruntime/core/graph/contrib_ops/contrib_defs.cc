@@ -2717,7 +2717,7 @@ for beta != 0.)DOC")
                                   if (second_input_shape.dim_size() != 2) {
                                     fail_shape_inference("Second input does not have rank 2");
                                   }
-                                  updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0),second_input_shape.dim(transB ? 0 : 1)});
+                                  updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
                                 }));
 
 static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
