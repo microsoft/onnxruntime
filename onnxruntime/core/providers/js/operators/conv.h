@@ -38,7 +38,8 @@ class Conv : public JsKernel {
                                    "pads" : [ $5, $6 ],
                                    "strides" : [$7],
                                    "w_is_const" : () JS_ARROW(!!HEAP8[$9]),
-                                   "activation" : UTF8ToString($10)
+                                   "activation" : UTF8ToString($10),
+                                   "activation_params" : $11 ? Array.from(HEAPF32.subarray($12, $12 + $11)) : []
                                  }),
                                  static_cast<int32_t>(conv_attrs_.auto_pad),
                                  static_cast<int32_t>(conv_attrs_.dilations.size() > 0 ? conv_attrs_.dilations[0] : 0),
@@ -49,18 +50,21 @@ class Conv : public JsKernel {
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 0 ? conv_attrs_.strides[0] : 0),
                                  static_cast<int32_t>(channels_last),
                                  reinterpret_cast<int32_t>(&w_is_const_),
-                                 conv_attrs_.activation.c_str());
+                                 conv_attrs_.activation.c_str(),
+                                 activation_params_.size(),
+                                 reinterpret_cast<int32_t>(activation_params_.size() > 0 ? activation_params_.data() : nullptr) >> 2);
     } else {
       JSEP_INIT_KERNEL_ATTRIBUTE(Conv, ({
-                                   "format" : $13 ? "NHWC" : "NCHW",
+                                   "format" : $11 ? "NHWC" : "NCHW",
                                    "auto_pad" : $1,
                                    "dilations" : [ $2, $3 ],
                                    "group" : $4,
                                    "kernel_shape" : [ $5, $6 ],
-                                   "pads" : [ $7, $8, $9, $10 ],
-                                   "strides" : [ $11, $12 ],
-                                   "w_is_const" : () JS_ARROW(!!HEAP8[$14]),
-                                   "activation" : UTF8ToString($15)
+                                   "pads" : $7 ? Array.from(HEAP32.subarray($8, $8 + $7)) : [],
+                                   "strides" : [ $9, $10 ],
+                                   "w_is_const" : () JS_ARROW(!!HEAP8[$12]),
+                                   "activation" : UTF8ToString($13),
+                                   "activation_params" : $14 ? Array.from(HEAPF32.subarray($15, $15 + $14)) : []
                                  }),
                                  static_cast<int32_t>(conv_attrs_.auto_pad),
                                  static_cast<int32_t>(conv_attrs_.dilations.size() > 0 ? conv_attrs_.dilations[0] : 0),
@@ -68,15 +72,15 @@ class Conv : public JsKernel {
                                  static_cast<int32_t>(conv_attrs_.group),
                                  static_cast<int32_t>(conv_attrs_.kernel_shape_specified && kernel_shape.size() > 0 ? kernel_shape[0] : 0),
                                  static_cast<int32_t>(conv_attrs_.kernel_shape_specified && kernel_shape.size() > 1 ? kernel_shape[1] : 0),
-                                 static_cast<int32_t>(conv_attrs_.pads.size() > 0 ? conv_attrs_.pads[0] : 0),
-                                 static_cast<int32_t>(conv_attrs_.pads.size() > 1 ? conv_attrs_.pads[1] : 0),
-                                 static_cast<int32_t>(conv_attrs_.pads.size() > 2 ? conv_attrs_.pads[2] : 0),
-                                 static_cast<int32_t>(conv_attrs_.pads.size() > 3 ? conv_attrs_.pads[3] : 0),
+                                 static_cast<int32_t>(conv_attrs_.pads.size()),
+                                 reinterpret_cast<int32_t>(conv_attrs_.pads.size() > 0 ? conv_attrs_.pads.data() : nullptr) >> 2,
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 0 ? conv_attrs_.strides[0] : 0),
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 1 ? conv_attrs_.strides[1] : 0),
                                  static_cast<int32_t>(channels_last),
                                  reinterpret_cast<int32_t>(&w_is_const_),
-                                 conv_attrs_.activation.c_str());
+                                 conv_attrs_.activation.c_str(),
+                                 activation_params_.size(),
+                                 reinterpret_cast<int32_t>(activation_params_.size() > 0 ? activation_params_.data() : nullptr) >> 2);
     }
   }
 
@@ -100,6 +104,7 @@ class Conv : public JsKernel {
  protected:
   ConvAttributes conv_attrs_;
   bool w_is_const_;
+  std::vector<float> activation_params_;
   // Tensor w_transposed_;
 };
 
