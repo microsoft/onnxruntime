@@ -506,7 +506,6 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* positions = context->Input<Tensor>(6);
   const Tensor* cos_sin_cache = context->Input<Tensor>(7);
   const Tensor* kv_quant_param = (context->InputCount() > 8) ? context->Input<Tensor>(8) : nullptr;
-  ORT_UNUSED_PARAMETER(kv_quant_param);
 
   int seq_len = query->Shape().NumDimensions() == 3 ? query->Shape()[1] : query->Shape()[0];
   auto meta_data_space = this->template GetScratchBuffer<int8_t>(std::max(1024, seq_len * 3) * sizeof(int32_t), context->GetComputeStream());
@@ -570,7 +569,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
     auto kv_quant_param_shape = kv_quant_param->Shape();  // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
     ORT_ENFORCE(kv_quant_param_shape.NumDimensions() == 5 && kv_quant_param_shape[3] > 0 && head_size_ % kv_quant_param_shape[3] == 0);
-    kv_quant_chunk_size = head_size_ / kv_quant_param_shape[4];
+    kv_quant_chunk_size = head_size_ / kv_quant_param_shape[3];
     ORT_ENFORCE(kv_quant_chunk_size > 0 && kv_quant_chunk_size % 4 == 0);
   }
   auto key_cache_shape = key_cache->Shape();
@@ -581,8 +580,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     reshape_and_cache(Stream(context),
                       key_data,
                       value_data,
-                      key_cache->Data<MLFloat16>(),
-                      value_cache->Data<MLFloat16>(),
+                      key_cache->DataRaw(),
+                      value_cache->DataRaw(),
                       reinterpret_cast<const int32_t*>(input_metadata->slot_mapping),
                       key_shape_r,
                       value_shape_r,
