@@ -35,14 +35,12 @@ class RocmKernel : public OpKernel {
     // use this to precisely locate the node where ROCM failure comes from
     //  if (hipSuccess != hipDeviceSynchronize())
     //    __debugbreak();
-
     if (s.IsOK()) {
       auto err = hipGetLastError();
       if (err != hipSuccess) {
-        s = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIP error ", hipGetErrorName(err), ":", hipGetErrorString(err));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIP error ", hipGetErrorName(err), ":", hipGetErrorString(err));
       }
     }
-
     return s;
   }
 
@@ -64,16 +62,16 @@ class RocmKernel : public OpKernel {
     return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), count_or_bytes, true);
   }
 
-  template <typename T>
-  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    if (count_or_bytes == 0) return nullptr;
-    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeCPU), count_or_bytes);
-  }
-
   inline void AddDeferredReleaseCPUPtr(void* p, onnxruntime::Stream* ort_stream) const {
     ORT_ENFORCE(ort_stream->GetDevice().Type() == OrtDevice::GPU);
     auto* rocm_ep_stream = static_cast<RocmStream*>(ort_stream);
     rocm_ep_stream->EnqueDeferredCPUBuffer(p);
+  }
+
+  template <typename T>
+  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
+    if (count_or_bytes == 0) return nullptr;
+    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeCPU), count_or_bytes);
   }
 
   const hipDeviceProp_t& GetDeviceProp() const { return provider_->GetDeviceProp(); }
@@ -81,6 +79,22 @@ class RocmKernel : public OpKernel {
   inline hipStream_t Stream(OpKernelContext* ctx) const {
     auto* stream = ctx->GetComputeStream();
     return stream ? static_cast<hipStream_t>(stream->GetHandle()) : nullptr;
+  }
+
+  inline miopenHandle_t GetMiopenHandle(OpKernelContext* ctx) const {
+    return GetMiopenHandle(static_cast<RocmStream*>(ctx->GetComputeStream()));
+  }
+
+  static inline miopenHandle_t GetMiopenHandle(onnxruntime::RocmStream* stream) {
+    return stream->miopen_handle_;
+  }
+
+  inline rocblas_handle GetRocblasHandle(OpKernelContext* ctx) const {
+    return GetRocblasHandle(static_cast<RocmStream*>(ctx->GetComputeStream()));
+  }
+
+  static inline rocblas_handle GetRocblasHandle(onnxruntime::RocmStream* stream) {
+    return stream->rocblas_handle_;
   }
 
   tunable::RocmTuningContext* GetTuningContext() const {
@@ -106,7 +120,7 @@ class RocmKernel : public OpKernel {
       }
     }
 
-    RocmAsyncBuffer(const RocmKernel* op_kernel, gsl::span<const T> vec) : RocmAsyncBuffer(op_kernel, vec.size()) {
+    RocmAsyncBuffer(const RocmKernel* op_kernel, gsl::span<T const> vec) : RocmAsyncBuffer(op_kernel, vec.size()) {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 
@@ -151,28 +165,12 @@ class RocmKernel : public OpKernel {
     const RocmKernel* op_kernel_;
   };
 
-  inline rocblas_handle RocblasHandle() const {
-    return provider_->PerThreadRocblasHandle();
+  inline rocblas_handle DefaultRocblasHandle() const {
+    return provider_->PerThreadDefaultRocblasHandle();
   }
 
-  inline miopenHandle_t MiopenHandle() const {
-    return provider_->PerThreadMiopenHandle();
-  }
-
-  static inline rocblas_handle GetRocblasHandle(onnxruntime::RocmStream* stream) {
-    return stream->rocblas_handle_;
-  }
-
-  inline rocblas_handle GetRocblasHandle(OpKernelContext* ctx) const {
-    return GetRocblasHandle(static_cast<RocmStream*>(ctx->GetComputeStream()));
-  }
-
-  static inline miopenHandle_t GetMiopenHandle(onnxruntime::RocmStream* stream) {
-    return stream->miopen_handle_;
-  }
-
-  inline miopenHandle_t GetMiopenHandle(OpKernelContext* ctx) const {
-    return GetMiopenHandle(static_cast<RocmStream*>(ctx->GetComputeStream()));
+  inline miopenHandle_t DefaultMiopenHandle() const {
+    return provider_->PerThreadDefaultMiopenHandle();
   }
 
  protected:
