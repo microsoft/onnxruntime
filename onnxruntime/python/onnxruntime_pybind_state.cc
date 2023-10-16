@@ -433,7 +433,6 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
 #ifdef USE_TENSORRT
 void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOptions& options) {
   if (auto* tensorrt_provider_info = TryGetProviderInfo_TensorRT()) {
-
     auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
       for (auto ptr : domains) {
         if (domain_name == ptr->domain_) {
