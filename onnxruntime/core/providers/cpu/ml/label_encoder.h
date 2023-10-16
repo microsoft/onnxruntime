@@ -105,5 +105,47 @@ class LabelEncoder_2 final : public OpKernel {
   // ONNX attribute name to load values.
   std::string _value_field_name;
 };
+
+template <typename TKey, typename TValue>
+class LabelEncoder_4 final : public OpKernel {
+ public:
+  LabelEncoder_4(const OpKernelInfo& kernel_info) : OpKernel(kernel_info) {
+    // Determine if we are using tensor based attribute(s) or not.
+    auto keys = GetAttribute(kernel_info, "keys");
+    auto values = GetAttribute(kernel_info, "values");
+    ORT_ENFORCE(keys.size() == values.size(), "Keys and values must have the same length.");
+    for (size_t i = 0; i < keys.size(); ++i) {
+      _map.emplace(keys[i], values[i]);
+    }
+    _default_value = GetDefault(kernel_info);
+  }
+  Status Compute(OpKernelContext* context) const override {
+    const auto* tensor_pointer = context->Input<Tensor>(0);
+    if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    const Tensor& X = *tensor_pointer;
+    const TensorShape& shape = X.Shape();
+    Tensor& Y = *context->Output(0, shape);
+
+    auto input = X.template DataAsSpan<TKey>();
+    auto output = Y.template MutableDataAsSpan<TValue>();
+
+    for (int64_t i = 0; i < shape.Size(); ++i) {
+      const auto found = _map.find(input[onnxruntime::narrow<size_t>(i)]);
+      if (found == _map.end())
+        output[onnxruntime::narrow<size_t>(i)] = _default_value;
+      else
+        output[onnxruntime::narrow<size_t>(i)] = found->second;
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::vector<TKey> GetAttribute(const OpKernelInfo& kernel_info, const std::string& name) const;
+  TValue GetDefault(const OpKernelInfo& kernel_info) const;
+  InlinedHashMap<TKey, TValue> _map;
+  TValue _default_value;
+};
+
 }  // namespace ml
 }  // namespace onnxruntime
