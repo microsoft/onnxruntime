@@ -199,12 +199,6 @@ def get_model(args: argparse.Namespace):
                 decoder_file_name = filename
                 decoder_with_past_file_name = filename
 
-                if filename != "model.onnx":
-                    logger.warning(f"Optimum will only load the merged model once into memory if it is saved as `model.onnx`, not `{filename}`. You can rename your ONNX file in a few steps:")
-                    logger.warning("\timport onnx")
-                    logger.warning(f"\tonnx_model = onnx.load({filename}, load_external_data=True)")
-                    logger.warning(f"\tonnx.save(onnx_model, '/path/to/model.onnx', save_as_external_data=True, all_tensors_to_one_file=True, location='model.onnx.data', size_threshold=1024, convert_attribute=False)")
-
         start_time = time.time()
         model = ORTModelForCausalLM.from_pretrained(
             args.hf_ort_dir_path,
