@@ -22,7 +22,7 @@ class GemmFloat8 final : public onnxruntime::cuda::CudaKernel {
   void SetParams(const TensorShape& shape_a,
                  const TensorShape& shape_b,
                  int& M, int& N, int& K,
-                 int& lda, int& ldb, int& ldd, bool row_major) const;
+                 int& lda, int& ldb, int& ldd) const;
   Status SetCheck(const TensorShape& shape_a,
                   const TensorShape& shape_b,
                   int& M, int& N, int& K) const;

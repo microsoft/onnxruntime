@@ -31,38 +31,17 @@ int32_t TypeSize(int32_t element_type) {
 }
 
 void GemmFloat8::SetParams(const TensorShape& a_shape, const TensorShape& b_shape,
-                           int& M, int& N, int& K, int& lda, int& ldb, int& ldd, bool row_major) const {
-  constexpr int ir = 0;
-  constexpr int ic = 1 - ir;
-  if (transA_ && !transB_) {  // TN
-    M = static_cast<int>(a_shape[ic]);
-    N = static_cast<int>(b_shape[ic]);
-    K = static_cast<int>(a_shape[ir]);
-    lda = static_cast<int>(a_shape[row_major ? ic : ir]);
-    ldb = static_cast<int>(b_shape[row_major ? ic : ir]);
-    ldd = static_cast<int>(b_shape[row_major ? ic : ir]);
-  } else if (!transA_ && !transB_) {  // NN
-    M = static_cast<int>(a_shape[ir]);
-    N = static_cast<int>(b_shape[ic]);
-    K = static_cast<int>(a_shape[ic]);
-    lda = static_cast<int>(a_shape[row_major ? ic : ir]);
-    ldb = static_cast<int>(b_shape[row_major ? ic : ir]);
-    ldd = static_cast<int>(b_shape[row_major ? ic : ir]);
-  } else if (!transA_ && transB_) {  // NT
-    M = static_cast<int>(a_shape[ir]);
-    N = static_cast<int>(b_shape[ir]);
-    K = static_cast<int>(a_shape[ic]);
-    lda = static_cast<int>(a_shape[row_major ? ic : ir]);
-    ldb = static_cast<int>(b_shape[row_major ? ic : ir]);
-    ldd = static_cast<int>(b_shape[row_major ? ir : ic]);
-  } else {  // TT
-    M = static_cast<int>(a_shape[ic]);
-    N = static_cast<int>(b_shape[ir]);
-    K = static_cast<int>(a_shape[ir]);
-    lda = static_cast<int>(a_shape[row_major ? ic : ir]);
-    ldb = static_cast<int>(b_shape[row_major ? ic : ir]);
-    ldd = static_cast<int>(b_shape[row_major ? ir : ic]);
-  }
+                           int& M, int& N, int& K, int& lda, int& ldb, int& ldd) const {
+  int m_idx = transA_ ? 1 : 0;
+  int k_idx = 1 - m_idx;
+  int n_idx = transB_ ? 0 : 1;
+
+  M = static_cast<int>(a_shape[m_idx]);
+  K = static_cast<int>(a_shape[k_idx]);
+  N = static_cast<int>(b_shape[n_idx]);
+  lda = static_cast<int>(a_shape[1]);
+  ldb = static_cast<int>(b_shape[1]);
+  ldd = static_cast<int>(b_shape[n_idx]);
 }
 
 template <typename TValue>
@@ -127,7 +106,7 @@ Status GemmFloat8::ComputeRowMajor(
   dtype_B = GetTypeAndShape(input_B, shape_B);
 
   int M, N, K, lda, ldb, ldd;
-  SetParams(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
+  SetParams(shape_A, shape_B, M, N, K, lda, ldb, ldd);
 
   TensorShape dimensions{M, N};
   Tensor* Y = ctx->Output(0, dimensions);
@@ -155,7 +134,7 @@ Status GemmFloat8::ComputeColMajor(
   dtype_B = GetTypeAndShape(input_B, shape_B);
 
   int M, N, K, lda, ldb, ldd;
-  SetParams(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
+  SetParams(shape_A, shape_B, M, N, K, lda, ldb, ldd);
 
   std::swap(shape_A[0], shape_A[1]);
   std::swap(shape_B[0], shape_B[1]);

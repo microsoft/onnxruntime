@@ -5,7 +5,6 @@
 # Note: the precision is different on V100, H100 even with the same code.
 # The thresholds were adjusted on H100 as the precision seems lower on this machine.
 
-import onnxruntime
 import itertools
 import unittest
 import warnings
