@@ -299,6 +299,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["trt_force_sequential_engine_build"], "1")
 
             from onnxruntime.capi import _pybind_state as C
+
             session_options = C.get_default_session_options()
 
             # TRT plugins registered as custom op domain should only be added once in session option regaldless of number of session creation
