@@ -613,6 +613,16 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
   return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
 
+Status WhisperBeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.WhisperBeamSearch__Compute(this, ctx); }
+
+void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.BeamSearchParameters__ParseFromAttributes(this, info); }
+
+void GreedySearchParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.GreedySearchParameters__ParseFromAttributes(this, info); }
+
+void SamplingParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.SamplingParameters__ParseFromAttributes(this, info); }
+
+void WhisperBeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.WhisperBeamSearchParameters__ParseFromAttributes(this, info); }
+
 void GreedySearch::Init(const OpKernelInfo& info) { g_host_cpu.GreedySearch__Init(this, info); }
 
 Status GreedySearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.GreedySearch__Compute(this, ctx); }

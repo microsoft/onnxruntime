@@ -1332,8 +1332,10 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   // Use default value as this field is not available in OrtCUDAProviderOptions
   cuda_options_converted.cudnn_conv_use_max_workspace = 1;
   cuda_options_converted.enable_cuda_graph = 0;
+  cuda_options_converted.prefer_nhwc = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
   cuda_options_converted.enable_skip_layer_norm_strict_mode = 0;
+  cuda_options_converted.use_ep_level_unified_stream = 0;
 
   return cuda_options_converted;
 }

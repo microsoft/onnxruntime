@@ -3,7 +3,7 @@
 
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -70,11 +70,10 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
   }`;
   return {
     name: 'Expand',
-    inputTypes: [GpuDataType.default],
     shaderCache: {hint: `${outputShape}`},
     getShaderSource,
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
     })
   };
