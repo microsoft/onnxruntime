@@ -70,23 +70,20 @@ class LabelEncoder_2 final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
-    const auto* tensor_pointer = context->Input<Tensor>(0);
-    if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-    const Tensor& X = *tensor_pointer;
-    const TensorShape& shape = X.Shape();
-    Tensor& Y = *context->Output(0, shape);
+    const auto* X = context->Input<Tensor>(0);
+    const TensorShape& shape = X->Shape();
+    auto* Y = context->Output(0, shape);
 
-    auto input = X.template DataAsSpan<TKey>();
-    auto output = Y.template MutableDataAsSpan<TValue>();
-
-    for (int64_t i = 0; i < shape.Size(); ++i) {
-      const auto found = _map.find(input[onnxruntime::narrow<size_t>(i)]);
-      if (found == _map.end())
-        output[onnxruntime::narrow<size_t>(i)] = _default_value;
-      else
-        output[onnxruntime::narrow<size_t>(i)] = found->second;
+    auto input = X->template DataAsSpan<TKey>();
+    auto output = Y->template MutableDataAsSpan<TValue>();
+    auto input_iter = input.begin();
+    auto output_iter = output.begin();
+    while (input_iter != input.end()) {
+      const auto found = _map.find(*input_iter);
+      *output_iter = found == _map.end() ? _default_value : found->second;
+      output_iter++;
+      input_iter++;
     }
-
     return Status::OK();
   }
 
@@ -153,23 +150,19 @@ class LabelEncoder_4 final : public OpKernel {
   }
   Status Compute(OpKernelContext* context) const override {
     const auto* X = context->Input<Tensor>(0);
-    if (nullptr == X) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-    }
     const TensorShape& shape = X->Shape();
     auto* Y = context->Output(0, shape);
 
     auto input = X->template DataAsSpan<TKey>();
     auto output = Y->template MutableDataAsSpan<TValue>();
-
-    for (int64_t i = 0; i < shape.Size(); ++i) {
-      const auto found = _map.find(input[onnxruntime::narrow<size_t>(i)]);
-      if (found == _map.end())
-        output[onnxruntime::narrow<size_t>(i)] = _default_value;
-      else
-        output[onnxruntime::narrow<size_t>(i)] = found->second;
+    auto input_iter = input.begin();
+    auto output_iter = output.begin();
+    while (input_iter != input.end()) {
+      const auto found = _map.find(*input_iter);
+      *output_iter = found == _map.end() ? _default_value : found->second;
+      output_iter++;
+      input_iter++;
     }
-
     return Status::OK();
   }
 
