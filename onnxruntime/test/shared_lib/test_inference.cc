@@ -2832,9 +2832,7 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 #endif
 
 #ifdef USE_TENSORRT
-class CApiTensorRTTest : public testing::Test, public ::testing::WithParamInterface<std::string> {};
-
-TEST_P(CApiTensorRTTest, TestExternalCUDAStreamWithIOBinding) {
+TEST_P(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   const auto& api = Ort::GetApi();
   OrtTensorRTProviderOptionsV2* trt_options;
   ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
@@ -2866,7 +2864,7 @@ TEST_P(CApiTensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   std::vector<int64_t> x_shape({3, 2});
   size_t tensor_size = x_values.size();
   ONNXTensorElementDataType type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-  assert(cudaMalloc(&input_tensor_data, tensor_size*type_size) == cudaSuccess);
+  assert(cudaMalloc(&input_tensor_data, tensor_size * type_size) == cudaSuccess);
   cudaMemcpy(input_tensor_data, x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
   Ort::Value ort_input_tensor_value = Ort::Value::CreateTensor(memory_info_gpu, input_tensor_data, tensor_size * type_size,
                                                                x_shape.data(), x_shape.size(), type);
@@ -2893,6 +2891,8 @@ TEST_P(CApiTensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   cudaFree(input_tensor_data);
   cudaStreamDestroy(compute_stream);
 }
+
+class CApiTensorRTTest : public testing::Test, public ::testing::WithParamInterface<std::string> {};
 
 // This test uses CreateTensorRTProviderOptions/UpdateTensorRTProviderOptions APIs to configure and create a TensorRT Execution Provider
 TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
