@@ -27,4 +27,4 @@ if "ORTMODULE_USE_FLASH_ATTENTION" in os.environ and int(os.getenv("ORTMODULE_US
     _all_kernels.extend(["flash_attn_forward", "flash_attn_backward"])
     _all_transformers.append("transform_flash_attention")
 
-__all__ = _all_kernels + _all_transformers
+__all__ = _all_kernels + _all_transformers  # noqa: PLE0605

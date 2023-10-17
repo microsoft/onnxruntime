@@ -12,4 +12,4 @@ if "ORTMODULE_USE_EFFICIENT_ATTENTION" in os.environ and int(os.getenv("ORTMODUL
 
     _all_transformers.append("transform_aten_efficient_attention")
 
-__all__ = _all_transformers
+__all__ = _all_transformers  # noqa: PLE0605

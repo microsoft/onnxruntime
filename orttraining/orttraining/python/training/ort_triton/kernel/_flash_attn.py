@@ -786,7 +786,7 @@ def _bwd_kernel(
         )
 
 
-def flash_attn_forward(q, k, v, bias=None, causal=False, softmax_scale=None):
+def flash_attn_forward(q, k, v, bias=None, **kwargs):
     # shape constraints
     batch, seqlen_q, nheads, d = q.shape
     _, seqlen_k, _, _ = k.shape
@@ -796,8 +796,9 @@ def flash_attn_forward(q, k, v, bias=None, causal=False, softmax_scale=None):
     assert q.dtype == k.dtype == v.dtype, "All tensors must have the same type"
     assert q.dtype in [torch.float16, torch.bfloat16], "Only support fp16 and bf16"
     assert q.is_cuda and k.is_cuda and v.is_cuda
-    softmax_scale_value = softmax_scale.item() or 1.0 / math.sqrt(d)
 
+    causal = kwargs.get("causal", 0) == 1
+    softmax_scale = kwargs.get("softmax_scale", 1.0 / math.sqrt(d))
     has_bias = bias is not None
     bias_type = "none"
     if has_bias:
@@ -832,7 +833,7 @@ def flash_attn_forward(q, k, v, bias=None, causal=False, softmax_scale=None):
         o,
         lse,
         tmp,
-        softmax_scale_value,
+        softmax_scale,
         q.stride(0),
         q.stride(2),
         q.stride(1),
@@ -856,21 +857,17 @@ def flash_attn_forward(q, k, v, bias=None, causal=False, softmax_scale=None):
         # Can't use kwargs here because triton autotune expects key to be args, not kwargs
         # IS_CAUSAL=causal, BLOCK_HEADDIM=d,
         bias_type,
-        causal.item(),
+        causal,
         BLOCK_HEADDIM,
         BLOCK_M=BLOCK,
         BLOCK_N=BLOCK,
         num_warps=num_warps,
         num_stages=1,
     )
-    return (
-        o,
-        lse,
-        torch.tensor(softmax_scale_value) if softmax_scale is None else softmax_scale,
-    )  # softmax_scale could have been updated
+    return o, lse
 
 
-def flash_attn_backward(do, q, k, v, o, lse, bias=None, causal=False, softmax_scale=None):
+def flash_attn_backward(do, q, k, v, o, lse, bias=None, **kwargs):
     dq = torch.empty_like(q)
     dk = torch.empty_like(k)
     dv = torch.empty_like(v)
@@ -885,7 +882,9 @@ def flash_attn_backward(do, q, k, v, o, lse, bias=None, causal=False, softmax_sc
     assert lse.shape == (batch, nheads, seqlen_q_rounded)
     assert q.stride(-1) == k.stride(-1) == v.stride(-1) == o.stride(-1) == 1
     assert dq.stride(-1) == dk.stride(-1) == dv.stride(-1) == 1
-    softmax_scale_value = softmax_scale.item() or 1.0 / math.sqrt(d)
+
+    causal = kwargs.get("causal", 0) == 1
+    softmax_scale = kwargs.get("softmax_scale", 1.0 / math.sqrt(d))
     # dq_accum = torch.zeros_like(q, dtype=torch.float32)
     dq_accum = torch.empty_like(q, dtype=torch.float32)
     delta = torch.empty_like(lse)
@@ -945,7 +944,7 @@ def flash_attn_backward(do, q, k, v, o, lse, bias=None, causal=False, softmax_sc
         dv,
         lse,
         delta,
-        softmax_scale_value,
+        softmax_scale,
         q.stride(0),
         q.stride(2),
         q.stride(1),
@@ -978,7 +977,7 @@ def flash_attn_backward(do, q, k, v, o, lse, bias=None, causal=False, softmax_sc
         # Can't use kwargs here because triton autotune expects key to be args, not kwargs
         # IS_CAUSAL=causal, BLOCK_HEADDIM=d,
         bias_type,
-        causal.item(),
+        causal,
         BLOCK_HEADDIM,
         # SEQUENCE_PARALLEL=False,
         # BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N,
@@ -1028,32 +1027,30 @@ def _make_flash_attention_nodes(
     bias: str,
     scale: float,
 ):
-    nodes_to_add = []
-    scale_node = make_constant_node("scale_" + str(idx), TensorProto.FLOAT, [], [scale])
-    false_node = make_constant_node("false_" + str(idx), TensorProto.BOOL, [], [False])
     logsumexp = helper.make_tensor_value_info("logsumexp_" + str(idx), TensorProto.FLOAT, [])
-    scale_out = helper.make_tensor_value_info("scale_out_" + str(idx), TensorProto.FLOAT, [])
-    new_value_infos = [logsumexp, scale_out]
     fwd_node = helper.make_node(
         "TritonOp",
-        [q, k, v, bias, false_node.output[0], scale_node.output[0]],
-        [y, logsumexp.name, scale_out.name],
+        [q, k, v, bias],
+        [y, logsumexp.name],
         "TritonOp_Flash_Attn_Fwd_" + str(idx),
         None,
         "com.microsoft",
         func_name="flash_attn_forward",
+        causal=0,
+        softmax_scale=scale,
     )
     bwd_node = helper.make_node(
         "TritonOp",
-        [dy, q, k, v, y, logsumexp.name, bias, false_node.output[0], scale_out.name],
+        [dy, q, k, v, y, logsumexp.name, bias],
         [dq, dk, dv],
         "TritonOp_Flash_Attn_Bwd_" + str(idx),
         None,
         "com.microsoft",
         func_name="flash_attn_backward",
+        causal=0,
+        softmax_scale=scale,
     )
-    nodes_to_add.extend([scale_node, false_node, fwd_node, bwd_node])
-    return nodes_to_add, new_value_infos
+    return [fwd_node, bwd_node], [logsumexp]
 
 
 def _apply_transform_for_pattern_0(matcher: GraphMatcher, idx: int, nodes: List[NodeProto]):

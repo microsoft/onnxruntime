@@ -37,7 +37,7 @@ Status TritonOp::Compute(OpKernelContext* context) const {
   InlinedHashSet<size_t> bool_outputs = GetBoolOutputs(output_size);
   auto& executor = training::framework::triton::TritonOpExecutor::Instance();
   if (func_name_ != "") {
-    executor.ExecuteByFuncName(func_name_, inputs, outputs, bool_outputs);
+    executor.ExecuteByFuncName(func_name_, inputs, outputs, bool_outputs, kwargs_);
   } else {
     executor.ExecuteByOnnx(onnx_key_, onnx_string_, inputs, outputs, bool_outputs);
   }

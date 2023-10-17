@@ -165,7 +165,7 @@ def update_graph(
     graph: GraphProto,
     nodes_to_remove: List[NodeProto],
     nodes_to_add: List[NodeProto],
-    new_value_infos: List[TensorProto] = [],
+    new_value_infos: List[TensorProto] = [],  # noqa: B006
 ):
     """Update an ONNX graph by removing some nodes, and adding some new nodes and value infos."""
     nodes = [node for node in graph.node if node not in nodes_to_remove]
