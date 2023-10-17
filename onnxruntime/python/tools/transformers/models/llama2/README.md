@@ -59,6 +59,31 @@ For example, the following command will export the model (distributed for 8 GPUs
 bash sample_run.sh 8 --export --generate --ort --benchmark --merge
 ```
 
+Some notes for benchmarks in MI250X:
+
+- Options `--tunable` and `--tuning` are used to enable ORT tuning (including GEMM, LayerNorm, etc.), which will significantly improve the performance. Note it will take some time in the tuning process.
+- Option `--optimize` applies graph optimizations for ORT (only fuses LayerNorm for now)
+
+So the recommended commands for MI250X are
+
+1. export the model
+
+    ```bash
+    bash sample_run.sh 8 --export --optimize --merge
+    ```
+
+2. run the benchmark (note we still need `--optimize` here)
+
+    ```bash
+    bash sample_run.sh 8 --optimize --merge --benchmark --ort --torch --tunable --tuning
+    ```
+
+Or simply combine them
+
+```bash
+bash sample_run.sh 8 --export --optimize --merge --benchmark --ort --torch --tunable --tuning
+```
+
 See scripts [sample_run.sh](sample_run.sh) and [llama-v2.py](llama-v2.py) for more details.
 
 ## Llama2 model
@@ -67,4 +92,4 @@ This module is used to test distributed inference of Llama2 model.
 
 The model file is based on huggingface modeling_llama.py and patched for distributed inference.
 
-You can check the [models/patchinging_llama.py](models/patching_llama.py) script for more details.
+You can check the [modeling/patchinging_llama.py](modeling/patching_llama.py) script for more details.

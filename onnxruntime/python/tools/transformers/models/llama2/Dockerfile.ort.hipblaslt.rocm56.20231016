@@ -1,4 +1,4 @@
-# Image: ort_tuning_rocm5.6_triton_hipblaslt:20230831
+# Image: ort_tuning_rocm5.6_triton_hipblaslt:20231016
 FROM rocm/pytorch-nightly:2023-08-10-rocm5.6
 
 RUN pip install -U cmake
@@ -17,7 +17,7 @@ ENV MPI_HOME=/usr/lib/x86_64-linux-gnu/openmpi
 ENV ROCM_VERSION=5.6.0
 RUN git clone https://github.com/microsoft/onnxruntime && \
     cd onnxruntime && \
-    git checkout llama2/opt && \
+    git checkout linmin/llama2_bk && \
     bash ./build.sh \
         --config Release --enable_training --build_wheel --update --build --cmake_generator Ninja --skip_tests \
         --use_rocm --rocm_version=${ROCM_VERSION} --rocm_home /opt/rocm --enable_nccl \
@@ -34,4 +34,4 @@ RUN cd /tmp && python -m onnxruntime.training.ortmodule.torch_cpp_extensions.ins
 
 RUN pip install mpi4py
 
-COPY Dockerfile.ort.hipblaslt.rocm56.20230831 /root/Dockerfile.ort.hipblaslt.rocm56.20230831
+COPY Dockerfile.ort.hipblaslt.rocm56.20231016 /root/Dockerfile.ort.hipblaslt.rocm56.20231016
