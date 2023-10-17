@@ -83,9 +83,9 @@ Status QnnCacheModelHandler::GetEpContextFromGraph(const onnxruntime::GraphViewe
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
   if (is_embed_mode) {
     const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
-    ORT_RETURN_IF_ERROR(qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
-                                                                            static_cast<uint64_t>(context_binary.length()),
-                                                                            qnn_model));
+    return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
+                                                               static_cast<uint64_t>(context_binary.length()),
+                                                               qnn_model);
   } else {
     std::string external_qnn_context_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
 
@@ -106,9 +106,9 @@ Status QnnCacheModelHandler::GetEpContextFromGraph(const onnxruntime::GraphViewe
     const auto& read_result = cache_file.read(buffer.get(), buffer_size);
     ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
     cache_file.close();
-    ORT_RETURN_IF_ERROR(qnn_backend_manager->LoadCachedQnnContextFromBuffer(buffer.get(),
-                                                                            static_cast<uint64_t>(buffer_size),
-                                                                            qnn_model));
+    return qnn_backend_manager->LoadCachedQnnContextFromBuffer(buffer.get(),
+                                                               static_cast<uint64_t>(buffer_size),
+                                                               qnn_model);
   }
 
   return Status::OK();

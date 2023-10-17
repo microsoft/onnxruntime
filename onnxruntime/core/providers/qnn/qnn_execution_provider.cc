@@ -483,14 +483,15 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
   bool is_qnn_ctx_model = false;
   ORT_RETURN_IF_ERROR(qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs, is_qnn_ctx_model));
 
-  if (context_cache_enabled_ || is_qnn_ctx_model) {
+  bool is_ctx_file_exist = qnn_cache_model_handler_->GetIsContextCacheFileExists();
+  if (is_qnn_ctx_model || (context_cache_enabled_ && is_ctx_file_exist)) {
     ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support single partition for context cache feature.");
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager_.get());
     // Load and execute from cached context if exist
     ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->LoadQnnCtxFromOnnxModel(graph_viewer,
                                                                           context_cache_path_,
                                                                           is_qnn_ctx_model,
-                                                                          qnn_cache_model_handler_->GetIsContextCacheFileExists(),
+                                                                          is_ctx_file_exist,
                                                                           qnn_backend_manager_.get(),
                                                                           *(qnn_model.get()),
                                                                           logger));
