@@ -263,9 +263,68 @@ class TestFloat8Gemm8(unittest.TestCase):
         )
 
     @parameterized.parameterized.expand(list(itertools.product([0, 1], [0, 1], [0, 1])))
-    def test_combinations(self, transA, transB, row_major):        
-        self.common_test_model_gemm("FLOAT", transA=transA, transB=transB, row_major_compute=row_major, rtol=1e-3)
-        
+    def test_combinations(self, transA, transB, row_major_compute):
+        self.common_test_model_gemm(
+            "FLOAT", transA=transA, transB=transB, row_major_compute=row_major_compute, rtol=1e-3
+        )
+
+    @parameterized.parameterized.expand(
+        [
+            ((2, 3), (3, 5), 0, 0, 1),
+            ((2, 3), (5, 3), 0, 1, 1),
+            ((2, 3), (5, 2), 1, 1, 1),
+            ((3, 2), (5, 2), 1, 0, 1),
+            #
+            ((2, 3), (5, 2), 0, 0, 0),
+            ((2, 3), (2, 5), 0, 1, 0),
+            ((3, 2), (2, 5), 1, 1, 0),
+            ((3, 2), (5, 2), 1, 0, 0),
+        ]
+    )
+    def test_combinations(self, shapeA, shapeB, transA, transB, row_major_compute):
+        model = make_model(
+            make_graph(
+                [
+                    make_node(
+                        "GemmFloat8",
+                        ["A", "B"],
+                        ["Y"],
+                        transA=transA,
+                        transB=transB,
+                        rowMajorCompute=row_major_compute,
+                        domain="com.microsoft",
+                    )
+                ],
+                "f8",
+                [
+                    make_tensor_value_info("A", TensorProto.FLOAT, [None, None]),
+                    make_tensor_value_info("B", TensorProto.FLOAT, [None, None]),
+                ],
+                [make_tensor_value_info("Y", TensorProto.FLOAT, [None, None])],
+            )
+        )
+
+        sess = InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+        a = np.arange(np.prod(shapeA)).reshape(shapeA).astype(np.float32)
+        b = np.arange(np.prod(shapeB)).reshape(shapeB).astype(np.float32)
+        try:
+            expected = (a.T if transA else a) @ (b.T if transB else b)
+        except Exception as e:
+            raise AssertionError(
+                f"Unable to multiply shapes={shapeA}x{shapeB}, "
+                f"transA={transA}, transB={transB}, row_major_compute={row_major_compute}"
+            ) from e
+        try:
+            got = sess.run(None, {"A": a, "B": b})
+        except Exception as e:
+            raise AssertionError(
+                f"Unable to run Gemm with shapes={shapeA}x{shapeB}, "
+                f"transA={transA}, transB={transB}, row_major_compute={row_major_compute}"
+            ) from e
+        self.assertEqual(expected.shape, got[0].shape)
+        self.assertEqual(expected.dtype, got[0].dtype)
+        assert_allclose(expected, got[0])
+
 
 if __name__ == "__main__":
     TestFloat8Gemm8().test_model_gemm_float()
