@@ -504,7 +504,6 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
 
     ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
-    qnn_cache_model_handler_.reset();
     return Status::OK();
   }
 
@@ -520,8 +519,6 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                             qnn_models_,
                                                                             logger));
   }
-  qnn_cache_model_handler_.reset();
-
   return Status::OK();
 }
 }  // namespace onnxruntime
