@@ -52,6 +52,11 @@ set(contrib_ops_excluded_files
   "quantization/attention_quantization.h"
   "quantization/attention_quantization_impl.cu"
   "quantization/attention_quantization_impl.cuh"
+  "quantization/dequantize_blockwise.cuh"
+  "quantization/dequantize_blockwise.cu"
+  "quantization/matmul_nbits.cc"
+  "quantization/matmul_nbits.cuh"
+  "quantization/matmul_nbits.cu"
   "quantization/quantize_dequantize_linear.cc"
   "quantization/qordered_ops/qordered_attention_impl.cu"
   "quantization/qordered_ops/qordered_attention_impl.h"
@@ -163,6 +168,8 @@ set(provider_excluded_files
   "gpu_data_transfer.h"
   "integer_gemm.cc"
   "tunable/*"
+  "cuda_nhwc_kernels.cc"
+  "cuda_nhwc_kernels.h"
 )
 
 set(training_ops_excluded_files
