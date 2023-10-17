@@ -13,6 +13,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
 #include "core/graph/function.h"
+#include "core/graph/function_utils.h"
 #include "core/graph/graph_viewer.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
@@ -556,6 +557,7 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
 static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
                                      const KernelRegistryManager& kernel_registry_mgr,
                                      Graph& graph,
+                                     InlinedHashSet<std::string>& not_inlined,
                                      size_t& inlined_count) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
@@ -570,6 +572,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
       ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
                                                  kernel_registry_mgr,
                                                  *subgraph,
+                                                 not_inlined,
                                                  inlined_count));
     }
   }
@@ -614,11 +617,17 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   // the model, we can not inline it.
 
   for (auto node_index : inline_candidates) {
-    if (claimed_by_ep.count(node_index) == 0) {
-      auto* node = graph.GetNode(node_index);
-      if (node != nullptr) {
+    auto* node = graph.GetNode(node_index);
+    if (node != nullptr) {
+      if (claimed_by_ep.count(node_index) == 0) {
         ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
         ++inlined_count;
+      } else {
+        ONNX_NAMESPACE::FunctionProto inlined_fp;
+        if (node->TryGetFunctionProto(inlined_fp)) {
+          auto function_id = function_utils::GetFunctionIdentifier(inlined_fp.domain(), inlined_fp.name());
+          ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
+        }
       }
     }
   }
@@ -791,11 +800,13 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 Status GraphPartitioner::InlineFunctionsAOT(Graph& graph,
                                             const ExecutionProviders& execution_providers,
                                             const KernelRegistryManager& kernel_registry_manager) const {
+  InlinedHashSet<std::string> not_inlined;
   do {
     size_t inlined_count = 0;
     ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
                                                kernel_registry_manager,
                                                graph,
+                                               not_inlined,
                                                inlined_count));
 
     if (inlined_count == 0) {
@@ -805,7 +816,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Graph& graph,
     ORT_RETURN_IF_ERROR(graph.Resolve());
   } while (true);
 
-  graph.RemoveLocalFunctions();
+  graph.RemoveLocalFunctions(not_inlined);
 
   return Status::OK();
 }
