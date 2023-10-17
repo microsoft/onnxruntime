@@ -1,5 +1,4 @@
 #include "string_concat.h"
-#include "core/providers/cpu/element_wise_ranged_transform.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/common/common.h"
 
@@ -12,19 +11,36 @@ ONNX_CPU_OPERATOR_KERNEL(
     StringConcat);
 
 Status StringConcat::Compute(OpKernelContext* context) const {
-    const auto* X = context->Input<Tensor>(0);
-    const auto* X_data = X->template Data<std::string>();
-    const auto* Y = context->Input<Tensor>(1);
-    const auto* Y_data = Y->template Data<std::string>();
-    auto* Z = context->Output(0, X->Shape());
-    auto* Z_data = Z->template MutableData<std::string>();
-    const auto N = X->Shape().Size();
-
-    for (int64_t i = 0; i < N; ++i) {
-        Z_data[i] = X_data[i] + Y_data[i];
-    }
-
-    return Status::OK();
+  ProcessBroadcastSpanFuncs broadcast_funcs{
+      [](BroadcastHelper& broadcast_helper) {
+        auto x = broadcast_helper.ScalarInput0<std::string>();
+        auto Y = broadcast_helper.SpanInput1<std::string>();
+        auto output = broadcast_helper.OutputSpan<std::string>();
+        std::transform(Y.begin(), Y.end(), output.begin(),
+                       [&x](const std::string& y) {
+                         return x + y;
+                       });
+      },
+      [](BroadcastHelper& broadcast_helper) {
+        auto X = broadcast_helper.SpanInput0<std::string>();
+        auto y = broadcast_helper.ScalarInput1<std::string>();
+        auto output = broadcast_helper.OutputSpan<std::string>();
+        std::transform(X.begin(), X.end(), output.begin(),
+                       [&y](const std::string& x) {
+                         return x + y;
+                       });
+      },
+      [](BroadcastHelper& broadcast_helper) {
+        auto X = broadcast_helper.SpanInput0<std::string>();
+        auto Y = broadcast_helper.SpanInput1<std::string>();
+        auto output = broadcast_helper.OutputSpan<std::string>();
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
+                       [](const std::string& x, const std::string& y) {
+                         return x + y;
+                       });
+      }};
+  UntypedBroadcastTwo(*context, broadcast_funcs);
+  return Status::OK();
 }
 
-} // namespace onnxruntime
+}  // namespace onnxruntime
