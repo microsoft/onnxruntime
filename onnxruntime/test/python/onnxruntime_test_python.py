@@ -301,9 +301,9 @@ class TestInferenceSession(unittest.TestCase):
             from onnxruntime.capi import _pybind_state as C
             session_options = C.get_default_session_options()
 
-            # TRT plugins registered as custom op domain should not be added twice via session option
-            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), session_options, providers=["TensorrtExecutionProvider"])
-            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), session_options, providers=["TensorrtExecutionProvider"])
+            # TRT plugins registered as custom op domain should only be added once in session option regaldless of number of session creation
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), session_options, providers=["TensorrtExecutionProvider"])
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), session_options, providers=["TensorrtExecutionProvider"])
 
             # We currently disable following test code since that not all test machines/GPUs have nvidia int8 capability
 

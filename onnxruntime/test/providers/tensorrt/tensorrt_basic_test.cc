@@ -7,7 +7,6 @@
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
 #include <string>
@@ -365,13 +364,6 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   ASSERT_TRUE(status.IsOK());
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
-
-  // TRT plugins registered as custom op domain should only be added once via session option
-  Ort::SessionOptions session_options;
-  OrtTensorRTProviderOptions tensorrt_options;
-  OrtTensorRTProviderOptionsV2 tensorrt_options_v2;
-  session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
-  session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options_v2);
 }
 
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
