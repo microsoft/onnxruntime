@@ -140,7 +140,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("z:b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:AMPIDZvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("k:b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:AMPIDZvhsqz"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -290,7 +290,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         }
         break;
       }
-      case 'z': {
+      case 'k': {
         if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
           test_config.run_config.native_inputs = false;
         } else if (!CompareCString(optarg, ORT_TSTR("native"))) {

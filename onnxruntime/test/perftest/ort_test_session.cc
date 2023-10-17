@@ -914,7 +914,7 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
 #undef CASE_FOR_TYPE
 }
 
-size_t GetSizeFromType(ONNXTensorElementDataType type) {
+size_t GetSizeFromType(ONNXTensorElementDataType /*type*/) {
   return 4;
 }
 
@@ -965,68 +965,96 @@ Microsoft::WRL::ComPtr<ID3D12Resource> CreateD3D12Resource(
   return resource;
 }
 
+static void InitializeDmlValueFromCpuValue(const Ort::Value& /*cpu_value*/, Ort::Value& /*dml_value*/) {
+}
+
+static Ort::Value CreateDmlValueFromCpuValue(
+    Ort::Value&& cpu_value,
+    const Ort::Session& session,
+    const char* input_name) {
+  auto& ort_api = Ort::GetApi();
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+  Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
+  Ort::ThrowOnError(ort_dml_api->GetDeviceForSessionInput(session, input_name, &device));
+
+  if (!device) {
+    return std::move(cpu_value);
+  }
+
+  auto type_info = cpu_value.GetTypeInfo();
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+  auto d3d_resource = CreateD3D12Resource(device.Get(), tensor_info.GetElementType(), input_node_dim);
+  void* dml_allocator_resource;
+  Ort::ThrowOnError(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d_resource.Get(), &dml_allocator_resource));
+
+  using DmlAllocatorResource = std::unique_ptr<void, void (*)(void*)>;
+  auto unique_dml_allocator_resource = DmlAllocatorResource(dml_allocator_resource, [](void* ptr) {
+    auto& ort_api = Ort::GetApi();
+    const OrtDmlApi* ort_dml_api;
+    Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+    Ort::ThrowOnError(ort_dml_api->FreeGPUAllocation(ptr));
+  });
+
+  auto dml_memory_info = Ort::MemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault);
+
+  // create the OrtValue as a tensor letting ort know that we own the data buffer
+  OrtValue* dml_value_ptr;
+  Ort::ThrowOnError(ort_api.CreateTensorWithDataAsOrtValue(
+      dml_memory_info,
+      unique_dml_allocator_resource.get(),
+      static_cast<size_t>(d3d_resource->GetDesc().Width),
+      input_node_dim.data(),
+      input_node_dim.size(),
+      tensor_info.GetElementType(),
+      &dml_value_ptr));
+  Ort::Value dml_value(dml_value_ptr);
+
+  InitializeDmlValueFromCpuValue(cpu_value, dml_value);
+  return dml_value;
+}
 
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool use_native_inputs) {
   auto allocator = Ort::AllocatorWithDefaultOptions();
 
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
-
-    auto input_name = session_.GetInputNameAllocated(i, allocator);
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
+    if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
+      continue;
+    }
+
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
-      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+    auto input_name = session_.GetInputNameAllocated(i, allocator);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
-      // free dimensions are treated as 1 if not overriden
-      for (int64_t& dim : input_node_dim) {
-        if (dim == -1) {
-          dim = 1;
-        }
+    // free dimensions are treated as 1 if not overriden
+    for (int64_t& dim : input_node_dim) {
+      if (dim == -1) {
+        dim = 1;
       }
+    }
 
-      if (use_native_inputs) {
-        auto& ort_api = Ort::GetApi();
-        const OrtDmlApi* ort_dml_api;
-        ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api));
-        auto dml_memory_info = Ort::MemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault);
-        auto dml_allocator = Ort::Allocator(session_, dml_memory_info);
+    // Create a CPU tensor
+    Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
+                                                       input_node_dim.size(), tensor_info.GetElementType());
 
-        Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
-        ort_dml_api->GetDeviceForSessionInput(session_, input_name.get(), &device);
-        auto d3d_resource = CreateD3D12Resource(device.Get(), tensor_info.GetElementType(), input_node_dim);
+    // Initialize the tensor with data
+    InitializeTensorWithSeed(seed, input_tensor);
 
-        void* dml_allocator_resource;
-        ort_dml_api->CreateGPUAllocationFromD3DResource(d3d_resource.Get(), &dml_allocator_resource);
+    constexpr bool is_dml = true;
+    if (!use_native_inputs) {
+      PreLoadTestData(0, i, std::move(input_tensor));
+    } else if (is_dml) {
+      auto value =
+        CreateDmlValueFromCpuValue(
+          std::move(input_tensor),
+          session_,
+          input_name.get());
 
-        using DmlAllocatorResource = std::unique_ptr<void, void (*)(void*)>;
-        auto unique_dml_allocator_resource = DmlAllocatorResource(dml_allocator_resource, [](void* ptr) {
-          auto& ort_api = Ort::GetApi();
-          const OrtDmlApi* ort_dml_api;
-          ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api));
-          ort_dml_api->FreeGPUAllocation(ptr);
-        });
-
-        // create the OrtValue as a tensor letting ort know that we own the data buffer
-        OrtValue* input_tensor_ptr;
-        ort_api.CreateTensorWithDataAsOrtValue(
-            dml_memory_info,
-            unique_dml_allocator_resource.get(),
-            static_cast<size_t>(d3d_resource->GetDesc().Width),
-            input_node_dim.data(),
-            input_node_dim.size(),
-            tensor_info.GetElementType(),
-            &input_tensor_ptr);
-        Ort::Value input_tensor(input_tensor_ptr);
-
-        PreLoadTestData(0, i, std::move(input_tensor));
-      } else {
-        Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
-                                                           input_node_dim.size(), tensor_info.GetElementType());
-        InitializeTensorWithSeed(seed, input_tensor);
-        PreLoadTestData(0, i, std::move(input_tensor));
-      }
+      PreLoadTestData(0, i, std::move(value));
     }
   }
   return true;
