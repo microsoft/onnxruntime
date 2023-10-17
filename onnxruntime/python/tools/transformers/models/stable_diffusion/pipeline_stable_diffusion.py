@@ -312,7 +312,6 @@ class StableDiffusionPipeline:
         add_kwargs=None,
     ):
         assert guidance > 1.0, "Guidance has to be > 1.0"  # TODO: remove this constraint
-        do_classifier_free_guidance = guidance > 1.0
 
         cudart.cudaEventRecord(self.events["denoise-start"], 0)
         if not isinstance(timesteps, torch.Tensor):
@@ -323,7 +322,7 @@ class StableDiffusionPipeline:
                 nvtx_latent_scale = nvtx.start_range(message="latent_scale", color="pink")
 
             # Expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            latent_model_input = torch.cat([latents] * 2)
 
             latent_model_input = self.scheduler.scale_model_input(
                 latent_model_input, step_offset + step_index, timestep
@@ -357,9 +356,8 @@ class StableDiffusionPipeline:
                 nvtx_latent_step = nvtx.start_range(message="latent_step", color="pink")
 
             # perform guidance
-            if do_classifier_free_guidance:
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
 
             if type(self.scheduler) == UniPCMultistepScheduler:
                 latents = self.scheduler.step(noise_pred, timestep, latents, return_dict=False)[0]
