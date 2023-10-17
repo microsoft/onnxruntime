@@ -2859,13 +2859,13 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   // input tensor on gpu
   Ort::MemoryInfo memory_info_gpu{"Cuda", OrtDeviceAllocator, 0, OrtMemTypeDefault};
   void* input_tensor_data = nullptr;
-  int type_size = 4;
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> x_shape({3, 2});
+  int type_size = sizeof(float);
   size_t tensor_size = x_values.size();
   ONNXTensorElementDataType type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
   assert(cudaMalloc(&input_tensor_data, tensor_size * type_size) == cudaSuccess);
-  cudaMemcpy(input_tensor_data, x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  cudaMemcpy(input_tensor_data, x_values.data(), type_size * x_values.size(), cudaMemcpyHostToDevice);
   Ort::Value ort_input_tensor_value = Ort::Value::CreateTensor(memory_info_gpu, input_tensor_data, tensor_size * type_size,
                                                                x_shape.data(), x_shape.size(), type);
 
@@ -2881,6 +2881,10 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   iobindings.BindOutput("Y", ort_output_tensor_value);
 
   session->Run(Ort::RunOptions(), iobindings);
+
+  for (auto y : y_values) {
+    std::cout << y << std::endl;
+  }
 
   // Check the values against the bound raw memory
   ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
