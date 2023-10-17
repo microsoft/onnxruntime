@@ -29,12 +29,21 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
   auto& input = test_inputs_.at(id);
-  auto start = std::chrono::high_resolution_clock::now();
-  auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                                    output_names_raw_ptr.data(), output_names_raw_ptr.size());
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> duration_seconds = end - start;
-  return duration_seconds;
+  if (test_outputs_.size() != 0) {
+    auto start = std::chrono::high_resolution_clock::now();
+    session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+                 output_names_raw_ptr.data(), test_outputs_.data(), output_names_raw_ptr.size());
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration_seconds = end - start;
+    return duration_seconds;
+  } else {
+    auto start = std::chrono::high_resolution_clock::now();
+    auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+                                      output_names_raw_ptr.data(), output_names_raw_ptr.size());
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration_seconds = end - start;
+    return duration_seconds;
+  }
 }
 
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
@@ -670,6 +679,45 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     std::unordered_map<std::string, std::string> dml_options;
     dml_options["performance_preference"] = "high_performance";
     dml_options["device_filter"] = "gpu";
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [DML] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+
+      if (key == "device_filter") {
+        std::set<std::string> ov_supported_device_types = { "gpu", "npu" };
+        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong configuration value for the key 'device_filter'. "
+              "Select from 'gpu', or 'npu' \n");
+        }
+      } else if (key == "performance_preference") {
+        std::set<std::string> ov_supported_device_types = { "default", "high_performance", "minimal_power" };
+        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong configuration value for the key 'performance_preference'. "
+              "Select from 'default', 'high_performance' or 'minimal_power' \n");
+        }
+      }
+    }
     session_options.AppendExecutionProvider("DML", dml_options);
 #else
     ORT_THROW("DML is not supported in this build\n");
@@ -964,33 +1012,43 @@ Microsoft::WRL::ComPtr<ID3D12Resource> CreateD3D12Resource(
 
   return resource;
 }
+//
+//static void InitializeDmlValueFromCpuValue(
+//    const Ort::Session& session,
+//    const Ort::Value& cpu_value,
+//    Ort::Value& dml_value) {
+//  auto& ort_api = Ort::GetApi();
+//  const OrtDmlApi* ort_dml_api;
+//  Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+//
+//  const void* cpu_mutable_data = cpu_value.GetTensorRawData();
+//  const auto type_and_shape_info = cpu_value.GetTensorTypeAndShapeInfo();
+//  auto cpu_buffer_size_in_bytes = GetSizeFromType(type_and_shape_info.GetElementType()) * type_and_shape_info.GetElementCount();
+//
+//  void* mutable_data = dml_value.GetTensorMutableRawData();
+//  auto ort_memory_info = dml_value.GetTensorMemoryInfo();
+//  auto ort_allocator = Ort::Allocator(session, ort_memory_info);
+//  Microsoft::WRL::ComPtr<ID3D12Resource> resource;
+//  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(ort_allocator, mutable_data, &resource));
+//  void* mapped_dml_data;
+//  (void)(resource->Map(0, nullptr, &mapped_dml_data));
+//  memcpy(mapped_dml_data, cpu_mutable_data, cpu_buffer_size_in_bytes);
+//  resource->Unmap(0, nullptr);
+//}
 
-static void InitializeDmlValueFromCpuValue(const Ort::Value& /*cpu_value*/, Ort::Value& /*dml_value*/) {
-}
-
-static Ort::Value CreateDmlValueFromCpuValue(
-    Ort::Value&& cpu_value,
-    const Ort::Session& session,
-    const char* input_name) {
+static std::pair<Ort::Value, OnnxRuntimeTestSession::UniqueNativePtr> CreateDmlValue(
+    ID3D12Device* device,
+    const Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
   auto& ort_api = Ort::GetApi();
   const OrtDmlApi* ort_dml_api;
   Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
-  Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
-  Ort::ThrowOnError(ort_dml_api->GetDeviceForSessionInput(session, input_name, &device));
 
-  if (!device) {
-    return std::move(cpu_value);
-  }
-
-  auto type_info = cpu_value.GetTypeInfo();
-  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
   std::vector<int64_t> input_node_dim = tensor_info.GetShape();
-  auto d3d_resource = CreateD3D12Resource(device.Get(), tensor_info.GetElementType(), input_node_dim);
+  auto d3d_resource = CreateD3D12Resource(device, tensor_info.GetElementType(), input_node_dim);
   void* dml_allocator_resource;
   Ort::ThrowOnError(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d_resource.Get(), &dml_allocator_resource));
 
-  using DmlAllocatorResource = std::unique_ptr<void, void (*)(void*)>;
-  auto unique_dml_allocator_resource = DmlAllocatorResource(dml_allocator_resource, [](void* ptr) {
+  auto unique_dml_allocator_resource = OnnxRuntimeTestSession::UniqueNativePtr(dml_allocator_resource, [](void* ptr) {
     auto& ort_api = Ort::GetApi();
     const OrtDmlApi* ort_dml_api;
     Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
@@ -1011,11 +1069,64 @@ static Ort::Value CreateDmlValueFromCpuValue(
       &dml_value_ptr));
   Ort::Value dml_value(dml_value_ptr);
 
-  InitializeDmlValueFromCpuValue(cpu_value, dml_value);
-  return dml_value;
+  return {std::move(dml_value), std::move(unique_dml_allocator_resource)};
 }
 
-bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool use_native_inputs) {
+static std::pair<Ort::Value, OnnxRuntimeTestSession::UniqueNativePtr> CreateDmlValueFromCpuValue(
+    Ort::Value&& cpu_value,
+    const Ort::Session& session,
+    const char* input_name) {
+  auto& ort_api = Ort::GetApi();
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+  Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
+  Ort::ThrowOnError(ort_dml_api->GetDeviceForSessionInput(session, input_name, &device));
+
+  if (!device) {
+    return { std::move(cpu_value), OnnxRuntimeTestSession::UniqueNativePtr(nullptr, nullptr) };
+  }
+
+  auto type_info = cpu_value.GetTypeInfo();
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  auto dml_value_pair = CreateDmlValue(device.Get(), tensor_info);
+  //InitializeDmlValueFromCpuValue(session, cpu_value, dml_value_pair.first);
+  return dml_value_pair;
+}
+
+bool OnnxRuntimeTestSession::PopulateOutputs(bool use_native_bindings) {
+  if (use_native_bindings) {
+    auto& ort_api = Ort::GetApi();
+    const OrtDmlApi* ort_dml_api;
+    Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+
+    for (size_t i = 0; i < static_cast<size_t>(output_names_.size()); i++) {
+      Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
+      if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
+        continue;
+      }
+
+      auto& output_name = output_names_[i];
+      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+      std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+
+      // free dimensions are treated as 1 if not overriden
+      for (int64_t& dim : input_node_dim) {
+        if (dim == -1) {
+          dim = 1;
+        }
+      }
+
+      Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
+      Ort::ThrowOnError(ort_dml_api->GetDeviceForSessionOutput(session_, output_name.c_str(), &device));
+      auto dml_value_pair = CreateDmlValue(device.Get(), tensor_info);
+      native_test_bindings_.emplace_back(std::move(dml_value_pair.second));
+      test_outputs_.push_back(std::move(dml_value_pair.first));
+    }
+  }
+  return true;
+}
+
+bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool use_native_bindings) {
   auto allocator = Ort::AllocatorWithDefaultOptions();
 
   // iterate over all input nodes
@@ -1045,7 +1156,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool u
     InitializeTensorWithSeed(seed, input_tensor);
 
     constexpr bool is_dml = true;
-    if (!use_native_inputs) {
+    if (!use_native_bindings) {
       PreLoadTestData(0, i, std::move(input_tensor));
     } else if (is_dml) {
       auto value =
@@ -1054,7 +1165,8 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool u
           session_,
           input_name.get());
 
-      PreLoadTestData(0, i, std::move(value));
+      native_test_bindings_.emplace_back(std::move(value.second));
+      PreLoadTestData(0, i, std::move(value.first));
     }
   }
   return true;

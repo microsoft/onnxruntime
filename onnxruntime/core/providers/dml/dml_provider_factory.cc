@@ -542,21 +542,31 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtGetDeviceForSessionInput, _In_ OrtSession* session, _In_ const char* input, _Out_ ID3D12Device** device) {
+
+#include "core/session/inference_session.h"
+#include "DmlExecutionProvider/src/IExecutionProvider.h"
+#include "DmlExecutionProvider/src/ExecutionProvider.h"
+
+ORT_API_STATUS_IMPL(OrtGetDeviceForSessionInput, _In_ OrtSession* session, _In_ const char* /*input*/, _Out_ ID3D12Device** device) {
   API_IMPL_BEGIN
   *device = nullptr;
 #ifdef USE_DML
-
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  const auto& session_state = inference_session->GetSessionState();
+  auto& provider_id = session_state.GetExecutionProviders().GetIds().at(0);
+  const auto& provider = session_state.GetExecutionProviders().Get(provider_id);
+  auto dml_execution_provider = static_cast<const Dml::ExecutionProvider*>(provider);
+  dml_execution_provider->GetImpl()->GetD3DDevice(device);
 #endif
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtGetDeviceForSessionOutput, _In_ OrtSession* session, _In_ const char* output, _Out_ ID3D12Device** device) {
+ORT_API_STATUS_IMPL(OrtGetDeviceForSessionOutput, _In_ OrtSession* session, _In_ const char* /*output*/, _Out_ ID3D12Device** device) {
   API_IMPL_BEGIN
   *device = nullptr;
 #ifdef USE_DML
-
+  return OrtGetDeviceForSessionInput(session, nullptr, device);
 #endif
   return nullptr;
   API_IMPL_END
