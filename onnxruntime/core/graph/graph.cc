@@ -4052,6 +4052,50 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   return Status::OK();
 }
 
+static void RenameSubgraphDependentNames(const InlinedHashMap<std::string, std::string>& name_mapping,
+                                         ONNX_NAMESPACE::GraphProto& graph_proto) {
+  for (auto& node : *graph_proto.mutable_node()) {
+    for (auto& attr : *node.mutable_attribute()) {
+      if (attr.has_g()) {
+        RenameSubgraphDependentNames(name_mapping, *attr.mutable_g());
+      }
+
+      for (auto& subgraph : *attr.mutable_graphs()) {
+        RenameSubgraphDependentNames(name_mapping, subgraph);
+      }
+    }
+
+    for (auto& input : *node.mutable_input()) {
+      auto hit = name_mapping.find(input);
+      if (hit != name_mapping.cend()) {
+        input = hit->second;
+      }
+    }
+
+    // XXX: Can output names depend on the outer scope?
+    // for (auto& output : *node.mutable_output()) {
+    //  auto hit = name_mapping.find(output);
+    //  if (hit != name_mapping.cend()) {
+    //    output = hit->second;
+    //  }
+    //}
+  }
+}
+
+static void RenameNodeAttributesSubgraphDependentNames(const InlinedHashMap<std::string, std::string>& name_mapping,
+                                                         NodeAttributes& attributes) {
+  for (auto& attribute : attributes) {
+    auto& attr_proto = attribute.second;
+    if (attr_proto.has_g()) {
+      RenameSubgraphDependentNames(name_mapping, *attr_proto.mutable_g());
+    }
+
+    for (auto& subgraph : *attr_proto.mutable_graphs()) {
+      RenameSubgraphDependentNames(name_mapping, subgraph);
+    }
+  }
+}
+
 Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
   std::string unique_id{if_node.Name()};
   unique_id.append("/if_subgraph/").append(graph_to_inline.Name());
@@ -4172,7 +4216,7 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
         } else {
           // This requires the nodes to be in topological order
           auto new_name = GenerateNodeArgName(make_unique(input_name));
-          new_node_input_defs.push_back(&GetOrCreateNodeArg(input_name, input_def->TypeAsProto()));
+          new_node_input_defs.push_back(&GetOrCreateNodeArg(new_name, input_def->TypeAsProto()));
           ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(input_name, std::move(new_name)));
         }
       }
@@ -4190,17 +4234,29 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
       } else {
         // This requires the nodes to be in topological order
         auto new_name = GenerateNodeArgName(make_unique(output_name));
-        new_node_output_defs.push_back(&GetOrCreateNodeArg(output_name, output_def->TypeAsProto()));
+        new_node_output_defs.push_back(&GetOrCreateNodeArg(new_name, output_def->TypeAsProto()));
         ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(output_name, std::move(new_name)));
       }
     }
 
     const auto new_node_name = GenerateNodeName(make_unique(node->Name()));
-    ORT_IGNORE_RETURN_VALUE(AddNode(new_node_name, node->OpType(), node->Description(),
-                                    new_node_input_defs,
-                                    new_node_output_defs,
-                                    &node->GetAttributes(),
-                                    node->Domain()));
+    if (node->ContainsSubgraph()) {
+      // Make a copy
+      auto attributes = node->GetAttributes();
+      RenameNodeAttributesSubgraphDependentNames(name_mapping, attributes);
+      ORT_IGNORE_RETURN_VALUE(AddNode(new_node_name, node->OpType(), node->Description(),
+                                      new_node_input_defs,
+                                      new_node_output_defs,
+                                      &attributes,
+                                      node->Domain()));
+    } else {
+      // we simply copy the attributes to the new node
+      ORT_IGNORE_RETURN_VALUE(AddNode(new_node_name, node->OpType(), node->Description(),
+                                      new_node_input_defs,
+                                      new_node_output_defs,
+                                      &node->GetAttributes(),
+                                      node->Domain()));
+    }
   }
 
   return Status::OK();
