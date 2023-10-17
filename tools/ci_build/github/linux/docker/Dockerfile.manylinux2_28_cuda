@@ -1,4 +1,4 @@
-# The defualt ARGs are for cuda 12.2 with TRT v = 8.6.1.6-1.cuda12.0
+# The default ARGs are for cuda 12.2 with TRT v = 8.6.1.6-1.cuda12.0
 # Please overwirete BASEIMAGE, TRT_VERSION and other arguments with
 # --docker-build-args ' --build-arg BASEIMAGE=other_base_image --build-arg BASEIMAGE=other_base_image etc...'
 # for other cuda version and TRT version
