@@ -47,7 +47,7 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
     Object.assign(newAttributes, {kernelShape, strides, pads, cacheKey: attributes.cacheKey});
   }
   const outputShapeAsChannelLast = outputShapeAsChannelFirst.slice();
-  outputShapeAsChannelLast.splice(1, 0, outputShapeAsChannelLast.pop()!);
+  outputShapeAsChannelLast.push(outputShapeAsChannelLast.splice(1, 1)[0]);
   return [newAttributes, isChannelsLast ? outputShapeAsChannelLast : outputShapeAsChannelFirst];
 };
 
