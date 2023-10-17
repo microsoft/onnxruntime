@@ -310,9 +310,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
   API_IMPL_END
 };
 
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_SetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const OrtValue& ort_value) {
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_SetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const OrtValue* ort_value) {
   API_IMPL_BEGIN
-  auto status = reinterpret_cast<onnxruntime::OpKernelContext*>(context)->SetOutputMLValue(gsl::narrow_cast<int>(index), ort_value);
+  auto status = reinterpret_cast<onnxruntime::OpKernelContext*>(context)->SetOutputMLValue(gsl::narrow_cast<int>(index), *ort_value);
   if (status.IsOK())
     return nullptr;
   return onnxruntime::ToOrtStatus(status);

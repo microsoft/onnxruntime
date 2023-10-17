@@ -4520,7 +4520,7 @@ struct OrtApi {
    * \since Version 1.17.
    */
   ORT_API2_STATUS(KernelContext_SetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
-                  _In_ const OrtValue& ort_value);
+                  _In_ const OrtValue* ort_value);
 };
 
 /*

@@ -1635,7 +1635,7 @@ inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int
 }
 
 inline void KernelContext::SetOutput(size_t index, const OrtValue& ort_value) {
-  Ort::ThrowOnError(GetApi().KernelContext_SetOutput(ctx_, index, ort_value));
+  Ort::ThrowOnError(GetApi().KernelContext_SetOutput(ctx_, index, &ort_value));
 }
 
 inline void* KernelContext::GetGPUComputeStream() const {
