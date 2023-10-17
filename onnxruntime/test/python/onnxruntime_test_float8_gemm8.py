@@ -273,12 +273,12 @@ class TestFloat8Gemm8(unittest.TestCase):
             ((2, 3), (3, 5), 0, 0, 1),
             ((2, 3), (5, 3), 0, 1, 1),
             ((2, 3), (5, 2), 1, 1, 1),
-            ((3, 2), (5, 2), 1, 0, 1),
+            ((2, 3), (2, 5), 1, 0, 1),
             #
-            ((2, 3), (5, 2), 0, 0, 0),
-            ((2, 3), (2, 5), 0, 1, 0),
-            ((3, 2), (2, 5), 1, 1, 0),
-            ((3, 2), (5, 2), 1, 0, 0),
+            ((2, 3), (3, 5), 0, 0, 0),
+            ((2, 3), (5, 3), 0, 1, 0),
+            ((2, 3), (5, 2), 1, 1, 0),
+            ((2, 3), (2, 5), 1, 0, 0),
         ]
     )
     def test_combinations(self, shapeA, shapeB, transA, transB, row_major_compute):
@@ -327,5 +327,5 @@ class TestFloat8Gemm8(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestFloat8Gemm8().test_model_gemm_float()
+    # TestFloat8Gemm8().test_model_gemm_float()
     unittest.main(verbosity=2)

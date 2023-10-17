@@ -59,9 +59,9 @@ void GemmFloat8::SetParams(const TensorShape& a_shape, const TensorShape& b_shap
     M = static_cast<int>(a_shape[ic]);
     N = static_cast<int>(b_shape[ir]);
     K = static_cast<int>(a_shape[ir]);
-    lda = static_cast<int>(a_shape[row_major ? ir : ic]);
-    ldb = static_cast<int>(b_shape[row_major ? ir : ic]);
-    ldd = static_cast<int>(b_shape[row_major ? ic : ir]);
+    lda = static_cast<int>(a_shape[row_major ? ic : ir]);
+    ldb = static_cast<int>(b_shape[row_major ? ic : ir]);
+    ldd = static_cast<int>(b_shape[row_major ? ir : ic]);
   }
 }
 
