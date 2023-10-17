@@ -73,7 +73,7 @@ def run_demo():
     base.load_resources(image_height, image_width, batch_size)
     refiner.load_resources(image_height, image_width, batch_size)
 
-    def run_base_and_refiner(warmup=False, base_ratio=None):
+    def run_base_and_refiner(warmup=False):
         images, time_base = base.run(
             prompt,
             negative_prompt,
@@ -81,7 +81,6 @@ def run_demo():
             image_width,
             warmup=warmup,
             denoising_steps=args.denoising_steps,
-            denoising_end=base_ratio,
             guidance=args.guidance,
             seed=args.seed,
             return_type="latent",
@@ -95,7 +94,6 @@ def run_demo():
             image_width,
             warmup=warmup,
             denoising_steps=args.denoising_steps,
-            denoising_start=base_ratio,
             guidance=args.guidance,
             seed=args.seed,
         )

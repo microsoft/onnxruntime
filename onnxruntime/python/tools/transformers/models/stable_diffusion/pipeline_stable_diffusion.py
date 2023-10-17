@@ -206,23 +206,6 @@ class StableDiffusionPipeline:
         timesteps = self.scheduler.timesteps[t_start:].to(self.device)
         return timesteps, t_start
 
-    def get_timesteps(self, num_inference_steps, strength, denoising_start=None):
-        # Strength is irrelevant if we directly request a timestep to start at;
-        # that is, strength is determined by the denoising_start instead.
-        if denoising_start is not None:
-            timesteps = self.scheduler.timesteps[0:]
-            discrete_timestep_cutoff = int(
-                round(self.scheduler.num_train_timesteps - (denoising_start * self.scheduler.num_train_timesteps))
-            )
-            timesteps = list(filter(lambda ts: ts < discrete_timestep_cutoff, timesteps))
-            return torch.tensor(timesteps).to(self.device), len(timesteps)
-
-        # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
-        t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start:].to(self.device)
-        return timesteps, num_inference_steps - t_start
-
     def preprocess_images(self, batch_size, images=()):
         if self.nvtx_profile:
             nvtx_image_preprocess = nvtx.start_range(message="image_preprocess", color="pink")
@@ -326,8 +309,6 @@ class StableDiffusionPipeline:
         mask=None,
         masked_image_latents=None,
         guidance=7.5,
-        denoising_end=None,
-        warmup=False,
         add_kwargs=None,
     ):
         assert guidance > 1.0, "Guidance has to be > 1.0"  # TODO: remove this constraint
@@ -336,15 +317,6 @@ class StableDiffusionPipeline:
         cudart.cudaEventRecord(self.events["denoise-start"], 0)
         if not isinstance(timesteps, torch.Tensor):
             timesteps = self.scheduler.timesteps
-
-        # Apply denoising_end
-        if denoising_end is not None:
-            assert isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1
-            discrete_timestep_cutoff = int(
-                round(self.scheduler.num_train_timesteps - (denoising_end * self.scheduler.num_train_timesteps))
-            )
-            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
-            timesteps = timesteps[:num_inference_steps]
 
         for step_index, timestep in enumerate(timesteps):
             if self.nvtx_profile:
@@ -399,7 +371,7 @@ class StableDiffusionPipeline:
 
         cudart.cudaEventRecord(self.events["denoise-stop"], 0)
 
-        # The actual number of steps. It is different from denoising_steps when denoising_end is not None.
+        # The actual number of steps. It might be different from denoising_steps.
         self.actual_steps = len(timesteps)
 
         return latents

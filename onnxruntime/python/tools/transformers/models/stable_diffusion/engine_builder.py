@@ -149,13 +149,11 @@ class EngineBuilder:
                 None,  # not loaded yet
                 device=self.torch_device,
                 max_batch_size=self.max_batch_size,
-                custom_fp16_vae=self.custom_fp16_vae
+                custom_fp16_vae=self.custom_fp16_vae,
             )
 
             if self.vae_torch_fallback:
-                self.torch_models["vae"] = self.models["vae"].load_model(
-                    framework_model_dir, self.hf_token
-                )
+                self.torch_models["vae"] = self.models["vae"].load_model(framework_model_dir, self.hf_token)
 
     def load_resources(self, image_height, image_width, batch_size):
         # Allocate buffers for I/O bindings
