@@ -7,7 +7,7 @@ import gc
 import logging
 import os
 import shutil
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import torch
 from diffusion_models import PipelineInfo
@@ -26,7 +26,6 @@ class OrtCudaEngine(CudaSession):
         device_id: int = 0,
         enable_cuda_graph: bool = False,
         disable_optimization: bool = False,
-        free_dimension_override: Optional[Dict[str, int]] = None,
     ):
         self.onnx_path = onnx_path
         self.provider = "CUDAExecutionProvider"
@@ -34,10 +33,6 @@ class OrtCudaEngine(CudaSession):
         # self.provider_options["enable_skip_layer_norm_strict_mode"] = True
 
         session_options = ort.SessionOptions()
-        if free_dimension_override:
-            for name, value in free_dimension_override.items():
-                assert isinstance(name, str) and isinstance(value, int)
-                session_options.add_free_dimension_override_by_name(name, value)
 
         # When the model has been optimized by onnxruntime, we can disable optimization to save session creation time.
         if disable_optimization:
@@ -169,7 +164,6 @@ class OrtCudaEngineBuilder(EngineBuilder):
         opt_batch_size: int = 1,
         force_engine_rebuild: bool = False,
         device_id: int = 0,
-        use_free_dimension_override: bool = False,
     ):
         self.torch_device = torch.device("cuda", device_id)
         self.load_models(framework_model_dir)
@@ -247,7 +241,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
                     logger.info("Found cached optimized model: %s", onnx_opt_path)
 
         built_engines = {}
-        for model_name, model_obj in self.models.items():
+        for model_name in self.models:
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
 
@@ -255,18 +249,11 @@ class OrtCudaEngineBuilder(EngineBuilder):
 
             use_cuda_graph = self.model_config[model_name].use_cuda_graph
 
-            free_dimension_override = None
-            if use_cuda_graph and use_free_dimension_override:
-                free_dimension_override = model_obj.get_free_dimension_override(
-                    opt_batch_size, opt_image_height, opt_image_width
-                )
-
             engine = OrtCudaEngine(
                 onnx_opt_path,
                 device_id=device_id,
                 enable_cuda_graph=use_cuda_graph,
                 disable_optimization=False,
-                free_dimension_override=free_dimension_override,
             )
 
             logger.info("%s options for %s: %s", engine.provider, model_name, engine.provider_options)

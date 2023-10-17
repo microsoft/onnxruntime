@@ -261,39 +261,6 @@ class BaseModel:
     def get_dynamic_axes(self) -> Dict[str, Dict[int, str]]:
         pass
 
-    def get_free_dimension_override(self, batch_size, image_height, image_width):
-        input_names = self.get_input_names()
-        dynamic_axes = self.get_dynamic_axes()
-        sample_input = self.get_sample_input(batch_size, image_height, image_width)
-        assert isinstance(sample_input, tuple)
-
-        if isinstance(sample_input[-1], dict) and "added_cond_kwargs" in sample_input[-1]:
-            platten_input = sample_input[:-1]
-            kwargs = sample_input[-1]["added_cond_kwargs"]
-            for value in kwargs.values():
-                platten_input += (value,)
-            sample_input = platten_input
-
-        assert len(sample_input) == len(input_names)
-
-        free_dimension_override = {}
-        for i, name in enumerate(input_names):
-            sample = sample_input[i]
-            if name in dynamic_axes:
-                axes = dynamic_axes[name]
-                for dim, dim_param in axes.items():
-                    dim_value = sample.shape[dim]
-                    if dim_param in free_dimension_override:
-                        assert free_dimension_override[dim_param] == dim_value
-                    else:
-                        free_dimension_override[dim_param] = dim_value
-
-        print(
-            f"input_names={input_names}, dynamic_axes={dynamic_axes}, free_dimension_override={free_dimension_override}"
-        )
-
-        return free_dimension_override
-
     def get_sample_input(self, batch_size, image_height, image_width) -> tuple:
         pass
 
