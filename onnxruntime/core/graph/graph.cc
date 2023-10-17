@@ -1145,7 +1145,7 @@ Graph::Graph(const Model& owning_model,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
              const logging::Logger& logger,
              bool strict_shape_type_inference,
-             std::function<void()> model_functions_remover)
+             std::function<void(const InlinedHashSet<std::string>&)> model_functions_remover)
     : Graph(owning_model, graph_proto, domain_to_version, ir_version,
             schema_registry, nullptr, nullptr, logger,
             strict_shape_type_inference, std::move(model_functions_remover)) {}
@@ -1155,7 +1155,7 @@ Graph::Graph(const Model& owning_model,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
              const logging::Logger& logger,
              bool strict_shape_type_inference,
-             std::function<void()> model_functions_remover)
+             std::function<void(const InlinedHashSet<std::string>&)> model_functions_remover)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1329,7 +1329,7 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             &parent_node,
             parent_graph.logger_,
             parent_graph.strict_shape_type_inference_,
-            std::function<void()>()) {
+            std::function<void(const InlinedHashSet<std::string>&)>()) {
 }
 
 Graph::Graph(const Model& owning_model,
@@ -1347,7 +1347,7 @@ Graph::Graph(const Model& owning_model,
             nullptr,
             logger,
             strict_shape_type_inference,
-            std::function<void()>()) {
+            std::function<void(const InlinedHashSet<std::string>&)>()) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {

@@ -41,6 +41,36 @@ namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained) {
+  auto* local_functions = model_proto_.mutable_functions();
+  if (retained.empty()) {
+    model_local_function_templates_maps_.clear();
+    model_local_functions_.clear();
+    local_functions->erase(local_functions->begin(), local_functions->end());
+  } else {
+    const auto retained_end = retained.cend();
+    for (auto it = model_local_functions_.begin();
+         it != model_local_functions_.end();) {
+      if (retained.find(it->first) == retained_end) {
+        model_local_function_templates_maps_.erase(it->first);
+        // Post increment for compatibility between abseil and STL
+        model_local_functions_.erase(it++);
+      } else {
+        ++it;
+      }
+    }
+
+    for (auto it = local_functions->begin(); it != local_functions->end();) {
+      const auto function_id = function_utils::GetFunctionIdentifier(it->domain(), it->name());
+      if (retained.find(function_id) == retained_end) {
+        it = local_functions->erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+}
+
 static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
 
 Model::Model(const std::string& graph_name,
@@ -95,7 +125,8 @@ Model::Model(const std::string& graph_name,
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()), func_ptr);
+    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()),
+                                            func_ptr);
   }
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
@@ -110,12 +141,14 @@ Model::Model(const std::string& graph_name,
     auto func_template_ptr = std::make_unique<FunctionTemplate>();
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
-    model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), std::move(func_template_ptr));
+    model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()),
+                                                          std::move(func_template_ptr));
   }
 
-  std::function<void()> model_functions_remover = [this]() {
-    RemoveLocalFunctionsProtos();
-  };
+  std::function<void(const InlinedHashSet<std::string>&)> model_functions_remover =
+      [this](const InlinedHashSet<std::string>& retained) {
+        RemoveLocalFunctionsProtos(retained);
+      };
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r.11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
@@ -236,9 +269,10 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), std::move(func_template_ptr));
   }
 
-  std::function<void()> model_functions_remover = [this]() {
-    RemoveLocalFunctionsProtos();
-  };
+  std::function<void(const InlinedHashSet<std::string>& retained)> model_functions_remover =
+      [this](const InlinedHashSet<std::string>& retained) {
+        RemoveLocalFunctionsProtos(retained);
+      };
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r.11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry,
@@ -801,16 +835,6 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   fbs_model = mb.Finish();
 
   return Status::OK();
-}
-
-void Model::RemoveLocalFunctionsProtos() {
-  model_local_function_templates_maps_.clear();
-  model_local_functions_.clear();
-
-  auto* local_functions = model_proto_.mutable_functions();
-  for (auto it = local_functions->begin(); it != local_functions->end();) {
-    it = local_functions->erase(it);
-  }
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
