@@ -135,8 +135,32 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (use_flash_attention && parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
     use_flash_attention = false;
   }
+  // Allocate buffers
+  size_t softmax_lse_accum_bytes = 0;
+  size_t out_accum_bytes = 0;
+  if (use_flash_attention) {
+    // split kv buffers
+    parameters.num_splits = onnxruntime::flash::num_splits_heuristic(
+        parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
+        parameters.head_size, device_prop.multiProcessorCount, 128, false,
+        device_prop.major == 8 && device_prop.minor > 0);
+    if (parameters.num_splits > 1) {
+      // softmax_lse_accum buffer
+      softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(
+          parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length);
+      // out_accum buffer
+      auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
+      const int head_size_rounded = round_multiple(parameters.head_size, 32);
+      out_accum_bytes = onnxruntime::flash::get_out_accum_size(
+          parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, head_size_rounded);
+    }
+  }
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
+  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
+  auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
   if (!use_flash_attention) {
@@ -273,6 +297,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  if (softmax_lse_accum_buffer != nullptr) {
+    data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
+  }
+  if (out_accum_buffer != nullptr) {
+    data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
+  }
 
   return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);
 }

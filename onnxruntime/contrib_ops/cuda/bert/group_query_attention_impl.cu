@@ -380,9 +380,6 @@ Status LaunchUngroupAndTranspose(contrib::GroupQueryAttentionParameters& paramet
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
-  AttentionQkvFormat past_kv_format = parameters.past_kv_format;
-
-  assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
 
   const int H = head_size / 4;
   if (H * num_heads <= max_threads_per_block) {
