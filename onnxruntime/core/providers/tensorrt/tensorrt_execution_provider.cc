@@ -2997,7 +2997,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                 buffers[output_name] = scratch_buffers.back().get();
                 output_dim_sizes[i] = 1;
               } else {
-                SafeInt<int> output_dim_size(output_dim_sizes[i]);
+                SafeInt<int> output_dim_size(1);
                 for (int j = 0, end = nb_dims; j < end; ++j) {
                   if (dims.d[j] == 0) {
                     output_dim_size = 1;
@@ -3019,7 +3019,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                 scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
                 buffers[output_name] = scratch_buffers.back().get();
               } else {
-                SafeInt<int> output_dim_size(output_dim_sizes[i]);
+                SafeInt<int> output_dim_size(1);
                 for (int j = 0, end = nb_dims; j < end; ++j) {
                   if (dims.d[j] == 0) {
                     output_dim_size = 1;
@@ -3066,8 +3066,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
 
-      // Bridge TRT output and ORT output
-      // (1) Cast TensorRT INT32 output back to ORT INT64 output
+      // Assign TRT output back to ORT output
+      // (1) Cast TRT INT32 output to ORT INT64 output and TRT double output to float output
       // (2) Bind TensorRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
       if (dds_output_set.size() > 0) {
         CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
