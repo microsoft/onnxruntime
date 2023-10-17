@@ -270,7 +270,7 @@ TEST_F(QnnHTPBackendTests, PadHasConstantValueQuantized) {
 TEST_F(QnnHTPBackendTests, DISABLED_PadReflectMode) {
   bool has_constant_value_input = false;
   RunQDQPadOpTest<uint8_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
-                           TestInputDef<int64_t>({4}, true, {0, 2, 0, 0}),
+                           TestInputDef<int64_t>({4}, true, {0, 1, 0, 0}),
                            TestInputDef<float>({1}, true, {0.0f}),
                            {utils::MakeAttribute("mode", "reflect")},
                            ExpectedEPNodeAssignment::All,
@@ -324,7 +324,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_Pad4dOutOfRangePadConstantValue) {
                                                 5.0f, 6.0f,
                                                 7.0f, 8.0f}),
                            TestInputDef<int64_t>({8}, true, {0, 0, 0, 1, 0, 0, 0, 1}),
-                           TestInputDef<float>({1}, true, {9.0f}),  // pad_constant_value out of input[0] range
+                           TestInputDef<float>({1}, true, {8.0f}),  // pad_constant_value out of input[0] range
                            {utils::MakeAttribute("mode", "constant")},
                            ExpectedEPNodeAssignment::All);
 }
