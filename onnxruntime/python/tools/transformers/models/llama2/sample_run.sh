@@ -18,4 +18,4 @@ OUTPUT=$MODEL_NAME
 CMD="$MPI python llama-v2.py --model=meta-llama/$MODEL_NAME --output-name=$OUTPUT ${@:2}"
 
 set -x
-$CMD --torch --generate
+$CMD

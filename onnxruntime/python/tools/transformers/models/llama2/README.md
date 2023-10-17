@@ -75,13 +75,13 @@ So the recommended commands for MI250X are
 2. run the benchmark (note we still need `--optimize` here)
 
     ```bash
-    bash sample_run.sh 8 --optimize --merge --benchmark --ort --torch --tunable --tuning
+    bash sample_run.sh 8 --optimize --merge --custom-gen --benchmark --ort --torch --tunable --tuning
     ```
 
 Or simply combine them
 
 ```bash
-bash sample_run.sh 8 --export --optimize --merge --benchmark --ort --torch --tunable --tuning
+bash sample_run.sh 8 --export --optimize --merge --custom-gen --benchmark --ort --torch --tunable --tuning
 ```
 
 See scripts [sample_run.sh](sample_run.sh) and [llama-v2.py](llama-v2.py) for more details.
