@@ -168,6 +168,8 @@ set(provider_excluded_files
   "gpu_data_transfer.h"
   "integer_gemm.cc"
   "tunable/*"
+  "cuda_nhwc_kernels.cc"
+  "cuda_nhwc_kernels.h"
 )
 
 set(training_ops_excluded_files
