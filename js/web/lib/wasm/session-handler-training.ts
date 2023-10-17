@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env, InferenceSession, SessionHandler, TrainingSessionHandler, Tensor} from 'onnxruntime-common';
+import {env, InferenceSession, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
 
 import {SerializableModeldata} from './proxy-messages';
+import {decodeTensorMetadata, encodeTensorMetadata} from './session-handler-inference';
 import {createSessionAllocate, initRuntime, isOrtEnvInitialized} from './wasm-core-impl';
-import {createCheckpointHandle, createTrainingSessionHandle, runTrainStep,
-  releaseTrainingSessionAndCheckpoint} from './wasm-training-core-impl';
-import { encodeTensorMetadata, decodeTensorMetadata } from './session-handler';
+import {createCheckpointHandle, createTrainingSessionHandle, releaseTrainingSessionAndCheckpoint, runTrainStep} from './wasm-training-core-impl';
 
 export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
   async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {
@@ -99,7 +98,7 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     const results = await runTrainStep(this.sessionId, inputIndices, inputs, outputIndices, outputs, options);
 
     const resultMap: SessionHandler.ReturnType = {};
-    for (let i = 0; i < results. length; i++) {
+    for (let i = 0; i < results.length; i++) {
       resultMap[this.outputNames[outputIndices[i]]] = outputArray[i] ?? decodeTensorMetadata(results[i]);
     }
     return resultMap;
@@ -109,5 +108,4 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     return releaseTrainingSessionAndCheckpoint(
         this.checkpointId, this.sessionId, this.inputEncodedNames, this.outputEncodedNames);
   }
-
 }

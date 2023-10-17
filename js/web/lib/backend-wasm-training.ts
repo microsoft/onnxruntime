@@ -4,7 +4,7 @@
 import {InferenceSession, TrainingSessionHandler} from 'onnxruntime-common';
 
 import {OnnxruntimeWebAssemblyBackend} from './backend-wasm';
-import {OnnxruntimeWebAssemblyTrainingSessionHandler} from './wasm/session-handler-for-training';
+import {OnnxruntimeWebAssemblyTrainingSessionHandler} from './wasm/session-handler-training';
 
 class OnnxruntimeTrainingWebAssemblyBackend extends OnnxruntimeWebAssemblyBackend {
   async createTrainingSessionHandler(

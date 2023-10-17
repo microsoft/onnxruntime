@@ -4,9 +4,9 @@
 import {resolveBackend} from './backend-impl.js';
 import {TrainingSessionHandler} from './backend.js';
 import {InferenceSession as InferenceSession} from './inference-session.js';
+import {OnnxValue} from './onnx-value.js';
+import {Tensor} from './tensor.js';
 import {TrainingSession as TrainingSessionInterface, TrainingSessionCreateOptions} from './training-session.js';
-import { OnnxValue } from './onnx-value.js';
-import { Tensor } from './tensor.js';
 
 type SessionOptions = InferenceSession.SessionOptions;
 type FeedsType = InferenceSession.FeedsType;
@@ -49,17 +49,8 @@ export class TrainingSession implements TrainingSessionInterface {
     }
   }
 
-  async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {
-    throw new Error('Method not implemented.');
-  }
-
-  async getContiguousParameters(_trainableOnly: boolean): Promise<Uint8Array> {
-    throw new Error('Method not implemented.');
-  }
-
   runTrainStep(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
-  runTrainStep(
-      feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
+  runTrainStep(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
   async runTrainStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
     const fetches: {[name: string]: OnnxValue|null} = {};
     let options: RunOptions = {};
@@ -157,6 +148,14 @@ export class TrainingSession implements TrainingSessionInterface {
       }
     }
     return returnValue;
+  }
+
+  async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+
+  async getContiguousParameters(_trainableOnly: boolean): Promise<Uint8Array> {
+    throw new Error('Method not implemented.');
   }
 
   async release(): Promise<void> {
