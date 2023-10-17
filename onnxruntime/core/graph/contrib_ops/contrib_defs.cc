@@ -2617,8 +2617,9 @@ for beta != 0.)DOC")
                                     AttributeProto::INT,
                                     static_cast<int64_t>(1))
                                 .Attr(
-                                    "rowMajor",
-                                    "Storage order used to run the computation (inputs are always row major). "
+                                    "rowMajorCompute",
+                                    "Storage order used to run the computation "
+                                    "(inputs and outputs are always row major). "
                                     "Float 8 types only supports column major.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))

@@ -30,8 +30,8 @@ int32_t TypeSize(int32_t element_type) {
   }
 }
 
-void GemmFloat8::Set(const TensorShape& a_shape, const TensorShape& b_shape,
-                     int& M, int& N, int& K, int& lda, int& ldb, int& ldd, bool row_major) const {
+void GemmFloat8::SetParams(const TensorShape& a_shape, const TensorShape& b_shape,
+                           int& M, int& N, int& K, int& lda, int& ldb, int& ldd, bool row_major) const {
   constexpr int ir = 0;
   constexpr int ic = 1 - ir;
   if (transA_ && !transB_) {  // TN
@@ -109,7 +109,7 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  if (row_major_)
+  if (row_major_compute_)
     return ComputeRowMajor(ctx, n_inputs, has_bias, has_scales, input_A, input_B,
                            input_C, scale_A, scale_B, scale_Y);
   return ComputeColMajor(ctx, n_inputs, has_bias, has_scales, input_A, input_B,
@@ -127,7 +127,7 @@ Status GemmFloat8::ComputeRowMajor(
   dtype_B = GetTypeAndShape(input_B, shape_B);
 
   int M, N, K, lda, ldb, ldd;
-  Set(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
+  SetParams(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
 
   TensorShape dimensions{M, N};
   Tensor* Y = ctx->Output(0, dimensions);
@@ -155,7 +155,7 @@ Status GemmFloat8::ComputeColMajor(
   dtype_B = GetTypeAndShape(input_B, shape_B);
 
   int M, N, K, lda, ldb, ldd;
-  Set(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
+  SetParams(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
 
   std::swap(shape_A[0], shape_A[1]);
   std::swap(shape_B[0], shape_B[1]);
@@ -234,7 +234,7 @@ Status GemmFloat8::ComputeGemm(
   CUBLAS_RETURN_IF_ERROR(
       cublasLtMatrixLayoutCreate(&Ddesc, d_cuda_type, M, N, ldd));
 
-  if (row_major_) {
+  if (row_major_compute_) {
     cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
     CUBLAS_RETURN_IF_ERROR(
         cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER,
@@ -301,7 +301,7 @@ Status GemmFloat8::ComputeGemm(
         cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
 #endif
 
-  if (row_major_) {
+  if (row_major_compute_) {
     cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
     CUBLAS_RETURN_IF_ERROR(
         cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_ORDER,
@@ -352,7 +352,7 @@ Status GemmFloat8::ComputeGemm(
       shape_B[1], ", shape_C=", (shape_C.NumDimensions() > 0 ? shape_C[0] : 0), "x",
       (shape_C.NumDimensions() > 1 ? shape_C[1] : 0), ", M=", M, ", N=", N, ", K=", K,
       ", lda=", lda, ", ldb=", ldb, ", ldd=", ldd,
-      ", workspaceSize=", workspaceSize, ", rowMajor=", (row_major_ ? 1 : 0),
+      ", workspaceSize=", workspaceSize, ", rowMajorCompute=", (row_major_compute_ ? 1 : 0),
       ". Check NVIDIA documentation to see what combination is valid: ",
       "https://docs.nvidia.com/cuda/cublas/"
       "index.html?highlight=cublasLtMatmulAlgoGetHeuristic#"
@@ -392,7 +392,7 @@ Status GemmFloat8::ComputeGemm(
       ", shape_A=", shape_A[0], "x", shape_A[1], ", shape_B=", shape_B[0], "x",
       shape_B[1], ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb,
       ", ldd=", ldd, ", workspaceSize=", workspaceSize,
-      ", rowMajor=", (row_major_ ? 1 : 0), ".");
+      ", rowMajorCompute=", (row_major_compute_ ? 1 : 0), ".");
 
   if (workspaceSize > 0) {
     CUDA_RETURN_IF_ERROR(cudaFree(workspace));

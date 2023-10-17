@@ -19,10 +19,10 @@ class GemmFloat8 final : public onnxruntime::cuda::CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  void Set(const TensorShape& shape_a,
-           const TensorShape& shape_b,
-           int& M, int& N, int& K,
-           int& lda, int& ldb, int& ldd, bool row_major) const;
+  void SetParams(const TensorShape& shape_a,
+                 const TensorShape& shape_b,
+                 int& M, int& N, int& K,
+                 int& lda, int& ldb, int& ldd, bool row_major) const;
   Status SetCheck(const TensorShape& shape_a,
                   const TensorShape& shape_b,
                   int& M, int& N, int& K) const;
@@ -56,7 +56,7 @@ class GemmFloat8 final : public onnxruntime::cuda::CudaKernel {
   bool fast_accumulation_mode_;
   int64_t sm_count_;
   int64_t dtype_;
-  bool row_major_;
+  bool row_major_compute_;
   cublasLtEpilogue_t epilogue_;
 
   // TODO(xadupre): add epilogue (= activation function, Relu or Gelu are available).

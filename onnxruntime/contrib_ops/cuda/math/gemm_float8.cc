@@ -34,7 +34,7 @@ GemmFloat8::GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
   transB_ = info.GetAttrOrDefault<int64_t>("transB", 0);
   dtype_ = info.GetAttrOrDefault<int64_t>("dtype", ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   fast_accumulation_mode_ = info.GetAttrOrDefault<int64_t>("fastAccumulationMode", 1) != 0;
-  row_major_ = info.GetAttrOrDefault<int64_t>("rowMajor", 1) != 0;
+  row_major_compute_ = info.GetAttrOrDefault<int64_t>("rowMajorCompute", 1) != 0;
   auto& device_prop = GetDeviceProp();
   sm_count_ = device_prop.multiProcessorCount;
   alpha_ = info.GetAttrOrDefault<float>("alpha", 1);

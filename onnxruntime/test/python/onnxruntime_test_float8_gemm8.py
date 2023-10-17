@@ -5,6 +5,8 @@
 # Note: the precision is different on V100, H100 even with the same code.
 # The thresholds were adjusted on H100 as the precision seems lower on this machine.
 
+import onnxruntime
+import itertools
 import unittest
 import warnings
 
@@ -14,6 +16,8 @@ from onnx import TensorProto
 from onnx.checker import check_model
 from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info
 from onnx.numpy_helper import from_array
+
+import parameterized
 
 from onnxruntime import InferenceSession
 
@@ -26,9 +30,8 @@ class TestFloat8Gemm8(unittest.TestCase):
         beta=0.0,
         transA=0,
         transB=0,
-        row_major=1,
+        row_major_compute=1,
         fast_accumulation_mode=0,
-        compute_type="CUBLAS_COMPUTE_32F",
         domain="",
         dtype=TensorProto.FLOAT,
         activation="NONE",
@@ -58,21 +61,18 @@ class TestFloat8Gemm8(unittest.TestCase):
             assert domain == "com.microsoft"
             inits.append(from_array(np.array([1], dtype=np.float32), name="one"))
             kwargs = dict(
-                rowMajor=row_major,
+                rowMajorCompute=row_major_compute,
                 fastAccumulationMode=fast_accumulation_mode,
                 domain=domain,
                 dtype=dtype,
             )
-            if compute_type is not None:
-                kwargs["computeType"] = compute_type
             if activation is not None:
                 kwargs["activation"] = activation
             op_name = "GemmFloat8"
         elif domain == "com.microsoft":
             op_name = "GemmFloat8"
             kwargs = dict(
-                rowMajor=row_major,
-                computeType=compute_type,
+                rowMajorCompute=row_major_compute,
                 fastAccumulationMode=fast_accumulation_mode,
                 domain=domain,
                 dtype=dtype,
@@ -201,43 +201,42 @@ class TestFloat8Gemm8(unittest.TestCase):
         self.assertEqual(expected.dtype, y.dtype)
 
     def test_model_gemm_float(self):
-        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, rtol=1e-3)
+        self.common_test_model_gemm("FLOAT", transA=1, row_major_compute=1, rtol=1e-3)
 
     def test_model_gemm_float_default_values(self):
-        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, rtol=1e-3, activation=None, compute_type=None)
+        self.common_test_model_gemm("FLOAT", transA=1, row_major_compute=1, rtol=1e-3, activation=None)
 
     def test_model_gemm_float_relu(self):
-        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, rtol=1e-3, activation="RELU")
+        self.common_test_model_gemm("FLOAT", transA=1, row_major_compute=1, rtol=1e-3, activation="RELU")
 
     def test_model_gemm_float_gelu(self):
-        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, rtol=1e-3, activation="GELU")
+        self.common_test_model_gemm("FLOAT", transA=1, row_major_compute=1, rtol=1e-3, activation="GELU")
 
     def test_model_gemm_float_bias(self):
-        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, beta=1.0, rtol=1e-3)
+        self.common_test_model_gemm("FLOAT", transA=1, row_major_compute=1, beta=1.0, rtol=1e-3)
 
     def test_model_gemm_float_col_major(self):
-        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, rtol=1e-2)
+        self.common_test_model_gemm("FLOAT", transB=1, row_major_compute=0, rtol=1e-2)
 
     def test_model_gemm_float_col_major_relu(self):
-        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, rtol=1e-2, activation="RELU")
+        self.common_test_model_gemm("FLOAT", transB=1, row_major_compute=0, rtol=1e-2, activation="RELU")
 
     def test_model_gemm_float_col_major_gelu(self):
-        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, rtol=1e-2, activation="GELU")
+        self.common_test_model_gemm("FLOAT", transB=1, row_major_compute=0, rtol=1e-2, activation="GELU")
 
     def test_model_gemm_float_col_major_bias(self):
-        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, beta=1.0, rtol=1e-1)
+        self.common_test_model_gemm("FLOAT", transB=1, row_major_compute=0, beta=1.0, rtol=1e-1)
 
     def test_model_gemm_float_col_major_bias_relu(self):
-        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, beta=1.0, rtol=1e-1, activation="RELU")
+        self.common_test_model_gemm("FLOAT", transB=1, row_major_compute=0, beta=1.0, rtol=1e-1, activation="RELU")
 
     def test_model_gemm_float_col_major_bias_gelu(self):
-        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, beta=1.0, rtol=1e-1, activation="GELU")
+        self.common_test_model_gemm("FLOAT", transB=1, row_major_compute=0, beta=1.0, rtol=1e-1, activation="GELU")
 
     def test_model_gemm_float16(self):
         self.common_test_model_gemm(
             "FLOAT16",
-            row_major=1,
-            compute_type="CUBLAS_COMPUTE_32F",
+            row_major_compute=1,
             rtol=1e-2,
             dtype=TensorProto.FLOAT16,
             transB=1,
@@ -246,8 +245,7 @@ class TestFloat8Gemm8(unittest.TestCase):
     def test_model_gemm_float16_col_major(self):
         self.common_test_model_gemm(
             "FLOAT16",
-            row_major=0,
-            compute_type="CUBLAS_COMPUTE_32F",
+            row_major_compute=0,
             rtol=1e-2,
             dtype=TensorProto.FLOAT16,
             transB=1,
@@ -256,8 +254,7 @@ class TestFloat8Gemm8(unittest.TestCase):
     def test_model_gemm_float8_e4m3(self):
         self.common_test_model_gemm(
             "FLOAT8E4M3FN",
-            compute_type="CUBLAS_COMPUTE_32F",
-            row_major=0,
+            row_major_compute=0,
             rtol=0.5,
             dtype=TensorProto.FLOAT,
             transA=0,
@@ -265,6 +262,10 @@ class TestFloat8Gemm8(unittest.TestCase):
             alpha=10.0,
         )
 
+    @parameterized.parameterized.expand(list(itertools.product([0, 1], [0, 1], [0, 1])))
+    def test_combinations(self, transA, transB, row_major):        
+        self.common_test_model_gemm("FLOAT", transA=transA, transB=transB, row_major_compute=row_major, rtol=1e-3)
+        
 
 if __name__ == "__main__":
     TestFloat8Gemm8().test_model_gemm_float()
