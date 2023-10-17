@@ -149,9 +149,9 @@ static std::vector<float> B4Add = {
     4.00f, 0.25f, 0.00f, -0.25f, 0.50f, -0.25f, -0.00f, 0.25f,
     -1.50f, -2.25f, 2.50f, 3.75f, -3.75f, -3.75f, -4.00f};
 
-static auto add_function = [](float a_dequantized, float b_dequantized) {
-  return a_dequantized + b_dequantized;
-};
+//static auto add_function = [](float a_dequantized, float b_dequantized) {
+//  return a_dequantized + b_dequantized;
+//};
 
 static auto mul_function = [](float a_dequantized, float b_dequantized) {
   return a_dequantized * b_dequantized;
