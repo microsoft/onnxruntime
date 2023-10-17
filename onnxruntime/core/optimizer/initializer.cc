@@ -289,7 +289,11 @@ Initializer& Initializer::sqrt() {
 namespace {
 template <typename T>
 struct ScaleByAxis {
-  void operator()(Tensor& data, const Tensor& scalers, const size_t block_size, const size_t num_blocks, const bool column_major) const {
+  void operator()(Tensor& data,
+                  const Tensor& scalers,
+                  const size_t block_size,
+                  const size_t num_blocks,
+                  const bool column_major) const {
     ToNumeric<T> to_numeric;
     const auto scaler_size = scalers.Shape().Size();
     T* dst = data.MutableData<T>();
@@ -301,19 +305,17 @@ struct ScaleByAxis {
       }
     } else {
       for (size_t block_offset = 0, i = 0; i < num_blocks; i++) {
-        if (column_major)
-        {
-            for (size_t j = 0; j < block_size; ++j, ++block_offset) {
-                const auto numeric_scaler = to_numeric(scalers_data[j]);
-                dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
-            }
+        if (column_major) {
+          for (size_t j = 0; j < block_size; ++j, ++block_offset) {
+            const auto numeric_scaler = to_numeric(scalers_data[j]);
+            dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+          }
         }
-        else
-        {
-            const auto numeric_scaler = to_numeric(scalers_data[i]);
-            for (size_t j = 0; j < block_size; ++j, ++block_offset) {
-                dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
-            }
+        else {
+          const auto numeric_scaler = to_numeric(scalers_data[i]);
+          for (size_t j = 0; j < block_size; ++j, ++block_offset) {
+            dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+          }
         }
       }
     }
