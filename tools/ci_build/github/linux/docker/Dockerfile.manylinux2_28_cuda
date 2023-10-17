@@ -11,7 +11,7 @@ ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64
 ARG PREPEND_PATH=/usr/local/cuda/binet
 
 
-#Build manylinux2014 docker image begin
+#Build manylinux docker image begin
 FROM $BASEIMAGE AS runtime_base
 ARG POLICY
 ARG PLATFORM
