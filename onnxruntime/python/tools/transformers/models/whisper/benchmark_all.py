@@ -409,7 +409,7 @@ def main():
                 args.log_folder,
             ] + hf_decoder_input_ids_cmd
             logger.info("Benchmark Optimum + ONNX Runtime")
-            results = benchmark(args, benchmark_cmd, "pytorch-ort", audio_file, duration)
+            results = benchmark(args, benchmark_cmd, "optimum-ort", audio_file, duration)
             all_results.extend(results)
 
         # Benchmark ONNX Runtime

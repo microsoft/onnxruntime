@@ -208,6 +208,7 @@ python3 -m models.llama.benchmark_all \
     --hf-pt-eager \
     --hf-pt-compile \
     --hf-ort-dir-path ./llama2-7b-fp16/ \
+    --ort-convert-to-onnx-model-path ./llama2-7b-fp16/Llama-2-7b-hf_decoder_merged_model_fp16.onnx \
     --ort-msft-model-path ./llama-2-onnx/7B_float16/ONNX/LlamaV2_7B_float16.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp16 \

@@ -343,7 +343,7 @@ def main():
             "--auth",
         ]
         logger.info("Benchmark Optimum + ONNX Runtime")
-        results = benchmark(args, benchmark_cmd, "pytorch-ort")
+        results = benchmark(args, benchmark_cmd, "optimum-ort")
         all_results.extend(results)
 
     # Benchmark Microsoft model in ONNX Runtime
@@ -376,7 +376,7 @@ def main():
             args.log_folder,
         ]
         logger.info("Benchmark Microsoft model in ONNX Runtime")
-        results = benchmark(args, benchmark_cmd, "onnxruntime-msft")
+        results = benchmark(args, benchmark_cmd, "ort-msft")
         all_results.extend(results)
 
     # Benchmark convert_to_onnx model in ONNX Runtime
@@ -409,7 +409,7 @@ def main():
             args.log_folder,
         ]
         logger.info("Benchmark convert_to_onnx model in ONNX Runtime")
-        results = benchmark(args, benchmark_cmd, "onnxruntime-convert-to-onnx")
+        results = benchmark(args, benchmark_cmd, "onnxruntime")
         all_results.extend(results)
 
     csv_file = f"{args.model_size}_{args.precision}_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}.csv"
