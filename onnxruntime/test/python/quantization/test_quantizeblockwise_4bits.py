@@ -12,16 +12,20 @@ import numpy as np
 import numpy.typing as npt
 
 
-def dequantize_blockwise_4bits(quant_values, scale, zero_point, valid_len):
-    blob_size = quant_values.shape[0]
-    block_size = blob_size * 2
-
-    quant_float = np.zeros((block_size), dtype=scale.dtype)
-    for b in range(blob_size):
-        v = quant_values[b]
-        quant_float[2 * b] = ((v & 0xF) - zero_point) * scale if 2 * b < valid_len else 0.0
-        quant_float[2 * b + 1] = ((v >> 4) - zero_point) * scale if 2 * b + 1 < valid_len else 0.0
-    return quant_float
+def dequantize_blockwise_4bits(quant_values, scale, zero_point, rows, cols):
+    expand_quant_value = (np.repeat(quant_values, 2, -1
+                                    ).reshape(*quant_values.shape, 2) >> [0, 4]) & 0x0f
+    expand_quant_value = expand_quant_value.reshape(*quant_values.shape[:-1], -1)
+    aligned_scale = scale.reshape(*quant_values.shape[:-1], 1)
+    expand_zero_point = ((np.repeat(zero_point, 2, -1).reshape(-1, 2) >> [0, 4]) & 0xf)
+    expand_zero_point = expand_zero_point.reshape(-1)
+    if (quant_values.size//quant_values.shape[-1]) & 1:
+        expand_zero_point = expand_zero_point[:-1]
+    expand_zero_point = expand_zero_point.reshape(*quant_values.shape[:-1], -1)
+    float_values = ((expand_quant_value - expand_zero_point) * aligned_scale).astype(scale.dtype)
+    float_values = float_values.reshape(cols, -1)
+    float_values = float_values[:, :rows]
+    return float_values
 
 
 def quantize_blockwise_4bits_ref(matrix_float: npt.ArrayLike, block_size: int, is_symmetric: bool):
@@ -37,46 +41,45 @@ def quantize_blockwise_4bits_ref(matrix_float: npt.ArrayLike, block_size: int, i
     if pad_len > 0:
         matrix_float_padded = np.pad(matrix_float, ((0, pad_len), (0, 0)), "constant")
 
-    packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
-    scales = np.zeros((cols * k_blocks), dtype=matrix_float_padded.dtype)
-    zero_point = np.full((cols * k_blocks + 1) // 2, 136, dtype="uint8")
 
     matrix_float_padded = np.transpose(matrix_float_padded)
-    for n in range(cols):
-        for k_id in range(0, rows, block_size):
-            if is_symmetric:
-                amax_idx = np.argmax(np.abs(matrix_float_padded[n, k_id : k_id + block_size]))
-                bmax = np.float32(matrix_float_padded[n, k_id + amax_idx])
-                scale = bmax / (-8.0)
-                zp = 8
-            else:
-                vmin = np.min(np.float32(matrix_float_padded[n, k_id : k_id + block_size]))
-                vmax = np.max(np.float32(matrix_float_padded[n, k_id : k_id + block_size]))
-                vmin = min(vmin, 0.0)
-                vmax = max(vmax, 0.0)
-                scale = (vmax - vmin) / ((1 << 4) - 1)
-                zero_point_fp = vmin
-                if scale != 0.0:
-                    zero_point_fp = 0.0 - vmin / scale
-                zp = min(15, max(0, round(zero_point_fp)))
 
-            reciprocal_scale = 1.0 / scale if scale != 0 else 0.0
-            block_idx = n * k_blocks + k_id // block_size
-            scales[block_idx] = scale
-            zp_pair = zero_point[block_idx // 2]
-            zero_point[block_idx // 2] = ((zp_pair & 0x0F) | (zp << 4)) if (block_idx & 1) else ((zp_pair & 0xF0) | zp)
+    zero_point_unpacked = np.zeros((cols, k_blocks), dtype=np.uint8)
+    scales = np.zeros((cols, k_blocks), dtype=matrix_float_padded.dtype)
+    for k_id in range(0, rows, block_size):
+        if is_symmetric:
+            bmax = (np.abs(matrix_float_padded[:, k_id: k_id + block_size])).max(-1).astype(np.float32)
+            scale = bmax / (-8.0)
+            zp = 8
+            zero_point_unpacked[:, k_id // block_size] = zp
+            scales[:, k_id // block_size] = scale
+        else:
+            vmax = matrix_float_padded[:, k_id: k_id + block_size].astype(np.float32).max(-1)
+            vmin = matrix_float_padded[:, k_id: k_id + block_size].astype(np.float32).min(-1)
+            vmin = np.minimum(vmin, 0.0).astype(np.float32)
+            vmax = np.maximum(vmax, 0.0).astype(np.float32)
+            scale = (vmax - vmin) / ((1 << 4) - 1)
+            zero_point_fp = vmin
+            zero_point_fp[scale != 0.0] = 0.0 - vmin / scale
+            zp = np.minimum(15, np.maximum(0, np.round(zero_point_fp)))
+            zero_point_unpacked[:, k_id // block_size] = zp
+            scales[:, k_id // block_size] = scale
 
-            blk_int0 = np.clip(
-                np.round(np.float32(matrix_float_padded[n, k_id : k_id + block_size : 2] * reciprocal_scale + zp)),
-                0,
-                15,
-            ).astype("uint8")
-            blk_int1 = np.clip(
-                np.round(np.float32(matrix_float_padded[n, k_id + 1 : k_id + block_size : 2] * reciprocal_scale + zp)),
-                0,
-                15,
-            ).astype("uint8")
-            packed[n, k_id // block_size] = np.bitwise_or(blk_int0, np.left_shift(blk_int1, 4))
+    reciprocal_scale = np.where(scales != 0.0, 1.0 / scales, 0.0)
+    int8_values = matrix_float_padded.reshape(
+        cols, k_blocks, block_size) * reciprocal_scale.reshape(
+            cols, k_blocks, 1) + zero_point_unpacked.reshape(cols, k_blocks, 1)
+    int8_values = np.clip(np.round(int8_values.reshape(cols, -1).astype(np.float32)), 0, 15).astype("uint8")
+
+    zero_point = zero_point_unpacked.reshape(-1)
+    zero_point = np.concatenate((zero_point, np.array(
+        [8], dtype=np.uint8))) if zero_point.shape[0] & 1 else zero_point
+    zero_point = ((zero_point[0::2])) | (zero_point[1::2] << 4)
+    zero_point = zero_point.reshape(-1)
+
+    packed = (int8_values[:, 0::2]) | (int8_values[:, 1::2] << 4)
+    packed = packed.reshape(cols, k_blocks, blob_size)
+    scales = scales.reshape(-1)
 
     return (packed, scales, zero_point)
 
@@ -114,27 +117,11 @@ class TestQuantizeBlockwise4Bits(unittest.TestCase):
                         )
                         assert np.allclose(scales_ref, scales)
                         assert np.allclose(zero_point_ref, zero_point)
-                        for c in range(quant_value_ref.shape[0]):
-                            for k in range(quant_value_ref.shape[1]):
-                                block_idx = c * quant_value_ref.shape[1] + k
-                                zp_idx = block_idx // 2
-                                assert np.allclose(
-                                    dequantize_blockwise_4bits(
-                                        quant_value_ref[c][k],
-                                        scales_ref[block_idx],
-                                        (zero_point_ref[zp_idx] >> 4)
-                                        if (block_idx & 1)
-                                        else (zero_point_ref[zp_idx] & 0x0F),
-                                        min(block_size, rows - k * block_size),
-                                    ),
-                                    dequantize_blockwise_4bits(
-                                        quant_value[c][k],
-                                        scales[block_idx],
-                                        (zero_point[zp_idx] >> 4) if (block_idx & 1) else (zero_point[zp_idx] & 0x0F),
-                                        min(block_size, rows - k * block_size),
-                                    ),
-                                    atol=1.2 * abs(scales[block_idx]),
-                                )
+                        assert np.allclose(
+                            dequantize_blockwise_4bits(quant_value_ref, scales, zero_point, rows, cols),
+                            dequantize_blockwise_4bits(quant_value, scales, zero_point, rows, cols),
+                            atol=1.2 * abs(scales).max(),
+                        )
 
 
 if __name__ == "__main__":
