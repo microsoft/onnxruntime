@@ -268,6 +268,74 @@ TEST(LabelEncoder, Int64toInt64NoDefaultOpset4) {
   test.Run();
 }
 
+TEST(LabelEncoder, Int64toStringOpset4) {
+  std::vector<std::int64_t> dims{1, 5};
+
+  std::vector<int64_t> input{1, 2, 3, 4, 5};
+  std::vector<std::string> output{"Hello", "world", "_Unused", "onnxruntime", "!"};
+  std::vector<int64_t> key_data{1, 2, 4, 5};
+  std::vector<std::string> value_data{"Hello", "world", "onnxruntime", "!"};
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  ONNX_NAMESPACE::TensorProto keys_proto;
+  keys_proto.set_name("keys_tensor");
+  keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  keys_proto.add_dims(1);
+  for (const auto key : key_data) {
+    keys_proto.add_int64_data(key);
+  }
+  test.AddAttribute("keys_tensor", keys_proto);
+
+  ONNX_NAMESPACE::TensorProto values_proto;
+  values_proto.set_name("values_tensor");
+  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  values_proto.add_dims(1);
+  for (const auto& value : value_data) {
+    values_proto.add_string_data(value);
+  }
+  test.AddAttribute("values_tensor", values_proto);
+
+  test.AddInput<int64_t>("X", dims, input);
+  test.AddOutput<std::string>("Y", dims, output);
+
+  test.Run();
+}
+
+TEST(LabelEncoder, StringToFloatOpset4) {
+  std::vector<std::int64_t> dims{1, 5};
+
+  std::vector<std::string> input{"Hello", "world", "Random", "onnxruntime", "!"};
+  std::vector<float> output{3.14f, 2.0f, -0.0f, 2.718f, 5.0f};
+  std::vector<std::string> key_data{"Hello", "world", "onnxruntime", "!"};
+  std::vector<float> value_data{3.14f, 2.0f, 2.718f, 5.0f};
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  ONNX_NAMESPACE::TensorProto keys_proto;
+  keys_proto.set_name("keys_tensor");
+  keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  keys_proto.add_dims(1);
+  for (const auto& key : key_data) {
+    keys_proto.add_string_data(key);
+  }
+  test.AddAttribute("keys_tensor", keys_proto);
+
+  ONNX_NAMESPACE::TensorProto values_proto;
+  values_proto.set_name("values_tensor");
+  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values_proto.add_dims(1);
+  for (const auto& value : value_data) {
+    values_proto.add_float_data(value);
+  }
+  test.AddAttribute("values_tensor", values_proto);
+
+  test.AddInput<std::string>("X", dims, input);
+  test.AddOutput<float>("Y", dims, output);
+
+  test.Run();
+}
+
 TEST(LabelEncoder, TensorBasedAttributesOpset4) {
   std::vector<std::int64_t> dims{1, 5};
 
