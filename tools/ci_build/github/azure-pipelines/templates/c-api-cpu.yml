@@ -804,7 +804,7 @@ stages:
 
 - template: ../nodejs/templates/test_linux.yml
   parameters:
-    AgentPool : 'onnxruntime-Ubuntu2004-AMD-CPU'
+    AgentPool : 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
     StageSuffix : 'Linux_CPU_x64'
 
 - template: ../nodejs/templates/test_macos.yml
