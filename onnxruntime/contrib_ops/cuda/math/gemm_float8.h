@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_kernel.h"
 #include "cublas_v2.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -19,13 +19,13 @@ class GemmFloat8 final : public onnxruntime::cuda::CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  void set(const TensorShape& shape_a,
+  void Set(const TensorShape& shape_a,
            const TensorShape& shape_b,
            int& M, int& N, int& K,
            int& lda, int& ldb, int& ldd, bool row_major) const;
-  Status set_check(const TensorShape& shape_a,
-                   const TensorShape& shape_b,
-                   int& M, int& N, int& K) const;
+  Status SetCheck(const TensorShape& shape_a,
+                  const TensorShape& shape_b,
+                  int& M, int& N, int& K) const;
 
   Status ComputeRowMajor(OpKernelContext* ctx, int n_inputs, bool has_bias,
                          bool has_scales, const Tensor* input_A,
@@ -57,7 +57,6 @@ class GemmFloat8 final : public onnxruntime::cuda::CudaKernel {
   int64_t sm_count_;
   int64_t dtype_;
   bool row_major_;
-  cublasComputeType_t compute_type_;
   cublasLtEpilogue_t epilogue_;
 
   // TODO(xadupre): add epilogue (= activation function, Relu or Gelu are available).

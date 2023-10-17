@@ -180,5 +180,13 @@ class HalfGemmOptions {
   static HalfGemmOptions instance;
 };
 
+const char* cublasGetErrorEnum(cublasStatus_t error);
+
+const char* CudaDataTypeToString(cudaDataType_t dt);
+
+const char* CublasComputeTypeToString(cublasComputeType_t ct);
+
+cudaDataType_t ToCudaDataType(int32_t element_type);
+
 }  // namespace cuda
 }  // namespace onnxruntime

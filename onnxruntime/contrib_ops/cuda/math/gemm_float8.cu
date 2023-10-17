@@ -1,101 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/math/gemm_float8.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include <algorithm>
 #include <utility>
 #include <cuda_runtime.h>
+#include "contrib_ops/cuda/math/gemm_float8.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-static const char* cublasGetErrorEnum(cublasStatus_t error) {
-  switch (error) {
-    case CUBLAS_STATUS_SUCCESS:
-      return "CUBLAS_STATUS_SUCCESS";
-    case CUBLAS_STATUS_NOT_INITIALIZED:
-      return "CUBLAS_STATUS_NOT_INITIALIZED";
-    case CUBLAS_STATUS_ALLOC_FAILED:
-      return "CUBLAS_STATUS_ALLOC_FAILED";
-    case CUBLAS_STATUS_INVALID_VALUE:
-      return "CUBLAS_STATUS_INVALID_VALUE";
-    case CUBLAS_STATUS_ARCH_MISMATCH:
-      return "CUBLAS_STATUS_ARCH_MISMATCH";
-    case CUBLAS_STATUS_MAPPING_ERROR:
-      return "CUBLAS_STATUS_MAPPING_ERROR";
-    case CUBLAS_STATUS_EXECUTION_FAILED:
-      return "CUBLAS_STATUS_EXECUTION_FAILED";
-    case CUBLAS_STATUS_INTERNAL_ERROR:
-      return "CUBLAS_STATUS_INTERNAL_ERROR";
-    case CUBLAS_STATUS_NOT_SUPPORTED:
-      return "CUBLAS_STATUS_NOT_SUPPORTED";
-    case CUBLAS_STATUS_LICENSE_ERROR:
-      return "CUBLAS_STATUS_LICENSE_ERROR";
-    default:
-      return "<unknown>";
-  }
-}
-
-static const char* CudaDataTypeToString(cudaDataType_t dt) {
-  switch (dt) {
-    case CUDA_R_16F:
-      return "CUDA_R_16F";
-    case CUDA_R_16BF:
-      return "CUDA_R_16BF";
-    case CUDA_R_32F:
-      return "CUDA_R_32F";
-#if (CUDA_VERSION >= 11080)
-    case CUDA_R_8F_E4M3:
-      return "CUDA_R_8F_E4M3";
-    case CUDA_R_8F_E5M2:
-      return "CUDA_R_8F_E5M2";
-#endif
-    default:
-      return "<unknown>";
-  }
-}
-
-static const char* CublasComputeTypeToString(cublasComputeType_t ct) {
-  switch (ct) {
-    case CUBLAS_COMPUTE_16F:
-      return "CUBLAS_COMPUTE_16F";
-    case CUBLAS_COMPUTE_32F:
-      return "CUBLAS_COMPUTE_32F";
-    case CUBLAS_COMPUTE_32F_FAST_16F:
-      return "CUBLAS_COMPUTE_32F_FAST_16F";
-    case CUBLAS_COMPUTE_32F_FAST_16BF:
-      return "CUBLAS_COMPUTE_32F_FAST_16BF";
-    case CUBLAS_COMPUTE_32F_FAST_TF32:
-      return "CUBLAS_COMPUTE_32F_FAST_TF32";
-    case CUBLAS_COMPUTE_64F:
-      return "CUBLAS_COMPUTE_64F";
-    default:
-      return "<unknown>";
-  }
-}
-
-// It must exist somewhere already.
-cudaDataType_t ToCudaDataType(int32_t element_type) {
-  switch (element_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return CUDA_R_32F;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      return CUDA_R_16F;
-    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
-      return CUDA_R_16BF;
-#if (!defined(DISABLE_FLOAT8_TYPES) && (CUDA_VERSION >= 11080))
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
-      return CUDA_R_8F_E4M3;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
-      return CUDA_R_8F_E5M2;
-#endif
-    default:
-      ORT_THROW("Unexpected element_type=", element_type, ".");
-  }
-}
 
 // It must exist somewhere already.
 int32_t TypeSize(int32_t element_type) {
@@ -115,7 +30,7 @@ int32_t TypeSize(int32_t element_type) {
   }
 }
 
-void GemmFloat8::set(const TensorShape& a_shape, const TensorShape& b_shape,
+void GemmFloat8::Set(const TensorShape& a_shape, const TensorShape& b_shape,
                      int& M, int& N, int& K, int& lda, int& ldb, int& ldd, bool row_major) const {
   constexpr int ir = 0;
   constexpr int ic = 1 - ir;
@@ -212,7 +127,7 @@ Status GemmFloat8::ComputeRowMajor(
   dtype_B = GetTypeAndShape(input_B, shape_B);
 
   int M, N, K, lda, ldb, ldd;
-  set(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
+  Set(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
 
   TensorShape dimensions{M, N};
   Tensor* Y = ctx->Output(0, dimensions);
@@ -240,7 +155,7 @@ Status GemmFloat8::ComputeColMajor(
   dtype_B = GetTypeAndShape(input_B, shape_B);
 
   int M, N, K, lda, ldb, ldd;
-  set(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
+  Set(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
 
   std::swap(shape_A[0], shape_A[1]);
   std::swap(shape_B[0], shape_B[1]);
@@ -282,12 +197,35 @@ Status GemmFloat8::ComputeGemm(
                          Ddesc = nullptr;
 
   // Create matrix descriptors. Not setting any extra attributes.
-  cudaDataType_t a_cuda_type = ToCudaDataType(dtype_A);
-  cudaDataType_t b_cuda_type = ToCudaDataType(dtype_B);
-  cudaDataType_t d_cuda_type = ToCudaDataType(dtype_Y);
+  cudaDataType_t a_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_A);
+  cudaDataType_t b_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_B);
+  cudaDataType_t d_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_Y);
   cudaDataType_t scale_cuda_type =
-      ToCudaDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-  cudaDataType_t bias_cuda_type = ToCudaDataType(dtype_C);
+      onnxruntime::cuda::ToCudaDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  cudaDataType_t bias_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_C);
+
+  cublasComputeType_t compute_type;
+  switch (d_cuda_type) {
+    case CUDA_R_16F:
+      switch (a_cuda_type) {
+        case CUDA_R_8F_E4M3:
+        case CUDA_R_8F_E5M2:
+          compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
+          break;
+        default:
+          compute_type = CUBLAS_COMPUTE_32F_FAST_16F;
+          break;
+      }
+      break;
+    case CUDA_R_16BF:
+      compute_type = CUBLAS_COMPUTE_32F_FAST_16BF;
+      break;
+    case CUDA_R_32F:
+      compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
+      break;
+    default:
+      ORT_THROW("Unable to determine computeType in operator GemmFloat8.");
+  }
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(
       &Adesc, a_cuda_type, trans_A ? K : M, trans_A ? M : K, lda));
@@ -307,7 +245,7 @@ Status GemmFloat8::ComputeGemm(
   }
 
   CUBLAS_RETURN_IF_ERROR(
-      cublasLtMatmulDescCreate(&operationDesc, compute_type_, scale_cuda_type));
+      cublasLtMatmulDescCreate(&operationDesc, compute_type, scale_cuda_type));
   cublasOperation_t ctransa = trans_A ? CUBLAS_OP_T : CUBLAS_OP_N;
   cublasOperation_t ctransb = trans_B ? CUBLAS_OP_T : CUBLAS_OP_N;
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
@@ -397,15 +335,16 @@ Status GemmFloat8::ComputeGemm(
   ORT_ENFORCE(
       returnedResults > 0 && cuda_status == CUBLAS_STATUS_SUCCESS,
       " Unable to find any suitable algorithm due to ",
-      cublasGetErrorEnum(cuda_status), ", returnedResults=", returnedResults,
+      onnxruntime::cuda::cublasGetErrorEnum(cuda_status),
+      ", returnedResults=", returnedResults,
       ", alpha=", alpha_, ", beta=", beta_, ", n_inputs=", n_inputs,
-      ", A_type=", CudaDataTypeToString(a_cuda_type),
-      ", B_type=", CudaDataTypeToString(b_cuda_type),
-      ", C_type=", CudaDataTypeToString(bias_cuda_type),
-      ", result_type=", CudaDataTypeToString(d_cuda_type),
-      ", bias_type=", CudaDataTypeToString(bias_cuda_type),
-      ", scale_type=", CudaDataTypeToString(scale_cuda_type),
-      ", computeType=", CublasComputeTypeToString(compute_type_),
+      ", A_type=", onnxruntime::cuda::CudaDataTypeToString(a_cuda_type),
+      ", B_type=", onnxruntime::cuda::CudaDataTypeToString(b_cuda_type),
+      ", C_type=", onnxruntime::cuda::CudaDataTypeToString(bias_cuda_type),
+      ", result_type=", onnxruntime::cuda::CudaDataTypeToString(d_cuda_type),
+      ", bias_type=", onnxruntime::cuda::CudaDataTypeToString(bias_cuda_type),
+      ", scale_type=", onnxruntime::cuda::CudaDataTypeToString(scale_cuda_type),
+      ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
       ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", trans_A,
       ", transB=", trans_B,
       ", fastAccumulationMode=", (fast_accumulation_mode_ ? 1 : 0),
@@ -437,14 +376,16 @@ Status GemmFloat8::ComputeGemm(
       workspaceSize, stream);                                     /* stream */
   ORT_ENFORCE(
       cuda_status == CUBLAS_STATUS_SUCCESS,
-      " Unable to run cublasLtMatmul due to ", cublasGetErrorEnum(cuda_status),
+      " Unable to run cublasLtMatmul due to ",
+      onnxruntime::cuda::cublasGetErrorEnum(cuda_status),
       ", returnedResults=", returnedResults, ", alpha=", alpha_,
-      ", n_inputs=", n_inputs, ", A_type=", CudaDataTypeToString(a_cuda_type),
-      ", B_type=", CudaDataTypeToString(b_cuda_type),
-      ", result_type=", CudaDataTypeToString(d_cuda_type),
-      ", bias_type=", CudaDataTypeToString(bias_cuda_type),
-      ", scale_type=", CudaDataTypeToString(scale_cuda_type),
-      ", computeType=", CublasComputeTypeToString(compute_type_),
+      ", n_inputs=", n_inputs, ", A_type=",
+      onnxruntime::cuda::CudaDataTypeToString(a_cuda_type),
+      ", B_type=", onnxruntime::cuda::CudaDataTypeToString(b_cuda_type),
+      ", result_type=", onnxruntime::cuda::CudaDataTypeToString(d_cuda_type),
+      ", bias_type=", onnxruntime::cuda::CudaDataTypeToString(bias_cuda_type),
+      ", scale_type=", onnxruntime::cuda::CudaDataTypeToString(scale_cuda_type),
+      ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
       ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", trans_A,
       ", transB=", trans_B,
       ", fastAccumulationMode=", (fast_accumulation_mode_ ? 1 : 0),

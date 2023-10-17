@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
 #include "core/providers/cuda/math/gemm.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "contrib_ops/cuda/math/gemm_float8.h"
-#include <string>
 
 using namespace ONNX_NAMESPACE;
 
@@ -35,7 +35,8 @@ GemmFloat8::GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
   dtype_ = info.GetAttrOrDefault<int64_t>("dtype", ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   fast_accumulation_mode_ = info.GetAttrOrDefault<int64_t>("fastAccumulationMode", 1) != 0;
   row_major_ = info.GetAttrOrDefault<int64_t>("rowMajor", 1) != 0;
-  sm_count_ = info.GetAttrOrDefault<int64_t>("smCount", 0);
+  auto& device_prop = GetDeviceProp();
+  sm_count_ = device_prop.multiProcessorCount;
   alpha_ = info.GetAttrOrDefault<float>("alpha", 1);
   beta_ = info.GetAttrOrDefault<float>("beta", 0);
 
@@ -43,22 +44,7 @@ GemmFloat8::GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(beta_ == 0, "CUDA < 12.0 does not support bias, beta must be 0.");
 #endif
 
-  std::string stemp = info.GetAttrOrDefault<std::string>("computeType", "CUBLAS_COMPUTE_32F_FAST_TF32");
-  if (stemp == "CUBLAS_COMPUTE_16F") {
-    compute_type_ = CUBLAS_COMPUTE_16F;
-  } else if (stemp == "CUBLAS_COMPUTE_32F") {
-    compute_type_ = CUBLAS_COMPUTE_32F;
-  } else if (stemp == "CUBLAS_COMPUTE_32F_FAST_16F") {
-    compute_type_ = CUBLAS_COMPUTE_32F_FAST_16F;
-  } else if (stemp == "CUBLAS_COMPUTE_32F_FAST_16BF") {
-    compute_type_ = CUBLAS_COMPUTE_32F_FAST_16BF;
-  } else if (stemp == "CUBLAS_COMPUTE_32F_FAST_TF32") {
-    compute_type_ = CUBLAS_COMPUTE_32F_FAST_TF32;
-  } else {
-    ORT_THROW("Unexpected value for compute_type: '", stemp, "'.");
-  }
-
-  stemp = info.GetAttrOrDefault<std::string>("activation", "NONE");
+  std::string stemp = info.GetAttrOrDefault<std::string>("activation", "NONE");
   if (stemp == "NONE") {
     epilogue_ = CUBLASLT_EPILOGUE_DEFAULT;
   } else if (stemp == "RELU") {
@@ -70,7 +56,7 @@ GemmFloat8::GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
   }
 }
 
-Status GemmFloat8::set_check(const TensorShape& a_shape, const TensorShape& b_shape, int& M, int& N, int& K) const {
+Status GemmFloat8::SetCheck(const TensorShape& a_shape, const TensorShape& b_shape, int& M, int& N, int& K) const {
   GemmHelper helper(a_shape, transA_, b_shape, transB_, TensorShape({}));
   if (!helper.State().IsOK())
     return helper.State();

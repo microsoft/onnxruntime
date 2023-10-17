@@ -2159,16 +2159,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Scalar multiplier for the product of input tensors A * B.</dd>
 <dt><tt>beta</tt> : float</dt>
 <dd>Scalar multiplier for the product of input bias C.</dd>
-<dt><tt>computeType</tt> : string</dt>
-<dd>See documentation of cublasLtMatMul. This parameter contains one of the possible value as a string, default is CUBLAS_COMPUTE_32F_FAST_TF32.</dd>
 <dt><tt>dtype</tt> : int</dt>
 <dd>Output Type. Same definition as attribute 'to' for operator Cast.</dd>
 <dt><tt>fastAccumulationMode</tt> : int</dt>
 <dd>See documentation of cublasLtMatMul.</dd>
 <dt><tt>rowMajor</tt> : int</dt>
 <dd>Storage order used to run the computation (inputs are always row major). Float 8 types only supports column major.</dd>
-<dt><tt>smCount</tt> : int</dt>
-<dd>See documentation of cublasLtMatMul.</dd>
 <dt><tt>transA</tt> : int</dt>
 <dd>Whether A should be transposed. Float 8 only supprted transA=0.</dd>
 <dt><tt>transB</tt> : int</dt>

@@ -2612,21 +2612,10 @@ for beta != 0.)DOC")
                                     AttributeProto::FLOAT,
                                     0.0f)
                                 .Attr(
-                                    "smCount",
-                                    "See documentation of cublasLtMatMul.",
-                                    AttributeProto::INT,
-                                    static_cast<int64_t>(0))
-                                .Attr(
                                     "fastAccumulationMode",
                                     "See documentation of cublasLtMatMul.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(1))
-                                .Attr(
-                                    "computeType",
-                                    "See documentation of cublasLtMatMul. This parameter contains "
-                                    "one of the possible value as a string, default is CUBLAS_COMPUTE_32F_FAST_TF32.",
-                                    AttributeProto::STRING,
-                                    OPTIONAL_VALUE)
                                 .Attr(
                                     "rowMajor",
                                     "Storage order used to run the computation (inputs are always row major). "
