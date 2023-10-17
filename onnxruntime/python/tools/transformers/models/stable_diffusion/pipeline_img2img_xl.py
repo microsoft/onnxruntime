@@ -29,7 +29,7 @@ from pipeline_stable_diffusion import StableDiffusionPipeline
 
 class Img2ImgXLPipeline(StableDiffusionPipeline):
     """
-    Stable Diffusion Img2Img XL pipeline using NVidia TensorRT.
+    Stable Diffusion Img2Img XL pipeline.
     """
 
     def __init__(self, pipeline_info: PipelineInfo, *args, **kwargs):
@@ -40,7 +40,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
             pipeline_info (PipelineInfo):
                 Version and Type of stable diffusion pipeline.
         """
-        assert pipeline_info.is_sd_xl_refiner()
+        assert pipeline_info.is_xl_refiner()
 
         super().__init__(pipeline_info, *args, **kwargs)
 
@@ -68,17 +68,18 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         image_height,
         image_width,
         denoising_steps=30,
+        denoising_start=0.8,
         guidance=5.0,
         seed=None,
         warmup=False,
         return_type="image",
     ):
-        assert len(prompt) == len(negative_prompt)
+        assert negative_prompt is None or len(prompt) == len(negative_prompt)
 
-        # TODO(tianleiwu): Need we use image_height and image_width for the target size here?
-        original_size = (1024, 1024)
+        original_size = (image_height, image_width)
         crops_coords_top_left = (0, 0)
-        target_size = (1024, 1024)
+        target_size = (image_height, image_width)
+
         strength = 0.3
         aesthetic_score = 6.0
         negative_aesthetic_score = 2.5
@@ -93,7 +94,11 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
             e2e_tic = time.perf_counter()
 
             # Initialize timesteps
-            timesteps, t_start = self.initialize_timesteps(self.denoising_steps, strength)
+            if denoising_start is None:
+                timesteps, t_start = self.initialize_timesteps(self.denoising_steps, strength)
+            else:
+                timesteps, t_start = self.get_timesteps(self.denoising_steps, strength, denoising_start)
+
             latent_timestep = timesteps[:1].repeat(batch_size)
 
             # CLIP text encoder 2
@@ -130,8 +135,13 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
                 init_latents = self.encode_image(init_image)
 
             # Add noise to latents using timesteps
-            noise = torch.randn(init_latents.shape, device=self.device, dtype=torch.float32, generator=self.generator)
-            latents = self.scheduler.add_noise(init_latents, noise, t_start, latent_timestep)
+            if denoising_start is None:
+                noise = torch.randn(
+                    init_latents.shape, device=self.device, dtype=torch.float32, generator=self.generator
+                )
+                latents = self.scheduler.add_noise(init_latents, noise, t_start, latent_timestep)
+            else:
+                latents = init_latents
 
             # UNet denoiser
             latents = self.denoise_latent(
@@ -146,10 +156,10 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
 
         with torch.inference_mode():
             # VAE decode latent
-            if return_type == "latents":
-                images = latents * self.vae_scaling_factor
+            if return_type == "latent":
+                images = latents
             else:
-                images = self.decode_latent(latents)
+                images = self.decode_latent(latents / self.vae_scaling_factor)
 
             torch.cuda.synchronize()
             e2e_toc = time.perf_counter()
@@ -169,10 +179,11 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         image_height,
         image_width,
         denoising_steps=30,
+        denoising_start=0.8,
         guidance=5.0,
         seed=None,
         warmup=False,
-        return_type="images",
+        return_type="image",
     ):
         """
         Run the diffusion pipeline.
@@ -197,7 +208,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
             warmup (bool):
                 Indicate if this is a warmup run.
             return_type (str):
-                It can be "latents" or "images".
+                It can be "latent" or "image".
         """
 
         if self.is_backend_tensorrt():
@@ -212,6 +223,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
                     image_height,
                     image_width,
                     denoising_steps=denoising_steps,
+                    denoising_start=denoising_start,
                     guidance=guidance,
                     seed=seed,
                     warmup=warmup,
@@ -225,6 +237,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
                 image_height,
                 image_width,
                 denoising_steps=denoising_steps,
+                denoising_start=denoising_start,
                 guidance=guidance,
                 seed=seed,
                 warmup=warmup,

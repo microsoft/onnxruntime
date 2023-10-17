@@ -120,7 +120,7 @@ class StableDiffusionPipeline:
 
         self.stages = pipeline_info.stages()
 
-        self.vae_torch_fallback = self.pipeline_info.is_sd_xl()
+        self.vae_torch_fallback = self.pipeline_info.is_xl()
 
         self.use_cuda_graph = use_cuda_graph
 
@@ -129,6 +129,7 @@ class StableDiffusionPipeline:
 
         self.generator = None
         self.denoising_steps = None
+        self.actual_steps = None
 
         # backend engine
         self.engine_type = engine_type
@@ -142,12 +143,12 @@ class StableDiffusionPipeline:
             raise RuntimeError(f"Backend engine type {engine_type.name} is not supported")
 
         # Load text tokenizer
-        if not self.pipeline_info.is_sd_xl_refiner():
+        if not self.pipeline_info.is_xl_refiner():
             self.tokenizer = get_tokenizer(
                 self.pipeline_info, self.framework_model_dir, self.hf_token, subfolder="tokenizer"
             )
 
-        if self.pipeline_info.is_sd_xl():
+        if self.pipeline_info.is_xl():
             self.tokenizer2 = get_tokenizer(
                 self.pipeline_info, self.framework_model_dir, self.hf_token, subfolder="tokenizer_2"
             )
@@ -205,6 +206,23 @@ class StableDiffusionPipeline:
         timesteps = self.scheduler.timesteps[t_start:].to(self.device)
         return timesteps, t_start
 
+    def get_timesteps(self, num_inference_steps, strength, denoising_start=None):
+        # Strength is irrelevant if we directly request a timestep to start at;
+        # that is, strength is determined by the denoising_start instead.
+        if denoising_start is not None:
+            timesteps = self.scheduler.timesteps[0:]
+            discrete_timestep_cutoff = int(
+                round(self.scheduler.num_train_timesteps - (denoising_start * self.scheduler.num_train_timesteps))
+            )
+            timesteps = list(filter(lambda ts: ts < discrete_timestep_cutoff, timesteps))
+            return torch.tensor(timesteps).to(self.device), len(timesteps)
+
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.scheduler.timesteps[t_start:].to(self.device)
+        return timesteps, num_inference_steps - t_start
+
     def preprocess_images(self, batch_size, images=()):
         if self.nvtx_profile:
             nvtx_image_preprocess = nvtx.start_range(message="image_preprocess", color="pink")
@@ -219,7 +237,14 @@ class StableDiffusionPipeline:
         return tuple(init_images)
 
     def encode_prompt(
-        self, prompt, negative_prompt, encoder="clip", tokenizer=None, pooled_outputs=False, output_hidden_states=False
+        self,
+        prompt,
+        negative_prompt,
+        encoder="clip",
+        tokenizer=None,
+        pooled_outputs=False,
+        output_hidden_states=False,
+        force_zeros_for_empty_prompt=False,
     ):
         if tokenizer is None:
             tokenizer = self.tokenizer
@@ -247,23 +272,32 @@ class StableDiffusionPipeline:
         if output_hidden_states:
             hidden_states = outputs["hidden_states"].clone()
 
-        # Tokenize negative prompt
-        uncond_input_ids = (
-            tokenizer(
-                negative_prompt,
-                padding="max_length",
-                max_length=tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            .input_ids.type(torch.int32)
-            .to(self.device)
-        )
+        # Note: negative prompt embedding is not needed for SD XL when guidance < 1
 
-        outputs = self.run_engine(encoder, {"input_ids": uncond_input_ids})
-        uncond_embeddings = outputs["text_embeddings"]
-        if output_hidden_states:
-            uncond_hidden_states = outputs["hidden_states"]
+        # For SD XL base, handle force_zeros_for_empty_prompt
+        is_empty_negative_prompt = all([not i for i in negative_prompt])
+        if force_zeros_for_empty_prompt and is_empty_negative_prompt:
+            uncond_embeddings = torch.zeros_like(text_embeddings)
+            if output_hidden_states:
+                uncond_hidden_states = torch.zeros_like(hidden_states)
+        else:
+            # Tokenize negative prompt
+            uncond_input_ids = (
+                tokenizer(
+                    negative_prompt,
+                    padding="max_length",
+                    max_length=tokenizer.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                )
+                .input_ids.type(torch.int32)
+                .to(self.device)
+            )
+
+            outputs = self.run_engine(encoder, {"input_ids": uncond_input_ids})
+            uncond_embeddings = outputs["text_embeddings"]
+            if output_hidden_states:
+                uncond_hidden_states = outputs["hidden_states"]
 
         # Concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes for classifier free guidance
         text_embeddings = torch.cat([uncond_embeddings, text_embeddings]).to(dtype=torch.float16)
@@ -292,21 +326,33 @@ class StableDiffusionPipeline:
         mask=None,
         masked_image_latents=None,
         guidance=7.5,
-        image_guidance=1.5,
+        denoising_end=None,
+        warmup=False,
         add_kwargs=None,
     ):
-        assert guidance > 1.0, "Guidance has to be > 1.0"
-        assert image_guidance > 1.0, "Image guidance has to be > 1.0"
+        assert guidance > 1.0, "Guidance has to be > 1.0"  # TODO: remove this constraint
+        do_classifier_free_guidance = guidance > 1.0
 
         cudart.cudaEventRecord(self.events["denoise-start"], 0)
         if not isinstance(timesteps, torch.Tensor):
             timesteps = self.scheduler.timesteps
+
+        # Apply denoising_end
+        if denoising_end is not None:
+            assert isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1
+            discrete_timestep_cutoff = int(
+                round(self.scheduler.num_train_timesteps - (denoising_end * self.scheduler.num_train_timesteps))
+            )
+            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
+            timesteps = timesteps[:num_inference_steps]
+
         for step_index, timestep in enumerate(timesteps):
             if self.nvtx_profile:
                 nvtx_latent_scale = nvtx.start_range(message="latent_scale", color="pink")
 
             # Expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2)
+            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+
             latent_model_input = self.scheduler.scale_model_input(
                 latent_model_input, step_offset + step_index, timestep
             )
@@ -322,11 +368,11 @@ class StableDiffusionPipeline:
 
             timestep_float = timestep.float() if timestep.dtype != torch.float32 else timestep
 
-            sample_inp = latent_model_input
-            timestep_inp = timestep_float
-            embeddings_inp = text_embeddings
-
-            params = {"sample": sample_inp, "timestep": timestep_inp, "encoder_hidden_states": embeddings_inp}
+            params = {
+                "sample": latent_model_input,
+                "timestep": timestep_float,
+                "encoder_hidden_states": text_embeddings,
+            }
             if add_kwargs:
                 params.update(add_kwargs)
 
@@ -338,9 +384,10 @@ class StableDiffusionPipeline:
             if self.nvtx_profile:
                 nvtx_latent_step = nvtx.start_range(message="latent_step", color="pink")
 
-            # Perform guidance
-            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
+            # perform guidance
+            if do_classifier_free_guidance:
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
 
             if type(self.scheduler) == UniPCMultistepScheduler:
                 latents = self.scheduler.step(noise_pred, timestep, latents, return_dict=False)[0]
@@ -350,8 +397,11 @@ class StableDiffusionPipeline:
             if self.nvtx_profile:
                 nvtx.end_range(nvtx_latent_step)
 
-        latents = 1.0 / self.vae_scaling_factor * latents
         cudart.cudaEventRecord(self.events["denoise-stop"], 0)
+
+        # The actual number of steps. It is different from denoising_steps when denoising_end is not None.
+        self.actual_steps = len(timesteps)
+
         return latents
 
     def encode_image(self, init_image):
@@ -394,7 +444,7 @@ class StableDiffusionPipeline:
         )
         print(
             "| {:^10} | {:>9.2f} ms |".format(
-                "UNet x " + str(self.denoising_steps),
+                "UNet x " + str(self.actual_steps),
                 cudart.cudaEventElapsedTime(self.events["denoise-start"], self.events["denoise-stop"])[1],
             )
         )
@@ -403,6 +453,7 @@ class StableDiffusionPipeline:
                 "VAE-Dec", cudart.cudaEventElapsedTime(self.events["vae-start"], self.events["vae-stop"])[1]
             )
         )
+
         print("|------------|--------------|")
         print("| {:^10} | {:>9.2f} ms |".format("Pipeline", (toc - tic) * 1000.0))
         print("|------------|--------------|")
@@ -413,6 +464,7 @@ class StableDiffusionPipeline:
         images = (
             ((images + 1) * 255 / 2).clamp(0, 255).detach().permute(0, 2, 3, 1).round().type(torch.uint8).cpu().numpy()
         )
+
         from PIL import Image
 
         return [Image.fromarray(images[i]) for i in range(images.shape[0])]
