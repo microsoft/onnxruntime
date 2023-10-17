@@ -2879,12 +2879,10 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
 
   iobindings.BindInput("X", ort_input_tensor_value);
   iobindings.BindOutput("Y", ort_output_tensor_value);
+  // Sychronize to make sure the copy on default stream is done since TensorRT isn't using default stream.
+  iobindings.SynchronizeInputs();
 
   session->Run(Ort::RunOptions(), iobindings);
-
-  for (auto y : y_values) {
-    std::cout << y << std::endl;
-  }
 
   // Check the values against the bound raw memory
   ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
