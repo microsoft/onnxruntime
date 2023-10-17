@@ -36,8 +36,6 @@ void set_params_fprop(Flash_fwd_params& params,
                       float softmax_scale,
                       bool is_causal,
                       bool kv_bsnh = true) {
-  // Reset the parameters
-  memset(&params, 0, sizeof(params));
 
   // Set the pointers and strides.
   params.q_ptr = q;
