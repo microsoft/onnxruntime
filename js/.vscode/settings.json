@@ -36,7 +36,8 @@
     "node/lib/**/*.js.map": true,
     "node/lib/**/*.js": true,
     "web/lib/**/*.js.map": true,
-    "web/lib/**/*.js": true
+    "web/lib/**/*.js": true,
+    "web/lib/**/*.d.ts": true
   },
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
