@@ -4135,7 +4135,6 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
 
   // Process constant nodes and initializers first
   // to create defs from them and make renaming easier
-  InlinedVector<NodeIndex> nonconstant_nodes;
   for (const auto& node : graph_to_inline.Nodes()) {
     if (node.OpType() == kConstant) {
       // Copy constant nodes _value to name_to_initial_tensor_
@@ -4154,8 +4153,6 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
       }
 
       ORT_RETURN_IF_ERROR(AddConstantProtoAsInitializer(constant_node_proto, new_name));
-    } else {
-      nonconstant_nodes.push_back(node.Index());
     }
   }
 
@@ -4190,9 +4187,10 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
 #endif
   }
 
-  for (const auto node_idx : nonconstant_nodes) {
+  GraphViewer graph(graph_to_inline);
+  for (const auto node_idx : graph.GetNodesInTopologicalOrder()) {
     const auto* node = graph_to_inline.GetNode(node_idx);
-    if (node == nullptr) {
+    if (node == nullptr || node->OpType() == kConstant) {
       continue;
     }
 
