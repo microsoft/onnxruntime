@@ -174,7 +174,7 @@ class LabelEncoder_4 final : public OpKernel {
 
  private:
   void InitializeAttrFields(const OpKernelInfo& kernel_info);
-  InlinedHashMap<TKey, TValue> _map;
+  InlinedHashMapNaNSensitive<TKey, TValue> _map;
   TValue _default_value;
   std::string _key_field_name;
   std::string _value_field_name;

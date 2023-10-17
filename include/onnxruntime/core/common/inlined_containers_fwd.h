@@ -142,6 +142,10 @@ template <typename Key, typename Value,
           typename Allocator = std::allocator<std::pair<const Key, Value>>>
 class InlinedHashMap;
 
+template <typename Key, typename Value,
+          typename Allocator = std::allocator<std::pair<const Key, Value>>>
+class InlinedHashMapNaNSensitive;
+
 template <typename T, typename Allocator = std::allocator<T>>
 class NodeHashSet;
 

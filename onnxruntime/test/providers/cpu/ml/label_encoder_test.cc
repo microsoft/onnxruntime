@@ -377,5 +377,23 @@ TEST(LabelEncoder, TensorBasedAttributesOpset4) {
   test.Run();
 }
 
+TEST(LabelEncoder, NaNsMappedTogetherOpset4) {
+  std::vector<std::int64_t> dims{1, 6};
+  std::vector<float> input{3.14, std::nanf("1"), 2.718, std::nanf("2"), 5.0, -1};
+  std::vector<std::string> output{"a", "ONNX", "b", "ONNX", "c", "onnxruntime"};
+  std::vector<float> key_data{3.14, 2.718, 5.0, std::nanf("3")};
+  std::vector<std::string> value_data{"a", "b", "c", "ONNX"};
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  test.AddAttribute("keys_floats", key_data);
+  test.AddAttribute("values_strings", value_data);
+  test.AddAttribute("default_string", "onnxruntime");
+
+  test.AddInput<float>("X", dims, input);
+  test.AddOutput<std::string>("Y", dims, output);
+
+  test.Run();
+}
 }  // namespace test
 }  // namespace onnxruntime

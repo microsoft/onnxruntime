@@ -75,6 +75,56 @@ class InlinedHashMap : public absl::flat_hash_map<Key, Value,
   using Base::Base;
 };
 
+template <typename T>
+struct NaNHash {
+  size_t operator()(const T& value) const {
+    return absl::container_internal::hash_default_hash<T>{}(value);
+  }
+};
+
+template <>
+struct NaNHash<float> {
+  size_t operator()(const float value) const {
+    if (std::isnan(value)) {
+      return 0;
+    } else {
+      return absl::container_internal::hash_default_hash<float>{}(value);
+    }
+  }
+};
+
+template <typename T>
+struct NaNEqual {
+  bool operator()(const T& lhs, const T& rhs) const {
+    return absl::container_internal::hash_default_eq<T>{}(lhs, rhs);
+  }
+};
+
+template <>
+struct NaNEqual<float> {
+  bool operator()(const float lhs, const float rhs) const {
+    if (std::isnan(lhs) && std::isnan(rhs)) {
+      return true;
+    }
+    return absl::container_internal::hash_default_eq<float>{}(lhs, rhs);
+  }
+};
+
+template <typename Key, typename Value,
+          typename Allocator>
+class InlinedHashMapNaNSensitive : public absl::flat_hash_map<Key, Value,
+                                                              NaNHash<Key>,
+                                                              NaNEqual<Key>,
+                                                              Allocator> {
+  using Base = absl::flat_hash_map<Key, Value,
+                                   NaNHash<Key>,
+                                   NaNEqual<Key>,
+                                   Allocator>;
+
+ public:
+  using Base::Base;
+};
+
 // Use this hash set/map where pointer stability is required, otherwise use
 // InlinedHashSet and InlinedHashMap
 // This does not allocate a dummy 'end' node on default construction.
@@ -138,6 +188,56 @@ class InlinedHashMap : public std::unordered_map<Key, Value,
   using Base::Base;
 };
 
+template <typename T>
+struct NaNHash {
+  size_t operator()(const T& value) const {
+    return std::hash<Key>{}(value);
+  }
+};
+
+template <>
+struct NaNHash<float> {
+  size_t operator()(const float value) const {
+    if (std::isnan(value)) {
+      return 0;
+    } else {
+      return std::hash<float>{}(value);
+    }
+  }
+};
+
+template <typename T>
+struct NaNEqual {
+  bool operator()(const T& lhs, const T& rhs) const {
+    return std::equal_to<T>{}(lhs, rhs);
+  }
+};
+
+template <>
+struct NaNEqual<float> {
+  bool operator()(const float lhs, const float rhs) const {
+    if (std::isnan(lhs) && std::isnan(rhs)) {
+      return true;
+    }
+    return std::equal_to<float>{}(lhs, rhs);
+  }
+};
+
+template <typename Key, typename Value,
+          typename Allocator>
+class InlinedHashMapNaNSensitive : public absl::flat_hash_map<Key, Value,
+                                                              NaNHash<Key>,
+                                                              NaNEqual<Key>,
+                                                              Allocator> {
+  using Base = absl::flat_hash_map<Key, Value,
+                                   NaNHash<Key>,
+                                   NaNEqual<Key>,
+                                   Allocator>;
+
+ public:
+  using Base::Base;
+};
+
 // Use this hash set/map where pointer stability is required, otherwise use
 // InlinedHashSet and InlinedHashMap
 // This does not allocate a dummy 'end' node on default construction.
@@ -173,3 +273,4 @@ class NodeHashMap : public std::unordered_map<Key, Value,
 #endif  // DISABLE_ABSEIL
 
 }  // namespace onnxruntime
+//
