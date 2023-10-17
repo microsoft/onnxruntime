@@ -157,7 +157,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
   return a_dequantized * b_dequantized;
 };
 //
-//TEST(QLinearBinaryOpTest, AddU8VectorVectorFull) {
+// TEST(QLinearBinaryOpTest, AddU8VectorVectorFull) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
@@ -173,7 +173,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
+// TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
@@ -192,7 +192,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
+// TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
@@ -208,7 +208,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
+// TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
@@ -224,7 +224,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
+// TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
@@ -240,7 +240,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
+// TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<uint8_t> A_params(A_scale, /*zero_point=*/128);
@@ -256,7 +256,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddS8VectorVectorFull) {
+// TEST(QLinearBinaryOpTest, AddS8VectorVectorFull) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
@@ -272,7 +272,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddS8VectorVectorBroadcast) {
+// TEST(QLinearBinaryOpTest, AddS8VectorVectorBroadcast) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
@@ -291,7 +291,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddS8ScalarVectorFull) {
+// TEST(QLinearBinaryOpTest, AddS8ScalarVectorFull) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
@@ -307,7 +307,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddS8ScalarVectorBroadcast) {
+// TEST(QLinearBinaryOpTest, AddS8ScalarVectorBroadcast) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
@@ -323,7 +323,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddS8VectorScalarFull) {
+// TEST(QLinearBinaryOpTest, AddS8VectorScalarFull) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);
@@ -339,7 +339,7 @@ static auto mul_function = [](float a_dequantized, float b_dequantized) {
 //                              C_params);
 //}
 //
-//TEST(QLinearBinaryOpTest, AddS8VectorScalarBroadcast) {
+// TEST(QLinearBinaryOpTest, AddS8VectorScalarBroadcast) {
 //  const std::vector<float>& A(A4Add);
 //  float A_scale = 8.0f / 256.0f;
 //  quantization::Params<int8_t> A_params(A_scale, /*zero_point=*/0);

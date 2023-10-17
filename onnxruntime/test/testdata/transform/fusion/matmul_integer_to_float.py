@@ -53,7 +53,9 @@ def MakeInitializer(suffix, output_type_fp16=False):  # noqa: N802
     return [
         helper.make_tensor("b_quantized" + suffix, TensorProto.UINT8, [2, 3], [2, 4, 5, 6, 7, 8]),
         helper.make_tensor("b_zp" + suffix, TensorProto.UINT8, [], [128]),
-        helper.make_tensor("b_scale" + suffix, TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [], [1.8]),
+        helper.make_tensor(
+            "b_scale" + suffix, TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [], [1.8]
+        ),
     ]
 
 
@@ -76,8 +78,15 @@ def GenerateModel(model_name, output_type_fp16=False):  # noqa: N802
 
     initializers.extend(
         [
-            helper.make_tensor("bias_1", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3], [2, 4, 5]),
-            helper.make_tensor("bias_2", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3, 3], [1, 2, 3, 4, 5, 6, 7, 8, 9]),
+            helper.make_tensor(
+                "bias_1", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3], [2, 4, 5]
+            ),
+            helper.make_tensor(
+                "bias_2",
+                TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT,
+                [3, 3],
+                [1, 2, 3, 4, 5, 6, 7, 8, 9],
+            ),
         ]
     )
 
@@ -85,16 +94,26 @@ def GenerateModel(model_name, output_type_fp16=False):  # noqa: N802
         nodes,
         "MatMulIntegerToFloat_fusion",  # name
         [  # inputs
-            helper.make_tensor_value_info("input", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3, 2]),
+            helper.make_tensor_value_info(
+                "input", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3, 2]
+            ),
             # matrix b corresponding inputs for subgraph 2
             helper.make_tensor_value_info("b_quantized_2", TensorProto.UINT8, [2, 3]),
             helper.make_tensor_value_info("b_zp_2", TensorProto.UINT8, [1]),
-            helper.make_tensor_value_info("b_scale_2", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [1]),
+            helper.make_tensor_value_info(
+                "b_scale_2", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [1]
+            ),
         ],
         [  # outputs
-            helper.make_tensor_value_info("output_1", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3, 3]),
-            helper.make_tensor_value_info("output_2", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3, 3]),
-            helper.make_tensor_value_info("output_3", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3, 3]),
+            helper.make_tensor_value_info(
+                "output_1", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3, 3]
+            ),
+            helper.make_tensor_value_info(
+                "output_2", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3, 3]
+            ),
+            helper.make_tensor_value_info(
+                "output_3", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [3, 3]
+            ),
         ],
         initializers,
     )

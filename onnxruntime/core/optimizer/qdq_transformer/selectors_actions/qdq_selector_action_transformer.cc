@@ -130,9 +130,9 @@ void BinaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
     std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>();
 
     qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
-                                                            {{"Add", {}}},
-                                                            std::move(selector),
-                                                            std::move(action));
+                                                           {{"Add", {}}},
+                                                           std::move(selector),
+                                                           std::move(action));
   }
 
 #else

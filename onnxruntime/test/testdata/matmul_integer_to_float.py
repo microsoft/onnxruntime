@@ -13,7 +13,13 @@ def GenerateModel(model_name, sign_i, sign_w, output_type_fp16, has_zp=True, bia
             "MatMulInteger",
         ),
         helper.make_node("Mul", ["a_scale", "b_scale"], ["multiplier"], "mul_right"),
-        helper.make_node("Cast", ["matmul_output_int32"], ["matmul_output_float"], "cast", to=TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT),
+        helper.make_node(
+            "Cast",
+            ["matmul_output_int32"],
+            ["matmul_output_float"],
+            "cast",
+            to=TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT,
+        ),
         helper.make_node(
             "Mul",
             ["matmul_output_float", "multiplier"],
@@ -48,14 +54,22 @@ def GenerateModel(model_name, sign_i, sign_w, output_type_fp16, has_zp=True, bia
     if bias:
         nodes.extend([helper.make_node("Add", ["mul_bottom_output", "bias"], ["Y"], "add")])
 
-        inputs.extend([helper.make_tensor_value_info("bias", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, ["N"])])
+        inputs.extend(
+            [
+                helper.make_tensor_value_info(
+                    "bias", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, ["N"]
+                )
+            ]
+        )
 
     graph = helper.make_graph(
         nodes,
         "DynamicQuantizeMatMul_fusion",  # name
         inputs,
         [  # outputs
-            helper.make_tensor_value_info("Y", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, ["M", "N"]),
+            helper.make_tensor_value_info(
+                "Y", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, ["M", "N"]
+            ),
         ],
     )
 
@@ -66,16 +80,58 @@ def GenerateModel(model_name, sign_i, sign_w, output_type_fp16, has_zp=True, bia
 if __name__ == "__main__":
     GenerateModel("matmul_integer_to_float16_int8.onnx", sign_i=False, sign_w=True, output_type_fp16=True)
     GenerateModel("matmul_integer_to_float16_uint8.onnx", sign_i=False, sign_w=False, output_type_fp16=True)
-    GenerateModel("matmul_integer_to_float16_int8_bias.onnx", sign_i=False, sign_w=True, output_type_fp16=True, has_zp=False, bias=True)
-    GenerateModel("matmul_integer_to_float16_uint8_bias.onnx", sign_i=False, sign_w=False, output_type_fp16=True, has_zp=False, bias=True)
+    GenerateModel(
+        "matmul_integer_to_float16_int8_bias.onnx",
+        sign_i=False,
+        sign_w=True,
+        output_type_fp16=True,
+        has_zp=False,
+        bias=True,
+    )
+    GenerateModel(
+        "matmul_integer_to_float16_uint8_bias.onnx",
+        sign_i=False,
+        sign_w=False,
+        output_type_fp16=True,
+        has_zp=False,
+        bias=True,
+    )
 
     GenerateModel("matmul_integer_to_float16_int8_int8.onnx", sign_i=True, sign_w=True, output_type_fp16=True)
-    GenerateModel("matmul_integer_to_float16_int8_int8_bias.onnx", sign_i=True, sign_w=True, output_type_fp16=True, has_zp=False, bias=True)
+    GenerateModel(
+        "matmul_integer_to_float16_int8_int8_bias.onnx",
+        sign_i=True,
+        sign_w=True,
+        output_type_fp16=True,
+        has_zp=False,
+        bias=True,
+    )
 
     GenerateModel("matmul_integer_to_float_int8.onnx", sign_i=False, sign_w=True, output_type_fp16=False)
     GenerateModel("matmul_integer_to_float_uint8.onnx", sign_i=False, sign_w=False, output_type_fp16=False)
-    GenerateModel("matmul_integer_to_float_int8_bias.onnx", sign_i=False, sign_w=True, output_type_fp16=False, has_zp=False, bias=True)
-    GenerateModel("matmul_integer_to_float_uint8_bias.onnx", sign_i=False, sign_w=False, output_type_fp16=False, has_zp=False, bias=True)
+    GenerateModel(
+        "matmul_integer_to_float_int8_bias.onnx",
+        sign_i=False,
+        sign_w=True,
+        output_type_fp16=False,
+        has_zp=False,
+        bias=True,
+    )
+    GenerateModel(
+        "matmul_integer_to_float_uint8_bias.onnx",
+        sign_i=False,
+        sign_w=False,
+        output_type_fp16=False,
+        has_zp=False,
+        bias=True,
+    )
 
     GenerateModel("matmul_integer_to_float_int8_int8.onnx", sign_i=True, sign_w=True, output_type_fp16=False)
-    GenerateModel("matmul_integer_to_float_int8_int8_bias.onnx", sign_i=True, sign_w=True, output_type_fp16=False, has_zp=False, bias=True)
+    GenerateModel(
+        "matmul_integer_to_float_int8_int8_bias.onnx",
+        sign_i=True,
+        sign_w=True,
+        output_type_fp16=False,
+        has_zp=False,
+        bias=True,
+    )

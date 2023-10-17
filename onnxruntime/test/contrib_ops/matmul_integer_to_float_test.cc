@@ -108,43 +108,43 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
   std::vector<int64_t> Y_dims{4, 128};
 
   TestMatMulIntegerToFloat<IType, WType, OType>(
-                                         A_dims,
-                                         B_dims,
-                                         model_path,
-                                         false,        /*is_matrix_b_constant*/
-                                         false,        /*per_column*/
-                                         HasZeroPoint, /*has_zp*/
-                                         HasBias       /*has_bias*/
+      A_dims,
+      B_dims,
+      model_path,
+      false,        /*is_matrix_b_constant*/
+      false,        /*per_column*/
+      HasZeroPoint, /*has_zp*/
+      HasBias       /*has_bias*/
   );
 
   TestMatMulIntegerToFloat<IType, WType, OType>(
-                                         A_dims,
-                                         B_dims,
-                                         model_path,
-                                         true,         /*is_matrix_b_constant*/
-                                         false,        /*per_column*/
-                                         HasZeroPoint, /*has_zp*/
-                                         HasBias       /*has_bias*/
+      A_dims,
+      B_dims,
+      model_path,
+      true,         /*is_matrix_b_constant*/
+      false,        /*per_column*/
+      HasZeroPoint, /*has_zp*/
+      HasBias       /*has_bias*/
   );
 
   TestMatMulIntegerToFloat<IType, WType, OType>(
-                                         A_dims,
-                                         B_dims,
-                                         model_path,
-                                         false,        /*is_matrix_b_constant*/
-                                         true,         /*per_column*/
-                                         HasZeroPoint, /*has_zp*/
-                                         HasBias       /*has_bias*/
+      A_dims,
+      B_dims,
+      model_path,
+      false,        /*is_matrix_b_constant*/
+      true,         /*per_column*/
+      HasZeroPoint, /*has_zp*/
+      HasBias       /*has_bias*/
   );
 
   TestMatMulIntegerToFloat<IType, WType, OType>(
-                                         A_dims,
-                                         B_dims,
-                                         model_path,
-                                         true,         /*is_matrix_b_constant*/
-                                         true,         /*per_column*/
-                                         HasZeroPoint, /*has_zp*/
-                                         HasBias       /*has_bias*/
+      A_dims,
+      B_dims,
+      model_path,
+      true,         /*is_matrix_b_constant*/
+      true,         /*per_column*/
+      HasZeroPoint, /*has_zp*/
+      HasBias       /*has_bias*/
   );
 }
 

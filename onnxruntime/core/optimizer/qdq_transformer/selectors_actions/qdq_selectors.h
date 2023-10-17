@@ -185,10 +185,9 @@ class BaseSelector : public NodeSelector {
 
  protected:
   BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector, std::vector<const char*> compatible_providers = {})
-      : node_group_selector_{std::move(node_group_selector)}
-    {
-        compatible_providers_.assign(compatible_providers.begin(), compatible_providers.end());
-    }
+      : node_group_selector_{std::move(node_group_selector)} {
+    compatible_providers_.assign(compatible_providers.begin(), compatible_providers.end());
+  }
 
   // override if you need to adjust the values in NodesToOptimize.
   // e.g. add entries for missing optional DQ inputs or set num_inputs to handle variadic inputs

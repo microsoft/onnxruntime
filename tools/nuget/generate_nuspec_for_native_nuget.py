@@ -20,6 +20,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
             pkg_name += "-cuda"
         elif ep == "tensorrt":
             pkg_name += "-tensorrt"
+        elif ep == "rocm":
+            pkg_name += "-rocm"
     elif os == "linux":
         pkg_name += "-linux-"
         pkg_name += cpu_arch
@@ -27,6 +29,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
             pkg_name += "-cuda"
         elif ep == "tensorrt":
             pkg_name += "-tensorrt"
+        elif ep == "rocm":
+            pkg_name += "-rocm"
     elif os == "osx":
         pkg_name = "onnxruntime-osx-" + cpu_arch
     return pkg_name
@@ -67,7 +71,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                     is_versioned_dylib = re.match(r".*[\.\d+]+\.dylib$", child_file.name)
                     if child_file.is_file() and child_file.suffix == ".dylib" and not is_versioned_dylib:
                         files_list.append(
-                            '<file src="' + str(child_file) + '" target="runtimes/osx.10.14-%s/native"/>' % cpu_arch
+                            '<file src="' + str(child_file) + '" target="runtimes/osx-%s/native"/>' % cpu_arch
                         )
         for cpu_arch in ["x64", "aarch64"]:
             if child.name == get_package_name("linux", cpu_arch, ep, is_training_package):
@@ -87,9 +91,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
         if child.name == "onnxruntime-android" or child.name == "onnxruntime-training-android":
             for child_file in child.iterdir():
                 if child_file.suffix in [".aar"]:
-                    files_list.append(  # noqa: PERF401
-                        '<file src="' + str(child_file) + '" target="runtimes/android/native"/>'
-                    )
+                    files_list.append('<file src="' + str(child_file) + '" target="runtimes/android/native"/>')
 
         if child.name == "onnxruntime-ios-xcframework":
             files_list.append('<file src="' + str(child) + "\\**" '" target="runtimes/ios/native"/>')  # noqa: ISC001
@@ -180,7 +182,7 @@ def generate_icon(line_list, icon_file):
 
 
 def generate_license(line_list):
-    line_list.append('<license type="file">LICENSE.txt</license>')
+    line_list.append('<license type="file">LICENSE</license>')
 
 
 def generate_project_url(line_list, project_url):
@@ -192,7 +194,9 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML.Preview" version="1.13.0-deveb7a0e89e82dcf90ae58761b35fb3aebc2275ef5"/>'
+    dml_dependency = (
+        '<dependency id="Microsoft.AI.DirectML.Preview" version="1.13.0-deveb7a0e89e82dcf90ae58761b35fb3aebc2275ef5"/>'
+    )
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -435,14 +439,7 @@ def generate_files(line_list, args):
         )
 
     if args.execution_provider == "tensorrt":
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(
-                args.sources_path, "include\\onnxruntime\\core\\providers\\tensorrt\\tensorrt_provider_factory.h"
-            )
-            + '" target="build\\native\\include" />'
-        )
+        files_list.append("<file src=" + '"' + '" target="build\\native\\include" />')
 
     if args.execution_provider == "dnnl":
         files_list.append(
@@ -538,6 +535,8 @@ def generate_files(line_list, args):
             # downloaded from other build jobs
             if is_cuda_gpu_package:
                 ep_list = ["tensorrt", "cuda", None]
+            elif is_rocm_gpu_package:
+                ep_list = ["rocm", None]
             else:
                 ep_list = [None]
             for ep in ep_list:
@@ -671,9 +670,7 @@ def generate_files(line_list, args):
             # TODO(agladyshev): Add support for Linux.
             raise RuntimeError("Now only Windows is supported for TVM EP.")
 
-    if is_rocm_gpu_package:
-        if not is_linux():
-            raise RuntimeError("Only Linux is supported for ROCm EP.")
+    if args.execution_provider == "rocm" or is_rocm_gpu_package and not is_ado_packaging_build:
         files_list.append(
             "<file src="
             + '"'
@@ -722,7 +719,7 @@ def generate_files(line_list, args):
                 ngraph_list_path = os.path.join(openvino_path, "deployment_tools\\ngraph\\lib\\")
                 for ngraph_element in os.listdir(ngraph_list_path):
                     if ngraph_element.endswith("dll"):
-                        files_list.append(  # noqa: PERF401
+                        files_list.append(
                             "<file src="
                             + '"'
                             + os.path.join(ngraph_list_path, ngraph_element)
@@ -732,7 +729,7 @@ def generate_files(line_list, args):
                         )
             for dll_element in os.listdir(dll_list_path):
                 if dll_element.endswith("dll"):
-                    files_list.append(  # noqa: PERF401
+                    files_list.append(
                         "<file src="
                         + '"'
                         + os.path.join(dll_list_path, dll_element)
@@ -762,7 +759,7 @@ def generate_files(line_list, args):
                 )
             for tbb_element in os.listdir(tbb_list_path):
                 if tbb_element.endswith("dll"):
-                    files_list.append(  # noqa: PERF401
+                    files_list.append(
                         "<file src="
                         + '"'
                         + os.path.join(tbb_list_path, tbb_element)
@@ -1099,8 +1096,11 @@ def generate_files(line_list, args):
                 "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
             )
 
+    # README
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "README.md") + '" target="README.md" />')
+
     # Process License, ThirdPartyNotices, Privacy
-    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE.txt") + '" target="LICENSE.txt" />')
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE") + '" target="LICENSE" />')
     files_list.append(
         "<file src="
         + '"'
@@ -1155,10 +1155,11 @@ def validate_execution_provider(execution_provider):
             or execution_provider == "cuda"
             or execution_provider == "tensorrt"
             or execution_provider == "openvino"
+            or execution_provider == "rocm"
         ):
             raise Exception(
                 "On Linux platform nuget generation is supported only "
-                "for cpu|cuda|dnnl|tensorrt|openvino execution providers."
+                "for cpu|cuda|dnnl|tensorrt|openvino|rocm execution providers."
             )
 
 

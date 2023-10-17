@@ -85,11 +85,10 @@ std::optional<NodeGroup> NodeGroupSelector::GetQDQSelection(const GraphViewer& g
 }
 
 std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node) const {
-
   const std::string_view node_ep = node.GetExecutionProviderType();
 
   if (!compatible_providers_.empty() &&
-        std::find(compatible_providers_.begin(), compatible_providers_.end(), node_ep) == compatible_providers_.end()) {
+      std::find(compatible_providers_.begin(), compatible_providers_.end(), node_ep) == compatible_providers_.end()) {
     return std::nullopt;
   }
 

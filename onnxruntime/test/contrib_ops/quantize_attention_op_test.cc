@@ -114,7 +114,7 @@ void RunQAttention(const std::vector<float>& input_data,
     execution_providers.push_back(DefaultCpuExecutionProvider());
   } else if constexpr (ep == EP::DML) {
     execution_providers.push_back(DefaultDmlExecutionProvider());
-  } else{  // onednn ep
+  } else {  // onednn ep
     execution_providers.push_back(DefaultDnnlExecutionProvider());
   }
 
@@ -322,8 +322,8 @@ static void RunQAttentionAll(
                     batch_size, sequence_length, hidden_size, number_of_heads,
                     use_special_quantize_parameter, is_unidirectional, input_hidden_size);
   RunQAttentionDML(input_data, weight_data, bias_data, mask_index_data, output_data,
-                    batch_size, sequence_length, hidden_size, number_of_heads,
-                    use_special_quantize_parameter, is_unidirectional, input_hidden_size);
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   use_special_quantize_parameter, is_unidirectional, input_hidden_size);
 }
 
 // ONEDNN EP only supports 2D raw mask
