@@ -1,5 +1,5 @@
 parameters:
-  AgentPool: 'onnxruntime-Ubuntu2004-AMD-CPU'
+  AgentPool: 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
   StageSuffix: ''
 stages:
 - stage: Nodejs_Test_${{ parameters.StageSuffix }}
