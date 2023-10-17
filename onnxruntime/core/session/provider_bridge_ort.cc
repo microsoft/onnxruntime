@@ -1639,6 +1639,8 @@ void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, std::s
   for (auto ptr : custom_op_domains) {
     if (!is_already_in_domains(ptr->domain_, options->custom_op_domains_)) {
       options->custom_op_domains_.push_back(ptr);
+    } else {
+      LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
     }
   }
 }

@@ -1644,6 +1644,9 @@ def test_models_eps(args, models):
     for name, model_info in models.items():
         ep_results = {"latency": {}, "metrics": {}, "session": {}}
 
+        ep_list = [trt]
+        print(ep_list)
+
         for exec_provider in ep_list:
             # Skip model + EP combinations that have already failed in a previous run.
             if skip_ep(name, exec_provider, model_to_fail_ep):
@@ -1764,7 +1767,8 @@ def run_model_on_ep(
     #######################################
     # Validation
     #######################################
-    if do_validate:
+    # if do_validate:
+    if True:
         validation_passed = validate_model_on_ep(
             args,
             model_name,
@@ -1781,7 +1785,8 @@ def run_model_on_ep(
     #######################################
     # Benchmark
     #######################################
-    if do_benchmark and (validation_passed or not do_validate):
+    # if do_benchmark and (validation_passed or not do_validate):
+    if True:
         benchmark_model_on_ep(
             args,
             model_name,
@@ -2249,7 +2254,7 @@ def main():
     pp = pprint.PrettyPrinter(indent=4)
 
     logger.info("\n\nStart perf run ...\n")
-
+    # onnxruntime.set_default_logger_severity(0)
     models = {}
     parse_models_helper(args, models)
 
