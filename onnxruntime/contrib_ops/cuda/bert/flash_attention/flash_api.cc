@@ -290,6 +290,11 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    softmax_lse,
                    softmax_scale,
                    is_causal);
+  params.num_splits = 0;
+  params.softmax_lseaccum_ptr = nullptr;
+  params.oaccum_ptr = nullptr;
+  params.knew_ptr = nullptr;
+  params.vnew_ptr = nullptr;
   run_mha_fwd(params, stream);
   return Status::OK();
 }
