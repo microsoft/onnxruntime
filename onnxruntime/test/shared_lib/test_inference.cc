@@ -2832,7 +2832,7 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 #endif
 
 #ifdef USE_TENSORRT
-TEST_P(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
+TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   const auto& api = Ort::GetApi();
   OrtTensorRTProviderOptionsV2* trt_options;
   ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
