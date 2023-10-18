@@ -4083,7 +4083,7 @@ static void RenameSubgraphDependentNames(const InlinedHashMap<std::string, std::
 }
 
 static void RenameNodeAttributesSubgraphDependentNames(const InlinedHashMap<std::string, std::string>& name_mapping,
-                                                         NodeAttributes& attributes) {
+                                                       NodeAttributes& attributes) {
   for (auto& attribute : attributes) {
     auto& attr_proto = attribute.second;
     if (attr_proto.has_g()) {
@@ -4312,7 +4312,7 @@ Status Graph::InlineFunction(Node& callnode) {
 
   // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
-  std::string base_uniq_identifier{"_inlfunc/"};
+  std::string base_uniq_identifier{"_inlfunc_"};
   base_uniq_identifier.append(callnode.OpType());
   const auto uniq_identifier = GenerateNodeName(base_uniq_identifier);
 
