@@ -5,14 +5,12 @@
 
 #include "core/optimizer/rewrite_rule.h"
 
-
-namespace onnxruntime
-{
+namespace onnxruntime {
 /*
-*   This fusion submerges a BatchNormalization operator to it's super 
-*   precedding MatMul operator, if and only if MatmulBNFusion::SatisfyCondition()
-*   is true.
-*/
+ *   This fusion submerges a BatchNormalization operator to it's super
+ *   precedding MatMul operator, if and only if MatmulBNFusion::SatisfyCondition()
+ *   is true.
+ */
 class MatmulBNFusion : public RewriteRule {
  public:
   MatmulBNFusion() : RewriteRule("MatMul_BatchNormalization_Fusion") {}
@@ -26,4 +24,4 @@ class MatmulBNFusion : public RewriteRule {
 
   Status Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
-}
+}  // namespace onnxruntime

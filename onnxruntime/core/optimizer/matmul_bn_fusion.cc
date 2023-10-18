@@ -6,9 +6,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 
-
-namespace onnxruntime
-{
+namespace onnxruntime {
 bool MatchPath(const Node& parent_node,
                const gsl::span<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>>& path,
                const Node& child_node) {
@@ -22,9 +20,9 @@ bool MatchPath(const Node& parent_node,
   }
 
   /*
-  * last node in the path can have more than one output
-  * because all those outputs will be preserved by the addition of new Gemm node
-  */
+   * last node in the path can have more than one output
+   * because all those outputs will be preserved by the addition of new Gemm node
+   */
   if (path.size() > 1 && child_node.GetOutputEdgesCount() != 1) {
     return false;
   }
@@ -33,39 +31,38 @@ bool MatchPath(const Node& parent_node,
 }
 
 /*
-*   Given a MatMul node, it will verify the following pattern.
-*                MatMul
-*                  |
-*               Reshape    
-*                  |       
-*             Transpose    
-*                  |       
-*        BatchNormalization
-* Other Conditions:
-*   - B tensor of MatMul should be constant.
-*   - scale, B, mean, var tensors of BatchNormalization should be constant.
-*   - Every node in the path except first and last node, should have only 1 output edge.
-*/
+ *   Given a MatMul node, it will verify the following pattern.
+ *                MatMul
+ *                  |
+ *               Reshape
+ *                  |
+ *             Transpose
+ *                  |
+ *        BatchNormalization
+ * Other Conditions:
+ *   - B tensor of MatMul should be constant.
+ *   - scale, B, mean, var tensors of BatchNormalization should be constant.
+ *   - Every node in the path except first and last node, should have only 1 output edge.
+ */
 bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", { 1, 9, 13 }) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {1, 9, 13}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
   const Node& child_node = *node.OutputNodesBegin();
 
-  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> path {
-    {"Reshape", {1, 5}},
-    {"Transpose", {1}},
-    {"BatchNormalization", {1, 6, 7}}
-  };
+  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> path{
+      {"Reshape", {1, 5}},
+      {"Transpose", {1}},
+      {"BatchNormalization", {1, 6, 7}}};
 
   if (!MatchPath(node, path, child_node)) {
     return false;
-  }        
-  
+  }
+
   const auto& batch_norm_node = *child_node.OutputNodesBegin()->OutputNodesBegin();
-        
+
   // Check that the appropriate inputs to the Matmul and BN nodes are constants.
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
       !graph_utils::NodeArgIsConstant(graph, *batch_norm_node.InputDefs()[1]) ||
@@ -93,16 +90,16 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
 }
 
 /*
-* BatchNormalization: [https://learn.microsoft.com/en-us/windows/win32/api/directml/ns-directml-dml_batch_normalization_operator_desc]
-*   Scale * ((Input - Mean) / sqrt(Variance + Epsilon)) + Bias // ignore the FusedActivation in the above definition, that's very specific to DML
-* Expanding out the terms:
-*   Output = (Scale / sqrt(Variance + Epsilon)) * Input + (Scale / sqrt(Variance + Epsilon)) * -Mean + Bias
-* Here,
-*   [Scale/sqrt(Variance + Epsilon)] is constant, and let's call it `alpha`
-*   [(Scale / sqrt(Variance + Epsilon)) * -Mean + Bias] is also constant, and let's call it `beta`
-* Output = alpha * Input + beta, Input = B tensor of MatMul.
-* 
-*/
+ * BatchNormalization: [https://learn.microsoft.com/en-us/windows/win32/api/directml/ns-directml-dml_batch_normalization_operator_desc]
+ *   Scale * ((Input - Mean) / sqrt(Variance + Epsilon)) + Bias // ignore the FusedActivation in the above definition, that's very specific to DML
+ * Expanding out the terms:
+ *   Output = (Scale / sqrt(Variance + Epsilon)) * Input + (Scale / sqrt(Variance + Epsilon)) * -Mean + Bias
+ * Here,
+ *   [Scale/sqrt(Variance + Epsilon)] is constant, and let's call it `alpha`
+ *   [(Scale / sqrt(Variance + Epsilon)) * -Mean + Bias] is also constant, and let's call it `beta`
+ * Output = alpha * Input + beta, Input = B tensor of MatMul.
+ *
+ */
 Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   const Node& child_node = *matmul_node.OutputNodesBegin();
   NodeIndex batch_norm_node_index = child_node.OutputNodesBegin()->OutputNodesBegin()->Index();
@@ -142,11 +139,11 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
       var_tensor->dims(0) != matmul_b_tensor->dims(1)) {
     return Status::OK();
   }
-        
+
   /*
-  * temp = scale / sqrt(var + epsilon)
-  * output = (temp * Input) - ((temp * mean) + bias)
-  */
+   * temp = scale / sqrt(var + epsilon)
+   * output = (temp * Input) - ((temp * mean) + bias)
+   */
   Initializer scale(*scale_tensor, graph.ModelPath());
   Initializer bias(*bias_tensor, graph.ModelPath());
   Initializer mean(*mean_tensor, graph.ModelPath());
@@ -155,12 +152,12 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
 
   var.add(epsilon);
   var.sqrt();
-  scale.div(var); // this is the temp
+  scale.div(var);  // this is the temp
   matmul_b.scale_by_axis(scale, 1, true);
 
   mean.mul(scale);
   bias.sub(mean);
-        
+
   // create B tensorProto for new Gemm node from <matmulB> initializer.
   ONNX_NAMESPACE::TensorProto new_gemm_b_tensor(*matmul_b_tensor);
   matmul_b.ToProto(new_gemm_b_tensor);
@@ -183,7 +180,7 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
       matmul_node.MutableOutputDefs(),
       nullptr,
       kOnnxDomain);
-        
+
   // Remove MatMul node.
   Node* node = graph.GetNode(matmul_node.Index());
   graph_utils::RemoveNodeOutputEdges(graph, *node);
@@ -191,8 +188,8 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
 
   // Delete BatchNormalization node and update the input of the child of BatchNormalization
   graph_utils::FinalizeNodeFusion(graph, *graph.GetNode(child_node.OutputNodesBegin()->Index()), batch_norm_node);
-  
+
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   return Status::OK();
 }
-}
+}  // namespace onnxruntime

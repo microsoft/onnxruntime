@@ -329,7 +329,8 @@ void Initializer::scale_by_axis(const Initializer& scalers, int axis, bool colum
   const size_t block_size = narrow<size_t>(data_.Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
   const size_t num_blocks = size() / block_size;
   ORT_ENFORCE(scalers.size() == 1 ||
-             (column_major ? scalers.size() == block_size : scalers.size() == num_blocks), "Invalid other(scalers) size");
+                  (column_major ? scalers.size() == block_size : scalers.size() == num_blocks),
+              "Invalid other(scalers) size");
   utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
   t_disp.Invoke<ScaleByAxis>(data_, scalers.data_, block_size, num_blocks, column_major);
 }
