@@ -173,7 +173,6 @@ RUN if [ -n "${TRT_VERSION}" ]; then  \
     libnvinfer-headers-devel-${TRT_VERSION}  \
     libnvinfer-headers-plugin-devel-${TRT_VERSION};  \
 fi
-
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 #Add our own dependencies
 ADD scripts /tmp/scripts
