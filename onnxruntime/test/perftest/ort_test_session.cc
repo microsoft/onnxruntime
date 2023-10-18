@@ -1092,8 +1092,6 @@ static void InitializeDmlValueFromCpuValue(
   auto fence_event = CreateEventEx(NULL, false, false, EVENT_ALL_ACCESS);
   fence->SetEventOnCompletion(1, fence_event);
   WaitForSingleObject(fence_event, INFINITE);
-
-  exit(0);
 }
 
 static std::pair<Ort::Value, OnnxRuntimeTestSession::UniqueNativePtr> CreateDmlValue(
