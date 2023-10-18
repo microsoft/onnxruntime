@@ -61,12 +61,12 @@ struct Flash_fwd_params : public Qkv_params {
   void* __restrict__ softmax_lseaccum_ptr = nullptr;
 
   // The dimensions.
-  int b = 0
+  int b = 0;
   int seqlen_q = 0;
-  int seqlen_k = 0
+  int seqlen_k = 0;
   int seqlen_knew = 0;
   int d = 0;
-  int seqlen_q_rounded = 0
+  int seqlen_q_rounded = 0;
   int seqlen_k_rounded = 0;
   int d_rounded = 0;
 

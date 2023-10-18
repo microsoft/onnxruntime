@@ -36,7 +36,6 @@ void set_params_fprop(Flash_fwd_params& params,
                       float softmax_scale,
                       bool is_causal,
                       bool kv_bsnh = true) {
-
   // Set the pointers and strides.
   params.q_ptr = q;
   params.k_ptr = k;
