@@ -74,9 +74,7 @@ class QnnBackendManager {
 
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
-  Status LoadCachedQnnCtxFromOnnxModel(const std::string& ep_engine_cache,
-                                       QnnModel& qnn_model,
-                                       bool& loaded_from_cache);
+  Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length, QnnModel& qnn_model);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
@@ -173,8 +171,6 @@ class QnnBackendManager {
     }
     return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
   }
-
-  Status LoadCachedQnnContextFromBuffer(const std::string& buffer, QnnModel& qnn_model);
 
  private:
   const std::string backend_path_;
