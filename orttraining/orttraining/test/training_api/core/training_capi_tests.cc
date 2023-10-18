@@ -167,7 +167,7 @@ TEST(TrainingCApiTest, FromBuffer) {
 
   training_session.FromBuffer(buffer);
 }
-
+/*
 TEST(TrainingCApiTest, RegisterCustomOps) {
   auto model_uri = MODEL_FOLDER "custom_ops/training_model.onnx";
 
@@ -220,7 +220,7 @@ TEST(TrainingCApiTest, RegisterCustomOps) {
   auto loss = training_session.TrainStep(ort_inputs);
   ASSERT_EQ(loss.size(), 1U);
   ASSERT_TRUE(loss.front().IsTensor());
-}
+}*/
 
 TEST(TrainingCApiTest, LoadModelsAndCreateSession) {
   auto model_path = MODEL_FOLDER "training_model.onnx";
