@@ -7,7 +7,7 @@
 
 namespace onnxruntime::test {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 
 namespace {
 
@@ -198,6 +198,6 @@ TEST(ResizeGradTest, ResizeGradWithScalesAndAlignCorners) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
-#endif
+#endif  // defined(USE_CUDA) || defined(USE_ROCM)
 
 }  // namespace onnxruntime::test

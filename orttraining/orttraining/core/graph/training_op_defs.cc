@@ -5016,11 +5016,9 @@ Return true if all elements are true and false otherwise.
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          propagateElemTypeFromInputToOutput(ctx, 1, i);
-          if (hasInputShape(ctx, 1)) {
-            propagateShapeFromInputToOutput(ctx, 1, i);
-          }
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (hasInputShape(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 1, 0);
         }
       });
 }
