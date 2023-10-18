@@ -122,8 +122,8 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             use_fp16=args.use_fp16,
             return_dict=True,
         )
-        init_inputs = convert_inputs_for_ort(init_inputs, args.use_fp16, args.device, args.device_id)
-        iter_inputs = convert_inputs_for_ort(iter_inputs, args.use_fp16, args.device, args.device_id)
+        init_inputs = convert_inputs_for_ort(init_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id)
+        iter_inputs = convert_inputs_for_ort(iter_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id)
 
     elif args.benchmark_type == "ort-msft":
         # Microsoft export from https://github.com/microsoft/Llama-2-Onnx
@@ -145,8 +145,8 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             use_fp16=args.use_fp16,
             split_kv=split_kv,
         )
-        init_inputs = convert_inputs_for_ort(init_inputs, args.use_fp16, args.device, args.device_id)
-        iter_inputs = convert_inputs_for_ort(iter_inputs, args.use_fp16, args.device, args.device_id)
+        init_inputs = convert_inputs_for_ort(init_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id)
+        iter_inputs = convert_inputs_for_ort(iter_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id)
 
     else:
         raise Exception("Unable to auto-detect inputs for provided model")
@@ -420,11 +420,12 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
                     io_binding.bind_cpu_input(k, v)
 
             for output in model.get_outputs():
-                if args.past_present_share_buffer and ("out" in output or "present" in output):
+                name = output.name
+                if args.past_present_share_buffer and ("out" in name or "present" in name):
                     # Bind present KV cache outputs to OrtValue with buffer sharing
-                    io_binding.bind_ortvalue_output(k, v)
+                    io_binding.bind_ortvalue_output(name, inputs[name.replace("out", "cache").replace("present", "past_key_values")])
                 else:
-                    io_binding.bind_output(output.name, device_type=args.device, device_id=args.device_id)
+                    io_binding.bind_output(name, device_type=args.device, device_id=args.device_id)
 
             return io_binding
 
@@ -627,6 +628,7 @@ def main():
     if args.benchmark_type in {"ort-convert-to-onnx", "ort-msft"}:
         onnx_model = onnx.load_model(args.ort_model_path, load_external_data=False)
         gqa_nodes = list(filter(lambda node: node.op_type == "GroupQueryAttention", onnx_model.graph.node))
+        print(len(gqa_nodes))
         
         use_buffer_share = use_fp16 and len(gqa_nodes) > 0 and args.device != "cpu"
         setattr(args, "past_present_share_buffer", use_buffer_share)  # noqa: B010
