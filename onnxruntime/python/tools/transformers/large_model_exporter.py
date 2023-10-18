@@ -226,9 +226,7 @@ def export_onnx(hf_model: str, onnx_path_str: str):
     onnx_model = onnx.load(str(onnx_filepath_export_multi_files_tmp))
 
     onnx_path.exists() and onnx_path.unlink()
-    (onnx_path.parent / f"{onnx_model_name}_ext.data").exists() and (
-        onnx_path.parent / f"{onnx_model_name}_ext.data"
-    ).unlink()
+    (onnx_path.parent / f"{onnx_model_name}_ext.data").unlink(missing_ok=True)
     onnx.save_model(
         onnx_model,
         str(onnx_path),
