@@ -969,7 +969,8 @@ size_t GetSizeFromType(ONNXTensorElementDataType /*type*/) {
 Microsoft::WRL::ComPtr<ID3D12Resource> CreateD3D12Resource(
   ID3D12Device* device,
   ONNXTensorElementDataType type,
-  const std::vector<int64_t>& shape) {
+  const std::vector<int64_t>& shape,
+  D3D12_HEAP_TYPE heap_type) {
   // Try to allocate the backing memory for the caller
   auto bufferSize =
     std::accumulate(
@@ -985,8 +986,14 @@ Microsoft::WRL::ComPtr<ID3D12Resource> CreateD3D12Resource(
     bufferByteSize += 4 - (bufferByteSize % 4);
   }
 
+  auto resource_flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+  if (heap_type == D3D12_HEAP_TYPE_UPLOAD ||
+      heap_type == D3D12_HEAP_TYPE_READBACK) {
+    resource_flags = D3D12_RESOURCE_FLAG_NONE;
+  }
+
   D3D12_HEAP_PROPERTIES heapProperties = {
-    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+    heap_type, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
   D3D12_RESOURCE_DESC resourceDesc = {
     D3D12_RESOURCE_DIMENSION_BUFFER,
     0,
@@ -997,7 +1004,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource> CreateD3D12Resource(
     DXGI_FORMAT_UNKNOWN,
     {1, 0},
     D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+    resource_flags
   };
 
   Microsoft::WRL::ComPtr<ID3D12Resource> resource;
@@ -1012,29 +1019,82 @@ Microsoft::WRL::ComPtr<ID3D12Resource> CreateD3D12Resource(
 
   return resource;
 }
-//
-//static void InitializeDmlValueFromCpuValue(
-//    const Ort::Session& session,
-//    const Ort::Value& cpu_value,
-//    Ort::Value& dml_value) {
-//  auto& ort_api = Ort::GetApi();
-//  const OrtDmlApi* ort_dml_api;
-//  Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
-//
-//  const void* cpu_mutable_data = cpu_value.GetTensorRawData();
-//  const auto type_and_shape_info = cpu_value.GetTensorTypeAndShapeInfo();
-//  auto cpu_buffer_size_in_bytes = GetSizeFromType(type_and_shape_info.GetElementType()) * type_and_shape_info.GetElementCount();
-//
-//  void* mutable_data = dml_value.GetTensorMutableRawData();
-//  auto ort_memory_info = dml_value.GetTensorMemoryInfo();
-//  auto ort_allocator = Ort::Allocator(session, ort_memory_info);
-//  Microsoft::WRL::ComPtr<ID3D12Resource> resource;
-//  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(ort_allocator, mutable_data, &resource));
-//  void* mapped_dml_data;
-//  (void)(resource->Map(0, nullptr, &mapped_dml_data));
-//  memcpy(mapped_dml_data, cpu_mutable_data, cpu_buffer_size_in_bytes);
-//  resource->Unmap(0, nullptr);
-//}
+
+static void InitializeDmlValueFromCpuValue(
+    const Ort::Session& session,
+    const Ort::Value& cpu_value,
+    Ort::Value& dml_value,
+    ID3D12CommandQueue* queue) {
+  Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
+  queue->GetDevice(IID_PPV_ARGS(&device));
+
+  auto& ort_api = Ort::GetApi();
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+
+  // Get cpu data
+  const void* cpu_mutable_data = cpu_value.GetTensorRawData();
+  const auto type_and_shape_info = cpu_value.GetTensorTypeAndShapeInfo();
+  auto cpu_buffer_size_in_bytes = GetSizeFromType(type_and_shape_info.GetElementType()) * type_and_shape_info.GetElementCount();
+  auto node_dim = type_and_shape_info.GetShape();
+
+  // Copy to upload resource
+  auto upload_resource = CreateD3D12Resource(device.Get(), type_and_shape_info.GetElementType(), node_dim, D3D12_HEAP_TYPE_UPLOAD);
+  void* mapped_dml_data;
+  (void)(upload_resource->Map(0, nullptr, &mapped_dml_data));
+  memcpy(mapped_dml_data, cpu_mutable_data, cpu_buffer_size_in_bytes);
+  upload_resource->Unmap(0, nullptr);
+
+  // Get dml resource
+  void* mutable_data = dml_value.GetTensorMutableRawData();
+  auto ort_memory_info = dml_value.GetTensorMemoryInfo();
+  auto ort_allocator = Ort::Allocator(session, ort_memory_info);
+  Microsoft::WRL::ComPtr<ID3D12Resource> dml_resource;
+  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(ort_allocator, mutable_data, &dml_resource));
+    
+  Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list;
+  Microsoft::WRL::ComPtr<ID3D12CommandAllocator> command_allocator;
+
+  device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&command_allocator));
+  device->CreateCommandList(
+      0,
+      D3D12_COMMAND_LIST_TYPE_DIRECT,
+      command_allocator.Get(),
+      nullptr,
+      IID_PPV_ARGS(&command_list)
+    );
+
+  Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+  device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+
+
+  D3D12_RESOURCE_BARRIER barrier = {};
+  barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+  barrier.Transition.pResource = dml_resource.Get();
+  barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+
+  command_list->ResourceBarrier(1, &barrier);
+  command_list->CopyBufferRegion(dml_resource.Get(), 0, upload_resource.Get(), 0, cpu_buffer_size_in_bytes);
+ 
+  barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+  barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+  command_list->ResourceBarrier(1, &barrier);
+  command_list->Close();
+
+  ID3D12CommandList* ppCommandLists[] = {command_list.Get()};
+  queue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+  queue->Signal(fence.Get(), 1);
+  
+  // Wait until the fence is completed.
+  auto fence_event = CreateEventEx(NULL, false, false, EVENT_ALL_ACCESS);
+  fence->SetEventOnCompletion(1, fence_event);
+  WaitForSingleObject(fence_event, INFINITE);
+
+  exit(0);
+}
 
 static std::pair<Ort::Value, OnnxRuntimeTestSession::UniqueNativePtr> CreateDmlValue(
     ID3D12Device* device,
@@ -1043,8 +1103,8 @@ static std::pair<Ort::Value, OnnxRuntimeTestSession::UniqueNativePtr> CreateDmlV
   const OrtDmlApi* ort_dml_api;
   Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
 
-  std::vector<int64_t> input_node_dim = tensor_info.GetShape();
-  auto d3d_resource = CreateD3D12Resource(device, tensor_info.GetElementType(), input_node_dim);
+  auto input_node_dim = tensor_info.GetShape();
+  auto d3d_resource = CreateD3D12Resource(device, tensor_info.GetElementType(), input_node_dim, D3D12_HEAP_TYPE_DEFAULT);
   void* dml_allocator_resource;
   Ort::ThrowOnError(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d_resource.Get(), &dml_allocator_resource));
 
@@ -1079,8 +1139,10 @@ static std::pair<Ort::Value, OnnxRuntimeTestSession::UniqueNativePtr> CreateDmlV
   auto& ort_api = Ort::GetApi();
   const OrtDmlApi* ort_dml_api;
   Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+  Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue = nullptr;
+  Ort::ThrowOnError(ort_dml_api->GetCommandQueueForSessionInput(session, input_name, &queue));
   Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
-  Ort::ThrowOnError(ort_dml_api->GetDeviceForSessionInput(session, input_name, &device));
+  queue->GetDevice(IID_PPV_ARGS(&device));
 
   if (!device) {
     return { std::move(cpu_value), OnnxRuntimeTestSession::UniqueNativePtr(nullptr, nullptr) };
@@ -1089,7 +1151,7 @@ static std::pair<Ort::Value, OnnxRuntimeTestSession::UniqueNativePtr> CreateDmlV
   auto type_info = cpu_value.GetTypeInfo();
   auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
   auto dml_value_pair = CreateDmlValue(device.Get(), tensor_info);
-  //InitializeDmlValueFromCpuValue(session, cpu_value, dml_value_pair.first);
+  InitializeDmlValueFromCpuValue(session, cpu_value, dml_value_pair.first, queue.Get());
   return dml_value_pair;
 }
 
@@ -1116,8 +1178,10 @@ bool OnnxRuntimeTestSession::PopulateOutputs(bool use_native_bindings) {
         }
       }
 
+      Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue = nullptr;
+      Ort::ThrowOnError(ort_dml_api->GetCommandQueueForSessionOutput(session_, output_name.c_str(), &queue));
       Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
-      Ort::ThrowOnError(ort_dml_api->GetDeviceForSessionOutput(session_, output_name.c_str(), &device));
+      queue->GetDevice(IID_PPV_ARGS(&device));
       auto dml_value_pair = CreateDmlValue(device.Get(), tensor_info);
       native_test_bindings_.emplace_back(std::move(dml_value_pair.second));
       test_outputs_.push_back(std::move(dml_value_pair.first));

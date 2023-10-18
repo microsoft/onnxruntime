@@ -223,4 +223,9 @@ namespace Dml
         return m_queue->GetType();
     }
 
+    
+    HRESULT ExecutionContext::GetCommandQueue(ID3D12CommandQueue** queue)
+    {
+        return m_queue->GetCommandQueue(queue);
+    }
 } // namespace Dml

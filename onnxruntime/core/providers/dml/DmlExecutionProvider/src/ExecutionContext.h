@@ -85,6 +85,8 @@ namespace Dml
 
         D3D12_COMMAND_LIST_TYPE GetCommandListTypeForQueue() const;
 
+        HRESULT GetCommandQueue(ID3D12CommandQueue** queue);
+
     private:
         ComPtr<ID3D12Device> m_d3dDevice;
 
