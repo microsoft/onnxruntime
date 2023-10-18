@@ -51,7 +51,16 @@ class OrtStableDiffusionOptimizer:
             model = onnx.load(str(ort_optimized_model_path), load_external_data=True)
             return self.model_type_class_mapping[self.model_type](model)
 
-    def optimize(self, input_fp32_onnx_path, optimized_onnx_path, float16=True, keep_io_types=False, keep_outputs=None):
+    def optimize(
+        self,
+        input_fp32_onnx_path,
+        optimized_onnx_path,
+        float16=True,
+        keep_io_types=False,
+        fp32_op_list=None,
+        keep_outputs=None,
+        optimize_by_ort=True,
+    ):
         """Optimize onnx model using ONNX Runtime transformers optimizer"""
         logger.info(f"Optimize {input_fp32_onnx_path}...")
         fusion_options = FusionOptions(self.model_type)
@@ -76,6 +85,7 @@ class OrtStableDiffusionOptimizer:
             logger.info("Convert to float16 ...")
             m.convert_float_to_float16(
                 keep_io_types=keep_io_types,
+                op_block_list=fp32_op_list,
             )
 
         use_external_data_format = m.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF
@@ -87,7 +97,7 @@ class OrtStableDiffusionOptimizer:
         # to save session creation time. Another benefit is to inspect the final graph for developing purpose.
         from onnxruntime import __version__ as ort_version
 
-        if version.parse(ort_version) >= version.parse("1.16.0") or not use_external_data_format:
+        if optimize_by_ort and (version.parse(ort_version) >= version.parse("1.16.0") or not use_external_data_format):
             m = self.optimize_by_ort(m, use_external_data_format=use_external_data_format)
 
         m.get_operator_statistics()
