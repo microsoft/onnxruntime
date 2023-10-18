@@ -2391,7 +2391,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name,
             &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], dds_output_allocator_map_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
@@ -2421,7 +2421,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
-      auto& dds_output_allocator_map = trt_state->dds_output_allocator_map;
       auto trt_builder = trt_state->builder->get();
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
@@ -2874,6 +2873,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       /*
        * Set output shapes and bind output buffers
        */
+      std::unordered_map<char const*, void*> buffers;
+      buffers.reserve(num_outputs);
       std::vector<int> output_dim_sizes(num_outputs, 1);
       using OutputOrtValue = Ort::UnownedValue;
       std::vector<OutputOrtValue> output_tensors;
