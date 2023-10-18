@@ -55,6 +55,7 @@ struct AttentionParameters {
   int v_hidden_size;          // hidden size of V
   int v_head_size;            // hidden size per head of V
   int num_heads;
+  int num_splits;
   bool is_unidirectional;
   bool past_present_share_buffer;
   bool do_rotary;
