@@ -67,9 +67,9 @@ class _ModelConfig:
         self,
         onnx_opset_version: int,
         use_cuda_graph: bool,
-        fp16: bool,
-        force_fp32_ops: Optional[List[str]],
-        optimize_by_ort: bool,
+        fp16: bool = True,
+        force_fp32_ops: Optional[List[str]] = None,
+        optimize_by_ort: bool = True,
     ):
         self.onnx_opset_version = onnx_opset_version
         self.use_cuda_graph = use_cuda_graph
