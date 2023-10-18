@@ -432,13 +432,6 @@ class FusionRotaryAttention(FusionAttention):
             logger.debug("fuse_rotary_attention: failed to match attention mask nodes")
             return
 
-        # if attn_mask_nodes == attn_mask_nodes_3 or attn_mask_nodes == attn_mask_nodes_4:
-        #     # Convert mask input from int64 to int32 for MHA
-        #     for i, graph_input in enumerate(self.model.model.graph.input):
-        #         if graph_input.name == "attention_mask" and graph_input.type.tensor_type.elem_type == TensorProto.INT64:
-        #             graph_input.type.tensor_type.elem_type = TensorProto.INT32
-        #             break
-
         # k_nodes_1 is for LLaMA-2 Microsoft
         # k_nodes_2 is for LLaMA-2 Hugging Face
         past_k, present_k = "", ""
@@ -648,8 +641,6 @@ class FusionRotaryEmbeddings(Fusion):
         rotary_emb_inputs = [
             matmul_node.output[0],   # x is of shape (B,S,D) instead of (B,S,N,H)
             node.input[1],           # position_ids
-            # node.input[2],           # cos_cache
-            # node.input[3],           # sin_cache
         ]
 
         # Convert cos_cache and sin_cache from node attributes to model initializers
@@ -728,17 +719,6 @@ class FusionRotaryEmbeddings(Fusion):
         output: str,
     ):
         rotary_emb_node_name = self.model.create_node_name(self.base_name)
-
-        # matmul_path = self.model.match_parent_path(
-        #     transpose_node,
-        #     ["Reshape", "MatMul"],
-        #     [0, 0],
-        # )
-        # if matmul_path is not None:
-        #     reshape_node, matmul_node = matmul_path
-        # else:
-        #     logger.debug("fuse_rotary_embeddings: failed to match MatMul")
-        #     return
 
         # Convert cos_cache and sin_cache from node attributes to model initializers
         cos_cache_node = list(filter(lambda constant: constant.output[0] == cos_slice, self.model.model.graph.node))

@@ -627,24 +627,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           return true;
         }));
 
-// constexpr const char* SwiGlu_ver1_doc =
-//     R"DOC(SwiGLU. It takes the input X, two weight tensors W and V, and computes the SwiGLU activation. )DOC";
-// ONNX_MS_OPERATOR_SET_SCHEMA(
-//     SwiGlu, 1,
-//     OpSchema()
-//         .SetDomain(kMSDomain)
-//         .SinceVersion(1)
-//         .SetDoc(SwiGlu_ver1_doc)
-//         .Attr("beta", "Beta value.", AttributeProto::FLOAT, 1.0f)
-//         .Input(0, "X", "The normal input data.", "T")
-//         .Input(1, "W", "The weight tensor for the Swish activation.", "T")
-//         .Input(2, "V", "The weight tensor for the ", "T")
-//         .Output(0, "Y", "The output of the SwiGLU activation.", "T")
-//         .TypeConstraint(
-//             "T",
-//             {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-//             "Constrain input and output types to float tensors.")
-//         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 // Used to be ONNX 1.7 Inverse(12)
 // Comment out docs not to increase the binary size

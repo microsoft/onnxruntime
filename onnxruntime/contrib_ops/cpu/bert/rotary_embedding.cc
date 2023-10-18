@@ -88,19 +88,20 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
         const T* cos_data = cos_cache_data + cache_offset;
         const T* sin_data = sin_cache_data + cache_offset;
 
+        int cache_idx = 0;
+        T sign = 0;
+        int j = 0;
         for (int i = 0; i < head_size; i++) {
           if (interleaved) {
-            const int cache_idx = (i / 2) % half_head_size;
-            const T sign = (i % 2 == 0) ? -1 : 1;
-            const int j = (i % 2 == 0) ? i+1 : i-1;  // i - sign
-            output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+            cache_idx = (i / 2) % half_head_size;
+            sign = (i % 2 == 0) ? -1 : 1;
+            j = (i % 2 == 0) ? i+1 : i-1;  // i - sign
           } else {
-            const int cache_idx = i % half_head_size;
-            // const T sign = (i < half_head_size) ? -1 : 1;
-            const int j = (i + half_head_size) % head_size;
-            const T sign = (j >= half_head_size) ? -1 : 1;
-            output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+            cache_idx = i % half_head_size;
+            sign = (i < half_head_size) ? -1 : 1;
+            j = (i + half_head_size) % head_size;
           }
+          output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
         }
     }
   });

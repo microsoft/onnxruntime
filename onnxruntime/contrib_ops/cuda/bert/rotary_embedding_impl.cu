@@ -50,20 +50,19 @@ __global__ void RotaryEmbeddingBSNH(T* output,                   // BxSxNxH
   const T* cos_data = cos_cache + cache_offset;
   const T* sin_data = sin_cache + cache_offset;
 
+  int cache_idx = 0;
+  T sign = 0;
+  int j = 0;
   if (interleaved) {
-    const int cache_idx = (i / 2) % half_head_size;
-    const T sign = (i % 2 == 0) ? -1 : 1;
-    const int j = (i % 2 == 0) ? i+1 : i-1;  // i - sign
-
-    output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+    cache_idx = (i / 2) % half_head_size;
+    sign = (i % 2 == 0) ? -1 : 1;
+    j = (i % 2 == 0) ? i+1 : i-1;  // i - sign
   } else {
-    const int cache_idx = i % half_head_size;
-    // const T sign = (i < half_head_size) ? -1 : 1;
-    const int j = (i + half_head_size) % head_size;
-    const T sign = (j >= half_head_size) ? -1 : 1;
-
-    output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+    cache_idx = i % half_head_size;
+    sign = (i < half_head_size) ? -1 : 1;
+    j = (i + half_head_size) % head_size;
   }
+  output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
 }
 
 
@@ -88,43 +87,10 @@ Status LaunchRotaryEmbeddingKernel(
   const dim3 grid(num_heads, sequence_length, batch_size);
   const dim3 block(head_size, 1, 1);
 
-  // const int64_t position_ids_len = (position_ids_format == 0) ? 1 : static_cast<int64_t>(batch_size);
-
-  // for (int64_t i = 0; i < position_ids_len; i++) {
-  //   const int position_id = static_cast<int>(*(position_ids + i));
-  //   if ((position_id + sequence_length) > max_sequence_length) {
-  //     ORT_THROW("(past sequence length + curr sequence length) > max sequence length is not valid at batch index " + std::to_string(i));
-  //   }
-  // }
-
   RotaryEmbeddingBSNH<<<grid, block, smem_size, stream>>>(
     output, input, cos_cache, sin_cache, position_ids,
     sequence_length, num_heads, head_size, position_ids_format, interleaved
   );
-    
-  // if (head_size * num_heads <= max_threads_per_block) {
-  //   const dim3 block(head_size, 1, 1);
-  //   RotaryEmbeddingBSNH<<<grid, block, smem_size, stream>>>(
-  //     output, input, cos_cache, sin_cache, *position_id, head_size
-  //   );
-  // } else {
-  //   const dim3 block(max_threads_per_block / head_size, head_size, 1);
-  //   RotaryEmbeddingBSNH<<<grid, block, smem_size, stream>>>(
-  //     output, input, cos_cache, sin_cache, *position_id, head_size
-  //   );
-  // } else {
-  //   if (model_format == 1 && ((sequence_length + static_cast<int>(*past_sequence_length)) > max_sequence_length)) {
-  //     ORT_THROW("(current sequence length + past sequence length) > max sequence length is not valid");
-  //   }
-
-  //   const dim3 grid(num_heads, sequence_length, batch_size);
-  //   const dim3 block(head_size, 1, 1);
-  //   RotaryEmbeddingBSNH<<<grid, block, smem_size, stream>>>(
-  //     input, position_ids, cos_cache, sin_cache,
-  //     num_heads, sequence_length, head_size, sequence_length,
-  //     output
-  //   );
-  // }
 
   return CUDA_CALL(cudaGetLastError());
 }

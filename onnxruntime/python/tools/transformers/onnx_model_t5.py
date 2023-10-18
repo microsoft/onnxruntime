@@ -36,7 +36,7 @@ class FusionT5Attention(FusionAttention):
             num_heads,
             attention_mask,
             use_multi_head_attention=False,
-            search_op_types=["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization", "Add"],
+            search_op_types=["SkipSimplifiedLayerNormalization", "Add"],
         )
         self.static_kv = 1
 
@@ -366,9 +366,6 @@ class FusionT5Attention(FusionAttention):
         input_shape_node = qkv_shape_nodes[-1]
 
         value = None
-        # past/present names could be in different formats:
-        # Past: past_value, past.0.value, past.0.decoder.value, past_value_self, past_value_cross, etc.
-        # Present: present_value, present.0.value, present.0.decoder.value, present_value_self, present_value_cross, etc.
         past_value = None
         present_value = None
         v_nodes = self.model.match_parent_path(
@@ -386,7 +383,7 @@ class FusionT5Attention(FusionAttention):
                 transpose_v, reshape_v, matmul_v = v_nodes
                 value = reshape_v.input[0]
                 present_value = transpose_v.output[0]
-                if "present" not in present_value or "value" not in present_value:
+                if "present_value" not in present_value:
                     return
                 if matmul_v.input[0] != input_shape_node.input[0]:
                     self.static_kv = 1
@@ -412,27 +409,14 @@ class FusionT5Attention(FusionAttention):
             value = reshape_v.input[0]
             self.static_kv = 0
 
-        qk_nodes = None
-        add_qk, matmul_qk = None, None
-        qk_nodes_1 = self.model.match_parent_path(
+        qk_nodes = self.model.match_parent_path(
             matmul_qkv,
             ["Softmax", "Add", "MatMul"],
             [0, 0, 0],
         )
-        qk_nodes_2 = self.model.match_parent_path(
-            matmul_qkv,
-            ["Softmax", "Max", "Add", "Div", "MatMul"],
-            [0, 0, 0, 0, 0],
-        )
-        if qk_nodes_1 is not None:
-            _, add_qk, matmul_qk = qk_nodes_1
-            qk_nodes = qk_nodes_1
-        elif qk_nodes_2 is not None:
-            # LLaMA
-            _, _, add_qk, _, matmul_qk = qk_nodes_2
-            qk_nodes = qk_nodes_2
-        else:
+        if qk_nodes is None:
             return
+        _, add_qk, matmul_qk = qk_nodes
 
         mask_index = None
         res_pos_bias = None
@@ -454,25 +438,22 @@ class FusionT5Attention(FusionAttention):
 
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
         else:
-            rpb_nodes_1 = self.model.match_parent_path(
+            rpb_nodes = self.model.match_parent_path(
                 add_qk,
                 ["Add", "Slice"],
                 [1, 0],
             )
-            rpb_nodes_2 = self.model.match_parent_path(
-                add_qk,
-                ["Add", "RelativePositionBias"],
-                [1, 0],
-            )
-            rpb_nodes_3 = self.model.match_parent_path(
-                add_qk,
-                ["Add", "Where"],
-                [1, 0],
-            )
-            if rpb_nodes_1 is not None or rpb_nodes_2 is not None or rpb_nodes_3 is not None:
+            if rpb_nodes is not None:
                 res_pos_bias = add_qk.input[1]
             else:
-                return
+                rpb_nodes = self.model.match_parent_path(
+                    add_qk,
+                    ["Add", "RelativePositionBias"],
+                    [1, 0],
+                )
+                if rpb_nodes is None:
+                    return
+                res_pos_bias = add_qk.input[1]
 
         key = None
         past_key = None
