@@ -7,7 +7,10 @@
 Export LLM to onnx
 """
 import argparse
+import inspect
+import math
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -18,7 +21,7 @@ from torch import nn
 
 
 def disable_huggingface_init():
-    # do not init model twice as it slow initialization
+    """do not init model twice as it slow initialization"""
 
     torch.nn.init.kaiming_uniform_ = lambda x, *args, **kwargs: x
     torch.nn.init.uniform_ = lambda x, *args, **kwargs: x
@@ -30,7 +33,8 @@ def disable_huggingface_init():
     torch.nn.init.orthogonal_ = lambda x, *args, **kwargs: x
 
 
-def get_model_size(model: nn.Module):
+def get_model_parameter_size(model: nn.Module):
+    """to calculate how much memory this model needs"""
     param_size = 0
     param_sum = 0
     for param in model.parameters():
@@ -47,7 +51,8 @@ def get_model_size(model: nn.Module):
 
 def initialize_model_and_sample_inputs(hf_model: str, tokenizer=None):
     """
-    prepare torch model, name, and inputs
+    get the pretrained torch model from hugginface,
+    and onnx_model_name, sample model-inputs
     """
     onnx_model_name = Path(hf_model + "/").name
 
@@ -65,7 +70,7 @@ def initialize_model_and_sample_inputs(hf_model: str, tokenizer=None):
     return onnx_model_name, model, sample_inputs
 
 
-def auto_pipeline(model: nn.Module, gpulist: list, sample_inputs: tuple):
+def auto_pipeline_parallel(model: nn.Module, gpulist: list, sample_inputs: tuple):
     """Make the model executable across multiple GPUs."""
 
     def input_gpu_device_hook(mod, inputs, kwargs):
@@ -107,8 +112,6 @@ def auto_pipeline(model: nn.Module, gpulist: list, sample_inputs: tuple):
         for name, module in top_module.named_children():
             all_hooks.append(module.register_forward_pre_hook(input_gpu_device_hook, with_kwargs=True))
             if type(module) in [torch.nn.ModuleList]:
-                import math
-
                 num_layers_on_each_gpu = math.floor(len(module) / len(gpulist))
                 for idx, attn_layer in enumerate(module):
                     all_hooks.append(attn_layer.register_forward_pre_hook(input_gpu_device_hook, with_kwargs=True))
@@ -172,16 +175,16 @@ def export_onnx(hf_model: str, onnx_path_str: str):
     onnx_path: where the onnx model saved to
     sample_inputs_tp: inputs for torch model
     """
-    onnx_model_name, model, sample_inputs_tp = model_prepare(hf_model)
+    onnx_model_name, model, sample_inputs_tp = initialize_model_and_sample_inputs(hf_model)
     total_mem_per_cpu = torch.cuda.get_device_properties(0).total_memory / 1024 / 1024
 
-    print("Model_Size", get_model_size(model))
+    print("Model_Size", get_model_parameter_size(model))
     print("total_mem_per_cpu=", total_mem_per_cpu)
-    if get_model_size(model) > total_mem_per_cpu * 0.45:
+    if get_model_parameter_size(model) > total_mem_per_cpu * 0.45:
         if torch.cuda.device_count() > 1:
             print("multi-gpu")
             device_collection = [torch.device(i) for i in range(torch.cuda.device_count())]
-            model = auto_pipeline(model, device_collection, sample_inputs_tp)
+            model = auto_pipeline_parallel(model, device_collection, sample_inputs_tp)
         else:
             print("cpu")
             model = model.cpu().float()
@@ -190,19 +193,20 @@ def export_onnx(hf_model: str, onnx_path_str: str):
         model = model.cuda().half()
 
     sample_inputs = []
-    for ints in sample_inputs_tp:
-        if type(ints) is torch.Tensor:
-            sample_inputs.append(ints.to(model.device))
+    for sample_int in sample_inputs_tp:
+        if isinstance(sample_int, torch.Tensor):
+            sample_inputs.append(sample_int.to(model.device))
         else:
-            sample_inputs.append(ints)
+            sample_inputs.append(sample_int)
 
+    # input_keys would be usesful if the model has some special inputs
     input_keys, onnx_inputs = retrieve_onnx_inputs(model, sample_inputs)
 
     onnx_path: Path = Path(onnx_path_str).absolute()
     if onnx_path.suffix != ".onnx":
         onnx_path = onnx_path / onnx_model_name
 
-    onnx_filepath_export_multi_files_tmp = onnx_path.parent / "tmp/tmp.onnx"
+    onnx_filepath_export_multi_files_tmp: Path = onnx_path.parent / "tmp/tmp.onnx"
     onnx_filepath_export_multi_files_tmp.parent.exists() and shutil.rmtree(onnx_filepath_export_multi_files_tmp.parent)
     os.makedirs(onnx_filepath_export_multi_files_tmp.parent)
 
@@ -225,7 +229,7 @@ def export_onnx(hf_model: str, onnx_path_str: str):
 
     onnx_model = onnx.load(str(onnx_filepath_export_multi_files_tmp))
 
-    onnx_path.exists() and onnx_path.unlink()
+    onnx_path.unlink(missing_ok=True)
     (onnx_path.parent / f"{onnx_model_name}_ext.data").unlink(missing_ok=True)
     onnx.save_model(
         onnx_model,
@@ -240,7 +244,7 @@ def export_onnx(hf_model: str, onnx_path_str: str):
 
 def parse_arguments():
     """
-    args parse
+    arguments parsing.
     model:
     onnx_path:
     """
