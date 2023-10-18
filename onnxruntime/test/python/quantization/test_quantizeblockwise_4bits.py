@@ -13,13 +13,12 @@ import numpy.typing as npt
 
 
 def dequantize_blockwise_4bits(quant_values, scale, zero_point, rows, cols):
-    expand_quant_value = (np.repeat(quant_values, 2, -1
-                                    ).reshape(*quant_values.shape, 2) >> [0, 4]) & 0x0f
+    expand_quant_value = (np.repeat(quant_values, 2, -1).reshape(*quant_values.shape, 2) >> [0, 4]) & 0x0F
     expand_quant_value = expand_quant_value.reshape(*quant_values.shape[:-1], -1)
     aligned_scale = scale.reshape(*quant_values.shape[:-1], 1)
-    expand_zero_point = ((np.repeat(zero_point, 2, -1).reshape(-1, 2) >> [0, 4]) & 0xf)
+    expand_zero_point = (np.repeat(zero_point, 2, -1).reshape(-1, 2) >> [0, 4]) & 0xF
     expand_zero_point = expand_zero_point.reshape(-1)
-    if (quant_values.size//quant_values.shape[-1]) & 1:
+    if (quant_values.size // quant_values.shape[-1]) & 1:
         expand_zero_point = expand_zero_point[:-1]
     expand_zero_point = expand_zero_point.reshape(*quant_values.shape[:-1], -1)
     float_values = ((expand_quant_value - expand_zero_point) * aligned_scale).astype(scale.dtype)
@@ -41,21 +40,20 @@ def quantize_blockwise_4bits_ref(matrix_float: npt.ArrayLike, block_size: int, i
     if pad_len > 0:
         matrix_float_padded = np.pad(matrix_float, ((0, pad_len), (0, 0)), "constant")
 
-
     matrix_float_padded = np.transpose(matrix_float_padded)
 
     zero_point_unpacked = np.zeros((cols, k_blocks), dtype=np.uint8)
     scales = np.zeros((cols, k_blocks), dtype=matrix_float_padded.dtype)
     for k_id in range(0, rows, block_size):
         if is_symmetric:
-            bmax = (np.abs(matrix_float_padded[:, k_id: k_id + block_size])).max(-1).astype(np.float32)
+            bmax = (np.abs(matrix_float_padded[:, k_id : k_id + block_size])).max(-1).astype(np.float32)
             scale = bmax / (-8.0)
             zp = 8
             zero_point_unpacked[:, k_id // block_size] = zp
             scales[:, k_id // block_size] = scale
         else:
-            vmax = matrix_float_padded[:, k_id: k_id + block_size].astype(np.float32).max(-1)
-            vmin = matrix_float_padded[:, k_id: k_id + block_size].astype(np.float32).min(-1)
+            vmax = matrix_float_padded[:, k_id : k_id + block_size].astype(np.float32).max(-1)
+            vmin = matrix_float_padded[:, k_id : k_id + block_size].astype(np.float32).min(-1)
             vmin = np.minimum(vmin, 0.0).astype(np.float32)
             vmax = np.maximum(vmax, 0.0).astype(np.float32)
             scale = (vmax - vmin) / ((1 << 4) - 1)
@@ -66,15 +64,14 @@ def quantize_blockwise_4bits_ref(matrix_float: npt.ArrayLike, block_size: int, i
             scales[:, k_id // block_size] = scale
 
     reciprocal_scale = np.where(scales != 0.0, 1.0 / scales, 0.0)
-    int8_values = matrix_float_padded.reshape(
-        cols, k_blocks, block_size) * reciprocal_scale.reshape(
-            cols, k_blocks, 1) + zero_point_unpacked.reshape(cols, k_blocks, 1)
+    int8_values = matrix_float_padded.reshape(cols, k_blocks, block_size) * reciprocal_scale.reshape(
+        cols, k_blocks, 1
+    ) + zero_point_unpacked.reshape(cols, k_blocks, 1)
     int8_values = np.clip(np.round(int8_values.reshape(cols, -1).astype(np.float32)), 0, 15).astype("uint8")
 
     zero_point = zero_point_unpacked.reshape(-1)
-    zero_point = np.concatenate((zero_point, np.array(
-        [8], dtype=np.uint8))) if zero_point.shape[0] & 1 else zero_point
-    zero_point = ((zero_point[0::2])) | (zero_point[1::2] << 4)
+    zero_point = np.concatenate((zero_point, np.array([8], dtype=np.uint8))) if zero_point.shape[0] & 1 else zero_point
+    zero_point = zero_point[0::2] | (zero_point[1::2] << 4)
     zero_point = zero_point.reshape(-1)
 
     packed = (int8_values[:, 0::2]) | (int8_values[:, 1::2] << 4)
