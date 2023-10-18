@@ -1,23 +1,24 @@
-# This file is deprecated and will be replaced by tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-ARG BASEIMAGE=nvidia/cuda:11.8.0-devel-ubi8
+# The default ARGs are for cuda 12.2 with TRT v = 8.6.1.6-1.cuda12.0
+# Please overwirete BASEIMAGE, TRT_VERSION and other arguments with
+# --docker-build-args ' --build-arg BASEIMAGE=other_base_image --build-arg TRT_VERSION=other_trt_version  etc...'
+# for other cuda version and TRT version
 ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
-ARG DEVTOOLSET_ROOTPATH=
-ARG LD_LIBRARY_PATH_ARG=
-ARG PREPEND_PATH=
+ARG BASEIMAGE=nvidia/cuda:12.2.0-devel-ubi8
+ARG TRT_VERSION=8.6.1.6-1.cuda12.0
+ARG DEVTOOLSET_ROOTPATH=/usr
+ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64
+ARG PREPEND_PATH=/usr/local/cuda/binet
 
-#We need CUDA, TensorRT and manylinux. But the CUDA Toolkit End User License Agreement says NVIDIA CUDA Driver Libraries(libcuda.so, libnvidia-ptxjitcompiler.so) are only distributable in applications that meet this criteria:
-#1. The application was developed starting from a NVIDIA CUDA container obtained from Docker Hub or the NVIDIA GPU Cloud, and
-#2. The resulting application is packaged as a Docker container and distributed to users on Docker Hub or the NVIDIA GPU Cloud only.
-#So we use CUDA as the base image then add manylinux and TensorRT on top of it.
 
-#Build manylinux2014 docker image begin
+#Build manylinux docker image begin
 FROM $BASEIMAGE AS runtime_base
 ARG POLICY
 ARG PLATFORM
 ARG DEVTOOLSET_ROOTPATH
 ARG LD_LIBRARY_PATH_ARG
 ARG PREPEND_PATH
+ARG TRT_VERSION
 LABEL maintainer="The ManyLinux project"
 
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
@@ -101,12 +102,6 @@ RUN export OPENSSL_ROOT=openssl-1.1.1q && \
 
 COPY build_scripts/build-cpython.sh /build_scripts/
 
-
-FROM build_cpython AS build_cpython37
-COPY build_scripts/cpython-pubkeys.txt /build_scripts/cpython-pubkeys.txt
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.7.13
-
-
 FROM build_cpython AS build_cpython38
 COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.8.13
@@ -130,16 +125,14 @@ COPY build_scripts/install-pypy.sh \
      build_scripts/pypy.sha256 \
      build_scripts/finalize-python.sh \
      /build_scripts/
-RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.7 7.3.9
+
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.8 7.3.9
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.9 7.3.9
-COPY --from=build_cpython37 /opt/_internal /opt/_internal/
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
 COPY --from=build_cpython310 /opt/_internal /opt/_internal/
 COPY --from=build_cpython311 /opt/_internal /opt/_internal/
 RUN manylinux-entrypoint /build_scripts/finalize-python.sh
-
 
 FROM runtime_base
 COPY --from=build_git /manylinux-rootfs /
@@ -147,7 +140,6 @@ COPY --from=build_cpython /manylinux-rootfs /
 COPY --from=all_python /opt/_internal /opt/_internal/
 COPY build_scripts/finalize.sh \
      build_scripts/python-tag-abi-tag.py \
-     build_scripts/requirements3.7.txt \
      build_scripts/requirements3.8.txt \
      build_scripts/requirements3.9.txt \
      build_scripts/requirements3.10.txt \
@@ -161,12 +153,25 @@ ENV SSL_CERT_FILE=/opt/_internal/certs.pem
 
 CMD ["/bin/bash"]
 
-#Build manylinux2014 docker image end
+#Build manylinux docker image end
 
 #Install TensorRT 8.6.1.6
-RUN v="8.6.1.6-1.cuda11.8" && CUDA_VERSION=$(nvcc --version | sed -n 's/^.*release \([0-9]\+\.[0-9]\+\).*$/\1/p') \
-    && dnf -y install libcudnn8-devel-*cuda$CUDA_VERSION* libcudnn8-*cuda$CUDA_VERSION* libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} libnvinfer-vc-plugin8-${v}\
-        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v} libnvinfer-vc-plugin-devel-${v} libnvinfer-headers-devel-${v}  libnvinfer-headers-plugin-devel-${v}
+RUN CUDA_VERSION=$(nvcc --version | sed -n 's/^.*release \([0-9]\+\.[0-9]\+\).*$/\1/p') &&\
+     dnf -y install\
+      libcudnn8-devel-*cuda${CUDA_VERSION}*\
+      libcudnn8-*cuda${CUDA_VERSION}*\
+      libnvinfer8-${TRT_VERSION}\
+      libnvparsers8-${TRT_VERSION}\
+      libnvonnxparsers8-${TRT_VERSION}\
+      libnvinfer-plugin8-${TRT_VERSION}\
+      libnvinfer-vc-plugin8-${TRT_VERSION}\
+      libnvinfer-devel-${TRT_VERSION}\
+      libnvparsers-devel-${TRT_VERSION}\
+      libnvonnxparsers-devel-${TRT_VERSION}\
+      libnvinfer-plugin-devel-${TRT_VERSION}\
+      libnvinfer-vc-plugin-devel-${TRT_VERSION}\
+      libnvinfer-headers-devel-${TRT_VERSION}\
+      libnvinfer-headers-plugin-devel-${TRT_VERSION}
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 #Add our own dependencies
 ADD scripts /tmp/scripts
