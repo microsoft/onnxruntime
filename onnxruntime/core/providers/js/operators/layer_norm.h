@@ -8,7 +8,6 @@
 namespace onnxruntime {
 namespace js {
 
-template <typename T, typename U>
 class LayerNorm : public JsKernel {
  public:
   LayerNorm(const OpKernelInfo& info) : JsKernel(info) {
