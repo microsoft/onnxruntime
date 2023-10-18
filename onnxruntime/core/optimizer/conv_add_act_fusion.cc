@@ -69,7 +69,7 @@ class ConvAddActivationSelector : public NodeSelector {
     // 1 find the Add node, 2 find it's producer node and make sure it's a conv node
     // 3 find the next node and check if it's a activation node, if yes, we will fuse conv+add+activation or conv+add
     //
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {7, 13, 14})) {
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {7, 13, 14}, node.Domain())) {
       conv_node = SelectProducerConv(*add_node);
     }
     if (conv_node == nullptr) {
@@ -98,14 +98,15 @@ class ConvAddActivationSelector : public NodeSelector {
 
   static bool SelectActivation(const GraphViewer& graph_viewer, const Node& activation_node) {
     auto is_supported_cpu_ep_activation = [&graph_viewer](const Node& activation_node) {
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Tanh", {6, 13}) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "LeakyRelu", {6, 16})) {
+      const auto& domain = activation_node.Domain();
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}, domain) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}, domain) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Tanh", {6, 13}, domain) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "LeakyRelu", {6, 16}, domain)) {
         return true;
       }
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Clip", {6, 11, 12, 13})) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Clip", {6, 11, 12, 13}, domain)) {
         float min, max;
         if (!optimizer_utils::GetClipConstantMinMax(graph_viewer.GetGraph(), activation_node, min, max)) {
           return false;
@@ -113,7 +114,7 @@ class ConvAddActivationSelector : public NodeSelector {
         return true;
       }
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "HardSigmoid", {6})) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "HardSigmoid", {6}, domain)) {
         return true;
       }
       return false;
@@ -207,14 +208,14 @@ using NTO = NodesToOptimize;
 
 class FuseConvAddActivationAction : public ReplaceWithNew {
  public:
-  FuseConvAddActivationAction() = default;
+  FuseConvAddActivationAction(const std::string& domain = kMSDomain) : ReplaceWithNew(), domain_{std::move(domain)} {}
 
  private:
   std::string OpType(const RuntimeState& runtimeState) const override {
-    return (runtimeState.selected_nodes.Target().OpType() == "Conv") ? "FusedConv" : "NhwcFusedConv";
+    return domain_ == kMSDomain ? (runtimeState.selected_nodes.Target().OpType() == "Conv") ? "FusedConv" : "NhwcFusedConv" : "Conv";
   }
 
-  std::string Domain(const RuntimeState&) const override { return kMSDomain; }
+  std::string Domain(const RuntimeState&) const override { return domain_; }
 
   NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
     NodeAttributes extra_fused_conv_attributes;
@@ -281,6 +282,7 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
       };
     }
   }
+  std::string domain_;
 };
 }  // namespace actions
 
@@ -293,6 +295,11 @@ void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   auto selector_nhwc = std::make_unique<selectors::ConvAddActivationSelector>();
   registry.RegisterSelectorAndAction("NhwcFusedConvAct", {{"NhwcFusedConv", {1, 11}}},
                                      std::move(selector_nhwc), std::move(action_nhwc));
+  auto action_ms_internal_nhwc = std::make_unique<actions::FuseConvAddActivationAction>(kMSInternalNHWCDomain);
+  auto selector_ms_internal_nhwc = std::make_unique<selectors::ConvAddActivationSelector>();
+  registry.RegisterSelectorAndAction("MSInternalNhwcFusedConvAct", {{"Conv", {1, 11}}},
+                                     std::move(selector_ms_internal_nhwc), std::move(action_ms_internal_nhwc), kMSInternalNHWCDomain);
+
 }
 
 SelectorActionRegistry CreateSelectorActionRegistry() {

@@ -3,8 +3,8 @@
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
-#include <cassert>
 #include <algorithm>
+#include <cassert>
 #include <iterator>
 #include <utility>
 
@@ -18,12 +18,13 @@ namespace onnxruntime {
 void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,
                                                        const OpVersionsMap& ops_and_versions_in,
                                                        std::unique_ptr<NodeSelector> selector_in,
-                                                       std::unique_ptr<Action> action_in) {
+                                                       std::unique_ptr<Action> action_in,
+                                                       const std::string& domain) {
   // currently all registrations are done from internal code with no external inputs,
   // so throw for invalid usage as it should only happen during development.
   const auto [name_to_entry_it, inserted_in_name_to_entry] =
       name_to_entry_.emplace(name,
-                             Entry{name,
+                             Entry{name, domain,
                                    ops_and_versions_in,
                                    std::move(selector_in),
                                    std::move(action_in)});
@@ -32,7 +33,7 @@ void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,
   const Entry& entry = name_to_entry_it->second;
   for (const auto& [op_type, versions] : entry.ops_and_versions) {
     ORT_UNUSED_PARAMETER(versions);
-    op_type_to_entry_.emplace(op_type, &entry);
+    op_type_to_entry_.emplace(op_type + domain, &entry);
   }
 }
 
@@ -48,17 +49,17 @@ void SelectorActionRegistry::RegisterAction(const std::string& name,
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::string& name) const {
-  if (const auto it = name_to_entry_.find(name); it != name_to_entry_.end()) {
+const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::string& name, const std::string& domain) const {
+  if (const auto it = name_to_entry_.find(name + domain); it != name_to_entry_.end()) {
     return &it->second;
   }
   return nullptr;
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-auto SelectorActionRegistry::LookUpByOpType(const std::string& op_type) const
+auto SelectorActionRegistry::LookUpByOpTypeAndDomain(const std::string& op_type, const std::string& domain) const
     -> std::vector<gsl::not_null<const Entry*>> {
-  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(op_type);
+  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(op_type + domain);
   std::vector<gsl::not_null<const Entry*>> result{};
   result.reserve(std::distance(range_begin, range_end));
   std::transform(range_begin, range_end, std::back_inserter(result),
@@ -93,17 +94,10 @@ static Status MatchAndProcess(
   Status status = Status::OK();
 
   do {
-    // TODO: for now this just needs to support ONNX and Micrsoft Domain ops.
-    // If we ever had a transformer that was going to target non-ONNX ops,
-    // we'd need to rework a few things to include the op domain in the matches
-    if (node.Domain() != kOnnxDomain && node.Domain() != kMSDomain) {
-      break;
-    }
-
     std::optional<NodesToOptimizeIndices> node_selection_opt{};
     const SelectorActionRegistry::Entry* selector_action_entry_ptr = nullptr;
 
-    const auto selector_action_entries = selector_action_registry.LookUpByOpType(node.OpType());
+    const auto selector_action_entries = selector_action_registry.LookUpByOpTypeAndDomain(node.OpType(), node.Domain());
     for (const auto& entry : selector_action_entries) {
       // check the supported versions if specified
       const auto& versions = entry->ops_and_versions.find(node.OpType())->second;

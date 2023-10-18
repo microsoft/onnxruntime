@@ -42,12 +42,14 @@ class SelectorActionRegistry {
 
   struct Entry {
     Entry(const std::string& name_in,
+          const std::string& domain_in,
 #if !defined(ORT_MINIMAL_BUILD)
           const OpVersionsMap& ops_and_versions_in,
           std::unique_ptr<NodeSelector> selector_in,
 #endif  // !defined(ORT_MINIMAL_BUILD)
           std::unique_ptr<Action> action_in)
         : name{name_in},
+          domain{domain_in},
 #if !defined(ORT_MINIMAL_BUILD)
           ops_and_versions{ops_and_versions_in},
           selector{std::move(selector_in)},
@@ -56,7 +58,7 @@ class SelectorActionRegistry {
     }
 
     std::string name;
-
+    std::string domain;
 #if !defined(ORT_MINIMAL_BUILD)
     OpVersionsMap ops_and_versions;
     std::unique_ptr<NodeSelector> selector;
@@ -81,21 +83,22 @@ class SelectorActionRegistry {
   void RegisterSelectorAndAction(const std::string& name,
                                  const OpVersionsMap& ops_and_versions,
                                  std::unique_ptr<NodeSelector> selector,
-                                 std::unique_ptr<Action> action);
+                                 std::unique_ptr<Action> action,
+                                 const std::string& domain = kMSDomain);
 
 #else  // !defined(ORT_MINIMAL_BUILD)
 
   // register an action
-  void RegisterAction(const std::string& name, std::unique_ptr<Action> action);
+  void RegisterAction(const std::string& name, std::unique_ptr<Action> action, const std::string& domain = kMSDomain);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // return registered Entry or nullptr if not found
-  const Entry* LookUp(const std::string& name) const;
+  const Entry* LookUp(const std::string& name, const std::string& domain = kMSDomain) const;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // return registered Entry or nullptr if not found
-  auto LookUpByOpType(const std::string& op_type) const -> std::vector<gsl::not_null<const Entry*>>;
+  auto LookUpByOpTypeAndDomain(const std::string& op_type, const std::string& domain) const -> std::vector<gsl::not_null<const Entry*>>;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
  private:

@@ -84,14 +84,15 @@ class ConvActivationSelector : public NodeSelector {
     }
 
     auto is_supported_non_cuda_rocm_ep_activation = [&graph_viewer](const Node& activation_node) {
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Tanh", {6, 13}) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "LeakyRelu", {6, 16})) {
+      const auto& domain = activation_node.Domain();
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}, domain) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}, domain) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Tanh", {6, 13}, domain) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "LeakyRelu", {6, 16}, domain)) {
         return true;
       }
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Clip", {6, 11, 12, 13})) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Clip", {6, 11, 12, 13}, domain)) {
         float min, max;
         if (!optimizer_utils::GetClipConstantMinMax(graph_viewer.GetGraph(), activation_node, min, max)) {
           return false;
@@ -101,19 +102,19 @@ class ConvActivationSelector : public NodeSelector {
 
       return false;
     };
-
+    const auto& domain = node.Domain();
     if (!ConvFusionDataTypeCheck(node)) {
       return std::nullopt;
     }
 
     // check EP type and activation
     if (node_ep == kCudaExecutionProvider || node_ep == kRocmExecutionProvider) {
-      if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14})) {
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14}, domain)) {
         return std::nullopt;
       }
     } else if (node_ep.empty() || node_ep == kCpuExecutionProvider) {
       if (!is_supported_non_cuda_rocm_ep_activation(*next_node) &&
-          !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "HardSigmoid", {6})) {
+          !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "HardSigmoid", {6}, domain)) {
         return std::nullopt;
       }
     } else {
@@ -134,6 +135,7 @@ class ConvAddRelu : public NodeSelector {
   ConvAddRelu() = default;
 
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
+    const auto& domain = node.Domain();
     const std::string_view node_ep = node.GetExecutionProviderType();
     // only for CUDA EP
     if (node_ep != kCudaExecutionProvider) {
@@ -146,14 +148,14 @@ class ConvAddRelu : public NodeSelector {
 
     const auto* add_node = GetLoneConsumerNode(graph_viewer, node);
     if (!add_node ||
-        !graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {6, 7, 13, 14}) ||
+        !graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {6, 7, 13, 14}, domain) ||
         add_node->GetExecutionProviderType() != node_ep) {
       return std::nullopt;
     }
 
     const auto* relu_node = GetLoneConsumerNode(graph_viewer, *add_node);
     if (!relu_node ||
-        !graph_utils::IsSupportedOptypeVersionAndDomain(*relu_node, "Relu", {6, 13, 14}) ||
+        !graph_utils::IsSupportedOptypeVersionAndDomain(*relu_node, "Relu", {6, 13, 14}, domain) ||
         relu_node->GetExecutionProviderType() != node_ep) {
       return std::nullopt;
     }
@@ -173,10 +175,13 @@ namespace actions {
 using NTO = NodesToOptimize;
 
 class FuseConvActivationAction : public ReplaceWithNew {
+  public:
+  FuseConvActivationAction(const std::string& domain = kMSDomain) : ReplaceWithNew(), domain_{domain} {}
  private:
-  std::string OpType(const RuntimeState&) const override { return "FusedConv"; }
+  std::string OpType(const RuntimeState&) const override {
+    return domain_ == kMSDomain ? "FusedConv" : "Conv"; }
 
-  std::string Domain(const RuntimeState&) const override { return kMSDomain; }
+  std::string Domain(const RuntimeState&) const override { return domain_; }
 
   NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
     NodeAttributes extra_fused_conv_attributes;
@@ -222,13 +227,16 @@ class FuseConvActivationAction : public ReplaceWithNew {
         MoveAll(activation, ArgType::kOutput),  // move all outputs from activation
     };
   }
+  const std::string domain_;
 };
 
 class FuseConvAddRelu : public ReplaceWithNew {
+  public:
+  FuseConvAddRelu(std::string domain = kMSDomain) : ReplaceWithNew(), domain_{domain} {}
  private:
-  std::string OpType(const RuntimeState&) const override { return "FusedConv"; }
+  std::string OpType(const RuntimeState&) const override { return domain_ == kMSDomain ? "FusedConv" : "Conv"; }
 
-  std::string Domain(const RuntimeState&) const override { return kMSDomain; }
+  std::string Domain(const RuntimeState&) const override { return domain_; }
 
   NodeAttributes ExtraAttributes(const RuntimeState&) const override {
     NodeAttributes extra_fused_conv_attributes;
@@ -253,6 +261,7 @@ class FuseConvAddRelu : public ReplaceWithNew {
         MoveAll(relu_location, ArgType::kOutput),                                      // move all outputs from relu
     };
   }
+  std::string domain_;
 };
 }  // namespace actions
 
@@ -263,6 +272,10 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   auto selector = std::make_unique<selectors::ConvActivationSelector>();
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
+  auto selector2 = std::make_unique<selectors::ConvActivationSelector>();
+  auto action2 = std::make_unique<actions::FuseConvActivationAction>(kMSInternalNHWCDomain);
+  registry.RegisterSelectorAndAction("MSInternalNHWCConvAct", {{"Conv", {1, 11}}},
+                                     std::move(selector2), std::move(action2), kMSInternalNHWCDomain);
 #else
   registry.RegisterAction(name, std::move(action));
 #endif
@@ -275,6 +288,10 @@ void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry) {
   auto selector = std::make_unique<selectors::ConvAddRelu>();
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
+  auto selector2 = std::make_unique<selectors::ConvAddRelu>();
+  auto action2 = std::make_unique<actions::FuseConvActivationAction>(kMSInternalNHWCDomain);
+  registry.RegisterSelectorAndAction("MSInternalNHWCDomainConvAddRelu", {{"Conv", {1, 11}}},
+                                     std::move(selector2), std::move(action2), kMSInternalNHWCDomain);
 #else
   registry.RegisterAction(name, std::move(action));
 #endif
