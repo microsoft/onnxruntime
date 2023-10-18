@@ -5,7 +5,7 @@
 
 namespace Cuda {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && !defined(ENABLE_TRAINING)
 
 void RegisterOps(Ort::CustomOpDomain& domain);
 
