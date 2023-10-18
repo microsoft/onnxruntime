@@ -374,6 +374,13 @@ if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_R
     "${TEST_SRC_DIR}/providers/cuda/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
+
+  if (onnxruntime_USE_CUDA_NHWC_OPS)
+    file(GLOB onnxruntime_test_providers_cuda_nhwc_src CONFIGURE_DEPENDS
+      "${TEST_SRC_DIR}/providers/cuda/nhwc/*.cc"
+    )
+    list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_nhwc_src})
+  endif()
 endif()
 
 if (onnxruntime_USE_CANN)

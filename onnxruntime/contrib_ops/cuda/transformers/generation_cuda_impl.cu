@@ -1376,6 +1376,235 @@ void ReorderPastStatesKernelLauncher(void* out_buffer,
   }
 }
 
+template <typename T>
+__global__ void CopyCrossQKSingleDecodeStepKernel(
+    T* target, // shape [batchxbeam, layer_head_pair_count, max_length, frame]
+    T** qk_layer_pointers,
+    int token_index,
+    int num_layers,
+    int num_heads,
+    const int* cross_qk_layer_head_pairs,
+    int frames,
+    int max_length
+) {
+  const int pair = blockIdx.x;
+  const int layer_head_pair_count = gridDim.x;
+  const int bbm = blockIdx.y;
+  cross_qk_layer_head_pairs += (pair * 2);
+  const int layer = *cross_qk_layer_head_pairs;
+  const int head = *(cross_qk_layer_head_pairs + 1);
+
+  target += ((int64_t)bbm * layer_head_pair_count + pair) * max_length * frames + ((int64_t)token_index * frames);
+  T* src = qk_layer_pointers[layer] + ((int64_t)bbm * num_heads + head) * frames;
+
+  for (int tid = threadIdx.x; tid < frames; tid += blockDim.x) {
+    target[tid] = src[tid]; // use vectorized read write in future if needed
+  }
+}
+
+void LaunchCopyCrossQKSingleDecodeStep(
+    cudaStream_t stream,
+    float* cross_qk_buffer_data,
+    float** qk_layer_pointers,
+    int token_index,
+    int batchxbeam,
+    int num_layers,
+    int num_heads,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames,
+    int max_length
+) {
+  dim3 block(512);
+  dim3 grid(cross_qk_layer_head_pair_count, batchxbeam);
+  typedef typename ToCudaType<float>::MappedType CudaT;
+
+  CopyCrossQKSingleDecodeStepKernel<<<grid, block, 0, stream>>>(
+      (CudaT*)cross_qk_buffer_data,
+      (CudaT**)qk_layer_pointers,
+      token_index,
+      num_layers,
+      num_heads,
+      cross_qk_layer_head_pairs,
+      frames,
+      max_length
+  );
+}
+
+
+template <typename T>
+__global__ void CopyDecoderCrossQKAllStepsKernel(
+    int context_decoding_len,
+    int num_beams,
+    int num_return_sequences,
+    int max_length,
+    int frames_of_k,
+    const T* cross_qk_buffer_data, // [batch, num_beams, layer_head_pair_count, max_length, frames]
+    T* cross_qk_output, // [batch, num_return_sequences, layer_head_pair_count, total_decoding_length, frames]
+    const int* cache_indir_data, // [batch, num_beams, max_length]
+    const int32_t* beam_indices
+) {
+  const int pair = blockIdx.y;
+  const int layer_head_pair_count = gridDim.y;
+  const int total_decoding_length = gridDim.x;
+  const int token_decoding_index = blockIdx.x;
+  const int br = blockIdx.z;
+  const int batch = br / num_return_sequences;
+  const int ret_seq_id = br % num_return_sequences;
+
+  // get the real beam index, as the cache_indir_data did not updated in last token
+  const int src_beam = beam_indices[batch * num_beams + ret_seq_id] % num_beams;
+
+  const int64_t offset_in_cache = ((int64_t)batch * num_beams + src_beam) * max_length + token_decoding_index + context_decoding_len;
+  int bm_mapped = ((num_beams <= 1) ? 0: ((token_decoding_index == total_decoding_length - 1) ?  ret_seq_id : cache_indir_data[offset_in_cache]));
+  int bi_src = batch * num_beams + bm_mapped;
+
+  T* target =  cross_qk_output +
+          (((int64_t)br * layer_head_pair_count + (int64_t)pair) * total_decoding_length + token_decoding_index) * frames_of_k;
+  const T* src = cross_qk_buffer_data +
+          ((int64_t)bi_src * layer_head_pair_count * max_length + (int64_t)pair * max_length + token_decoding_index) * frames_of_k;
+  for (int tid = threadIdx.x; tid < frames_of_k; tid += blockDim.x) {
+    target[tid] = src[tid]; // use vectorized read write in future if needed
+  }
+}
+
+void LaunchFinalizeCrossQK(
+    cudaStream_t stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    [[maybe_unused]] const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data,
+    const int32_t* beam_indices
+) {
+  int64_t br = (int64_t)batch_size * num_return_sequences;
+  ORT_ENFORCE(br < 65536L && cross_qk_layer_head_pair_count < 65536);
+  const int total_decoding_length = iteration_number - 1;
+  dim3 block(512);
+  dim3 grid(total_decoding_length, cross_qk_layer_head_pair_count, (unsigned)br);
+  typedef typename ToCudaType<float>::MappedType CudaT;
+
+  CopyDecoderCrossQKAllStepsKernel<<<grid, block, 0, stream>>>(
+    context_decoding_len,
+    num_beams,
+    num_return_sequences,
+    max_length,
+    frames_of_k,
+    (const CudaT*)cross_qk_buffer_data,
+    (CudaT*)cross_qk_output,
+    cache_indir_data,
+    beam_indices);
+}
+
+template <int ElementsPerThreads>
+__global__ void ForceDecodingIdsKernel(
+    float* beam_scores,
+    const int vocab_size,
+    const int32_t* force_ids,
+    int id_len,
+    int step
+) {
+  const int num_beams = gridDim.y;
+  const int beam = blockIdx.y;
+  const int batch = blockIdx.z;
+  beam_scores += (((int64_t)batch * num_beams + beam)* vocab_size); // move to (batch, beam)
+  const int32_t id_wanted = force_ids[((int64_t)batch * id_len) + step];
+  if (id_wanted < 0 || id_wanted >= vocab_size) return;
+
+  const int32_t elements_per_block = (int32_t)blockDim.x * ElementsPerThreads;
+  const int32_t block_start_id = blockIdx.x * elements_per_block;
+
+  int32_t token_id = block_start_id + (int)threadIdx.x;
+  #pragma unroll
+  for (int elem = 0; elem < ElementsPerThreads; elem++) {
+    if (token_id < vocab_size) {
+      beam_scores[token_id] = ((token_id == id_wanted) ? 0.0f : cub::FpLimits<float>::Lowest());
+    }
+    token_id += (int)blockDim.x;
+  }
+}
+
+
+void LaunchForceDecodingIds(
+    float* beam_scores,
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int32_t* force_ids,
+    int id_len,
+    int step,
+    cudaStream_t stream
+) {
+  dim3 blocks(512);
+  constexpr int ElementsPerThreads = 4;
+  unsigned gridx = static_cast<unsigned>((vocab_size + 512 * ElementsPerThreads - 1) / (512 * ElementsPerThreads));
+  dim3 grids(gridx, num_beams, batch_size);
+  ForceDecodingIdsKernel<ElementsPerThreads><<<grids, blocks, 0, stream>>>(
+    beam_scores, vocab_size, force_ids, id_len, step
+  );
+}
+
+template <typename T>
+__global__ void SaveNoSpeechProbsKernel(
+    T* result_no_speech_probs,
+    const float* probs,
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int no_speech_token_id
+) {
+  int b = blockIdx.x * blockDim.x + threadIdx.x;
+  if (b < batch_size) {
+    int64_t src_offset = b * num_beams * vocab_size + no_speech_token_id;
+    result_no_speech_probs[b] = (T)(probs[src_offset]);
+  }
+}
+
+template <typename T>
+void LaunchSaveNoSpeechProbs(
+    T* result_no_speech_probs,      /* [batch]*/
+    const float* probs,             /* [batch, num_beams, vocab_size]*/
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int no_speech_token_id,
+    cudaStream_t stream
+) {
+  int tpb = 256;
+  int bpg = (batch_size + 255) / 256;
+
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  SaveNoSpeechProbsKernel<CudaT><<<bpg, tpb, 0, stream>>>(
+    (CudaT*)result_no_speech_probs, probs, batch_size, num_beams, vocab_size, no_speech_token_id);
+}
+
+template void LaunchSaveNoSpeechProbs<float>(
+    float* result_no_speech_probs,
+    const float* probs,
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int no_speech_token_id,
+    cudaStream_t stream
+);
+
+template void LaunchSaveNoSpeechProbs<MLFloat16>(
+    MLFloat16* result_no_speech_probs,
+    const float* probs,
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int no_speech_token_id,
+    cudaStream_t stream
+);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
