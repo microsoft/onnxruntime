@@ -238,11 +238,11 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
   }
 
  private:
-  InlinedVector<std::string> cast_ordering{
+  static constexpr std::array<std::string_view, 13> cast_ordering{
       "tensor(bool)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(int8)", "tensor(int16)",
       "tensor(int32)", "tensor(int64)", "tensor(bfloat16)", "tensor(float16)", "tensor(float)", "tensor(double)"};
 
-  inline bool LossOfPrecision(DataType src_type, DataType dst_type, const Node& node) const {
+  static bool LossOfPrecision(DataType src_type, DataType dst_type, const Node& node) {
     // The comparison with "InsertedPrecisionFreeCast_" reflects cast nodes that are inserted by InsertCastTransformer.
     // Such casts should not be considered as loss of precision - the inserted upcasts (f16 -> f32) and downcasts (f32 -> f16) are inserted to support kernels when on a CPU EP without F16 support.
     auto src_pos = std::find(cast_ordering.begin(), cast_ordering.end(), *src_type);
