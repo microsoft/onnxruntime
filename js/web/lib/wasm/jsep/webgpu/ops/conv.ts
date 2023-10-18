@@ -7,9 +7,9 @@ import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-w
 import {ComputeContext} from '../types';
 
 import {createConv2DMatMulProgramInfo} from './3rd-party/conv2d_mm_webgpu';
-import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
 import {createGroupedConvProgramInfo} from './conv-grouped';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
+import {createMatmulLWGProgramInfo} from './matmul';
 import {createTransposeProgramInfo} from './transpose';
 
 export const calculateOutputShape =
@@ -196,7 +196,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
       matmulInputs.push(inputs[2]);
     }
     context.compute(
-        createMatmulProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+        createMatmulLWGProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
         {inputs: matmulInputs});
     return;
   }

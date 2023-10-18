@@ -17,8 +17,8 @@ const getMaxComponents = (size: number): 1|2|3|4 => {
   return 1;
 };
 export const createMatmulLWGProgramInfo =
-    (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes,
-     outputShape: readonly number[], reshapedOutputShape?: readonly number[],
+    (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
+     reshapedOutputShape?: readonly number[],
      isChannelsLast = false /* only used for conv2dByMatMul*/): ProgramInfo => {
       const aShape = inputs[0].dims;
       const bShape = inputs[1].dims;
@@ -38,6 +38,10 @@ export const createMatmulLWGProgramInfo =
       const workgroupSize = 64;
       // The output number of each thread.
       const outputNumber = Math.ceil(tileM / Math.floor(workgroupSize / (tileN / components)));
+      if (workgroupSize < (tileN / components)) {
+        throw new Error(
+            `workgroupSize ${workgroupSize} must be larger than or equal to tileN / components ${tileN / components}`);
+      }
       // The virtualXXX makes sure that one tile of data has the same batch.
       const virtualM = Math.ceil(M / tileM) * tileM;
       const virtualN = Math.ceil(N / tileN) * tileN;
@@ -52,8 +56,7 @@ export const createMatmulLWGProgramInfo =
         const biasComponents = isChannelsLast ? components : 1;
         inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims, biasComponents));
         processBias = `${
-            isChannelsLast ? `value += bias[col / ${biasComponents}];` :
-                             `value += ${output.type.value}(bias[row]);`}`;
+            isChannelsLast ? `value += bias[col / ${biasComponents}];` : `value += ${output.type.value}(bias[row]);`}`;
       }
       const outerDimsA = aShape.slice(0, -2);
       const outerDimsB = bShape.slice(0, -2);
@@ -194,10 +197,8 @@ export const createMatmulLWGProgramInfo =
       return {
         name: 'MatMulLinearWG',
         shaderCache: {hint: activationAttributes.activationCacheKey},
-        getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-          dispatchGroup: {x: numWorkgroups}
-        }),
+        getRunData: () =>
+            ({outputs: [{dims: outputShape, dataType: inputs[0].dataType}], dispatchGroup: {x: numWorkgroups}}),
         getShaderSource,
       };
     };
