@@ -16,6 +16,7 @@ from optimizer import optimize_model
 from transformers import LlamaConfig, LlamaForCausalLM
 
 from onnxruntime import quantization as ort_quantization
+from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
 logger = logging.getLogger("")
 
@@ -352,9 +353,34 @@ def optimize_export(config: LlamaConfig, input_path: str, output_path: str):
     remove_existing_model(input_path)
 
 
+def convert_to_float16(args: argparse.Namespace, config: LlamaConfig, old_paths: List[str]):
+    decoder_model_fp16_path = os.path.join(args.output, f"{args.model_name}_decoder_model_fp16.onnx")
+    decoder_with_past_model_fp16_path = os.path.join(
+        args.output, f"{args.model_name}_decoder_with_past_model_fp16.onnx"
+    )
+    decoder_merged_model_fp16_path = os.path.join(
+        args.output, f"{args.model_name}_decoder_merged_model_fp16.onnx"
+    )
+    new_paths = [decoder_model_fp16_path, decoder_with_past_model_fp16_path, decoder_merged_model_fp16_path]
+
+    logger.info(f"Converting to float16...")
+    for fp32_path, fp16_path in zip(old_paths, new_paths):
+        if os.path.exists(fp32_path):
+            model = OnnxModel(onnx.load_model(fp32_path, load_external_data=True))
+            model.convert_float_to_float16(keep_io_types=False)
+            model = use_group_query_attention(config, model)
+            model.save_model_to_file(fp16_path, use_external_data_format=True)
+            del model
+            logger.info(f"The ONNX model at {fp32_path} has been converted to float16 and saved at {fp16_path}!")
+            remove_existing_model(fp32_path)
+
+    logger.info(f"The {args.model_name} ONNX model has been successfully converted to float16!")
+    return new_paths
+
+
 def use_group_query_attention(config: LlamaConfig, fp16_model_opt: OnnxModel):
     # Replace MultiHeadAttention with GroupQueryAttention and remove attention mask nodes
-    fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, config.num_key_value_heads)
+    fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, "past_key_values.0.key", config.num_key_value_heads)
     fp16_model_opt.prune_graph()
     fp16_model_opt.update_graph(allow_remove_graph_inputs=True)
     return fp16_model_opt
@@ -476,7 +502,7 @@ def get_args():
         required=False,
         type=Precision,
         default=Precision.FLOAT32,
-        choices=[Precision.FLOAT32, Precision.FLOAT16, Precision.INT8],
+        choices=[Precision.FLOAT32, Precision.FLOAT16, Precision.INT8, Precision.INT4],
         help="Precision to export model in",
     )
 
@@ -519,8 +545,18 @@ def get_args():
         "-q",
         "--quantization_method",
         default="",
-        choices=["smooth_quant", "quantize_dynamic"],
-        help="Run a specific quantization algorithm. Need to install extra packages in `requirements-quant.txt` for SmoothQuant.",
+        choices=["blockwise", "smooth_quant", "quantize_dynamic"],
+        help="Run a specific quantization algorithm (blockwise for int4, smooth_quant for int8, quantize_dynamic for int8). Blockwise is recommended. Need to install extra packages in `requirements-quant.txt` for SmoothQuant.",
+    )
+
+    blockwise_group = parser.add_argument_group("blockwise")
+
+    blockwise_group.add_argument(
+        "--block_size",
+        required=False,
+        default=32,
+        type=int,
+        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_4bits_quantizer.py for details."
     )
 
     smooth_quant_group = parser.add_argument_group("smooth_quant")
@@ -688,27 +724,7 @@ def main():
 
     # Change precision of exported models from FP32
     if args.precision == Precision.FLOAT16:
-        decoder_model_fp16_path = os.path.join(args.output, f"{args.model_name}_decoder_model_fp16.onnx")
-        decoder_with_past_model_fp16_path = os.path.join(
-            args.output, f"{args.model_name}_decoder_with_past_model_fp16.onnx"
-        )
-        decoder_merged_model_fp16_path = os.path.join(
-            args.output, f"{args.model_name}_decoder_merged_model_fp16.onnx"
-        )
-        new_paths = [decoder_model_fp16_path, decoder_with_past_model_fp16_path, decoder_merged_model_fp16_path]
-
-        logger.info(f"Converting to float16...")
-        for fp32_path, fp16_path in zip(old_paths, new_paths):
-            if os.path.exists(fp32_path):
-                model = OnnxModel(onnx.load_model(fp32_path, load_external_data=True))
-                model.convert_float_to_float16(keep_io_types=False)
-                model = use_group_query_attention(l_config, model)
-                model.save_model_to_file(fp16_path, use_external_data_format=True, all_tensors_to_one_file=True)
-                del model
-                logger.info(f"The ONNX model at {fp32_path} has been converted to float16 and saved at {fp16_path}!")
-                remove_existing_model(fp32_path)
-
-        logger.info(f"The {args.model_name} ONNX model has been successfully converted to float16!")
+        new_paths = convert_to_float16(args, l_config, old_paths)
 
     elif args.precision == Precision.INT8:
         decoder_model_int8_path = os.path.join(args.output, f"{args.model_name}_decoder_model_int8.onnx")
@@ -754,6 +770,29 @@ def main():
         else:
             raise Exception(f"Could not recognize {args.quantization_method} as a quantization method")
 
+    elif args.precision == Precision.INT4:
+        old_paths = convert_to_float16(args, l_config, old_paths)
+
+        decoder_model_int4_path = os.path.join(args.output, f"{args.model_name}_decoder_model_int4.onnx")
+        decoder_with_past_model_int4_path = os.path.join(
+            args.output, f"{args.model_name}_decoder_with_past_model_int4.onnx"
+        )
+        decoder_merged_model_int4_path = os.path.join(
+            args.output, f"{args.model_name}_decoder_merged_model_int4.onnx"
+        )
+        new_paths = [decoder_model_int4_path, decoder_with_past_model_int4_path, decoder_merged_model_int4_path]
+
+        for fp16_path, int4_path in zip(old_paths, new_paths):
+            if os.path.exists(fp16_path):
+                model = onnx.load_model(fp16_path, load_external_data=True)
+                quant = MatMul4BitsQuantizer(model, args.block_size, is_symmetric=True, nodes_to_exclude=[])
+                quant.process()
+                quant.model.save_model_to_file(int4_path, use_external_data_format=True)
+                del model
+                del quant
+                logger.info(f"The ONNX model at {fp16_path} has been quantized to int4 and saved at {int4_path}!")
+                remove_existing_model(fp16_path)
+
     # Verify parity on all saved ONNX models
     del llama  # Delete LLaMA model from memory since it will be loaded again during parity check
     logger.info("Verifying parity on all ONNX models created")
@@ -761,13 +800,15 @@ def main():
         if ".data" in filename or ".onnx" not in filename:
             continue
 
-        precision = "fp32" if "fp32" in filename else "fp16" if "fp16" in filename else "int8"
+        # Use FP32 precision for FP32 and INT8 models, use FP16 precision for FP16 and INT4 models
+        precision = "fp32" if "fp32" in filename or "int8" in filename else "fp16"
+
         parity_cmd = ["-m", f"{original_model_name}", "-o", f"{os.path.join(args.output, filename)}", "-fp", precision]
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
         if "merged" in filename:
             parity_cmd.append("--merged")
-        if "fp16" in filename:
+        if precision == "fp16":
             parity_cmd.extend(["--execution_provider", "cuda", "--device-id", args.device_id])
         
         try:

@@ -141,11 +141,14 @@ def get_args(argv: List[str]):
         "-fp",
         "--precision",
         required=True,
-        choices=["int8", "fp16", "fp32"],
+        choices=["int4", "int8", "fp16", "fp32"],
         help="Precision of model",
     )
 
     args = parser.parse_args() if argv == [] else parser.parse_args(argv)
+
+    # Use FP32 precision for FP32 and INT8 models, use FP16 precision for FP16 and INT4 models
+    args.precision = "fp32" if args.precision in {"int8", "fp32"} else "fp16"
     return args
 
 

@@ -8,6 +8,7 @@ import sys
 import time
 
 import numpy as np
+import onnx
 import psutil
 import torch
 from benchmark_helper import setup_logger
@@ -39,6 +40,11 @@ def get_ort_model_inputs_len(args, model):
 
 def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
     init_inputs, iter_inputs = None, None
+
+    # For past_present_share_buffer:
+    # Set max_seq_len to 2048 for Hugging Face model since that is the default value
+    # Set max_seq_len to 2048 for Microsoft model since that is the max value currently supported
+    max_seq_len = 2048
 
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
         init_inputs = get_sample_inputs(
@@ -102,7 +108,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.config,
             args.target_device,
             args.batch_size,
-            seq_len=args.sequence_length,
+            seq_len=(args.sequence_length if not args.past_present_share_buffer else max_seq_len),
             past_seq_len=0,
             use_fp16=args.use_fp16,
             return_dict=True,
@@ -112,12 +118,12 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.target_device,
             args.batch_size,
             seq_len=1,
-            past_seq_len=args.sequence_length,
+            past_seq_len=(args.sequence_length if not args.past_present_share_buffer else max_seq_len),
             use_fp16=args.use_fp16,
             return_dict=True,
         )
-        init_inputs = convert_inputs_for_ort(init_inputs, args.use_fp16)
-        iter_inputs = convert_inputs_for_ort(iter_inputs, args.use_fp16)
+        init_inputs = convert_inputs_for_ort(init_inputs, args.use_fp16, args.device, args.device_id)
+        iter_inputs = convert_inputs_for_ort(iter_inputs, args.use_fp16, args.device, args.device_id)
 
     elif args.benchmark_type == "ort-msft":
         # Microsoft export from https://github.com/microsoft/Llama-2-Onnx
@@ -127,18 +133,20 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.config,
             args.batch_size,
             past_seq_len=0,
-            seq_len=args.sequence_length,
+            seq_len=(args.sequence_length if not args.past_present_share_buffer else max_seq_len),
             use_fp16=args.use_fp16,
             split_kv=split_kv,
         )
         iter_inputs = get_msft_sample_inputs(
             args.config,
             args.batch_size,
-            past_seq_len=args.sequence_length,
+            past_seq_len=(args.sequence_length if not args.past_present_share_buffer else max_seq_len),
             seq_len=1,
             use_fp16=args.use_fp16,
             split_kv=split_kv,
         )
+        init_inputs = convert_inputs_for_ort(init_inputs, args.use_fp16, args.device, args.device_id)
+        iter_inputs = convert_inputs_for_ort(iter_inputs, args.use_fp16, args.device, args.device_id)
 
     else:
         raise Exception("Unable to auto-detect inputs for provided model")
@@ -403,10 +411,21 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
         # Add IO bindings for non-CPU execution providers
         if args.device != "cpu":
             io_binding = model.io_binding()
+
             for k, v in inputs.items():
-                io_binding.bind_cpu_input(k, v)
+                if args.past_present_share_buffer:
+                    # Bind all OrtValue inputs to device
+                    io_binding.bind_ortvalue_input(k, v)
+                else:
+                    io_binding.bind_cpu_input(k, v)
+
             for output in model.get_outputs():
-                io_binding.bind_output(output.name, device_type=args.device, device_id=args.device_id)
+                if args.past_present_share_buffer and ("out" in output or "present" in output):
+                    # Bind present KV cache outputs to OrtValue with buffer sharing
+                    io_binding.bind_ortvalue_output(k, v)
+                else:
+                    io_binding.bind_output(output.name, device_type=args.device, device_id=args.device_id)
+
             return io_binding
 
         return inputs
@@ -490,7 +509,7 @@ def get_args():
         required=True,
         type=str,
         default="fp32",
-        choices=["int8", "fp16", "fp32"],
+        choices=["int4", "int8", "fp16", "fp32"],
         help="Precision for model. For ONNX models, the model's precision should be set before running this script.",
     )
     parser.add_argument(
@@ -572,6 +591,9 @@ def get_args():
     args.batch_sizes = args.batch_sizes.split(" ")
     args.sequence_lengths = args.sequence_lengths.split(" ")
 
+    # Use FP32 precision for FP32 and INT8 models, use FP16 precision for FP16 and INT4 models
+    args.precision = "fp32" if args.precision in {"int8", "fp32"} else "fp16"
+
     # Check that only one (batch_size, sequence_length) combination is set for profiling
     if args.profile:
         assert (
@@ -597,10 +619,21 @@ def main():
     setattr(args, "target_device", target_device)  # noqa: B010
     setattr(args, "use_fp16", use_fp16)  # noqa: B010
 
-    # Measure prompt cost (init_inputs) and generated token cost (iter_inputs)
+    # Get model and model info
     model = get_model(args)
     ort_model_inputs_len = get_ort_model_inputs_len(args, model)
 
+    # Check if past_present_share_buffer can be enabled (only for FP16 models with GQA)
+    if args.benchmark_type in {"ort-convert-to-onnx", "ort-msft"}:
+        onnx_model = onnx.load_model(args.ort_model_path, load_external_data=False)
+        gqa_nodes = list(filter(lambda node: node.op_type == "GroupQueryAttention", onnx_model.graph.node))
+        
+        use_buffer_share = use_fp16 and len(gqa_nodes) > 0 and args.device != "cpu"
+        setattr(args, "past_present_share_buffer", use_buffer_share)  # noqa: B010
+    else:
+        setattr(args, "past_present_share_buffer", False)  # noqa: B010
+
+    # Measure prompt cost (init_inputs) and generated token cost (iter_inputs)
     for batch_size, sequence_length in itertools.product(args.batch_sizes, args.sequence_lengths):
         logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")
         setattr(args, "batch_size", int(batch_size))  # noqa: B010

@@ -116,7 +116,7 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[opset_import])
         return model
 
-    def create_cache_path(self, model_type: str):
+    def create_cache_path(self, model_type: str, use_redundant_squeeze_ops: bool):
         # Create position ids path
         reshape_node = helper.make_node(
             "Reshape",
@@ -139,21 +139,27 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
             outputs=["cos_sliced"],
             name="Slice_2",
         )
-        cos_squeeze_1_node = helper.make_node(
-            "Squeeze",
-            inputs=["cos_sliced", "zero"],
-            outputs=["cos_squeeze_1"],
-            name="Squeeze_0",
-        )
-        cos_squeeze_2_node = helper.make_node(
-            "Squeeze",
-            inputs=["cos_squeeze_1", "zero"],
-            outputs=["cos_squeeze_2"],
-            name="Squeeze_1",
-        )
+        cos_nodes = [cos_init_unsqueeze_node, cos_slice_node]
+
+        if use_redundant_squeeze_ops:
+            # These two nodes are eliminated by this transformers PR: https://github.com/huggingface/transformers/pull/26162
+            cos_squeeze_1_node = helper.make_node(
+                "Squeeze",
+                inputs=["cos_sliced", "zero"],
+                outputs=["cos_squeeze_1"],
+                name="Squeeze_0",
+            )
+            cos_squeeze_2_node = helper.make_node(
+                "Squeeze",
+                inputs=["cos_squeeze_1", "zero"],
+                outputs=["cos_squeeze_2"],
+                name="Squeeze_1",
+            )
+            cos_nodes.extend([cos_squeeze_1_node, cos_squeeze_2_node])
+        
         cos_gather_node = helper.make_node(
             "Gather",
-            inputs=["cos_squeeze_2", "pos_ids_reshaped"],
+            inputs=["cos_squeeze_2" if use_redundant_squeeze_ops else "cos_sliced", "pos_ids_reshaped"],
             outputs=["cos_indexed"],
             name="Gather_1",
         )
@@ -163,7 +169,7 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
             outputs=["cos"],
             name="Unsqueeze_3",
         )
-        cos_nodes = [cos_init_unsqueeze_node, cos_slice_node, cos_squeeze_1_node, cos_squeeze_2_node, cos_gather_node, cos_end_unsqueeze_node]
+        cos_nodes.extend([cos_gather_node, cos_end_unsqueeze_node])
 
         # Create sin path
         sin_init_unsqueeze_node = helper.make_node(
@@ -178,21 +184,26 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
             outputs=["sin_sliced"],
             name="Slice_3",
         )
-        sin_squeeze_1_node = helper.make_node(
-            "Squeeze",
-            inputs=["sin_sliced", "zero"],
-            outputs=["sin_squeeze_1"],
-            name="Squeeze_2",
-        )
-        sin_squeeze_2_node = helper.make_node(
-            "Squeeze",
-            inputs=["sin_squeeze_1", "zero"],
-            outputs=["sin_squeeze_2"],
-            name="Squeeze_3",
-        )
+        sin_nodes = [sin_init_unsqueeze_node, sin_slice_node]
+
+        if use_redundant_squeeze_ops:
+            sin_squeeze_1_node = helper.make_node(
+                "Squeeze",
+                inputs=["sin_sliced", "zero"],
+                outputs=["sin_squeeze_1"],
+                name="Squeeze_2",
+            )
+            sin_squeeze_2_node = helper.make_node(
+                "Squeeze",
+                inputs=["sin_squeeze_1", "zero"],
+                outputs=["sin_squeeze_2"],
+                name="Squeeze_3",
+            )
+            sin_nodes.extend([sin_squeeze_1_node, sin_squeeze_2_node])
+
         sin_gather_node = helper.make_node(
             "Gather",
-            inputs=["sin_squeeze_2", "pos_ids_reshaped"],
+            inputs=["sin_squeeze_2" if use_redundant_squeeze_ops else "sin_sliced", "pos_ids_reshaped"],
             outputs=["sin_indexed"],
             name="Gather_2",
         )
@@ -202,7 +213,7 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
             outputs=["sin"],
             name="Unsqueeze_5",
         )
-        sin_nodes = [sin_init_unsqueeze_node, sin_slice_node, sin_squeeze_1_node, sin_squeeze_2_node, sin_gather_node, sin_end_unsqueeze_node]
+        sin_nodes.extend([sin_gather_node, sin_end_unsqueeze_node])
 
         # Create beginning nodes before cos and sin paths
 
@@ -356,9 +367,9 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
         return x_half_shape_nodes + rotate_half_nodes + x_embed_nodes
 
 
-    def create_test_model(self, model_type: str, initializers: List[TensorProto]):
+    def create_test_model(self, model_type: str, use_redundant_squeeze_ops: bool, initializers: List[TensorProto]):
         apply_rope_nodes = self.create_apply_rope_path()
-        cache_nodes = self.create_cache_path(model_type)
+        cache_nodes = self.create_cache_path(model_type, use_redundant_squeeze_ops)
         inputs, outputs = self.create_inputs_and_outputs(model_type)
         
         graph = helper.make_graph(
@@ -380,7 +391,15 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
         onnx.save(expected_model, expected_model_filename)
 
         original_model_filename = "original_model.onnx"
-        original_model = self.create_test_model(model_type, initializers)
+        use_redundant_squeeze_ops = True
+        original_model = self.create_test_model(model_type, use_redundant_squeeze_ops, initializers)
+        onnx.save(original_model, original_model_filename)
+
+        self.verify_fusion(expected_model_filename, original_model_filename)
+        os.remove(original_model_filename)
+
+        use_redundant_squeeze_ops = False
+        original_model = self.create_test_model(model_type, use_redundant_squeeze_ops, initializers)
         onnx.save(original_model, original_model_filename)
 
         self.verify_fusion(expected_model_filename, original_model_filename)

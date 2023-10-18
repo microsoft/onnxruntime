@@ -33,6 +33,7 @@ class Precision(Enum):
     FLOAT32 = "fp32"
     FLOAT16 = "fp16"
     INT8 = "int8"
+    INT4 = "int4"
 
     def __str__(self):
         return self.value

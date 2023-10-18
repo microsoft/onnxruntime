@@ -1272,18 +1272,48 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
-def replace_mha_with_gqa(model: OnnxModel, kv_num_heads: int = 0):
+def replace_mha_with_gqa(model: OnnxModel, past_input: str, kv_num_heads: int = 0):
+    past_seq_len = past_input
+    if past_seq_len not in {"pos"}:
+        # Get past sequence length to enable past-present-share-buffer
+        past_seq_len = "past_seq_len_output"
+        idx_two_name = "idx_two"
+        
+        # Create Gather node to get past_sequence_length from past kv cache
+        shape_node = onnx.helper.make_node(
+            "Shape",
+            inputs=[past_input],
+            outputs=["past_input_shape"],
+            name=model.create_node_name("Shape"),
+        )
+        constant_node = onnx.helper.make_node(
+            "Constant",
+            inputs=[],
+            outputs=[idx_two_name],
+            name=model.create_node_name("Constant"),
+            value_int=2,
+        )
+        gather_node = onnx.helper.make_node(
+            "Gather",
+            inputs=["past_input_shape", idx_two_name],
+            outputs=[past_seq_len],
+            name=model.create_node_name("Gather"),
+            axis=0,
+        )
+        model.model.graph.node.extend([shape_node, constant_node, gather_node])
+
     # Replace MultiHeadAttention with GroupQueryAttention
     for node in model.model.graph.node:
         if node.op_type == "MultiHeadAttention":
             gqa_node = onnx.helper.make_node(
                 "GroupQueryAttention",
                 inputs=[
-                    node.input[0],
-                    node.input[1],
-                    node.input[2],
-                    node.input[6],
-                    node.input[7],
+                    node.input[0],  # query
+                    node.input[1],  # key
+                    node.input[2],  # value
+                    node.input[6],  # past_key
+                    node.input[7],  # past_value
+                    past_seq_len,   # past_sequence_length
                 ],
                 outputs=node.output,
                 name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),

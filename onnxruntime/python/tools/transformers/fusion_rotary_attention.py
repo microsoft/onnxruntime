@@ -875,7 +875,7 @@ class FusionRotaryEmbeddings(Fusion):
                 return
 
             # Check path for sin
-            sin_path, sin_cache = None, ""
+            sin_path, sin_cache, position_ids = None, "", ""
             sin_path_1 = self.model.match_parent_path(
                 node,
                 ["Mul", "Unsqueeze", "Gather", "Squeeze", "Squeeze", "Slice", "Unsqueeze", "Gather", "Shape"],
@@ -886,12 +886,30 @@ class FusionRotaryEmbeddings(Fusion):
                 ["Mul", "Unsqueeze", "Gather", "Squeeze", "Squeeze", "Slice", "Unsqueeze", "Add"],
                 [1, 1, 0, 0, 0, 0, 2, 0],
             )
+            sin_path_3 = self.model.match_parent_path(
+                node,
+                ["Mul", "Unsqueeze", "Gather", "Slice", "Unsqueeze", "Gather", "Shape"],
+                [1, 1, 0, 0, 2, 0, 0],
+            )
+            sin_path_4 = self.model.match_parent_path(
+                node,
+                ["Mul", "Unsqueeze", "Gather", "Slice", "Unsqueeze", "Add"],
+                [1, 1, 0, 0, 2, 0],
+            )
             if sin_path_1 is not None:
                 sin_path = sin_path_1
                 sin_cache = sin_path[-4].input[0]
             elif sin_path_2 is not None:
                 sin_path = sin_path_2
                 sin_cache = sin_path[-3].input[0]
+            elif sin_path_3 is not None:
+                sin_path = sin_path_3
+                sin_cache = sin_path[-4].input[0]
+                position_ids = sin_path[2].input[1]
+            elif sin_path_4 is not None:
+                sin_path = sin_path_4
+                sin_cache = sin_path[-3].input[0]
+                position_ids = sin_path[2].input[1]
             else:
                 logger.debug("fuse_rotary_embeddings: failed to match sin path in apply_rope")
                 return
@@ -908,41 +926,64 @@ class FusionRotaryEmbeddings(Fusion):
                 ["Mul", "Unsqueeze", "Gather", "Squeeze", "Squeeze", "Slice", "Unsqueeze", "Add"],
                 [0, 1, 0, 0, 0, 0, 2, 0],
             )
+            cos_path_3 = self.model.match_parent_path(
+                node,
+                ["Mul", "Unsqueeze", "Gather", "Slice", "Unsqueeze", "Gather", "Shape"],
+                [0, 1, 0, 0, 2, 0, 0],
+            )
+            cos_path_4 = self.model.match_parent_path(
+                node,
+                ["Mul", "Unsqueeze", "Gather", "Slice", "Unsqueeze", "Add"],
+                [0, 1, 0, 0, 2, 0],
+            )
             if cos_path_1 is not None:
                 cos_path = cos_path_1
                 cos_cache = cos_path[-4].input[0]
             elif cos_path_2 is not None:
                 cos_path = cos_path_2
                 cos_cache = cos_path[-3].input[0]
+            elif cos_path_3 is not None:
+                cos_path = cos_path_3
+                cos_cache = cos_path[-4].input[0]
+                position_ids = cos_path[2].input[1]
+            elif cos_path_4 is not None:
+                cos_path = cos_path_4
+                cos_cache = cos_path[-3].input[0]
+                position_ids = cos_path[2].input[1]
             else:
                 logger.debug("fuse_rotary_embeddings: failed to match sin path in apply_rope")
                 return
 
             # Check path for position ids
-            position_ids_from_sin_path = self.model.match_parent_path(
-                sin_path[2],
-                ["Reshape"],
-                [1],
-            )
-            position_ids_from_cos_path = self.model.match_parent_path(
-                cos_path[2],
-                ["Reshape"],
-                [1],
-            )
-            if (
-                position_ids_from_sin_path is None
-                or position_ids_from_cos_path is None
-                or position_ids_from_sin_path[0].name != position_ids_from_cos_path[0].name
-            ):
-                logger.debug("fuse_rotary_embeddings: failed to match position ids path in apply_rope")
-                return
+            if position_ids == "":
+                position_ids_from_sin_path = self.model.match_parent_path(
+                    sin_path[2],
+                    ["Reshape"],
+                    [1],
+                )
+                position_ids_from_cos_path = self.model.match_parent_path(
+                    cos_path[2],
+                    ["Reshape"],
+                    [1],
+                )
+                if (
+                    position_ids_from_sin_path is None
+                    or position_ids_from_cos_path is None
+                    or position_ids_from_sin_path[0].name != position_ids_from_cos_path[0].name
+                ):
+                    logger.debug("fuse_rotary_embeddings: failed to match position ids path in apply_rope")
+                    return
+                position_ids = position_ids_from_cos_path[0].input[0]
+            else:
+                position_ids_from_sin_path = []
+                position_ids_from_cos_path = []
 
             past_seq_len_path, curr_seq_len_path = None, None
-            if sin_path == sin_path_1 and cos_path == cos_path_1:
+            if (sin_path == sin_path_1 and cos_path == cos_path_1) or (sin_path == sin_path_3 and cos_path == cos_path_3):
                 if sin_path[-2].name != cos_path[-2].name or sin_path[-1].name != cos_path[-1].name:
                     logger.debug("fuse_rotary_embeddings: failed to match common Gather node and Shape node in sin cache and cos cache")
                     return
-            elif sin_path == sin_path_2 and cos_path == cos_path_2:
+            elif (sin_path == sin_path_2 and cos_path == cos_path_2) or (sin_path == sin_path_4 and cos_path == cos_path_4):
                 if sin_path[-1].name != cos_path[-1].name:
                     logger.debug("fuse_rotary_embeddings: failed to match common Add node in sin cache and cos cache")
                     return
@@ -966,8 +1007,8 @@ class FusionRotaryEmbeddings(Fusion):
                 ):
                     logger.debug("fuse_rotary_embeddings: failed to match past_seq_len and curr_seq_len paths")
                     return
-
-            position_ids = position_ids_from_cos_path[0].input[0]
+            else:
+                logger.debug("fuse_rotary_embeddings: failed to match common cache paths")
 
             rotary_emb_node = self.create_rotary_embeddings_from_nodes(
                 rotate_half_x1_path_1[-1].output[0],

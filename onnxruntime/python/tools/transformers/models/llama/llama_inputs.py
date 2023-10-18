@@ -2,6 +2,8 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
+
+from onnxruntime import OrtValue
 from transformers import LlamaConfig
 
 
@@ -120,16 +122,24 @@ def flatten_past_kv_inputs(past_key_values: List[Tuple[torch.Tensor, torch.Tenso
 
 
 # Format PyTorch inputs to ONNX Runtime inputs
-def convert_inputs_for_ort(pt_inputs: dict, use_fp16: bool):
+def convert_inputs_for_ort(pt_inputs: dict, use_fp16: bool, device: str = "", device_id: int = -1):
     ort_inputs = {}
     for k, v in pt_inputs.items():
-        if k == "past_key_values":
+        if isinstance(v, np.ndarray):
+            ort_inputs[k] = v
+        elif k == "past_key_values":
             ort_inputs.update(flatten_past_kv_inputs(v, use_fp16))
         elif k == "attention_mask" and use_fp16:
             # Skip because FP16 model has GroupQueryAttention and that supports a causal mask by default
             pass
         else:
             ort_inputs[k] = v.detach().cpu().numpy()
+
+    # Enable past-present-share-buffer by using device memory directly
+    if use_fp16 and device != "" and device != "cpu" and device_id > -1:
+        for k, v in ort_inputs.items():
+            ort_inputs[k] = OrtValue.ortvalue_from_numpy(v, device_type=device, device_id=device_id)
+
     return ort_inputs
 
 
