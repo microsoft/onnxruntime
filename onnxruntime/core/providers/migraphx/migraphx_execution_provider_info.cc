@@ -54,7 +54,6 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const MIGraphXE
 }
 
 ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const OrtMIGraphXProviderOptions& info) {
-
   const ProviderOptions options{
       {migraphx::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {migraphx::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.migraphx_fp16_enable)},

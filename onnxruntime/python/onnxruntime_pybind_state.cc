@@ -738,11 +738,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtMIGraphXProviderOptions params{
-            0,
-            0,
-            0,
-            0,
-            nullptr};
+          0,
+          0,
+          0,
+          0,
+          nullptr};
       for (auto option : it->second) {
         if (option.first == "device_id") {
           if (!option.second.empty()) {
@@ -782,17 +782,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW("[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be 'True' or 'False'. Default value is 'False'.\n");
           }
         } else {
-            ORT_THROW("Invalid MIGraphX EP option: ", option.first);
+          ORT_THROW("Invalid MIGraphX EP option: ", option.first);
         }
       }
       if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
         return migraphx_provider_factory->CreateProvider();
       }
-    }
-    else
-    {
+    } else {
       if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(cuda_device_id)) {
-          return migraphx_provider_factory->CreateProvider();
+        return migraphx_provider_factory->CreateProvider();
       }
     }
 #endif
