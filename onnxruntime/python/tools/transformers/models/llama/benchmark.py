@@ -628,7 +628,6 @@ def main():
     if args.benchmark_type in {"ort-convert-to-onnx", "ort-msft"}:
         onnx_model = onnx.load_model(args.ort_model_path, load_external_data=False)
         gqa_nodes = list(filter(lambda node: node.op_type == "GroupQueryAttention", onnx_model.graph.node))
-        print(len(gqa_nodes))
         
         use_buffer_share = use_fp16 and len(gqa_nodes) > 0 and args.device != "cpu"
         setattr(args, "past_present_share_buffer", use_buffer_share)  # noqa: B010
