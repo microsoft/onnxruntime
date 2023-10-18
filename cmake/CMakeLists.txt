@@ -78,6 +78,7 @@ option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 # use. If you hit any problem with that, please do not report it to GTest. Turn OFF the following build option instead.
 cmake_dependent_option(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS "Build with CUDA unit tests" OFF "onnxruntime_USE_CUDA;onnxruntime_BUILD_UNIT_TESTS;LINUX" OFF)
 
+option(onnxruntime_USE_CUDA_NHWC_OPS "Build CUDA with NHWC op support" OFF)
 option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support, generate device code line number information." OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
@@ -671,6 +672,9 @@ set(ORT_PROVIDER_FLAGS)
 set(ORT_PROVIDER_CMAKE_FLAGS)
 
 if (onnxruntime_USE_CUDA)
+  if (onnxruntime_USE_CUDA_NHWC_OPS)
+    add_compile_definitions(ENABLE_CUDA_NHWC_OPS)
+  endif()
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
 
@@ -1476,29 +1480,32 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-if (UNIX AND onnxruntime_USE_MPI)
-  if (EXISTS "${onnxruntime_MPI_HOME}")
-    set(MPI_HOME "${onnxruntime_MPI_HOME}")
-  elseif (EXISTS "/bert_ort/openmpi")
-    set(MPI_HOME "/bert_ort/openmpi")
+if (UNIX AND onnxruntime_USE_NCCL)
+  # MPI is INDEPENDENT of NCCL for now. You can build NCLL without MPI and launch multi-GPU with your own launcher.
+  if (onnxruntime_USE_MPI)
+    if (EXISTS "${onnxruntime_MPI_HOME}")
+      set(MPI_HOME "${onnxruntime_MPI_HOME}")
+    elseif (EXISTS "/bert_ort/openmpi")
+      set(MPI_HOME "/bert_ort/openmpi")
+    endif()
+    find_package(MPI)
+
+    if (MPI_CXX_FOUND)
+      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
+      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
+      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+    else ()
+      message(
+            FATAL_ERROR
+            "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
+            "or you can remove --use_mpi from build args to disable MPI."
+          )
+    endif()
   endif()
 
-  find_package(MPI)
-
-  if (MPI_CXX_FOUND)
-    message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
-    message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
-    mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-  else ()
-    message(
-          FATAL_ERROR
-          "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
-        )
-  endif()
-
-  # Find NCCL and MPI
-  if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
+  # Find NCCL
+  if (onnxruntime_USE_NCCL)
     if (onnxruntime_USE_CUDA)
       set(NCCL_LIBNAME "nccl")
     elseif (onnxruntime_USE_ROCM)
