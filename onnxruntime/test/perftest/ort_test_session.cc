@@ -148,14 +148,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     }
 
     Ort::Status status(api.UpdateCUDAProviderOptions(cuda_options,
-        option_keys.data(), option_values.data(), option_keys.size()));
+                                                     option_keys.data(), option_values.data(), option_keys.size()));
     if (!status.IsOK()) {
       OrtAllocator* allocator;
       char* options;
       Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
       Ort::ThrowOnError(api.GetCUDAProviderOptionsAsString(cuda_options, allocator, &options));
       ORT_THROW("[ERROR] [CUDA] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
-        "\nSupported options are:\n", options);
+                "\nSupported options are:\n", options);
     }
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 #else
@@ -194,14 +194,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     }
 
     Ort::Status status(api.UpdateTensorRTProviderOptions(tensorrt_options,
-        option_keys.data(), option_values.data(), option_keys.size()));
+                                                         option_keys.data(), option_values.data(), option_keys.size()));
     if (!status.IsOK()) {
       OrtAllocator* allocator;
       char* options;
       Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
       Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options, allocator, &options));
       ORT_THROW("[ERROR] [TensorRT] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
-        "\nSupported options are:\n", options);
+                "\nSupported options are:\n", options);
     }
 
     session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
