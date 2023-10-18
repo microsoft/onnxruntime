@@ -1019,10 +1019,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         throw std::runtime_error("Failed to create directory " + cache_path_);
       }
     }
-    {
-      auto lock = GetApiLock();
-      runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
-    }
   }
 
   if (engine_decryption_enable_) {
@@ -1087,6 +1083,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       profile_max_shapes_.clear();
       profile_opt_shapes_.clear();
     }
+  }
+
+  {
+    auto lock = GetApiLock();
+    runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
   }
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
@@ -2271,10 +2272,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           if (detailed_build_log_) {
             engine_build_start = std::chrono::steady_clock::now();
           }
-          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
+          std::unique_ptr<nvinfer1::IHostMemory> serialized_engine{trt_builder->buildSerializedNetwork(*trt_network, *trt_config)};
+          if (serialized_engine == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP failed to create engine from network for fused node: " + fused_node.Name());
+          }
+          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not build engine for fused node: " + fused_node.Name());
+                                   "TensorRT EP failed to deserialize engine for fused node: " + fused_node.Name());
           }
           if (detailed_build_log_) {
             auto engine_build_stop = std::chrono::steady_clock::now();
@@ -2287,12 +2293,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
             }
 
-            std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
-            size_t engine_size = serializedModel->size();
             if (engine_decryption_enable_) {
               // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
               if (engine_encryption_ != nullptr) {
-                if (!engine_encryption_(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
+                if (!engine_encryption_(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size())) {
                   return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                          "TensorRT EP call to engine encryption library failed");
                 }
@@ -2302,7 +2306,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               }
             } else {
               std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
-              file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
+              file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
               LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized engine " + engine_cache_path;
             }
           }
@@ -2387,7 +2391,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name,
             &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+            input_shape_ranges_[context->node_name], dds_output_allocator_map_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
@@ -2417,6 +2421,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
+      auto& dds_output_allocator_map = trt_state->dds_output_allocator_map;
       auto trt_builder = trt_state->builder->get();
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
@@ -2619,14 +2624,23 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
 
         // Build engine
+        std::unique_ptr<nvinfer1::IHostMemory> serialized_engine;
         {
           auto lock = GetApiLock();
           std::chrono::steady_clock::time_point engine_build_start;
           if (detailed_build_log_) {
             engine_build_start = std::chrono::steady_clock::now();
           }
+          serialized_engine = std::unique_ptr<nvinfer1::IHostMemory>(
+              trt_builder->buildSerializedNetwork(*trt_state->network->get(), *trt_config));
+          if (!serialized_engine) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create engine from network.");
+          }
           *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
-              trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
+              trt_state->runtime->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
+          if (!(*(trt_state->engine))) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to deserialize engine.");
+          }
           if (detailed_build_log_) {
             auto engine_build_stop = std::chrono::steady_clock::now();
             LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
@@ -2642,12 +2656,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
 
           // Serialize engine
-          std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
-          size_t engine_size = serializedModel->size();
           if (trt_state->engine_decryption_enable) {
             // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
             if (trt_state->engine_encryption != nullptr) {
-              if (!trt_state->engine_encryption(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
+              if (!trt_state->engine_encryption(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size())) {
                 return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                        "TensorRT EP could not call engine encryption function encrypt");
               }
@@ -2657,7 +2669,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             }
           } else {
             std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
-            file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
+            file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
           }
         }
@@ -2693,25 +2705,24 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
 
       // Get input and output binding names
-      int total_bindings = trt_engine->getNbBindings();
-      std::vector<void*> buffers(total_bindings);
-      std::vector<std::string> input_binding_names, output_binding_names;
+      int total_bindings = trt_engine->getNbIOTensors();
+      std::vector<char const*> input_binding_names, output_binding_names;
       for (int i = 0, end = total_bindings; i < end; ++i) {
-        if (trt_engine->bindingIsInput(i)) {
-          input_binding_names.push_back(trt_engine->getBindingName(i));
+        auto const& name = trt_engine->getIOTensorName(i);
+        auto const& mode = trt_engine->getTensorIOMode(name);
+        if (mode == nvinfer1::TensorIOMode::kINPUT) {
+          input_binding_names.push_back(name);
         } else {
-          output_binding_names.push_back(trt_engine->getBindingName(i));
+          output_binding_names.push_back(name);
         }
       }
 
-      // Set input shapes and assign input buffers
+      /*
+       * Set input shapes and bind input buffers
+       */
       std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
       for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
-        const std::string& input_name = input_binding_names[i];
-        int binding_index = trt_engine->getBindingIndex(input_name.c_str());
-        if (binding_index == -1) {
-          continue;
-        }
+        char const* input_name = input_binding_names[i];
 
         size_t input_index = 0;
         const auto iter = input_indexes.find(input_name);
@@ -2722,162 +2733,168 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         const auto tensor_shapes = tensor_info.GetShape();
 
-        // Set dynamic shapes
-        nvinfer1::Dims dimensions = trt_engine->getBindingDimensions(static_cast<int>(binding_index));
-        int nb_dims = dimensions.nbDims;
         if (input_names.count(input_name) == 1) {
-          if (trt_engine->isShapeBinding(binding_index)) {
-            trt_context->setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
-          } else {
-            for (int j = 0, end = nb_dims; j < end; ++j) {
-              dimensions.d[j] = static_cast<int32_t>(tensor_shapes[j]);
-            }
-            const bool status = trt_context->setBindingDimensions(binding_index, dimensions);
-            if (!status) {
+          if (trt_engine->isShapeInferenceIO(input_name)) {
+            // Bind input tensor which is shape tensor
+            if (!trt_context->setTensorAddress(input_name, &tensor_shape_values[input_name][0])) {
+              std::string error_input_name = input_name;
               ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                                 "TensorRT EP cannot set the dynamic dimensions of a binding"));
+                                                 "TensorRT EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" + error_input_name + "'"));
             }
-          }
-        }
-
-        const auto input_type = tensor_info.GetElementType();
-        switch (input_type) {
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
-            auto input_tensor_ptr = input_tensor.GetTensorData<float>();
-            if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
-              buffers[binding_index] = scratch_buffers.back().get();
-            } else {
-              buffers[binding_index] = const_cast<float*>(input_tensor_ptr);
+          } else {
+            // Set shape for input tensor which is execution tensor
+            nvinfer1::Dims dims = trt_context->getTensorShape(input_name);
+            int nb_dims = dims.nbDims;
+            for (int j = 0, end = nb_dims; j < end; ++j) {
+              dims.d[j] = static_cast<int32_t>(tensor_shapes[j]);
             }
-            break;
-          }
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
-            auto input_tensor_ptr = input_tensor.GetTensorData<uint16_t>();
-            if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint16_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
-            } else {
-              buffers[binding_index] = const_cast<uint16_t*>(input_tensor_ptr);
+            if (!trt_context->setInputShape(input_name, dims)) {
+              std::string error_input_name = input_name;
+              ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                                 "TensorRT EP failed to call nvinfer1::IExecutionContext::setInputShape() for input '" + error_input_name + "'"));
             }
-            break;
-          }
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
-            auto input_tensor_ptr = input_tensor.GetTensorData<bool>();
-            if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(bool)));
-              buffers[binding_index] = scratch_buffers.back().get();
-            } else {
-              buffers[binding_index] = const_cast<bool*>(input_tensor_ptr);
-            }
-            break;
-          }
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
-            auto input_tensor_ptr = input_tensor.GetTensorData<int8_t>();
-            if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int8_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
-            } else {
-              buffers[binding_index] = const_cast<int8_t*>(input_tensor_ptr);
-            }
-            break;
-          }
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
-            auto input_tensor_ptr = input_tensor.GetTensorData<uint8_t>();
-            if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint8_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
-            } else {
-              buffers[binding_index] = const_cast<uint8_t*>(input_tensor_ptr);
-            }
-            break;
-          }
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-            auto input_tensor_ptr = input_tensor.GetTensorData<int32_t>();
-            if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
-            } else {
-              buffers[binding_index] = const_cast<int32_t*>(input_tensor_ptr);
-            }
-            break;
-          }
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-            // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
-            auto input_tensor_ptr = input_tensor.GetTensorData<int64_t>();
-            if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
-            } else {
-              SafeInt<int> input_dim_size = 1;
-              for (int j = 0, end = nb_dims; j < end; ++j) {
-                if (tensor_shapes[j] == 0) {
-                  input_dim_size = 1;
-                  break;
+            // Bind input buffers
+            const auto input_type = tensor_info.GetElementType();
+            void* data = nullptr;
+            switch (input_type) {
+              case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
+                auto input_tensor_ptr = input_tensor.GetTensorData<float>();
+                if (input_tensor_ptr == nullptr) {
+                  scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
+                  data = scratch_buffers.back().get();
                 } else {
-                  input_dim_size *= tensor_shapes[j];
+                  data = const_cast<float*>(input_tensor_ptr);
                 }
+                break;
               }
-              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, input_dim_size * sizeof(int32_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
-              cuda::Impl_Cast<int64_t, int32_t>(stream, input_tensor_ptr, reinterpret_cast<int32_t*>(buffers[binding_index]), input_dim_size);
-            }
-            break;
-          }
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
-            // Cast DOUBLE input to FLOAT because TensorRT doesn't fully support INT64
-            auto input_tensor_ptr = input_tensor.GetTensorData<double>();
-            if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
-              buffers[binding_index] = scratch_buffers.back().get();
-            } else {
-              SafeInt<int> input_dim_size = 1;
-              for (int j = 0, end = nb_dims; j < end; ++j) {
-                if (tensor_shapes[j] == 0) {
-                  input_dim_size = 1;
-                  break;
+              case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
+                auto input_tensor_ptr = input_tensor.GetTensorData<uint16_t>();
+                if (input_tensor_ptr == nullptr) {
+                  scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint16_t)));
+                  data = scratch_buffers.back().get();
                 } else {
-                  input_dim_size *= tensor_shapes[j];
+                  data = const_cast<uint16_t*>(input_tensor_ptr);
                 }
+                break;
               }
-              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, input_dim_size * sizeof(float)));
-              buffers[binding_index] = scratch_buffers.back().get();
-              cuda::Impl_Cast<double, float>(stream, input_tensor_ptr, reinterpret_cast<float*>(buffers[binding_index]), input_dim_size);
+              case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
+                auto input_tensor_ptr = input_tensor.GetTensorData<bool>();
+                if (input_tensor_ptr == nullptr) {
+                  scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(bool)));
+                  data = scratch_buffers.back().get();
+                } else {
+                  data = const_cast<bool*>(input_tensor_ptr);
+                }
+                break;
+              }
+              case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
+                auto input_tensor_ptr = input_tensor.GetTensorData<int8_t>();
+                if (input_tensor_ptr == nullptr) {
+                  scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int8_t)));
+                  data = scratch_buffers.back().get();
+                } else {
+                  data = const_cast<int8_t*>(input_tensor_ptr);
+                }
+                break;
+              }
+              case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
+                auto input_tensor_ptr = input_tensor.GetTensorData<uint8_t>();
+                if (input_tensor_ptr == nullptr) {
+                  scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint8_t)));
+                  data = scratch_buffers.back().get();
+                } else {
+                  data = const_cast<uint8_t*>(input_tensor_ptr);
+                }
+                break;
+              }
+              case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+                auto input_tensor_ptr = input_tensor.GetTensorData<int32_t>();
+                if (input_tensor_ptr == nullptr) {
+                  scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
+                  data = scratch_buffers.back().get();
+                } else {
+                  data = const_cast<int32_t*>(input_tensor_ptr);
+                }
+                break;
+              }
+              case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+                // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
+                auto input_tensor_ptr = input_tensor.GetTensorData<int64_t>();
+                if (input_tensor_ptr == nullptr) {
+                  scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
+                  data = scratch_buffers.back().get();
+                } else {
+                  SafeInt<int> input_dim_size = 1;
+                  for (int j = 0, end = nb_dims; j < end; ++j) {
+                    if (tensor_shapes[j] == 0) {
+                      input_dim_size = 1;
+                      break;
+                    } else {
+                      input_dim_size *= tensor_shapes[j];
+                    }
+                  }
+                  scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, input_dim_size * sizeof(int32_t)));
+                  data = scratch_buffers.back().get();
+                  cuda::Impl_Cast<int64_t, int32_t>(stream, input_tensor_ptr, reinterpret_cast<int32_t*>(data), input_dim_size);
+                }
+                break;
+              }
+              case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
+                // Cast DOUBLE input to FLOAT because TensorRT doesn't fully support INT64
+                auto input_tensor_ptr = input_tensor.GetTensorData<double>();
+                if (input_tensor_ptr == nullptr) {
+                  scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
+                  data = scratch_buffers.back().get();
+                } else {
+                  SafeInt<int> input_dim_size = 1;
+                  for (int j = 0, end = nb_dims; j < end; ++j) {
+                    if (tensor_shapes[j] == 0) {
+                      input_dim_size = 1;
+                      break;
+                    } else {
+                      input_dim_size *= tensor_shapes[j];
+                    }
+                  }
+                  scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, input_dim_size * sizeof(float)));
+                  data = scratch_buffers.back().get();
+                  cuda::Impl_Cast<double, float>(stream, input_tensor_ptr, reinterpret_cast<float*>(data), input_dim_size);
+                }
+                break;
+              }
+              default: {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                       "TensorRT EP input onnx tensor data type: " + std::to_string(input_type) + " not supported.");
+              }
             }
-            break;
-          }
-          default: {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP input onnx tensor data type: " + std::to_string(input_type) + " not supported.");
+            trt_context->setTensorAddress(input_name, data);
           }
         }
       }
 
-      // Set output shapes and assign output buffers
+      /*
+       * Set output shapes and bind output buffers
+       */
       std::vector<int> output_dim_sizes(num_outputs, 1);
       using OutputOrtValue = Ort::UnownedValue;
       std::vector<OutputOrtValue> output_tensors;
       output_tensors.reserve(num_outputs);
+
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
-        // Set dynamic shapes
-        const std::string& output_name = output_binding_names[i];
-        int binding_index = trt_engine->getBindingIndex(output_name.c_str());
-        if (binding_index == -1) {
-          continue;
-        }
+        char const* output_name = output_binding_names[i];
 
         size_t output_index = 0;
         const auto& index_iter = output_indexes.find(output_name);
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        nvinfer1::Dims dimensions = trt_context->getBindingDimensions(static_cast<int>(binding_index));
-        int nb_dims = dimensions.nbDims;
+
+        // Get output shape
+        nvinfer1::Dims dims = trt_context->getTensorShape(output_name);
+        int nb_dims = dims.nbDims;
         std::vector<int64_t> output_shapes(nb_dims);
         for (int j = 0, end = nb_dims; j < end; ++j) {
-          output_shapes[j] = dimensions.d[j];
+          output_shapes[j] = dims.d[j];
         }
-        output_tensors.push_back(ctx.GetOutput(output_index, output_shapes));
 
         size_t output_type = 0;
         const auto type_iter = output_types.find(output_name);
@@ -2885,15 +2902,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           output_type = type_iter->second;
         }
 
-        auto& output_tensor = output_tensors.back();
+        output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
+        auto& output_tensor = output_tensors[i];
         switch (output_type) {
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<float>();
             if (output_tensor_ptr == nullptr) {
               scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
-              buffers[binding_index] = scratch_buffers.back().get();
+              buffers[output_name] = scratch_buffers.back().get();
             } else {
-              buffers[binding_index] = output_tensor_ptr;
+              buffers[output_name] = output_tensor_ptr;
             }
             break;
           }
@@ -2901,9 +2919,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint16_t>();
             if (output_tensor_ptr == nullptr) {
               scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint16_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
+              buffers[output_name] = scratch_buffers.back().get();
             } else {
-              buffers[binding_index] = output_tensor_ptr;
+              buffers[output_name] = output_tensor_ptr;
             }
             break;
           }
@@ -2911,9 +2929,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<bool>();
             if (output_tensor_ptr == nullptr) {
               scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(bool)));
-              buffers[binding_index] = scratch_buffers.back().get();
+              buffers[output_name] = scratch_buffers.back().get();
             } else {
-              buffers[binding_index] = output_tensor_ptr;
+              buffers[output_name] = output_tensor_ptr;
             }
             break;
           }
@@ -2921,9 +2939,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<int8_t>();
             if (output_tensor_ptr == nullptr) {
               scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int8_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
+              buffers[output_name] = scratch_buffers.back().get();
             } else {
-              buffers[binding_index] = output_tensor_ptr;
+              buffers[output_name] = output_tensor_ptr;
             }
             break;
           }
@@ -2931,9 +2949,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint8_t>();
             if (output_tensor_ptr == nullptr) {
               scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint8_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
+              buffers[output_name] = scratch_buffers.back().get();
             } else {
-              buffers[binding_index] = output_tensor_ptr;
+              buffers[output_name] = output_tensor_ptr;
             }
             break;
           }
@@ -2941,9 +2959,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<int32_t>();
             if (output_tensor_ptr == nullptr) {
               scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
+              buffers[output_name] = scratch_buffers.back().get();
             } else {
-              buffers[binding_index] = output_tensor_ptr;
+              buffers[output_name] = output_tensor_ptr;
             }
             break;
           }
@@ -2952,20 +2970,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
             if (output_tensor_ptr == nullptr) {
               scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
+              buffers[output_name] = scratch_buffers.back().get();
               output_dim_sizes[i] = 1;
             } else {
               SafeInt<int> output_dim_size(output_dim_sizes[i]);
               for (int j = 0, end = nb_dims; j < end; ++j) {
-                if (dimensions.d[j] == 0) {
+                if (dims.d[j] == 0) {
                   output_dim_size = 1;
                   break;
                 } else {
-                  output_dim_size *= dimensions.d[j];
+                  output_dim_size *= dims.d[j];
                 }
               }
               scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, output_dim_size * sizeof(int32_t)));
-              buffers[binding_index] = scratch_buffers.back().get();
+              buffers[output_name] = scratch_buffers.back().get();
               output_dim_sizes[i] = output_dim_size;
             }
             break;
@@ -2975,19 +2993,19 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
             if (output_tensor_ptr == nullptr) {
               scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
-              buffers[binding_index] = scratch_buffers.back().get();
+              buffers[output_name] = scratch_buffers.back().get();
             } else {
               SafeInt<int> output_dim_size(output_dim_sizes[i]);
               for (int j = 0, end = nb_dims; j < end; ++j) {
-                if (dimensions.d[j] == 0) {
+                if (dims.d[j] == 0) {
                   output_dim_size = 1;
                   break;
                 } else {
-                  output_dim_size *= dimensions.d[j];
+                  output_dim_size *= dims.d[j];
                 }
               }
               scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, output_dim_size * sizeof(float)));
-              buffers[binding_index] = scratch_buffers.back().get();
+              buffers[output_name] = scratch_buffers.back().get();
               output_dim_sizes[i] = output_dim_size;
             }
             break;
@@ -2997,6 +3015,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                                    "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
           }
         }
+        trt_context->setTensorAddress(output_name, buffers[output_name]);
       }
 
       // Set execution context memory
@@ -3018,29 +3037,30 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
 
       // Run TRT inference
-      if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
+      if (!trt_context->enqueueV3(stream)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
 
-      // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
+      // Cast TRT INT32 output to ORT INT64 output and TRT double output to float output
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
-        const std::string& output_name = output_binding_names[i];
-        size_t binding_index = trt_engine->getBindingIndex(output_name.c_str());
+        char const* output_name = output_binding_names[i];
+
         size_t output_type = 0;
         const auto& iter = output_types.find(output_name);
         if (iter != output_types.end()) {
           output_type = iter->second;
         }
+
         auto& output_tensor = output_tensors[i];
         if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
           if (output_tensor_ptr != nullptr) {
-            cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
+            cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
           }
         } else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
           auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
           if (output_tensor_ptr != nullptr) {
-            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
+            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
           }
         }
       }
