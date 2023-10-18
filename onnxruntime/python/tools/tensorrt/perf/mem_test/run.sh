@@ -120,3 +120,26 @@ then
 else
     echo $(date +"%Y-%m-%d %H:%M:%S") "[AddressSanitizer] No memory Leak(s) or other memory error(s) detected." > result/asan.log
 fi
+
+# Init multi-thread inference test on ONNX model which graph need to be partitioned
+ONNX_MODEL_TAR_URL="https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-10.tar.gz"
+MODEL_TAR_NAME="FasterRCNN-10.tar.gz"
+ONNX_MODEL="FasterRCNN-10.onnx"
+wget ${ONNX_MODEL_TAR_URL} -O FasterRCNN-10.tar.gz
+tar -xzf ${MODEL_TAR_NAME} --strip-components=1
+mv faster_rcnn_R_50_FPN_1x.onnx ${ONNX_MODEL}
+rm ${MODEL_TAR_NAME}
+${ORT_SOURCE}/build/Linux/Release/onnxruntime_perf_test -e tensorrt -r 1 ${ONNX_MODEL} > ${ONNX_MODEL}.log
+mv ${ONNX_MODEL}.log result
+
+MODEL_VOLUME="/data/ep-perf-models/partner-models/"
+ONNX_MODEL="zcode_decoder"
+MODEL_NAME="decoder.onnx"
+${ORT_SOURCE}/build/Linux/Release/onnxruntime_perf_test -e tensorrt -r 1 ${MODEL_VOLUME}/${ONNX_MODEL}/${MODEL_NAME} > ${MODEL_NAME}.log
+mv ${MODEL_NAME}.log result
+
+MODEL_VOLUME="/data/ep-perf-models/onnx-zoo-models/"
+ONNX_MODEL="MaskRCNN-10"
+MODEL_NAME="mask_rcnn_R_50_FPN_1x.onnx"
+${ORT_SOURCE}/build/Linux/Release/onnxruntime_perf_test -e tensorrt -r 1 ${MODEL_VOLUME}/${ONNX_MODEL}/${MODEL_NAME} > ${MODEL_NAME}.log
+mv ${MODEL_NAME}.log result
