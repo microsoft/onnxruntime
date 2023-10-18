@@ -49,7 +49,6 @@ std::vector<std::optional<OrtValue>> CreateOrtValueArgs(OpKernelContext* context
 
 void PythonOpBase::Init(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("func_name", &name_));
-  ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
 
   is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
   ORT_THROW_IF_ERROR(info.GetAttr("input_convention", &input_convention_));
@@ -117,6 +116,9 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
   // Output tensors.
   ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
 
+  all_output_to_tensor_input_reuse_map_ =
+      info.GetAttrsOrDefault("tensor_reuse_map", std::vector<int64_t>((info.node().OutputDefs().size()), -1));
+
   CreateConstArgs();
   CreateArgPositions();
 
@@ -141,20 +143,24 @@ void PythonOpBase::RunForward(OpKernelContext* context,
   std::vector<std::optional<OrtValue>> args = CreateOrtValueArgs(context, 0, context->InputCount());
   // Invoke Python calls.
   TorchProxy::GetInstance().Forward(
+      name_,
       OrtTorchFunctionPool::GetInstance().GetForwardCore(name_),
       input_requires_grads_,
       args,
       arg_positions_,
       const_arg_set_.GetDataPtrs(),
       const_arg_set_.GetPositions(),
-      diff_ctx,
-      returned_ortvalues,
       is_training_mode_,
-      inplace_ != 0,
-      kernel_invoke_id_);
+      all_output_to_tensor_input_reuse_map_,
+      kernel_invoke_id_,
+      diff_ctx,
+      returned_ortvalues);
 
-  ORT_ENFORCE(1 + returned_ortvalues.size() == static_cast<size_t>(context->OutputCount()),
-              "Output count mismatch for PythonOp run");
+  const size_t returned_output_count = 1 + returned_ortvalues.size();
+  const size_t kernel_output_count = static_cast<size_t>(context->OutputCount());
+  ORT_ENFORCE(returned_output_count == kernel_output_count, "Output count mismatch for PythonOp run, ",
+              "returned_output_count: ", returned_output_count, ", expected kernel_output_count: ",
+              kernel_output_count);
 }
 
 void PythonOpBase::SetOutputs(OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) const {
@@ -288,20 +294,57 @@ void PythonOpBase::SetContextOutput(OpKernelContext* context, void* diff_ctx) co
 
 void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
+  ORT_ENFORCE(returned_ortvalues.size() == all_output_to_tensor_input_reuse_map_.size() - 1,
+              "PythonOp output count mismatch inplace map count.",
+              returned_ortvalues.size(), " != ", all_output_to_tensor_input_reuse_map_.size() - 1);
   for (size_t i = 0; i < returned_ortvalues.size(); ++i) {
+    size_t output_index = i + 1;
+    if (all_output_to_tensor_input_reuse_map_[output_index] != -1) {
+      const void* tensor_address = returned_ortvalues[i].Get<Tensor>().DataRaw();
+      const void* input_tensor_address = context->Input<Tensor>(all_output_to_tensor_input_reuse_map_[output_index])->DataRaw();
+      ORT_ENFORCE(tensor_address == input_tensor_address,
+                  "PythonOp inplace tensor address mismatch, output index: ", output_index, ", input index: ",
+                  all_output_to_tensor_input_reuse_map_[output_index]);
+    }
+
+    // Notes: if the buffer is created, managed by PyTorch, converted to OrtValue through dlpack here,
+    // but also be used outside ORT later, we don't need to be concerned about
+    // "when the buffer of returned_ortvalues[i] is erased by ORT during releasing that OrtValue causing
+    //  the PyTorch code still using that buffer will be failed".
+    // In this case, the created OrtValue's destructor will not release the buffer,
+    // instead it will release a tensor pointing to that buffer, where PyTorch will decide whether to release
+    // the buffer or not, if the tensor storage is not used by any other tensors
+    // (https://github.com/PyTorch/PyTorch/blob/ac603bc2f8ffac8fc061cfb99e77537464da4b18/aten/src/ATen/DLConvertor.cpp#L257C25-L257C29).
     ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(static_cast<int>(i + 1), returned_ortvalues[i]));
   }
 }
 
 void PythonOpGradBase::Init(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("func_name", &name_));
-  ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
   ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
   ORT_THROW_IF_ERROR(info.GetAttr("output_convention", &output_convention_));
   ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
   output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
   ORT_ENFORCE(output_tensor_types_.size() == output_tensor_requires_grads_.size(),
               "backward tensor output count mismatch");
+
+  std::vector<int64_t> tensor_output_to_tensor_input_alias_map =
+      info.GetAttrsOrDefault("tensor_reuse_map",
+                             std::vector<int64_t>((info.node().OutputDefs().size()), -1));
+  all_output_to_tensor_input_reuse_map_.clear();
+  all_output_to_tensor_input_reuse_map_.reserve(output_convention_.size());
+  size_t tensor_output_index = 0;
+  for (size_t i = 0; i < output_convention_.size(); ++i) {
+    if (output_convention_[i] == 'd') {
+      all_output_to_tensor_input_reuse_map_.push_back(
+          tensor_output_to_tensor_input_alias_map[tensor_output_index] == -1
+              ? -1
+              : tensor_output_to_tensor_input_alias_map[tensor_output_index]);
+      ++tensor_output_index;
+    } else {
+      all_output_to_tensor_input_reuse_map_.push_back(-1);
+    }
+  }
 
   SetPositions();
 
@@ -311,7 +354,7 @@ void PythonOpGradBase::Init(const OpKernelInfo& info) {
 void PythonOpGradBase::RunBackward(OpKernelContext* context,
                                    std::vector<OrtValue>& returned_ortvalues) const {
   std::vector<std::optional<OrtValue>> args = CreateOrtValueArgs(context, 1, context->InputCount() - 1);
-  // This is called "const" because that's how Pytorch calls all non-tensor inputs.
+  // This is called "const" because that's how PyTorch calls all non-tensor inputs.
   const Tensor* context_id_tensor = context->Input<Tensor>(0);
   ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");
   const int64_t* context_index_ptr = context_id_tensor->template Data<int64_t>();
@@ -320,15 +363,15 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context,
 
   std::string err;
   TorchProxy::GetInstance().Backward(
-      OrtTorchFunctionPool::GetInstance()
-          .GetBackwardCore(name_),
+      name_,
+      OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_),
       args,
       arg_positions_,
       const_args,
       const_arg_positions_,
-      returned_ortvalues,
-      inplace_ != 0,
-      kernel_invoke_id_);
+      all_output_to_tensor_input_reuse_map_,
+      kernel_invoke_id_,
+      returned_ortvalues);
 
   OrtTorchFunctionPool::GetInstance().UnregisterContext(*context_index_ptr);
 }
@@ -340,6 +383,29 @@ void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue
   for (size_t i = 0; i < returned_ortvalues.size(); ++i) {
     if (output_convention_[i] == 'd') {
       if (output_tensor_requires_grads_[tensor_output_index]) {
+        if (all_output_to_tensor_input_reuse_map_[i] != -1) {
+          const Tensor* input_tensor = context->Input<Tensor>(all_output_to_tensor_input_reuse_map_[i]);
+          if (input_tensor) {
+            ORT_ENFORCE(input_tensor, "PythonOpGrad input tensor should not be null. input index: ", all_output_to_tensor_input_reuse_map_[i]);
+
+            // Be noted: PythonOpGrad's input won't be non-tensor.
+            ORT_ENFORCE(all_output_to_tensor_input_reuse_map_[i] < context->InputCount(), "PythonOpGrad inplace tensor index out of bound.");
+            const void* tensor_address = returned_ortvalues[i].Get<Tensor>().DataRaw();
+
+            const void* input_tensor_address = input_tensor->DataRaw();
+            ORT_ENFORCE(tensor_address == input_tensor_address,
+                        "PythonOpGrad inplace tensor address mismatch, output index: ", i, ", input index: ", all_output_to_tensor_input_reuse_map_[i]);
+          }
+        }
+
+        // Notes: if the buffer is created, managed by PyTorch, converted to OrtValue through dlpack here,
+        // but also be used outside ORT later, we don't need to be concerned about
+        // "when the buffer of returned_ortvalues[i] is erased by ORT during releasing that OrtValue causing
+        //  the PyTorch code still using that buffer will be failed".
+        // In this case, the created OrtValue's destructor will not release the buffer,
+        // instead it will release a tensor pointing to that buffer, where PyTorch will decide whether to release
+        // the buffer or not, if the tensor storage is not used by any other tensors
+        // (https://github.com/PyTorch/PyTorch/blob/ac603bc2f8ffac8fc061cfb99e77537464da4b18/aten/src/ATen/DLConvertor.cpp#L257C25-L257C29).
         ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(tensor_output_index, returned_ortvalues.at(i)));
       }
       ++tensor_output_index;
@@ -353,11 +419,11 @@ void PythonOpGradBase::SetPositions() {
   ORT_ENFORCE(const_arg_positions_.size() == 0);
   ORT_ENFORCE(arg_positions_.size() == 0);
 
-  // Pytorch's autograd context is the first (indexed by 0) input of the called Python function.
+  // PyTorch's autograd context is the first (indexed by 0) input of the called Python function.
   // Note that here we will call autograd.Function.backward(ctx, tensor0, tensor1, ...).
   const_arg_positions_ = {0};
 
-  // The rest inputs are just Pytorch tensors.
+  // The rest inputs are just PyTorch tensors.
   arg_positions_.resize(input_tensor_types_.size());
   for (size_t i = 0; i < arg_positions_.size(); ++i) {
     // i-th tensor is the (i+1)-th input of autograd.Function.backward.

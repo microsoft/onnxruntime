@@ -29,14 +29,6 @@ def no_increase_global_step():
     finally:
         ORT_NO_INCREASE_GLOBAL_STEP[0] = False
 
-    @staticmethod
-    def infer_shape(
-        node: onnx.NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
-        return tensor_input_shapes, tensor_input_dtypes
-
 
 class _IncrementStep(torch.autograd.Function):
     """This class is used to manage the global execution step, e.g.
@@ -55,8 +47,9 @@ class _IncrementStep(torch.autograd.Function):
         ctx.current_step = run_ctx.global_states.execution_step
         ctx.run_ctx = run_ctx
 
-        if ctx.current_step >= 0:
-            print(f"{'='*6} Completed forward pass for STEP {ctx.current_step} {'='*6}")
+        # Uncomment the following line for debugging purposes.
+        # if ctx.current_step >= 0:
+        #     print(f"{'='*6} Completed forward pass for STEP {ctx.current_step} {'='*6}")
 
         if ORT_NO_INCREASE_GLOBAL_STEP[0] is False:
             ctx.run_ctx.global_states.execution_step += 1
@@ -74,6 +67,26 @@ class _IncrementStep(torch.autograd.Function):
         tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
     ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
+
+    @staticmethod
+    def alias_input(node_proto_str: str):
+        node = onnx.NodeProto()
+        node.ParseFromString(node_proto_str)
+        non_tensor_fw_input_count = 1
+        fw_output_count = len(node.output) - 1  # exclude the first output appended in ONNX
+        fw_alias_map = [-1] * fw_output_count
+        bw_alias_map = [-1] * (non_tensor_fw_input_count + len(node.input))
+
+        for i in range(fw_output_count):
+            fw_alias_map[i] = i + non_tensor_fw_input_count
+
+        tensor_input_index = 0
+        for i in range(len(bw_alias_map)):
+            if i < non_tensor_fw_input_count:
+                continue
+            bw_alias_map[i] = tensor_input_index
+            tensor_input_index += 1
+        return fw_alias_map, bw_alias_map
 
 
 class SubscriberManager:
@@ -191,7 +204,7 @@ class SubscriberManager:
                 next_module_index: list of int, carrying a global unique module index that can be used next.
             """
             module_index = next_module_index[0]
-            module.id = module_index  # STAGE3WARN: needed by DeepSpeed
+            module.id = module_index  # STAGE3WARN#1: needed by DeepSpeed
             self._run_ctx.global_states.module_index_to_depth[module_index] = depth
             self._run_ctx.global_states.module_to_module_index[module] = module_index
 
@@ -217,7 +230,7 @@ class SubscriberManager:
             next_module_index: list of int, carrying a global unique module index that can be used next.
         """
         module_index = next_module_index[0]
-        module.id = module_index  # STAGE3WARN: needed by DeepSpeed
+        module.id = module_index  # STAGE3WARN#2: needed by DeepSpeed
         self._run_ctx.global_states.module_index_to_depth[module_index] = depth
         self._run_ctx.global_states.module_to_module_index[module] = module_index
 

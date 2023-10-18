@@ -88,6 +88,21 @@ const setExecutionProviders =
             break;
           case 'webgpu':
             epName = 'JS';
+            if (typeof ep !== 'string') {
+              const webgpuOptions = ep as InferenceSession.WebGpuExecutionProviderOption;
+              if (webgpuOptions?.preferredLayout) {
+                if (webgpuOptions.preferredLayout !== 'NCHW' && webgpuOptions.preferredLayout !== 'NHWC') {
+                  throw new Error(`preferredLayout must be either 'NCHW' or 'NHWC': ${webgpuOptions.preferredLayout}`);
+                }
+                const keyDataOffset = allocWasmString('preferredLayout', allocs);
+                const valueDataOffset = allocWasmString(webgpuOptions.preferredLayout, allocs);
+                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
+                    0) {
+                  checkLastError(
+                      `Can't set a session config entry: 'preferredLayout' - ${webgpuOptions.preferredLayout}.`);
+                }
+              }
+            }
             break;
           case 'wasm':
           case 'cpu':

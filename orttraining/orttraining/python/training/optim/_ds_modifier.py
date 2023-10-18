@@ -55,7 +55,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
             if not get_accelerator().device_name().startswith("cuda"):
                 warnings.warn(
                     "Skip modifying optimizer as device is not supported, "
-                    "device name: {}".format(get_accelerator().device_name()),
+                    f"device name: {get_accelerator().device_name()}",
                     UserWarning,
                 )
                 return False

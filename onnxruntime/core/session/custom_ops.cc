@@ -27,11 +27,241 @@ static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
 static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+static constexpr uint32_t min_ort_version_with_compute_v2_support = 17;
+static constexpr uint32_t min_ort_version_with_shape_inference = 17;
+#endif
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv9()
 #else
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv4()
 #endif
+
+#if defined(ORT_MINIMAL_BUILD)
+struct OrtShapeInferContext {
+  size_t GetInputCount() const { return 0; }
+  OrtTensorTypeAndShapeInfo* GetInputTypeShape(size_t) const { return {}; }
+  onnxruntime::Status SetOutputTypeShape(size_t, const OrtTensorTypeAndShapeInfo*) const {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "OrtShapeInferContext::SetOutputTypeShape not implemented for minimal build");
+  }
+  const ONNX_NAMESPACE::AttributeProto* GetAttr(const char*) const { return {}; }
+};
+#else
+struct OrtShapeInferContext {
+  OrtShapeInferContext(ONNX_NAMESPACE::InferenceContext& ctx) : ctx_(ctx) {
+    auto num_inputs = ctx_.getNumInputs();
+    for (size_t ith_input = 0; ith_input < num_inputs; ++ith_input) {
+      const auto* input_type = ctx_.getInputType(ith_input);
+      const auto& value_case = input_type->value_case();
+      ORT_ENFORCE(value_case == ONNX_NAMESPACE::TypeProto::kTensorType, "shape inference not yet supported for non-tensor types");
+      const auto& shape_proto = input_type->tensor_type().shape();
+      const auto& type_proto = input_type->tensor_type();
+      auto elem_type = ::onnxruntime::utils::CApiElementTypeFromProtoType(type_proto.elem_type());
+      auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
+      auto symbolic_dims = GetSymbolicDims(shape_proto);
+      input_type_shapes_.emplace_back(OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims).release());
+    }
+  }
+
+  ~OrtShapeInferContext() = default;
+  size_t GetInputCount() const { return input_type_shapes_.size(); }
+
+  OrtTensorTypeAndShapeInfo* GetInputTypeShape(size_t idx) const {
+    return input_type_shapes_.at(idx).get();
+  }
+
+  onnxruntime::Status SetOutputTypeShape(size_t index, const OrtTensorTypeAndShapeInfo* info) const {
+    ORT_RETURN_IF_NOT(info, "Invalid shape info");
+    ONNX_NAMESPACE::TensorShapeProto shape_proto;
+    const auto& symbolic_dims = info->dim_params;
+    const auto& integer_dims = info->shape.GetDims();
+    ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
+    for (size_t ith = 0; ith < symbolic_dims.size(); ith++) {
+      auto* dim_proto = shape_proto.add_dim();
+      if (symbolic_dims[ith].size() > 0) {
+        dim_proto->set_dim_param(symbolic_dims[ith]);
+      } else {
+        dim_proto->set_dim_value(integer_dims[ith]);
+      }
+    }
+    ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
+    return onnxruntime::Status::OK();
+  }
+
+  const ONNX_NAMESPACE::AttributeProto* GetAttr(const char* attr_name) const {
+    return ctx_.getAttribute(attr_name);
+  }
+
+ private:
+  static std::vector<std::string> GetSymbolicDims(const ONNX_NAMESPACE::TensorShapeProto& shape_proto) {
+    std::vector<std::string> symblic_dims;
+    for (int ith = 0; ith < shape_proto.dim_size(); ith++) {
+      const auto& dim = shape_proto.dim(ith);
+      if (::onnxruntime::utils::HasDimValue(dim)) {
+        symblic_dims.emplace_back();
+      } else {
+        symblic_dims.emplace_back(dim.dim_param());
+      }
+    }
+    return symblic_dims;
+  }
+  ONNX_NAMESPACE::InferenceContext& ctx_;
+  using TypeShapePtr = std::unique_ptr<OrtTensorTypeAndShapeInfo>;
+  onnxruntime::InlinedVector<TypeShapePtr> input_type_shapes_;
+};
+#endif
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputCount, _In_ const OrtShapeInferContext* context, _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  *out = context->GetInputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info) {
+  API_IMPL_BEGIN
+  *info = context->GetInputTypeShape(index);
+  if (*info) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Failed to fetch type shape info for the index.");
+  }
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetAttribute, _In_ const OrtShapeInferContext* context, _In_ const char* attr_name, _Outptr_ const OrtOpAttr** attr) {
+  API_IMPL_BEGIN
+  *attr = reinterpret_cast<const OrtOpAttr*>(context->GetAttr(attr_name));
+  if (*attr) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute does not exist.");
+  }
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
+                    _In_ const OrtOpAttr* op_attr,
+                    _In_ OrtOpAttrType type,
+                    _Inout_ void* data,
+                    _In_ size_t len,
+                    _Out_ size_t* out) {
+  API_IMPL_BEGIN
+
+  if (!op_attr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Invalid attribute.");
+  }
+
+  auto attr = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(op_attr);
+  OrtStatusPtr ret = nullptr;
+  *out = 0;
+
+  if (type == OrtOpAttrType::ORT_OP_ATTR_FLOAT) {
+    if (len < sizeof(float)) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold a float.");
+    } else {
+      if (attr->has_f()) {
+        auto output_f = reinterpret_cast<float*>(data);
+        *output_f = attr->f();
+      } else {
+        ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute has no float value.");
+      }
+    }
+    *out = sizeof(float);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_FLOATS) {
+    const auto& floats = attr->floats();
+    auto num_floats = floats.size();
+
+    if (len < sizeof(float) * num_floats) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the array of floats.");
+    } else {
+      auto output_f = reinterpret_cast<float*>(data);
+      for (auto f : floats) {
+        *output_f = f;
+        output_f++;
+      }
+    }
+    *out = num_floats * sizeof(float);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_INT) {
+    if (len < sizeof(int)) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold an int64.");
+    } else {
+      if (attr->has_i()) {
+        auto output_i = reinterpret_cast<int64_t*>(data);
+        *output_i = attr->i();
+      } else {
+        ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute has no int64 value.");
+      }
+    }
+    *out = sizeof(int64_t);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_INTS) {
+    const auto& ints = attr->ints();
+    auto num_ints = ints.size();
+
+    if (len < sizeof(int64_t) * num_ints) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the array of int64.");
+    } else {
+      auto output_i = reinterpret_cast<int64_t*>(data);
+      for (auto i : ints) {
+        *output_i = i;
+        output_i++;
+      }
+    }
+    *out = num_ints * sizeof(int64_t);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_STRING) {
+    const auto& s = attr->s();
+    if (len < s.size() + 1) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the string.");
+    } else {
+      char* output_c = reinterpret_cast<char*>(data);
+      for (char c : s) {
+        *output_c++ = c;
+      }
+      *output_c = '\0';
+    }
+    *out = s.size() + 1;
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_STRINGS) {
+    const auto& ss = attr->strings();
+    size_t num_bytes = 0;
+    for_each(ss.begin(), ss.end(), [&num_bytes](const std::string& s) { num_bytes += s.size() + 1; });
+
+    if (len < num_bytes) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the array of strings.");
+    } else {
+      char* output_c = reinterpret_cast<char*>(data);
+      for (const auto& s : ss) {
+        for (char c : s) {
+          *output_c++ = c;
+        }
+        *output_c++ = '\0';
+      }
+    }
+    *out = num_bytes;
+
+  } else {
+    ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Unknown attribute type.");
+  }
+
+  return ret;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _In_ const OrtTensorTypeAndShapeInfo* info) {
+  API_IMPL_BEGIN
+  auto status = context->SetOutputTypeShape(index, info);
+  if (status.IsOK()) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+  }
+  API_IMPL_END
+}
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   API_IMPL_BEGIN
@@ -424,7 +654,8 @@ struct CustomOpKernel : OpKernel {
       ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
     }
 
-    if (op_.version > 15 && op_.KernelCompute == 0) {
+    if (op_.version >= min_ort_version_with_compute_v2_support &&
+        op_.CreateKernelV2) {
       op_kernel_ = nullptr;
       Ort::ThrowOnError(
           op_.CreateKernelV2(
@@ -443,13 +674,14 @@ struct CustomOpKernel : OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    if (op_.version > 15 && op_.KernelCompute == 0) {
+    if (op_.version >= min_ort_version_with_compute_v2_support &&
+        op_.KernelComputeV2) {
       auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
       return ToStatus(status_ptr);
+    } else {
+      op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
+      return Status::OK();
     }
-
-    op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
-    return Status::OK();
   }
 
  private:
@@ -590,6 +822,13 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
   schema.SetDomain(domain);
   schema.SinceVersion(1);
   schema.AllowUncheckedAttributes();
+
+  if (op->version >= min_ort_version_with_shape_inference && op->InferOutputShapeFn) {
+    schema.TypeAndShapeInferenceFunction([op](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
+      OrtShapeInferContext ctx(infer_ctx);
+      op->InferOutputShapeFn(op, &ctx);
+    });
+  }
   return schema;
 }
 
@@ -758,10 +997,14 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     for (auto schema_iter : schema_map) {
       schemas.push_back(schema_iter.second);
       InlinedVector<const KernelDef*> kernel_defs = std::move(kernel_def_map[schema_iter.first]);
-      ONNX_NAMESPACE::InferenceFunction infer_fn = [kernel_defs](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
+      auto infer_fn = schemas.back().GetTypeAndShapeInferenceFunction();
+      ONNX_NAMESPACE::InferenceFunction extended_infer_fn = [infer_fn, kernel_defs](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
         InferOutputTypes(kernel_defs, infer_ctx);
+        if (infer_fn) {
+          infer_fn(infer_ctx);
+        }
       };
-      schemas.back().TypeAndShapeInferenceFunction(infer_fn);
+      schemas.back().TypeAndShapeInferenceFunction(extended_infer_fn);
     }
 
     ORT_RETURN_IF_ERROR(output->RegisterOpSet(schemas,
@@ -789,7 +1032,6 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
       // to work with newer versions (> 12) of the ORT binary.
       if (op->version > 12) {
-        auto input_count = op->GetInputTypeCount(op);
         for (size_t i = 0; i < input_count; i++) {
           def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
         }

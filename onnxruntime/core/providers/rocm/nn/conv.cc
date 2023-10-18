@@ -44,14 +44,13 @@ const miopenConvFwdAlgorithm_t Conv<T, NHWC>::kAllAlgos[] = {
     miopenConvolutionFwdAlgoWinograd,
     miopenConvolutionFwdAlgoImplicitGEMM};
 
-miopenStatus_t GetWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenConvAlgoPerf_t>& s,
-                                miopenConvFwdAlgorithm_t algo, size_t* sz) {
+miopenStatus_t GetWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenConvAlgoPerf_t>& s, miopenConvFwdAlgorithm_t algo, size_t* sz) {
   return miopenConvolutionForwardGetWorkSpaceSize(handle, s.w_desc, s.x_tensor, s.conv_desc, s.y_tensor, sz);
 }
 
 size_t GetMaxWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenConvAlgoPerf_t>& s,
                            const miopenConvFwdAlgorithm_t* algo, int n_algo) {
-  // TODO: get maximum available size from memory arean
+  // TODO: get maximum available size from memory arena
   size_t free, total;
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
   // Assuming 10% of fragmentation
@@ -68,8 +67,7 @@ size_t GetMaxWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenCo
 }
 
 Status SliceOutUnwantedOutputSection(hipStream_t stream,
-                                     const void* input_data,
-                                     const gsl::span<const int64_t>& input_dims,
+                                     const void* input_data, gsl::span<const int64_t> input_dims,
                                      void* output_data,
                                      const gsl::span<const int64_t>& output_dims,
                                      const gsl::span<const int64_t>& starts,
@@ -103,8 +101,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
   // Make sure input and weight are 4D for NHWC since we set 4D descriptor for NHWC.
   constexpr bool channels_last = NHWC;
   if (channels_last && (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
   }
 
   // set B
@@ -140,7 +137,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
     const size_t kernel_rank = kernel_shape.size();
 
-    ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
+    ConvPadVector pads(conv_attrs_.pads);
     if (pads.empty()) {
       pads.resize(kernel_rank * 2, 0);
     }
@@ -174,7 +171,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     TensorShapeVector slice_axes;
     slice_axes.reserve(kernel_rank);
 
-    const size_t spatial_dim_start = channels_last ? 1 : 2;
+    constexpr size_t spatial_dim_start = channels_last ? 1 : 2;
     const size_t spatial_dim_end = spatial_dim_start + kernel_rank;
     TensorShape spatial_shape = X->Shape().Slice(spatial_dim_start, spatial_dim_end);
 
@@ -183,7 +180,6 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
                                                                      strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
                                                                      post_slicing_required, slice_starts, slice_ends, slice_axes,
                                                                      channels_last));
-
     if (channels_last) {
       y_dims.push_back(M);
       y_dims_with_adjusted_pads.push_back(M);
@@ -198,9 +194,6 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     s_.slice_axes = slice_axes;
 
     s_.Y = context->Output(0, TensorShape(s_.y_dims));
-    if (s_.Y->Shape().Size() == 0) {
-      return Status::OK();
-    }
     if (post_slicing_required) {
       // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
       s_.memory_for_miopen_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size, context->GetComputeStream());
@@ -225,16 +218,21 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     }
 
     if (w_dims_changed) {
-      if (channels_last) {
+      if (!channels_last) {
+        ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, MiopenTensor::GetDataType<HipT>()));
+      } else {
         ORT_RETURN_IF_ERROR(s_.w_desc.Set(MiopenTensor::GetDataType<HipT>(),
                                           miopenTensorNHWC,
                                           w_dims[0],
                                           w_dims[3],
                                           w_dims[1],
                                           w_dims[2]));
-      } else {
-        ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, MiopenTensor::GetDataType<HipT>()));
       }
+    }
+
+    // We must delay returning early until here so that the weight dims have been cached properly
+    if (s_.Y->Shape().Size() == 0) {
+      return Status::OK();
     }
 
     if (channels_last) {
@@ -357,7 +355,7 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
   if (s_.post_slicing_required) {
-    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, s_.y_dims_with_adjusted_pads,
+    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, gsl::make_span(s_.y_dims_with_adjusted_pads),
                                                       s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts,
                                                       s_.slice_ends, s_.slice_axes, s_.element_size));
   }
@@ -384,18 +382,18 @@ MiopenConvolutionDescriptor::~MiopenConvolutionDescriptor() {
 
 Status MiopenConvolutionDescriptor::Set(
     size_t rank,
-    gsl::span<const int64_t> pads,
-    gsl::span<const int64_t> strides,
-    gsl::span<const int64_t> dilations,
+    const gsl::span<const int64_t>& pads,
+    const gsl::span<const int64_t>& strides,
+    const gsl::span<const int64_t>& dilations,
     int groups,
     miopenConvolutionMode_t mode,
     miopenDataType_t data_type) {
   if (!desc_)
     MIOPEN_RETURN_IF_ERROR(miopenCreateConvolutionDescriptor(&desc_));
 
-  InlinedVector<int> pad_dims(rank);
-  InlinedVector<int> stride_dims(rank);
-  InlinedVector<int> dilation_dims(rank);
+  InlinedVector<int, kTensorShapeSmallBufferElementsSize> pad_dims(rank);
+  InlinedVector<int, kTensorShapeSmallBufferElementsSize> stride_dims(rank);
+  InlinedVector<int, kTensorShapeSmallBufferElementsSize> dilation_dims(rank);
   for (size_t i = 0; i < rank; i++) {
     pad_dims[i] = gsl::narrow_cast<int>(pads[i]);
     stride_dims[i] = gsl::narrow_cast<int>(strides[i]);

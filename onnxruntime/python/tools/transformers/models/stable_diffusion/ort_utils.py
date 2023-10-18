@@ -7,122 +7,36 @@ import gc
 import logging
 import os
 import shutil
-from collections import OrderedDict
-from typing import Any, Dict
+import sys
+from typing import Union
 
 import torch
 
 import onnxruntime as ort
-from onnxruntime.transformers.io_binding_helper import TypeHelper
 
 logger = logging.getLogger(__name__)
 
 
-class OrtCudaSession:
-    """Inference Session with IO Binding for ONNX Runtime CUDA or TensorRT provider"""
+def add_transformers_dir_to_path():
+    sys.path.append(os.path.dirname(__file__))
 
-    def __init__(self, ort_session: ort.InferenceSession, device: torch.device, enable_cuda_graph=False):
-        self.ort_session = ort_session
-        self.input_names = [input.name for input in self.ort_session.get_inputs()]
-        self.output_names = [output.name for output in self.ort_session.get_outputs()]
-        self.io_name_to_numpy_type = TypeHelper.get_io_numpy_type_map(self.ort_session)
-        self.io_binding = self.ort_session.io_binding()
-        self.enable_cuda_graph = enable_cuda_graph
-
-        self.input_tensors = OrderedDict()
-        self.output_tensors = OrderedDict()
-        self.device = device
-
-    def __del__(self):
-        del self.input_tensors
-        del self.output_tensors
-        del self.io_binding
-        del self.ort_session
-
-    def allocate_buffers(self, shape_dict: Dict[str, tuple]):
-        """Allocate tensors for I/O Binding"""
-        if self.enable_cuda_graph:
-            for name, shape in shape_dict.items():
-                if name in self.input_names:
-                    # Reuse allocated buffer when the shape is same
-                    if name in self.input_tensors:
-                        if tuple(self.input_tensors[name].shape) == tuple(shape):
-                            continue
-                        raise RuntimeError("Expect static input shape for cuda graph")
-
-                    numpy_dtype = self.io_name_to_numpy_type[name]
-                    tensor = torch.empty(tuple(shape), dtype=TypeHelper.numpy_type_to_torch_type(numpy_dtype)).to(
-                        device=self.device
-                    )
-                    self.input_tensors[name] = tensor
-
-                    self.io_binding.bind_input(
-                        name,
-                        tensor.device.type,
-                        tensor.device.index,
-                        numpy_dtype,
-                        list(tensor.size()),
-                        tensor.data_ptr(),
-                    )
-
-        for name, shape in shape_dict.items():
-            if name in self.output_names:
-                # Reuse allocated buffer when the shape is same
-                if name in self.output_tensors and tuple(self.output_tensors[name].shape) == tuple(shape):
-                    continue
-
-                numpy_dtype = self.io_name_to_numpy_type[name]
-                tensor = torch.empty(tuple(shape), dtype=TypeHelper.numpy_type_to_torch_type(numpy_dtype)).to(
-                    device=self.device
-                )
-                self.output_tensors[name] = tensor
-
-                self.io_binding.bind_output(
-                    name,
-                    tensor.device.type,
-                    tensor.device.index,
-                    numpy_dtype,
-                    list(tensor.size()),
-                    tensor.data_ptr(),
-                )
-
-    def infer(self, feed_dict):
-        """Bind input tensors and run inference"""
-        for name, tensor in feed_dict.items():
-            assert isinstance(tensor, torch.Tensor) and tensor.is_contiguous()
-            if name in self.input_names:
-                if self.enable_cuda_graph:
-                    assert self.input_tensors[name].nelement() == tensor.nelement()
-                    assert tensor.device.type == "cuda"
-                    # Update input tensor inplace since cuda graph requires input and output has fixed memory address.
-                    from cuda import cudart
-
-                    cudart.cudaMemcpy(
-                        self.input_tensors[name].data_ptr(),
-                        tensor.data_ptr(),
-                        tensor.element_size() * tensor.nelement(),
-                        cudart.cudaMemcpyKind.cudaMemcpyDeviceToDevice,
-                    )
-                else:
-                    self.io_binding.bind_input(
-                        name,
-                        tensor.device.type,
-                        tensor.device.index,
-                        TypeHelper.torch_type_to_numpy_type(tensor.dtype),
-                        [1] if len(tensor.shape) == 0 else list(tensor.shape),
-                        tensor.data_ptr(),
-                    )
-
-        self.ort_session.run_with_iobinding(self.io_binding)
-
-        return self.output_tensors
+    transformers_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    if transformers_dir not in sys.path:
+        sys.path.append(transformers_dir)
 
 
-class Engine(OrtCudaSession):
+add_transformers_dir_to_path()
+from io_binding_helper import CudaSession  # noqa: E402. Walk-around to test locally
+
+
+# -----------------------------------------------------------------------------------------------------
+# Utilities for CUDA EP
+# -----------------------------------------------------------------------------------------------------
+class Engine(CudaSession):
     def __init__(self, engine_path, provider: str, device_id: int = 0, enable_cuda_graph=False):
         self.engine_path = engine_path
         self.provider = provider
-        self.provider_options = self.get_cuda_provider_options(device_id, enable_cuda_graph)
+        self.provider_options = CudaSession.get_cuda_provider_options(device_id, enable_cuda_graph)
 
         device = torch.device("cuda", device_id)
         ort_session = ort.InferenceSession(
@@ -134,13 +48,6 @@ class Engine(OrtCudaSession):
         )
 
         super().__init__(ort_session, device, enable_cuda_graph)
-
-    def get_cuda_provider_options(self, device_id: int, enable_cuda_graph: bool) -> Dict[str, Any]:
-        return {
-            "device_id": device_id,
-            "arena_extend_strategy": "kSameAsRequested",
-            "enable_cuda_graph": enable_cuda_graph,
-        }
 
 
 class Engines:
@@ -197,9 +104,16 @@ class Engines:
                     model = model_obj.get_model().to(model_obj.device)
                     with torch.inference_mode():
                         inputs = model_obj.get_sample_input(1, 512, 512)
+                        fp32_inputs = tuple(
+                            [
+                                (tensor.to(torch.float32) if tensor.dtype == torch.float16 else tensor)
+                                for tensor in inputs
+                            ]
+                        )
+
                         torch.onnx.export(
                             model,
-                            inputs,
+                            fp32_inputs,
                             onnx_path,
                             export_params=True,
                             opset_version=self.onnx_opset,
@@ -224,3 +138,125 @@ class Engines:
 
     def get_engine(self, model_name):
         return self.engines[model_name]
+
+
+def run_engine(engine, feed_dict):
+    return engine.infer(feed_dict)
+
+
+# -----------------------------------------------------------------------------------------------------
+# Utilities for both CUDA and TensorRT EP
+# -----------------------------------------------------------------------------------------------------
+
+
+class StableDiffusionPipelineMixin:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def encode_prompt(self, clip_engine, prompt, negative_prompt):
+        """
+        Encodes the prompt into text encoder hidden states.
+        """
+
+        # Tokenize prompt
+        text_input_ids = (
+            self.tokenizer(
+                prompt,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            .input_ids.type(torch.int32)
+            .to(self.torch_device)
+        )
+
+        # NOTE: output tensor for CLIP must be cloned because it will be overwritten when called again for negative prompt
+        text_embeddings = run_engine(clip_engine, {"input_ids": text_input_ids})["text_embeddings"].clone()
+
+        # Tokenize negative prompt
+        uncond_input_ids = (
+            self.tokenizer(
+                negative_prompt,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            .input_ids.type(torch.int32)
+            .to(self.torch_device)
+        )
+
+        uncond_embeddings = run_engine(clip_engine, {"input_ids": uncond_input_ids})["text_embeddings"]
+
+        # Concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes for classifier free guidance
+        text_embeddings = torch.cat([uncond_embeddings, text_embeddings]).to(dtype=torch.float16)
+
+        return text_embeddings
+
+    def denoise_latent(
+        self,
+        unet_engine,
+        latents,
+        text_embeddings,
+        timesteps=None,
+        mask=None,
+        masked_image_latents=None,
+        timestep_fp16=False,
+    ):
+        if not isinstance(timesteps, torch.Tensor):
+            timesteps = self.scheduler.timesteps
+
+        for _step_index, timestep in enumerate(timesteps):
+            # Expand the latents if we are doing classifier free guidance
+            latent_model_input = torch.cat([latents] * 2)
+            latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)
+            if isinstance(mask, torch.Tensor):
+                latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
+
+            # Predict the noise residual
+            timestep_float = timestep.to(torch.float16) if timestep_fp16 else timestep.to(torch.float32)
+
+            noise_pred = run_engine(
+                unet_engine,
+                {"sample": latent_model_input, "timestep": timestep_float, "encoder_hidden_states": text_embeddings},
+            )["latent"]
+
+            # Perform guidance
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+            latents = self.scheduler.step(noise_pred, timestep, latents).prev_sample
+
+        latents = 1.0 / 0.18215 * latents
+        return latents
+
+    def decode_latent(self, vae_engine, latents):
+        images = run_engine(vae_engine, {"latent": latents})["images"]
+        images = (images / 2 + 0.5).clamp(0, 1)
+        return images.cpu().permute(0, 2, 3, 1).float().numpy()
+
+    def set_cached_folder(self, pretrained_model_name_or_path: Union[str, os.PathLike], **kwargs):
+        from diffusers.utils import DIFFUSERS_CACHE
+        from huggingface_hub import snapshot_download
+
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        revision = kwargs.pop("revision", None)
+
+        self.cached_folder = (
+            pretrained_model_name_or_path
+            if os.path.isdir(pretrained_model_name_or_path)
+            else snapshot_download(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+            )
+        )
