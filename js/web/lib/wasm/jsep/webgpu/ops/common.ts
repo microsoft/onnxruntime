@@ -262,6 +262,69 @@ export const createTensorShapeVariables = (dims: readonly number[]):
     ProgramUniform[] => [{type: 'uint32', data: dims}, {type: 'uint32', data: ShapeUtil.computeStrides(dims)}];
 
 /**
+ * A helper function to get maximum vector size for specified data length
+ * @param size
+ */
+export const getMaxComponents = (size: number) => {
+  // we cannot use vec3 type since it has alignment of 16 bytes
+  if (size % 4 === 0) {
+    return 4;
+  } else if (size % 2 === 0) {
+    return 2;
+  }
+
+  return 1;
+};
+
+/**
+ * A helper function that initializes variable as a scalar or vector. e.g. f32(0) or vec4f(0,0,0,0)
+ * @param dataType
+ * @param components
+ * @param value
+ */
+export const fillVector = (dataType = 'f32', components?: number, value = '0') => {
+  if (!components || components === 1) {
+    return `${dataType}(${value})`;
+  }
+
+  return `vec${components}<${dataType}>(${value})`;
+};
+
+/**
+ * A helper function that casts value or vector to f32
+ * @param dataType
+ * @param components
+ * @param value
+ */
+export const castToF32 = (dataType: string, components: number, value: string) => {
+  if (dataType === 'f32') {
+    return value;
+  }
+  if (components === 1) {
+    return `f32(${value})`;
+  }
+
+  return `vec${components}f(${value})`;
+};
+
+/**
+ * A helper function that returns scalar or sums all components of a vector
+ * @param name
+ * @param components
+ */
+export const sumVector = (name: string, components: number) => {
+  if (components === 4) {
+    return `(${name}.x + ${name}.y + ${name}.z + ${name}.w)`;
+  } else if (components === 2) {
+    return `(${name}.x + ${name}.y)`;
+  } else if (components === 3) {
+    return `(${name}.x + ${name}.y + ${name}.z)`;
+  }
+
+  return name;
+};
+
+/**
  * A helper function to get a IndicesHelper for a given input or output.
  *
  * @param name - the name of the input or output.

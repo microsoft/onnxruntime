@@ -30,6 +30,23 @@ CostCheckResult PostLayoutTransformCostCheck(const api::GraphRef& graph, const a
   return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
 }
 
+#if defined(USE_CUDA) && ENABLE_CUDA_NHWC_OPS
+const std::unordered_set<std::string_view>& GetCUDALayoutSensitiveOps() {
+  static std::unordered_set<std::string_view> cuda_nhwc_ops = []() {
+    return std::unordered_set<std::string_view>{
+        "BatchNormalization",
+        "Conv",
+        "ConvTranspose",
+        "GlobalMaxPool",
+        "MaxPool",
+        "GlobalAveragePool",
+        "AveragePool",
+    };
+  }();
+  return cuda_nhwc_ops;
+}
+#endif
+
 /// <summary>
 /// Default function for checking if a node should have its layout changed. Allows EP specific adjustments to the
 /// default set of layout sensitive operators if required.
@@ -71,11 +88,16 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
   }
 #endif
 
-  // #if defined(USE_CUDA)
-  //   if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
-  //     Update as per https://github.com/microsoft/onnxruntime/pull/17200 with CUDA ops that support NHWC
-  //   }
-  // #endif
+#if defined(USE_CUDA) && ENABLE_CUDA_NHWC_OPS
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
+    if (layout_sensitive_ops.count(node.OpType())) {
+      const auto& cuda_nhwc_ops = GetCUDALayoutSensitiveOps();
+      if (!cuda_nhwc_ops.count(node.OpType())) {
+        return false;
+      }
+    }
+  }
+#endif
 
   return layout_sensitive_ops.count(node.OpType()) != 0;
 }

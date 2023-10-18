@@ -7,14 +7,26 @@ import gc
 import logging
 import os
 import shutil
+import sys
 from typing import Union
 
 import torch
 
 import onnxruntime as ort
-from onnxruntime.transformers.io_binding_helper import CudaSession
 
 logger = logging.getLogger(__name__)
+
+
+def add_transformers_dir_to_path():
+    sys.path.append(os.path.dirname(__file__))
+
+    transformers_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    if transformers_dir not in sys.path:
+        sys.path.append(transformers_dir)
+
+
+add_transformers_dir_to_path()
+from io_binding_helper import CudaSession  # noqa: E402. Walk-around to test locally
 
 
 # -----------------------------------------------------------------------------------------------------
