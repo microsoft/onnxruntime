@@ -339,7 +339,7 @@ def parse_arguments():
         help="[cross-compiling] Create ARM64EC makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed",
     )
-    parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
+    parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. v143, v142")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
     parser.add_argument(
@@ -2504,7 +2504,7 @@ def main():
                 else:
                     raise BuildError("unknown python arch")
                 if args.msvc_toolset:
-                    toolset = "host=" + host_arch + ",version=" + args.msvc_toolset
+                    toolset = args.msvc_toolset + ",host=" + host_arch
                 else:
                     toolset = "host=" + host_arch
                 if args.cuda_version:
