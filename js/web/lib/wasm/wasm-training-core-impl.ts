@@ -182,69 +182,68 @@ const createAndAllocateTensors =
  * @param outputCount
  * @returns
  */
-const moveOutputToTensorMetadataArr =
-    (outputValuesOffset: number, outputCount: number) => {
-      const wasm = getInstance();
-      const output: TensorMetadata[] = [];
+const moveOutputToTensorMetadataArr = (outputValuesOffset: number, outputCount: number) => {
+  const wasm = getInstance();
+  const output: TensorMetadata[] = [];
 
-      for (let i = 0; i < outputCount; i++) {
-        const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
+  for (let i = 0; i < outputCount; i++) {
+    const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
 
-        const beforeGetTensorDataStack = wasm.stackSave();
-        // stack allocate 4 pointer value
-        const tensorDataOffset = wasm.stackAlloc(4 * 4);
+    const beforeGetTensorDataStack = wasm.stackSave();
+    // stack allocate 4 pointer value
+    const tensorDataOffset = wasm.stackAlloc(4 * 4);
 
-        const keepOutputTensor = false;
-        let type: Tensor.Type|undefined, dataOffset = 0;
-        try {
-          const errorCode = wasm._OrtGetTensorData(
-              tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
-          if (errorCode !== 0) {
-            checkLastError(`Can't access output tensor data on index ${i}.`);
-          }
-          let tensorDataIndex = tensorDataOffset / 4;
-          const dataType = wasm.HEAPU32[tensorDataIndex++];
-          dataOffset = wasm.HEAPU32[tensorDataIndex++];
-          const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
-          const dimsLength = wasm.HEAPU32[tensorDataIndex++];
-          const dims = [];
-          for (let i = 0; i < dimsLength; i++) {
-            dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
-          }
-          wasm._OrtFree(dimsOffset);
-
-          const size = dims.reduce((a, b) => a * b, 1);
-          type = tensorDataTypeEnumToString(dataType);
-
-          if (type === 'string') {
-            const stringData: string[] = [];
-            let dataIndex = dataOffset / 4;
-            for (let i = 0; i < size; i++) {
-              const offset = wasm.HEAPU32[dataIndex++];
-              const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
-              stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
-            }
-            output.push([type, dims, stringData, 'cpu']);
-          } else {
-            const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
-            const data = new typedArrayConstructor(size);
-            new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-                .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
-            output.push([type, dims, data, 'cpu']);
-          }
-        } finally {
-          wasm.stackRestore(beforeGetTensorDataStack);
-          if (type === 'string' && dataOffset) {
-            wasm._free(dataOffset);
-          }
-          if (!keepOutputTensor) {
-            wasm._OrtReleaseTensor(tensor);
-          }
-        }
+    const keepOutputTensor = false;
+    let type: Tensor.Type|undefined, dataOffset = 0;
+    try {
+      const errorCode = wasm._OrtGetTensorData(
+          tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
+      if (errorCode !== 0) {
+        checkLastError(`Can't access output tensor data on index ${i}.`);
       }
+      let tensorDataIndex = tensorDataOffset / 4;
+      const dataType = wasm.HEAPU32[tensorDataIndex++];
+      dataOffset = wasm.HEAPU32[tensorDataIndex++];
+      const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
+      const dimsLength = wasm.HEAPU32[tensorDataIndex++];
+      const dims = [];
+      for (let i = 0; i < dimsLength; i++) {
+        dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
+      }
+      wasm._OrtFree(dimsOffset);
 
-      return output;
-    };
+      const size = dims.reduce((a, b) => a * b, 1);
+      type = tensorDataTypeEnumToString(dataType);
+
+      if (type === 'string') {
+        const stringData: string[] = [];
+        let dataIndex = dataOffset / 4;
+        for (let i = 0; i < size; i++) {
+          const offset = wasm.HEAPU32[dataIndex++];
+          const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
+          stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
+        }
+        output.push([type, dims, stringData, 'cpu']);
+      } else {
+        const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
+        const data = new typedArrayConstructor(size);
+        new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+            .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
+        output.push([type, dims, data, 'cpu']);
+      }
+    } finally {
+      wasm.stackRestore(beforeGetTensorDataStack);
+      if (type === 'string' && dataOffset) {
+        wasm._free(dataOffset);
+      }
+      if (!keepOutputTensor) {
+        wasm._OrtReleaseTensor(tensor);
+      }
+    }
+  }
+
+  return output;
+};
 
 export const runTrainStep = async(
     trainingSessionId: number, inputIndices: number[], inputTensors: TensorMetadata[], outputIndices: number[],
