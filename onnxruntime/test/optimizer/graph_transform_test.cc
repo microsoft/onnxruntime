@@ -1091,7 +1091,7 @@ TEST_F(GraphTransformationTests, FuseMatmulBN) {
   GraphViewer graphViewer(graph);
   for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "Reshape") {
+    if (node.OpType() == "MatMul") {
       expected_output_name = node.OutputDefs()[0]->Name();
     }
   }
@@ -1127,10 +1127,9 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutput) {
   GraphViewer graphViewer(graph);
   for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "Reshape") {
+    if (node.OpType() == "MatMul") {
       expected_output_name = node.OutputDefs()[0]->Name();
-    }
-    else if (node.OpType() == "BatchNormalization") {
+    } else if (node.OpType() == "BatchNormalization") {
       node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg("", nullptr));
     }
   }
@@ -1167,10 +1166,10 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithOptionalOutput) {
   GraphViewer graphViewer(graph);
   for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "Reshape") {
+    if (node.OpType() == "MatMul") {
       expected_output_name = node.OutputDefs()[0]->Name();
     } else if (node.OpType() == "BatchNormalization") {
-      // additional additional non-empty output to batchNormalization
+      // additional non-empty output to batchNormalization
       ONNX_NAMESPACE::TypeProto optional_output_tensor_type;
       optional_output_tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TypeProto::kTensorType);
       auto& arg = graph.GetOrCreateNodeArg("bn_optional_output", &optional_output_tensor_type);

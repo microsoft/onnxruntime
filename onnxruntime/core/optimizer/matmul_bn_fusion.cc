@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/optimizer/matmul_bn_fusion.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -6,32 +9,6 @@
 
 namespace onnxruntime
 {
-void AddNodesToRemove(Node::NodeConstIterator current_iterator,
-                      const NodeIndex& dest_node_index,
-                      std::vector<NodeIndex>& nodes_to_remove) {
-  while (current_iterator->Index() != dest_node_index) {
-    nodes_to_remove.push_back(current_iterator->Index());
-    current_iterator = current_iterator->OutputNodesBegin();
-  }
-}
-
-NodeIndex GetOtherParentOfNode(const Node& node, NodeIndex first_parent_index) {
-  NodeIndex other_parent_index = std::numeric_limits<size_t>::max();
-  if (node.GetInputEdgesCount() != 2) {
-    return other_parent_index;
-  }
-
-  auto parent_node_iterator = node.InputNodesBegin();
-  if (parent_node_iterator->Index() != first_parent_index) {
-    other_parent_index = parent_node_iterator->Index();
-  }
-  ++parent_node_iterator;
-  if (parent_node_iterator->Index() != first_parent_index) {
-    other_parent_index = parent_node_iterator->Index();
-  }
-  return other_parent_index;
-}
-
 bool MatchPath(const Node& parent_node,
                const gsl::span<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>>& path,
                const Node& child_node) {
@@ -57,32 +34,13 @@ bool MatchPath(const Node& parent_node,
 
 /*
 *   Given a MatMul node, it will verify the following pattern.
-*                      MatMul
-*                        |
-*                       / \
-*                      /   \
-*                     /     \
-*               Reshape     Shape
-*                  |          |
-*             Transpose      Cast
-*                  |          |
-*        BatchNormalization  Cast
-*                  |          |
-*              Transpose      |
-*                  |         /
-*                   \       /
-*                    \     /
-*                     \   /
-*                       | 
-*                    Reshape
-* As of writing this fusion, we are being conversative in the pattern because the customer
-* model we are targeting has this exact pattern. Above pattern will evolve in the future 
-* as we tend to add separate fusion to eliminate Transpose around the BatchNormalization, 
-* update the model optimizer script to eliminate adjacent Cast operator, etc.
-* 
-* We have to match the path (MatMul->Shape->Cast->Cast->Reshape) because sub-merging the 
-* BatchNormalization into the MatMul will change MatMul's output and thus we have to make 
-* sure that MatMul's output is not used by any operator to which MatMul's output matters.
+*                MatMul
+*                  |
+*               Reshape    
+*                  |       
+*             Transpose    
+*                  |       
+*        BatchNormalization
 * Other Conditions:
 *   - B tensor of MatMul should be constant.
 *   - scale, B, mean, var tensors of BatchNormalization should be constant.
@@ -90,40 +48,23 @@ bool MatchPath(const Node& parent_node,
 */
 bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", { 1, 9, 13 }) ||
-      node.GetOutputEdgesCount() != 2) {
+      node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
-  auto child_node_iterator = node.OutputNodesBegin();
-  const Node& first_child_node = *child_node_iterator;
-  ++child_node_iterator;
-  const Node& second_child_node = *child_node_iterator;
+  const Node& child_node = *node.OutputNodesBegin();
 
-  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> first_path = 
-  {{"Reshape", {1, 5}},
+  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> path {
+    {"Reshape", {1, 5}},
     {"Transpose", {1}},
-    {"BatchNormalization", {1, 6, 7}},
-    {"Transpose", {1}},
-    {"Reshape", {1, 5}}};
+    {"BatchNormalization", {1, 6, 7}}
+  };
 
-  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> second_path =
-  {{"Shape", {1}},
-    {"Cast", {1, 6}},
-    {"Cast", {1, 6}},
-    {"Reshape", {1, 5}}};
-
-  if (!(MatchPath(node, first_path, first_child_node) ^ MatchPath(node, second_path, first_child_node))) {
+  if (!MatchPath(node, path, child_node)) {
     return false;
-  }
-
-  if (!(MatchPath(node, first_path, second_child_node) ^ MatchPath(node, second_path, second_child_node))) {
-    return false;
-  }
-
-        
-  const auto& batch_norm_node = first_child_node.OpType() == "Reshape" ?
-      *first_child_node.OutputNodesBegin()->OutputNodesBegin() :
-      *second_child_node.OutputNodesBegin()->OutputNodesBegin();
+  }        
+  
+  const auto& batch_norm_node = *child_node.OutputNodesBegin()->OutputNodesBegin();
         
   // Check that the appropriate inputs to the Matmul and BN nodes are constants.
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
@@ -163,17 +104,11 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
 * 
 */
 Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
-  auto child_node_iterator = matmul_node.OutputNodesBegin();
-  const Node& first_child_node = *child_node_iterator;
-  ++child_node_iterator;
-  const Node& second_child_node = *child_node_iterator;
-
-  const Node& first_reshape = first_child_node.OpType() == "Reshape" ? first_child_node : second_child_node;
-
-  NodeIndex batch_norm_node_index = first_reshape.OutputNodesBegin()->OutputNodesBegin()->Index();
+  const Node& child_node = *matmul_node.OutputNodesBegin();
+  NodeIndex batch_norm_node_index = child_node.OutputNodesBegin()->OutputNodesBegin()->Index();
   Node& batch_norm_node = *graph.GetNode(batch_norm_node_index);
 
-  // only perform fusion if eplison is present and is of float_32 type
+  // only perform fusion if epsilon is present and is of float_32 type
   auto epsilon_attribute = batch_norm_node.GetAttributes().find("epsilon");
   if (epsilon_attribute == batch_norm_node.GetAttributes().end() ||
       epsilon_attribute->second.type() != ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT) {
@@ -240,40 +175,23 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
   new_gemm_bias_tensor.set_name(new_gemm_bias_name);
   NodeArg& new_gemm_bias_node_arg = graph_utils::AddInitializer(graph, new_gemm_bias_tensor);
 
-  NodeIndex last_reshape_node_index = first_reshape.OutputNodesBegin()->OutputNodesBegin()->
-                                    OutputNodesBegin()->OutputNodesBegin()->Index();
   graph.AddNode(
       graph.GenerateNodeArgName("MatMulBnFusion_Gemm"),
       "Gemm",
       "Generated from Matmul BatchNormalization fusion",
       {matmul_node.MutableInputDefs()[0], &new_gemm_b_node_arg, &new_gemm_bias_node_arg},
-      graph.GetNode(last_reshape_node_index)->MutableOutputDefs(),
+      matmul_node.MutableOutputDefs(),
       nullptr,
       kOnnxDomain);
         
-  std::vector<NodeIndex> nodes_to_remove;
-  nodes_to_remove.push_back(matmul_node.Index());
+  // Remove MatMul node.
+  Node* node = graph.GetNode(matmul_node.Index());
+  graph_utils::RemoveNodeOutputEdges(graph, *node);
+  graph.RemoveNode(matmul_node.Index());
 
-  // Remove non-Matmul parent of Reshape if and only if
-  // that parent has only 1 output.
-  NodeIndex non_matmul_parent_of_first_reshape = GetOtherParentOfNode(first_reshape, matmul_node.Index());
-  if (non_matmul_parent_of_first_reshape != std::numeric_limits<size_t>::max() &&
-      graph.GetNode(non_matmul_parent_of_first_reshape)->GetOutputEdgesCount() == 1) {
-    nodes_to_remove.push_back(non_matmul_parent_of_first_reshape);
-  }
-
-  auto current_iterator = matmul_node.OutputNodesBegin();
-  AddNodesToRemove(current_iterator, last_reshape_node_index, nodes_to_remove);
-  ++current_iterator;
-  AddNodesToRemove(current_iterator, last_reshape_node_index, nodes_to_remove);
-  nodes_to_remove.push_back(last_reshape_node_index);
-
-  for (const auto& node_index : nodes_to_remove) {
-    Node* node = graph.GetNode(node_index);
-    graph_utils::RemoveNodeOutputEdges(graph, *node);
-    graph.RemoveNode(node_index);
-  }
-
+  // Delete BatchNormalization node and update the input of the child of BatchNormalization
+  graph_utils::FinalizeNodeFusion(graph, *graph.GetNode(child_node.OutputNodesBegin()->Index()), batch_norm_node);
+  
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   return Status::OK();
 }

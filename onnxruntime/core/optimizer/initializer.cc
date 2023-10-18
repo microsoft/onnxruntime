@@ -312,8 +312,7 @@ struct ScaleByAxis {
             const auto numeric_scaler = to_numeric(scalers_data[j]);
             dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
           }
-        }
-        else {
+        } else {
           const auto numeric_scaler = to_numeric(scalers_data[i]);
           for (size_t j = 0; j < block_size; ++j, ++block_offset) {
             dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
