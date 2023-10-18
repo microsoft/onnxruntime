@@ -1,5 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+//
+// The operator calls function 'cublasLtMatmul'
+// (https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul).
+// It lets the function checks what configuration is valid or not. If not, the error message
+// shows the error message 'CUBLAS_STATUS_NOT_SUPPORTED'. NVIDIA documentation provides
+// information on what attribute or type must be modified.
+// This operator requires CUDA_VERSION >= 11.8 for float 8 and CUDA_VERSION >= 12.0
+// for beta != 0.
 
 #include <algorithm>
 #include <utility>
@@ -88,7 +96,9 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  if (row_major_compute_)
+  auto first_type = input_A->GetElementType();
+  bool is_float8 = first_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN || first_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2;
+  if (!is_float8)
     return ComputeRowMajor(ctx, n_inputs, has_bias, has_scales, input_A, input_B,
                            input_C, scale_A, scale_B, scale_Y);
   return ComputeColMajor(ctx, n_inputs, has_bias, has_scales, input_A, input_B,
@@ -120,7 +130,7 @@ Status GemmFloat8::ComputeRowMajor(
                      has_scales ? scale_A->DataRaw() : nullptr,
                      has_scales ? scale_B->DataRaw() : nullptr,
                      has_scales && scale_Y != nullptr ? scale_Y->DataRaw() : nullptr,
-                     Y->MutableDataRaw(), M, N, K, lda, ldb, ldd);
+                     Y->MutableDataRaw(), M, N, K, lda, ldb, ldd, true);
 }
 
 Status GemmFloat8::ComputeColMajor(
@@ -152,7 +162,7 @@ Status GemmFloat8::ComputeColMajor(
                      has_scales ? scale_B->DataRaw() : nullptr,
                      has_scales ? scale_A->DataRaw() : nullptr,
                      has_scales && scale_Y != nullptr ? scale_Y->DataRaw() : nullptr,
-                     Y->MutableDataRaw(), N, M, K, ldb, lda, ldd);
+                     Y->MutableDataRaw(), N, M, K, ldb, lda, ldd, false);
 }
 
 Status GemmFloat8::ComputeGemm(
@@ -164,7 +174,7 @@ Status GemmFloat8::ComputeGemm(
     bool trans_A, bool trans_B, const void* p_input_a, const void* p_input_b,
     const void* p_input_c, const void* p_scale_a, const void* p_scale_b,
     const void* p_scale_y, void* p_output_y, int M, int N, int K, int lda,
-    int ldb, int ldd) const {
+    int ldb, int ldd, bool row_major_compute) const {
   cudaStream_t stream = Stream(ctx);
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
@@ -213,7 +223,7 @@ Status GemmFloat8::ComputeGemm(
   CUBLAS_RETURN_IF_ERROR(
       cublasLtMatrixLayoutCreate(&Ddesc, d_cuda_type, M, N, ldd));
 
-  if (row_major_compute_) {
+  if (row_major_compute) {
     cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
     CUBLAS_RETURN_IF_ERROR(
         cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER,
@@ -241,7 +251,7 @@ Status GemmFloat8::ComputeGemm(
 
   if (has_scales) {
     // gemm float 8
-    const int8_t ifast_accumulation_mode = fast_accumulation_mode_ ? 1 : 0;
+    const int8_t ifast_accumulation_mode = 1;
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
         operationDesc,
         cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_FAST_ACCUM,
@@ -280,7 +290,7 @@ Status GemmFloat8::ComputeGemm(
         cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
 #endif
 
-  if (row_major_compute_) {
+  if (row_major_compute) {
     cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
     CUBLAS_RETURN_IF_ERROR(
         cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_ORDER,
@@ -326,12 +336,12 @@ Status GemmFloat8::ComputeGemm(
       ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
       ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", trans_A,
       ", transB=", trans_B,
-      ", fastAccumulationMode=", (fast_accumulation_mode_ ? 1 : 0),
+      ", fastAccumulationMode=", 1,
       ", shape_A=", shape_A[0], "x", shape_A[1], ", shape_B=", shape_B[0], "x",
       shape_B[1], ", shape_C=", (shape_C.NumDimensions() > 0 ? shape_C[0] : 0), "x",
       (shape_C.NumDimensions() > 1 ? shape_C[1] : 0), ", M=", M, ", N=", N, ", K=", K,
       ", lda=", lda, ", ldb=", ldb, ", ldd=", ldd,
-      ", workspaceSize=", workspaceSize, ", rowMajorCompute=", (row_major_compute_ ? 1 : 0),
+      ", workspaceSize=", workspaceSize, ", rowMajorCompute=", (row_major_compute ? 1 : 0),
       ". Check NVIDIA documentation to see what combination is valid: ",
       "https://docs.nvidia.com/cuda/cublas/"
       "index.html?highlight=cublasLtMatmulAlgoGetHeuristic#"
@@ -367,11 +377,11 @@ Status GemmFloat8::ComputeGemm(
       ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
       ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", trans_A,
       ", transB=", trans_B,
-      ", fastAccumulationMode=", (fast_accumulation_mode_ ? 1 : 0),
+      ", fastAccumulationMode=", 1,
       ", shape_A=", shape_A[0], "x", shape_A[1], ", shape_B=", shape_B[0], "x",
       shape_B[1], ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb,
       ", ldd=", ldd, ", workspaceSize=", workspaceSize,
-      ", rowMajorCompute=", (row_major_compute_ ? 1 : 0), ".");
+      ", rowMajorCompute=", (row_major_compute ? 1 : 0), ".");
 
   if (workspaceSize > 0) {
     CUDA_RETURN_IF_ERROR(cudaFree(workspace));

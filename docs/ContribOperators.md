@@ -2138,13 +2138,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.GemmFloat8"></a><a name="com.microsoft.gemmfloat8">**com.microsoft.GemmFloat8**</a>
 
-  Gemm for float and float 8. The operator calls function 'cublasLtMatmul'
-  (https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul).
-  It lets the function checks what configuration is valid or not. If not, the error message
-  shows the error message 'CUBLAS_STATUS_NOT_SUPPORTED'. NVIDIA documentation provides
-  information on what attribute or type must be modified.
-  This operator requires CUDA_VERSION >= 11.8 for float 8 and CUDA_VERSION >= 12.0
-  for beta != 0.
+  Generic Gemm for float and float 8.
 
 #### Version
 
@@ -2161,10 +2155,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Scalar multiplier for the product of input bias C.</dd>
 <dt><tt>dtype</tt> : int</dt>
 <dd>Output Type. Same definition as attribute 'to' for operator Cast.</dd>
-<dt><tt>fastAccumulationMode</tt> : int</dt>
-<dd>See documentation of cublasLtMatMul.</dd>
-<dt><tt>rowMajorCompute</tt> : int</dt>
-<dd>Storage order used to run the computation (inputs and outputs are always row major). Float 8 types only supports column major.</dd>
 <dt><tt>transA</tt> : int</dt>
 <dd>Whether A should be transposed. Float 8 only supprted transA=0.</dd>
 <dt><tt>transB</tt> : int</dt>

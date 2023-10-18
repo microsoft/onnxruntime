@@ -47,16 +47,14 @@ class GemmFloat8 final : public onnxruntime::cuda::CudaKernel {
       bool transa, bool transb, const void* p_input_a, const void* p_input_b,
       const void* p_input_c, const void* p_scale_a, const void* p_scale_b,
       const void* p_scale_y, void* p_output_y, int M, int N, int K, int lda,
-      int ldb, int ldd) const;
+      int ldb, int ldd, bool row_major_compute) const;
 
   float alpha_;
   float beta_;
   bool transA_;
   bool transB_;
-  bool fast_accumulation_mode_;
   int64_t sm_count_;
   int64_t dtype_;
-  bool row_major_compute_;
   cublasLtEpilogue_t epilogue_;
 
   // TODO(xadupre): add epilogue (= activation function, Relu or Gelu are available).

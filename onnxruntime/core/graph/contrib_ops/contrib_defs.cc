@@ -2583,14 +2583,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
 
 ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                             OpSchema()
-                                .SetDoc(R"DOC(
-Gemm for float and float 8. The operator calls function 'cublasLtMatmul'
-(https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul).
-It lets the function checks what configuration is valid or not. If not, the error message
-shows the error message 'CUBLAS_STATUS_NOT_SUPPORTED'. NVIDIA documentation provides
-information on what attribute or type must be modified.
-This operator requires CUDA_VERSION >= 11.8 for float 8 and CUDA_VERSION >= 12.0
-for beta != 0.)DOC")
+                                .SetDoc(R"DOC(Gemm for float and float 8.)DOC")
                                 .Attr(
                                     "transA",
                                     "Whether A should be transposed. Float 8 only supprted transA=0.",
@@ -2611,18 +2604,6 @@ for beta != 0.)DOC")
                                     "Scalar multiplier for the product of input bias C.",
                                     AttributeProto::FLOAT,
                                     0.0f)
-                                .Attr(
-                                    "fastAccumulationMode",
-                                    "See documentation of cublasLtMatMul.",
-                                    AttributeProto::INT,
-                                    static_cast<int64_t>(1))
-                                .Attr(
-                                    "rowMajorCompute",
-                                    "Storage order used to run the computation "
-                                    "(inputs and outputs are always row major). "
-                                    "Float 8 types only supports column major.",
-                                    AttributeProto::INT,
-                                    static_cast<int64_t>(0))
                                 .Attr(
                                     "dtype",
                                     "Output Type. Same definition as attribute 'to' for operator Cast.",
