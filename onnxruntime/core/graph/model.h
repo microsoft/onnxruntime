@@ -139,7 +139,7 @@ class Model {
   // Returns empty string if not specified.
   const std::string GraphDocString() const;
 
-  const InlinedHashMap<std::string, std::unique_ptr<FunctionTemplate>>& GetModelLocalFunctionTemplates() const;
+  const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& GetModelLocalFunctionTemplates() const;
 
 #else
   // Get model's IR version.
@@ -314,7 +314,9 @@ class Model {
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
   // this is the map from function id to the local function template.
   // this map will be used by graph to instantiate the function body.
-  InlinedHashMap<std::string, std::unique_ptr<FunctionTemplate>> model_local_function_templates_maps_;
+  // Defined as a node based map so the memory is released when not all of the functions
+  // are inlined and removed.
+  NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>> model_local_function_templates_maps_;
 
   /// <summary>
   /// The functions cleans local function definitions in the model excluding

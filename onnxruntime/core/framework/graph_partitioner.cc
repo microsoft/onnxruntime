@@ -623,11 +623,9 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
         ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
         ++inlined_count;
       } else {
-        ONNX_NAMESPACE::FunctionProto inlined_fp;
-        if (node->TryGetFunctionProto(inlined_fp)) {
-          auto function_id = function_utils::GetFunctionIdentifier(inlined_fp.domain(), inlined_fp.name());
-          ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
-        }
+        // OpType is the same as function name.
+        auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType());
+        ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
       }
     }
   }

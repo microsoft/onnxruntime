@@ -4312,7 +4312,7 @@ Status Graph::InlineFunction(Node& callnode) {
 
   // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
-  std::string base_uniq_identifier{"_inline/"};
+  std::string base_uniq_identifier{"_inlfunc/"};
   base_uniq_identifier.append(callnode.OpType());
   const auto uniq_identifier = GenerateNodeName(base_uniq_identifier);
 

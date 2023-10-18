@@ -279,7 +279,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
                          logger, options.strict_shape_type_inference, std::move(model_functions_remover)));
 }
 
-const InlinedHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetModelLocalFunctionTemplates() const {
+const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetModelLocalFunctionTemplates() const {
   return model_local_function_templates_maps_;
 }
 
