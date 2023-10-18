@@ -19,8 +19,6 @@ from torch import nn
 
 def disable_huggingface_init():
     # do not init model twice as it slow initialization
-    import torch
-    import torch.nn.init
 
     torch.nn.init.kaiming_uniform_ = lambda x, *args, **kwargs: x
     torch.nn.init.uniform_ = lambda x, *args, **kwargs: x
@@ -47,12 +45,11 @@ def get_model_size(model: nn.Module):
     return all_size
 
 
-def model_prepare(hf_model: str, tokenizer=None):
+def initialize_model_and_sample_inputs(hf_model: str, tokenizer=None):
     """
     prepare torch model, name, and inputs
     """
     onnx_model_name = Path(hf_model + "/").name
-    import re
 
     onnx_model_name = re.sub(r"[^0-9a-zA-Z]", onnx_model_name, "_") + ".onnx"
     disable_huggingface_init()
@@ -69,10 +66,7 @@ def model_prepare(hf_model: str, tokenizer=None):
 
 
 def auto_pipeline(model: nn.Module, gpulist: list, sample_inputs: tuple):
-    """
-    make a model can be executed across multile-gpu.
-    it's a pipeline method
-    """
+    """Make the model executable across multiple GPUs."""
 
     def input_gpu_device_hook(mod, inputs, kwargs):
         modifyed_inputs = []
@@ -147,7 +141,6 @@ def retrieve_onnx_inputs(model, sample_inputs):
         return user_inputs[0]
 
     hook_handle = model.register_forward_pre_hook(hook_for_inputs, with_kwargs=True)
-    import inspect
 
     forward_params = inspect.signature(model.forward).parameters
     input_keys = list(forward_params.keys())
