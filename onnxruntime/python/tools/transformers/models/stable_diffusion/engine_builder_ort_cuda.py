@@ -33,6 +33,8 @@ class OrtCudaEngine(CudaSession):
         # self.provider_options["enable_skip_layer_norm_strict_mode"] = True
 
         session_options = ort.SessionOptions()
+        # Uncomment the following line to see Memcpy nodes added when ORT cannot run CUDA graph.
+        # session_options.log_severity_level = 1
 
         # When the model has been optimized by onnxruntime, we can disable optimization to save session creation time.
         if disable_optimization:
@@ -138,13 +140,13 @@ class OrtCudaEngineBuilder(EngineBuilder):
         )
         self._configure(
             "clip2",
-            onnx_opset_version=onnx_opset_version,  # TODO: ArgMax-12 is not implemented in CUDA
-            use_cuda_graph=False,  # TODO: fix Runtime Error with cuda graph
+            onnx_opset_version=onnx_opset_version,
+            use_cuda_graph=False,  # TODO: Fuse the argmax pooling as a contrib op so as to use CUDA Graph.
         )
         self._configure(
             "unetxl",
             onnx_opset_version=onnx_opset_version,
-            use_cuda_graph=False,  # TODO: fix Runtime Error with cuda graph
+            use_cuda_graph=self.use_cuda_graph,
         )
 
         self._configure(
