@@ -2894,6 +2894,7 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
     std::cout << y << std::endl;
   }
 
+  assert(cudaStreamSynchronize(compute_stream) == cudaSuccess);
   ASSERT_TRUE(std::equal(std::begin(y_values_0), std::end(y_values_0), std::begin(expected_y)));
 
   iobindings.ClearBoundInputs();
