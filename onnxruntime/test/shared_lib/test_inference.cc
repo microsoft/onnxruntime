@@ -2889,6 +2889,11 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
 
   std::array<float, 3 * 2> y_values_0;
   cudaMemcpy(y_values_0.data(), output_tensor_data, sizeof(float) * y_values_0.size(), cudaMemcpyDeviceToHost);
+
+  for (auto y : y_values_0) {
+    std::cout << y << std::endl;
+  }
+
   ASSERT_TRUE(std::equal(std::begin(y_values_0), std::end(y_values_0), std::begin(expected_y)));
 
   iobindings.ClearBoundInputs();
