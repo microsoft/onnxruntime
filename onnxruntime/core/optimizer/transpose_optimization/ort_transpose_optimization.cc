@@ -73,8 +73,8 @@ static bool HandleMaxPool(HandlerArgs& args) {
   }
 
   auto info = args.ctx.graph.GetValueInfo(outputs[0]);
-  api::DataType dtype = info->DType();
-  if (dtype != api::DataType::UINT8 && dtype != api::DataType::INT8) {
+  onnxruntime::DataType dtype = info->DType();
+  if (dtype != onnxruntime::DataType::UINT8 && dtype != onnxruntime::DataType::INT8) {
     return false;
   }
 
@@ -149,7 +149,7 @@ CostCheckResult OrtEPCostCheck(const api::GraphRef& graph, const api::NodeRef& n
       auto X_dtype = X_value_info->DType();
       auto mode = node.GetAttributeString("mode");
       if (X_shape && X_shape->size() == 4 &&
-          (X_dtype == api::DataType::UINT8 || X_dtype == api::DataType::INT8) &&
+          (X_dtype == onnxruntime::DataType::UINT8 || X_dtype == onnxruntime::DataType::INT8) &&
           mode && *mode == "linear") {
         return CostCheckResult::kPushTranspose;
       }

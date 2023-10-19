@@ -24,11 +24,11 @@ namespace nhwc_map_internal {
 struct OpIdInfo {
   const std::string optype_;
   const std::string domain_;
-  const onnx_transpose_optimization::api::DataType data_type_;
+  const onnxruntime::DataType data_type_;
 
   OpIdInfo(const std::basic_string_view<char>& op,
            const std::basic_string_view<char>& domain,
-           onnx_transpose_optimization::api::DataType data_type)
+           onnxruntime::DataType data_type)
       : optype_(op), domain_(domain), data_type_(data_type) {
   }
 
