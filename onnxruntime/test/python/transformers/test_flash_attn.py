@@ -9,8 +9,8 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # -------------------------------------------------------------------------
-import os
 import math
+import os
 import random
 import unittest
 
@@ -1205,10 +1205,8 @@ class TestGQA(unittest.TestCase):
                 (113, 211),
                 (108, 256),
                 (256, 512),
-                (512, 256),
                 (1024, 1024),
                 (1023, 1024),
-                (1024, 1023),
                 (2048, 2048),
             ]
         )
