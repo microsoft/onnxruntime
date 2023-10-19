@@ -12,6 +12,9 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/utils.h"
+#include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
+#include "core/optimizer/transpose_optimization/optimizer_api.h"
+#include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/test_environment.h"
@@ -19,6 +22,7 @@
 #include "test/providers/internal_testing/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -316,20 +320,6 @@ TEST(TransposeOptimizerTests, TestPadNonconst) {
                     /*opset_version*/ {11, 18});
 }
 
-// The CUDA Resize kernel assumes that the input is NCHW and
-// Resize can't be supported in ORT builds with CUDA enabled.
-// TODO: Enable this once the CUDA Resize kernel is implemented
-// "generically" (i.e.) aligning with the generic nature of the
-// ONNX spec.
-// See https://github.com/microsoft/onnxruntime/pull/10824 for
-// a similar fix applied to the CPU Resize kernel.
-// Per tests included in #10824, the ROCM EP also generates
-// incorrect results when this handler is used, so the Resize
-// handler is not enabled even for those builds.
-//
-// The QNN EP requires the input to be NHWC, so the Resize handler is also not enabled
-// for QNN builds.
-#if !defined(USE_CUDA) && !defined(USE_ROCM) && !defined(USE_QNN)
 TEST(TransposeOptimizerTests, TestResize) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
@@ -358,7 +348,9 @@ TEST(TransposeOptimizerTests, TestResize) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {10, 18});
 }
 
@@ -386,7 +378,9 @@ TEST(TransposeOptimizerTests, TestResizeOpset11) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {11, 18});
 }
 
@@ -414,7 +408,9 @@ TEST(TransposeOptimizerTests, TestResizeOpset15) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {15, 18});
 }
 
@@ -444,7 +440,9 @@ TEST(TransposeOptimizerTests, TestResizeSizeRoi) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {15, 18});
 }
 
@@ -478,7 +476,9 @@ TEST(TransposeOptimizerTests, TestResizeRoiScalesZeroRank0) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     {12, 18});
 }
 
@@ -507,7 +507,9 @@ TEST(TransposeOptimizerTests, TestResizeNonconst) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {11, 18});
 }
 
@@ -536,11 +538,12 @@ TEST(TransposeOptimizerTests, TestResizeNonconstOpset13) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {13, 18});
 }
 
-#endif
 TEST(TransposeOptimizerTests, TestAdd) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
@@ -4395,9 +4398,9 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue9671) {
 
   SessionOptions so;
   so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue9671";
-  InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_uri));
-  ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());  // optimizers run during initialization
 }
 
 // regression test for a model where the transpose optimizations incorrectly removed a node providing an implicit
@@ -4409,9 +4412,9 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue10305) {
 
   SessionOptions so;
   so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue10305";
-  InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_uri));
-  ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());  // optimizers run during initialization
 }
 
 // regression test for a model with DQ node with per-axis dequantization followed by a Transpose.
@@ -4432,30 +4435,31 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
 
   {
     so.graph_optimization_level = TransformerLevel::Default;  // off
-    InferenceSession session_object{so, GetEnvironment()};
-    ASSERT_STATUS_OK(session_object.Load(model_uri));
-    ASSERT_STATUS_OK(session_object.Initialize());
-    ASSERT_STATUS_OK(session_object.Run(feeds, output_names, &fetches_orig));
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
   }
 
   {
     so.graph_optimization_level = TransformerLevel::Level1;  // enable transpose optimizer
-    InferenceSession session_object{so, GetEnvironment()};
-    ASSERT_STATUS_OK(session_object.Load(model_uri));
-    ASSERT_STATUS_OK(session_object.Initialize());
-    ASSERT_STATUS_OK(session_object.Run(feeds, output_names, &fetches));
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
   }
 
   ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
 }
 
+// These tests uses internal testing EP with static kernels which requires a full build,
+// and the NHWC Conv which requires contrib ops
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
 // Test a Transpose node followed by a Reshape that is logically equivalent to an Transpose can be merged.
 // The test graph was extracted from a model we were trying to use with the QNN EP.
 TEST(TransposeOptimizerTests, QnnTransposeReshape) {
-  // test uses internal testing EP with static kernels which requires a full build,
-  // and the NHWC Conv with requires contrib ops
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
   Status status;
   auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.onnx");
 
@@ -4497,14 +4501,17 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
   for (const auto& node : graph.Nodes()) {
     EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
                                                                 << "' was not assigned to the internal testing EP.";
+
+    if (node.Name() == "Mul_212" || node.Name() == "Add_213") {
+      // check that the special case in TransposeInputs for a single element input reconnects things back up correctly
+      const auto& inputs = node.InputDefs();
+      EXPECT_EQ(inputs.size(), size_t(2));
+      EXPECT_TRUE(inputs[1]->Exists());
+    }
   }
-#endif
 }
 
 TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
-  // test uses internal testing EP with static kernels which requires a full build,
-  // and the NHWC Conv with requires contrib ops
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
   Status status;
   auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.qdq.onnx");
 
@@ -4541,7 +4548,128 @@ TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
     EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
                                                                 << "' was not assigned to the internal testing EP.";
   }
-#endif
+}
+
+// Validate handling for EP with layout specific Resize that prefers NHWC
+TEST(TransposeOptimizerTests, QnnResizeOpset11) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/nhwc_resize_scales_opset11.onnx");
+
+  SessionOptions so;
+  // Uncomment to debug
+  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                                << "' was not assigned to the internal testing EP.";
+    if (node.OpType() == "Resize") {
+      EXPECT_EQ(node.Domain(), kMSInternalNHWCDomain) << "Resize was not converted to NHWC layout";
+    }
+  }
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2) << "Resize should have been wrapped in 2 Transpose nodes to convert to NHWC";
+
+  // And the post-Resize Transpose should have been pushed all the way to the end
+  GraphViewer viewer(graph);
+  EXPECT_EQ(graph.GetNode(viewer.GetNodesInTopologicalOrder().back())->OpType(), "Transpose");
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
+static void CheckSharedInitializerHandling(bool broadcast) {
+  auto model_uri = broadcast ? ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast.onnx")
+                             : ORT_TSTR("testdata/transpose_optimizer_shared_initializers.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 2, 2, 3};
+  std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], input_dims, input_data, &input);
+
+  NameMLValMap feeds{{"input0", input}};
+
+  std::vector<std::string> output_names{"output0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+
+  // get results with no modifications to the model
+  {
+    so.graph_optimization_level = TransformerLevel::Default;  // off
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    // we call the ONNX transpose optimizer directly to simplify the model required to exercise the shared initializer
+    // handling. this means we don't need to disable optimizers that might alter the graph before the
+    // transpose optimizer runs (at a minimum ConstantFolding, CommonSubexpressionElimination and ConstantSharing).
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    using namespace onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    // default optimization cost check
+    OptimizeResult result = Optimize(*api_graph);
+
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Transpose"], 0) << "The Transpose nodes should have been pushed through and canceled out.";
+
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
+// test we re-use a modified shared initializer wherever possible. model has one initializer that is used by 3 DQ nodes
+// and one initializer that is used by 2 Add nodes. both cases should be handled with the initializer being
+// modified in-place for the first usage, and the Transpose added to the second usage being cancelled out when the
+// original Transpose at the start of the model is pushed down.
+TEST(TransposeOptimizerTests, SharedInitializerHandling) {
+  CheckSharedInitializerHandling(/*broadcast*/ false);
+}
+
+// same setup as the above test, however the initializer is broadcast to bring UnsqueezeInput into play.
+// the in-place modification of the initializer for the first usage results in
+//   <initializer> -> Transpose -> Squeeze -> {DQ | Add}
+// the later usages of the initializer should attempt to cancel out the Squeeze in UnsqueezeInput,
+// followed by canceling out the Transpose in TransposeInput.
+TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast) {
+  CheckSharedInitializerHandling(/*broadcast*/ true);
 }
 }  // namespace test
 }  // namespace onnxruntime

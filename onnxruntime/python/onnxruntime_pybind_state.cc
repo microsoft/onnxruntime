@@ -430,6 +430,25 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
 }
 #endif
 
+#ifdef USE_TENSORRT
+void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOptions& options) {
+  if (auto* tensorrt_provider_info = TryGetProviderInfo_TensorRT()) {
+    std::string trt_extra_plugin_lib_paths = "";
+    const auto it = options.find("trt_extra_plugin_lib_paths");
+    if (it != options.end()) {
+      trt_extra_plugin_lib_paths = it->second;
+    }
+    std::vector<OrtCustomOpDomain*> domain_list;
+    tensorrt_provider_info->GetTensorRTCustomOpDomainList(domain_list, trt_extra_plugin_lib_paths);
+    for (auto ptr : domain_list) {
+      so.custom_op_domains_.push_back(ptr);
+    }
+  } else {
+    ORT_THROW("Please install TensorRT libraries as mentioned in the GPU requirements page, make sure they're in the PATH or LD_LIBRARY_PATH, and that your GPU is supported.");
+  }
+}
+#endif
+
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     const SessionOptions& session_options,
     const std::string& type,
@@ -443,43 +462,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
     // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
-      std::string calibration_table, cache_path, lib_path, min_profile, max_profile, opt_profile;
+      // provider_options_map is just a reference to the ProviderOptionsMap instance, so it can be released anytime from application.
+      // So we need these std::string variables defined here as they will be kept alive for the lifetime of TRT EP and we can still access them from OrtTensorRTProviderOptionsV2 instance.
+      // (The reason is string copy is involved, for example params.trt_engine_cache_path = cache_path.c_str() and those std::string variable is referenced by OrtTensorRTProviderOptionsV2 instance
+      // and TRT EP instance, so it won't be released.)
+      std::string calibration_table, cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        OrtTensorRTProviderOptionsV2 params{
-            0,
-            0,
-            nullptr,
-            1000,
-            1,
-            1 << 30,
-            0,
-            0,
-            nullptr,
-            0,
-            0,
-            0,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            2,
-            -1,
-            nullptr,
-            nullptr,
-            nullptr,
-            nullptr,
-            nullptr,
-            0};
+        OrtTensorRTProviderOptionsV2 params;
         for (auto option : it->second) {
           if (option.first == "device_id") {
             if (!option.second.empty()) {
@@ -666,13 +656,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             }
           } else if (option.first == "trt_tactic_sources") {
             if (!option.second.empty()) {
-              params.trt_tactic_sources = option.second.c_str();
+              trt_tactic_sources = option.second;
+              params.trt_tactic_sources = trt_tactic_sources.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a string. e.g. \"-CUDNN,+CUBLAS\" available keys: \"CUBLAS\"|\"CUBLAS_LT\"|\"CUDNN\"|\"EDGE_MASK_CONVOLUTIONS\".\n");
             }
           } else if (option.first == "trt_extra_plugin_lib_paths") {
             if (!option.second.empty()) {
-              params.trt_extra_plugin_lib_paths = option.second.c_str();
+              trt_extra_plugin_lib_paths = option.second;
+              params.trt_extra_plugin_lib_paths = trt_extra_plugin_lib_paths.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a path string.\n");
             }
@@ -887,18 +879,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
-    int device_id = 0;
-    auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      for (auto option : it->second) {
-        if (option.first == "device_id") {
-          if (!option.second.empty()) {
-            device_id = std::stoi(option.second);
-          }
-        }
-      }
-    }
-    return onnxruntime::DMLProviderFactoryCreator::Create(device_id)->CreateProvider();
+    auto cit = provider_options_map.find(type);
+    return onnxruntime::DMLProviderFactoryCreator::CreateFromProviderOptions(
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+        ->CreateProvider();
 #endif
   } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)
@@ -1207,6 +1191,12 @@ void addGlobalMethods(py::module& m) {
     LogDeprecationWarning("set_arena_extend_strategy", "CUDA/ROCM execution provider option \"arena_extend_strategy\"");
     arena_extend_strategy = strategy;
   });
+#endif
+
+#ifdef USE_TENSORRT
+  m.def(
+      "register_tensorrt_plugins_as_custom_ops", [](PySessionOptions& so, const ProviderOptions& options) { RegisterTensorRTPluginsAsCustomOps(so, options); },
+      "Register TensorRT plugins as custom ops.");
 #endif
 
 #ifdef ENABLE_ATEN

@@ -56,6 +56,7 @@
 #include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 #include "core/session/environment.h"
+#include "core/session/user_logging_sink.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -299,6 +300,35 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
   return Status::OK();
 }
 
+logging::Severity GetSeverity(const SessionOptions& session_options) {
+  logging::Severity severity = logging::Severity::kWARNING;
+  if (session_options.session_log_severity_level == -1) {
+    severity = logging::LoggingManager::DefaultLogger().GetSeverity();
+  } else {
+    ORT_ENFORCE(session_options.session_log_severity_level >= 0 &&
+                    session_options.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                "Invalid session log severity level. Not a valid onnxruntime::logging::Severity value: ",
+                session_options.session_log_severity_level);
+    severity = static_cast<logging::Severity>(session_options.session_log_severity_level);
+  }
+  return severity;
+}
+
+void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
+                                         const Environment& session_env) {
+  logging_manager_ = session_env.GetLoggingManager();
+  if (session_options.user_logging_function) {
+    std::unique_ptr<logging::ISink> user_sink = std::make_unique<UserLoggingSink>(session_options.user_logging_function,
+                                                                                  session_options.user_logging_param);
+    user_logging_manager_ = std::make_unique<logging::LoggingManager>(std::move(user_sink),
+                                                                      GetSeverity(session_options),
+                                                                      false,
+                                                                      logging::LoggingManager::InstanceType::Temporal,
+                                                                      &session_options.session_logid);
+    logging_manager_ = user_logging_manager_.get();
+  }
+}
+
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          const Environment& session_env) {
   auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
@@ -306,6 +336,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   session_id_ = global_session_id_.fetch_add(1);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
+
+  SetLoggingManager(session_options, session_env);
 
   // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
   // after the invocation of FinalizeSessionOptions.
@@ -428,7 +460,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 #if !defined(ORT_MINIMAL_BUILD)
       graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
 #endif
-      logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   // Initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
@@ -442,7 +473,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 #if !defined(ORT_MINIMAL_BUILD)
       graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
 #endif
-      logging_manager_(session_env.GetLoggingManager()),
       external_intra_op_thread_pool_(external_intra_op_thread_pool),
       external_inter_op_thread_pool_(external_inter_op_thread_pool),
       environment_(session_env) {
@@ -455,7 +485,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
                                    const PathString& model_uri)
     : model_location_(model_uri),
       graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
@@ -476,7 +505,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
     : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   Status st = Model::Load(model_istream, &model_proto_);
   ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
@@ -488,7 +516,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const void* model_data, int model_data_len)
     : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
@@ -1006,18 +1033,22 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
           layout_transformation::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
                                                       std::move(cpu_allocator), debug_graph_fn));
 
-      if (modified) {
-        ORT_RETURN_IF_ERROR_SESSIONID_(
-            graph_transformer_mgr_.ApplyTransformers(graph_to_transform, TransformerLevel::Level1, *session_logger_));
-
-        // debug the graph after the L1 transformers have run against any layout transformation changes.
-        // this is prior to GraphPartitioner::GetCapabilityForEP calling IExecutionProvider::GetCapability the second
-        // time to validate the EP that requested the layout transformation can take all nodes using the new layout.
-        // if that fails, this allows debugging the graph used in that GetCapability call.
-        if (debug_graph_fn) {
-          debug_graph_fn(graph_to_transform);
-        }
-      }
+      // Previously we ran the L1 transformers to handle constant folding of any initializers that were transposed in
+      // a QDQ format model. The transpose optimizer can now look past DQ nodes to directly update initializers which
+      // takes care of most models without needing this.
+      //
+      // if (modified) {
+      //  ORT_RETURN_IF_ERROR_SESSIONID_(
+      //      graph_transformer_mgr_.ApplyTransformers(graph_to_transform, TransformerLevel::Level1, *session_logger_));
+      //
+      // debug the graph after the L1 transformers have run against any layout transformation changes.
+      // this is prior to GraphPartitioner::GetCapabilityForEP calling IExecutionProvider::GetCapability the second
+      // time to validate the EP that requested the layout transformation can take all nodes using the new layout.
+      // if that fails, this allows debugging the graph used in that GetCapability call.
+      // if (debug_graph_fn) {
+      //  debug_graph_fn(graph_to_transform);
+      //}
+      //}
 
       return Status::OK();
     };
@@ -2825,17 +2856,7 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
 void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   // create logger for session, using provided logging manager if possible
   if (logging_manager != nullptr) {
-    logging::Severity severity = logging::Severity::kWARNING;
-    if (session_options_.session_log_severity_level == -1) {
-      severity = logging::LoggingManager::DefaultLogger().GetSeverity();
-    } else {
-      ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
-                      session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid session log severity level. Not a valid onnxruntime::logging::Severity value: ",
-                  session_options_.session_log_severity_level);
-      severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
-    }
-
+    logging::Severity severity = GetSeverity(session_options_);
     owned_session_logger_ = logging_manager_->CreateLogger(session_options_.session_logid, severity, false,
                                                            session_options_.session_log_verbosity_level);
     session_logger_ = owned_session_logger_.get();

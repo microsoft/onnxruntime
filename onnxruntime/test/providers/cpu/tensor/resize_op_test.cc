@@ -780,7 +780,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_5DTrilinear_pytorch_half_pixel) {
 }
 
 TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};

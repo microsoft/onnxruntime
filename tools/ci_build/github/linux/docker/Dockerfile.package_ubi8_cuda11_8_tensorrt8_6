@@ -22,7 +22,7 @@ RUN dnf install -y \
     ln -s /usr/bin/pip3 pip3.8;
 
 RUN pip3 install --upgrade pip
-RUN pip3 install setuptools>=41.0.0
+RUN pip3 install setuptools>=68.2.2
 
 # Install TensorRT
 RUN dnf install -y libnvinfer8 libnvonnxparsers8 libnvparsers8 libnvinfer-plugin8 libnvinfer-lean8 libnvinfer-vc-plugin8 libnvinfer-dispatch8

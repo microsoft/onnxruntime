@@ -1000,6 +1000,26 @@ TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   ASSERT_TRUE(op_to_count.size() == 0U);
 }
 
+// Test we don't fail when constant folding hits a string initializer
+TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "gh_issue_17392.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count.size(), 0U) << "Identity node should have been removed";
+}
+
 // Check transformations in the case of a subgraph with constant inputs.
 TEST_F(GraphTransformationTests, SubgraphWithConstantInputs) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "constant-subgraph.onnx";
