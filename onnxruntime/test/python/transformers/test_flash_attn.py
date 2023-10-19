@@ -1135,6 +1135,8 @@ def parity_check_gqa_past_no_buff(
 
 class TestMHA(unittest.TestCase):
     def test_packed_mha(self):
+        if not torch.cuda.is_available():
+            return
         major, _ = torch.cuda.get_device_capability()
         if major < 8:
             return
@@ -1151,6 +1153,8 @@ class TestMHA(unittest.TestCase):
                         parity_check_mha(config, True)
 
     def test_mha(self):
+        if not torch.cuda.is_available():
+            return
         major, _ = torch.cuda.get_device_capability()
         if major < 8:
             return
@@ -1184,6 +1188,8 @@ class TestMHA(unittest.TestCase):
 
 class TestGQA(unittest.TestCase):
     def test_gqa_no_past(self):
+        if not torch.cuda.is_available():
+            return
         major, minor = torch.cuda.get_device_capability()
         if major < 8:
             return
@@ -1228,6 +1234,8 @@ class TestGQA(unittest.TestCase):
                             parity_check_gqa_no_past(config, causal=causal)
 
     def test_gqa_past(self):
+        if not torch.cuda.is_available():
+            return
         major, minor = torch.cuda.get_device_capability()
         if major < 8:
             return
