@@ -177,9 +177,10 @@ namespace Dml::GraphDescBuilder
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
-        const ExecutionProviderImpl* executionHandle,
+        const ExecutionProviderImpl* providerImpl,
         std::unordered_map<uint32_t, uint32_t>& serializedGraphInputIndexToMainGraphInputIndex,
-        std::unordered_map<std::string_view, uint32_t>& serializedGraphConstantNameToMainGraphInputIndex)
+        std::unordered_map<std::string_view, uint32_t>& serializedGraphConstantNameToMainGraphInputIndex,
+        /*out*/std::vector<std::unique_ptr<std::byte[]>>& smallConstantData)
     {
         const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph.GetMetaDef()->inputs;
         const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph.GetMetaDef()->outputs;
@@ -301,6 +302,9 @@ namespace Dml::GraphDescBuilder
                         iter->second < isConstGpuGraphInputCount &&
                         isConstGpuGraphInput[iter->second])
                     {
+                        DmlSerializedGraphNode constantNode = {};
+                        constantNode.Name = arg->Name();
+
                         // This is a highly inefficient approach to generating constant nodes.  It duplicates constant data 
                         // across the graph input as well as every consumer's unique constant node.  However it is currently 
                         // only used for small inputs.
@@ -312,28 +316,30 @@ namespace Dml::GraphDescBuilder
 
                         if (constantInput && constantInput->GetTensorByteSize() < c_maxConstNodeDataSize)
                         {
-                            std::vector<uint8_t> tensorData;
-                            tensorData.insert(
-                                tensorData.begin(), 
-                                static_cast<const uint8_t*>(constantInput->GetData()), 
-                                static_cast<const uint8_t*>(constantInput->GetData()) + constantInput->GetTensorByteSize());
-                                
-                            NodeInfo nodeInfo = {};
-                            nodeInfo.nodeDef = std::move(tensorData);
-                            graphNodes.push_back(std::move(nodeInfo));
+                            smallConstantData.push_back(std::make_unique<std::byte[]>(constantInput->GetTensorByteSize()));
+                            std::transform(
+                                static_cast<const uint8_t*>(constantInput->GetData()),
+                                static_cast<const uint8_t*>(constantInput->GetData()) + constantInput->GetTensorByteSize(),
+                                smallConstantData.back().get(),
+                                [](uint8_t b) {return static_cast<std::byte>(b);});
 
-                            DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
+                            ConstantData constantData = {smallConstantData.back().get(), constantInput->GetTensorByteSize()};
+                            constantNode.Desc = constantData;
+
+                            
+                            /*DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
                             edge.FromNodeIndex = static_cast<UINT>(graphNodes.size() - 1);
                             edge.FromNodeOutputIndex = 0;
                             edge.ToNodeIndex = mainGraphNodeIndex;
                             edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;
-                            graphIntermediateEdges.push_back(edge);
+                            graphIntermediateEdges.push_back(edge);*/
+                        }
+                        else
+                        {
+                            ConstantName constantFileName = {GetSanitizedFileName(arg->Name())};
+                            constantNode.Desc = constantFileName;
                         }
                         outputEdgeNameToDmlGraphNodeAndIndexMap[arg->Name()] = {static_cast<uint32_t>(dmlGraphNodes.size()), 0};
-                        DmlSerializedGraphNode constantNode = {};
-                        constantNode.Name = arg->Name();
-                        ConstantName constantFileName = {GetSanitizedFileName(arg->Name())};
-                        constantNode.Desc = constantFileName;
                         dmlGraphNodes.push_back(constantNode);
                     }
                 }
@@ -364,12 +370,17 @@ namespace Dml::GraphDescBuilder
                         if (mainDmlGraphInputIndex < isConstGpuGraphInputCount &&
                             isConstGpuGraphInput[mainDmlGraphInputIndex])
                         {
-                            auto& mainDmlGraphNode = dmlGraphNodes[mainDmlGraphNodeIndex];
-                            AbstractOperatorDesc& abstractOperatorDesc = std::get<AbstractOperatorDesc>(mainDmlGraphNode.Desc);
-                            std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = abstractOperatorDesc.GetInputTensors();
-                            DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorDmlGraphInputEdge.ToNodeInputIndex];
-                            tensorDesc->flags |= DML_TENSOR_FLAG_OWNED_BY_DML;
                             const auto& constantNodeAndIndex = outputEdgeNameToDmlGraphNodeAndIndexMap.at(arg->Name());
+                            // if it is large constant tensor then only set the OWNED_BY_DML flag.
+                            auto& constantNodeVariant = std::get<DmlSerializedGraphNodeConstantVariant>(dmlGraphNodes[constantNodeAndIndex.nodeIndex].Desc);
+                            if (std::holds_alternative<ConstantName>(constantNodeVariant))
+                            {
+                                auto& mainDmlGraphNode = dmlGraphNodes[mainDmlGraphNodeIndex];
+                                AbstractOperatorDesc& abstractOperatorDesc = std::get<AbstractOperatorDesc>(mainDmlGraphNode.Desc);
+                                std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = abstractOperatorDesc.GetInputTensors();
+                                DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorDmlGraphInputEdge.ToNodeInputIndex];
+                                tensorDesc->flags |= DML_TENSOR_FLAG_OWNED_BY_DML;
+                            }
 
                             DmlIntermediateSerializedGraphEdge edge = {};
                             edge.FromNodeIndex = constantNodeAndIndex.nodeIndex;
@@ -483,10 +494,6 @@ namespace Dml::GraphDescBuilder
         // Avoid using separate command lists for small graphs. This value can be reduced by tuning the
         // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
         // enough GPU work to be worth flushing immediately.
-        if (indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList || providerImpl->IsMcdmDevice())
-        {
-          reuseCommandList = true;
-        }
         graphDesc.reuseCommandList = ((indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList) || providerImpl->IsMcdmDevice());
         return graphDesc;
     }

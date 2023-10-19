@@ -23,6 +23,7 @@ namespace Dml
     namespace GraphDescBuilder
     {
         constexpr uint32_t minNodeCountToReuseCommandList = 5;
+        constexpr uint32_t c_maxConstNodeDataSize = 1024 * 1024;
 
         // Gets a unique name for the node which survives recreation and graph manipulations between the point
         // that graph partitioning occurs and kernel creation happens
@@ -43,6 +44,7 @@ namespace Dml
             IDMLDevice* device,
             const ExecutionProviderImpl* executionHandle,
             std::unordered_map<uint32_t, uint32_t>& serializedGraphInputIndexToMainGraphInputIndex,
-            std::unordered_map<std::string_view, uint32_t>& serializedGraphConstantNameToMainGraphInputIndex);
+            std::unordered_map<std::string_view, uint32_t>& serializedGraphConstantNameToMainGraphInputIndex,
+            /*out*/std::vector<std::unique_ptr<std::byte[]>>& smallConstantData);
     }
 }

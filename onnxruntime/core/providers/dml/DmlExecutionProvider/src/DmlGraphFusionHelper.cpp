@@ -329,7 +329,7 @@ namespace DmlGraphFusionHelper
             const DmlSerializedGraphNode& node = graphDesc.Nodes[index];
             if (std::holds_alternative<AbstractOperatorDesc>(node.Desc))
             {
-                oldNodeIndexToNewNodeIndexMap[index] = static_cast<uint32_t>(dmlOperators.size());
+                oldNodeIndexToNewNodeIndexMap[index] = static_cast<uint32_t>(dmlGraphNodes.size());
                 DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc<ALLOCATOR_SIZE>(std::get<AbstractOperatorDesc>(node.Desc), &allocator);
                 ComPtr<IDMLOperator> op;
                 ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
@@ -338,6 +338,22 @@ namespace DmlGraphFusionHelper
                 dmlOperatorGraphNode->Name = node.Name.data();
                 dmlOperatorGraphNode->Operator = op.Get();
                 dmlGraphNodes.push_back(DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, dmlOperatorGraphNode});
+            }
+            else
+            {
+                auto& constantNodeVariant = std::get<DmlSerializedGraphNodeConstantVariant>(node.Desc);
+                if (std::holds_alternative<ConstantData>(constantNodeVariant))
+                {
+                    oldNodeIndexToNewNodeIndexMap[index] = static_cast<uint32_t>(dmlGraphNodes.size());
+
+                    auto& constantData = std::get<ConstantData>(constantNodeVariant);
+                    
+                    DML_CONSTANT_DATA_GRAPH_NODE_DESC* constantNode = allocator.template Allocate<DML_CONSTANT_DATA_GRAPH_NODE_DESC>();
+                    constantNode->Name = node.Name.data();
+                    constantNode->DataSize = constantData.dataSize;
+                    constantNode->Data = constantData.data;
+                    dmlGraphNodes.push_back(DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_CONSTANT, constantNode});
+                }
             }
         }
 
@@ -384,19 +400,33 @@ namespace DmlGraphFusionHelper
             bool isConstantEdge = std::holds_alternative<DmlSerializedGraphNodeConstantVariant>(descVariant);
             if (isConstantEdge)
             {
-                const std::string& constantName = graphDesc.Nodes[graphDesc.IntermediateEdges[i].FromNodeIndex].Name;
+                auto& constantNodeVariant = std::get<DmlSerializedGraphNodeConstantVariant>(descVariant);
+                if (std::holds_alternative<ConstantData>(constantNodeVariant))
+                {
+                    DML_INTERMEDIATE_GRAPH_EDGE_DESC* edge = allocator.template Allocate<DML_INTERMEDIATE_GRAPH_EDGE_DESC>();
+                    edge->FromNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.IntermediateEdges[i].FromNodeIndex];
+                    edge->FromNodeOutputIndex = graphDesc.IntermediateEdges[i].FromNodeOutputIndex;
+                    edge->ToNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.IntermediateEdges[i].ToNodeIndex];
+                    edge->ToNodeInputIndex = graphDesc.IntermediateEdges[i].ToNodeInputIndex;
+                    edge->Name = graphDesc.IntermediateEdges[i].Name.data();
+                    dmlIntermediateEdges.push_back(DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INTERMEDIATE, edge});
+                }
+                else
+                {
+                    const std::string& constantName = graphDesc.Nodes[graphDesc.IntermediateEdges[i].FromNodeIndex].Name;
 
-                DML_INPUT_GRAPH_EDGE_DESC* edge = allocator.template Allocate<DML_INPUT_GRAPH_EDGE_DESC>();
-                edge->GraphInputIndex = GetConstantNodeGraphInputIndex(
-                    constantName,
-                    serializedGraphConstantNameToMainGraphInputIndex,
-                    graphMaxInputIndex,
-                    localConstantNameToIndexMap);
-                edge->ToNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.IntermediateEdges[i].ToNodeIndex];
-                edge->ToNodeInputIndex = graphDesc.IntermediateEdges[i].ToNodeInputIndex;
-                edge->Name = graphDesc.IntermediateEdges[i].Name.data();
+                    DML_INPUT_GRAPH_EDGE_DESC* edge = allocator.template Allocate<DML_INPUT_GRAPH_EDGE_DESC>();
+                    edge->GraphInputIndex = GetConstantNodeGraphInputIndex(
+                        constantName,
+                        serializedGraphConstantNameToMainGraphInputIndex,
+                        graphMaxInputIndex,
+                        localConstantNameToIndexMap);
+                    edge->ToNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.IntermediateEdges[i].ToNodeIndex];
+                    edge->ToNodeInputIndex = graphDesc.IntermediateEdges[i].ToNodeInputIndex;
+                    edge->Name = graphDesc.IntermediateEdges[i].Name.data();
 
-                dmlInputEdges.push_back({DML_GRAPH_EDGE_TYPE_INPUT, edge});
+                    dmlInputEdges.push_back({DML_GRAPH_EDGE_TYPE_INPUT, edge});
+                }
             }
             else
             {
@@ -460,6 +490,7 @@ namespace DmlGraphFusionHelper
         // multiple nodes.
         std::unordered_map<uint32_t, uint32_t> serializedGraphInputIndexToMainGraphInputIndex;
         std::unordered_map<std::string_view, uint32_t> serializedGraphConstantNameToMainGraphInputIndex;
+        std::vector<std::unique_ptr<std::byte[]>> smallConstantData;
         GraphDescBuilder::GraphDesc serializedDmlGraphDesc = GraphDescBuilder::BuildDmlGraphDesc(
             isInputsUploadedByDmlEP.data(),
             isInputsUploadedByDmlEP.size(),
@@ -470,7 +501,8 @@ namespace DmlGraphFusionHelper
             device.Get(),
             providerImpl,
             serializedGraphInputIndexToMainGraphInputIndex,
-            serializedGraphConstantNameToMainGraphInputIndex);
+            serializedGraphConstantNameToMainGraphInputIndex,
+            smallConstantData);
 
         const std::wstring modelName = GetModelName(graph.ModelPath());
         auto buffer = SerializeDmlGraph(serializedDmlGraphDesc);
