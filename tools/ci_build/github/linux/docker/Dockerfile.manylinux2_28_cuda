@@ -27,6 +27,7 @@ ENV DEVTOOLSET_ROOTPATH=${DEVTOOLSET_ROOTPATH}
 ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}
 ENV PATH=${PREPEND_PATH}${PATH}
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+ENV TRT_VERSION=${TRT_VERSION}
 
 # first copy the fixup mirrors script, keep the script around
 COPY build_scripts/fixup-mirrors.sh /usr/local/sbin/fixup-mirrors
@@ -157,6 +158,7 @@ CMD ["/bin/bash"]
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "${TRT_VERSION}" ]; then  \
+    echo "TRT_VERSION is not empty, ${TRT_VERSION}" &&  \
     CUDA_VERSION=$(nvcc --version | sed -n 's/^.*release \([0-9]\+\.[0-9]\+\).*$/\1/p') &&  \
     dnf -y install  \
     libcudnn8-devel-*cuda${CUDA_VERSION}*  \
