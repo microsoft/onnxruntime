@@ -77,8 +77,7 @@
   },
   "dependencies": {
     "@expo/config-plugins": "^7.2.4",
-    "buffer": "^6.0.3",
-    "onnxruntime-common": "file:../common"
+    "buffer": "^6.0.3"
   },
   "scripts": {
     "typescript": "tsc --noEmit",

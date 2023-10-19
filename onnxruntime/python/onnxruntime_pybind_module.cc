@@ -10,7 +10,14 @@ namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
 
+#if defined(USE_MPI) && defined(ORT_USE_NCCL)
+static constexpr bool HAS_COLLECTIVE_OPS = true;
+#else
+static constexpr bool HAS_COLLECTIVE_OPS = false;
+#endif
+
 void CreateInferencePybindStateModule(py::module& m);
+void CreateQuantPybindModule(py::module& m);
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   CreateInferencePybindStateModule(m);
@@ -23,6 +30,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
   m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
   m.def("get_build_info", []() -> std::string { return ORT_BUILD_INFO; });
+  m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });
+  CreateQuantPybindModule(m);
 }
 }  // namespace python
 }  // namespace onnxruntime

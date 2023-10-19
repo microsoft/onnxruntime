@@ -23,20 +23,22 @@ win_gpu_package_libraries = [
 ]
 gpu_related_header_files = [
     "cpu_provider_factory.h",
-    "tensorrt_provider_factory.h",
     "onnxruntime_c_api.h",
     "onnxruntime_cxx_api.h",
+    "onnxruntime_float16.h",
     "onnxruntime_cxx_inline.h",
 ]
 dmlep_related_header_files = [
     "cpu_provider_factory.h",
     "onnxruntime_c_api.h",
     "onnxruntime_cxx_api.h",
+    "onnxruntime_float16.h",
     "onnxruntime_cxx_inline.h",
     "dml_provider_factory.h",
 ]
 training_related_header_files = [
     "onnxruntime_c_api.h",
+    "onnxruntime_float16.h",
     "onnxruntime_cxx_api.h",
     "onnxruntime_cxx_inline.h",
     "onnxruntime_training_c_api.h",

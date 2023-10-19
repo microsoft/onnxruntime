@@ -378,6 +378,21 @@ class TestBeamSearchWhisper(unittest.TestCase):
         logits_processor = ["--use_logits_processor"]
         self.run_configs(logits_processor)
 
+    @pytest.mark.slow
+    def test_cross_qk_overall(self):
+        decoder_input_ids = [
+            "--chain_model",
+            "--collect_cross_qk",
+            "--output_cross_qk",
+            "--use_forced_decoder_ids",
+            "--extra_decoding_ids",
+            "--output_no_speech_probs",
+            "--use_vocab_mask",
+            "--use_prefix_vocab_mask",
+            "--use_logits_processor",
+        ]
+        self.run_configs(decoder_input_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -53,6 +53,7 @@ struct IBeamSearchCpuState {
   gsl::span<int32_t> topk_tokens;      // shape (batch_size, 2*num_beams), tokens of topk candidates.
   gsl::span<int32_t> topk_indices;     // shape (batch_size, 2*num_beams), beam indices of topk candidates.
   gsl::span<float> final_beam_scores;  // shape (batch_size, num_beams)
+  gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
 };
 
 template <typename T>
@@ -175,6 +176,17 @@ struct IGenerationParameters {
   int seed = 0;
   int min_tokens_to_keep = 1;
   bool custom_sampling = false;
+
+  // Parameters for whisper model
+  bool decoder_output_cross_qk = false;
+  gsl::span<const int32_t> extra_decoding_ids;
+  int32_t no_speech_token = -1;
+  void* no_speech_probs = nullptr;
+
+  int cross_qk_layer_head_input_id = -1;
+  int extra_decoding_ids_input_id = -1;
+  int cross_qk_output_id = -1;
+  int no_speech_probs_output_id = -1;
 };
 
 }  // namespace transformers
