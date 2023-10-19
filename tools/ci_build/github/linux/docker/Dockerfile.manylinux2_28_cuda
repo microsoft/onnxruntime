@@ -118,7 +118,7 @@ RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.5
 
 FROM build_cpython AS build_cpython311
 COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.11.0b5
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.11.2
 
 FROM build_cpython AS all_python
 COPY build_scripts/install-pypy.sh \
@@ -156,7 +156,8 @@ CMD ["/bin/bash"]
 #Build manylinux docker image end
 
 #Install TensorRT only if TRT_VERSION is not empty
-RUN if [ -n "${TRT_VERSION}" ]; then  \
+RUN if [ -n "$TRT_VERSION}" ]; then  \
+    echo "Tensor RunTime version is ${$TRT_VERSION}"
     CUDA_VERSION=$(nvcc --version | sed -n 's/^.*release \([0-9]\+\.[0-9]\+\).*$/\1/p') &&  \
     dnf -y install  \
     libcudnn8-devel-*cuda${CUDA_VERSION}*  \
