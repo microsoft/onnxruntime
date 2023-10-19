@@ -598,7 +598,7 @@ MlasQ4GemmKernelNeon(const float* A,
     };
 
     // return impl0_reference();
-    // return impl3_four_cols();
+    return impl3_four_cols();
     // return impl5_four_cols_inline();
 }
 
