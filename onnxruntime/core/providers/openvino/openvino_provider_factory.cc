@@ -119,11 +119,6 @@ struct OpenVINO_Provider : Provider {
         LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_streams' should be in the range of 1-8.\n "
                          << "Executing with num_streams=1";
       }
-      if (num_streams>8) {
-        num_streams = 8;
-        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_streams' should be in the range of 1-8.\n "
-                         << "Executing with maximum num_streams=8.";
-      }
     }
     std::string bool_flag = "";
     if (provider_options_map.find("enable_npu_fast_compile") != provider_options_map.end()) {
