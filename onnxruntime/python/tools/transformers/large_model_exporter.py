@@ -213,6 +213,7 @@ def fetch_onnx_inputs_outputs_name(
 ):
     """fetch onnx inputs and outputs name"""
     num_of_past_key = 0
+    kv_cache_axis = {0: "batch_size"}
     # try get num_of_past_key and shape of past_key_value
     if past_key_values is not None:
         num_of_past_key = len(past_key_values)
