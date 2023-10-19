@@ -72,6 +72,8 @@ from onnx_exporter import (
 from packaging import version
 from quantize_helper import QuantizeHelper
 
+from onnxruntime.quantization import create_calibrator, write_calibration_table, CalibrationMethod
+
 logger = logging.getLogger("")
 
 cpu_count = psutil.cpu_count(logical=False)
@@ -779,7 +781,7 @@ def main():
         logger.error("fp16 is for GPU only")
         return
 
-    if args.precision == Precision.INT8 and args.use_gpu and not provider == "migraphx":
+    if args.precision == Precision.INT8 and args.use_gpu and args.provider != "migraphx":
         logger.error("int8 is for CPU only")
         return
 
