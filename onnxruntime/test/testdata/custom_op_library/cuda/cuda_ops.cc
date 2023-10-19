@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && !defined(ENABLE_TRAINING)
 
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
