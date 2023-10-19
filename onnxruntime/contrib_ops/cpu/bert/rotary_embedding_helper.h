@@ -17,7 +17,7 @@ struct RotaryParameters {
   int head_size;              // Head size used by cos/sin cache * 2
   int num_heads;              // num_heads = hidden_size / head_size
   int max_sequence_length;    // Sequence length used by cos/sin cache
-  int position_ids_format;    // Format of position ids - 0 is (1), 1 is (batch_size, 1)
+  int position_ids_format;    // Format of position ids - 0 is (1), 1 is (batch_size, sequence_length)
 };
 
 template <typename T>

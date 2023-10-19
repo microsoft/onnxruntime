@@ -83,10 +83,11 @@ Status LaunchRotaryEmbeddingKernel(
     const bool interleaved,
     const int max_threads_per_block) {
 
-  const int smem_size = 0;
+  constexpr int smem_size = 0;
   const dim3 grid(num_heads, sequence_length, batch_size);
   const dim3 block(head_size, 1, 1);
 
+  assert(head_size <= max_threads_per_block);
   RotaryEmbeddingBSNH<<<grid, block, smem_size, stream>>>(
     output, input, cos_cache, sin_cache, position_ids,
     sequence_length, num_heads, head_size, position_ids_format, interleaved

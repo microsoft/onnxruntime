@@ -192,11 +192,10 @@ class FusionRotaryAttention(FusionAttention):
         # Check #6: check paths for attention mask nodes
         attn_mask_path_1 = self.model.match_parent_path(add_qk, ["Concat", "Slice", "Slice"], [1, 0, 0])
         attn_mask_path_2 = self.model.match_parent_path(add_qk, ["Cast", "Concat", "Slice", "Slice"], [1, 0, 0, 0])
-        concat_qk, slice_qk_2, slice_qk_1 = None, None, None
         if attn_mask_path_1 is not None:
-            concat_qk, slice_qk_2, slice_qk_1 = attn_mask_path_1
+            _, slice_qk_2, slice_qk_1 = attn_mask_path_1
         elif attn_mask_path_2 is not None:
-            _, concat_qk, slice_qk_2, slice_qk_1 = attn_mask_path_2
+            _, _, slice_qk_2, slice_qk_1 = attn_mask_path_2
         else:
             return False
         # Check first input to Slice #1 is 3D attention mask of shape (B,S,T)
@@ -693,23 +692,6 @@ class FusionRotaryEmbeddings(Fusion):
 
         return rotary_emb_node
 
-    def add_nodes_to_remove(self, nodes: List[NodeProto]):
-        # Some rotary embedding nodes are shared between the Q and K paths. When path A is fused,
-        # its shared rotary embedding nodes are added to `self.nodes_to_remove`. But when path B
-        # is fused, its rotary embedding nodes are also added to `self.nodes_to_remove`. When the
-        # nodes are iteratively removed from `self.nodes_to_remove`, path A's rotary embedding nodes
-        # are removed first. Since path A's rotary embeddings nodes are removed, path B's rotary embedding
-        # nodes are not removed because they were previously removed for path A. This causes an error
-        # to print in remove_node that a node has failed to be removed.
-        #
-        # To avoid this error, we pre-emptively check if the shared rotary embedding nodes are already
-        # in `self.nodes_to_remove`. We could alternatively convert `self.nodes_to_remove` to a set to
-        # avoid this issue, but there could be scenarios where the nodes need to be removed in a specific
-        # order and converting to a set would lose this order.
-        for node in nodes:
-            if node not in self.nodes_to_remove:
-                self.nodes_to_remove.append(node)
-
     def create_rotary_embeddings_from_nodes(
         self,
         root_input: str,
@@ -1008,8 +990,8 @@ class FusionRotaryEmbeddings(Fusion):
             self.add_nodes_to_remove(rotate_half_x2_path_1[:-1])
             self.add_nodes_to_remove(rotate_half_x2_path_2[:-1])
             self.add_nodes_to_remove(x_path[:-1])
-            self.add_nodes_to_remove(sin_path) # if past_seq_len == "" else sin_path[:-1])
-            self.add_nodes_to_remove(cos_path) # if past_seq_len == "" else sin_path[:-1])
+            self.add_nodes_to_remove(sin_path)
+            self.add_nodes_to_remove(cos_path)
             self.add_nodes_to_remove(position_ids_from_sin_path[:-1])
             self.add_nodes_to_remove(position_ids_from_cos_path[:-1])
 

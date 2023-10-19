@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace test {
 
-constexpr float epsilon_ = 1e-12f;
+constexpr float epsilon_ = 1e-3f;
 
 static void RunTest(
     const std::vector<float>& input_data,

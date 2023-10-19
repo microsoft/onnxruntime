@@ -946,7 +946,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "key_padding_mask",
-               "Key padding mask with shape (batch_size) or (3 * batch_size + 2) or (batch_size, kv_sequence_length)",
+               "Key padding mask with shape (batch_size), (3 * batch_size + 2), (batch_size, kv_sequence_length), (batch_size, total_sequence_length), "
+               "or (batch_size, sequence_length, total_sequence_length)",
                "M",
                OpSchema::Optional)
         .Input(5,

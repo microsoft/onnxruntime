@@ -94,11 +94,11 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
         for (int i = 0; i < head_size; i++) {
           if (interleaved) {
             cache_idx = (i / 2) % half_head_size;
-            sign = (i % 2 == 0) ? -1 : 1;
+            sign = (i % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
             j = (i % 2 == 0) ? i+1 : i-1;  // i - sign
           } else {
             cache_idx = i % half_head_size;
-            sign = (i < half_head_size) ? -1 : 1;
+            sign = (i < half_head_size) ? static_cast<T>(-1) : static_cast<T>(1);
             j = (i + half_head_size) % head_size;
           }
           output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
