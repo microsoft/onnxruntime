@@ -160,6 +160,7 @@ RUN if [ -n "${TRT_VERSION}" ]; then  \
     CUDA_VERSION=$(nvcc --version | sed -n 's/^.*release \([0-9]\+\.[0-9]\+\).*$/\1/p') &&  \
     dnf -y install  \
     libcudnn8-devel-*cuda${CUDA_VERSION}*  \
+    libcudnn8-*cuda${CUDA_VERSION}*  \
     libnvinfer8-${TRT_VERSION}  \
     libnvparsers8-${TRT_VERSION}  \
     libnvonnxparsers8-${TRT_VERSION}  \
