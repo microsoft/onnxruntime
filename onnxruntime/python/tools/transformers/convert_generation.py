@@ -1272,35 +1272,12 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
-def replace_mha_with_gqa(model: OnnxModel, past_input: str, kv_num_heads: int = 0):
-    past_seq_len = past_input
-    if past_seq_len not in {"pos"}:
-        # Get past sequence length to enable past-present-share-buffer
-        past_seq_len = "past_seq_len_output"
-        idx_two_name = "idx_two"
-
-        # Create Gather node to get past_sequence_length from past kv cache
-        shape_node = onnx.helper.make_node(
-            "Shape",
-            inputs=[past_input],
-            outputs=["past_input_shape"],
-            name=model.create_node_name("Shape"),
-        )
-        constant_node = onnx.helper.make_node(
-            "Constant",
-            inputs=[],
-            outputs=[idx_two_name],
-            name=model.create_node_name("Constant"),
-            value_int=2,
-        )
-        gather_node = onnx.helper.make_node(
-            "Gather",
-            inputs=["past_input_shape", idx_two_name],
-            outputs=[past_seq_len],
-            name=model.create_node_name("Gather"),
-            axis=0,
-        )
-        model.model.graph.node.extend([shape_node, constant_node, gather_node])
+def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads: int = 0):
+    past_seq_len = past_seq_len_input
+    if past_seq_len not in model.get_graphs_input_names():
+        # Replace model input for past sequence length
+        new_input = onnx.helper.make_tensor_value_info(past_seq_len, onnx.TensorProto.INT64, shape=[1])
+        model.model.graph.input.append([new_input])
 
     # Replace MultiHeadAttention with GroupQueryAttention
     for node in model.model.graph.node:

@@ -123,7 +123,12 @@ def flatten_past_kv_inputs(past_key_values: List[Tuple[torch.Tensor, torch.Tenso
 
 # Format PyTorch inputs to ONNX Runtime inputs
 def convert_inputs_for_ort(
-    pt_inputs: dict, use_fp16: bool, use_buffer_share: bool = False, device: str = "", device_id: int = -1
+    pt_inputs: dict,
+    use_fp16: bool,
+    use_buffer_share: bool = False,
+    past_seq_len: int = 0,
+    device: str = "",
+    device_id: int = -1,
 ):
     ort_inputs = {}
     for k, v in pt_inputs.items():
@@ -134,7 +139,9 @@ def convert_inputs_for_ort(
         elif k == "attention_mask" and use_fp16 and use_buffer_share:
             # Skip because FP16 model has GroupQueryAttention, uses buffer sharing,
             # and GQA supports a causal mask by default
-            pass
+
+            # Instead, add the past sequence length input for GQA
+            ort_inputs["past_sequence_length"] = np.array(past_seq_len, dtype=np.int64)
         else:
             ort_inputs[k] = v.detach().cpu().numpy()
 

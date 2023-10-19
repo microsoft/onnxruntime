@@ -129,10 +129,15 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             return_dict=True,
         )
         init_inputs = convert_inputs_for_ort(
-            init_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id
+            init_inputs, args.use_fp16, args.past_present_share_buffer, 0, args.device, args.device_id
         )
         iter_inputs = convert_inputs_for_ort(
-            iter_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id
+            iter_inputs,
+            args.use_fp16,
+            args.past_present_share_buffer,
+            args.sequence_length,
+            args.device,
+            args.device_id,
         )
 
     elif args.benchmark_type == "ort-msft":
@@ -156,10 +161,15 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             split_kv=split_kv,
         )
         init_inputs = convert_inputs_for_ort(
-            init_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id
+            init_inputs, args.use_fp16, args.past_present_share_buffer, 0, args.device, args.device_id
         )
         iter_inputs = convert_inputs_for_ort(
-            iter_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id
+            iter_inputs,
+            args.use_fp16,
+            args.past_present_share_buffer,
+            args.sequence_length,
+            args.device,
+            args.device_id,
         )
 
     else:

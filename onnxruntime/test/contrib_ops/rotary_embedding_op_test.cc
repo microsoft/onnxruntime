@@ -11,15 +11,12 @@
 namespace onnxruntime {
 namespace test {
 
-constexpr float epsilon_ = 1e-3f;
-
 static void RunTest(
     const std::vector<float>& input_data,
     const std::vector<int64_t>& position_ids,
     const std::vector<float>& cos_cache,
     const std::vector<float>& sin_cache,
     const std::vector<float>& output_data,
-    float epsilon,
     int batch_size,
     int sequence_length,
     int hidden_size,
@@ -76,7 +73,7 @@ static void RunTest(
     test.AddInput<MLFloat16>("sin_cache", cache_dims, ToFloat16(sin_cache));
     test.AddOutput<MLFloat16>("output", input_dims, ToFloat16(output_data));
   }
-
+  test.SetOutputAbsErr("output", 0.001f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -85,7 +82,6 @@ static void RunTests(const std::vector<float>& input_data,
                      const std::vector<float>& cos_cache,
                      const std::vector<float>& sin_cache,
                      const std::vector<float>& output_data,
-                     float epsilon,
                      int batch_size,
                      int sequence_length,
                      int hidden_size = 0,
@@ -100,7 +96,6 @@ static void RunTests(const std::vector<float>& input_data,
           cos_cache,
           sin_cache,
           output_data,
-          epsilon_,
           batch_size,
           sequence_length,
           hidden_size,
@@ -118,7 +113,6 @@ static void RunTests(const std::vector<float>& input_data,
           cos_cache,
           sin_cache,
           output_data,
-          epsilon_,
           batch_size,
           sequence_length,
           hidden_size,
@@ -137,7 +131,6 @@ static void RunTests(const std::vector<float>& input_data,
             cos_cache,
             sin_cache,
             output_data,
-            epsilon_,
             batch_size,
             sequence_length,
             hidden_size,
@@ -186,7 +179,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
            cos_cache,
            sin_cache,
            output_data,
-           epsilon_,
            batch_size,
            sequence_length,
            hidden_size,
@@ -387,7 +379,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
            cos_cache,
            sin_cache,
            output_data,
-           epsilon_,
            batch_size,
            sequence_length,
            hidden_size,
@@ -588,7 +579,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
            cos_cache,
            sin_cache,
            output_data,
-           epsilon_,
            batch_size,
            sequence_length,
            hidden_size,
@@ -637,7 +627,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
            cos_cache,
            sin_cache,
            output_data,
-           epsilon_,
            batch_size,
            sequence_length,
            hidden_size,

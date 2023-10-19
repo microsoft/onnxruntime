@@ -381,7 +381,7 @@ def convert_to_float16(args: argparse.Namespace, config: LlamaConfig, old_paths:
 
 def use_group_query_attention(config: LlamaConfig, fp16_model_opt: OnnxModel):
     # Replace MultiHeadAttention with GroupQueryAttention and remove attention mask nodes
-    fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, "past_key_values.0.key", config.num_key_value_heads)
+    fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, "past_sequence_length", config.num_key_value_heads)
     fp16_model_opt.prune_graph()
     fp16_model_opt.update_graph(allow_remove_graph_inputs=True)
     return fp16_model_opt
