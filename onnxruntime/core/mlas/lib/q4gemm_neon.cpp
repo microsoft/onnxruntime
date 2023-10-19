@@ -24,7 +24,6 @@ Abstract:
 #include "q4gemm.h"
 
 struct MLAS_FP_Q4_GEMM_KERNEL_NEON {
-    // static constexpr size_t StrideM = 256;
 };
 
 //
@@ -83,7 +82,7 @@ FoldAccumulators(float32x4_t a0, float32x4_t a1, float32x4_t a2, float32x4_t a3)
     return vaddq_f32(vaddq_f32(a0, a1), vaddq_f32(a2, a3));
 }
 
-template <size_t NCols>
+template <typename Q4Type, size_t NCols>
 MLAS_FORCEINLINE void
 ComputeDotProducts(const float* ARowPtr,
                    const uint8_t* PackedBColPtr,
@@ -92,8 +91,6 @@ ComputeDotProducts(const float* ARowPtr,
                    size_t ldb,
                    const float* BiasPtr)
 {
-    using Q4Type = MLAS_Q4TYPE_BLK0;
-
     static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
 
     const int8x16_t LowMask = vdupq_n_s8(0x0F);
@@ -109,16 +106,21 @@ ComputeDotProducts(const float* ARowPtr,
         const size_t k_blk_len = std::min(CountK - k, Q4Type::BlkLen);
 
         float scale[NCols];
-        for (int i = 0; i < NCols; ++i) {
-            scale[i] = MlasQ4BlkScale<Q4Type>(PackedBBlobPtr + i * ldb);
-        }
+        UnrolledLoop<NCols>(
+            [&](size_t i) { scale[i] = MlasQ4BlkScale<Q4Type>(PackedBBlobPtr + i * ldb); });
 
-        const uint8_t zp = 8;
+        uint8_t zp[NCols];
+        UnrolledLoop<NCols>([&](size_t i) {
+            if constexpr (MlasQ4BlkHasZeroPoint<Q4Type>()) {
+                zp[i] = MlasQ4BlkZeroPoint<Q4Type>(PackedBBlobPtr + i * ldb);
+            } else {
+                zp[i] = 8;
+            }
+        });
 
         const uint8_t* b_data[NCols];
-        for (int i = 0; i < NCols; ++i) {
-            b_data[i] = MlasQ4BlkData<Q4Type>(PackedBBlobPtr + i * ldb);
-        }
+        UnrolledLoop<NCols>(
+            [&](size_t i) { b_data[i] = MlasQ4BlkData<Q4Type>(PackedBBlobPtr + i * ldb); });
 
         for (size_t k_idx_in_blk = 0; k_idx_in_blk < k_blk_len; k_idx_in_blk += 32) {
             // load A row vector elements
@@ -150,9 +152,8 @@ ComputeDotProducts(const float* ARowPtr,
             // dequantize B
 
             // subtract zero point
-            const int8x16_t zpv = vdupq_n_s8(zp);
-
             UnrolledLoop<NCols>([&](size_t i) {
+                const int8x16_t zpv = vdupq_n_s8(zp[i]);
                 bv_bytes[i][0] = vsubq_s8(bv_bytes[i][0], zpv);
                 bv_bytes[i][1] = vsubq_s8(bv_bytes[i][1], zpv);
             });
@@ -197,6 +198,9 @@ ComputeDotProducts(const float* ARowPtr,
             UnrolledLoop<8>([&](size_t j) {
                 UnrolledLoop<NCols>([&](size_t i) { acc[i] = vfmaq_f32(acc[i], av[j], bv[i][j]); });
             });
+
+            // increment b data pointers to next 32 elements
+            UnrolledLoop<NCols>([&](size_t i) { b_data[i] += 16; });
         }
 
         PackedBBlobPtr += Q4Type::BlobSize;
@@ -222,21 +226,19 @@ ComputeDotProducts(const float* ARowPtr,
 
 }  // namespace q4gemm_neon
 
-template <>
+template <typename Q4Type>
 MLAS_FORCEINLINE size_t
-MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
-                                       const uint8_t* PackedB,
-                                       float* C,
-                                       size_t CountM,
-                                       size_t CountN,
-                                       size_t CountK,
-                                       size_t lda,
-                                       size_t ldb,
-                                       size_t ldc,
-                                       const float* Bias)
+MlasQ4GemmKernelNeon(const float* A,
+                     const uint8_t* PackedB,
+                     float* C,
+                     size_t CountM,
+                     size_t CountN,
+                     size_t CountK,
+                     size_t lda,
+                     size_t ldb,
+                     size_t ldc,
+                     const float* Bias)
 {
-    using Q4Type = MLAS_Q4TYPE_BLK0;
-
     static constexpr size_t NCols = 4;  // columns to handle at once
 
     auto impl0_reference = [&]() {
@@ -250,7 +252,13 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
                     const size_t kblocklen = std::min(CountK - k, Q4Type::BlkLen);
 
                     const float s = MlasQ4BlkScale<Q4Type>(PackedBBlock);
-                    const uint8_t z = 8;  // MlasQ4BlkZeroPoint<Q4Type>(PackedBBlock);
+                    const uint8_t z = [PackedBBlock]() -> uint8_t {
+                        if constexpr (MlasQ4BlkHasZeroPoint<Q4Type>()) {
+                            return MlasQ4BlkZeroPoint<Q4Type>(PackedBBlock);
+                        } else {
+                            return 8;
+                        }
+                    }();
                     const uint8_t* PackedBData = MlasQ4BlkData<Q4Type>(PackedBBlock);
 
                     for (size_t kk = 0; kk < kblocklen; kk += 32) {
@@ -292,229 +300,6 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
         return CountM;
     };
 
-    auto impl1 = [&]() {
-        const float* ARowPtr = A;
-        float* CRowPtr = C;
-        const float* BiasPtr = Bias;
-
-        const int8x16_t LowMask = vdupq_n_s8(0x0F);
-
-        for (size_t m = 0; m < CountM; ++m) {
-            const uint8_t* PackedBColPtr = PackedB;
-
-            for (size_t n = 0; n < CountN; ++n) {
-                float32x4_t acc = vdupq_n_f32(0.0f);
-                const uint8_t* PackedBBlobPtr = PackedBColPtr;
-
-                for (size_t k = 0; k < CountK; k += Q4Type::BlkLen) {
-                    const size_t k_blk_len = std::min(CountK - k, Q4Type::BlkLen);
-
-                    const float scale = MlasQ4BlkScale<Q4Type>(PackedBBlobPtr);
-                    const uint8_t zp = 8;
-                    const uint8_t* b_data = MlasQ4BlkData<Q4Type>(PackedBBlobPtr);
-
-                    for (size_t k_idx_in_blk = 0; k_idx_in_blk < k_blk_len; k_idx_in_blk += 32) {
-                        // load A row vector elements
-
-                        // load 32 elements from A padding with 0's if there aren't enough
-                        float a_segment[32];
-                        {
-                            const size_t k_subblk_len =
-                                std::min(k_blk_len - k_idx_in_blk, size_t{32});
-                            const float* a_begin = ARowPtr + k + k_idx_in_blk;
-                            std::copy(a_begin, a_begin + k_subblk_len, a_segment);
-                            std::fill(a_segment + k_subblk_len, a_segment + 32, 0.0f);
-                        }
-
-                        // 32 floats of A
-                        float32x4_t av[8];
-                        for (int i = 0; i < 8; ++i) {
-                            av[i] = vld1q_f32(a_segment + i * 4);
-                        }
-
-                        // load B column vector
-                        int8x16_t bv_packed = vld1q_s8(b_data);
-
-                        int8x16_t bv_bytes_0 = vandq_s8(bv_packed, LowMask);
-                        int8x16_t bv_bytes_1 = vandq_s8(vshrq_n_s8(bv_packed, 4), LowMask);
-
-                        // dequantize B
-
-                        // subtract zero point
-                        const int8x16_t zpv = vdupq_n_s8(zp);
-
-                        bv_bytes_0 = vsubq_s8(bv_bytes_0, zpv);
-                        bv_bytes_1 = vsubq_s8(bv_bytes_1, zpv);
-
-                        // widen to int16
-                        int16x8_t bv_int16_0 = vmovl_s8(vget_low_s8(bv_bytes_0));
-                        int16x8_t bv_int16_1 = vmovl_s8(vget_high_s8(bv_bytes_0));
-                        int16x8_t bv_int16_2 = vmovl_s8(vget_low_s8(bv_bytes_1));
-                        int16x8_t bv_int16_3 = vmovl_s8(vget_high_s8(bv_bytes_1));
-
-                        // 32 floats of B
-                        float32x4_t bv[8];
-
-                        // widen to int32, cast to float32
-
-                        int32x4_t bv_int32_0 = vmovl_s16(vget_low_s16(bv_int16_0));
-
-                        bv[0] = vcvtq_f32_s32(bv_int32_0);
-                        bv[1] = vcvtq_f32_s32(vmovl_s16(vget_high_s16(bv_int16_0)));
-
-                        bv[2] = vcvtq_f32_s32(vmovl_s16(vget_low_s16(bv_int16_1)));
-                        bv[3] = vcvtq_f32_s32(vmovl_s16(vget_high_s16(bv_int16_1)));
-
-                        bv[4] = vcvtq_f32_s32(vmovl_s16(vget_low_s16(bv_int16_2)));
-                        bv[5] = vcvtq_f32_s32(vmovl_s16(vget_high_s16(bv_int16_2)));
-
-                        bv[6] = vcvtq_f32_s32(vmovl_s16(vget_low_s16(bv_int16_3)));
-                        bv[7] = vcvtq_f32_s32(vmovl_s16(vget_high_s16(bv_int16_3)));
-
-                        // multiply by scale
-                        for (int i = 0; i < 8; ++i) {
-                            bv[i] = vmulq_n_f32(bv[i], scale);
-                        }
-
-                        // c += a * b
-                        for (int i = 0; i < 8; ++i) {
-                            acc = vfmaq_f32(acc, av[i], bv[i]);
-                        }
-                    }
-
-                    PackedBBlobPtr += Q4Type::BlobSize;
-                }
-
-                float sum = vaddvq_f32(acc);
-
-                sum += BiasPtr ? BiasPtr[n] : 0.0f;
-
-                CRowPtr[n] = sum;
-
-                PackedBColPtr += ldb;
-            }
-
-            ARowPtr += lda;
-            CRowPtr += ldc;
-        }
-
-        return CountM;
-    };
-
-    auto impl2_two_accumulators = [&]() {
-        const float* ARowPtr = A;
-        float* CRowPtr = C;
-        const float* BiasPtr = Bias;
-
-        const int8x16_t LowMask = vdupq_n_s8(0x0F);
-
-        for (size_t m = 0; m < CountM; ++m) {
-            const uint8_t* PackedBColPtr = PackedB;
-
-            for (size_t n = 0; n < CountN; ++n) {
-                float32x4_t acc0 = vdupq_n_f32(0.0f);
-                float32x4_t acc1 = vdupq_n_f32(0.0f);
-
-                const uint8_t* PackedBBlobPtr = PackedBColPtr;
-
-                for (size_t k = 0; k < CountK; k += Q4Type::BlkLen) {
-                    const size_t k_blk_len = std::min(CountK - k, Q4Type::BlkLen);
-
-                    const float scale = MlasQ4BlkScale<Q4Type>(PackedBBlobPtr);
-                    const uint8_t zp = 8;
-                    const uint8_t* b_data = MlasQ4BlkData<Q4Type>(PackedBBlobPtr);
-
-                    for (size_t k_idx_in_blk = 0; k_idx_in_blk < k_blk_len; k_idx_in_blk += 32) {
-                        // load A row vector elements
-
-                        // load 32 elements from A padding with 0's if there aren't enough
-                        float a_segment[32];
-                        {
-                            const size_t k_subblk_len =
-                                std::min(k_blk_len - k_idx_in_blk, size_t{32});
-                            const float* a_begin = ARowPtr + k + k_idx_in_blk;
-                            std::copy(a_begin, a_begin + k_subblk_len, a_segment);
-                            std::fill(a_segment + k_subblk_len, a_segment + 32, 0.0f);
-                        }
-
-                        // 32 floats of A
-                        float32x4_t av[8];
-                        for (int i = 0; i < 8; ++i) {
-                            av[i] = vld1q_f32(a_segment + i * 4);
-                        }
-
-                        // load B column vector
-                        int8x16_t bv_packed = vld1q_s8(b_data);
-
-                        int8x16_t bv_bytes_0 = vandq_s8(bv_packed, LowMask);
-                        int8x16_t bv_bytes_1 = vandq_s8(vshrq_n_s8(bv_packed, 4), LowMask);
-
-                        // dequantize B
-
-                        // subtract zero point
-                        const int8x16_t zpv = vdupq_n_s8(zp);
-
-                        bv_bytes_0 = vsubq_s8(bv_bytes_0, zpv);
-                        bv_bytes_1 = vsubq_s8(bv_bytes_1, zpv);
-
-                        // widen to int16
-                        int16x8_t bv_int16_0 = vmovl_s8(vget_low_s8(bv_bytes_0));
-                        int16x8_t bv_int16_1 = vmovl_s8(vget_high_s8(bv_bytes_0));
-                        int16x8_t bv_int16_2 = vmovl_s8(vget_low_s8(bv_bytes_1));
-                        int16x8_t bv_int16_3 = vmovl_s8(vget_high_s8(bv_bytes_1));
-
-                        // 32 floats of B
-                        float32x4_t bv[8];
-
-                        // widen to int32, cast to float32
-
-                        int32x4_t bv_int32_0 = vmovl_s16(vget_low_s16(bv_int16_0));
-
-                        bv[0] = vcvtq_f32_s32(bv_int32_0);
-                        bv[1] = vcvtq_f32_s32(vmovl_s16(vget_high_s16(bv_int16_0)));
-
-                        bv[2] = vcvtq_f32_s32(vmovl_s16(vget_low_s16(bv_int16_1)));
-                        bv[3] = vcvtq_f32_s32(vmovl_s16(vget_high_s16(bv_int16_1)));
-
-                        bv[4] = vcvtq_f32_s32(vmovl_s16(vget_low_s16(bv_int16_2)));
-                        bv[5] = vcvtq_f32_s32(vmovl_s16(vget_high_s16(bv_int16_2)));
-
-                        bv[6] = vcvtq_f32_s32(vmovl_s16(vget_low_s16(bv_int16_3)));
-                        bv[7] = vcvtq_f32_s32(vmovl_s16(vget_high_s16(bv_int16_3)));
-
-                        // multiply by scale
-                        for (int i = 0; i < 8; ++i) {
-                            bv[i] = vmulq_n_f32(bv[i], scale);
-                        }
-
-                        // c += a * b
-                        for (int i = 0; i < 4; ++i) {
-                            acc0 = vfmaq_f32(acc0, av[i], bv[i]);
-                            acc1 = vfmaq_f32(acc1, av[i + 4], bv[i + 4]);
-                        }
-                    }
-
-                    PackedBBlobPtr += Q4Type::BlobSize;
-                }
-
-                float sum =
-                    vpadds_f32(vpadd_f32(vpadd_f32(vget_low_f32(acc0), vget_high_f32(acc0)),
-                                         vpadd_f32(vget_low_f32(acc1), vget_high_f32(acc1))));
-
-                sum += BiasPtr ? BiasPtr[n] : 0.0f;
-
-                CRowPtr[n] = sum;
-
-                PackedBColPtr += ldb;
-            }
-
-            ARowPtr += lda;
-            CRowPtr += ldc;
-        }
-
-        return CountM;
-    };
-
     auto impl3_four_cols = [&]() {
         const float* ARowPtr = A;
         float* CRowPtr = C;
@@ -527,8 +312,8 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
             int64_t nblk = static_cast<int64_t>(CountN) - NCols;
 
             while (nblk >= 0) {
-                q4gemm_neon::ComputeDotProducts<NCols>(ARowPtr, PackedBColPtr, SumPtr, CountK, ldb,
-                                                       BiasPtr);
+                q4gemm_neon::ComputeDotProducts<Q4Type, NCols>(ARowPtr, PackedBColPtr, SumPtr,
+                                                               CountK, ldb, BiasPtr);
 
                 // move to next `NCols` columns
 
@@ -542,33 +327,8 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
             // left over columns less than `NCols`?
             nblk += NCols;
             for (int64_t n = 0; n < nblk; ++n) {
-                q4gemm_neon::ComputeDotProducts<1>(ARowPtr, PackedBColPtr, SumPtr, CountK, ldb,
-                                                   BiasPtr);
-
-                PackedBColPtr += ldb;
-                BiasPtr += BiasPtr != nullptr ? 1 : 0;
-                SumPtr += 1;
-            }
-
-            ARowPtr += lda;
-            CRowPtr += ldc;
-        }
-
-        return CountM;
-    };
-
-    auto impl4_one_col_with_helper = [&]() {
-        const float* ARowPtr = A;
-        float* CRowPtr = C;
-
-        for (size_t m = 0; m < CountM; ++m) {
-            const float* BiasPtr = Bias;
-            const uint8_t* PackedBColPtr = PackedB;
-            float* SumPtr = CRowPtr;
-
-            for (size_t n = 0; n < CountN; ++n) {
-                q4gemm_neon::ComputeDotProducts<1>(ARowPtr, PackedBColPtr, SumPtr, CountK, ldb,
-                                                   BiasPtr);
+                q4gemm_neon::ComputeDotProducts<Q4Type, 1>(ARowPtr, PackedBColPtr, SumPtr, CountK,
+                                                           ldb, BiasPtr);
 
                 PackedBColPtr += ldb;
                 BiasPtr += BiasPtr != nullptr ? 1 : 0;
@@ -583,7 +343,6 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
     };
 
     auto impl5_four_cols_inline = [&]() {
-
         const float* ARowPtr = A;
         float* CRowPtr = C;
 
@@ -609,7 +368,14 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
                         scale[i] = MlasQ4BlkScale<Q4Type>(PackedBBlobPtr + i * ldb);
                     });
 
-                    const uint8_t zp = 8;
+                    uint8_t zp[NCols];
+                    q4gemm_neon::UnrolledLoop<NCols>([&](size_t i) {
+                        if constexpr (MlasQ4BlkHasZeroPoint<Q4Type>()) {
+                            zp[i] = MlasQ4BlkZeroPoint<Q4Type>(PackedBBlobPtr + i * ldb);
+                        } else {
+                            zp[i] = 8;
+                        }
+                    });
 
                     const uint8_t* b_data[NCols];
                     q4gemm_neon::UnrolledLoop<NCols>([&](size_t i) {
@@ -648,9 +414,9 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
                         // dequantize B
 
                         // subtract zero point
-                        const int8x16_t zpv = vdupq_n_s8(zp);
-
                         q4gemm_neon::UnrolledLoop<NCols>([&](size_t i) {
+                            const int8x16_t zpv = vdupq_n_s8(zp[i]);
+
                             bv_bytes[i][0] = vsubq_s8(bv_bytes[i][0], zpv);
                             bv_bytes[i][1] = vsubq_s8(bv_bytes[i][1], zpv);
                         });
@@ -696,6 +462,11 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
                             q4gemm_neon::UnrolledLoop<NCols>(
                                 [&](size_t i) { acc[i] = vfmaq_f32(acc[i], av[j], bv[i][j]); });
                         });
+
+                        // increment b data pointers to next 32 elements
+                        q4gemm_neon::UnrolledLoop<NCols>([&](size_t i) {
+                            b_data[i] += 16;
+                        });
                     }
 
                     PackedBBlobPtr += Q4Type::BlobSize;
@@ -719,7 +490,6 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
             nblk += NCols;
 
             if (nblk > 0) {
-
                 float32x4_t acc[NCols]{};
 
                 const uint8_t* PackedBBlobPtr = PackedBColPtr;
@@ -729,11 +499,16 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
 
                     float scale[NCols];
                     const uint8_t* b_data[NCols];
-                    const uint8_t zp = 8;
+                    uint8_t zp[NCols];
 
                     for (int64_t nn = 0; nn < nblk; ++nn) {
                         scale[nn] = MlasQ4BlkScale<Q4Type>(PackedBBlobPtr + nn * ldb);
                         b_data[nn] = MlasQ4BlkData<Q4Type>(PackedBBlobPtr + nn * ldb);
+                        if constexpr (MlasQ4BlkHasZeroPoint<Q4Type>()) {
+                            zp[nn] = MlasQ4BlkZeroPoint<Q4Type>(PackedBBlobPtr + nn * ldb);
+                        } else {
+                            zp[nn] = 8;
+                        }
                     }
 
                     for (size_t k_idx_in_blk = 0; k_idx_in_blk < k_blk_len; k_idx_in_blk += 32) {
@@ -765,7 +540,7 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
                             // dequantize B
 
                             // subtract zero point
-                            const int8x16_t zpv = vdupq_n_s8(zp);
+                            const int8x16_t zpv = vdupq_n_s8(zp[nn]);
 
                             bv_bytes[0] = vsubq_s8(bv_bytes[0], zpv);
                             bv_bytes[1] = vsubq_s8(bv_bytes[1], zpv);
@@ -798,9 +573,11 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
                                 [&](size_t j) { bv[j] = vmulq_n_f32(bv[j], scale[nn]); });
 
                             // c += a * b
-                            q4gemm_neon::UnrolledLoop<8>([&](size_t j) {
-                                acc[nn] = vfmaq_f32(acc[nn], av[j], bv[j]);
-                            });
+                            q4gemm_neon::UnrolledLoop<8>(
+                                [&](size_t j) { acc[nn] = vfmaq_f32(acc[nn], av[j], bv[j]); });
+
+                            // increment b data pointers to next 32 elements
+                            b_data[nn] += 16;
                         }
                     }
 
@@ -821,11 +598,8 @@ MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK0>(const float* A,
     };
 
     // return impl0_reference();
-    // return impl1();
-    // return impl2_two_accumulators();
     // return impl3_four_cols();
-    // return impl4_one_col_with_helper();
-    return impl5_four_cols_inline();
+    // return impl5_four_cols_inline();
 }
 
 template <>
@@ -845,6 +619,57 @@ MlasQ4GemmKernel<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_NEON>(const float* A,
                                                   ldc, Bias);
 }
 
+template <>
+MLAS_FORCEINLINE size_t
+MlasQ4GemmKernel<MLAS_Q4TYPE_BLK1, MLAS_FP_Q4_GEMM_KERNEL_NEON>(const float* A,
+                                                                const uint8_t* PackedB,
+                                                                float* C,
+                                                                size_t CountM,
+                                                                size_t CountN,
+                                                                size_t CountK,
+                                                                size_t lda,
+                                                                size_t ldb,
+                                                                size_t ldc,
+                                                                const float* Bias)
+{
+    return MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK1>(A, PackedB, C, CountM, CountN, CountK, lda, ldb,
+                                                  ldc, Bias);
+}
+
+template <>
+MLAS_FORCEINLINE size_t
+MlasQ4GemmKernel<MLAS_Q4TYPE_BLK2, MLAS_FP_Q4_GEMM_KERNEL_NEON>(const float* A,
+                                                                const uint8_t* PackedB,
+                                                                float* C,
+                                                                size_t CountM,
+                                                                size_t CountN,
+                                                                size_t CountK,
+                                                                size_t lda,
+                                                                size_t ldb,
+                                                                size_t ldc,
+                                                                const float* Bias)
+{
+    return MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK2>(A, PackedB, C, CountM, CountN, CountK, lda, ldb,
+                                                  ldc, Bias);
+}
+
+template <>
+MLAS_FORCEINLINE size_t
+MlasQ4GemmKernel<MLAS_Q4TYPE_BLK4, MLAS_FP_Q4_GEMM_KERNEL_NEON>(const float* A,
+                                                                const uint8_t* PackedB,
+                                                                float* C,
+                                                                size_t CountM,
+                                                                size_t CountN,
+                                                                size_t CountK,
+                                                                size_t lda,
+                                                                size_t ldb,
+                                                                size_t ldc,
+                                                                const float* Bias)
+{
+    return MlasQ4GemmKernelNeon<MLAS_Q4TYPE_BLK4>(A, PackedB, C, CountM, CountN, CountK, lda, ldb,
+                                                  ldc, Bias);
+}
+
 //
 // MlasBlkQ4DequantB and related helper functions
 //
@@ -852,15 +677,8 @@ MlasQ4GemmKernel<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_NEON>(const float* A,
 template <typename Q4Type>
 MLAS_FORCEINLINE void
 MlasBlkQ4DequantBNeon(
-    float* FpData, const uint8_t* PackedB, size_t CountN, size_t CountK, size_t ldb);
-
-template <>
-MLAS_FORCEINLINE void
-MlasBlkQ4DequantBNeon<MLAS_Q4TYPE_BLK0>(
     float* FpData, const uint8_t* PackedB, size_t CountN, size_t CountK, size_t ldb)
 {
-    using Q4Type = MLAS_Q4TYPE_BLK0;
-
     // unpack B in format suitable for MlasSgemmKernelZero
 
     auto impl0_reference = [&]() {
@@ -874,12 +692,18 @@ MlasBlkQ4DequantBNeon<MLAS_Q4TYPE_BLK0>(
                 const uint8_t* PackedBBlock = PackedBCol;
 
                 for (size_t k = 0; k < CountK; k += Q4Type::BlkLen) {
-                    float b_blk_unpacked[32]{};
+                    float b_blk_unpacked[Q4Type::BlkLen]{};
 
                     const size_t kblocklen = std::min(CountK - k, Q4Type::BlkLen);
 
                     const float s = MlasQ4BlkScale<Q4Type>(PackedBBlock);
-                    const uint8_t z = 8;  // MlasQ4BlkZeroPoint<Q4Type>(PackedBBlock);
+                    const uint8_t z = [PackedBBlock]() -> uint8_t {
+                        if constexpr (MlasQ4BlkHasZeroPoint<Q4Type>()) {
+                            return MlasQ4BlkZeroPoint<Q4Type>(PackedBBlock);
+                        } else {
+                            return 8;
+                        }
+                    }();
                     const uint8_t* PackedBData = MlasQ4BlkData<Q4Type>(PackedBBlock);
 
                     for (size_t kk = 0; kk < kblocklen; kk += 32) {
@@ -928,6 +752,8 @@ MlasBlkQ4DequantBNeon<MLAS_Q4TYPE_BLK0>(
     };
 
     impl0_reference();
+
+    // TODO optimized implementation
 }
 
 template <>
@@ -938,16 +764,40 @@ MlasBlkQ4DequantB<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_NEON>(
     MlasBlkQ4DequantBNeon<MLAS_Q4TYPE_BLK0>(FpData, PackedB, CountN, CountK, ldb);
 }
 
+template <>
+MLAS_FORCEINLINE void
+MlasBlkQ4DequantB<MLAS_Q4TYPE_BLK1, MLAS_FP_Q4_GEMM_KERNEL_NEON>(
+    float* FpData, const uint8_t* PackedB, size_t CountN, size_t CountK, size_t ldb)
+{
+    MlasBlkQ4DequantBNeon<MLAS_Q4TYPE_BLK1>(FpData, PackedB, CountN, CountK, ldb);
+}
+
+template <>
+MLAS_FORCEINLINE void
+MlasBlkQ4DequantB<MLAS_Q4TYPE_BLK2, MLAS_FP_Q4_GEMM_KERNEL_NEON>(
+    float* FpData, const uint8_t* PackedB, size_t CountN, size_t CountK, size_t ldb)
+{
+    MlasBlkQ4DequantBNeon<MLAS_Q4TYPE_BLK2>(FpData, PackedB, CountN, CountK, ldb);
+}
+
+template <>
+MLAS_FORCEINLINE void
+MlasBlkQ4DequantB<MLAS_Q4TYPE_BLK4, MLAS_FP_Q4_GEMM_KERNEL_NEON>(
+    float* FpData, const uint8_t* PackedB, size_t CountN, size_t CountK, size_t ldb)
+{
+    MlasBlkQ4DequantBNeon<MLAS_Q4TYPE_BLK4>(FpData, PackedB, CountN, CountK, ldb);
+}
+
 //
 // MlasFpQ4GemmDispatchNeon structure population
 //
 
 static MLAS_Q4GEMM_OPERATION* Q4Operations_neon[] = {
     MlasQ4GemmOperation<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_NEON>,
+    MlasQ4GemmOperation<MLAS_Q4TYPE_BLK1, MLAS_FP_Q4_GEMM_KERNEL_NEON>,
+    MlasQ4GemmOperation<MLAS_Q4TYPE_BLK2, MLAS_FP_Q4_GEMM_KERNEL_NEON>,
     nullptr,
-    nullptr,
-    nullptr,
-    nullptr,
+    MlasQ4GemmOperation<MLAS_Q4TYPE_BLK4, MLAS_FP_Q4_GEMM_KERNEL_NEON>,
 };
 
 const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchNeon = {Q4Operations_neon};
