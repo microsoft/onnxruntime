@@ -106,7 +106,7 @@ jobs:
               --parallel \
               --build_wheel \
               --enable_onnx_tests --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda-${{variables.common_cuda_version}} --cudnn_home=/usr/local/cuda-${{variables.common_cuda_version}} \
-              --enable_cuda_profiling \
+              --enable_cuda_profiling --enable_cuda_nhwc_ops \
               --enable_pybind --build_java \
               --use_cache \
               --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75; \
