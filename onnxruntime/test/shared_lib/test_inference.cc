@@ -2886,6 +2886,7 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   session->Run(Ort::RunOptions(), iobindings);
 
   iobindings.SynchronizeOutputs();
+  assert(cudaStreamSynchronize(compute_stream) == cudaSuccess);
 
   std::array<float, 3 * 2> y_values_0;
   cudaMemcpy(y_values_0.data(), output_tensor_data, sizeof(float) * y_values_0.size(), cudaMemcpyDeviceToHost);
@@ -2894,7 +2895,6 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
     std::cout << y << std::endl;
   }
 
-  assert(cudaStreamSynchronize(compute_stream) == cudaSuccess);
   ASSERT_TRUE(std::equal(std::begin(y_values_0), std::end(y_values_0), std::begin(expected_y)));
 
   iobindings.ClearBoundInputs();
