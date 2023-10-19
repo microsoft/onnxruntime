@@ -189,8 +189,12 @@ Status CheckInputs(const Tensor* query,
 
   // When kv-cache, we take past_seq_len as an argument... otherwise we use sequence length of past kv directly.
   int32_t past_sequence_length = 0;
-  int present_sequence_length = 0;
+  int present_sequence_length = kv_sequence_length;
   if (past_seq_len != nullptr) {
+    if (past_key == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Past KV must be present as share-buffer when using past_seq_len pointer.");
+    }
     if (!onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "past_sequence_length tensor must be of one element when using past kv.");
@@ -199,6 +203,10 @@ Status CheckInputs(const Tensor* query,
       past_sequence_length = *((*past_seq_len).template Data<int32_t>());
     } else {
       past_sequence_length = static_cast<int32_t>(*((*past_seq_len).template Data<int64_t>()));
+    }
+    if (past_sequence_length + kv_sequence_length > max_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "KV buffer too small... shall be that max_sequence_length >= past_sequence_length + kv_sequence_length");
     }
     present_sequence_length = max_sequence_length;
   } else if (past_key != nullptr) {

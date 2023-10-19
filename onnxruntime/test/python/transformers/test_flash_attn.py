@@ -24,6 +24,8 @@ from onnxruntime import InferenceSession, OrtValue, SessionOptions
 
 torch.manual_seed(0)
 
+pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
+
 
 class Formats:
     BSNH = 0
@@ -516,7 +518,6 @@ def generate_token_offset(cu_seqlens, max_seqlen):
     return numpy.asarray(token_offset + token_padset, dtype=numpy.int32)
 
 
-# TODO(aciddelgado): rename
 def flash_attn_varlen_qkvpacked_func(qkv_unpad, cu_seqlens, token_offset, config, causal=False):
     onnx_model_str = create_packed_multihead_attention_graph(config)
     qkv_unpad = torch.swapdims(qkv_unpad, 1, 2)
@@ -691,17 +692,12 @@ def attention_ref(
     if key_padding_mask is not None:
         scores.masked_fill_(rearrange(~key_padding_mask, "b s -> b 1 1 s"), float("-inf"))
     if causal:
-        # causal_mask = torch.triu(
-        #     torch.ones(seqlen_q, seqlen_k, dtype=torch.bool, device=q.device), 1
-        # )
         causal_mask = construct_causal_mask(seqlen_q, seqlen_k, query_padding_mask, key_padding_mask, q.device)
         scores.masked_fill_(causal_mask, float("-inf"))
     attention = torch.softmax(scores, dim=-1)
     if causal:  # Some rows are completely masked out so we fill them with zero instead of NaN
         attention = attention.masked_fill(torch.all(causal_mask, dim=-1, keepdim=True), 0.0)
     dropout_scaling = 1.0 / (1 - dropout_p)
-    # attention_drop = attention.masked_fill(~dropout_mask, 0.0) * dropout_scaling
-    # output = torch.einsum('bhts,bshd->bthd', attention_drop , v)
     if dropout_mask is not None:
         attention_drop = attention.masked_fill(~dropout_mask, 0.0)
     else:
@@ -852,9 +848,7 @@ def parity_check_gqa_no_past(
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
-    # print(numpy.count_nonzero(numpy.isnan(out)))
 
-    # print(out - out_ref)
     # Compare results
     print(
         " causal:",
@@ -965,23 +959,9 @@ def parity_check_gqa_past(
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    # if past_format == Formats.BSNH:
-    #     print("huh")
-    #     print(
-    #         present_k[:, config.past_sequence_length, :, :]
-    #         - k_cache_ref.detach().cpu().numpy()[:, config.past_sequence_length, :, :]
-    #     )
-    # else:
-    #     print(
-    #         present_k[:, :, config.past_sequence_length, :]
-    #         - k_cache_ref.detach().cpu().numpy()[:, :, config.past_sequence_length, :]
-    #     )
-
     # Make sure past-present buffer updating correctly
     assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
     assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-
-    # print(out - out_ref)
 
     # Compare results
     print(
@@ -1090,12 +1070,6 @@ def parity_check_gqa_past_no_buff(
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    # print(present_k[0, 0, config.past_sequence_length, :10])
-    # print(k_cache_ref[0, 0, config.past_sequence_length, :10])
-    # print(k_cache_ref.shape)
-
-    # print(present_k - k_cache_ref.detach().cpu().numpy())
-
     # Make sure past-present buffer updating correctly
     if past_format == Formats.BSNH:
         assert numpy.allclose(
@@ -1165,10 +1139,14 @@ class TestMHA(unittest.TestCase):
         if major < 8:
             return
         print("-------- TEST PACKED MHA ---------")
-        for b in [5]:
-            for s in [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]:
-                for n in [6]:
-                    for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+        batches = [2] if pipeline_mode else [1, 5]
+        seqs = [8, 97, 256, 1024] if pipeline_mode else [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]
+        num_h = [1, 3] if pipeline_mode else [1, 6, 16]
+        h_sizes = [16, 256] if pipeline_mode else [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]
+        for b in batches:
+            for s in seqs:
+                for n in num_h:
+                    for h in h_sizes:
                         config = Config(b, s, s, 0, n, n, h)
                         parity_check_mha(config, True)
 
@@ -1177,8 +1155,11 @@ class TestMHA(unittest.TestCase):
         if major < 8:
             return
         print("-------- TEST MHA ---------")
-        for b in [5]:
-            for s, s2 in [
+        batches = [2] if pipeline_mode else [1, 5]
+        seqs = (
+            [(1, 128), (113, 211), (2048, 2048)]
+            if pipeline_mode
+            else [
                 (113, 203),
                 (128, 217),
                 (113, 211),
@@ -1189,9 +1170,14 @@ class TestMHA(unittest.TestCase):
                 (1023, 1024),
                 (1024, 1023),
                 (2048, 2048),
-            ]:
-                for n in [6]:
-                    for h in [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]:
+            ]
+        )
+        num_h = [1, 3] if pipeline_mode else [1, 6, 16]
+        h_sizes = [16, 256] if pipeline_mode else [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]
+        for b in batches:
+            for s, s2 in seqs:
+                for n in num_h:
+                    for h in h_sizes:
                         config = Config(b, s, s2, 0, n, n, h)
                         parity_check_mha(config, False)
 
@@ -1199,13 +1185,15 @@ class TestMHA(unittest.TestCase):
 class TestGQA(unittest.TestCase):
     def test_gqa_no_past(self):
         major, minor = torch.cuda.get_device_capability()
-        if major < 5 or (major == 5 and minor < 3):
+        if major < 8:
             return
         torch.manual_seed(69)
         print("-------- TEST GQA ---------")
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        for b in [1, 5]:
-            for s, s2 in [
+        batches = [2] if pipeline_mode else [1, 5]
+        seqs = (
+            [(1, 128), (113, 211), (2048, 2048)]
+            if pipeline_mode
+            else [
                 (113, 203),
                 (128, 217),
                 (113, 211),
@@ -1216,40 +1204,39 @@ class TestGQA(unittest.TestCase):
                 (1023, 1024),
                 (1024, 1023),
                 (2048, 2048),
-            ]:
-                for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-                    for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+            ]
+        )
+        num_h = [(9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [16, 256] if pipeline_mode else [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        for b in batches:
+            for s, s2 in seqs:
+                for n, n2 in num_h:
+                    for h in h_sizes:
                         for causal in [True, False]:
                             config = Config(b, s, s2, 0, n, n2, h)
                             parity_check_gqa_no_past(config, causal=causal)
-        if major < 8:
+        if major < 5 or (major == 5 and minor < 3):
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        for b in [1, 5]:
-            for s, s2 in [
-                (113, 203),
-                (128, 217),
-                (113, 211),
-                (108, 256),
-                (256, 512),
-                (1024, 1024),
-                (1023, 1024),
-                (2048, 2048),
-            ]:
-                for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-                    for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+        for b in batches:
+            for s, s2 in seqs:
+                for n, n2 in num_h:
+                    for h in h_sizes:
                         for causal in [True, False]:
                             config = Config(b, s, s2, 0, n, n2, h)
                             parity_check_gqa_no_past(config, causal=causal)
 
     def test_gqa_past(self):
-        major, _ = torch.cuda.get_device_capability()
+        major, minor = torch.cuda.get_device_capability()
         if major < 8:
             return
         print("-------- TEST GQA PAST ---------")
-        random.seed(69)
-        for b in [2]:
-            for s, s2 in [
+        batches = [2] if pipeline_mode else [1, 2]
+        seqs = (
+            [(1, 128), (3, 1024), (64, 2048)]
+            if pipeline_mode
+            else [
                 (1, 128),
                 (1, 339),
                 (3, 1024),
@@ -1261,9 +1248,15 @@ class TestGQA(unittest.TestCase):
                 (1, 128 * 512),
                 (16, 128 * 512),
                 (128, 128),
-            ]:
-                for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-                    for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+            ]
+        )
+        num_h = [(9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [16, 256] if pipeline_mode else [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]
+        random.seed(69)
+        for b in batches:
+            for s, s2 in seqs:
+                for n, n2 in num_h:
+                    for h in h_sizes:
                         for causal in [True]:
                             for past_kv_format in [Formats.BNSH, Formats.BSNH]:
                                 sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
@@ -1282,23 +1275,13 @@ class TestGQA(unittest.TestCase):
                                     rtol=1e-3,
                                     atol=1e-3,
                                 )
-        if major < 8:
+        if major < 5 or (major == 5 and minor < 3):
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        for b in [2]:
-            for s, s2 in [
-                (1, 128),
-                (1, 339),
-                (3, 1024),
-                (64, 800),
-                (64, 256),
-                (3, 799),
-                (64, 2048),
-                (16, 20000),
-                (128, 128),
-            ]:
-                for n, n2 in [(6, 6), (6, 3), (9, 9), (9, 3)]:
-                    for h in [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]:
+        for b in batches:
+            for s, s2 in seqs:
+                for n, n2 in num_h:
+                    for h in h_sizes:
                         for causal in [True]:
                             for past_kv_format in [Formats.BNSH, Formats.BSNH]:
                                 sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
