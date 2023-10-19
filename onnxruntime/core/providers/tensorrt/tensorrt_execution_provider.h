@@ -111,7 +111,7 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
-  bool sync_stream_before_enqueue = false;
+  bool sync_stream_after_enqueue = false;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
   bool int8_enable = false;
@@ -264,7 +264,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   cublasHandle_t external_cublas_handle_ = nullptr;
 
   // Call cudaStreamSynchronize() before TRT enqueueV2()/enqueueV3()
-  mutable bool sync_stream_before_enqueue_ = false;
+  mutable bool sync_stream_after_enqueue_ = false;
 
   CUDAGraph cuda_graph_;
   bool is_graph_captured_ = false;
