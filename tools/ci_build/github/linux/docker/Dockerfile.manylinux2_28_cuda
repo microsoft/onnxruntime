@@ -156,7 +156,7 @@ CMD ["/bin/bash"]
 #Build manylinux docker image end
 
 #Install TensorRT only if TRT_VERSION is not empty
-RUN if [ -n "$TRT_VERSION}" ]; then  \
+RUN if [ -n "${TRT_VERSION}" ]; then  \
     CUDA_VERSION=$(nvcc --version | sed -n 's/^.*release \([0-9]\+\.[0-9]\+\).*$/\1/p') &&  \
     dnf -y install  \
     libcudnn8-devel-*cuda${CUDA_VERSION}*  \
