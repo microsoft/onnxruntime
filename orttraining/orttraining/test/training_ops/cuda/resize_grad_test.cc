@@ -20,7 +20,11 @@ void AddResizeGradAttributes(OpTester& test, const std::string& coordinate_trans
 
 TEST(ResizeGradTest, ResizeGradWithSizes) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
+#ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  providers.emplace_back(DefaultROCMExecutionProvider());
+#endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
 
@@ -45,7 +49,11 @@ TEST(ResizeGradTest, ResizeGradWithSizes) {
 
 TEST(ResizeGradTest, ResizeGradWithSizesHalf) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
+#ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  providers.emplace_back(DefaultROCMExecutionProvider());
+#endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
 
@@ -76,7 +84,11 @@ TEST(ResizeGradTest, ResizeGradWithSizesHalf) {
 
 TEST(ResizeGradTest, ResizeGradWithSizesAndAlignCorners) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
+#ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  providers.emplace_back(DefaultROCMExecutionProvider());
+#endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
 
@@ -104,7 +116,11 @@ TEST(ResizeGradTest, ResizeGradWithSizesAndAlignCorners) {
 
 TEST(ResizeGradTest, ResizeGradWithScales) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
+#ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  providers.emplace_back(DefaultROCMExecutionProvider());
+#endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
 
@@ -134,7 +150,11 @@ TEST(ResizeGradTest, ResizeGradWithScales) {
 
 TEST(ResizeGradTest, ResizeGradWithScalesHalf) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
+#ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  providers.emplace_back(DefaultROCMExecutionProvider());
+#endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
 
@@ -170,7 +190,11 @@ TEST(ResizeGradTest, ResizeGradWithScalesHalf) {
 
 TEST(ResizeGradTest, ResizeGradWithScalesAndAlignCorners) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
+#ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  providers.emplace_back(DefaultROCMExecutionProvider());
+#endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
 
