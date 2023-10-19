@@ -2897,14 +2897,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           output_shapes[j] = dims.d[j];
         }
 
+        output_tensors.push_back(ctx.GetOutput(output_index, output_shapes));
+
         size_t output_type = 0;
         const auto type_iter = output_types.find(output_name);
         if (type_iter != output_types.end()) {
           output_type = type_iter->second;
         }
 
-        output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
-        auto& output_tensor = output_tensors[i];
+        auto& output_tensor = output_tensors.back();
         switch (output_type) {
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<float>();
