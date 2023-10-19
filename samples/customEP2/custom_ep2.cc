@@ -1,13 +1,12 @@
-#include <memory>
-#include <cmath>
 #include <iostream>
 #include "custom_ep2.h"
-#include "core/session/onnxruntime_lite_custom_op.h"
-#include "core/session/onnxruntime_cxx_api.h"
+//#include "core/session/onnxruntime_lite_custom_op.h"
+//#include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
 
 namespace onnxruntime {
+/*
 void KernelTwo(const Ort::Custom::Tensor<float>& X,
                Ort::Custom::Tensor<int32_t>& Y) {
   const auto& shape = X.Shape();
@@ -30,6 +29,14 @@ void MyRelu(const Ort::Custom::Tensor<float>& X, Ort::Custom::Tensor<float>& Y) 
   }
   std::cout<<"In MyRelu()\n";
 }
+*/
+
+///////////////////////////////////////////////////////////////////////////////////////
+onnxruntime::Status Identity(const onnxruntime::lite::TensorT<float>&,
+                             onnxruntime::lite::Aliased<float>&) {
+  return onnxruntime::Status::OK();
+}
+///////////////////////////////////////////////////////////////////////////////////////
 
 struct CustomCPUAllocator : public OrtAllocator {
   CustomCPUAllocator() {
@@ -59,9 +66,9 @@ private:
 
 CustomEp2::CustomEp2(const CustomEp2Info& info) : info_{info} {
     type_ = "customEp2";
-    std::unique_ptr<Ort::Custom::ExternalKernelDef> p(Ort::Custom::CreateExternalKernelDef("Relu", type_.c_str(), MyRelu, "ai.onnx", 14));
-    kernel_definitions_.push_back(std::move(p));
-
+    //std::unique_ptr<Ort::Custom::ExternalKernelDef> p(Ort::Custom::CreateExternalKernelDef("Relu", type_.c_str(), MyRelu, "ai.onnx", 14));
+    //kernel_definitions_.push_back(std::move(p));
+    //auto& builder = RegisterKernel("CustomEP", "ms.onnx", "Identity", 10, 17, Identity);
     allocators_.push_back(std::make_unique<CustomCPUAllocator>().release());  // TODO: release resource
 }
 
@@ -86,6 +93,10 @@ CustomEp2Info ProviderOption2CustomEpInfo(std::unordered_map<std::string, std::s
     std::cout<<"str_property="<<provider_option["str_property"]<<"\n";
   }
   return ret;
+}
+
+void CustomEp2::RegisterKernels(lite::IKernelRegistry& kernel_registry) {
+    lite::IKernelBuilder& builder = kernel_registry.RegisterKernel("CustomEP", "ms.onnx", "Identity", 10, 17, Identity);
 }
 
 class CustomEP2Factory {

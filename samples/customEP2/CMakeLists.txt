@@ -11,4 +11,10 @@ set_target_properties(customep2 PROPERTIES PUBLIC_HEADER "${CUSTOM_PUBLIC_HEADER
 #target_link_libraries(customep2 PUBLIC "/bert_ort/leca/code/onnxruntime2/build/Linux/Debug/libonnxruntime.so")
 
 target_include_directories(customep2 PUBLIC "/onnxruntime/include/onnxruntime")
-target_link_libraries(customep2 PUBLIC "/onnxruntime/build/windows/debug/debug/onnxruntime.lib")
+target_link_directories(customep2 PUBLIC "/onnxruntime/build/windows/debug/debug/")
+
+#target_include_directories(customep2 PUBLIC "/onnxruntime/build/Windows/Debug/_deps/mp11-src/include")
+#target_include_directories(customep2 PUBLIC "/onnxruntime/onnxruntime/core/framework")
+#target_include_directories(customep2 PUBLIC "/onnxruntime/build/Windows/Debug/_deps/gsl-src/include")
+
+target_link_libraries(customep2 PUBLIC onnxruntime)

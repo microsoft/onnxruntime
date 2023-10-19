@@ -1,4 +1,20 @@
 #pragma once
+//#include <memory>
+//#include <cmath>
+//#include <iostream>
+/*
+namespace std
+{
+    #include <cstdlib>
+};*/
+
+//#ifdef _WIN32
+//#include <cmath>
+//#include <cstring>
+//#include <cstdlib>
+//#include <iostream>
+//#endif
+//#define OUT_TREE_EP
 #include <core/framework/custom_execution_provider.h>
 
 namespace onnxruntime {
@@ -14,6 +30,7 @@ public:
     ~CustomEp2() override = default;
     bool CanCopy(const OrtDevice& src, const OrtDevice& dest) override;
     void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) override;
+    void RegisterKernels(lite::IKernelRegistry& kernel_registry) override;
 private:
     CustomEp2Info info_;
 };

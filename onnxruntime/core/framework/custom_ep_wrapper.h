@@ -33,19 +33,121 @@ namespace onnxruntime {
         CustomExecutionProvider* external_ep_impl_;
     };
 
-    class ExternalExecutionProvider : public IExecutionProvider{
-    public:
-        ExternalExecutionProvider(CustomExecutionProvider* external_ep)
-            : IExecutionProvider(external_ep->GetType(), external_ep->GetDevice()), external_ep_impl_(external_ep){
-                kernel_registry_ = std::make_shared<KernelRegistry>();
-                size_t kernelsCount = external_ep_impl_->GetKernelDefinitionCount();
-                for (size_t i = 0; i < kernelsCount; i++) {
-                    OrtLiteCustomOp2KernelRegistry(external_ep_impl_->GetKernelDefinition(i));
-                }
+    //////////////////////////////////////////////// Lite Interfaces ////////////////////////////////////////////////
+
+    struct KernelBuilderLite : public lite::IKernelBuilder {
+        IKernelBuilder& Provider(const char* provider) override {
+            builder_.Provider(provider);
+            return *this;
+        }
+        IKernelBuilder& SetDomain(const char* domain) override {
+            builder_.SetDomain(domain);
+            return *this;
+        }
+        IKernelBuilder& SetName(const char* op_name) override {
+            builder_.SetName(op_name);
+            return *this;
+        }
+        IKernelBuilder& SinceVersion(int since_ver, int end_ver) override {
+            builder_.SinceVersion(since_ver, end_ver);
+            return *this;
+        }
+        IKernelBuilder& Alias(int input_indice, int output_indice) override {
+            builder_.Alias(input_indice, output_indice);
+            return *this;
+        }
+        IKernelBuilder& TypeConstraint(const char* name, lite::DataType type) override {
+            switch (type) {
+              case lite::DataType::float_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("float"));
+                break;
+              case lite::DataType::double_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("double"));
+                break;
+              case lite::DataType::int8_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("int8"));
+                break;
+              case lite::DataType::uint8_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("uint8"));
+                break;
+              case lite::DataType::int16_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("int16"));
+                break;
+              case lite::DataType::uint16_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("uint16"));
+                break;
+              case lite::DataType::int32_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("int32"));
+                break;
+              case lite::DataType::uint32_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("uint32"));
+                break;
+              case lite::DataType::int64_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("int64"));
+                break;
+              case lite::DataType::uint64_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("uint64"));
+                break;
+              case lite::DataType::bool_tp:
+                builder_.TypeConstraint(name, DataTypeImpl::GetDataType("bool"));
+                break;
+              default:
+                break;
             }
+            return *this;
+        }
+        KernelDefBuilder builder_;
+    };
+
+    struct KernelContextLite : public lite::IKernelContext {
+        KernelContextLite(OpKernelContext*) {}
+    };
+
+    struct OpKernelLite : public OpKernel {
+        OpKernelLite(const OpKernelInfo& info, lite::IKernel& lite_kernel) : OpKernel(info), lite_kernel_(lite_kernel) {}
+        Status Compute(_Inout_ OpKernelContext* context) const override {
+            KernelContextLite context_lite(context);
+            return lite_kernel_.Compute(&context_lite);
+        };
+        lite::IKernel& lite_kernel_;
+    };
+
+    struct KernelRegistryLite : public lite::IKernelRegistry {
+        KernelRegistryLite() {
+            registry_ = std::make_shared<KernelRegistry>();
+        }
+        lite::IKernelBuilder& CreateBuilder() override {
+            builders_.emplace_back();
+            return builders_.back();
+        }
+        void BuildKernels() {
+            for (auto& builder : builders_) {
+              KernelCreateInfo kci(builder.builder_.Build(),
+                                   [&](FuncManager&,
+                                       const OpKernelInfo& info,
+                                       std::unique_ptr<OpKernel>& out) -> onnxruntime::common::Status {
+                                     out = std::make_unique<OpKernelLite>(info, *builder.kernel_);
+                                     return onnxruntime::common::Status::OK();
+                                   });
+              ORT_ENFORCE(registry_->Register(std::move(kci)).IsOK());
+            }
+        }
+        std::shared_ptr<KernelRegistry> registry_;
+        std::vector<KernelBuilderLite> builders_;
+    };
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    class ExternalExecutionProvider : public IExecutionProvider {
+       public:
+        ExternalExecutionProvider(lite::IExecutionProvider* external_ep)
+            : IExecutionProvider(external_ep->GetType(), external_ep->GetDevice()), external_ep_impl_(external_ep) {
+            external_ep_impl_->RegisterKernels(kernel_registry_);
+            kernel_registry_.BuildKernels();
+        }
 
         virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
-            return kernel_registry_;
+            return kernel_registry_.registry_;
         }
 
         std::vector<AllocatorPtr> CreatePreferredAllocators() override {
@@ -72,12 +174,12 @@ namespace onnxruntime {
         }
 
     private:
-        std::unique_ptr<CustomExecutionProvider> external_ep_impl_;
-        std::shared_ptr<KernelRegistry> kernel_registry_;
+        std::unique_ptr<lite::IExecutionProvider> external_ep_impl_;
+        KernelRegistryLite kernel_registry_;
 
-        void OrtLiteCustomOp2KernelRegistry(Ort::Custom::ExternalKernelDef* kernel_definition) {
-            KernelCreateInfo kernel_create_info = CreateKernelCreateInfo(kernel_definition->domain_, kernel_definition->custom_op_.get(), kernel_definition->op_since_version_start_, kernel_definition->op_since_version_end_);
-            ORT_THROW_IF_ERROR(kernel_registry_->Register(std::move(kernel_create_info)));
-        }
+        //void OrtLiteCustomOp2KernelRegistry(Ort::Custom::ExternalKernelDef* kernel_definition) {
+        //    KernelCreateInfo kernel_create_info = CreateKernelCreateInfo(kernel_definition->domain_, kernel_definition->custom_op_.get(), kernel_definition->op_since_version_start_, kernel_definition->op_since_version_end_);
+        //    ORT_THROW_IF_ERROR(kernel_registry_->Register(std::move(kernel_create_info)));
+        //}
     };
 }
