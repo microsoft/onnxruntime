@@ -411,7 +411,11 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
     // we want the CUDA provider to be first, and the CPU provider second. all except the Scan node should run on
     // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_CUDA)
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif defined(USE_ROCM)
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
     test.Run(expect_result, failure_message, options.excluded_provider_types, nullptr, &execution_providers);
@@ -1162,7 +1166,11 @@ void UnknownDimInSubgraphOutput(bool is_v8, bool mixed_execution_providers = fal
     // we want the CUDA provider to be first, and the CPU provider second. all except the Scan node should run on
     // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_CUDA)
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif defined(USE_ROCM)
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types, nullptr,
@@ -1174,7 +1182,7 @@ void UnknownDimInSubgraphOutput(bool is_v8, bool mixed_execution_providers = fal
 
 TEST_8_AND_9(UnknownDimInSubgraphOutput);
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(Scan, MixedExecutionProviders) {
   RunOptions options{};
   options.is_v8 = false;
