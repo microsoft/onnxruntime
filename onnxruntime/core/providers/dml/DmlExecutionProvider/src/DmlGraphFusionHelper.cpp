@@ -220,8 +220,7 @@ namespace DmlGraphFusionHelper
                 {
                     ComPtr<ID3D12Resource> initializeInputBuffer;
 
-                    // D3D_FEATURE_LEVEL_1_0_CORE doesn't support Custom heaps
-                    if (providerImpl->IsMcdmDevice())
+                    if (!providerImpl->CustomHeapsSupported())
                     {
                         initializeInputBuffer = CreateResource(providerImpl, tensorPtr, tensorByteSize);
                     }

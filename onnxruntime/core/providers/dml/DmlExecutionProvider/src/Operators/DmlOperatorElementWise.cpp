@@ -585,6 +585,9 @@ public:
         opDesc.ScaleTensor = &inputDescs[1];
         opDesc.ZeroPointTensor = &inputDescs[2];
         opDesc.OutputTensor = &outputDescs[0];
+        
+        TryConvertTensorToBroadcastScalar(kernelInfo, opDesc.ScaleTensor,     1);
+        TryConvertTensorToBroadcastScalar(kernelInfo, opDesc.ZeroPointTensor, 2);
 
         SetDmlOperatorDesc({ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
     }

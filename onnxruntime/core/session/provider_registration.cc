@@ -11,6 +11,10 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 
+#if defined(USE_DML)
+#include "core/providers/dml/dml_provider_factory_creator.h"
+#endif
+
 using namespace onnxruntime;
 
 namespace {
@@ -66,7 +70,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
 
-  if (strcmp(provider_name, "QNN") == 0) {
+  if (strcmp(provider_name, "DML") == 0) {
+#if defined(USE_DML)
+    options->provider_factories.push_back(DMLProviderFactoryCreator::CreateFromProviderOptions(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
+  } else if (strcmp(provider_name, "QNN") == 0) {
 #if defined(USE_QNN)
     options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else

@@ -88,6 +88,9 @@ public:
         dequantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::X_scale];
         dequantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::X_zero_point];
         dequantizeOperatorDesc.OutputTensor = &namedIntermediateOutputTensorDesc;
+
+        TryConvertTensorToBroadcastScalar(kernelCreationContext, dequantizeOperatorDesc.ScaleTensor,     OnnxInputIndex::X_scale);
+        TryConvertTensorToBroadcastScalar(kernelCreationContext, dequantizeOperatorDesc.ZeroPointTensor, OnnxInputIndex::X_zero_point);
         
         const DML_OPERATOR_DESC opDesc1{DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR, &dequantizeOperatorDesc};
 
@@ -101,6 +104,10 @@ public:
         quantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::Y_scale];
         quantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::Y_zero_point];
         quantizeOperatorDesc.OutputTensor = &outputDescs[0];
+        
+        TryConvertTensorToBroadcastScalar(kernelCreationContext, quantizeOperatorDesc.ScaleTensor,     OnnxInputIndex::Y_scale);
+        TryConvertTensorToBroadcastScalar(kernelCreationContext, quantizeOperatorDesc.ZeroPointTensor, OnnxInputIndex::Y_zero_point);
+
         const DML_OPERATOR_DESC opDesc3{DML_OPERATOR_ELEMENT_WISE_QUANTIZE_LINEAR, &quantizeOperatorDesc};
 
         MLOperatorGraphDesc operatorGraphDesc = {};

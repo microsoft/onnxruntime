@@ -24,6 +24,7 @@ namespace AttrName
     static constexpr const char* Border = "border";
     static constexpr const char* Broadcast = "broadcast";
     static constexpr const char* CeilMode = "ceil_mode";
+    static constexpr const char* ChannelsLast = "channels_last";
     static constexpr const char* Clip = "clip";
     static constexpr const char* CoordinateTransformationMode = "coordinate_transformation_mode";
     static constexpr const char* CountIncludePad = "count_include_pad";

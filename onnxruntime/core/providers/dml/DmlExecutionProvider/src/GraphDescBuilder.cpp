@@ -177,7 +177,7 @@ namespace Dml::GraphDescBuilder
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
-        const void* executionHandle,
+        const ExecutionProviderImpl* executionHandle,
         std::unordered_map<uint32_t, uint32_t>& serializedGraphInputIndexToMainGraphInputIndex,
         std::unordered_map<std::string_view, uint32_t>& serializedGraphConstantNameToMainGraphInputIndex)
     {
@@ -273,7 +273,7 @@ namespace Dml::GraphDescBuilder
             graphNodeProps.internalRegInfo->graphNodeFactoryRegistration->factory(
                 node,
                 constantCpuNodeInputGetter,
-                executionHandle,
+                providerImpl,
                 /*out*/ &operatorDmlGraphNodeCreateInfo);
 
             // Create a map between operatorDmlGraphNodeIndex to mainDmlGraphNodeIndex.
@@ -301,6 +301,34 @@ namespace Dml::GraphDescBuilder
                         iter->second < isConstGpuGraphInputCount &&
                         isConstGpuGraphInput[iter->second])
                     {
+                        // This is a highly inefficient approach to generating constant nodes.  It duplicates constant data 
+                        // across the graph input as well as every consumer's unique constant node.  However it is currently 
+                        // only used for small inputs.
+                        
+                        // TODO: Rework this to create DML constant nodes with the minimum data size actually used by consuming
+                        // nodes.  This would allow this size to be reduced while handling the case that 1D scale and zero point
+                        // values that have been de-duplicated with conversion to scalars in kernels.
+                        ComPtr<OnnxTensorWrapper> constantInput = constantCpuGraphInputGetter(arg->Name());
+
+                        if (constantInput && constantInput->GetTensorByteSize() < c_maxConstNodeDataSize)
+                        {
+                            std::vector<uint8_t> tensorData;
+                            tensorData.insert(
+                                tensorData.begin(), 
+                                static_cast<const uint8_t*>(constantInput->GetData()), 
+                                static_cast<const uint8_t*>(constantInput->GetData()) + constantInput->GetTensorByteSize());
+                                
+                            NodeInfo nodeInfo = {};
+                            nodeInfo.nodeDef = std::move(tensorData);
+                            graphNodes.push_back(std::move(nodeInfo));
+
+                            DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
+                            edge.FromNodeIndex = static_cast<UINT>(graphNodes.size() - 1);
+                            edge.FromNodeOutputIndex = 0;
+                            edge.ToNodeIndex = mainGraphNodeIndex;
+                            edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;
+                            graphIntermediateEdges.push_back(edge);
+                        }
                         outputEdgeNameToDmlGraphNodeAndIndexMap[arg->Name()] = {static_cast<uint32_t>(dmlGraphNodes.size()), 0};
                         DmlSerializedGraphNode constantNode = {};
                         constantNode.Name = arg->Name();
@@ -455,7 +483,11 @@ namespace Dml::GraphDescBuilder
         // Avoid using separate command lists for small graphs. This value can be reduced by tuning the
         // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
         // enough GPU work to be worth flushing immediately.
-        graphDesc.reuseCommandList = indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList;
+        if (indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList || providerImpl->IsMcdmDevice())
+        {
+          reuseCommandList = true;
+        }
+        graphDesc.reuseCommandList = ((indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList) || providerImpl->IsMcdmDevice());
         return graphDesc;
     }
 }
