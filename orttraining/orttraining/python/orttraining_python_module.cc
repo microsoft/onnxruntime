@@ -38,11 +38,6 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
                                                              const ProviderOptionsMap& provider_options_map);
 #endif
 
-#ifdef USE_MIGRAPHX
-const MIGraphXExecutionProviderInfo GetMIGXExecutionProviderInfo(ProviderInfo_MIGX* migx_provider_info,
-                                                             const ProviderOptionsMap& provider_options_map);
-#endif
-
 void addGlobalMethods(py::module& m);
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
