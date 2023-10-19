@@ -11,7 +11,7 @@ import inspect
 import math
 import os
 import re
-import shutil
+import tempfile
 from pathlib import Path
 
 import onnx
@@ -167,8 +167,47 @@ def retrieve_onnx_inputs(model, sample_inputs):
     return input_keys, tuple(onnx_inputs)
 
 
+def move_to_approprate_device(model: nn.Module, sample_inputs_tp: tuple) -> nn.Module:
+    """
+    According to the model size, we will upload it to
+    CPU if has no GPU or enough GPU memory,
+    Single GPU if has only one GPU in local or model size is enough to fit one GPU
+    Multiple GPU if there is more than one gpu in local and model is too large
+    """
+    total_mem_per_cpu = torch.cuda.get_device_properties(0).total_memory / 1024 / 1024
+
+    print(f"Model_Size = {get_model_parameter_size(model)/1024} GB")
+    print(f"total_mem_per_cpu = {total_mem_per_cpu/1024} GB")
+    if get_model_parameter_size(model) > total_mem_per_cpu * 0.45:
+        device_collection = [torch.device(i) for i in range(torch.cuda.device_count())]
+        if len(device_collection) > 1:
+            print(
+                f"{len(device_collection)} GPUs are used to export onnx, \
+                   Please set CUDA_VISIBLE_DEVICES to use specific GPU group"
+            )
+            model = auto_pipeline_parallel(model, device_collection, sample_inputs_tp)
+        else:
+            print("!!!! convert model to float and export onnx using CPU")
+            model = model.cpu().float()
+    else:
+        print("Export model on a single GPU")
+        model = model.cuda().half()
+    return model
+
+
+def adapt_inputs_to_device(sample_inputs: tuple, device: torch.Device) -> tuple:
+    """move inputs to device"""
+    sample_inputs_ = []
+    for sample_int in sample_inputs:
+        if isinstance(sample_int, torch.Tensor):
+            sample_inputs_.append(sample_int.to(device))
+        else:
+            sample_inputs_.append(sample_int)
+    return tuple(sample_inputs_)
+
+
 @torch.no_grad()
-def export_onnx(hf_model: str, onnx_path_str: str):
+def export_onnx(hf_model: str, onnx_path_str: str, opset: int = 17):
     """
     do export
     model: torch model
@@ -176,28 +215,10 @@ def export_onnx(hf_model: str, onnx_path_str: str):
     sample_inputs_tp: inputs for torch model
     """
     onnx_model_name, model, sample_inputs_tp = initialize_model_and_sample_inputs(hf_model)
-    total_mem_per_cpu = torch.cuda.get_device_properties(0).total_memory / 1024 / 1024
 
-    print("Model_Size", get_model_parameter_size(model))
-    print("total_mem_per_cpu=", total_mem_per_cpu)
-    if get_model_parameter_size(model) > total_mem_per_cpu * 0.45:
-        if torch.cuda.device_count() > 1:
-            print("multi-gpu")
-            device_collection = [torch.device(i) for i in range(torch.cuda.device_count())]
-            model = auto_pipeline_parallel(model, device_collection, sample_inputs_tp)
-        else:
-            print("cpu")
-            model = model.cpu().float()
-    else:
-        print("single GPU")
-        model = model.cuda().half()
+    model = move_to_approprate_device(model, sample_inputs_tp)
 
-    sample_inputs = []
-    for sample_int in sample_inputs_tp:
-        if isinstance(sample_int, torch.Tensor):
-            sample_inputs.append(sample_int.to(model.device))
-        else:
-            sample_inputs.append(sample_int)
+    sample_inputs = adapt_inputs_to_device(sample_inputs_tp, next(model.parameters()).device)
 
     # input_keys would be usesful if the model has some special inputs
     input_keys, onnx_inputs = retrieve_onnx_inputs(model, sample_inputs)
@@ -206,40 +227,42 @@ def export_onnx(hf_model: str, onnx_path_str: str):
     if onnx_path.suffix != ".onnx":
         onnx_path = onnx_path / onnx_model_name
 
-    onnx_filepath_export_multi_files_tmp: Path = onnx_path.parent / "tmp/tmp.onnx"
-    onnx_filepath_export_multi_files_tmp.parent.exists() and shutil.rmtree(onnx_filepath_export_multi_files_tmp.parent)
-    os.makedirs(onnx_filepath_export_multi_files_tmp.parent)
+    # two step to export onnx
+    # 1. export onnx with lots of pieces of weights
+    # 2. save all weights to external data
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        tmp_onnx = os.path.join(tmpdirname, "tmp.onnx")
 
-    onnx_inp_names = ("input_ids", "attention_mask")
-    onnx_out_names = ("logits",)
-    onnx_dynamic_axes = {
-        "input_ids": {0: "batch_size", 1: "seq_len"},
-        "attention_mask": {0: "batch_size", 1: "seq_len"},
-    }
-    torch.onnx.export(
-        model=model,
-        args=onnx_inputs,
-        f=str(onnx_filepath_export_multi_files_tmp),
-        verbose=False,
-        opset_version=16,
-        input_names=onnx_inp_names,
-        output_names=onnx_out_names,
-        dynamic_axes=onnx_dynamic_axes,
-    )
+        onnx_inp_names = ("input_ids", "attention_mask")
+        onnx_out_names = ("logits",)
+        onnx_dynamic_axes = {
+            "input_ids": {0: "batch_size", 1: "seq_len"},
+            "attention_mask": {0: "batch_size", 1: "seq_len"},
+        }
+        torch.onnx.export(
+            model=model,
+            args=onnx_inputs,
+            f=tmp_onnx,
+            verbose=False,
+            opset_version=opset,
+            input_names=onnx_inp_names,
+            output_names=onnx_out_names,
+            dynamic_axes=onnx_dynamic_axes,
+        )
 
-    onnx_model = onnx.load(str(onnx_filepath_export_multi_files_tmp))
+        onnx_path.unlink(missing_ok=True)
+        (onnx_path.parent / f"{onnx_model_name}_ext.data").unlink(missing_ok=True)
 
-    onnx_path.unlink(missing_ok=True)
-    (onnx_path.parent / f"{onnx_model_name}_ext.data").unlink(missing_ok=True)
-    onnx.save_model(
-        onnx_model,
-        str(onnx_path),
-        save_as_external_data=True,
-        all_tensors_to_one_file=True,
-        location=f"{onnx_model_name}_ext.data",
-        size_threshold=1024,
-        convert_attribute=False,
-    )
+        onnx_model = onnx.load(str(tmp_onnx))
+        onnx.save_model(
+            onnx_model,
+            str(onnx_path),
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location=f"{onnx_model_name}_ext.data",
+            size_threshold=1024,
+            convert_attribute=False,
+        )
 
 
 def parse_arguments():
@@ -266,12 +289,20 @@ def parse_arguments():
         default="./onnx_models/",
         help="where the onnx model will be saved",
     )
-
-    args = parser.parse_args()
-    return args
+    parser.add_argument(
+        "--opset",
+        required=False,
+        type=int,
+        default=17,
+        help=(
+            "the opset to save onnx model, \
+              try to increase it if this opset doens't have new features you want"
+        ),
+    )
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_arguments()
 
-    export_onnx(args.model, args.saved_path)
+    export_onnx(args.model, args.saved_path, args.opset)
