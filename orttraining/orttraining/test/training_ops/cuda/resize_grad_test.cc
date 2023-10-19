@@ -23,7 +23,7 @@ TEST(ResizeGradTest, ResizeGradWithSizes) {
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  providers.emplace_back(DefaultROCMExecutionProvider());
+  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -52,7 +52,7 @@ TEST(ResizeGradTest, ResizeGradWithSizesHalf) {
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  providers.emplace_back(DefaultROCMExecutionProvider());
+  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -87,7 +87,7 @@ TEST(ResizeGradTest, ResizeGradWithSizesAndAlignCorners) {
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  providers.emplace_back(DefaultROCMExecutionProvider());
+  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -119,7 +119,7 @@ TEST(ResizeGradTest, ResizeGradWithScales) {
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  providers.emplace_back(DefaultROCMExecutionProvider());
+  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -153,7 +153,7 @@ TEST(ResizeGradTest, ResizeGradWithScalesHalf) {
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  providers.emplace_back(DefaultROCMExecutionProvider());
+  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -193,7 +193,7 @@ TEST(ResizeGradTest, ResizeGradWithScalesAndAlignCorners) {
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  providers.emplace_back(DefaultROCMExecutionProvider());
+  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
