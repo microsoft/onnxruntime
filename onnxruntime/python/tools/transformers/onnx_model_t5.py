@@ -3,13 +3,12 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 import numpy as np
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_base import Fusion
 from fusion_simplified_layernorm import FusionSimplifiedLayerNormalization, FusionSkipSimplifiedLayerNormalization
-from fusion_skiplayernorm import FusionSkipLayerNormalization
 from fusion_utils import NumpyHelper
 from onnx import NodeProto, TensorProto, helper
 from onnx_model import OnnxModel

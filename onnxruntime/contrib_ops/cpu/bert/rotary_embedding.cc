@@ -36,7 +36,7 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   const Tensor* position_ids = context->Input<Tensor>(1);
   const Tensor* cos_cache = context->Input<Tensor>(2);
   const Tensor* sin_cache = context->Input<Tensor>(3);
-  
+
   RotaryParameters parameters = {};
   ORT_RETURN_IF_ERROR(rotary_embedding_helper::CheckInputs<Tensor>(input,
                                                                    position_ids,
@@ -72,37 +72,37 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   const double cost = static_cast<double>(head_size);
   ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t ptr = begin; ptr != end; ++ptr) {
-        const int b = static_cast<int>((ptr / num_heads) / sequence_length);
-        const int s = static_cast<int>((ptr / num_heads) % sequence_length);
-        const int n = static_cast<int>(ptr % num_heads);
+      const int b = static_cast<int>((ptr / num_heads) / sequence_length);
+      const int s = static_cast<int>((ptr / num_heads) % sequence_length);
+      const int n = static_cast<int>(ptr % num_heads);
 
-        const int block_offset = b * sequence_length * num_heads + s * num_heads + n;
-        const int data_offset = block_offset * head_size;
+      const int block_offset = b * sequence_length * num_heads + s * num_heads + n;
+      const int data_offset = block_offset * head_size;
 
-        const T* input_data = input_src + data_offset;
-        T* output_data = output_dest + data_offset;
+      const T* input_data = input_src + data_offset;
+      T* output_data = output_dest + data_offset;
 
-        // Cache is (M, H/2)
-        const int position_id = (position_ids_format == 0) ? static_cast<int>(pos_ids_data[0]) : static_cast<int>(pos_ids_data[b * sequence_length + s]);
-        const int cache_offset = (position_ids_format == 0) ? (position_id + s) * half_head_size : position_id * half_head_size;
-        const T* cos_data = cos_cache_data + cache_offset;
-        const T* sin_data = sin_cache_data + cache_offset;
+      // Cache is (M, H/2)
+      const int position_id = (position_ids_format == 0) ? static_cast<int>(pos_ids_data[0]) : static_cast<int>(pos_ids_data[b * sequence_length + s]);
+      const int cache_offset = (position_ids_format == 0) ? (position_id + s) * half_head_size : position_id * half_head_size;
+      const T* cos_data = cos_cache_data + cache_offset;
+      const T* sin_data = sin_cache_data + cache_offset;
 
-        int cache_idx = 0;
-        T sign = 0;
-        int j = 0;
-        for (int i = 0; i < head_size; i++) {
-          if (interleaved) {
-            cache_idx = (i / 2) % half_head_size;
-            sign = (i % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
-            j = (i % 2 == 0) ? i+1 : i-1;  // i - sign
-          } else {
-            cache_idx = i % half_head_size;
-            sign = (i < half_head_size) ? static_cast<T>(-1) : static_cast<T>(1);
-            j = (i + half_head_size) % head_size;
-          }
-          output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+      int cache_idx = 0;
+      T sign = 0;
+      int j = 0;
+      for (int i = 0; i < head_size; i++) {
+        if (interleaved) {
+          cache_idx = (i / 2) % half_head_size;
+          sign = (i % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
+          j = (i % 2 == 0) ? i + 1 : i - 1;  // i - sign
+        } else {
+          cache_idx = i % half_head_size;
+          sign = (i < half_head_size) ? static_cast<T>(-1) : static_cast<T>(1);
+          j = (i + half_head_size) % head_size;
         }
+        output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+      }
     }
   });
 

@@ -25,7 +25,7 @@ namespace cuda {
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()), \
-      RotaryEmbedding<T>);   
+      RotaryEmbedding<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
@@ -42,7 +42,7 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* position_ids = context->Input<Tensor>(1);
   const Tensor* cos_cache = context->Input<Tensor>(2);
   const Tensor* sin_cache = context->Input<Tensor>(3);
-  
+
   RotaryParameters parameters = {};
   ORT_RETURN_IF_ERROR(rotary_embedding_helper::CheckInputs<Tensor>(input,
                                                                    position_ids,
@@ -61,21 +61,20 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   auto& device_prop = GetDeviceProp();
   return LaunchRotaryEmbeddingKernel<CudaT>(
-    Stream(context),
-    reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-    reinterpret_cast<const CudaT*>(input->template Data<T>()),
-    position_ids->Data<int64_t>(),
-    reinterpret_cast<const CudaT*>(cos_cache->template Data<T>()),
-    reinterpret_cast<const CudaT*>(sin_cache->template Data<T>()),
-    parameters.batch_size,
-    parameters.sequence_length,
-    parameters.num_heads,
-    parameters.head_size,
-    parameters.max_sequence_length,
-    parameters.position_ids_format,
-    interleaved,
-    device_prop.maxThreadsPerBlock
-  );
+      Stream(context),
+      reinterpret_cast<CudaT*>(output->template MutableData<T>()),
+      reinterpret_cast<const CudaT*>(input->template Data<T>()),
+      position_ids->Data<int64_t>(),
+      reinterpret_cast<const CudaT*>(cos_cache->template Data<T>()),
+      reinterpret_cast<const CudaT*>(sin_cache->template Data<T>()),
+      parameters.batch_size,
+      parameters.sequence_length,
+      parameters.num_heads,
+      parameters.head_size,
+      parameters.max_sequence_length,
+      parameters.position_ids_format,
+      interleaved,
+      device_prop.maxThreadsPerBlock);
 
   return Status::OK();
 }

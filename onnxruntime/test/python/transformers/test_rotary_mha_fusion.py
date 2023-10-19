@@ -22,6 +22,7 @@ else:
     from onnxruntime.transformers.onnx_model import OnnxModel
     from onnxruntime.transformers.optimizer import optimize_model
 
+
 def float_tensor(name: str, shape: List[int], random=False):
     low = 0.0
     high = 1.0
@@ -31,10 +32,17 @@ def float_tensor(name: str, shape: List[int], random=False):
     weights = [np.random.uniform(low, high) for _ in range(total_elements)] if random else [1.0] * total_elements
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights)
 
+
 class TestRotaryAttentionFusion(unittest.TestCase):
-    def setUp(self, batch_size: int = 2, sequence_length: int = 8, num_heads: int = 4, head_size: int = 6,
-              past_sequence_length: int = 2, max_sequence_length: int = 12):
-        
+    def setUp(
+        self,
+        batch_size: int = 2,
+        sequence_length: int = 8,
+        num_heads: int = 4,
+        head_size: int = 6,
+        past_sequence_length: int = 2,
+        max_sequence_length: int = 12,
+    ):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.num_heads = num_heads
@@ -50,7 +58,14 @@ class TestRotaryAttentionFusion(unittest.TestCase):
 
         model_type = "gpt2"
         options = FusionOptions(model_type)
-        optimized_model = optimize_model(original_model_path, model_type, self.num_heads, self.hidden_size, optimization_options=options, opt_level=0)
+        optimized_model = optimize_model(
+            original_model_path,
+            model_type,
+            self.num_heads,
+            self.hidden_size,
+            optimization_options=options,
+            opt_level=0,
+        )
         optimized_model.topological_sort(is_deterministic=True)
 
         self.assertTrue(str(expected_model.model.graph), str(optimized_model.model.graph))
@@ -63,7 +78,9 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             float_tensor("k_weight", [self.hidden_size, self.hidden_size]),
             float_tensor("v_weight", [self.hidden_size, self.hidden_size]),
             float_tensor("o_weight", [self.hidden_size, self.hidden_size]),
-            helper.make_tensor("sqrt_head_size", TensorProto.FLOAT, [1], np.array([np.sqrt(self.head_size)], dtype=np.float32)),
+            helper.make_tensor(
+                "sqrt_head_size", TensorProto.FLOAT, [1], np.array([np.sqrt(self.head_size)], dtype=np.float32)
+            ),
             helper.make_tensor("neg_int_max", TensorProto.FLOAT, [1], np.array([-sys.maxsize - 1], dtype=np.int64)),
             helper.make_tensor("num_heads", TensorProto.FLOAT, [1], np.array([self.num_heads], dtype=np.float32)),
             helper.make_tensor("head_size", TensorProto.FLOAT, [1], np.array([self.head_size], dtype=np.float32)),
@@ -79,21 +96,43 @@ class TestRotaryAttentionFusion(unittest.TestCase):
         attn_mask_size = [self.batch_size, self.sequence_length]
         if model_type == "llama2_msft":
             attn_mask_size.append(self.sequence_length)
-        
+
         inputs = [
-            helper.make_tensor_value_info("input_0", TensorProto.FLOAT, [self.batch_size, self.sequence_length, self.hidden_size]),
+            helper.make_tensor_value_info(
+                "input_0", TensorProto.FLOAT, [self.batch_size, self.sequence_length, self.hidden_size]
+            ),
             helper.make_tensor_value_info("position_ids", TensorProto.INT64, [self.batch_size, self.sequence_length]),
             helper.make_tensor_value_info("attn_mask", TensorProto.INT64, attn_mask_size),
         ]
         if model_type in {"past", "merged", "llama2_msft"}:
-            inputs.extend([
-                helper.make_tensor_value_info("past_key", TensorProto.FLOAT, [self.batch_size, self.num_heads, self.past_sequence_length, self.head_size]),
-                helper.make_tensor_value_info("past_value", TensorProto.FLOAT, [self.batch_size, self.num_heads, self.past_sequence_length, self.head_size]),
-            ])
+            inputs.extend(
+                [
+                    helper.make_tensor_value_info(
+                        "past_key",
+                        TensorProto.FLOAT,
+                        [self.batch_size, self.num_heads, self.past_sequence_length, self.head_size],
+                    ),
+                    helper.make_tensor_value_info(
+                        "past_value",
+                        TensorProto.FLOAT,
+                        [self.batch_size, self.num_heads, self.past_sequence_length, self.head_size],
+                    ),
+                ]
+            )
         outputs = [
-            helper.make_tensor_value_info("output_0", TensorProto.FLOAT, [self.batch_size, self.sequence_length, self.hidden_size]),
-            helper.make_tensor_value_info("present_key", TensorProto.FLOAT, [self.batch_size, self.num_heads, self.past_sequence_length + 1, self.head_size]),
-            helper.make_tensor_value_info("present_value", TensorProto.FLOAT, [self.batch_size, self.num_heads, self.past_sequence_length + 1, self.head_size]),
+            helper.make_tensor_value_info(
+                "output_0", TensorProto.FLOAT, [self.batch_size, self.sequence_length, self.hidden_size]
+            ),
+            helper.make_tensor_value_info(
+                "present_key",
+                TensorProto.FLOAT,
+                [self.batch_size, self.num_heads, self.past_sequence_length + 1, self.head_size],
+            ),
+            helper.make_tensor_value_info(
+                "present_value",
+                TensorProto.FLOAT,
+                [self.batch_size, self.num_heads, self.past_sequence_length + 1, self.head_size],
+            ),
         ]
         return inputs, outputs
 
@@ -121,7 +160,14 @@ class TestRotaryAttentionFusion(unittest.TestCase):
 
         return [q_matmul_node, k_matmul_node, v_matmul_node]
 
-    def create_rotary_embeddings(self, is_fused: bool, model_type: str, interleaved: bool, inputs: List[TensorProto], initializers: List[TensorProto]):
+    def create_rotary_embeddings(
+        self,
+        is_fused: bool,
+        model_type: str,
+        interleaved: bool,
+        inputs: List[TensorProto],
+        initializers: List[TensorProto],
+    ):
         def get_first_rope_input(node_type: str):
             if is_fused or model_type == "llama2_msft":
                 # q_out/k_out
@@ -131,7 +177,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                     return "k_before_rope"
                 return "q_before_rope"
             return ""
-        
+
         def get_first_rope_output(node_type: str):
             if is_fused or model_type in {"llama2_msft", "past", "merged"}:
                 if node_type == "q":
@@ -175,7 +221,6 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 inputs=["q_transposed", "concat_q_extra_out"],
                 outputs=["q"],
                 name="Reshape_q",
-
             )
             return [transpose_q_node, reshape_q_node]
 
@@ -233,7 +278,14 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             outputs=["k"],
             name="Reshape_k",
         )
-        return [k_cache_unsqueeze_node, k_cache_slice_node, transpose_k_1_node, concat_k_node, transpose_k_2_node, reshape_k_node]
+        return [
+            k_cache_unsqueeze_node,
+            k_cache_slice_node,
+            transpose_k_1_node,
+            concat_k_node,
+            transpose_k_2_node,
+            reshape_k_node,
+        ]
 
     def create_k_path_hf(self, model_type: str):
         reshape_k_node = helper.make_node(
@@ -267,7 +319,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             name="Transpose_k_2",
             perm=[0, 1, 3, 2],
         )
-        return k_nodes + [transpose_k_2_node]
+        return k_nodes + [transpose_k_2_node]  # noqa: RUF005
 
     def create_k_path(self, model_type: str):
         if model_type == "llama2_msft":
@@ -331,7 +383,17 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             name="Concat_mask",
             axis=0,
         )
-        return [x_shape_node, x_get_seq_len_node, x_new_seq_len_node, unsqueeze_0_node, unsqueeze_1_node, unsqueeze_2_node, slice_mask_1_node, slice_mask_2_node, concat_mask_node]
+        return [
+            x_shape_node,
+            x_get_seq_len_node,
+            x_new_seq_len_node,
+            unsqueeze_0_node,
+            unsqueeze_1_node,
+            unsqueeze_2_node,
+            slice_mask_1_node,
+            slice_mask_2_node,
+            concat_mask_node,
+        ]
 
     def create_attn_mask_path_hf(self, model_type: str):
         unsqueeze_1_node = helper.make_node(
@@ -375,14 +437,14 @@ class TestRotaryAttentionFusion(unittest.TestCase):
 
         if model_type == "past":
             return attn_mask_nodes
-        
+
         add_node = helper.make_node(
             "Add",
             inputs=["where_out", "zero"],
             outputs=["attn_mask_out"],
             name="Add_mask",
         )
-        return attn_mask_nodes + [add_node]
+        return attn_mask_nodes + [add_node]  # noqa: RUF005
 
     def create_attn_mask_path(self, is_fused: bool, model_type: str):
         if model_type == "llama2_msft":
@@ -447,7 +509,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             name="Transpose_v_1",
         )
         v_nodes = [reshape_v_1_node, transpose_v_1_node]
-        
+
         if model_type == "no_past":
             return v_nodes
 
@@ -459,7 +521,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Concat_v",
                 axis=2,
             )
-            return v_nodes + [concat_v_node]
+            return v_nodes + [concat_v_node]  # noqa: RUF005
 
         # Create extra nodes for `position_ids`
         unsqueeze_v_node = helper.make_node(
@@ -496,7 +558,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             outputs=["v"],
             name="Reshape_v_2",
         )
-        return v_nodes + [transpose_v_2_node, reshape_v_2_node]
+        return v_nodes + [transpose_v_2_node, reshape_v_2_node]  # noqa: RUF005
 
     def create_qkv_path(self, model_type: str):
         matmul_qkv_node = helper.make_node(
@@ -506,7 +568,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             name="MatMul_softmax_v",
         )
         qkv_nodes = [matmul_qkv_node]
-        
+
         if model_type == "llama2_msft":
             reshape_qkv_1_node = helper.make_node(
                 "Reshape",
@@ -529,7 +591,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             name="Reshape_qkv_2",
         )
 
-        return qkv_nodes + [transpose_qkv_node, reshape_qkv_2_node]
+        return qkv_nodes + [transpose_qkv_node, reshape_qkv_2_node]  # noqa: RUF005
 
     def create_concat_unsqueeze_paths(self, model_type: str, reshape_nodes: List[NodeProto]):
         # Create initial shape paths
@@ -606,7 +668,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 concat_node_inputs = [unsqueeze_0_node.output[0], "head_size", unsqueeze_1_node.output[0]]
             elif reshape_name == "Reshape_q":
                 concat_node_inputs = [unsqueeze_0_node.output[0], unsqueeze_1_node.output[0], "head_size"]
-            
+
             concat_node = helper.make_node(
                 "Concat",
                 inputs=concat_node_inputs,
@@ -633,21 +695,21 @@ class TestRotaryAttentionFusion(unittest.TestCase):
         )
         return [matmul_o_node, end_node]
 
-    def create_fused_model(self, model_type: str, interleaved: bool, initializers: List[TensorProto]):        
+    def create_fused_model(self, model_type: str, interleaved: bool, initializers: List[TensorProto]):
         inputs, outputs = self.create_inputs_and_outputs(model_type)
         matmul_nodes = self.create_matmul_nodes(True, model_type=model_type)
         rope_nodes = self.create_rotary_embeddings(True, model_type, interleaved, inputs, initializers)
         attn_mask_nodes = self.create_attn_mask_path(True, model_type)
 
         mha_inputs = [
-            rope_nodes[0].output[0],     # q
-            rope_nodes[1].output[0],     # k
+            rope_nodes[0].output[0],  # q
+            rope_nodes[1].output[0],  # k
             matmul_nodes[-1].output[0],  # v
-            "",                          # bias
-            "attn_mask_out" if model_type == "llama2_msft" else "", # attn_mask
-            "attn_mask_out" if model_type != "llama2_msft" else "", # add_qk
-            "past_key" if model_type != "no_past" else "",          # past_key
-            "past_value" if model_type != "no_past" else "",        # past_value
+            "",  # bias
+            "attn_mask_out" if model_type == "llama2_msft" else "",  # attn_mask
+            "attn_mask_out" if model_type != "llama2_msft" else "",  # add_qk
+            "past_key" if model_type != "no_past" else "",  # past_key
+            "past_value" if model_type != "no_past" else "",  # past_value
         ]
         mha_node = helper.make_node(
             "MultiHeadAttention",
@@ -688,8 +750,10 @@ class TestRotaryAttentionFusion(unittest.TestCase):
 
         end_nodes = self.create_end_nodes()
 
+        first_set_of_nodes = matmul_nodes + rope_nodes + q_nodes + k_nodes + attn_mask_nodes
+        second_set_of_nodes = qk_nodes + v_nodes + qkv_nodes + extra_nodes + end_nodes
         graph = helper.make_graph(
-            nodes=matmul_nodes + rope_nodes + q_nodes + k_nodes + attn_mask_nodes + qk_nodes + v_nodes + qkv_nodes + extra_nodes + end_nodes,
+            nodes=first_set_of_nodes + second_set_of_nodes,
             name="RotaryAttention_Graph",
             inputs=inputs,
             outputs=outputs,
@@ -723,7 +787,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
         model_type = "no_past"
         interleaved = False
         self.check_models(model_type, interleaved)
-    
+
     def test_hf_decoder_with_past_model(self):
         model_type = "past"
         interleaved = False
@@ -733,6 +797,7 @@ class TestRotaryAttentionFusion(unittest.TestCase):
         model_type = "merged"
         interleaved = False
         self.check_models(model_type, interleaved)
+
 
 if __name__ == "__main__":
     unittest.main()

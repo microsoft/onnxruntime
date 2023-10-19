@@ -1278,7 +1278,7 @@ def replace_mha_with_gqa(model: OnnxModel, past_input: str, kv_num_heads: int = 
         # Get past sequence length to enable past-present-share-buffer
         past_seq_len = "past_seq_len_output"
         idx_two_name = "idx_two"
-        
+
         # Create Gather node to get past_sequence_length from past kv cache
         shape_node = onnx.helper.make_node(
             "Shape",
@@ -1313,7 +1313,7 @@ def replace_mha_with_gqa(model: OnnxModel, past_input: str, kv_num_heads: int = 
                     node.input[2],  # value
                     node.input[6],  # past_key
                     node.input[7],  # past_value
-                    past_seq_len,   # past_sequence_length
+                    past_seq_len,  # past_sequence_length
                 ],
                 outputs=node.output,
                 name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),

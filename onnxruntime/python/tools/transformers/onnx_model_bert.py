@@ -124,7 +124,11 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionRotaryEmbeddings(self)
         fusion.apply()
         # Remove non-MS domain functions
-        rot_emb_nodes = list(filter(lambda node: node.op_type == "RotaryEmbedding" and node.domain != "com.microsoft", self.model.graph.node))
+        rot_emb_nodes = list(
+            filter(
+                lambda node: node.op_type == "RotaryEmbedding" and node.domain != "com.microsoft", self.model.graph.node
+            )
+        )
         non_ms_domains_to_keep = set(map(lambda node: node.domain, rot_emb_nodes))
         i = 0
         while i < len(self.model.functions):
@@ -494,7 +498,12 @@ class BertOnnxModel(OnnxModel):
         gelu = op_count["Gelu"] + op_count["BiasGelu"] + op_count["FastGelu"]
         layer_norm = op_count["LayerNormalization"] + op_count["SkipLayerNormalization"]
         simple_layer_norm = op_count["SimplifiedLayerNormalization"] + op_count["SkipSimplifiedLayerNormalization"]
-        is_perfect = (embed > 0) and (attention > 0) and (attention == gelu) and ((layer_norm >= 2 * attention) or (simple_layer_norm >= 2 * attention))
+        is_perfect = (
+            (embed > 0)
+            and (attention > 0)
+            and (attention == gelu)
+            and ((layer_norm >= 2 * attention) or (simple_layer_norm >= 2 * attention))
+        )
 
         if layer_norm == 0:
             logger.debug("Layer Normalization not fused")

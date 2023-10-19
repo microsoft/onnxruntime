@@ -22,6 +22,7 @@ else:
     from onnxruntime.transformers.onnx_model import OnnxModel
     from onnxruntime.transformers.optimizer import optimize_model
 
+
 def float_tensor(name: str, shape: List[int], random=False):
     low = 0.0
     high = 1.0
@@ -31,10 +32,17 @@ def float_tensor(name: str, shape: List[int], random=False):
     weights = [np.random.uniform(low, high) for _ in range(total_elements)] if random else [1.0] * total_elements
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights)
 
+
 class TestRotaryEmbeddingFusion(unittest.TestCase):
-    def setUp(self, batch_size: int = 2, sequence_length: int = 8, num_heads: int = 4, head_size: int = 6,
-              past_sequence_length: int = 2, max_sequence_length: int = 12):
-        
+    def setUp(
+        self,
+        batch_size: int = 2,
+        sequence_length: int = 8,
+        num_heads: int = 4,
+        head_size: int = 6,
+        past_sequence_length: int = 2,
+        max_sequence_length: int = 12,
+    ):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.num_heads = num_heads
@@ -58,7 +66,12 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
         initializers = [
             float_tensor("cos_cache", [self.max_sequence_length, self.head_size]),
             float_tensor("sin_cache", [self.max_sequence_length, self.head_size]),
-            helper.make_tensor("pos_ids_new_shape", TensorProto.FLOAT, [2], np.array([self.batch_size, self.sequence_length], dtype=np.int64)),
+            helper.make_tensor(
+                "pos_ids_new_shape",
+                TensorProto.FLOAT,
+                [2],
+                np.array([self.batch_size, self.sequence_length], dtype=np.int64),
+            ),
             helper.make_tensor("zero", TensorProto.FLOAT, [1], np.array([0], dtype=np.int64)),
             helper.make_tensor("one", TensorProto.FLOAT, [1], np.array([1], dtype=np.int64)),
             helper.make_tensor("two", TensorProto.FLOAT, [1], np.array([2], dtype=np.int64)),
@@ -69,32 +82,46 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
 
     def create_inputs_and_outputs(self, model_type: str = ""):
         inputs = [
-            helper.make_tensor_value_info("input_0", TensorProto.FLOAT, [self.batch_size, self.sequence_length, self.num_heads, self.head_size]),
-            helper.make_tensor_value_info("position_ids", TensorProto.INT64, [self.batch_size, self.sequence_length])
+            helper.make_tensor_value_info(
+                "input_0",
+                TensorProto.FLOAT,
+                [self.batch_size, self.sequence_length, self.num_heads, self.head_size],
+            ),
+            helper.make_tensor_value_info("position_ids", TensorProto.INT64, [self.batch_size, self.sequence_length]),
         ]
         if model_type in {"past", "merged"}:
             # Input will be removed in fused model since it's not used in RotaryEmbedding.
-            # We create this input so that we can check the `past_seq_len` path during 
+            # We create this input so that we can check the `past_seq_len` path during
             # RotaryEmbedding fusion.
             inputs.append(
-                helper.make_tensor_value_info("past_key", TensorProto.FLOAT, [self.batch_size, self.num_heads, self.past_sequence_length, self.head_size])
+                helper.make_tensor_value_info(
+                    "past_key",
+                    TensorProto.FLOAT,
+                    [self.batch_size, self.num_heads, self.past_sequence_length, self.head_size],
+                )
             )
         # Dummy input to test nodes for `curr_seq_len` path
         if model_type != "":
             inputs.append(
-                helper.make_tensor_value_info("curr_key", TensorProto.FLOAT, [self.batch_size, self.sequence_length, self.num_heads, self.head_size])
+                helper.make_tensor_value_info(
+                    "curr_key",
+                    TensorProto.FLOAT,
+                    [self.batch_size, self.sequence_length, self.num_heads, self.head_size],
+                )
             )
         outputs = [
-            helper.make_tensor_value_info("output_0", TensorProto.FLOAT, [self.batch_size, self.num_heads, self.sequence_length, self.head_size])
+            helper.make_tensor_value_info(
+                "output_0",
+                TensorProto.FLOAT,
+                [self.batch_size, self.num_heads, self.sequence_length, self.head_size],
+            )
         ]
         if model_type in {"merged"}:
             # Dummy output to test that nodes for `past_seq_len` path are not removed for merged model
-            outputs.append(
-                helper.make_tensor_value_info("past_seq_len_plus_zero", TensorProto.FLOAT, [1])
-            )
+            outputs.append(helper.make_tensor_value_info("past_seq_len_plus_zero", TensorProto.FLOAT, [1]))
         return inputs, outputs
 
-    def create_fused_model(self, interleaved: bool, initializers: List[TensorProto]):        
+    def create_fused_model(self, interleaved: bool, initializers: List[TensorProto]):
         inputs, outputs = self.create_inputs_and_outputs()
 
         rope_node = helper.make_node(
@@ -156,7 +183,7 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
                 name="Squeeze_1",
             )
             cos_nodes.extend([cos_squeeze_1_node, cos_squeeze_2_node])
-        
+
         cos_gather_node = helper.make_node(
             "Gather",
             inputs=["cos_squeeze_2" if use_redundant_squeeze_ops else "cos_sliced", "pos_ids_reshaped"],
@@ -366,12 +393,11 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
 
         return x_half_shape_nodes + rotate_half_nodes + x_embed_nodes
 
-
     def create_test_model(self, model_type: str, use_redundant_squeeze_ops: bool, initializers: List[TensorProto]):
         apply_rope_nodes = self.create_apply_rope_path()
         cache_nodes = self.create_cache_path(model_type, use_redundant_squeeze_ops)
         inputs, outputs = self.create_inputs_and_outputs(model_type)
-        
+
         graph = helper.make_graph(
             nodes=apply_rope_nodes + cache_nodes,
             name="RotaryEmbedding_Graph",

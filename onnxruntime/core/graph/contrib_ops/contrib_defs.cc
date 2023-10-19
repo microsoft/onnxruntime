@@ -628,7 +628,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           return true;
         }));
 
-
 // Used to be ONNX 1.7 Inverse(12)
 // Comment out docs not to increase the binary size
 //

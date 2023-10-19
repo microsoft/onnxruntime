@@ -12,7 +12,13 @@ import onnx
 import psutil
 import torch
 from benchmark_helper import setup_logger
-from llama_inputs import convert_inputs_for_ort, get_merged_sample_with_past_kv_inputs, get_msft_sample_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
+from llama_inputs import (
+    convert_inputs_for_ort,
+    get_merged_sample_with_past_kv_inputs,
+    get_msft_sample_inputs,
+    get_sample_inputs,
+    get_sample_with_past_kv_inputs,
+)
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
 from tqdm import trange
@@ -32,7 +38,7 @@ def get_ort_model_inputs_len(args, model):
         try:
             # New Optimum export (https://github.com/huggingface/optimum/blob/888332364c2e0091da1fc974737c7e277af168bf/optimum/onnxruntime/modeling_ort.py#L268)
             return len(model.inputs_names)
-        except:
+        except Exception:
             # Old Optimum export (https://github.com/huggingface/optimum/blob/c5ad7f971cb0a494eac03dc0909f146725f999c5/optimum/onnxruntime/base.py#L54)
             return len(model.decoder.input_names)
     return len(model.get_inputs())
@@ -122,8 +128,12 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             use_fp16=args.use_fp16,
             return_dict=True,
         )
-        init_inputs = convert_inputs_for_ort(init_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id)
-        iter_inputs = convert_inputs_for_ort(iter_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id)
+        init_inputs = convert_inputs_for_ort(
+            init_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id
+        )
+        iter_inputs = convert_inputs_for_ort(
+            iter_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id
+        )
 
     elif args.benchmark_type == "ort-msft":
         # Microsoft export from https://github.com/microsoft/Llama-2-Onnx
@@ -145,8 +155,12 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             use_fp16=args.use_fp16,
             split_kv=split_kv,
         )
-        init_inputs = convert_inputs_for_ort(init_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id)
-        iter_inputs = convert_inputs_for_ort(iter_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id)
+        init_inputs = convert_inputs_for_ort(
+            init_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id
+        )
+        iter_inputs = convert_inputs_for_ort(
+            iter_inputs, args.use_fp16, args.past_present_share_buffer, args.device, args.device_id
+        )
 
     else:
         raise Exception("Unable to auto-detect inputs for provided model")
@@ -423,7 +437,9 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
                 name = output.name
                 if args.past_present_share_buffer and ("out" in name or "present" in name):
                     # Bind present KV cache outputs to OrtValue with buffer sharing
-                    io_binding.bind_ortvalue_output(name, inputs[name.replace("out", "cache").replace("present", "past_key_values")])
+                    io_binding.bind_ortvalue_output(
+                        name, inputs[name.replace("out", "cache").replace("present", "past_key_values")]
+                    )
                 else:
                     io_binding.bind_output(name, device_type=args.device, device_id=args.device_id)
 
@@ -489,7 +505,7 @@ def get_args():
         "-bt",
         "--benchmark-type",
         type=str,
-        required=True, 
+        required=True,
         choices=["hf-pt-eager", "hf-pt-compile", "hf-ort", "ort-msft", "ort-convert-to-onnx"],
     )
     parser.add_argument(
@@ -628,7 +644,7 @@ def main():
     if args.benchmark_type in {"ort-convert-to-onnx", "ort-msft"}:
         onnx_model = onnx.load_model(args.ort_model_path, load_external_data=False)
         gqa_nodes = list(filter(lambda node: node.op_type == "GroupQueryAttention", onnx_model.graph.node))
-        
+
         use_buffer_share = use_fp16 and len(gqa_nodes) > 0 and args.device != "cpu"
         setattr(args, "past_present_share_buffer", use_buffer_share)  # noqa: B010
     else:

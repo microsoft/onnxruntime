@@ -3,8 +3,8 @@ from typing import Dict
 
 from fusion_base import Fusion
 from fusion_skiplayernorm import FusionSkipLayerNormalization
-from onnx_model import OnnxModel
 from onnx import helper
+from onnx_model import OnnxModel
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +102,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
         else:
             return
 
-        extra_mul = sim_ln_nodes == sim_ln_nodes_1 or sim_ln_nodes == sim_ln_nodes_2
-        layernorm_weight_index = 1 if sim_ln_nodes == sim_ln_nodes_3 or sim_ln_nodes == sim_ln_nodes_4 else 0
+        layernorm_weight_index = 1 if sim_ln_nodes in (sim_ln_nodes_3, sim_ln_nodes_4) else 0
         starts_with_graph_input = sim_ln_nodes == sim_ln_nodes_4
 
         if self.model.find_constant_input(pow_node, 2.0) != 1:
@@ -128,8 +127,8 @@ class FusionSimplifiedLayerNormalization(Fusion):
             name=self.model.create_node_name("SimplifiedLayerNormalization", name_prefix="LayerNorm"),
         )
         normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
-        normalize_node.attribute.extend([helper.make_attribute("axis", int(-1))])
-        normalize_node.attribute.extend([helper.make_attribute("stash_type", int(1))])
+        normalize_node.attribute.extend([helper.make_attribute("axis", -1)])
+        normalize_node.attribute.extend([helper.make_attribute("stash_type", 1)])
         self.nodes_to_add.append(normalize_node)
         self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 

@@ -21,6 +21,7 @@ else:
     from onnxruntime.transformers.onnx_model import OnnxModel
     from onnxruntime.transformers.optimizer import optimize_model
 
+
 def float_tensor(name: str, shape: List[int], random=False):
     low = 0.0
     high = 1.0
@@ -30,9 +31,16 @@ def float_tensor(name: str, shape: List[int], random=False):
     weights = [np.random.uniform(low, high) for _ in range(total_elements)] if random else [1.0] * total_elements
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights)
 
+
 class TestSimplifiedLayerNormFusion(unittest.TestCase):
-    def setUp(self, vocab_size: int = 5, batch_size: int = 2, sequence_length: int = 8, hidden_size: int = 16,
-              epsilon: float = 0.000009999999747378752):
+    def setUp(
+        self,
+        vocab_size: int = 5,
+        batch_size: int = 2,
+        sequence_length: int = 8,
+        hidden_size: int = 16,
+        epsilon: float = 0.000009999999747378752,
+    ):
         self.vocab_size = vocab_size
         self.batch_size = batch_size
         self.sequence_length = sequence_length
@@ -57,7 +65,9 @@ class TestSimplifiedLayerNormFusion(unittest.TestCase):
             float_tensor("scale", [self.hidden_size]),
         ]
         if use_embed_weight:
-            initializers = [float_tensor("embed_weight", [self.vocab_size, self.hidden_size])] + initializers
+            initializers = [  # noqa: RUF005
+                float_tensor("embed_weight", [self.vocab_size, self.hidden_size])
+            ] + initializers
         return initializers
 
     def create_inputs_and_outputs(self, start_node_type: str):
@@ -102,20 +112,22 @@ class TestSimplifiedLayerNormFusion(unittest.TestCase):
                 [self.batch_size, self.sequence_length, self.hidden_size],
             )
             inputs = [input_0]
-        
-        outputs = [helper.make_tensor_value_info(
-            "output_0",
-            TensorProto.FLOAT,
-            [self.batch_size, self.sequence_length, self.hidden_size],
-        )]
+
+        outputs = [
+            helper.make_tensor_value_info(
+                "output_0",
+                TensorProto.FLOAT,
+                [self.batch_size, self.sequence_length, self.hidden_size],
+            )
+        ]
         return inputs, outputs, start_node
 
-    def create_fused_model(self, start_node_type: str, initializers: List[TensorProto]):        
+    def create_fused_model(self, start_node_type: str, initializers: List[TensorProto]):
         inputs, outputs, start_node = self.create_inputs_and_outputs(start_node_type)
 
         sln_node = helper.make_node(
             "SimplifiedLayerNormalization",
-            inputs=[start_node.output[0] if start_node != None else "D", initializers[0].name],
+            inputs=[start_node.output[0] if start_node is not None else "D", initializers[0].name],
             outputs=[outputs[0].name],
             axis=-1,
             epsilon=initializers[2].float_data[0],
@@ -123,7 +135,7 @@ class TestSimplifiedLayerNormFusion(unittest.TestCase):
         )
 
         graph = helper.make_graph(
-            nodes=[sln_node] + ([] if start_node == None else [start_node]),
+            nodes=[sln_node] + ([] if start_node is None else [start_node]),
             name="SimplifiedLayerNorm_Graph",
             inputs=inputs,
             outputs=outputs,
@@ -179,9 +191,10 @@ class TestSimplifiedLayerNormFusion(unittest.TestCase):
         )
 
         inputs, outputs, start_node = self.create_inputs_and_outputs(start_node_type)
-        
+
+        main_nodes = [pow_node, reducemean_node, add_node, sqrt_node, div_node, mul_node, end_node]
         graph = helper.make_graph(
-            nodes=[pow_node, reducemean_node, add_node, sqrt_node, div_node, mul_node, end_node] + ([] if start_node == None else [start_node]),
+            nodes=main_nodes + ([] if start_node is None else [start_node]),
             name="SimplifiedLayerNorm_Graph",
             inputs=inputs,
             outputs=outputs,
@@ -195,11 +208,11 @@ class TestSimplifiedLayerNormFusion(unittest.TestCase):
         expected_model_filename = "expected_model.onnx"
         expected_model = self.create_fused_model(start_node_type, initializers)
         onnx.save(expected_model, expected_model_filename)
-        
+
         original_model_filename = "original_model.onnx"
         original_model = self.create_test_model(start_node_type, first_parent_idx, initializers)
         onnx.save(original_model, original_model_filename)
-        
+
         self.verify_fusion(expected_model_filename, original_model_filename)
         os.remove(expected_model_filename)
         os.remove(original_model_filename)

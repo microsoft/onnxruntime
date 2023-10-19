@@ -7,10 +7,16 @@ from typing import List
 import numpy as np
 import torch
 from benchmark_helper import create_onnxruntime_session, setup_logger
-from llama_inputs import convert_inputs_for_ort, get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
+from llama_inputs import (
+    convert_inputs_for_ort,
+    get_merged_sample_with_past_kv_inputs,
+    get_sample_inputs,
+    get_sample_with_past_kv_inputs,
+)
 from transformers import LlamaConfig, LlamaForCausalLM
 
 logger = logging.getLogger("")
+
 
 def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     # Dummy values for parity
@@ -19,7 +25,13 @@ def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     if args.merged:
         sequence_length, past_sequence_length = (1, 8) if args.use_past_kv else (8, 0)
         inputs = get_merged_sample_with_past_kv_inputs(
-            config, args.device, batch_size, sequence_length, past_sequence_length, use_fp16=(args.precision == "fp16"), return_dict=True
+            config,
+            args.device,
+            batch_size,
+            sequence_length,
+            past_sequence_length,
+            use_fp16=(args.precision == "fp16"),
+            return_dict=True,
         )
     elif args.use_past_kv:
         inputs = get_sample_with_past_kv_inputs(
