@@ -11,20 +11,41 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-void single_query_cached_kv_attention(
+void paged_attention_v1(
     const cudaStream_t stream,
-    const void* out,          // [num_seqs, num_heads, head_size]
+    void* out,                // [num_seqs, num_heads, head_size]
     const void* query,        // [num_seqs, num_heads, head_size]
     const void* key_cache,    // [num_blocks, num_kv_heads, head_size/x, block_size, x]
     const void* value_cache,  // [num_blocks, num_kv_heads, head_size, block_size]
     const int* head_mapping,  // [num_heads]
     float scale,
     const int* block_tables,  // [num_seqs, max_num_blocks_per_seq]
-    const int max_num_blocks_per_seq,
     const int* context_lens,  // [num_seqs]
     int block_size,
     int max_context_len,
-    const float* __restrict__ alibi_slopes_ptr,
+    const float* __restrict__ alibi_slopes,
+    const int max_num_blocks_per_seq,
+    const int64_t* query_shapes,
+    int num_queries_per_kv,
+    int dtype);
+
+void paged_attention_v2(
+    const cudaStream_t stream,
+    void* out,                // [num_seqs, num_heads, head_size]
+    void* exp_sums,           // [num_seqs, num_heads, max_num_partitions]
+    void* max_logits,         // [num_seqs, num_heads, max_num_partitions]
+    void* tmp_out,            // [num_seqs, num_heads, max_num_partitions, head_size]
+    const void* query,        // [num_seqs, num_heads, head_size]
+    const void* key_cache,    // [num_blocks, num_heads, head_size/x, block_size, x]
+    const void* value_cache,  // [num_blocks, num_heads, head_size, block_size]
+    const int* head_mapping,  // [num_heads]
+    float scale,
+    const int* block_tables,  // [num_seqs, max_num_blocks_per_seq]
+    const int* context_lens,  // [num_seqs]
+    int block_size,
+    int max_context_len,
+    const float* alibi_slopes,
+    const int max_num_blocks_per_seq,
     const int64_t* query_shapes,
     int num_queries_per_kv,
     int dtype);

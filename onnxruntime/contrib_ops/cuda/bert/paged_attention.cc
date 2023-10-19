@@ -226,7 +226,7 @@ Status PagedAttention<T>::CheckInputs(
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key_cache = context->Input<Tensor>(3);
   const Tensor* value_cache = context->Input<Tensor>(4);
-  const Tensor* positions = context->Input<Tensor>(6);
+  //const Tensor* positions = context->Input<Tensor>(6);
 
   const auto& query_shape = query->Shape();
   if (query_shape.NumDimensions() < 2 || query_shape.NumDimensions() > 3) {
@@ -255,10 +255,10 @@ Status PagedAttention<T>::CheckInputs(
                            key_cache->Shape(), " ", value_cache->Shape());
   }
 
-  if (positions && positions->Shape().Size() > 0 &&
-      positions->Shape()[positions->Shape().NumDimensions() - 1] != batch_size * seq_len) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid positions shape: ", positions->Shape());
-  }
+  //if (positions && positions->Shape().Size() > 0 &&
+  //    positions->Shape()[positions->Shape().NumDimensions() - 1] != batch_size * seq_len) {
+  //  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid positions shape: ", positions->Shape());
+  //}
 
   int64_t num_prompt_tokens = input_metadata->num_prompt_tokens;
 
@@ -507,8 +507,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* cos_sin_cache = context->Input<Tensor>(7);
   const Tensor* kv_quant_param = (context->InputCount() > 8) ? context->Input<Tensor>(8) : nullptr;
   ORT_UNUSED_PARAMETER(kv_quant_param);
-
-  int seq_len = query->Shape().NumDimensions() == 3? query->Shape()[1] : query->Shape()[0];
+  const auto& query_shape = query->Shape();
+  int seq_len = query_shape[1] * query_shape[0];
   auto meta_data_space = this->template GetScratchBuffer<int8_t>(std::max(1024, seq_len * 3) * sizeof(int32_t), context->GetComputeStream());
   InputMetadata self_build_input_metadata;
   InputMetadata* input_metadata = GetOrCreateMedataFromInput(context, &self_build_input_metadata, meta_data_space.get());
@@ -524,9 +524,9 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   T* value_data = const_cast<T*>(value->Data<T>());
 
   int64_t num_valid_tokens = input_metadata->num_valid_tokens;
-  TensorShape output_shape = query->Shape();
+  TensorShape output_shape = query_shape;
   if (gemm_buffer.get() == nullptr) {
-    ORT_ENFORCE(query->Shape()[1] == num_heads_ * head_size_, "invlaid query shape");
+    ORT_ENFORCE(query_shape[output_shape.NumDimensions() - 1] == num_heads_ * head_size_, "invlaid query shape");
   } else {
     output_shape[output_shape.NumDimensions() - 1] = num_heads_ * head_size_;
     TensorShapeVector new_shape(2);
@@ -548,7 +548,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     int64_t rot_dim = cos_sin_cache->Shape()[1];
     ORT_ENFORCE(rot_dim == head_size_, "RoPE mask requires position input with shape [seq_len, head_size]");
     rotary_embedding_neox(Stream(context), positions->Data<int64_t>(), static_cast<void*>(query_data),
-                          static_cast<void*>(key_data), head_size_, cos_sin_cache->DataRaw(), num_valid_tokens,
+                          static_cast<void*>(key_data), head_size_, cos_sin_cache->DataRaw(),
+                          query_shape.Size()/head_size_/num_heads_,
                           rot_dim, num_heads_, num_kv_heads_, 1);
     CHECK_CUDA_ERROR();
   }
@@ -584,22 +585,50 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   if (input_metadata->num_generation_tokens > 0) {
+    constexpr int PARTITION_SIZE = 512;
+    int max_num_partitions = ((input_metadata->max_context_len + PARTITION_SIZE - 1)  / PARTITION_SIZE);
+    //TODO : Tune this heuristic.
+    bool use_v1 = max_num_partitions == 1 || (query_shape[0] * query_shape[1]) > PARTITION_SIZE;
     int64_t generation_qeury_shape[3] = {num_valid_tokens - num_prompt_tokens, num_heads_, head_size_};
-    single_query_cached_kv_attention(Stream(context),
-                                     output->MutableData<MLFloat16>() + num_prompt_tokens * num_heads_ * head_size_,
-                                     query_data + num_prompt_tokens * num_heads_ * head_size_,
-                                     key_cache->Data<MLFloat16>(),
-                                     value_cache->Data<MLFloat16>(),
-                                     head_mapping_.get(),
-                                     scale_,
-                                     reinterpret_cast<const int32_t*>(input_metadata->block_tables),
-                                     input_metadata->max_num_blocks_per_seq,
-                                     reinterpret_cast<const int32_t*>(input_metadata->context_lens),
-                                     value_cache->Shape()[3],
-                                     input_metadata->max_context_len,
-                                     nullptr,
-                                     generation_qeury_shape,
-                                     num_queries_per_kv_, 1);
+    if (use_v1){
+      paged_attention_v1(Stream(context),
+                         output->MutableData<MLFloat16>() + num_prompt_tokens * num_heads_ * head_size_,
+                         query_data + num_prompt_tokens * num_heads_ * head_size_,
+                         key_cache->Data<MLFloat16>(),
+                         value_cache->Data<MLFloat16>(),
+                         head_mapping_.get(),
+                         scale_,
+                         reinterpret_cast<const int32_t*>(input_metadata->block_tables),
+                         reinterpret_cast<const int32_t*>(input_metadata->context_lens),
+                         value_cache->Shape()[3],
+                         input_metadata->max_context_len,
+                         nullptr,
+                         input_metadata->max_num_blocks_per_seq,
+                         generation_qeury_shape,
+                         num_queries_per_kv_, 1);
+    } else {
+      auto tmp_output = this->template GetScratchBuffer<T>(query_shape.Size() * max_num_partitions * sizeof(T), context->GetComputeStream());
+      auto exp_sums = this->template GetScratchBuffer<T>(query_shape[0] * query_shape [1]* max_num_partitions * sizeof(T), context->GetComputeStream());
+      auto max_logits = this->template GetScratchBuffer<T>(query_shape[0] * query_shape[1] * max_num_partitions * sizeof(T), context->GetComputeStream());
+      paged_attention_v2(Stream(context),
+                         output->MutableData<MLFloat16>() + num_prompt_tokens * num_heads_ * head_size_,
+                         exp_sums.get(),
+                         max_logits.get(),
+                         tmp_output.get(),
+                         query_data + num_prompt_tokens * num_heads_ * head_size_,
+                         key_cache->Data<MLFloat16>(),
+                         value_cache->Data<MLFloat16>(),
+                         head_mapping_.get(),
+                         scale_,
+                         reinterpret_cast<const int32_t*>(input_metadata->block_tables),
+                         reinterpret_cast<const int32_t*>(input_metadata->context_lens),
+                         value_cache->Shape()[3],
+                         input_metadata->max_context_len,
+                         nullptr,
+                         input_metadata->max_num_blocks_per_seq,
+                         generation_qeury_shape,
+                         num_queries_per_kv_, 1);
+    }
     CHECK_CUDA_ERROR();
   }
   return Status::OK();
