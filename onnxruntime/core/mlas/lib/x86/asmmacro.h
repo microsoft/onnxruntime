@@ -71,7 +71,7 @@ Arguments:
 
         .att_syntax
 
-        calll   __x86.get_pc_thunk.\TargetReg\()
+        calll   __x86.get_pc_thunk.\TargetReg\()@PLT
         addl    $_GLOBAL_OFFSET_TABLE_,%e\TargetReg\()
 
         .intel_syntax noprefix
