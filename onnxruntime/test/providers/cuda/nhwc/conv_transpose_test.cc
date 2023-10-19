@@ -49,9 +49,9 @@ struct ConvTransposeOp {
     std::vector<int64_t> output_dims = {
         input_dims[0], channels,
         (kernel_shape[1] - 1) * dilations[1] + (input_dims[2] - 1) * strides[1] - (padding[1] + padding[0]) + 1 +
-        output_padding[2],
+            output_padding[2],
         (kernel_shape[0] - 1) * dilations[0] + (input_dims[3] - 1) * strides[0] - (padding[3] + padding[2]) + 1 +
-        output_padding[3]};
+            output_padding[3]};
     std::vector<T> output_data = FillZeros<T>(output_dims);
 
     test->AddOutput<T>("Y", output_dims, output_data);
