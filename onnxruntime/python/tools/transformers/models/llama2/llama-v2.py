@@ -60,7 +60,8 @@ def setup_session_option(args, local_rank):
 
 def setup_ort_model(args, rank):
     config = LlamaConfig.from_pretrained(args.model)
-    # config.num_hidden_layers = 2
+    if args.layer2:
+        config.num_hidden_layers = 2
     if args.merge:
         model_f = MERGED_MODEL.format(rank)
     else:
@@ -89,7 +90,8 @@ def setup_torch_model(args, use_cuda=True):
     for i in range(world_size):
         if i == rank:
             config = LlamaConfig.from_pretrained(args.model)
-            # config.num_hidden_layers = 2
+            if args.layer2:
+                config.num_hidden_layers = 2
             model = LlamaForCausalLM.from_pretrained(args.model, torch_dtype=config.torch_dtype, config=config)
             if world_size > 1:
                 model.parallel_model()
@@ -111,7 +113,8 @@ def setup_torch_model(args, use_cuda=True):
 def export_model(args):
     rank = get_rank()
     config = LlamaConfig.from_pretrained(args.model)
-    # config.num_hidden_layers = 2
+    if args.layer2:
+        config.num_hidden_layers = 2
     world_size = get_size()
 
     model = setup_torch_model(args, use_cuda=True)
@@ -164,19 +167,29 @@ def custom_generate(model, input_ids, attention_mask, max_new_tokens=128, **kwar
         output_ids.append(tokens)
     return torch.concat(output_ids, dim=1)
 
+
 decoder_generate_graph = None
 graph_inputs = None
 graph_outputs = None
+
+
 def torch_generate_with_graph(args, model, input_ids, attention_mask, max_new_tokens=128, use_cache=True, **kwargs):
     past_kvs = None
-    output_ids = [input_ids,]
+    output_ids = [input_ids]
     tokens = input_ids
     _, pos = input_ids.shape
     position_ids = None
     for i in range(max_new_tokens):
-        model_inputs = model.prepare_inputs(tokens, position_ids=position_ids, attention_mask=attention_mask, past_key_values=past_kvs, use_cache=use_cache, **kwargs)
+        model_inputs = model.prepare_inputs(
+            tokens,
+            position_ids=position_ids,
+            attention_mask=attention_mask,
+            past_key_values=past_kvs,
+            use_cache=use_cache,
+            **kwargs,
+        )
 
-        torch.cuda.nvtx.range_push('forward')
+        torch.cuda.nvtx.range_push("forward")
         if past_kvs is not None and args.cugraph:
             # in decoding phase
             global decoder_generate_graph
@@ -184,8 +197,10 @@ def torch_generate_with_graph(args, model, input_ids, attention_mask, max_new_to
             global graph_outputs
             if decoder_generate_graph is None:
                 # copy input_ids and position into another memory to be re-used by graph
-                model_inputs['input_ids'] = torch.empty_like(model_inputs['input_ids']).copy_(model_inputs['input_ids'])
-                model_inputs['position_ids'] = torch.empty_like(model_inputs['position_ids']).copy_(model_inputs['position_ids'])
+                model_inputs["input_ids"] = torch.empty_like(model_inputs["input_ids"]).copy_(model_inputs["input_ids"])
+                model_inputs["position_ids"] = torch.empty_like(model_inputs["position_ids"]).copy_(
+                    model_inputs["position_ids"]
+                )
 
                 # warm up for graph
                 s = torch.cuda.Stream()
@@ -205,7 +220,7 @@ def torch_generate_with_graph(args, model, input_ids, attention_mask, max_new_to
             # only input_ids and position need to be copied.
             # attention_mask is modified by prepare_inputs
             # past_kv is modified by attention layer
-            for k in ['input_ids', 'position_ids']:
+            for k in ["input_ids", "position_ids"]:
                 graph_inputs[k].copy_(model_inputs[k])
 
             decoder_generate_graph.replay()
@@ -227,13 +242,14 @@ def torch_generate_with_graph(args, model, input_ids, attention_mask, max_new_to
         output_ids.append(tokens)
     return torch.concat(output_ids, dim=1)
 
+
 def _run_gen(args, model, tokenizer, input_ids, attention_mask, name):
     if args.custom_gen:
         print_out("[generate] Using custom_generate")
         if args.cugraph and args.torch:
-          gen = partial(torch_generate_with_graph, args, model)
+            gen = partial(torch_generate_with_graph, args, model)
         else:
-          gen = partial(custom_generate, model)
+            gen = partial(custom_generate, model)
     else:
         print_out("[generate] Using original model.generate")
         gen = model.generate
@@ -313,9 +329,9 @@ def _run_bmk(args, model, name):
     if args.custom_gen:
         print_out("[benchmark] Using custom_generate")
         if args.cugraph and args.torch:
-          gen = partial(torch_generate_with_graph, args, model)
+            gen = partial(torch_generate_with_graph, args, model)
         else:
-          gen = partial(custom_generate, model)
+            gen = partial(custom_generate, model)
     else:
         print_out("[benchmark] Using original model.generate")
         gen = model.generate
@@ -402,6 +418,7 @@ def get_args():
     parser.add_argument("-b", "--benchmark", action="store_true", help="run model benchmarking")
     parser.add_argument("--batch", type=int, default=1, help="batch size")
     parser.add_argument("--custom-gen", action="store_true", help="enable custom generate function")
+    parser.add_argument("--layer2", action="store_true", help="set num_hidden_layers to 2 (for debugging/testing)")
 
     ort_group = parser.add_argument_group("ORT specific arguments")
 

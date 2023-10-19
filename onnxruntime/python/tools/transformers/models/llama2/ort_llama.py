@@ -5,6 +5,7 @@ import numpy as np
 import onnxruntime as ort
 
 from torch import nn
+
 # from onnxruntime.training.ortmodule._utils import _ortvalues_to_torch_tensor
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
@@ -111,19 +112,19 @@ class OrtModelForLlamaCausalLM(PreTrainedModel):
         output = torch.empty((*input_ids.shape, self.vocab_size), dtype=torch.float32, device=self.device)
         seq_len = input_ids.shape[-1]
         if past_kvs is not None:
-           seq_len += past_kvs[0].shape[2]
+            seq_len += past_kvs[0].shape[2]
 
-        name_map['logits'] = output
+        name_map["logits"] = output
         outputs.append(output)
 
         present_kv_shape = (input_ids.shape[0], self.num_heads, seq_len, self.head_dim)
         for i in range(self.n_layers):
-           k = torch.empty(present_kv_shape, dtype=self.torch_dtype, device=self.device)
-           name_map[f'present.{i}.key'] = k
-           outputs.append(k)
-           v = torch.empty(present_kv_shape, dtype=self.torch_dtype, device=self.device)
-           name_map[f'present.{i}.value'] = v
-           outputs.append(v)
+            k = torch.empty(present_kv_shape, dtype=self.torch_dtype, device=self.device)
+            name_map[f"present.{i}.key"] = k
+            outputs.append(k)
+            v = torch.empty(present_kv_shape, dtype=self.torch_dtype, device=self.device)
+            name_map[f"present.{i}.value"] = v
+            outputs.append(v)
 
         for out in sess.get_outputs():
             t = name_map[out.name]
