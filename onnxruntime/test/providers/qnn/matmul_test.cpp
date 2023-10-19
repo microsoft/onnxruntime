@@ -114,8 +114,10 @@ TEST_F(QnnCPUBackendTests, MatMulOp) {
 // Test MatMul broadcasting
 // Failed randomly on Linux
 // Value of: expected_tensor.DataAsSpan<float>()
-// Expected: contains 896 values, where each value and its corresponding value in 16-byte object <80-03 00-00 00-00 00-00 40-B8 53-08 CC-7F 00-00> are an almost-equal pair
-// Actual: 16-byte object <80-03 00-00 00-00 00-00 C0-B7 43-08 CC-7F 00-00>, where the value pair (-5.19657087, 0) at index #29 don't match, which is 5.19657 from -5.19657
+// Expected: contains 896 values, where each value and its corresponding value in 16-byte object
+// <80-03 00-00 00-00 00-00 40-B8 53-08 CC-7F 00-00> are an almost-equal pair
+// Actual: 16-byte object <80-03 00-00 00-00 00-00 C0-B7 43-08 CC-7F 00-00>, where the value pair
+// (-5.19657087, 0) at index #29 don't match, which is 5.19657 from -5.19657
 TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_Broadcast) {
   // Create two matrices with element values in the range [-10.0, 10.0].
   std::vector<float> input_a = GetFloatDataInRange(-10.0f, 10.0f, 28 * 64);
