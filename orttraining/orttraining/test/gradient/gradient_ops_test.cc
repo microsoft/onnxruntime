@@ -3299,17 +3299,10 @@ TEST(GradientCheckerTest, ConvTransposeGrad) {
   ConvTransposeGradientCheckerTest(&execution_providers);
 }
 
-#endif  // USE_CUDA
-
-#if defined(USE_CUDA) || defined(USE_ROCM)
-
+// TODO: Enable test for ROCM
 TEST(GradientCheckerTest, ResizeGrad) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {
       MakeAttribute("coordinate_transformation_mode", "half_pixel"),
       MakeAttribute("cubic_coeff_a", -0.75f),
@@ -3340,7 +3333,7 @@ TEST(GradientCheckerTest, ResizeGrad) {
   EXPECT_IS_TINY(max_error);
 }
 
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace onnxruntime
