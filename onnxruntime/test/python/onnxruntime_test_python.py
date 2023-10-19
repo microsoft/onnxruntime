@@ -309,6 +309,8 @@ class TestInferenceSession(unittest.TestCase):
             sess2 = onnxrt.InferenceSession(
                 get_name("mul_1.onnx"), session_options, providers=["TensorrtExecutionProvider"]
             )
+            self.assertIn("TensorrtExecutionProvider", sess1.get_providers())
+            self.assertIn("TensorrtExecutionProvider", sess2.get_providers())
 
             # We currently disable following test code since that not all test machines/GPUs have nvidia int8 capability
 
