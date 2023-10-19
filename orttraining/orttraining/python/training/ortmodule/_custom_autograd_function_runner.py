@@ -508,8 +508,10 @@ def call_python_forward_function(
                             or tensor_input_index in tensor_input_indices_for_mark_dirty
                         )
                         if is_input_index_saved_in_ctx or is_input_index_marked_dirty:
+                            # when with grad, the leaf tensor after clone will not be leaf.
                             with torch.set_grad_enabled(is_input_index_marked_dirty):
                                 wrapped_arg = wrapped_arg.clone()
+                            wrapped_arg.requires_grad = is_training_mode and grad_flag
 
                 wrapped_args.append(wrapped_arg)
                 input_tensors_used_for_fw_run[tensor_input_index] = wrapped_arg
