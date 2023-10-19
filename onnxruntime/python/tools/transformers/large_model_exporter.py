@@ -10,9 +10,9 @@ import argparse
 import inspect
 import math
 import os
-import re
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 import onnx
 import torch
@@ -49,25 +49,23 @@ def get_model_parameter_size(model: nn.Module):
     return all_size
 
 
-def initialize_model_and_sample_inputs(hf_model: str, tokenizer=None):
+def initialize_model_and_sample_inputs(hf_model: str, cache_dir: Optional[str], tokenizer=None):
     """
     get the pretrained torch model from hugginface,
-    and onnx_model_name, sample model-inputs
+    and sample model-inputs
     """
-    onnx_model_name = Path(hf_model + "/").name
 
-    onnx_model_name = re.sub(r"[^0-9a-zA-Z]", onnx_model_name, "_") + ".onnx"
     disable_huggingface_init()
 
     model = transformers.AutoModelForCausalLM.from_pretrained(  # type: ignore
-        hf_model, torch_dtype=torch.float16, trust_remote_code=True
+        hf_model, torch_dtype=torch.float16, cache_dir=cache_dir, trust_remote_code=True
     )
     if tokenizer is None:
         tokenizer = hf_model
     tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer)  # type: ignore
 
     sample_inputs = tuple(tokenizer("Hello, my dog is cute", return_tensors="pt").values())
-    return onnx_model_name, model, sample_inputs
+    return model, sample_inputs
 
 
 def auto_pipeline_parallel(model: nn.Module, gpulist: list, sample_inputs: tuple):
@@ -105,7 +103,6 @@ def auto_pipeline_parallel(model: nn.Module, gpulist: list, sample_inputs: tuple
 
     model = model.half()
     all_hooks = []
-    # model.register_module_forward_pre_hook(input_gpu_device_hook)
     all_hooks.append(model.register_forward_pre_hook(input_gpu_device_hook, with_kwargs=True))
     pre_fix = next(iter(model.named_children()))[0]
     for top_name, top_module in model.named_children():
@@ -132,7 +129,7 @@ def auto_pipeline_parallel(model: nn.Module, gpulist: list, sample_inputs: tuple
     return model
 
 
-def retrieve_onnx_inputs(model, sample_inputs):
+def retrieve_onnx_inputs(model: nn.Module, sample_inputs: tuple, with_past: bool):
     """
     auto retrieve onnx inputs from torch model as we can't enumlate all possibilities
     for all models
@@ -162,7 +159,7 @@ def retrieve_onnx_inputs(model, sample_inputs):
             value.to(model.device)
         # Didn't touch past_key_value now, please change it if you want
         if "use_cache" in key:
-            onnx_inputs[idx] = False
+            onnx_inputs[idx] = with_past
 
     return input_keys, tuple(onnx_inputs)
 
@@ -207,14 +204,14 @@ def adapt_inputs_to_device(sample_inputs: tuple, device: torch.Device) -> tuple:
 
 
 @torch.no_grad()
-def export_onnx(hf_model: str, onnx_path_str: str, opset: int = 17):
+def export_onnx(hf_model: str, cache_dir: Optional[str], onnx_path_str: str, with_past: bool, opset: int):
     """
     do export
     model: torch model
     onnx_path: where the onnx model saved to
     sample_inputs_tp: inputs for torch model
     """
-    onnx_model_name, model, sample_inputs_tp = initialize_model_and_sample_inputs(hf_model)
+    model, sample_inputs_tp = initialize_model_and_sample_inputs(hf_model, cache_dir)
 
     model = move_to_approprate_device(model, sample_inputs_tp)
 
@@ -223,6 +220,7 @@ def export_onnx(hf_model: str, onnx_path_str: str, opset: int = 17):
     # input_keys would be usesful if the model has some special inputs
     input_keys, onnx_inputs = retrieve_onnx_inputs(model, sample_inputs)
 
+    onnx_model_name = "model.onnx"
     onnx_path: Path = Path(onnx_path_str).absolute()
     if onnx_path.suffix != ".onnx":
         onnx_path = onnx_path / onnx_model_name
@@ -266,11 +264,7 @@ def export_onnx(hf_model: str, onnx_path_str: str, opset: int = 17):
 
 
 def parse_arguments():
-    """
-    arguments parsing.
-    model:
-    onnx_path:
-    """
+    """arguments parsing."""
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -290,6 +284,19 @@ def parse_arguments():
         help="where the onnx model will be saved",
     )
     parser.add_argument(
+        "--cache_dir",
+        required=False,
+        type=str,
+        default=None,
+        help=("cache directy of huggingface, by setting this to avoid useless downloading if you have one"),
+    )
+    parser.add_argument(
+        "--with_past",
+        action="store_true",
+        default=False,
+        help=("The tool will export onnx without past-key-value by default"),
+    )
+    parser.add_argument(
         "--opset",
         required=False,
         type=int,
@@ -305,4 +312,4 @@ def parse_arguments():
 if __name__ == "__main__":
     args = parse_arguments()
 
-    export_onnx(args.model, args.saved_path, args.opset)
+    export_onnx(args.model, args.cache_dir, args.saved_path, args.with_past, args.opset)
