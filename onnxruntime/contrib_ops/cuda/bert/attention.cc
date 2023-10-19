@@ -142,8 +142,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // split kv buffers
     parameters.num_splits = onnxruntime::flash::num_splits_heuristic(
         parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
-        parameters.head_size, device_prop.multiProcessorCount, 128, false,
-        device_prop.major == 8 && device_prop.minor > 0);
+        parameters.head_size, device_prop.multiProcessorCount, 128);
     if (parameters.num_splits > 1) {
       // softmax_lse_accum buffer
       softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(

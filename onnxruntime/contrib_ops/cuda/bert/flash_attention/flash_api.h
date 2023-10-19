@@ -102,7 +102,7 @@ size_t get_softmax_lse_size(int max_seqlen_q, int batch_size, int num_heads);
 size_t get_softmax_lse_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q);
 size_t get_out_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q, int head_size_rounded);
 
-int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_heads, int head_size, int num_SMs, int max_splits, bool new_kv, bool is_sm8x);
+int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_heads, int head_size, int num_SMs, int max_splits);
 
 bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, int num_heads_k);
 
