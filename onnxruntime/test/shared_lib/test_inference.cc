@@ -2869,13 +2869,14 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   Ort::Value ort_input_tensor_value = Ort::Value::CreateTensor(memory_info_gpu, input_tensor_data, tensor_size * type_size,
                                                                x_shape.data(), x_shape.size(), type);
 
-  // output tensor on cpu
-  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
-  const std::array<int64_t, 2> y_shape = {3, 2};
-  std::array<float, 3 * 2> y_values;
+  // output tensor on gpu 
+  void* output_tensor_data = nullptr;
   const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-  Ort::Value ort_output_tensor_value = Ort::Value::CreateTensor(info_cpu, y_values.data(), y_values.size(),
-                                                                y_shape.data(), y_shape.size());
+  const std::array<int64_t, 2> y_shape = {3, 2};
+  tensor_size = expected_y.size();
+  assert(cudaMalloc(&output_tensor_data, tensor_size * type_size) == cudaSuccess);
+  Ort::Value ort_output_tensor_value = Ort::Value::CreateTensor(memory_info_gpu, output_tensor_data, tensor_size * type_size,
+                                                               y_shape.data(), y_shape.size(), type);
 
   iobindings.BindInput("X", ort_input_tensor_value);
   iobindings.BindOutput("Y", ort_output_tensor_value);
@@ -2884,13 +2885,17 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
 
   session->Run(Ort::RunOptions(), iobindings);
 
-  // Check the values against the bound raw memory
-  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
+  iobindings.SynchronizeOutputs();
+
+  std::array<float, 3 * 2> y_values_0;
+  cudaMemcpy(y_values_0.data(), output_tensor_data, sizeof(float) * y_values_0.size(), cudaMemcpyDeviceToHost);
+  ASSERT_TRUE(std::equal(std::begin(y_values_0), std::end(y_values_0), std::begin(expected_y)));
 
   iobindings.ClearBoundInputs();
   iobindings.ClearBoundOutputs();
 
   cudaFree(input_tensor_data);
+  cudaFree(output_tensor_data);
   cudaStreamDestroy(compute_stream);
 }
 
