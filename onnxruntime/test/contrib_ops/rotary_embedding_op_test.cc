@@ -51,7 +51,7 @@ static void RunTest(
   std::string op_type = "RotaryEmbedding";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 
-  int min_cuda_architecture = use_float16 ? 700 : 0;
+  int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
   if (enable_cuda && !disable_cuda) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
