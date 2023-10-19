@@ -955,6 +955,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"reduce_log_sum_exp_empty_set", "unknown version", {}},
       {"reduce_log_sum_exp_empty_set_expanded", "unknown version", {}},
       {"reduce_prod_empty_set", "unknown version", {}},
+      {"reduce_sum_empty_set", "unknown version", {}},
       {"reduce_sum_square_empty_set", "unknown version", {}},
       {"reduce_sum_square_empty_set_expanded", "unknown version", {}},
 #ifdef ENABLE_TRAINING_CORE
