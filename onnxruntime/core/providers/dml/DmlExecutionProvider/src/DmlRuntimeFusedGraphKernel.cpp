@@ -73,8 +73,8 @@ namespace Dml
                 ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
                     static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Disabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourceAllocatorUnk.GetAddressOf()));
+                    m_persistentResource.ReleaseAndGetAddressOf(),
+                    m_persistentResourceAllocatorUnk.ReleaseAndGetAddressOf()));
 
                 m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
             }
@@ -207,6 +207,9 @@ namespace Dml
                     *m_indexedSubGraph,
                     providerImpl);
 
+                // Queue references to objects which must be kept alive until resulting GPU work completes
+                m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
+
                 TranslateAndCompileGraph(
                     Info(),
                     initializeResourceRefs,
@@ -246,10 +249,6 @@ namespace Dml
                 aux);
 
             ORT_THROW_IF_FAILED(m_provider->AddUAVBarrier());
-
-            // Queue references to objects which must be kept alive until resulting GPU work completes
-            m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
-            m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
 
             return onnxruntime::Status::OK();
         }
