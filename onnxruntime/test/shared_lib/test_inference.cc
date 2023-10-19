@@ -2945,6 +2945,14 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   Ort::Value ort_input_tensor_value = Ort::Value::CreateTensor(memory_info_gpu, input_tensor_data, tensor_size * type_size,
                                                                x_shape.data(), x_shape.size(), type);
 
+  std::array<float, 3 * 2> x_values_0;
+  cudaMemcpy(x_values_0.data(), input_tensor_data, sizeof(float) * x_values_0.size(), cudaMemcpyDeviceToHost);
+
+  std::cout << "input: " << std::endl;
+  for (auto x : x_values_0) {
+    std::cout << x << std::endl;
+  }
+
   // output tensor on gpu 
   void* output_tensor_data = nullptr;
   const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
