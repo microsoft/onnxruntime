@@ -51,9 +51,10 @@ namespace Dml
         onnxruntime::ProviderType providerType = onnxruntime::kDmlExecutionProvider;
         const gsl::not_null<const onnxruntime::KernelRegistry*> registry = m_providerImpl->GetKernelRegistry().get();
         const auto kernelTypeStrResolver = onnxruntime::OpSchemaKernelTypeStrResolver{};
-        const auto kernelLookup = onnxruntime::KernelLookup{providerType,
-                                                             gsl::make_span(&registry, 1),
-                                                             kernelTypeStrResolver};
+        const auto kernelLookup = onnxruntime::KernelLookup(
+            providerType,
+            gsl::make_span(&registry, 1),
+            kernelTypeStrResolver);
 
         onnxruntime::GraphViewer graphViewer(graph);
         const auto& nodeTopologyList = graphViewer.GetNodesInTopologicalOrder();

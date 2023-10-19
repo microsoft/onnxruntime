@@ -32,7 +32,7 @@ struct DMLProviderFactoryCreator {
     bool enable_dynamic_graph_fusion);
 
   static std::shared_ptr<IExecutionProviderFactory> CreateFromAdapterList(
-	  std::vector<Microsoft::WRL::ComPtr<IDXCoreAdapter>>&& dxcore_devices,
+    std::vector<Microsoft::WRL::ComPtr<IDXCoreAdapter>>&& dxcore_devices,
     bool disable_metacommands,
     bool enable_dynamic_graph_fusion);
 

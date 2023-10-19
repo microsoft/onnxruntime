@@ -33,9 +33,9 @@ struct DMLProviderFactory : IExecutionProviderFactory {
                      ID3D12CommandQueue* cmd_queue,
                      bool disable_metacommands,
                      bool enable_dynamic_graph_fusion) : dml_device_(dml_device),
-                                                                      cmd_queue_(cmd_queue),
-                                                                      metacommands_enabled_(!disable_metacommands),
-                                                                      dynamic_graph_fusion_enabled_(enable_dynamic_graph_fusion) {}
+                                                         cmd_queue_(cmd_queue),
+                                                         metacommands_enabled_(!disable_metacommands),
+                                                         dynamic_graph_fusion_enabled_(enable_dynamic_graph_fusion) {}
   ~DMLProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;

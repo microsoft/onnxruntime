@@ -25,9 +25,9 @@ public:
 
 private:
     onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph,
-                                            bool& modified,
-                                            int graph_level,
-                                            const onnxruntime::logging::Logger& logger) const final;
+                                          bool& modified,
+                                          int graph_level,
+                                          const onnxruntime::logging::Logger& logger) const final;
 
     onnxruntime::common::Status ApplyImplHelper(
         onnxruntime::Graph& graph,
