@@ -84,10 +84,6 @@ namespace Dml
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));
 
-            // Queue references to objects which must be kept alive until resulting GPU work completes
-            m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
-            m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
-
             std::for_each(
                 initializeResourceRefs.begin(),
                 initializeResourceRefs.end(),
