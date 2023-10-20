@@ -27,29 +27,13 @@ class Node;
 #include "core/common/basic_types.h"
 #include "core/common/profiler_common.h"
 #include "core/framework/allocator_utils.h"
-#include "core/framework/func_api.h"
+#include "core/framework/node_compute_info.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
 
 namespace onnxruntime {
-
-/**
-   Logical device representation.
-*/
-
-// if we are export the fused function to dll, the function will still in the same binary as onnxruntime
-// use std function to give execution provider some chance to capture some state.
-using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
-using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
-using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
-
-struct NodeComputeInfo {
-  CreateFunctionStateFunc create_state_func;
-  ComputeFunc compute_func;
-  DestroyFunctionStateFunc release_state_func;
-};
 
 enum class DataLayout {
   NCHW,

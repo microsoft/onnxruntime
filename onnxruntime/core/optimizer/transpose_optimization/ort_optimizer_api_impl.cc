@@ -10,6 +10,9 @@
 #include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 
+#include "core/graph/model.h"
+#include "core/graph/graph_proto_serializer.h"
+
 namespace onnxruntime {
 
 const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
@@ -389,7 +392,21 @@ std::unique_ptr<onnxruntime::ValueInfoViewRef> ApiGraphView::GetValueInfo(std::s
   ORT_ENFORCE(node_arg_ != nullptr, "No NodeArg found for name ", name);
   return std::make_unique<ApiValueInfoView>(*node_arg_);
 }
-
+#ifdef INTREE_EP
+onnx::ModelProto ApiGraphView::ToModelProto() {
+  Model model(graph_.Name(), true, ModelMetaData(), PathString(),
+#if defined(ORT_MINIMAL_BUILD)
+    IOnnxRuntimeOpSchemaRegistryList(),
+#else
+    IOnnxRuntimeOpSchemaRegistryList({graph_.GetSchemaRegistry()}),
+#endif
+    graph_.DomainToVersionMap(), std::vector<onnx::FunctionProto>(), graph_.GetGraph().GetLogger()
+  );
+  onnx::ModelProto ret = model.ToProto();
+  GraphViewerToProto(graph_, *ret.mutable_graph(), true, true);
+  return ret;
+}
+#endif
 // <ApiGraph>
 
 std::optional<int64_t> ApiGraph::Opset(std::string_view domain) const {

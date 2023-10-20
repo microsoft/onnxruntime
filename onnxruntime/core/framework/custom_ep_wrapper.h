@@ -97,6 +97,21 @@ namespace onnxruntime {
             return ret;
         }
 
+        virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
+            std::vector<std::unique_ptr<GraphViewRef>> fused_node_as_graph;
+            std::vector<std::unique_ptr<NodeViewRef>> fused_node_view;
+            for (auto& fused_node_graph : fused_nodes_and_graphs) {
+                const GraphViewer& graph_viewer = fused_node_graph.filtered_graph;
+                const Node& fused_node = fused_node_graph.fused_node;
+
+                AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+                fused_node_as_graph.push_back(std::make_unique<ApiGraphView>(graph_viewer, std::move(cpu_allocator)));
+                fused_node_view.push_back(std::make_unique<ApiNodeView>(fused_node));
+            }
+            common::Status ret = external_ep_impl_->Compile(fused_node_as_graph, fused_node_view, node_compute_funcs);
+            return ret;
+        }
+
     private:
         std::unique_ptr<CustomExecutionProvider> external_ep_impl_;
         std::shared_ptr<KernelRegistry> kernel_registry_;

@@ -10,6 +10,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/stream_handles.h"
+#include "core/framework/node_compute_info.h"
 #include <climits>
 
 namespace Ort {
@@ -78,6 +79,7 @@ namespace onnxruntime{
         virtual void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) {}
         virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry&, std::map<OrtDevice, OrtAllocator*>&) const {}
         virtual std::vector<std::unique_ptr<SubGraphDef>> GetCapability(GraphViewRef*) { return std::vector<std::unique_ptr<SubGraphDef>>(); }
+        virtual common::Status Compile(std::vector<std::unique_ptr<GraphViewRef>>&, std::vector<std::unique_ptr<NodeViewRef>>&, std::vector<NodeComputeInfo>&) { return common::Status::OK(); }
 
         protected:
         std::vector<OrtAllocator*> allocators_;

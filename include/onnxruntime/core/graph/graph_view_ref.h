@@ -7,7 +7,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
-
+#ifdef INTREE_EP
+#include "onnx/onnx_pb.h"
+#endif
 namespace onnxruntime {
 
 /// <summary>
@@ -165,7 +167,9 @@ class GraphViewRef {
   /// <param name="name">Value name. Must be nonempty.</param>
   /// <returns>A ValueInfo instance corresponding to the value with the given name</returns>
   virtual std::unique_ptr<onnxruntime::ValueInfoViewRef> GetValueInfo(std::string_view name) const = 0;
-
+#ifdef INTREE_EP
+  virtual onnx::ModelProto ToModelProto() = 0;
+#endif
   virtual ~GraphViewRef(){};
 };
 

@@ -145,7 +145,9 @@ class ApiGraphView final : public GraphViewRef {
   std::vector<std::unique_ptr<NodeViewRef>> Nodes() const override;
   std::unique_ptr<onnxruntime::TensorRef> GetConstant(std::string_view name) const override;
   std::unique_ptr<onnxruntime::ValueInfoViewRef> GetValueInfo(std::string_view name) const override;
-
+#ifdef INTREE_EP
+  onnx::ModelProto ToModelProto() override;
+#endif
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiGraphView);
 };
