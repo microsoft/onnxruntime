@@ -166,13 +166,13 @@ Implicit Arguments:
         .macro ComputeBlockLasxLoop ComputeBlock, RowCount
 
 .if \RowCount\() > 2
-#compute matrix A plus 2 rows
+        # compute matrix A plus 2 rows
 	slli.d	$s0, $t0, 1
 	add.d	$t7, $a0, $s0
 .endif
         ComputeBlockLoop \ComputeBlock\(), \RowCount\(), \RowCount\() > 2
 .if \RowCount\() > 2
-#compute matrix C plus 2 rows
+        # compute matrix C plus 2 rows
 	slli.d	$s0, $t6, 1
 	add.d	$t7, $a2, $s0
 .endif
@@ -388,9 +388,8 @@ Implicit Arguments:
     add.d   $t7, $a2, $s0
 .endif
 
-//---------------
 	sub.d	$a5, $zero, $a5
-    la.global	$a0, MlasMaskMoveTableLasx  //FIXME
+    la.global	$a0, MlasMaskMoveTableLasx
 	ori	$s0, $r0, LFgemmElementSize
 	mul.d	$s0, $a5, $s0
     addi.d  $s0, $s0, 8*4

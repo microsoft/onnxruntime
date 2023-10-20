@@ -19,9 +19,9 @@ Abstract:
 // Define the single precision parameters.
 //
 
-#define LFgemmElementShift 2
-#define LFgemmElementSize (1 << LFgemmElementShift)
-#define LFgemmYmmElementCount (32 / LFgemmElementSize)
+#define    LFgemmElementShift 2
+#define    LFgemmElementSize (1 << LFgemmElementShift)
+#define    LFgemmYmmElementCount   (32/LFgemmElementSize)
 
 #include "FgemmKernelCommon.h"
 

@@ -467,12 +467,20 @@ MlasPackS16_128<int8_t>(
 
 #define LSX_DBG 1
 template <typename DataType>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasShiftRightInt32(MLAS_INT32X4 v, int imm);
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt32(
+    MLAS_INT32X4 v,
+    int imm
+    );
 
-template <>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasShiftRightInt32<int8_t>(MLAS_INT32X4 v, int imm)
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt32<int8_t>(
+    MLAS_INT32X4 v,
+    int imm
+    )
 {
 #if LSX_DBG
     MLAS_INT32X4 imm_v = __lsx_vreplgr2vr_w(imm);
@@ -482,9 +490,13 @@ MlasShiftRightInt32<int8_t>(MLAS_INT32X4 v, int imm)
 #endif
 }
 
-template <>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasShiftRightInt32<uint8_t>(MLAS_INT32X4 v, int imm)
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt32<uint8_t>(
+    MLAS_INT32X4 v,
+    int imm
+    )
 {
 #if LSX_DBG
     MLAS_INT32X4 imm_v = __lsx_vreplgr2vr_w(imm);
@@ -495,12 +507,20 @@ MlasShiftRightInt32<uint8_t>(MLAS_INT32X4 v, int imm)
 }
 
 template <typename DataType>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasShiftRightInt16(MLAS_INT32X4 v, int imm);
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt16(
+    MLAS_INT32X4 v,
+    int imm
+    );
 
-template <>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasShiftRightInt16<int8_t>(MLAS_INT32X4 v, int imm)
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt16<int8_t>(
+    MLAS_INT32X4 v,
+    int imm
+    )
 {
 #if LSX_DBG
     MLAS_INT32X4 imm_v = __lsx_vreplgr2vr_h(imm);
@@ -510,9 +530,13 @@ MlasShiftRightInt16<int8_t>(MLAS_INT32X4 v, int imm)
 #endif
 }
 
-template <>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasShiftRightInt16<uint8_t>(MLAS_INT32X4 v, int imm)
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt16<uint8_t>(
+    MLAS_INT32X4 v,
+    int imm
+    )
 {
 #if LSX_DBG
     MLAS_INT32X4 imm_v = __lsx_vreplgr2vr_h(imm);
@@ -523,12 +547,20 @@ MlasShiftRightInt16<uint8_t>(MLAS_INT32X4 v, int imm)
 }
 
 template <typename DataType>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasPackS16_128(MLAS_INT32X4 a, MLAS_INT32X4 b);
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasPackS16_128(
+    MLAS_INT32X4 a,
+    MLAS_INT32X4 b
+    );
 
 template <>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasPackS16_128<uint8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b)
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasPackS16_128<uint8_t>(
+    MLAS_INT32X4 a,
+    MLAS_INT32X4 b
+    )
 {
     // return _mm_packus_epi16(a, b);
     __m128i zero = __lsx_vldi(0);
@@ -539,12 +571,17 @@ MlasPackS16_128<uint8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b)
 
     tmp = __lsx_vmax_h(zero, b);
     tmp3 = __lsx_vsat_hu(tmp, 7);
-    return __lsx_vpickev_b(tmp3, tmp2);
+    return  __lsx_vpickev_b(tmp3, tmp2);
+
 }
 
 template <>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasPackS16_128<int8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b)
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasPackS16_128<int8_t>(
+    MLAS_INT32X4 a,
+    MLAS_INT32X4 b
+    )
 {
     // return _mm_packs_epi16(a, b);
     __m128i tmp, tmp1;
@@ -552,5 +589,6 @@ MlasPackS16_128<int8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b)
     tmp = __lsx_vsat_h(a, 7);
     tmp1 = __lsx_vsat_h(b, 7);
     return __lsx_vpickev_b(tmp1, tmp);
+
 }
 #endif

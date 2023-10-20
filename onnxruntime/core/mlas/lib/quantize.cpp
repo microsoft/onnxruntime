@@ -20,7 +20,8 @@ Abstract:
 
 #include "mlasi.h"
 
-#if defined(MLAS_NEON64_INTRINSICS) || defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_LSX_INTRINSICS)
+#if defined(MLAS_NEON64_INTRINSICS) || defined(MLAS_SSE2_INTRINSICS) || \
+    defined(MLAS_LSX_INTRINSICS)
 
 #include <type_traits>
 
@@ -221,10 +222,14 @@ MlasQuantizeLinearStoreSingleValue<int16_t>(
 }
 
 #elif defined(MLAS_LSX_INTRINSICS)
-template <>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasQuantizeLinearPackBytes<uint8_t>(MLAS_INT32X4 integervector)
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasQuantizeLinearPackBytes<uint8_t>(
+    MLAS_INT32X4 integervector
+    )
 {
+
     __m128i zero = __lsx_vldi(0);
     __m128i tmp, tmp2;
 
@@ -233,6 +238,7 @@ MlasQuantizeLinearPackBytes<uint8_t>(MLAS_INT32X4 integervector)
 
     integervector = __lsx_vpickev_b(tmp2, tmp2);
 
+
     tmp = __lsx_vmax_h(integervector, zero);
     tmp2 = __lsx_vsat_hu(tmp, 7);
 
@@ -240,10 +246,14 @@ MlasQuantizeLinearPackBytes<uint8_t>(MLAS_INT32X4 integervector)
     return integervector;
 }
 
-template <>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasQuantizeLinearPackBytes<int8_t>(MLAS_INT32X4 integervector)
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasQuantizeLinearPackBytes<int8_t>(
+    MLAS_INT32X4 integervector
+    )
 {
+
     __m128i tmp, tmp1;
 
     tmp = __lsx_vsat_h(integervector, 7);
@@ -257,43 +267,51 @@ MlasQuantizeLinearPackBytes<int8_t>(MLAS_INT32X4 integervector)
 }
 
 template <typename OutputType>
-MLAS_FORCEINLINE void
-MlasQuantizeLinearStore4PackedValues(MLAS_INT32X4 IntegerVector, OutputType* Output)
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearStore4PackedValues(
+    MLAS_INT32X4 IntegerVector,
+    OutputType* Output
+    )
 {
     // Copies the lower 4 packed elements of the vector into memory (Output).
 
     if constexpr (std::is_same_v<OutputType, uint8_t> || std::is_same_v<OutputType, int8_t>) {
-        // *(reinterpret_cast<int32_t*>(Output)) = _mm_cvtsi128_si32(IntegerVector);
         __lsx_vstelm_w(IntegerVector, reinterpret_cast<int32_t*>(Output), 0, 0);
     } else {
         static_assert(std::is_same_v<OutputType, uint16_t> || std::is_same_v<OutputType, int16_t>);
 
-        // *(reinterpret_cast<int64_t*>(Output)) = _mm_cvtsi128_si64(IntegerVector);
         __lsx_vstelm_d(IntegerVector, reinterpret_cast<int64_t*>(Output), 0, 0);
     }
 }
 
+
 template <typename OutputType>
-MLAS_FORCEINLINE void
-MlasQuantizeLinearStoreSingleValue(MLAS_INT32X4 IntegerVector, OutputType* Output)
+MLAS_FORCEINLINE
+void
+MlasQuantizeLinearStoreSingleValue(
+    MLAS_INT32X4 IntegerVector,
+    OutputType* Output
+    )
 {
-    static_assert(std::is_same_v<OutputType, uint8_t> || std::is_same_v<OutputType, int8_t> ||
-                  std::is_same_v<OutputType, uint16_t> || std::is_same_v<OutputType, int16_t>);
+    static_assert(std::is_same_v<OutputType, uint8_t> ||
+                  std::is_same_v<OutputType, int8_t> ||
+                  std::is_same_v<OutputType, uint16_t> ||
+                  std::is_same_v<OutputType, int16_t>);
 
     // Copies the lower element of the vector into memory (Output).
     // Expects that the 32-bit element in lane 0 is already within the valid numerical
     // range of the OutputType.
-    // *Output = static_cast<OutputType>(_mm_cvtsi128_si32(IntegerVector));
     *Output = static_cast<OutputType>(__lsx_vpickve2gr_w(IntegerVector, 0));
 }
 
-template <>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasQuantizeLinearPackBytes<uint16_t>(MLAS_INT32X4 IntegerVector)
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasQuantizeLinearPackBytes<uint16_t>(
+    MLAS_INT32X4 IntegerVector
+    )
 {
-    // IntegerVector = _mm_packus_epi32(IntegerVector, IntegerVector);  // 16-bit values packed in
-    // lower 8 bytes.
-
     __m128i zero = __lsx_vldi(0);
     __m128i tmp, tmp2;
 
@@ -304,19 +322,18 @@ MlasQuantizeLinearPackBytes<uint16_t>(MLAS_INT32X4 IntegerVector)
     return IntegerVector;
 }
 
-template <>
-MLAS_FORCEINLINE MLAS_INT32X4
-MlasQuantizeLinearPackBytes<int16_t>(MLAS_INT32X4 IntegerVector)
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasQuantizeLinearPackBytes<int16_t>(
+    MLAS_INT32X4 IntegerVector
+    )
 {
-    // IntegerVector = _mm_packs_epi32(IntegerVector, IntegerVector);  // 16-bit values packed in
-    // lower 8 bytes.
-
     __m128i tmp, tmp1;
 
     tmp = __lsx_vsat_w(IntegerVector, 15);
     tmp1 = __lsx_vsat_w(IntegerVector, 15);
     IntegerVector = __lsx_vpickev_h(tmp1, tmp);
-
     return IntegerVector;
 }
 #else
@@ -491,7 +508,7 @@ Return Value:
 #if defined(MLAS_NEON64_INTRINSICS)
         auto FloatVector = vld1q_dup_f32(Input + n);
 #elif defined(MLAS_LSX_INTRINSICS)
-        MLAS_FLOAT32X4 FloatVector = (MLAS_FLOAT32X4)__lsx_vldrepl_w(Input + n, 0);
+        MLAS_FLOAT32X4 FloatVector = (MLAS_FLOAT32X4)__lsx_vldrepl_w(Input+n, 0);
 #else
         auto FloatVector = _mm_load_ss(Input + n);
 #endif
@@ -1474,29 +1491,27 @@ MlasRequantizeOutput(
 
 template <typename OutputType>
 void
-MlasRequantizeOutput(const int32_t* Input,
-                     size_t InputLeadingDimension,
-                     OutputType* Output,
-                     size_t OutputLeadingDimension,
-                     const int32_t* Bias,
-                     const float* Scale,
-                     bool PerColumnScale,
-                     OutputType ZeroPoint,
-                     size_t StartM,
-                     size_t StartN,
-                     size_t CountM,
-                     size_t CountN)
+MlasRequantizeOutput(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    OutputType* Output,
+    size_t OutputLeadingDimension,
+    const int32_t* Bias,
+    const float* Scale,
+    bool PerColumnScale,
+    OutputType ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    )
 {
-    // TO BE CHECK
+    //TO BE CHECK
     float min_f = float(std::numeric_limits<OutputType>::lowest() - ZeroPoint);
     float max_f = float(std::numeric_limits<OutputType>::max() - ZeroPoint);
-    const __m128 PerMatrixScaleVector = PerColumnScale
-                                            ? MlasReinterpretAsFloat32x4(__lsx_vldi(0))
-                                            : MlasReinterpretAsFloat32x4(__lsx_vldrepl_w(Scale, 0));
-    const __m128 MinimumValueVector =
-        MlasReinterpretAsFloat32x4(__lsx_vreplgr2vr_w(*((uint32_t*)&min_f)));
-    const __m128 MaximumValueVector =
-        MlasReinterpretAsFloat32x4(__lsx_vreplgr2vr_w(*((uint32_t*)&max_f)));
+    const __m128 PerMatrixScaleVector = PerColumnScale ? MlasReinterpretAsFloat32x4(__lsx_vldi(0)) : MlasReinterpretAsFloat32x4(__lsx_vldrepl_w(Scale, 0));
+    const __m128 MinimumValueVector = MlasReinterpretAsFloat32x4(__lsx_vreplgr2vr_w( *((uint32_t*)&min_f)));
+    const __m128 MaximumValueVector = MlasReinterpretAsFloat32x4(__lsx_vreplgr2vr_w( *((uint32_t*)&max_f)));
     const __m128i ZeroPointVector = __lsx_vreplgr2vr_w(ZeroPoint);
 
     if (nullptr != Bias) {
@@ -1508,12 +1523,12 @@ MlasRequantizeOutput(const int32_t* Input,
 
     Input += StartM * InputLeadingDimension + StartN;
     Output += StartM * OutputLeadingDimension + StartN;
-    tmp_test(StartM);
     //
     // Step through each row of the output matrix.
     //
 
     while (CountM-- > 0) {
+
         const int32_t* bias = Bias;
         const float* scale = PerColumnScale ? Scale : nullptr;
         size_t n = CountN;
@@ -1526,6 +1541,7 @@ MlasRequantizeOutput(const int32_t* Input,
         //
 
         while (n >= 16) {
+
             //
             // Load the input data and optionally add the per-column bias.
             //
@@ -1537,14 +1553,10 @@ MlasRequantizeOutput(const int32_t* Input,
             RowInput += 16;
 
             if (bias != nullptr) {
-                IntegerVector0 =
-                    __lsx_vadd_w(IntegerVector0, __lsx_vld((const __m128i*)&bias[0], 0));
-                IntegerVector1 =
-                    __lsx_vadd_w(IntegerVector1, __lsx_vld((const __m128i*)&bias[4], 0));
-                IntegerVector2 =
-                    __lsx_vadd_w(IntegerVector2, __lsx_vld((const __m128i*)&bias[8], 0));
-                IntegerVector3 =
-                    __lsx_vadd_w(IntegerVector3, __lsx_vld((const __m128i*)&bias[12], 0));
+                IntegerVector0 = __lsx_vadd_w(IntegerVector0, __lsx_vld((const __m128i *)&bias[0], 0));
+                IntegerVector1 = __lsx_vadd_w(IntegerVector1, __lsx_vld((const __m128i *)&bias[4], 0));
+                IntegerVector2 = __lsx_vadd_w(IntegerVector2, __lsx_vld((const __m128i *)&bias[8], 0));
+                IntegerVector3 = __lsx_vadd_w(IntegerVector3, __lsx_vld((const __m128i *)&bias[12], 0));
                 bias += 16;
             }
 
@@ -1559,17 +1571,15 @@ MlasRequantizeOutput(const int32_t* Input,
             __m128 FloatVector3 = __lsx_vffint_s_w(IntegerVector3);
 
             if (scale != nullptr) {
-                FloatVector0 = __lsx_vfmul_s(
-                    FloatVector0, MlasReinterpretAsFloat32x4(__lsx_vld((__m128i*)&scale[0], 0)));
-                FloatVector1 = __lsx_vfmul_s(
-                    FloatVector1, MlasReinterpretAsFloat32x4(__lsx_vld((__m128i*)&scale[4], 0)));
-                FloatVector2 = __lsx_vfmul_s(
-                    FloatVector2, MlasReinterpretAsFloat32x4(__lsx_vld((__m128i*)&scale[8], 0)));
-                FloatVector3 = __lsx_vfmul_s(
-                    FloatVector3, MlasReinterpretAsFloat32x4(__lsx_vld((__m128i*)&scale[12], 0)));
+
+                FloatVector0 = __lsx_vfmul_s(FloatVector0, MlasReinterpretAsFloat32x4(__lsx_vld((__m128i *)&scale[0], 0)));
+                FloatVector1 = __lsx_vfmul_s(FloatVector1, MlasReinterpretAsFloat32x4(__lsx_vld((__m128i *)&scale[4], 0)));
+                FloatVector2 = __lsx_vfmul_s(FloatVector2, MlasReinterpretAsFloat32x4(__lsx_vld((__m128i *)&scale[8], 0)));
+                FloatVector3 = __lsx_vfmul_s(FloatVector3, MlasReinterpretAsFloat32x4(__lsx_vld((__m128i *)&scale[12], 0)));
                 scale += 16;
 
             } else {
+
                 FloatVector0 = __lsx_vfmul_s(FloatVector0, PerMatrixScaleVector);
                 FloatVector1 = __lsx_vfmul_s(FloatVector1, PerMatrixScaleVector);
                 FloatVector2 = __lsx_vfmul_s(FloatVector2, PerMatrixScaleVector);
@@ -1600,6 +1610,7 @@ MlasRequantizeOutput(const int32_t* Input,
             __m128i ByteVector;
 
             if (std::is_signed<OutputType>::value) {
+
                 __m128i tmp, tmp1;
                 tmp = __lsx_vsat_w(IntegerVector0, 15);
                 tmp1 = __lsx_vsat_w(IntegerVector1, 15);
@@ -1613,7 +1624,9 @@ MlasRequantizeOutput(const int32_t* Input,
                 tmp1 = __lsx_vsat_h(WordVector1, 7);
                 ByteVector = __lsx_vpickev_b(tmp1, tmp);
 
+
             } else {
+
                 __m128i zero = __lsx_vldi(0);
                 __m128i tmp, tmp2, tmp3;
 
@@ -1637,6 +1650,7 @@ MlasRequantizeOutput(const int32_t* Input,
                 tmp = __lsx_vmax_h(WordVector1, zero);
                 tmp3 = __lsx_vsat_hu(tmp, 7);
                 ByteVector = __lsx_vpickev_b(tmp3, tmp2);
+
             }
 
             __lsx_vst(ByteVector, (__m128i*)RowOutput, 0);
@@ -1650,6 +1664,7 @@ MlasRequantizeOutput(const int32_t* Input,
         //
 
         while (n > 0) {
+
             //
             // Load the input data and optionally add the per-column bias.
             //
@@ -1657,16 +1672,17 @@ MlasRequantizeOutput(const int32_t* Input,
             __m128i IntegerVector;
 
             if (n >= 4) {
+
                 IntegerVector = __lsx_vld((const __m128i*)&RowInput[0], 0);
                 RowInput += 4;
 
                 if (bias != nullptr) {
-                    IntegerVector =
-                        __lsx_vadd_w(IntegerVector, __lsx_vld((const __m128i*)&bias[0], 0));
+                    IntegerVector = __lsx_vadd_w(IntegerVector, __lsx_vld((const __m128i*)&bias[0], 0));
                     bias += 4;
                 }
 
             } else {
+
                 int32_t IntegerValue = *RowInput++;
 
                 if (bias != nullptr) {
@@ -1683,8 +1699,9 @@ MlasRequantizeOutput(const int32_t* Input,
             __m128 ScaleVector;
 
             if (scale != nullptr) {
+
                 if (n >= 4) {
-                    ScaleVector = MlasReinterpretAsFloat32x4(__lsx_vld((__m128i*)scale, 0));
+                    ScaleVector = MlasReinterpretAsFloat32x4(__lsx_vld((__m128i *)scale, 0));
                     scale += 4;
                 } else {
                     ScaleVector = (__m128)__lsx_vldrepl_w(scale, 0);
@@ -1703,6 +1720,7 @@ MlasRequantizeOutput(const int32_t* Input,
             IntegerVector = __lsx_vadd_w(IntegerVector, ZeroPointVector);
 
             if (std::is_signed<OutputType>::value) {
+
                 __m128i tmp;
                 tmp = __lsx_vsat_w(IntegerVector, 15);
                 IntegerVector = __lsx_vpickev_h(tmp, tmp);
@@ -1711,6 +1729,7 @@ MlasRequantizeOutput(const int32_t* Input,
                 IntegerVector = __lsx_vpickev_b(tmp, tmp);
 
             } else {
+
                 __m128i zero = __lsx_vldi(0);
                 __m128i tmp, tmp2;
 
@@ -1721,17 +1740,20 @@ MlasRequantizeOutput(const int32_t* Input,
                 tmp = __lsx_vmax_h(IntegerVector, zero);
                 tmp2 = __lsx_vsat_hu(tmp, 7);
                 IntegerVector = __lsx_vpickev_b(tmp2, tmp2);
+
             }
 
             uint32_t OutputValue = uint32_t(__lsx_vpickve2gr_w(IntegerVector, 0));
 
             if (n >= 4) {
+
                 *reinterpret_cast<uint32_t*>(RowOutput) = OutputValue;
                 RowOutput += 4;
 
                 n -= 4;
 
             } else {
+
                 *RowOutput = uint8_t(OutputValue);
                 RowOutput += 1;
 

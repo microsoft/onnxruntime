@@ -15,27 +15,27 @@ Abstract:
 
 --*/
 
-#define SP_SIZE 32 * 8
+#define SP_SIZE 32*8
 
-#define MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT 0x00000001
-#define MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION 0x00000002
-#define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION 0x00000004
-#define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION 0x00000008
+#define MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT     0x00000001
+#define MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION         0x00000002
+#define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION       0x00000004
+#define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      0x00000008
 
-#define Filter_save_offset 18 * 8
+#define Filter_save_offset 18*8
 
-#define OutputStride_arg 6 * 8
-#define KernelHeight_arg 7 * 8
-#define KernelWidth_arg 8 * 8
-#define InputBase_arg 9 * 8
-#define InputWidth_arg 10 * 8
-#define DilatedInputWidth_arg 11 * 8
-#define OutputCountLeftPad_arg 12 * 8
-#define OutputCount_arg 13 * 8
-#define OutputCountRightPad_arg 14 * 8
-#define Bias_arg 15 * 8
-#define Flags_arg 16 * 8
-#define InputChannels_arg 17 * 8
+#define OutputStride_arg                6*8
+#define KernelHeight_arg                7*8
+#define KernelWidth_arg                 8*8
+#define InputBase_arg                   9*8
+#define InputWidth_arg                  10*8
+#define DilatedInputWidth_arg           11*8
+#define OutputCountLeftPad_arg          12*8
+#define OutputCount_arg                 13*8
+#define OutputCountRightPad_arg         14*8
+#define Bias_arg                        15*8
+#define Flags_arg                       16*8
+#define InputChannels_arg               17*8
 
 /*++
 
@@ -132,7 +132,7 @@ Implicit Arguments:
         add.d   $a3, $a3, $t8               # advance input by dilation width
 .ifeqs "\KernelType\()","Nchwc"
         addi.d  $a2, $a2, \BlockSize\()*\BlockSize\()*4
-#advance filter by 8i8o / 16i16o block
+                                            # advance filter by 8i8o/16i16o block
 .else
         addi.d  $a2, $a2, \BlockSize\()*4   # advance filter by 8o/16o block
 .endif
@@ -142,7 +142,7 @@ Implicit Arguments:
 .if \OutputCount\() == 1
         ld.d    $s0, $sp, DilatedInputWidth_arg            #DilatedInputWidth
         sub.d   $t3, $t3, $s0
-#advance input base to next row
+                                            # advance input base to next row
 .endif
         addi.d  $t1, $t1, -1                         # decrement rows remaining
         bnez    $t1, .L\KernelType\().\FilterCount\().\OutputCount\().ProcessNextRow
@@ -535,7 +535,7 @@ Implicit Arguments:
 .endif
         add.d   $a3, $a3, $t8                     # advance input to next channel block
         addi.d  $a2, $a2, \BlockSize\()*\BlockSize\()*4
-#advance filter by 8i8o / 16i16o block
+                                            # advance filter by 8i8o/16i16o block
         addi.d  $t1, $t1, -1               //InputChannels  decrement input blocks remaining
         bnez    $t1, .LPointwise.\FilterCount\().\OutputCount\().ProcessNextInputBlock
 

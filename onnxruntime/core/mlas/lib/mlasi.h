@@ -314,7 +314,8 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // Define the prototypes of the platform optimized routines.
 //
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || \
+    defined(MLAS_TARGET_LARCH64)
 
 typedef
 size_t
@@ -692,29 +693,29 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelVSX;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelVSX;
 #elif defined(MLAS_TARGET_LARCH64)
-MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelLSX;
-MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelLasx;
-MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelLSX;
-MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelLasx;
-MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelLSX;
-MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelLSX;
-MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelLSX;
-MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelLSX;
-MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelLasx;
-MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelLasx;
-MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelLasx;
-MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelLasx;
-MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelLSX;
-MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelLSX;
-MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelLSX;
-MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelLasx;
-MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelLasx;
-MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelLasx;
-MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4LSX;
-MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Lasx;
-MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelLasx;
-MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelLasx;
-MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelLasx;
+    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelLSX;
+    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelLasx;
+    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelLSX;
+    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelLasx;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelLSX;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelLSX;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelLSX;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelLSX;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelLasx;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelLasx;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelLasx;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelLasx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelLSX;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelLSX;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelLSX;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelLasx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelLasx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelLasx;
+    MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4LSX;
+    MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Lasx;
+    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelLasx;
+    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelLasx;
+    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelLasx;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -1385,7 +1386,7 @@ MlasStoreInt32x4(int32_t* Buffer, MLAS_INT32X4 Vector)
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     wasm_v128_store(Buffer, Vector);
 #elif defined(MLAS_LSX_INTRINSICS)
-    __lsx_vst(Vector, (MLAS_INT32X4*)Buffer, 0);
+    __lsx_vst(Vector, (MLAS_INT32X4 *)Buffer, 0);
 #else
     *((MLAS_INT32X4*)Buffer) = Vector;
 #endif
@@ -1650,7 +1651,7 @@ MlasLoadFloat32x4(const float* Buffer)
     return wasm_v128_load(Buffer);
 #elif defined(MLAS_LSX_INTRINSICS)
     // return MlasReinterpretAsFloat32x4(__lsx_vld((const MLAS_INT32X4 *)Buffer, 0));
-    return (MLAS_FLOAT32X4)__lsx_vld((const MLAS_INT32X4*)Buffer, 0);
+    return (MLAS_FLOAT32X4)__lsx_vld((const MLAS_INT32X4 *)Buffer, 0);
 #else
     return *((MLAS_FLOAT32X4*)Buffer);
 #endif
@@ -1794,10 +1795,10 @@ MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(__clang__)
     return __builtin_shufflevector(Vector1, Vector2, Index0, Index1, Index2, Index3);
 #elif defined(MLAS_LSX_INTRINSICS)
-    typedef int32_t GEN_INT32X4 __attribute__((vector_size(16)));
+    typedef int32_t GEN_INT32X4 __attribute__ ((vector_size(16)));
     return __builtin_shuffle(Vector1, Vector2, GEN_INT32X4{Index0, Index1, Index2, Index3});
 #else
-    return __builtin_shuffle(Vector1, Vector2, MALS_INT32X4{Index0, Index1, Index2, Index3});
+    return __builtin_shuffle(Vector1, Vector2, MLAS_INT32X4{Index0, Index1, Index2, Index3});
 #endif
 }
 
@@ -1825,8 +1826,7 @@ MlasInterleaveLowFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_VSX_INTRINSICS)
     return vec_mergeh(Vector1, Vector2);
 #elif defined(MLAS_LSX_INTRINSICS)
-    return (MLAS_FLOAT32X4)__lsx_vilvl_w(MlasReinterpretAsInt32x4(Vector2),
-                                         MlasReinterpretAsInt32x4(Vector1));
+    return (MLAS_FLOAT32X4)__lsx_vilvl_w(MlasReinterpretAsInt32x4(Vector2), MlasReinterpretAsInt32x4(Vector1));
 #else
     return MlasShuffleFloat32x4<0, 4, 1, 5>(Vector1, Vector2);
 #endif
@@ -1846,8 +1846,7 @@ MlasInterleaveHighFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_VSX_INTRINSICS)
     return vec_mergel(Vector1, Vector2);
 #elif defined(MLAS_LSX_INTRINSICS)
-    return (MLAS_FLOAT32X4)__lsx_vilvh_w(MlasReinterpretAsInt32x4(Vector2),
-                                         MlasReinterpretAsInt32x4(Vector1));
+    return (MLAS_FLOAT32X4)__lsx_vilvh_w(MlasReinterpretAsInt32x4(Vector2), MlasReinterpretAsInt32x4(Vector1));
 #else
     return MlasShuffleFloat32x4<2, 6, 3, 7>(Vector1, Vector2);
 #endif
@@ -1999,8 +1998,7 @@ MlasAndFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_v128_and(Vector1, Vector2);
 #elif defined(MLAS_LSX_INTRINSICS)
-    return MlasReinterpretAsFloat32x4(
-        MlasAndInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
+    return MlasReinterpretAsFloat32x4(MlasAndInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
 #else
     return MlasReinterpretAsFloat32x4(MlasAndInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
 #endif
@@ -2015,8 +2013,7 @@ MlasOrFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_v128_or(Vector1, Vector2);
 #elif defined(MLAS_LSX_INTRINSICS)
-    return MlasReinterpretAsFloat32x4(
-        MlasOrInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
+    return MlasReinterpretAsFloat32x4(MlasOrInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
 #else
     return MlasReinterpretAsFloat32x4(MlasOrInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
 #endif
@@ -2031,8 +2028,7 @@ MlasAndNotFloat32x4(MLAS_FLOAT32X4 VectorNot, MLAS_FLOAT32X4 Vector)
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_v128_andnot(Vector, VectorNot);
 #elif defined(MLAS_LSX_INTRINSICS)
-    return MlasReinterpretAsFloat32x4(
-        MlasAndNotInt32x4(MlasReinterpretAsInt32x4(VectorNot), MlasReinterpretAsInt32x4(Vector)));
+    return MlasReinterpretAsFloat32x4(MlasAndNotInt32x4(MlasReinterpretAsInt32x4(VectorNot), MlasReinterpretAsInt32x4(Vector)));
 #else
     return MlasReinterpretAsFloat32x4(MlasAndNotInt32x4(MlasReinterpretAsInt32x4(VectorNot), MlasReinterpretAsInt32x4(Vector)));
 #endif
@@ -2047,8 +2043,7 @@ MlasXorFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_v128_xor(Vector1, Vector2);
 #elif defined(MLAS_LSX_INTRINSICS)
-    return MlasReinterpretAsFloat32x4(
-        MlasXorInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
+    return MlasReinterpretAsFloat32x4(MlasXorInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
 #else
     return MlasReinterpretAsFloat32x4(MlasXorInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
 #endif
@@ -2227,10 +2222,14 @@ MlasMultiplyAddFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2, MLAS_FL
 
 MLAS_FORCEINLINE
 MLAS_FLOAT64X2
-MlasBroadcastFloat64x2(const double* Value) { return MLAS_FLOAT64X2{*Value, *Value}; }
+MlasBroadcastFloat64x2(const double *Value)
+{
+    return MLAS_FLOAT64X2{*Value, *Value};
+}
 #elif defined(MLAS_LSX_INTRINSICS)
-template <unsigned Lane>
-MLAS_FORCEINLINE double
+template<unsigned Lane>
+MLAS_FORCEINLINE
+double
 MlasExtractLaneFloat64x2(MLAS_FLOAT64X2 Vector)
 {
     return Vector[Lane];
@@ -2284,7 +2283,7 @@ MlasLoadFloat64x2(const double* Buffer)
 #elif defined(MLAS_VSX_INTRINSICS)
     return vec_vsx_ld(0, Buffer);
 #elif defined(MLAS_LSX_INTRINSICS)
-    return MLAS_FLOAT64X2(__lsx_vld((const MLAS_INT32X4*)Buffer, 0));
+    return MLAS_FLOAT64X2(__lsx_vld((const MLAS_INT32X4 *)Buffer, 0));
 #endif
 }
 
@@ -2361,7 +2360,12 @@ MlasReadTimeStampCounter(void)
 #elif defined(MLAS_TARGET_LARCH64)
     uint64_t time_cnt, id;
 
-    __asm__ __volatile__("rdtime.d %0, %1\n\t" : "=r"(time_cnt), "=r"(id)::);
+    __asm__ __volatile__
+    (
+        "rdtime.d %0, %1\n\t"
+        : "=r" (time_cnt), "=r" (id)
+	::
+    );
 
     return time_cnt;
 #else

@@ -19,13 +19,13 @@ Abstract:
 // Stack frame layout for the pooling kernels.
 //
 
-#define SP_SIZE 8 * 8
-#define InputBase_arg SP_SIZE + 0 * 8
-#define InputWidth_arg SP_SIZE + 1 * 8
-#define DilatedInputWidth_arg SP_SIZE + 2 * 8
-#define OutputCountLeftPad_arg SP_SIZE + 3 * 8
-#define OutputCount_arg SP_SIZE + 4 * 8
-#define OutputCountRightPad_arg SP_SIZE + 5 * 8
+#define SP_SIZE 8*8
+#define InputBase_arg                   SP_SIZE+0*8
+#define InputWidth_arg                  SP_SIZE+1*8
+#define DilatedInputWidth_arg           SP_SIZE+2*8
+#define OutputCountLeftPad_arg          SP_SIZE+3*8
+#define OutputCount_arg                 SP_SIZE+4*8
+#define OutputCountRightPad_arg         SP_SIZE+5*8
 /*++
 
 Macro Description:
@@ -38,7 +38,7 @@ Arguments:
 
 --*/
 
-.macro SpoolKernelEntry PoolingType
+        .macro SpoolKernelEntry PoolingType
 
 	addi.d	$sp, $sp, -SP_SIZE
 	st.d	$s0, $sp, 0
@@ -127,7 +127,7 @@ Implicit Arguments:
 .L\PoolingType\().\OutputCount\().ProcessNextColumn:
 .if \OutputCount\() == 1
 	add.d	$t7, $a3, $t3               # compute (Input - InputBase)
-#(Input - InputBase) >= InputWidth ?
+        # (Input - InputBase) >= InputWidth?
         bgeu	$t7, $t4, .L\PoolingType\().\OutputCount\().SkipOverPadding
 .endif
         ComputeBlock \PoolingType\(), \OutputCount\()
@@ -140,7 +140,7 @@ Implicit Arguments:
 .if \OutputCount\() == 1
 	ld.d	$s0, $sp, DilatedInputWidth_arg
 	sub.d	$t3, $t3, $s0
-#advance input base to next row
+                                            # advance input base to next row
 .endif
 	addi.d	$t1, $t1, -1
         bnez	$t1, .L\PoolingType\().\OutputCount\().ProcessNextRow
@@ -247,7 +247,7 @@ Return Value:
 	slli.d	$s0, $a4, 1
 	add.d	$t6, $s0, $a4
 	add.d	$a0, $a0, $t6                # advance input by 3 elements
-	addi.d	$t0, $t0, -3            //FIXME
+	addi.d	$t0, $t0, -3
     li.d    $s0, 3
     bgeu	$t0, $s0, .L\PoolingType\().ProcessNextOutputCountBy3
 

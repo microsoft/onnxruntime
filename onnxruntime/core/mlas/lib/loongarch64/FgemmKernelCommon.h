@@ -20,9 +20,7 @@ Abstract:
 //
 
 #define FGEMM_TYPED_INSTRUCTION(Untyped, Typed) \
-    .macro Untyped Operand : vararg;            \
-    Typed \Operand\();                          \
-    .endm;
+        .macro Untyped Operand:vararg; Typed \Operand\(); .endm;
 
 /*++
 
@@ -55,40 +53,48 @@ Implicit Arguments:
 
 --*/
 
-.macro ComputeBlockLoop ComputeBlock, RowCount,
-    AdvanceMatrixAPlusRows
+        .macro ComputeBlockLoop ComputeBlock, RowCount, AdvanceMatrixAPlusRows
 
-        move $t8,
-    $a3 #reload CountK li.d $s0, 4 blt $t8, $s0,
-    .LProcessRemainingBlocks\@
+        move     $t8, $a3                     # reload CountK
+        li.d    $s0, 4
+        blt     $t8, $s0, .LProcessRemainingBlocks\@
 
-        .LComputeBlockBy4Loop\@ :
-        \ComputeBlock\() \RowCount\(),
-    0, LFgemmElementSize * 0, 64 * 4
-        \ComputeBlock\() \RowCount\(), 2 * 32, LFgemmElementSize * 1, 64 * 4 addi.d $a1, $a1,
-    2 * 2 * 32 #advance matrix B by 128 bytes
-        \ComputeBlock\() \RowCount\(), 0, LFgemmElementSize * 2, 64 * 4
-        \ComputeBlock\() \RowCount\(), 2 * 32, LFgemmElementSize * 3, 64 * 4 addi.d $a1, $a1,
-    2 * 2 * 32 #advance matrix B by 128 bytes addi.d $a0, $a0,
-    4 * LFgemmElementSize #advance matrix A by 4 elements.if \RowCount\() > 3 addi.d $t7, $t7,
-    4 * LFgemmElementSize #advance matrix A plus rows by 4 elements.if \RowCount\() == 12 addi.d $t3
-    ,
-    $t3, 4 * LFgemmElementSize addi.d $t4, , $t4, 4 * LFgemmElementSize.endif.endif addi.d $t8, $t8,
-    -4 li.d $s0, 4 bge $t8, $s0,
-    .LComputeBlockBy4Loop\@
+.LComputeBlockBy4Loop\@:
+        \ComputeBlock\() \RowCount\(), 0, LFgemmElementSize*0, 64*4
+        \ComputeBlock\() \RowCount\(), 2*32, LFgemmElementSize*1, 64*4
+        addi.d $a1, $a1, 2*2*32                # advance matrix B by 128 bytes
+        \ComputeBlock\() \RowCount\(), 0, LFgemmElementSize*2, 64*4
+        \ComputeBlock\() \RowCount\(), 2*32, LFgemmElementSize*3, 64*4
+        addi.d  $a1, $a1, 2*2*32                # advance matrix B by 128 bytes
+        addi.d  $a0, $a0, 4*LFgemmElementSize    # advance matrix A by 4 elements
+.if \RowCount\() > 3
+        addi.d     $t7, $t7, 4*LFgemmElementSize    # advance matrix A plus rows by 4 elements
+.if \RowCount\() == 12
+        addi.d     $t3, $t3, 4*LFgemmElementSize
+        addi.d     $t4,, $t4, 4*LFgemmElementSize
+.endif
+.endif
+        addi.d     $t8, $t8, -4
+        li.d        $s0, 4
+        bge     $t8, $s0, .LComputeBlockBy4Loop\@
 
-        .LProcessRemainingBlocks\@ : beqz $t8,
-    .LOutputBlock\@
+.LProcessRemainingBlocks\@:
+        beqz    $t8,      .LOutputBlock\@
 
-        .LComputeBlockBy1Loop\@ :
-        \ComputeBlock\() \RowCount\(),
-    0, 0 addi.d $a1, $a1, 2 * 32 #advance matrix B by 64 bytes addi.d $a0, $a0,
-    LFgemmElementSize #advance matrix A by 1 element.if \RowCount\() > 3 addi.d $t7, $t7,
-    LFgemmElementSize #advance matrix A plus rows by 1 element.if \RowCount\() == 12 addi.d $t3, $t3
-    ,
-    LFgemmElementSize addi.d $t4, $t4, LFgemmElementSize.endif.endif addi.d $t8, $t8, -1 bnez $t8,
-    .LComputeBlockBy1Loop\@
+.LComputeBlockBy1Loop\@:
+        \ComputeBlock\() \RowCount\(), 0, 0
+        addi.d     $a1, $a1, 2*32                    # advance matrix B by 64 bytes
+        addi.d     $a0, $a0, LFgemmElementSize      # advance matrix A by 1 element
+.if \RowCount\() > 3
+        addi.d     $t7, $t7, LFgemmElementSize      # advance matrix A plus rows by 1 element
+.if \RowCount\() == 12
+        addi.d     $t3, $t3, LFgemmElementSize
+        addi.d     $t4, $t4, LFgemmElementSize
+.endif
+.endif
+        addi.d     $t8, $t8, -1
+        bnez    $t8,     .LComputeBlockBy1Loop\@
 
-        .LOutputBlock\@ :
+.LOutputBlock\@:
 
         .endm

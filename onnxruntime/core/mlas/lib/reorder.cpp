@@ -184,7 +184,7 @@ Return Value:
     MlasStoreFloat32x4(&D[ScatterStride * 1], v[1]);
     MlasStoreFloat32x4(&D[ScatterStride * 2], v[2]);
     MlasStoreFloat32x4(&D[ScatterStride * 3], v[3]);
-#elif defined(MLAS_LSX_INTRINSICS)
+#elif  defined(MLAS_LSX_INTRINSICS)
 
     MLAS_FLOAT32X4 v[4];
     MLAS_FLOAT32X4 t[4];
@@ -199,10 +199,11 @@ Return Value:
     t[1] = (__m128)__lsx_vilvl_w((__m128i)v[3], (__m128i)v[2]);
     t[3] = (__m128)__lsx_vilvh_w((__m128i)v[3], (__m128i)v[2]);
 
-    v[0] = (__m128)__lsx_vpickev_d((__m128i)t[1], (__m128i)t[0]);
-    v[1] = (__m128)__lsx_vpickod_d((__m128i)t[1], (__m128i)t[0]);
-    v[2] = (__m128)__lsx_vpickev_d((__m128i)t[3], (__m128i)t[2]);
-    v[3] = (__m128)__lsx_vpickod_d((__m128i)t[3], (__m128i)t[2]);
+
+    v[0] = (__m128)__lsx_vpickev_d((__m128i) t[1],(__m128i) t[0]);
+    v[1] = (__m128)__lsx_vpickod_d((__m128i) t[1],(__m128i) t[0]);
+    v[2] = (__m128)__lsx_vpickev_d((__m128i) t[3],(__m128i) t[2]);
+    v[3] = (__m128)__lsx_vpickod_d((__m128i) t[3],(__m128i) t[2]);
 
     MlasStoreFloat32x4(&D[ScatterStride * 0], v[0]);
     MlasStoreFloat32x4(&D[ScatterStride * 1], v[1]);

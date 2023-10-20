@@ -43,7 +43,7 @@ Implicit Arguments:
 
 --*/
 
-.macro AccumulateAndStoreBlock RowCount, VectorCount
+        .macro AccumulateAndStoreBlock RowCount, VectorCount
 
         and    $s0, $t5,$t5                   # ZeroMode?
         bnez    $s0 , .LSkipAccumulateOutput\@

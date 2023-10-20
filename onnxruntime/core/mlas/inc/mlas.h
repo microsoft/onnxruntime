@@ -90,7 +90,7 @@ Abstract:
 
 #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
-#endif  //
+#endif //
 #endif // ARM64
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 
@@ -1623,7 +1623,7 @@ MlasHalfGemmConvertPackB(
  * @param OutputCount   # of output pixels
  * @param KernelSize    # kernel size
  * @return
- */
+*/
 void
 MLASCALL
 MlasConvDepthwise(
@@ -1661,7 +1661,7 @@ MlasTranspose(
  * @param OutputCount   Number of output pixels
  * @param KernelSize    Size of the kernel
  * @return
- */
+*/
 void
 MLASCALL
 MlasNhwcMaxPool(
@@ -1680,7 +1680,7 @@ MlasNhwcMaxPool(
  * @param OutputCount   Number of output pixels
  * @param KernelSize    size of the kernel
  * @return
- */
+*/
 void
 MLASCALL
 MlasNhwcAvgPool(

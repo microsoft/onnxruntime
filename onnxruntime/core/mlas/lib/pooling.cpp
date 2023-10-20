@@ -1577,10 +1577,12 @@ Return Value:
         }
 
         while (c >= 32) {
+
             __m128i MaximumVector0 = __lsx_vldi(0);
             __m128i MaximumVector1 = __lsx_vldi(0);
 
             for (size_t k = 0; k < KernelSize; k++) {
+
                 __m128i InputVector0 = __lsx_vld((const __m128i*)&Input[k][ChannelOffset], 0);
                 __m128i InputVector1 = __lsx_vld((const __m128i*)&Input[k][ChannelOffset + 16], 0);
 
@@ -1607,12 +1609,14 @@ Return Value:
         }
 
         while (c >= 16) {
+
             __m128i MaximumVector0 = __lsx_vldi(0);
 
             for (size_t k = 0; k < KernelSize; k++) {
+
                 __m128i InputVector0 = __lsx_vld((const __m128i*)&Input[k][ChannelOffset], 0);
 
-                if constexpr (std::is_signed<T8Bits>::value) {
+                if constexpr (std::is_signed<T8Bits>::value){
                     InputVector0 = __lsx_vxor_v(InputVector0, BitFlipVector);
                 }
 
@@ -1631,13 +1635,14 @@ Return Value:
         }
 
         if (c >= 8) {
+
             __m128i MaximumVector0 = __lsx_vldi(0);
 
             for (size_t k = 0; k < KernelSize; k++) {
-                __m128i InputVector0 =
-                    __lsx_vinsgr2vr_d(__lsx_vld((const __m128i*)&Input[k][ChannelOffset], 0), 0, 1);
 
-                if constexpr (std::is_signed<T8Bits>::value) {
+                __m128i InputVector0 = __lsx_vinsgr2vr_d(__lsx_vld((const __m128i*)&Input[k][ChannelOffset], 0), 0, 1);
+
+                if constexpr (std::is_signed<T8Bits>::value){
                     InputVector0 = __lsx_vxor_v(InputVector0, BitFlipVector);
                 }
 
@@ -1648,9 +1653,7 @@ Return Value:
                 MaximumVector0 = __lsx_vxor_v(MaximumVector0, BitFlipVector);
             }
 
-            __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i*)&Output[0], 0),
-                                        __lsx_vpickve2gr_d(MaximumVector0, 0), 0),
-                      (__m128i*)&Output[0], 0);
+            __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i*)&Output[0] , 0), __lsx_vpickve2gr_d(MaximumVector0, 0), 0), (__m128i*)&Output[0], 0);
             Output += 8;
 
             ChannelOffset += 8;

@@ -177,22 +177,20 @@ MlasInitAMX()
 #ifdef MLAS_TARGET_LARCH64
 
 #if defined(__linux__)
-#include <asm/hwcap.h>
 #include <sys/auxv.h>
+#include <asm/hwcap.h>
 #endif
 //
 // Stores a vector to build a conditional load/store mask for vmaskmovps.
 //
 
-MLAS_INTERNAL_DATA
-MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveLasx[8], 32) = {0, 1, 2, 3, 4, 5, 6, 7};
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveLasx[8], 32) = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
 //
 // Stores a table of AVX vmaskmovps/vmaskmovpd load/store masks.
 //
 
-MLAS_INTERNAL_DATA
-MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveTableLasx[16], 32) = {
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveTableLasx[16], 32) = {
     0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
     0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
 };
@@ -543,7 +541,7 @@ Return Value:
     bool cap_lasx = hwcap & HWCAP_LOONGARCH_LASX;
     bool cap_lsx = hwcap & HWCAP_LOONGARCH_LSX;
 
-    if (cap_lasx) {
+    if( cap_lasx ){
         this->GemmFloatKernel = MlasGemmFloatKernelLasx;
         this->GemmDoubleKernel = MlasGemmDoubleKernelLasx;
         this->ConvNchwFloatKernel = MlasConvNchwFloatKernelLasx;
@@ -551,10 +549,8 @@ Return Value:
         this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelLasx;
         this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelLasx;
         this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelLasx;
-        this->PoolFloatKernel[MlasAveragePoolingExcludePad] =
-            MlasPoolAverageExcludePadFloatKernelLasx;
-        this->PoolFloatKernel[MlasAveragePoolingIncludePad] =
-            MlasPoolAverageIncludePadFloatKernelLasx;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelLasx;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelLasx;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelLasx;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelLasx;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelLasx;
@@ -562,7 +558,7 @@ Return Value:
 
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
-    } else if (cap_lsx) {
+    }else if( cap_lsx ){
         this->GemmFloatKernel = MlasGemmFloatKernelLSX;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
@@ -574,14 +570,12 @@ Return Value:
         this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelLSX;
 
         this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelLSX;
-        this->PoolFloatKernel[MlasAveragePoolingExcludePad] =
-            MlasPoolAverageExcludePadFloatKernelLSX;
-        this->PoolFloatKernel[MlasAveragePoolingIncludePad] =
-            MlasPoolAverageIncludePadFloatKernelLSX;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelLSX;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelLSX;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
-    } else {
+    }else{
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
@@ -592,7 +586,8 @@ Return Value:
 
     // this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 
-#endif  // MLAS_TARGET_LARCH64
+#endif // MLAS_TARGET_LARCH64
+
 }
 
 size_t

@@ -158,13 +158,14 @@ MlasConvDepthwiseKernel(
             for (size_t k = 0; k < KernelSize; k++) {
                 __m128i InputVector = __lsx_vld((const __m128i*)&Input[k][ChannelOffset], 0);
                 __lsx_vinsgr2vr_d(InputVector, 0, 1);
-                __m128i FilterVector = __lsx_vld((const __m128i*)&Filter[ChannelKernelOffset], 0);
+                __m128i FilterVector =
+                    __lsx_vld((const __m128i*)&Filter[ChannelKernelOffset], 0);
                 __lsx_vinsgr2vr_d(FilterVector, 0, 1);
 
                 if (std::is_signed<InputType>::value) {
                     InputVector = __lsx_vsrai_h(__lsx_vilvl_b(InputVector, ZeroVector), 8);
                 } else {
-                    InputVector = __lsx_vilvl_b(ZeroVector, InputVector);
+                    InputVector = __lsx_vilvl_b(ZeroVector, InputVector );
                 }
 
                 if (std::is_signed<FilterType>::value) {

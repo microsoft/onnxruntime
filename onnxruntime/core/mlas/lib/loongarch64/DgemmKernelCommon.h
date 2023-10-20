@@ -15,9 +15,9 @@ Abstract:
 
 --*/
 
-#define LFgemmElementShift 3
-#define LFgemmElementSize (1 << LFgemmElementShift)
-#define LFgemmYmmElementCount (32 / LFgemmElementSize)
+#define     LFgemmElementShift      3
+#define     LFgemmElementSize       (1 << LFgemmElementShift)
+#define     LFgemmYmmElementCount   (32/LFgemmElementSize)
 
 #include "FgemmKernelCommon.h"
 
