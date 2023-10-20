@@ -5,6 +5,14 @@
 
 namespace Rocm {
 
+#ifdef USE_ROCM
+
 void RegisterOps(Ort::CustomOpDomain& domain);
 
-}
+#else
+
+inline void RegisterOps(Ort::CustomOpDomain&) {}
+
+#endif
+
+}  // namespace Rocm
