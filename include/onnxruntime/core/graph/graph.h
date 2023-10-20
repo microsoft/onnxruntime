@@ -1154,7 +1154,7 @@ class Graph {
   @returns Status indicating success or providing an error message.
   */
 
-  Status FunctionToGraph(const ONNX_NAMESPACE::FunctionProto& func_to_inline);
+  Status InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node.
@@ -1384,8 +1384,7 @@ class Graph {
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         const logging::Logger& logger,
-        bool strict_shape_type_inference,
-        std::function<void(const InlinedHashSet<std::string>&)> model_functions_remover);
+        bool strict_shape_type_inference);
 
   // internal use by the Graph class only
   Graph(const Model& owning_model,
@@ -1396,16 +1395,9 @@ class Graph {
         Graph* parent_graph,
         const Node* parent_node,
         const logging::Logger& logger,
-        bool strict_shape_type_inference,
-        std::function<void(const InlinedHashSet<std::string>&)> model_functions_remover);
+        bool strict_shape_type_inference);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
-
-  void RemoveLocalFunctions(const InlinedHashSet<std::string>& retained) {
-    if (model_functions_remover_) {
-      model_functions_remover_(retained);
-    }
-  }
 
  private:
   void InitializeStateFromModelFileGraphProto();
@@ -1622,12 +1614,6 @@ class Graph {
   // to store reusable-schema in lookup.
   InlinedHashMap<std::string, std::reference_wrapper<ONNX_NAMESPACE::OpSchema>> reusable_fused_schema_map_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // A function to call into the model to remove local functions which
-  // are inlined.
-  std::function<void(const InlinedHashSet<std::string>&)> model_functions_remover_;
-#endif
 
   // Graph nodes.
   // Element in <nodes_> may be nullptr due to graph optimization.

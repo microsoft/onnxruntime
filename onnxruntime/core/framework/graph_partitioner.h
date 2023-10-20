@@ -12,6 +12,7 @@ namespace onnxruntime {
 
 class ExecutionProviders;
 class KernelRegistryManager;
+class Model;
 
 class GraphPartitioner {
  public:
@@ -34,15 +35,23 @@ class GraphPartitioner {
                    const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
 
 #ifndef ORT_MINIMAL_BUILD
+  /// <summary>
   // Ahead of Time Function inlining. The main purpose of the function is to inline as many
   // functions as possible and delete locally defined functions to reduce the size of the model.
-  // This would enable other optimizations to be more effective.
+  // This would make other optimizations to be more effective.
   //
   // This function performs GetCapability on the graph and its subgraphs bottom up
   // and inlines any functions that are not claimed by any of the execution providers.
   // This function does not attempt to run layout transformation, and it does not assign EPs.
-  // The latter will be done by graph partitioning.
-  Status InlineFunctionsAOT(Graph& graph,
+  // The latter will be done by graph partitioning after Level1 optimizations are done.
+  /// </summary>
+  /// <param name="model">model instance</param>
+  /// <param name="graph">main graph</param>
+  /// <param name="execution_providers">execution providers considered</param>
+  /// <param name="kernel_registry_manager">registry manager</param>
+  /// <returns></returns>
+  Status InlineFunctionsAOT(Model& model,
+                            Graph& graph,
                             const ExecutionProviders& execution_providers,
                             const KernelRegistryManager& kernel_registry_manager) const;
 #endif
