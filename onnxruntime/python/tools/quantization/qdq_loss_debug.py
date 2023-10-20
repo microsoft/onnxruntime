@@ -100,6 +100,7 @@ def modify_model_output_intermediate_tensors(
             name=reshape_output,
         )
         model_to_augment.graph.node.append(reshape_node)
+        # TODO: FLOAT or FLOAT16
         reshape_output_value_info = helper.make_tensor_value_info(reshape_output, TensorProto.FLOAT, [-1])
         model_to_augment.graph.output.append(reshape_output_value_info)
 

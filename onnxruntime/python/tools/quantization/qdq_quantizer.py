@@ -140,11 +140,14 @@ class QDQQuantizer(ONNXQuantizer):
         """
         weight = find_by_name(tensor_name, self.model.initializer())
         if weight is not None:
-            if weight.data_type == onnx_proto.TensorProto.FLOAT:
+            if weight.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
                 return True
         elif tensor_name in self.value_infos:
             vi = self.value_infos[tensor_name]
-            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type == TensorProto.FLOAT:
+            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type in (
+                TensorProto.FLOAT,
+                TensorProto.FLOAT16,
+            ):
                 return True
         else:
             logging.warning(
@@ -196,7 +199,7 @@ class QDQQuantizer(ONNXQuantizer):
     def quantize_weight_tensor_per_channel(self, tensor_name, axis):
         weight = find_by_name(tensor_name, self.model.initializer())
         if weight:
-            if weight.data_type == onnx_proto.TensorProto.FLOAT:
+            if weight.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
                 self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(
                     tensor_type=QDQQuantTensorType.WEIGHT, axis=axis
                 )
@@ -206,7 +209,7 @@ class QDQQuantizer(ONNXQuantizer):
     def quantize_bias_tensor(self, bias_name, input_name, weight_name, beta=1.0):
         weight = find_by_name(bias_name, self.model.initializer())
         if weight is not None:
-            if weight.data_type == onnx_proto.TensorProto.FLOAT:
+            if weight.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
                 self.bias_to_quantize.append((bias_name, input_name, weight_name, beta))
         else:
             logging.warning(f"Expected {bias_name} to be a weight")
@@ -449,7 +452,7 @@ class QDQQuantizer(ONNXQuantizer):
                     [quant_value.q_name],
                     [bias_name],
                     name=node_name,
-                    to=onnx.TensorProto.FLOAT,
+                    to=onnx.TensorProto.FLOAT,  # TODO: FLOAT or FLOAT16
                 )
             elif quant_value.node_type in (None, "DequantizeLinear"):
                 if quant_value.node_qtype in {

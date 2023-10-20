@@ -165,8 +165,8 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
                 ],
                 "qu",
                 [
-                    make_tensor_value_info("X", TensorProto.FLOAT, None),
-                    make_tensor_value_info("scale", TensorProto.FLOAT, None),
+                    make_tensor_value_info("X", TensorProto.FLOAT, None),  # TODO: FLOAT or FLOAT16
+                    make_tensor_value_info("scale", TensorProto.FLOAT, None),  # TODO: FLOAT or FLOAT16
                 ],
                 [make_tensor_value_info("Y", qType, None)],
             )
@@ -676,7 +676,7 @@ def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
 
 
 def tensor_proto_to_array(initializer: TensorProto) -> numpy.ndarray:
-    if initializer.data_type == onnx_proto.TensorProto.FLOAT:
+    if initializer.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
         return onnx.numpy_helper.to_array(initializer)
 
     raise ValueError(

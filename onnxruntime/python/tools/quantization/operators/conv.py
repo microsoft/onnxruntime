@@ -95,7 +95,7 @@ class ConvInteger(QuantOperatorBase):
             [conv_integer_output],
             [cast_op_output],
             conv_integer_output + "_cast",
-            to=onnx_proto.TensorProto.FLOAT,
+            to=onnx_proto.TensorProto.FLOAT,  # TODO: FLOAT ot FLOAT16
         )
         nodes.append(cast_node)
 

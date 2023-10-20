@@ -171,7 +171,7 @@ class CalibraterBase:
         initializer = {init.name for init in model.graph.initializer}
 
         tensors_to_calibrate = set()
-        tensor_type_to_calibrate = {TensorProto.FLOAT}
+        tensor_type_to_calibrate = {TensorProto.FLOAT, TensorProto.FLOAT16}
 
         for node in model.graph.node:
             if not self.op_types_to_calibrate or node.op_type in self.op_types_to_calibrate:
