@@ -131,34 +131,31 @@ export const createReduceSharedProgramInfo =
       const workgroupSize = 32;
 
       const sharedMemorySnippet = `
-         var<workgroup> aBestValues : array<${output.type.storage}, ${workgroupSize}>;
+          var<workgroup> aBestValues : array<${output.type.storage}, ${workgroupSize}>;
        `;
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-        ${shaderHelper.declareVariables(input, output)}
+        ${shaderHelper.registerUniform('reduceSize', 'u32').declareVariables(input, output)}
         ${sharedMemorySnippet}
         fn DIV_CEIL(a : u32, b : u32) -> u32 {
           return ((a - 1u) / b + 1u);
          }
-        @compute @workgroup_size(${workgroupSize}, 1, 1)
-        fn main(@builtin(local_invocation_id) local_id : vec3<u32>, @builtin(global_invocation_id) global_id : vec3u) {
-          let global_idx = global_id.x;
+         ${shaderHelper.mainStart(workgroupSize)}
           let local_idx = local_id.x;
 
           let outputIndex = global_idx / ${workgroupSize};
-          let offset = outputIndex * ${reduceSize};
+          let offset = outputIndex * uniforms.reduceSize;
 
           var bestValue = ${output.type.storage}(${reduceInitValues[reduceType]});
-          let Length = u32(${reduceSize});
-          for (var k = local_idx; k < Length && outputIndex < ${outputSize};
-             k = k + ${workgroupSize}) {
+          let Length = uniforms.reduceSize;
+          for (var k = local_idx; k < Length; k = k + ${workgroupSize}) {
            let candidate = ${output.type.storage}(${input.getByOffset('offset + k')});
            bestValue = ${reduceOps[reduceType]};
           }
           aBestValues[local_idx] = bestValue;
           workgroupBarrier();
 
-         var reduceSize = min(u32(Length), ${workgroupSize}u);
+         var reduceSize = min(Length, ${workgroupSize}u);
          for (var currentSize = reduceSize / 2u; reduceSize > 1u;
              currentSize = reduceSize / 2u) {
            let interval = DIV_CEIL(reduceSize, 2u);
@@ -171,7 +168,7 @@ export const createReduceSharedProgramInfo =
            workgroupBarrier();
          }
 
-         if (local_idx == 0u && outputIndex < ${outputSize}) {
+         if (local_idx == 0u) {
           ${
           output.setByOffset(
               'outputIndex',
@@ -186,8 +183,11 @@ export const createReduceSharedProgramInfo =
         name,
         shaderCache,
         getShaderSource,
-        getRunData: () =>
-            ({outputs: [{dims: outputShape, dataType: outputDataType}], dispatchGroup: {x: Math.ceil(outputSize)}}),
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: outputDataType}],
+          dispatchGroup: {x: outputSize},
+          programUniforms: [{type: 'uint32', data: reduceSize}]
+        }),
       };
     };
 
@@ -209,7 +209,7 @@ const reduceCommon =
       if (permutedAxes.length > 0) {
         input = context.compute(
             createTransposeProgramInfo(context.inputs[0].dataType, context.inputs[0].dims.length, permutedAxes),
-            {inputs: [0], outputs: [-2]})[0];
+            {inputs: [0], outputs: [-1]})[0];
         axes = getInnerMostAxes(axes.length, input.dims.length);
       }
 
@@ -227,41 +227,41 @@ const reduceCommon =
     };
 
 export const reduceMeanShared = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  reduceCommon(context, 'ReduceMean', attributes, 'mean');
+  reduceCommon(context, 'ReduceMeanShared', attributes, 'mean');
 };
 
 export const reduceL1Shared = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  reduceCommon(context, 'ReduceL1', attributes, 'l1');
+  reduceCommon(context, 'ReduceL1Shared', attributes, 'l1');
 };
 
 export const reduceL2Shared = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  reduceCommon(context, 'ReduceL2', attributes, 'l2');
+  reduceCommon(context, 'ReduceL2Shared', attributes, 'l2');
 };
 
 export const reduceLogSumExpShared = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  reduceCommon(context, 'ReduceLogSumExp', attributes, 'logSumExp');
+  reduceCommon(context, 'ReduceLogSumExpShared', attributes, 'logSumExp');
 };
 
 export const reduceMaxShared = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  reduceCommon(context, 'ReduceMax', attributes, 'max');
+  reduceCommon(context, 'ReduceMaxShared', attributes, 'max');
 };
 
 export const reduceMinShared = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  reduceCommon(context, 'ReduceMin', attributes, 'min');
+  reduceCommon(context, 'ReduceMinShared', attributes, 'min');
 };
 
 export const reduceProdShared = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  reduceCommon(context, 'ReduceProd', attributes, 'prod');
+  reduceCommon(context, 'ReduceProdShared', attributes, 'prod');
 };
 
 export const reduceSumShared = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  reduceCommon(context, 'ReduceSum', attributes, 'sum');
+  reduceCommon(context, 'ReduceSumShared', attributes, 'sum');
 };
 
 export const reduceSumSquareShared = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  reduceCommon(context, 'ReduceSumSquare', attributes, 'sumSquare');
+  reduceCommon(context, 'ReduceSumSquareShared', attributes, 'sumSquare');
 };
 
 export const reduceLogSumShared = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  reduceCommon(context, 'ReduceLogSum', attributes, 'logSum');
+  reduceCommon(context, 'ReduceLogSumShared', attributes, 'logSum');
 };
