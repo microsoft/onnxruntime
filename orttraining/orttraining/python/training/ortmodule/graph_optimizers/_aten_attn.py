@@ -16,7 +16,7 @@ from typing import List, Tuple
 
 from onnx import GraphProto, NodeProto, TensorProto, helper
 
-from ..graph_transformer_registry import register_graph_transformer
+from ..graph_optimizer_registry import register_graph_optimizer
 from .utils import GraphMatcher, check_attribute_value, make_constant_node, update_graph
 
 
@@ -142,7 +142,7 @@ _PATTERN_0: List[Tuple[str, bool, List[Tuple[int, int, int]]]] = [
 ]
 
 
-def _apply_transform_for_pattern_0(matcher: GraphMatcher, idx: int, nodes: List[NodeProto]):
+def _optimize_for_pattern_0(matcher: GraphMatcher, idx: int, nodes: List[NodeProto]):
     # Check forward only as the backward is expected to be consistent if it's built correctly.
     scale_value = matcher.get_constant_value(nodes[3].input[1])
     ratio_value = matcher.get_constant_value(nodes[6].input[1])
@@ -156,8 +156,8 @@ def _apply_transform_for_pattern_0(matcher: GraphMatcher, idx: int, nodes: List[
     ):
         return [], [], []
 
-    add_input_shape_0 = matcher.get_shape(nodes[4].input[0])
-    add_input_shape_1 = matcher.get_shape(nodes[4].input[1])
+    _, add_input_shape_0 = matcher.get_type_and_shape(nodes[4].input[0])
+    _, add_input_shape_1 = matcher.get_type_and_shape(nodes[4].input[1])
     nodes_to_add, new_value_infos = _make_efficient_attention_nodes(
         idx,
         nodes[1].input[0],
@@ -202,7 +202,7 @@ _PATTERN_1: List[Tuple[str, bool, List[Tuple[int, int, int]]]] = [
 ]
 
 
-def _apply_transform_for_pattern_1(matcher: GraphMatcher, idx: int, nodes: List[NodeProto]):
+def _optimize_for_pattern_1(matcher: GraphMatcher, idx: int, nodes: List[NodeProto]):
     # Check forward only as the backward is expected to be consistent if it's built correctly.
     scale_value = matcher.get_constant_value(nodes[3].input[1])
     if not (
@@ -214,8 +214,8 @@ def _apply_transform_for_pattern_1(matcher: GraphMatcher, idx: int, nodes: List[
     ):
         return [], [], []
 
-    add_input_shape_0 = matcher.get_shape(nodes[4].input[0])
-    add_input_shape_1 = matcher.get_shape(nodes[4].input[1])
+    _, add_input_shape_0 = matcher.get_type_and_shape(nodes[4].input[0])
+    _, add_input_shape_1 = matcher.get_type_and_shape(nodes[4].input[1])
     nodes_to_add, new_value_infos = _make_efficient_attention_nodes(
         idx,
         nodes[1].input[0],
@@ -235,13 +235,13 @@ def _apply_transform_for_pattern_1(matcher: GraphMatcher, idx: int, nodes: List[
 
 
 _PATTERNS = [
-    (_PATTERN_0, _apply_transform_for_pattern_0),
-    (_PATTERN_1, _apply_transform_for_pattern_1),
+    (_PATTERN_0, _optimize_for_pattern_0),
+    (_PATTERN_1, _optimize_for_pattern_1),
 ]
 
 
-@register_graph_transformer(devices="cuda")
-def transform_aten_efficient_attention(graph: GraphProto):
+@register_graph_optimizer(devices="cuda")
+def optimize_graph_for_aten_efficient_attention(graph: GraphProto):
     nodes_to_remove = []
     nodes_to_add = []
     new_value_infos = []

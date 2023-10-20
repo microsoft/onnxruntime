@@ -55,20 +55,32 @@ class GraphMatcher:
     def __init__(self, graph: GraphProto):
         self._graph: GraphProto = graph
         self._op_type_to_nodes: Dict[str, List[NodeProto]] = {}
+        self._consumer_count: Dict[str, int] = {}
         for node in graph.node:
             if node.op_type not in self._op_type_to_nodes:
                 self._op_type_to_nodes[node.op_type] = []
             self._op_type_to_nodes[node.op_type].append(node)
+            for input in node.input:
+                self._consumer_count[input] = self._consumer_count.get(input, 0) + 1
 
-    def get_producer(self, arg: str, op_type: str):
-        if op_type not in self._op_type_to_nodes:
-            return []
-        return [node for node in self._op_type_to_nodes[op_type] if arg in node.output]
+    def _get_producer(self, arg: str, op_type: str, output_idx: int):
+        for node in self._op_type_to_nodes.get(op_type, []):
+            if (output_idx >= 0 and len(node.output) > output_idx and node.output[output_idx] == arg) or (
+                output_idx == -1 and arg in node.output
+            ):
+                return node
+        return None
 
-    def get_consumer(self, arg: str, op_type: str):
-        if op_type not in self._op_type_to_nodes:
-            return []
-        return [node for node in self._op_type_to_nodes[op_type] if arg in node.input]
+    def _get_consumer(self, arg: str, op_type: str, input_idx: int):
+        for node in self._op_type_to_nodes.get(op_type, []):
+            if (input_idx >= 0 and len(node.input) > input_idx and node.input[input_idx] == arg) or (
+                input_idx == -1 and arg in node.input
+            ):
+                return node
+        return None
+
+    def get_consumer_count(self, arg: str):
+        return self._consumer_count.get(arg, 0)
 
     def get_constant_value(self, arg: str):
         node_or_initializer = None
@@ -86,7 +98,7 @@ class GraphMatcher:
             return None
         return _to_numpy_array(node_or_initializer)
 
-    def get_shape(self, arg: str):
+    def get_type_and_shape(self, arg: str):
         value_infos = [
             value_info
             for value_info in itertools.chain(self._graph.input, self._graph.value_info)
@@ -99,11 +111,11 @@ class GraphMatcher:
                     shape.append(dim.dim_param)
                 else:
                     shape.append(dim.dim_value)
-            return shape
+            return value_infos[0].type.tensor_type.elem_type, shape
         initializers = [initializer for initializer in self._graph.initializer if initializer.name == arg]
         if len(initializers) > 0:
-            return initializers[0].dims
-        return None
+            return initializers[0].data_type, initializers[0].dims
+        return None, None
 
     def _match_pattern(self, node: NodeProto, pattern: List[Tuple[str, bool, List[Tuple[int, int, int]]]]):
         nodes = [node]
@@ -111,16 +123,16 @@ class GraphMatcher:
             next_op_type = pattern[i][0]
             is_producer = pattern[i][1]
             node_idx, output_idx, input_idx = pattern[i][2][0]
-            next_nodes = (
-                self.get_producer(nodes[node_idx].input[input_idx], next_op_type)
+            next_node = (
+                self._get_producer(nodes[node_idx].input[input_idx], next_op_type, output_idx)
                 if is_producer
-                else self.get_consumer(nodes[node_idx].output[output_idx], next_op_type)
+                else self._get_consumer(nodes[node_idx].output[output_idx], next_op_type, input_idx)
             )
-            if len(next_nodes) != 1:
+            if next_node is None:
                 return []
-            next_node = next_nodes[0]
-            for j in range(len(pattern[i][2])):
+            for j in range(1, len(pattern[i][2])):
                 node_idx, output_idx, input_idx = pattern[i][2][j]
+                assert output_idx >= 0 and input_idx >= 0
                 if (not is_producer and nodes[node_idx].output[output_idx] != next_node.input[input_idx]) or (
                     is_producer and next_node.output[output_idx] != nodes[node_idx].input[input_idx]
                 ):
@@ -129,9 +141,7 @@ class GraphMatcher:
         return nodes
 
     def match_pattern(self, pattern: List[Tuple[str, bool, List[Tuple[int, int, int]]]]):
-        if pattern[0][0] not in self._op_type_to_nodes:
-            return iter(())
-        for node in self._op_type_to_nodes[pattern[0][0]]:
+        for node in self._op_type_to_nodes.get(pattern[0][0], []):
             result = self._match_pattern(node, pattern)
             if len(result) == len(pattern):
                 yield result
@@ -151,14 +161,6 @@ def make_constant_node(name: str, dtype: TensorProto.DataType, dims: Sequence[in
         outputs=[name],
         value=helper.make_tensor(name=name, data_type=dtype, dims=dims, vals=vals),
     )
-
-
-def update_attribute(node: NodeProto, attr_name: str, attr_value: Any):
-    """Update the attribute value of given node."""
-    attrs = [attr for attr in node.attribute if attr.name != attr_name]
-    attrs.append(helper.make_attribute(attr_name, attr_value))
-    node.ClearField("attribute")
-    node.attribute.extend(attrs)
 
 
 def update_graph(
