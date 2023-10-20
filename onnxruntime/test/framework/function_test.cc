@@ -88,7 +88,7 @@ static void Check(const char* source,
 }
 
 namespace {
-constexpr char* const basic_code = R"(
+constexpr char* basic_code = R"(
         <
         ir_version: 8,
         opset_import: [ "" : 16, "local" : 1 ]
