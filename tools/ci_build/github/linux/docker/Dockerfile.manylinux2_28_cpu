@@ -159,12 +159,10 @@ ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
 RUN if [ $BUILD_LORT = true ]; then \
-    cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_lort.sh ;  \
-    fi
-RUN if [ $BUILD_ATEN = true ]; then  \
+    cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_lort.sh ; \
+    elif [ $BUILD_ATEN = true ]; then  \
     cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_aten.sh ; \
-    fi
-RUN if [ $BUILD_ATEN = false ] && [ $BUILD_LORT = false ]; then \
+    else \
     cd /tmp/scripts && /tmp/scripts/manylinux/install_deps.sh ; \
     fi
 RUN rm -rf /tmp/scripts
