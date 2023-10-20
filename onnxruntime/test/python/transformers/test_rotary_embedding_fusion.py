@@ -39,7 +39,7 @@ class TestRotaryEmbeddingFusion(unittest.TestCase):
         self.sequence_length = 8
         self.num_heads = 4
         self.head_size = 6
-        self.hidden_size = num_heads * head_size
+        self.hidden_size = self.num_heads * self.head_size
 
         self.past_sequence_length = 2
         self.max_sequence_length = 12

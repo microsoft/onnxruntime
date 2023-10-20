@@ -37,7 +37,7 @@ static void RunTest(
   std::vector<int64_t> pos_dims;
   std::vector<int64_t> cache_dims = {max_sequence_length, head_size / 2};
 
-  UNREFERENCED_PARAMETER(num_heads); // only referenced in assert
+  UNREFERENCED_PARAMETER(num_heads);  // only referenced in assert
   assert(hidden_size != 0 && head_size != 0 && num_heads != 0 && max_sequence_length != 0);
   assert(max_sequence_length >= sequence_length);
   if (position_ids.size() == 1) {

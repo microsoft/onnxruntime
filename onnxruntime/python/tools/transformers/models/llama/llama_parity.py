@@ -13,8 +13,9 @@ from llama_inputs import (
     get_sample_inputs,
     get_sample_with_past_kv_inputs,
 )
-import onnxruntime as ort
 from transformers import LlamaConfig, LlamaForCausalLM
+
+import onnxruntime as ort
 
 logger = logging.getLogger("")
 
@@ -71,6 +72,7 @@ def add_io_bindings(args: argparse.Namespace, model: ort.InferenceSession, input
             io_binding.bind_output(name, device_type=args.execution_provider, device_id=int(args.device_id))
 
     return io_binding
+
 
 def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: LlamaForCausalLM):
     inputs = get_inputs(args, config)
