@@ -2974,7 +2974,7 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding2) {
 
   // Create an OrtValue tensor backed by data on CUDA memory
   Ort::Value bound_x_2 = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data_2), x_values.size(),
-                                                x_shape.data(), x_shape.size());
+                                                  x_shape.data(), x_shape.size());
 
   float* output_data_2;
   cudaMallocHost(&output_data_2, 3 * 2 * sizeof(float));
@@ -2982,7 +2982,7 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding2) {
 
   // Create an OrtValue tensor backed by data on CUDA memory
   Ort::Value bound_y_2 = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data_2),
-                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+                                                  expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
   // Create IoBinding for inputs and outputs.
   Ort::IoBinding binding_2(session);

@@ -1209,11 +1209,6 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
   return Status::OK();
 }
 
-Status TensorrtExecutionProvider::Sync() const {
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
-  return Status::OK();
-}
-
 void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
   custom_op_domain_list = info_.custom_op_domain_list;
 }

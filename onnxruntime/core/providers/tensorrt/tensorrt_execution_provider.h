@@ -179,7 +179,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   Status OnRunStart() override;
   Status OnRunEnd(bool sync_stream) override;
-  Status Sync() const override;
 
   ProviderOptions GetProviderOptions() const override {
     return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
