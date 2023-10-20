@@ -10,6 +10,28 @@
 namespace onnxruntime {
 namespace cuda {
 
+TensorShape InferReshapeOutputShape(
+  const Tensor* src,
+  const Tensor* shape,
+  bool allow_zero
+);
+
+Status FuncReshape(
+    const CudaKernel* cuda_kernel,
+    OpKernelContext* ctx,
+    const Tensor* X,
+    const Tensor* shape,
+    const bool /*allow_zero*/,
+    Tensor* Y);
+
+std::unique_ptr<Tensor> FuncReshape(
+    const CudaKernel* cuda_kernel,
+    OpKernelContext* ctx,
+    const Tensor* X,
+    const Tensor* shape,
+    const bool allow_zero
+);
+
 class Reshape final : public CudaKernel {
  public:
   Reshape(const OpKernelInfo& info) : CudaKernel(info),
@@ -18,27 +40,11 @@ class Reshape final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override {
     // Copy the second input tensor into the shape vector
-    const Tensor* shapeTensor = context->Input<Tensor>(1);
-    if (shapeTensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-    if (shapeTensor->Shape().NumDimensions() != 1) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "A shape tensor must be a vector tensor, got ", shapeTensor->Shape().NumDimensions(), " dimensions");
-    auto data_span = shapeTensor->template DataAsSpan<int64_t>();
-    TensorShapeVector shape(data_span.begin(), data_span.end());
-    const Tensor* X = context->Input<Tensor>(0);
-    if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-    const TensorShape& X_shape = X->Shape();
-
-    ReshapeHelper helper(X_shape, shape, allow_zero_);
-
-    Tensor* Y = context->Output(0, TensorShape(shape));
-    const void* source = X->DataRaw();
-    void* target = Y->MutableDataRaw();
-    // If source and target pointers are not equal (non-inplace operation), we need to copy the data.
-    if (target != source) {
-      ORT_ENFORCE(context->GetComputeStream());
-      ORT_RETURN_IF_ERROR(CopyTensor(*X, *Y, *context->GetComputeStream()));
-    }
-
-    return Status::OK();
+    const Tensor* data_tensor = context->Input<Tensor>(0);
+    const Tensor* shape_tensor = context->Input<Tensor>(1);
+    const auto target_shape = InferReshapeOutputShape(data_tensor, shape_tensor, allow_zero_);
+    Tensor* output_tensor = context->Output(0, target_shape);
+    return FuncReshape(this, context, data_tensor, shape_tensor, allow_zero_, output_tensor);
   }
 
  private:

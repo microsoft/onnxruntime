@@ -114,6 +114,10 @@ class AxisPartitionSpec {
     return AxisPartitionSpec(Condition::Shard, device_mesh_axis);
   }
 
+  static AxisPartitionSpec CreateCopy(const AxisPartitionSpec& spec) {
+    return AxisPartitionSpec(spec.cond, spec.device_mesh_axis);
+  }
+
   // A normal ctor.
   // TODO(wechi): Consider to hide it and revise the `public` members/functions
   // exposed to the user.
@@ -192,6 +196,32 @@ class TensorPartitionSpec {
   // static TensorPartitionSpec CreateReshard(
   //     const TensorPartitionSpec& spec, int64_t new_shard_axis) {
   // }
+
+  // Copy-construct `spec` but with all tensor axes replicated.
+  // The new spec have the same number of axis specs and the same device mesh.
+  static TensorPartitionSpec CreateAllReplica(
+      const size_t rank, const DeviceMesh& device_mesh) {
+    std::vector<AxisPartitionSpec> axis_specs(rank, AxisPartitionSpec::CreateReplica());
+    return TensorPartitionSpec::Create(axis_specs, device_mesh);
+  }
+
+  static TensorPartitionSpec CreateOneTensorAxisOneDeviceMeshAxisSharding(
+      const size_t rank, const DeviceMesh& device_mesh, const size_t tensor_axis, const size_t device_mesh_axis) {
+    std::vector<AxisPartitionSpec> axis_specs(rank, AxisPartitionSpec::CreateReplica());
+    axis_specs[tensor_axis] = AxisPartitionSpec::CreateShard(device_mesh_axis);
+    return TensorPartitionSpec::Create(axis_specs, device_mesh);
+  }
+
+  static TensorPartitionSpec CreateByDropOneAxis(
+      const TensorPartitionSpec& TensorPartitionSpec, const size_t axis_to_drop) {
+    std::vector<AxisPartitionSpec> axis_specs;
+    for (size_t i = 0; i < TensorPartitionSpec.axis_specs.size(); ++i) {
+      if (i != axis_to_drop) {
+        axis_specs.push_back(TensorPartitionSpec.axis_specs[i]);
+      }
+    }
+    return TensorPartitionSpec::Create(axis_specs, TensorPartitionSpec.device_mesh);
+  }
 
   // Helper to debug and generate error message; e.g.,
   // "TensorPartitionSpec{RS[0], Device Mesh: DeviceMesh{Shape: [4,], Elements: [0,1,2,3,]}}".
