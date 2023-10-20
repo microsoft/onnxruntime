@@ -196,6 +196,7 @@ try:
                     "libcublas.so.11",
                     "libcublasLt.so.11",
                     "libcudnn.so.8",
+                    "libcudart.so.12.0",
                     "libcudart.so.11.0",
                     "libcurand.so.10",
                     "libcufft.so.10",
