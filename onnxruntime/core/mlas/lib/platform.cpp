@@ -494,6 +494,7 @@ Return Value:
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmla;
     }
 #endif
 
