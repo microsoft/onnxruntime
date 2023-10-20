@@ -52,17 +52,18 @@ half maybe2half(float x) {
 // Using only power of 2 numbers will lead to waste of compute for same size such as 768, which is a very common case
 // in BERT. Ideally we can step by wrap_size * num_unroll, but listing too many steps will cause long compile time.
 constexpr int kSizes[] = {32, 64, 128, 384, 768, 1024, 2048};
+constexpr size_t kNumOfSizes = sizeof(kSizes) / sizeof(kSizes[0]);
+constexpr int kMaxSize = kSizes[kNumOfSizes - 1];
 constexpr int kMinBlockSize = 32;
 constexpr int kMaxBlockSize = 256;
 
 int NextSize(int x) {
-  size_t len = sizeof(kSizes) / sizeof(kSizes[0]);
-  for (size_t i = 0; i < len; ++i) {
+  for (size_t i = 0; i < kNumOfSizes; ++i) {
     if (x <= kSizes[i]) {
       return kSizes[i];
     }
   }
-  return kSizes[len - 1];
+  return kMaxSize;
 }
 
 template <typename T, int NumUnroll>
@@ -129,25 +130,26 @@ __global__ void SkipLayerNormKernelSmall(
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;
 
   using VecT = aligned_vector<T, ILP>;
-
-  T skip_v[ILP], bias_v[ILP], sum_v[ILP];
-
-  // load input to sum_v
-  VecT* sum_val = reinterpret_cast<VecT*>(&sum_v);
-  *sum_val = *reinterpret_cast<const VecT*>(&input[idx]);
-
-  VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
-  *skip_val = *reinterpret_cast<const VecT*>(&skip[idx % skip_size]);
-
-  const bool has_bias = (bias != nullptr);
-  if (has_bias) {
-    VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
-    *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
-  }
+  T sum_v[ILP];
 
   cub::KeyValuePair<T, T> thread_data(T(0.f), T(0.f));
 
-  if (ILP * threadIdx.x < ld) {
+  if (ILP * threadIdx.x < ld) {  // load data under this guard to avoid reading out-of-bounds
+    T skip_v[ILP], bias_v[ILP];
+
+    // load input to sum_v
+    VecT* sum_val = reinterpret_cast<VecT*>(&sum_v);
+    *sum_val = *reinterpret_cast<const VecT*>(&input[idx]);
+
+    VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
+    *skip_val = *reinterpret_cast<const VecT*>(&skip[idx % skip_size]);
+
+    const bool has_bias = (bias != nullptr);
+    if (has_bias) {
+      VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
+      *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
+    }
+
     T rldval_sum = T(0.f);
     T rldvalsq_sum = T(0.f);
     const bool has_sum_output = (sum_output != nullptr);
@@ -192,36 +194,48 @@ void LaunchSkipLayerNormKernel(
   SkipLayerNormKernelSmall<T, block_size, num_unroll, Simplified><<<grid_size, block_size, 0, stream>>>( \
       output, sum_output, input, skip, bias, gamma, beta, maybe2half<T>(epsilon), ld, skip_size)
 
-#define LAUNCH_SKIP_LAYER_NORM_KERNEL()                                                       \
-  SkipLayerNormKernel<T, kMaxBlockSize, Simplified><<<grid_size, kMaxBlockSize, 0, stream>>>( \
+#define LAUNCH_SKIP_LAYER_NORM_KERNEL()                                                 \
+  SkipLayerNormKernel<T, block_size, Simplified><<<grid_size, block_size, 0, stream>>>( \
       output, sum_output, input, skip, bias, gamma, beta, maybe2half<T>(epsilon), ld, skip_size)
 
-#define CASE_NEXT_SIZE(next_size_value)               \
-  case next_size_value: {                             \
-    if (flag_vec4) {                                  \
-      constexpr int block_size = next_size_value / 4; \
-      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(4);         \
-    } else if (flag_vec2) {                           \
-      constexpr int block_size = next_size_value / 2; \
-      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(2);         \
-    } else {                                          \
-      if (next_size_value <= kMaxBlockSize) {         \
-        constexpr int block_size = next_size_value;   \
-        LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(1);       \
-      } else {                                        \
-        LAUNCH_SKIP_LAYER_NORM_KERNEL();              \
-      }                                               \
-    }                                                 \
+#define CASE_NEXT_SIZE(next_size_value)                                       \
+  case next_size_value: {                                                     \
+    static_assert(next_size_value > kSizes[0] && next_size_value < kMaxSize); \
+    if (flag_vec4) {                                                          \
+      constexpr int block_size = next_size_value / 4;                         \
+      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(4);                                 \
+    } else if (flag_vec2) {                                                   \
+      constexpr int block_size = next_size_value / 2;                         \
+      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(2);                                 \
+    } else {                                                                  \
+      if (next_size_value <= kMaxBlockSize) {                                 \
+        constexpr int block_size = next_size_value;                           \
+        LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(1);                               \
+      } else {                                                                \
+        constexpr int block_size = 256;                                       \
+        LAUNCH_SKIP_LAYER_NORM_KERNEL();                                      \
+      }                                                                       \
+    }                                                                         \
   } break
 
   switch (next_size) {
-    CASE_NEXT_SIZE(kSizes[0]);
+    case kSizes[0]: {
+      constexpr int block_size = kSizes[0];
+      // TODO: Add back the small TensorRT kernel for 32. No need to use vertorized kernel for such small size.
+      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(1);
+      break;
+    }
     CASE_NEXT_SIZE(kSizes[1]);
     CASE_NEXT_SIZE(kSizes[2]);
     CASE_NEXT_SIZE(kSizes[3]);
     CASE_NEXT_SIZE(kSizes[4]);
     CASE_NEXT_SIZE(kSizes[5]);
-    CASE_NEXT_SIZE(kSizes[6]);
+    // kMaxSize shall not run vectorized kernel since ld might be larger than kMaxSize.
+    default: {
+      constexpr int block_size = 256;
+      LAUNCH_SKIP_LAYER_NORM_KERNEL();
+      break;
+    }
   }
 
 #undef CASE_NEXT_SIZE
