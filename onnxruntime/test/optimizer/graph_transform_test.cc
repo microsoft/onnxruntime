@@ -1080,7 +1080,7 @@ TEST_F(GraphTransformationTests, FuseConvBNNoBias) {
   }
 }
 
-TEST_F(GraphTransformationTests, FuseMatmulBNWithReshape) {
+TEST_F(GraphTransformationTests, FuseMatmulBNWithInBetweenNodes) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-with-reshape.onnx";
 
   std::shared_ptr<Model> p_model;
@@ -1111,12 +1111,12 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithReshape) {
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Gemm") {
       ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
-          << "fusion should produce the same output name as the last node";
+          << "fusion should produce the same output name as the MatMul node";
     }
   }
 }
 
-TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutputWithReshape) {
+TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutputWithInBetweenNodes) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-with-reshape.onnx";
 
   std::shared_ptr<Model> p_model;
@@ -1149,26 +1149,23 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutputWithReshape)
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Gemm") {
       ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
-          << "fusion should produce the same output name as the last node";
+          << "fusion should produce the same output name as the MatMul node";
     }
   }
 }
 
 // should not fuse
-TEST_F(GraphTransformationTests, FuseMatmulBNWithOptionalOutputWithReshape) {
+TEST_F(GraphTransformationTests, FuseMatmulBNWithOptionalOutputWithInBetweenNodes) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-with-reshape.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
-  std::string expected_output_name;
   GraphViewer graphViewer(graph);
   for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "MatMul") {
-      expected_output_name = node.OutputDefs()[0]->Name();
-    } else if (node.OpType() == "BatchNormalization") {
+    if (node.OpType() == "BatchNormalization") {
       // additional non-empty output to batchNormalization
       ONNX_NAMESPACE::TypeProto optional_output_tensor_type;
       optional_output_tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TypeProto::kTensorType);
@@ -1190,8 +1187,8 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithOptionalOutputWithReshape) {
   ASSERT_EQ(op_to_count["Gemm"], 0);
 }
 
-TEST_F(GraphTransformationTests, FuseMatmulBNWithoutReshape) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-without-reshape.onnx";
+TEST_F(GraphTransformationTests, FuseMatmulBNDirectly) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-directly.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
@@ -1226,8 +1223,8 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithoutReshape) {
   }
 }
 
-TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutputWithoutReshape) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-without-reshape.onnx";
+TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyReshape) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-only-reshape.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
@@ -1237,9 +1234,8 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutputWithoutResha
   GraphViewer graphViewer(graph);
   for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "BatchNormalization") {
+    if (node.OpType() == "MatMul") {
       expected_output_name = node.OutputDefs()[0]->Name();
-      node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg("", nullptr));
     }
   }
 
@@ -1258,32 +1254,54 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutputWithoutResha
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Gemm") {
       ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
-          << "fusion should produce the same output name as the last node";
+          << "fusion should produce the same output name as the MatMul node";
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyTranspose) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-only-transpose.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::string expected_output_name;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "MatMul") {
+      expected_output_name = node.OutputDefs()[0]->Name();
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["BatchNormalization"], 0);
+  ASSERT_EQ(op_to_count["MatMul"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
+      ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
+          << "fusion should produce the same output name as the MatMul node";
     }
   }
 }
 
 // should not fuse
-TEST_F(GraphTransformationTests, FuseMatmulBNWithOptionalOutputWithoutReshape) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-without-reshape.onnx";
+TEST_F(GraphTransformationTests, FuseMatmulBNWithNonIgnorableNode) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-non-ignorable-node.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
-
-  std::string expected_output_name;
-  GraphViewer graphViewer(graph);
-  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
-    auto& node = *graph.GetNode(node_index);
-    if (node.OpType() == "BatchNormalization") {
-      expected_output_name = node.OutputDefs()[0]->Name();
-      // additional non-empty output to batchNormalization
-      ONNX_NAMESPACE::TypeProto optional_output_tensor_type;
-      optional_output_tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TypeProto::kTensorType);
-      auto& arg = graph.GetOrCreateNodeArg("bn_optional_output", &optional_output_tensor_type);
-      node.MutableOutputDefs().push_back(&arg);
-    }
-  }
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");

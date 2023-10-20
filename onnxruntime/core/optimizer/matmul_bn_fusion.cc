@@ -7,38 +7,55 @@
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime {
-bool MatchPath(const Node& parent_node,
-               const gsl::span<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>>& path,
-               const Node& child_node) {
-  if (path.size() == 0) {
-    return true;
+
+namespace matmulbnfusion {
+  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> ignorable_nodes{
+    {"Reshape", {1, 5, 13, 14, 19}},
+    {"Transpose", {1, 13}}};
+  std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>> dest = {"BatchNormalization", {1, 6, 7, 9, 14, 15}};
+}
+
+std::optional<std::reference_wrapper<const Node>> MatchPath(
+  const Node& parent_node, 
+  const Node& curr_node,
+  const std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>& dest, 
+  const gsl::span<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>>& ignorable_nodes,
+  std::vector<bool>& ignorable_nodes_visited) {
+  
+  // curr_node has different execution provider then it's parent or has > 1 output
+  if (curr_node.GetExecutionProviderType() != parent_node.GetExecutionProviderType() ||
+      curr_node.GetOutputEdgesCount() != 1) {
+    return std::nullopt;
   }
 
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(child_node, path[0].first, path[0].second) ||
-      child_node.GetExecutionProviderType() != parent_node.GetExecutionProviderType()) {
-    return false;
+  // curr_node == dest_node
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(curr_node, dest.first, dest.second)) {
+    return curr_node;
   }
 
-  /*
-   * last node in the path can have more than one output
-   * because all those outputs will be preserved by the addition of new Gemm node
-   */
-  if (path.size() > 1 && child_node.GetOutputEdgesCount() != 1) {
-    return false;
+  // curr_node can be any of the ignorable_nodes.
+  for (size_t index = 0; index < ignorable_nodes.size(); index++) {
+    if (!ignorable_nodes_visited[index] &&
+        graph_utils::IsSupportedOptypeVersionAndDomain(curr_node, ignorable_nodes[index].first, ignorable_nodes[index].second)) {
+      ignorable_nodes_visited[index] = true;
+      return MatchPath(curr_node, *curr_node.OutputNodesBegin(), dest, ignorable_nodes, ignorable_nodes_visited);
+    }
   }
 
-  return MatchPath(child_node, path.subspan(1), *child_node.OutputNodesBegin());
+  // curr_node neither a dest node nor any of the ignorable_nodes.
+  return std::nullopt;
 }
 
 /*
  *   Given a MatMul node, it will verify the following pattern.
- *                MatMul                MatMul
- *                  |                     |
- *               Reshape        OR   BatchNormalization
+ *                MatMul  
+ *                  |     
+ *               Reshape ^
  *                  |
- *             Transpose
+ *             Transpose ^
  *                  |
  *        BatchNormalization
+ * Note: ^ means there can be 0 or 1 occurrences of that node. 
  * Other Conditions:
  *   - B tensor of MatMul should be constant.
  *   - scale, B, mean, var tensors of BatchNormalization should be constant.
@@ -50,32 +67,29 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
     return false;
   }
 
-  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> path_with_reshape{
-      {"Reshape", {1, 5, 13, 14, 19}},
-      {"Transpose", {1, 13}},
-      {"BatchNormalization", {1, 6, 7, 9, 14, 15}}};
-
-  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> path_without_reshape{
-      {"BatchNormalization", {1, 6, 7, 9, 14, 15}}};
-
   const Node& child_node = *node.OutputNodesBegin();
-  if (!(MatchPath(node, path_with_reshape, child_node) ^ MatchPath(node, path_without_reshape, child_node))) {
+  std::vector<bool> ignorable_nodes_visited(matmulbnfusion::ignorable_nodes.size(), false);
+  std::optional<std::reference_wrapper<const Node>> batch_norm_node = MatchPath(
+    node,
+    child_node,
+    matmulbnfusion::dest,
+    matmulbnfusion::ignorable_nodes,
+    ignorable_nodes_visited);
+  if (!batch_norm_node.has_value()) {
     return false;
   }
 
-  const auto& batch_norm_node = child_node.OpType() == "Reshape" ? *child_node.OutputNodesBegin()->OutputNodesBegin() : child_node;
-
   // Check that the appropriate inputs to the Matmul and BN nodes are constants.
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
-      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node.InputDefs()[1]) ||
-      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node.InputDefs()[2]) ||
-      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node.InputDefs()[3]) ||
-      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node.InputDefs()[4])) {
+      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->get().InputDefs()[1]) ||
+      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->get().InputDefs()[2]) ||
+      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->get().InputDefs()[3]) ||
+      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->get().InputDefs()[4])) {
     return false;
   }
 
   // First output from BN is required. Others are optional. If any optional outputs exist we can't fuse.
-  const auto& output_defs = batch_norm_node.OutputDefs();
+  const auto& output_defs = batch_norm_node->get().OutputDefs();
   if (output_defs.size() > 1) {
     for (size_t i = 1, end = output_defs.size(); i < end; ++i) {
       if (output_defs[i] != nullptr && output_defs[i]->Exists()) {
@@ -104,9 +118,15 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
  */
 Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   const Node& child_node = *matmul_node.OutputNodesBegin();
-  NodeIndex batch_norm_node_index = child_node.OpType() == "Reshape" ? 
-    child_node.OutputNodesBegin()->OutputNodesBegin()->Index() : child_node.Index();
-  Node& batch_norm_node = *graph.GetNode(batch_norm_node_index);
+  std::vector<bool> ignorable_nodes_visited(matmulbnfusion::ignorable_nodes.size(), false);
+  NodeIndex batch_norm_node_index = MatchPath(
+      matmul_node,
+      child_node,
+      matmulbnfusion::dest,
+      matmulbnfusion::ignorable_nodes,
+      ignorable_nodes_visited)->get().Index();
+
+  Node& batch_norm_node = *graph.GetNode(batch_norm_node_index); // need mutable node, that's why extracting node from graph
 
   // only perform fusion if epsilon is present and is of float_32 type
   auto epsilon_attribute = batch_norm_node.GetAttributes().find("epsilon");
@@ -192,7 +212,8 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
   // Delete optional empty output defs.
   // Delete BatchNormalization node and update the input of the child of BatchNormalization
   batch_norm_node.MutableOutputDefs().resize(1);
-  NodeIndex batch_norm_parent_index = child_node.OpType() == "Reshape" ? child_node.OutputNodesBegin()->Index() : gemm_node.Index();
+  NodeIndex batch_norm_parent_index = child_node.OpType() == "BatchNormalization" ? gemm_node.Index() :
+    batch_norm_node.InputNodesBegin()->Index();
   graph_utils::FinalizeNodeFusion(graph, *graph.GetNode(batch_norm_parent_index), batch_norm_node);
 
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
