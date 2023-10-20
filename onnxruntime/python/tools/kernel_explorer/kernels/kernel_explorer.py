@@ -115,6 +115,7 @@ class ComputeAndBandwidthMetric(ComputeMetric, BandwidthMetric):
 class InstanceBenchmarkReporter:
     def __init__(self):
         self.sort = False
+        self.best = float("inf")
         self.reporters = []
 
     def set_sort(self, sort):
@@ -123,7 +124,11 @@ class InstanceBenchmarkReporter:
     def make_report(self):
         self.reporters.sort()
         for item in self.reporters:
-            print(item.report())
+            if item.milliseconds_duration > 0 and item.milliseconds_duration < self.best:
+                self.best = item.milliseconds_duration
+                print(item.report(), "*")
+            else:
+                print(item.report())
         self.reporters.clear()
 
     def receive(self, status):
