@@ -168,11 +168,23 @@ class QLinearMatMul(QOpMatMul):
         qlinear_matmul_inputs.append(output_scale_name)
         qlinear_matmul_inputs.append(output_zp_name)
 
+        domain = (
+            "com.microsoft"
+            if self.quantizer.weight_qType
+            in {
+                onnx_proto.TensorProto.FLOAT8E4M3FN,
+                onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
+                onnx_proto.TensorProto.FLOAT8E5M2,
+                onnx_proto.TensorProto.FLOAT8E5M2FNUZ,
+            }
+            else ""
+        )
         qlinear_matmul_node = onnx.helper.make_node(
             "QLinearMatMul",
             qlinear_matmul_inputs,
             [qlinear_matmul_output],
             qlinear_matmul_name,
+            domain=domain,
         )
         nodes.append(qlinear_matmul_node)
 

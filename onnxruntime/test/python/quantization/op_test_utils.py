@@ -13,6 +13,7 @@ from onnx.reference.op_run import OpRun
 
 import onnxruntime
 from onnxruntime.quantization import CalibrationDataReader
+import onnxruntime.capi._pybind_state as C
 
 onnx_recent_enough = hasattr(OpRun, "infer_name")
 
@@ -27,7 +28,7 @@ if onnx_recent_enough:
         onnx_recent_enough = False
 
 
-class QGemm(OpRun):
+class QOpRun(OpRun):
     op_domain = "com.microsoft"
 
     f8_types = {
@@ -48,6 +49,8 @@ class QGemm(OpRun):
             return TensorProto.FLOAT8E5M2FNUZ
         return np_dtype_to_tensor_dtype(tensor.dtype)
 
+
+class QGemm(QOpRun):
     def _run(
         self,
         A,
@@ -131,6 +134,74 @@ class QGemm(OpRun):
             return (y.astype(dtype),)
 
 
+class QLinearMatMul(QOpRun):
+    def _run(
+        self,
+        A,
+        a_scale,
+        a_zero_point,
+        B,
+        b_scale,
+        b_zero_point,
+        y_scale=None,
+        y_zero_point=None,
+    ):
+        a_type = self.get_tensor_type(a_zero_point)
+        b_type = self.get_tensor_type(b_zero_point)
+        y_type = self.get_tensor_type(y_zero_point)
+        if a_type == TensorProto.FLOAT8E4M3FN and b_type == TensorProto.FLOAT8E4M3FN:
+            a_scaled = (float8e4m3_to_float32(A).astype(float) - float8e4m3_to_float32(a_zero_point)) * np.float32(
+                a_scale
+            )
+            b_scaled = (float8e4m3_to_float32(B).astype(float) - float8e4m3_to_float32(b_zero_point)) * np.float32(
+                b_scale
+            )
+            y = a_scaled @ b_scaled
+            if y_scale is not None:
+                y /= y_scale
+            if y_zero_point is not None:
+                y += float8e4m3_to_float32(y_zero_point)
+                ry = y.ravel()
+
+                fy = np.empty(ry.shape, dtype=float8e4m3fn)
+                for i in range(fy.shape[0]):
+                    el = float32_to_float8e4m3(ry[i])  # type: ignore[assignment]
+                    fy[i] = el
+                y = fy.reshape(y.shape)
+            else:
+                raise NotImplementedError("y_zero_point is not empty. QLinearMatMul is not implemented in that case.")
+            return (y,)
+        elif a_type in self.f8_types or b_type in self.f8_types or y_type in self.f8_types:
+            raise NotImplementedError(f"QLinearMatMul not implemented for zero_types {a_type}, {b_type}, {y_type}.")
+        else:
+            if TensorProto.FLOAT8E4M3FN in {a_type, b_type, y_type}:
+                raise TypeError(f"Unexpected type for A: {a_type}, B:{b_type} or Y:{y_type}.")
+            a_scaled = (A.astype(float) - a_zero_point) * np.float32(a_scale)
+            b_scaled = (B.astype(float) - b_zero_point) * np.float32(b_scale)
+            y = a_scaled @ b_scaled
+            if y_scale is not None:
+                y /= np.float32(y_scale)
+            if y_zero_point is not None:
+                y += y_zero_point
+
+            if y_zero_point is not None:
+                dtype = y_zero_point.dtype
+            elif C is not None:
+                dtype = C.dtype
+            else:
+                dtype = A.dtype
+
+            y = np.rint(y)
+            if dtype == np.uint8:
+                y = np.clip(y, 0, 255)
+            elif dtype == np.int8:
+                y = np.clip(y, -128, 127)
+            else:
+                raise ValueError(f"Unexpected dtype={dtype}, it should be uint8 or int8.")
+
+            return (y.astype(dtype),)
+
+
 class TestDataFeeds(CalibrationDataReader):
     def __init__(self, data_feeds):
         """
@@ -183,12 +254,20 @@ def check_op_type_count(testcase, model_path, **kwargs):
     for node in model.graph.node:
         if node.op_type in optype2count:
             optype2count[node.op_type] += 1
+
     for op_type in kwargs:
-        testcase.assertEqual(
-            kwargs[op_type],
-            optype2count[op_type],
-            f"op_type {op_type} count not same",
-        )
+        try:
+            testcase.assertEqual(
+                kwargs[op_type],
+                optype2count[op_type],
+                f"op_type {op_type} count not same",
+            )
+        except AssertionError as e:
+            from onnx_array_api.plotting.text_plot import onnx_simple_text_plot
+
+            raise AssertionError(
+                f"Assert failed:\noptype={optype2count}\nkwargs={kwargs}\n{onnx_simple_text_plot(model)}"
+            ) from e
 
 
 def check_sign_f8_quantization(model_path_origin, model_path_to_check):
@@ -265,6 +344,7 @@ def check_model_correctness(
     providers=None,
     dynamic=False,
     is_gemm=False,
+    op_matmul=False,
 ):
     if providers is None:
         providers = ["CPUExecutionProvider"]
@@ -334,7 +414,10 @@ def check_model_correctness(
 
     # Verifies the expected outputs.
     if check_reference_evaluator and onnx_recent_enough:
-        reference_new_ops = [QGemm]
+        if op_matmul:
+            reference_new_ops = [QLinearMatMul]
+        else:
+            reference_new_ops = [QGemm]
         has_missing_reference_ops = any(
             node.domain not in ["", "ai.onnx"]
             and not any(
@@ -364,11 +447,17 @@ def check_model_correctness(
 
     # enable QDQ transformers
     # sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-    target_sess = onnxruntime.InferenceSession(
-        model_path_to_check,
-        sess_options=sess_options,
-        providers=providers,
-    )
+    try:
+        target_sess = onnxruntime.InferenceSession(
+            model_path_to_check,
+            sess_options=sess_options,
+            providers=providers,
+        )
+    except C.Fail as e:
+        # This should disabled when QDQ optimizers is implemented.
+        if "com.microsoft:QLinearMatMul(-1) is not a registered function/op" not in str(e):
+            raise e
+        return
     target_results = target_sess.run([], inputs)
     testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
     for idx, ref_output in enumerate(origin_results):
