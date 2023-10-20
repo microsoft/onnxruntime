@@ -6,6 +6,7 @@
 #include "core/graph/graph.h"
 #include "core/providers/utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 #include "core/providers/xnnpack/detail/utils.h"
 
 namespace onnxruntime {
@@ -221,24 +222,49 @@ Status AveragePool::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  pthreadpool_t t_pool = GetThreadPool();
-  xnn_status status = xnn_status_invalid_state;
+  pthreadpool_t threadpool = GetThreadPool();
+
+  // setup allocator/automated dellocate for workspace
+  size_t workspace_size = 0;
+  size_t workspace_alignment = 0;
+  xnn_allocator* allocator = GetStoredAllocator().second;
+  auto deallocator = [allocator](void* ptr) { allocator->aligned_deallocate(allocator->context, ptr); };
+
+  std::unique_ptr<void, decltype(deallocator)> workspace(nullptr, deallocator);
+
+  auto reshape_fn = (avgpool_type_ == OpComputeType::op_compute_type_fp32)
+                        ? xnn_reshape_average_pooling2d_nhwc_f32
+                        : xnn_reshape_average_pooling2d_nhwc_qu8;
+
+  auto status = reshape_fn(op0_.get(), N, H, W,
+                           &workspace_size, &workspace_alignment,
+                           /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+                           threadpool);
+
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_average_pooling2d_nhwc_", OpTypeToString(avgpool_type_),
+                           " returned ", status);
+  }
+
+  workspace.reset(allocator->aligned_allocate(allocator->context, workspace_size, XNN_ALLOCATION_ALIGNMENT));
+  status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), workspace.get(),
+                                                X.Data<float>(), Y.MutableData<float>());
+
   if (avgpool_type_ == OpComputeType::op_compute_type_fp32) {
-    status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), N, H, W,
-                                                  X.Data<float>(), Y.MutableData<float>(),
-                                                  t_pool /*threadpool */);
+    status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), workspace.get(),
+                                                  X.Data<float>(), Y.MutableData<float>());
+
   } else if (avgpool_type_ == OpComputeType::op_compute_type_qu8) {
-    status = xnn_setup_average_pooling2d_nhwc_qu8(op0_.get(), N, H, W,
-                                                  X.Data<uint8_t>(), Y.MutableData<uint8_t>(),
-                                                  t_pool /*threadpool */);
+    status = xnn_setup_average_pooling2d_nhwc_qu8(op0_.get(), workspace.get(),
+                                                  X.Data<uint8_t>(), Y.MutableData<uint8_t>());
   }
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_average_pooling2d_nhwc_",
-                           OpTypeToString(avgpool_type_), " returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_average_pooling2d_nhwc_", OpTypeToString(avgpool_type_),
+                           " returned ", status);
   }
 
-  status = xnn_run_operator(op0_.get(), t_pool);
+  status = xnn_run_operator(op0_.get(), threadpool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }

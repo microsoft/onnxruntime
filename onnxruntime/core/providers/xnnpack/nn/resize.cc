@@ -10,6 +10,7 @@
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/op_kernel.h"
 #include "core/optimizer/initializer.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -31,10 +32,11 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     }
 
     const auto* x_shape = x_arg.Shape();
-    //'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1 (NCHW) or
-    // 4-D input with outermost and innermost scales as 1 (NHWC)
-    // but we just support 4-d tensor for now, and the channel must be known.
-    if (!x_shape || x_shape->dim_size() != 4 || x_shape->dim(1).dim_value() <= 0) {
+    //'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1 (NCHW)
+    // but we just support 4-d tensor for now, batch must be 1 and channels must be known.
+    if (!x_shape || x_shape->dim_size() != 4 ||
+        x_shape->dim(0).dim_value() != 1 ||  // batch must be known and 1
+        x_shape->dim(1).dim_value() <= 0) {  // channels must be known
       break;
     }
 
@@ -48,7 +50,8 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     // if coordinate_transformation_mode is "pytorch_half_pixel",
     // x_original = length_resized > 1 ? (x_resized + 0.5) / scale - 0.5 : 0
     //
-    if (output_shape->dim(2).dim_value() <= 1 || output_shape->dim(1).dim_value() <= 1) {
+    if (output_shape->dim(2).dim_value() <= 1 || output_shape->dim(3).dim_value() <= 1) {
+      // we don't know the output H or W so we don't know if it will be compatible
       length_resized_compatible_pytorch_half_pixel = false;
     }
 
@@ -78,6 +81,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
 
     std::vector<int64_t> axes;
     if (info.GetAttrs<int64_t>("axes", axes).IsOK() && axes.size() > 0) {
+      // TODO: We should be able to handle this if required
       break;
     }
 
@@ -95,9 +99,8 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     // Coordinate transformation mode attr was introduced in version 11.
     // before that asymmetric mode was the only available transformation mode
     std::string coordinate_transform_mode_name =
-        opset_version > 10
-            ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
-            : "asymmetric";
+        opset_version > 10 ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
+                           : "asymmetric";
 
     if (coordinate_transform_mode_name != "asymmetric" &&
         coordinate_transform_mode_name != "half_pixel" &&
@@ -106,14 +109,11 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
       break;
     }
 
-    auto exclude_outside = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
-    if (exclude_outside) {
+    if (info.GetAttrOrDefault<int64_t>("exclude_outside", 0) != 0) {
       break;
     }
 
-    // roi  only takes effect when coordinate_transformation_mode is "tf_crop_and_resize"
-
-    // size or scales shouldnt't be provided in the same time but should at least be provided one of them
+    // onnx shape inferencing validates that one and not both of sizes and scales are provided
     const auto* scale_tensor = inputs.size() >= scale_idx + 1
                                    ? graph_viewer.GetConstantInitializer(inputs[scale_idx].node_arg.Name(), true)
                                    : nullptr;
@@ -121,44 +121,8 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
                                   ? graph_viewer.GetConstantInitializer(inputs[size_idx].node_arg.Name(), true)
                                   : nullptr;
 
-    bool has_size = false;
-    bool has_scale = false;
-    InlinedVector<float> scale(4, 1.0F);
-    if (scale_tensor) {
-      const Initializer scale_val(*scale_tensor, node_unit.ModelPath());
-      auto scale_span = scale_val.DataAsSpan<float>();
-      if (scale_span.size() == 4) {
-        has_scale = true;
-        std::copy(scale_span.begin(), scale_span.end(), scale.begin());
-      }
-    }
-
-    if (size_tensor) {
-      auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
-      const Initializer size_val(*size_tensor, node_unit.ModelPath());
-
-      auto size_span = size_val.DataAsSpan<int64_t>();
-      if (size_span.size() == 4) {
-        has_size = true;
-        scale = {size_span[0] / static_cast<float>(input_shape[0]),
-                 size_span[1] / static_cast<float>(input_shape[1]),
-                 size_span[2] / static_cast<float>(input_shape[2]),
-                 size_span[3] / static_cast<float>(input_shape[3])};
-      }
-    }
-
-    if ((has_size && has_scale) || (!has_size && !has_scale)) {
-      break;
-    }
-
-    if (scale[0] != 1.0F || (scale[1] != 1.0F && scale[3] != 1.0F)) {
-      break;
-    }
-
-    // only support xnn_create_resize_bilinear2d_nchw_f32
-    const bool is_NHWC = scale[3] == 1.0F;
-    if (!is_NHWC && (x_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-                     x_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+    // if both scales and sizes are nullptr the one that was provided was not a constant initializer
+    if (!scale_tensor && !size_tensor) {
       break;
     }
 
@@ -210,8 +174,7 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
     }
   }
 
-  is_NHWC_ = scales_[3] == 1.0F;
-  int64_t channels = x_shape->dim(is_NHWC_ ? 3 : 1).dim_value();
+  int64_t channels = x_shape->dim(3).dim_value();
 
   uint32_t flags = 0;
   ORT_ENFORCE(mode_ == UpsampleMode::LINEAR, "only support bilinear resize");
@@ -225,18 +188,16 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
   xnn_status xstatus = xnn_status_invalid_state;
   struct xnn_operator* p = nullptr;
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    auto create_func = is_NHWC_ ? xnn_create_resize_bilinear2d_nhwc_f32 : xnn_create_resize_bilinear2d_nchw_f32;
-    xstatus = create_func(
-        channels, channels, channels, flags, &p);
+    xstatus = xnn_create_resize_bilinear2d_nhwc_f32(channels, channels, channels, flags, &p);
   } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
-    xstatus = xnn_create_resize_bilinear2d_nhwc_u8(
-        channels, channels, channels, flags, &p);
+    xstatus = xnn_create_resize_bilinear2d_nhwc_u8(channels, channels, channels, flags, &p);
   } else {
-    xstatus = xnn_create_resize_bilinear2d_nhwc_s8(
-        channels, channels, channels, flags, &p);
+    xstatus = xnn_create_resize_bilinear2d_nhwc_s8(channels, channels, channels, flags, &p);
   }
-  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_resize_bilinear2d_nhwc_",
-              OpTypeToString(op_type_), " failed. Status:", xstatus);
+
+  ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_resize_bilinear2d_nhwc_", OpTypeToString(op_type_), " failed. Status:",
+              xstatus);
+
   op0_.reset(p);
 }
 
@@ -245,48 +206,54 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
                                const TensorShapeVector& output_dims) const {
   const auto& X_shape = input->Shape();
   auto N = X_shape[0];
-  auto H = is_NHWC_ ? X_shape[1] : X_shape[2];
-  auto W = is_NHWC_ ? X_shape[2] : X_shape[3];
+  auto H = X_shape[1];
+  auto W = X_shape[2];
   Tensor* output = ctx->Output(0, TensorShape(output_dims));
 
-  pthreadpool_t t_pool = GetThreadPool();
-  xnn_status status = xnn_status_invalid_state;
-  if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    auto oH = is_NHWC_ ? output_dims[1] : output_dims[2];
-    auto oW = is_NHWC_ ? output_dims[2] : output_dims[3];
-    auto setup_func = is_NHWC_ ? xnn_setup_resize_bilinear2d_nhwc_f32 : xnn_setup_resize_bilinear2d_nchw_f32;
-    status = setup_func(
-        op0_.get(),
-        N,
-        H, W, oH, oW,
-        input->Data<float>(),
-        output->MutableData<float>(),
-        t_pool);
-  } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
-    status = xnn_setup_resize_bilinear2d_nhwc_u8(
-        op0_.get(),
-        N,
-        H, W, output_dims[1], output_dims[2],
-        input->Data<uint8_t>(),
-        output->MutableData<uint8_t>(),
-        t_pool);
-  } else {
-    status = xnn_setup_resize_bilinear2d_nhwc_s8(
-        op0_.get(),
-        N,
-        H, W, output_dims[1], output_dims[2],
-        input->Data<int8_t>(),
-        output->MutableData<int8_t>(),
-        t_pool);
+  pthreadpool_t threadpool = GetThreadPool();
+
+  // setup allocator/automated dellocate for workspace
+  size_t workspace_size = 0;
+  size_t workspace_alignment = 0;
+  xnn_allocator* allocator = GetStoredAllocator().second;
+  auto deallocator = [allocator](void* ptr) { allocator->aligned_deallocate(allocator->context, ptr); };
+  std::unique_ptr<void, decltype(deallocator)> workspace(nullptr, deallocator);
+
+  auto reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_f32;
+  if (op_type_ == OpComputeType::op_compute_type_qu8) {
+    reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_u8;
+  } else if (op_type_ == OpComputeType::op_compute_type_qs8) {
+    reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_s8;
   }
+
+  auto status = reshape_fn(op0_.get(), N, H, W, output_dims[1], output_dims[2],
+                           &workspace_size, &workspace_alignment, threadpool);
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_resize_bilinear2d_nhwc_", OpTypeToString(op_type_),
+                           " returned ", status);
+  }
+
+  if (op_type_ == OpComputeType::op_compute_type_fp32) {
+    status = xnn_setup_resize_bilinear2d_nhwc_f32(op0_.get(), workspace.get(), input->Data<float>(),
+                                                  output->MutableData<float>());
+  } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
+    status = xnn_setup_resize_bilinear2d_nhwc_u8(op0_.get(), workspace.get(), input->Data<uint8_t>(),
+                                                 output->MutableData<uint8_t>());
+  } else {
+    status = xnn_setup_resize_bilinear2d_nhwc_s8(op0_.get(), workspace.get(), input->Data<int8_t>(),
+                                                 output->MutableData<int8_t>());
+  }
+
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_resize_bilinear2d_nhwc_",
                            OpTypeToString(op_type_), " returned ", status);
   }
-  status = xnn_run_operator(op0_.get(), t_pool);
+
+  status = xnn_run_operator(op0_.get(), threadpool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }
+
   return Status::OK();
 }
 

@@ -9,6 +9,8 @@
 #include "core/common/common.h"
 #include "core/util/math.h"
 
+#include "xnnpack/cache.h"
+
 namespace onnxruntime {
 class GraphViewer;
 class Node;
@@ -32,14 +34,6 @@ class MatMul : public XnnpackKernel {
   AllocatorPtr myAlloc;
 
   XnnpackOperator op0_ = nullptr;
-
-#ifdef XNN_CACHE_ENABLE
-#if XNN_PLATFORM_JIT
-  xnn_code_cache code_cache_;
-#endif
-  xnn_caches xnn_caches_ = {0, 0};
-  xnn_weights_cache weights_cache_;
-#endif
 };
 
 }  // namespace xnnpack

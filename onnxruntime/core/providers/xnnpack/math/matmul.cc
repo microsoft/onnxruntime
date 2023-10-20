@@ -62,7 +62,7 @@ bool MatMul::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& g
   return supported;
 }
 
-MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info) {}
+MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info, /*enable_caches*/ true) {}
 
 Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                        /*out*/ bool& is_packed,
@@ -99,9 +99,11 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       output_max,
       flags,
 #ifdef XNN_CACHE_ENABLE
-      &xnn_caches_,
+      GetCodeCache(),
+      GetWeightsCache(),
 #else
-      0,
+      nullptr,
+      nullptr,
 #endif
       &p);
 
@@ -116,7 +118,7 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 
 Status MatMul::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
-  pthreadpool_t t_pool = GetThreadPool();
+  pthreadpool_t threadpool = GetThreadPool();
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
@@ -126,13 +128,12 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
 
   auto* y_data = y->MutableData<float>();
 
-  xnn_status status = xnn_setup_fully_connected_nc_f32(
-      op0_.get(),
-      a->Shape()[0],
-      a->Data<float>(),
-      y_data,
-      t_pool);
+  xnn_status status = xnn_reshape_fully_connected_nc_f32(op0_.get(), a->Shape()[0], threadpool);
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_f32 returned ", status);
+  }
 
+  status = xnn_setup_fully_connected_nc_f32(op0_.get(), a->Data<float>(), y_data);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_f32 returned ", status);
   }

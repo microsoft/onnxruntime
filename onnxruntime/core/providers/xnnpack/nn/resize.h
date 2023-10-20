@@ -31,7 +31,6 @@ class Resize : public UpsampleBase, public XnnpackKernel {
                          const TensorShapeVector& output_dims) const;
 
  private:
-  bool is_NHWC_;
   XnnpackOperator op0_;
   TensorShapeVector output_dims_;
   OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
