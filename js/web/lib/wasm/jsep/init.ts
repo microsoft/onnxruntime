@@ -3,14 +3,14 @@
 
 import {Env} from 'onnxruntime-common';
 
-import {JSEP, OrtWasmModule} from '../binding/ort-wasm';
+import {OrtWasmModule} from '../binding/ort-wasm';
 import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
 import {TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
-import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
+import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
 
 /* eslint-disable no-bitwise */
 
@@ -90,8 +90,7 @@ class ComputeContextImpl implements ComputeContext {
     this.inputs = inputs;
   }
 
-  compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
-      TensorView[] {
+  compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[] {
     // prepare inputs. inputs should always be valid data.
     const mappedInputs =
         inputsOutputsMapping?.inputs?.map(i => typeof i === 'number' ? this.inputs[i] : i) ?? this.inputs;
@@ -120,6 +119,11 @@ class ComputeContextImpl implements ComputeContext {
         this.module.HEAPU32[offset++] = dims[i];
       }
       return this.module._JsepOutput(this.opKernelContext, index, data);
+    } catch (e) {
+      throw new Error(
+          `Failed to generate kernel's output[${index}] with dims [${dims}]. ` +
+          'If you are running with pre-allocated output, please make sure the output type/dims are correct. ' +
+          `Error: ${e}`);
     } finally {
       this.module.stackRestore(stack);
     }
@@ -138,7 +142,7 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
 
     init(
         // backend
-        {backend},
+        backend,
 
         // jsepAlloc()
         (size: number) => backend.alloc(size),
@@ -178,13 +182,13 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
         (kernel: number) => backend.releaseKernel(kernel),
 
         // jsepRun
-        (kernel: number, contextDataOffset: number, sessionState: JSEP.SessionState) => {
+        (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => {
           LOG_DEBUG(
               'verbose',
-              () => `[WebGPU] jsepRun: sessionId=${sessionState.sessionId}, kernel=${kernel}, contextDataOffset=${
+              () => `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${
                   contextDataOffset}`);
           const context = new ComputeContextImpl(module, backend, contextDataOffset);
-          return backend.computeKernel(kernel, context, sessionState.errors);
+          return backend.computeKernel(kernel, context, errors);
         });
   }
 };

@@ -183,6 +183,7 @@ static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.o
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequence_tensor.onnx");
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_ATTR_TESTER_URI = TSTR("testdata/custom_op_library/attr_tester.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_COPY_TENSOR_ARRAY_2 = TSTR("testdata/custom_op_library/copy_2_inputs_2_outputs.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_COPY_TENSOR_ARRAY_3 = TSTR("testdata/custom_op_library/copy_3_inputs_3_outputs.onnx");
@@ -1406,6 +1407,36 @@ TEST(CApiTest, test_custom_op_library) {
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 0, nullptr, lib_name.c_str());
 #endif
+}
+
+#if defined(__ANDROID__)
+TEST(CApiTest, DISABLED_test_custom_op_shape_infer_attr) {
+// To accomodate a reduced op build pipeline
+#elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
+TEST(CApiTest, DISABLED_test_custom_op_shape_infer_attr) {
+#else
+TEST(CApiTest, test_custom_op_shape_infer_attr) {
+#endif
+  std::vector<Input> inputs(1);
+  inputs[0].name = "input_0";
+  inputs[0].dims = {5};
+  inputs[0].values = {1.f, 2.f, 3.f, 4.f, 5.f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {5};
+  std::vector<float> expected_values_y = {6.f, 12.f, 18.f, 24.f, 30.f};
+
+  onnxruntime::PathString lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_library.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_library.dylib");
+#else
+  lib_name = ORT_TSTR("./libcustom_op_library.so");
+#endif
+
+  TestInference<float>(*ort_env, CUSTOM_OP_LIBRARY_ATTR_TESTER_URI, inputs, "output_0", expected_dims_y,
+                       expected_values_y, 0, nullptr, lib_name.c_str());
 }
 
 // It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
@@ -3199,6 +3230,15 @@ struct Merge {
       std::reverse(string_pool.begin(), string_pool.end());
     }
     strings_out->SetStringOutput(string_pool, {static_cast<int64_t>(string_pool.size())});
+    return Ort::Status(nullptr);
+  }
+  static Ort::Status InferOutputShape(Ort::ShapeInferContext& ctx) {
+    auto input_count = ctx.GetInputCount();
+    if (input_count != 2) {
+      return Ort::Status("input count should be 2", OrtErrorCode::ORT_INVALID_ARGUMENT);
+    }
+    Ort::ShapeInferContext::Shape shape_1 = {{-1}};
+    ctx.SetOutputShape(0, shape_1);
     return Ort::Status(nullptr);
   }
   bool reverse_ = false;

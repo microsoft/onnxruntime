@@ -3900,9 +3900,9 @@ def test_primitive_inputs(bool_argument, int_argument, float_argument):
                 out = self.relu(out)
             return out
 
-    assert type(bool_argument) is bool
-    assert type(int_argument) is int
-    assert type(float_argument) is float
+    assert type(bool_argument) is bool  # noqa: E721
+    assert type(int_argument) is int  # noqa: E721
+    assert type(float_argument) is float  # noqa: E721
 
     device = "cuda"
     N, D_in, H, D_out = 32, 784, 500, 10  # noqa: N806
@@ -3938,8 +3938,8 @@ def test_changing_bool_input_re_exports_model(bool_arguments):
                 out = self.relu(out)
             return out
 
-    assert type(bool_arguments[0]) is bool
-    assert type(bool_arguments[1]) is bool
+    assert type(bool_arguments[0]) is bool  # noqa: E721
+    assert type(bool_arguments[1]) is bool  # noqa: E721
 
     device = "cuda"
     N, D_in, H, D_out = 32, 784, 500, 10  # noqa: N806
@@ -5904,7 +5904,7 @@ def test_ops_for_padding_elimination(test_cases):
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
-    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "PadAndUnflatten"][0]
+    gathergrad_node = next(node for node in training_model.graph.node if node.op_type == "PadAndUnflatten")
 
     def find_input_node_type(model, arg):
         result = []

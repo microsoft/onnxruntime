@@ -25,7 +25,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 5.6
+    value: 5.7
   - name: BuildConfig
     value: Release
 
@@ -98,7 +98,7 @@ jobs:
           /bin/bash -c "
             set -ex; \
             ccache -s; \
-            /opt/python/cp38-cp38/bin/python3 tools/ci_build/build.py \
+            /opt/python/cp39-cp39/bin/python3 tools/ci_build/build.py \
               --config $(BuildConfig) \
               --enable_training \
               --mpi_home /opt/ompi \

@@ -1,4 +1,5 @@
-ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+# This file is deprecated and will be replaced by tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+ARG BASEIMAGE=nvidia/cuda:11.8.0-devel-ubi8
 ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=
@@ -163,10 +164,8 @@ CMD ["/bin/bash"]
 #Build manylinux2014 docker image end
 
 #Install TensorRT 8.6.1.6
-#RUN yum install -y wget
-RUN v="8.6.1.6-1.cuda11.8" &&\
-    yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&\
-    yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} libnvinfer-vc-plugin8-${v}\
+RUN v="8.6.1.6-1.cuda11.8" && CUDA_VERSION=$(nvcc --version | sed -n 's/^.*release \([0-9]\+\.[0-9]\+\).*$/\1/p') \
+    && dnf -y install libcudnn8-devel-*cuda$CUDA_VERSION* libcudnn8-*cuda$CUDA_VERSION* libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} libnvinfer-vc-plugin8-${v}\
         libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v} libnvinfer-vc-plugin-devel-${v} libnvinfer-headers-devel-${v}  libnvinfer-headers-plugin-devel-${v}
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 #Add our own dependencies

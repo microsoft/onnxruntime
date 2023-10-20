@@ -890,6 +890,47 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
 #endif
 }
 
+TEST(InferenceSessionTests, UseUserSpecifiedLoggingFunctionInSession) {
+  SessionOptions so;
+  /*
+  typedef void(ORT_API_CALL* OrtLoggingFunction)(
+      void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
+      const char* message);
+  */
+  std::vector<std::string> log_msgs;
+  so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
+                                const char* message) {
+    ORT_UNUSED_PARAMETER(severity);
+    ORT_UNUSED_PARAMETER(category);
+    ORT_UNUSED_PARAMETER(logid);
+    ORT_UNUSED_PARAMETER(code_location);
+    std::vector<std::string>* v_ptr = reinterpret_cast<std::vector<std::string>*>(param);
+    std::vector<std::string>& msg_vector = *v_ptr;
+    msg_vector.push_back(std::string(message));
+  };
+  so.user_logging_param = &log_msgs;
+  so.session_log_severity_level = static_cast<int>(Severity::kVERBOSE);
+  so.session_log_verbosity_level = 1;
+  so.session_logid = "InferenceSessionTests.UseUserSpecifiedLoggingFunctionInSession";
+
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "one session/one tag";
+  RunModel(session_object, run_options);
+
+// vlog output is disabled in release builds
+#ifndef NDEBUG
+  bool have_log_entry_with_vlog_session_msg =
+      (std::find_if(log_msgs.begin(), log_msgs.end(),
+                    [&](std::string msg) { return msg.find("Added input argument with name") != string::npos; }) !=
+       log_msgs.end());
+  ASSERT_TRUE(have_log_entry_with_vlog_session_msg);
+#endif
+}
+
 TEST(InferenceSessionTests, TestWithIstream) {
   SessionOptions so;
 
