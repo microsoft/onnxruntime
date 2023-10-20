@@ -171,10 +171,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       *output_shape.add_dim() = query_dims[1];
       *output_shape.add_dim() = query_dims[2] * query_dims[4];
       updateOutputShape(ctx, 0, output_shape);
-      return;
-    }
-
-    if (hasInputShape(ctx, 2)) {
+    } else if (hasInputShape(ctx, 2)) {
       auto& value_shape = getInputShape(ctx, 2);
       auto& value_dims = value_shape.dim();
       if (value_dims.size() != 3 && value_dims.size() != 4) {
@@ -192,10 +189,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
                                     ? (dmmha_packing ? value_dims[2] / 3 : value_dims[2])
                                     : value_dims[1] * value_dims[3];
       updateOutputShape(ctx, 0, output_shape);
-      return;
-    }
-
-    if (hasInputShape(ctx, 1)) {
+    } else if (hasInputShape(ctx, 1)) {
       auto& key_shape = getInputShape(ctx, 1);
       if (key_shape.dim().size() == 5) {  // packed KV
         ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput(ctx);
@@ -217,7 +211,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
         propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
       } else {
         if (sequence_length > 0 && past_dims[2].has_dim_value()) {
-          int64_t total_sequence_length = sequence_length + past_shape.dim(3).dim_value();
+          int64_t total_sequence_length = sequence_length + past_dims[2].dim_value();
 
           ONNX_NAMESPACE::TensorShapeProto present_shape;
           for (auto& dim : past_dims) {
@@ -799,6 +793,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("output_qk",
+              "Need output the cross attention MatMul(Q, K)",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, 1, hidden_size) or packed QKV with shape "
@@ -890,6 +888,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
                 "T",
                 OpSchema::Optional)
+        .Output(3,
+                "qk",
+                "normalized Q * K, of shape (batch_size, num_heads, 1, head_size). ",
+                "V",
+                OpSchema::Optional)
+        .TypeConstraint("V", {"tensor(float)"}, "Constrain qk output types to float32 tensors.")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")
