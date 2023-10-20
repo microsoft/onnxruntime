@@ -2147,5 +2147,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetScaledSumGradient) {
   ORT_THROW("ScaledSum gradient builder does not support ", input_count, " inputs");
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetResizeGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"ResizeGrad", kMSDomain, 1},
+              {GO(0), I(0), I(1), I(2)},
+              {GI(0)},
+              SrcNodeAttributes())};
+}
+
 }  // namespace training
 }  // namespace onnxruntime
