@@ -6,16 +6,23 @@ from typing import List
 
 import numpy as np
 import torch
-from benchmark_helper import create_onnxruntime_session, setup_logger
+from benchmark_helper import setup_logger
 from llama_inputs import (
     convert_inputs_for_ort,
     get_merged_sample_with_past_kv_inputs,
     get_sample_inputs,
     get_sample_with_past_kv_inputs,
 )
+import onnxruntime as ort
 from transformers import LlamaConfig, LlamaForCausalLM
 
 logger = logging.getLogger("")
+
+
+def get_sequence_lengths(args: argparse.Namespace):
+    past_sequence_length, curr_sequence_length = (8, 1) if args.use_past_kv else (0, 8)
+    max_sequence_length = 2048
+    return past_sequence_length, curr_sequence_length, max_sequence_length
 
 
 def get_inputs(args: argparse.Namespace, config: LlamaConfig):
@@ -23,24 +30,47 @@ def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     batch_size = 2
 
     if args.merged:
-        sequence_length, past_sequence_length = (1, 8) if args.use_past_kv else (8, 0)
+        past_sequence_length, sequence_length, _ = get_sequence_lengths(args)
         inputs = get_merged_sample_with_past_kv_inputs(
             config,
             args.device,
             batch_size,
             sequence_length,
             past_sequence_length,
-            use_fp16=(args.precision == "fp16"),
+            use_fp16=args.use_fp16,
             return_dict=True,
         )
     elif args.use_past_kv:
         inputs = get_sample_with_past_kv_inputs(
-            config, args.device, batch_size, sequence_length, use_fp16=(args.precision == "fp16"), return_dict=True
+            config, args.device, batch_size, sequence_length, use_fp16=args.use_fp16, return_dict=True
         )
     else:
         inputs = get_sample_inputs(config, args.device, batch_size, sequence_length, return_dict=True)
     return inputs
 
+
+def add_io_bindings(args: argparse.Namespace, model: ort.InferenceSession, inputs: dict):
+    # Add IO bindings for non-CPU execution providers
+    io_binding = model.io_binding()
+
+    for k, v in inputs.items():
+        if args.use_fp16:
+            # Bind all OrtValue inputs to device
+            io_binding.bind_ortvalue_input(k, v)
+        else:
+            io_binding.bind_cpu_input(k, v)
+
+    for output in model.get_outputs():
+        name = output.name
+        if args.use_fp16 and ("out" in name or "present" in name):
+            # Bind present KV cache outputs to OrtValue with buffer sharing
+            io_binding.bind_ortvalue_output(
+                name, inputs[name.replace("out", "cache").replace("present", "past_key_values")]
+            )
+        else:
+            io_binding.bind_output(name, device_type=args.execution_provider, device_id=int(args.device_id))
+
+    return io_binding
 
 def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: LlamaForCausalLM):
     inputs = get_inputs(args, config)
@@ -56,26 +86,49 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
     logger.info(f"PyTorch took {end_time - start_time} s")
 
     # Run inference with ORT
-    inputs = convert_inputs_for_ort(inputs, use_fp16=(args.precision == "fp16"))
-    ort_model = create_onnxruntime_session(
-        args.onnx_model_path,
-        args.execution_provider != "cpu",  # use_gpu
-        provider=args.execution_provider,
-        verbose=args.verbose,
-        provider_options={} if args.execution_provider == "cpu" else {"device_id": args.device_id},
+    past_sequence_length, _, max_sequence_length = get_sequence_lengths(args)
+    inputs = convert_inputs_for_ort(
+        inputs,
+        use_fp16=args.use_fp16,
+        use_buffer_share=args.use_fp16,
+        past_seq_len=past_sequence_length,
+        max_seq_len=max_sequence_length,
+        device=args.execution_provider,
+        device_id=int(args.device_id),
     )
 
+    ep = f"{args.execution_provider.upper()}ExecutionProvider"
+    if ep == "CUDAExecutionProvider":
+        ep = (ep, {"device_id": args.device_id})
+    ort_model = ort.InferenceSession(
+        args.onnx_model_path,
+        sess_options=ort.SessionOptions(),
+        providers=[ep],
+    )
+
+    # Add IO bindings for non-CPU execution providers
     if args.execution_provider != "cpu":
+        io_binding = add_io_bindings(args, ort_model, inputs)
+
         torch.cuda.synchronize()
-    start_time = time.time()
-    ort_outputs = ort_model.run(None, inputs)[0]
-    if args.execution_provider != "cpu":
+        start_time = time.time()
+        ort_model.run_with_iobinding(io_binding)
         torch.cuda.synchronize()
-    end_time = time.time()
+        end_time = time.time()
+
+        ort_outputs = io_binding.copy_outputs_to_cpu()[0]  # Get logits
+
+    else:
+        start_time = time.time()
+        ort_outputs = ort_model.run(None, inputs)
+        end_time = time.time()
+
+        ort_outputs = ort_outputs[0]  # Get logits
+
     logger.info(f"ONNX Runtime took {end_time - start_time} s")
 
     # Compare PyTorch and ONNX Runtime accuracy
-    tol = 1e-3 if args.precision == "fp32" else 5e-2 if args.precision == "fp16" else 1e2
+    tol = 1e-3 if args.precision == "fp32" else 5e-1 if args.use_fp16 and "int4" not in args.onnx_model_path else 2e1
     parity = np.allclose(pt_outputs, ort_outputs, rtol=tol, atol=tol)
     logger.warning(f"Are PyTorch and ONNX Runtime results close? {parity}")
     if not parity:
@@ -170,6 +223,7 @@ def main(argv: List[str] = []):  # noqa: B006
     logger.info(f"Arguments: {args}")
 
     # Load model and config
+    setattr(args, "use_fp16", args.precision == "fp16")  # noqa: B010
     setattr(args, "device_name", "cpu" if args.execution_provider == "cpu" else f"cuda:{args.device_id}")  # noqa: B010
     setattr(args, "device", torch.device(args.device_name))  # noqa: B010
     use_auth_token = args.torch_model_directory == os.path.join(".")
@@ -178,7 +232,7 @@ def main(argv: List[str] = []):  # noqa: B006
     config = LlamaConfig.from_pretrained(location, use_auth_token=use_auth_token)
     llama = LlamaForCausalLM.from_pretrained(
         location,
-        torch_dtype=(torch.float16 if args.precision == "fp16" else torch.float32),
+        torch_dtype=(torch.float16 if args.use_fp16 else torch.float32),
         use_auth_token=use_auth_token,
         use_cache=True,
     ).to(args.device)

@@ -34,23 +34,15 @@ def float_tensor(name: str, shape: List[int], random=False):
 
 
 class TestRotaryEmbeddingFusion(unittest.TestCase):
-    def setUp(
-        self,
-        batch_size: int = 2,
-        sequence_length: int = 8,
-        num_heads: int = 4,
-        head_size: int = 6,
-        past_sequence_length: int = 2,
-        max_sequence_length: int = 12,
-    ):
-        self.batch_size = batch_size
-        self.sequence_length = sequence_length
-        self.num_heads = num_heads
-        self.head_size = head_size
+    def setUp(self):
+        self.batch_size = 2
+        self.sequence_length = 8
+        self.num_heads = 4
+        self.head_size = 6
         self.hidden_size = num_heads * head_size
 
-        self.past_sequence_length = past_sequence_length
-        self.max_sequence_length = max_sequence_length
+        self.past_sequence_length = 2
+        self.max_sequence_length = 12
 
     def verify_fusion(self, expected_model_path, original_model_path):
         expected_model = OnnxModel(onnx.load(expected_model_path))

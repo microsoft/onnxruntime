@@ -114,7 +114,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.config,
             args.target_device,
             args.batch_size,
-            seq_len=(args.sequence_length if not args.past_present_share_buffer else max_seq_len),
+            seq_len=args.sequence_length,
             past_seq_len=0,
             use_fp16=args.use_fp16,
             return_dict=True,
@@ -124,20 +124,27 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.target_device,
             args.batch_size,
             seq_len=1,
-            past_seq_len=(args.sequence_length if not args.past_present_share_buffer else max_seq_len),
+            past_seq_len=args.sequence_length,
             use_fp16=args.use_fp16,
             return_dict=True,
         )
         init_inputs = convert_inputs_for_ort(
-            init_inputs, args.use_fp16, args.past_present_share_buffer, 0, args.device, args.device_id
+            init_inputs,
+            use_fp16=args.use_fp16,
+            use_buffer_share=args.past_present_share_buffer,
+            past_seq_len=0,
+            max_seq_len=max_seq_len,
+            device=args.device,
+            device_id=args.device_id,
         )
         iter_inputs = convert_inputs_for_ort(
             iter_inputs,
-            args.use_fp16,
-            args.past_present_share_buffer,
-            args.sequence_length,
-            args.device,
-            args.device_id,
+            use_fp16=args.use_fp16,
+            use_buffer_share=args.past_present_share_buffer,
+            past_seq_len=args.sequence_length,
+            max_seq_len=max_seq_len,
+            device=args.device,
+            device_id=args.device_id,
         )
 
     elif args.benchmark_type == "ort-msft":
@@ -148,28 +155,35 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.config,
             args.batch_size,
             past_seq_len=0,
-            seq_len=(args.sequence_length if not args.past_present_share_buffer else max_seq_len),
+            seq_len=args.sequence_length,
             use_fp16=args.use_fp16,
             split_kv=split_kv,
         )
         iter_inputs = get_msft_sample_inputs(
             args.config,
             args.batch_size,
-            past_seq_len=(args.sequence_length if not args.past_present_share_buffer else max_seq_len),
+            past_seq_len=args.sequence_length,
             seq_len=1,
             use_fp16=args.use_fp16,
             split_kv=split_kv,
         )
         init_inputs = convert_inputs_for_ort(
-            init_inputs, args.use_fp16, args.past_present_share_buffer, 0, args.device, args.device_id
+            init_inputs,
+            use_fp16=args.use_fp16,
+            use_buffer_share=args.past_present_share_buffer,
+            past_seq_len=0,
+            max_seq_len=max_seq_len,
+            device=args.device,
+            device_id=args.device_id,
         )
         iter_inputs = convert_inputs_for_ort(
             iter_inputs,
-            args.use_fp16,
-            args.past_present_share_buffer,
-            args.sequence_length,
-            args.device,
-            args.device_id,
+            use_fp16=args.use_fp16,
+            use_buffer_share=args.past_present_share_buffer,
+            past_seq_len=args.sequence_length,
+            max_seq_len=max_seq_len,
+            device=args.device,
+            device_id=args.device_id,
         )
 
     else:

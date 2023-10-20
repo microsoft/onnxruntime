@@ -37,6 +37,7 @@ static void RunTest(
   std::vector<int64_t> pos_dims;
   std::vector<int64_t> cache_dims = {max_sequence_length, head_size / 2};
 
+  UNREFERENCED_PARAMETER(num_heads); // only referenced in assert
   assert(hidden_size != 0 && head_size != 0 && num_heads != 0 && max_sequence_length != 0);
   assert(max_sequence_length >= sequence_length);
   if (position_ids.size() == 1) {
@@ -55,6 +56,10 @@ static void RunTest(
   }
   if (!use_float16 && !disable_cpu) {
     execution_providers.push_back(DefaultCpuExecutionProvider());
+  }
+  if (execution_providers.size() == 0) {
+    // Return early if CI pipeline does not support EP (e.g. CUDA EP for CPU CI pipeline)
+    return;
   }
 
   OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);

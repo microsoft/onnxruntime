@@ -28,11 +28,6 @@ from onnx import TensorProto, helper
 
 import onnxruntime as ort
 
-seed = 2
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.set_printoptions(sci_mode=False)
-
 
 class SampleInputConfig:
     def __init__(
@@ -199,6 +194,11 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         self.llama_ms = LlamaMSRotaryEmbedding(
             self.config.hidden_size, self.config.num_heads, self.config.max_sequence_length
         )
+
+        seed = 2
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.set_printoptions(sci_mode=False)
 
     def create_onnx_graph(self, x_shape, pos_shape, cos, sin, interleaved):
         inputs = [

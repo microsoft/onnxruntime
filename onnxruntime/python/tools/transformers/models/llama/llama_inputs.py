@@ -127,6 +127,7 @@ def convert_inputs_for_ort(
     use_fp16: bool,
     use_buffer_share: bool = False,
     past_seq_len: int = 0,
+    max_seq_len: int = 2048,
     device: str = "",
     device_id: int = -1,
 ):
@@ -141,14 +142,21 @@ def convert_inputs_for_ort(
             # and GQA supports a causal mask by default
 
             # Instead, add the past sequence length input for GQA
-            ort_inputs["past_sequence_length"] = np.array(past_seq_len, dtype=np.int64)
+            ort_inputs["past_sequence_length"] = np.array([past_seq_len], dtype=np.int64)
         else:
             ort_inputs[k] = v.detach().cpu().numpy()
 
     # Enable past-present-share-buffer by using device memory directly
     if use_buffer_share and device != "" and device != "cpu" and device_id > -1:
         for k, v in ort_inputs.items():
-            ort_inputs[k] = OrtValue.ortvalue_from_numpy(v, device_type=device, device_id=device_id)
+            new_v = v
+            # Allocate new buffers with max_sequence_length for GQA
+            if "cache" in k or "past_key_values" in k:
+                # Copy v (BxSxPxH) into new_v (BxSxMxH)
+                batch_size, num_heads, _, head_size = v.shape
+                new_v = np.zeros((batch_size, num_heads, max_seq_len, head_size), dtype=v.dtype)
+                new_v[:batch_size, :num_heads, :past_seq_len, :head_size] = v
+            ort_inputs[k] = OrtValue.ortvalue_from_numpy(new_v, device_type=device, device_id=device_id)
 
     return ort_inputs
 

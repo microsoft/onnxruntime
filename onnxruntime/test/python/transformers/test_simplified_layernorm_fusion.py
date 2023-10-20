@@ -33,19 +33,12 @@ def float_tensor(name: str, shape: List[int], random=False):
 
 
 class TestSimplifiedLayerNormFusion(unittest.TestCase):
-    def setUp(
-        self,
-        vocab_size: int = 5,
-        batch_size: int = 2,
-        sequence_length: int = 8,
-        hidden_size: int = 16,
-        epsilon: float = 0.000009999999747378752,
-    ):
-        self.vocab_size = vocab_size
-        self.batch_size = batch_size
-        self.sequence_length = sequence_length
-        self.hidden_size = hidden_size
-        self.epsilon = epsilon
+    def setUp(self):
+        self.vocab_size = 5
+        self.batch_size = 2
+        self.sequence_length = 8
+        self.hidden_size = 16
+        self.epsilon = 0.000009999999747378752
 
     def verify_fusion(self, expected_model_path, original_model_path):
         expected_model = OnnxModel(onnx.load(expected_model_path))

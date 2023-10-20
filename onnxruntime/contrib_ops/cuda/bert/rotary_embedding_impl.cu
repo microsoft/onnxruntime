@@ -87,6 +87,11 @@ Status LaunchRotaryEmbeddingKernel(
   const dim3 grid(num_heads, sequence_length, batch_size);
   const dim3 block(head_size, 1, 1);
 
+  // Note: Current implementation assumes head_size <= max_threads_per_block
+  // because head_size is currently large for LLaMA-2. For smaller head_size
+  // and num_heads values, we can create a block as `block(num_heads, head_size, 1)`
+  // instead. This will require kernel changes to support.
+
   assert(head_size <= max_threads_per_block);
   RotaryEmbeddingBSNH<<<grid, block, smem_size, stream>>>(
     output, input, cos_cache, sin_cache, position_ids,
