@@ -20,6 +20,9 @@ namespace optimizer_utils {
 // Check if TensorProto contains a floating point type.
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
+// Check if TensorProto contains a floating point 16 type.
+bool IsFloatingPoint16DataType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
 /** Check whether a input is initializer with specified float value.
 @param expected_value is the expected value of the initializer.
 @param is_constant means whether the initializer is required to be constant.

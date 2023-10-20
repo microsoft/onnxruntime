@@ -37,6 +37,10 @@ bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
          tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
 }
 
+bool IsFloatingPoint16DataType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+}
+
 // Check whether input is a constant scalar with expected float value.
 bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg, float expected_value, bool is_constant) {
   if (!IsScalar(input_arg)) {

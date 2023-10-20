@@ -31,6 +31,25 @@ static bool CheckBiasShape(const TensorShapeProto* bias_shape) {
   return bias_last_dim > 1;
 }
 
+bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
+  if (!node_arg.Exists()) {
+    return false;
+  }
+
+  const auto* type_proto = node_arg.TypeAsProto();
+  if (!type_proto) {
+    return false;
+  }
+
+  int32_t actual_data_type;
+  if (!utils::TryGetElementDataType(*type_proto, actual_data_type)) {
+    return false;
+  }
+
+  return data_type == actual_data_type;
+}
+
+
 /**
 MatMulIntegerToFloatFusion will fuse subgraph like below into MatMulIntegerToFloat:
 
@@ -64,7 +83,9 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
 
     ORT_RETURN_IF_ERROR(Recurse(mul_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14})) {
+    auto ep_type = node_ptr->GetExecutionProviderType();
+    bool cpu_ep = ep_type == kCpuExecutionProvider;
+    if (!(cpu_ep && HasElementDataType(*mul_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) || !graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) || !graph_utils::IsSupportedProvider(mul_node, GetCompatibleExecutionProviders())) {
       continue;
     }
 
