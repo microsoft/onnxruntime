@@ -72,8 +72,6 @@ from onnx_exporter import (
 from packaging import version
 from quantize_helper import QuantizeHelper
 
-from onnxruntime.quantization import create_calibrator, write_calibration_table, CalibrationMethod
-
 logger = logging.getLogger("")
 
 cpu_count = psutil.cpu_count(logical=False)
