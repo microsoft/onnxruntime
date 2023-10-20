@@ -1113,15 +1113,15 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         }
 
         // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
-        if (int8_enable && int8_calibration_cache_available){
+        if (int8_enable && int8_calibration_cache_available) {
           migraphx::quantize_int8_options quant_opts;
           migraphx::program_parameters quant_params;
 
           auto param_shapes = prog.get_parameter_shapes();
 
-          for (auto&& name : param_shapes.names()){
+          for (auto&& name : param_shapes.names()) {
             auto dynamic_range_i = map_dynamic_range.find(name);
-            if (dynamic_range_i != map_dynamic_range.end()){
+            if (dynamic_range_i != map_dynamic_range.end()) {
               quant_params.add(name, migraphx::argument(param_shapes[name], &(dynamic_range_i->second)));
             }
           }
