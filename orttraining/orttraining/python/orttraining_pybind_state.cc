@@ -114,14 +114,11 @@ struct TrainingParameters {
   std::unordered_set<std::string> weights_to_train;
   std::unordered_set<std::string> weights_not_to_train;
 
-  // onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
-
   // optimizer
   std::string training_optimizer_name;
   std::string lr_params_feed_name = "Learning_Rate";
   std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
   std::unordered_map<std::string, std::unordered_map<std::string, int64_t>> optimizer_int_attributes_map;
-  // onnxruntime::training::TrainingSession::OptimizerState optimizer_initial_state;
   std::unordered_map<std::string, std::vector<int>> sliced_schema;
   std::unordered_map<std::string, int> sliced_axes;
   std::vector<std::string> sliced_tensor_names;
