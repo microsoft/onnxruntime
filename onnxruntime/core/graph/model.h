@@ -182,14 +182,14 @@ class Model {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Get model's serialization proto data.
-  ONNX_NAMESPACE::ModelProto ToProto();
+  ONNX_NAMESPACE::ModelProto ToProto() const;
 
   // Get model's serialization proto data.
   // Save initializer larger than the given threshold (in bytes) into an external binary file
   // with the given name. This function is useful to avoid hitting the size limit of protobuf files.
   ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
                                                                   const PathString& file_path,
-                                                                  size_t initializer_size_threshold);
+                                                                  size_t initializer_size_threshold) const;
 
 #ifdef _WIN32
   static common::Status Save(Model& model, const std::wstring& file_path);
@@ -291,6 +291,14 @@ class Model {
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
+  /// <summary>
+  /// The functions cleans local function definitions in the model excluding
+  /// those that are contained within the retained.
+  /// This is called from GraphParitioner::InlineFunctionsAOT.
+  /// </summary>
+  /// <param name="retained">contains function IDs that should not be removed.</param>
+  void RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained);
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Model& fbs_model,
@@ -317,13 +325,6 @@ class Model {
   // Defined as a node based map so the memory is released when not all of the functions
   // are inlined and removed.
   NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>> model_local_function_templates_maps_;
-
-  /// <summary>
-  /// The functions cleans local function definitions in the model excluding
-  /// those that are contained within the retained
-  /// </summary>
-  /// <param name="retained">contains function IDs that should not be removed.</param>
-  void RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained);
 
 #else
   // properties that would normally come from ModelProto

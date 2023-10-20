@@ -145,14 +145,10 @@ Model::Model(const std::string& graph_name,
                                                           std::move(func_template_ptr));
   }
 
-  std::function<void(const InlinedHashSet<std::string>&)> model_functions_remover =
-      [this](const InlinedHashSet<std::string>& retained) {
-        RemoveLocalFunctionsProtos(retained);
-      };
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r.11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         logger, options.strict_shape_type_inference, std::move(model_functions_remover)));
+                         logger, options.strict_shape_type_inference));
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -269,14 +265,10 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), std::move(func_template_ptr));
   }
 
-  std::function<void(const InlinedHashSet<std::string>& retained)> model_functions_remover =
-      [this](const InlinedHashSet<std::string>& retained) {
-        RemoveLocalFunctionsProtos(retained);
-      };
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r.11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry,
-                         logger, options.strict_shape_type_inference, std::move(model_functions_remover)));
+                         logger, options.strict_shape_type_inference));
 }
 
 const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetModelLocalFunctionTemplates() const {
@@ -367,7 +359,7 @@ const Graph& Model::MainGraph() const noexcept {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-ModelProto Model::ToProto() {
+ModelProto Model::ToProto() const {
   // We want to return back the original proto
   // To that end invoke const overload of ToGraphProto()
   // that returns by value and, therefore, allows us to filter
@@ -381,7 +373,7 @@ ModelProto Model::ToProto() {
 
 ModelProto Model::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
                                                        const PathString& file_path,
-                                                       size_t initializer_size_threshold) {
+                                                       size_t initializer_size_threshold) const {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,

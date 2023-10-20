@@ -1144,18 +1144,15 @@ Graph::Graph(const Model& owning_model,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
              const logging::Logger& logger,
-             bool strict_shape_type_inference,
-             std::function<void(const InlinedHashSet<std::string>&)> model_functions_remover)
+             bool strict_shape_type_inference)
     : Graph(owning_model, graph_proto, domain_to_version, ir_version,
-            schema_registry, nullptr, nullptr, logger,
-            strict_shape_type_inference, std::move(model_functions_remover)) {}
+            schema_registry, nullptr, nullptr, logger, strict_shape_type_inference) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
              const logging::Logger& logger,
-             bool strict_shape_type_inference,
-             std::function<void(const InlinedHashSet<std::string>&)> model_functions_remover)
+             bool strict_shape_type_inference)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1163,7 +1160,6 @@ Graph::Graph(const Model& owning_model,
       runtime_optimizations_(*runtime_optimizations_ptr_),
 #endif
       schema_registry_(schema_registry),
-      model_functions_remover_(std::move(model_functions_remover)),
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
       ir_version_(ir_version),
@@ -1328,8 +1324,7 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             &parent_graph,
             &parent_node,
             parent_graph.logger_,
-            parent_graph.strict_shape_type_inference_,
-            std::function<void(const InlinedHashSet<std::string>&)>()) {
+            parent_graph.strict_shape_type_inference_) {
 }
 
 Graph::Graph(const Model& owning_model,
@@ -1346,8 +1341,7 @@ Graph::Graph(const Model& owning_model,
             nullptr,
             nullptr,
             logger,
-            strict_shape_type_inference,
-            std::function<void(const InlinedHashSet<std::string>&)>()) {
+            strict_shape_type_inference) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {
@@ -4260,7 +4254,7 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
   return Status::OK();
 }
 
-Status Graph::FunctionToGraph(const ONNX_NAMESPACE::FunctionProto& func_to_inline) {
+Status Graph::InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline) {
   auto to_node_arg = [this](const std::string& name) {
     return &this->GetOrCreateNodeArg(name, nullptr);
   };
@@ -4327,7 +4321,7 @@ Status Graph::InlineFunction(Node& callnode) {
     function_utils::Specialize(inlined_fp, callnode, uniq_identifier);
 
     // In this case, global Resolve() will take care of everything.
-    ORT_RETURN_IF_ERROR(FunctionToGraph(inlined_fp));
+    ORT_RETURN_IF_ERROR(InlineFunctionProto(inlined_fp));
   } else {
     // Uncommon scenario. Inlining a node representing a fused sub-graph.
     // TODO: Unclear that this feature is needed. Can this be removed?

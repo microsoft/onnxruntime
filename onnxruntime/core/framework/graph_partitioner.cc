@@ -15,6 +15,7 @@
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 // #define COUNT_NON_CUDA_OPS
@@ -795,7 +796,8 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 
 #ifndef ORT_MINIMAL_BUILD
 
-Status GraphPartitioner::InlineFunctionsAOT(Graph& graph,
+Status GraphPartitioner::InlineFunctionsAOT(Model& model,
+                                            Graph& graph,
                                             const ExecutionProviders& execution_providers,
                                             const KernelRegistryManager& kernel_registry_manager) const {
   InlinedHashSet<std::string> not_inlined;
@@ -814,7 +816,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Graph& graph,
     ORT_RETURN_IF_ERROR(graph.Resolve());
   } while (true);
 
-  graph.RemoveLocalFunctions(not_inlined);
+  model.RemoveLocalFunctionsProtos(not_inlined);
 
   return Status::OK();
 }
