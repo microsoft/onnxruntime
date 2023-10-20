@@ -55,9 +55,12 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      DockerBuildArgs: "
+      --build-arg BUILD_ATEN=true
+      --build-arg BUILD_UID=$( id -u )
+      "
       Repository: 'onnxruntimecpubuildaten'
       UseImageCacheContainerRegistry: true
       UsePipelineCache: false

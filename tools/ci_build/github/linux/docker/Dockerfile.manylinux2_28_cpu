@@ -4,6 +4,8 @@ ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
 ARG LD_LIBRARY_PATH_ARG=${DEVTOOLSET_ROOTPATH}/usr/lib64:${DEVTOOLSET_ROOTPATH}/usr/lib:${DEVTOOLSET_ROOTPATH}/usr/lib64/dyninst:${DEVTOOLSET_ROOTPATH}/usr/lib/dyninst:/usr/local/lib64
 ARG PREPEND_PATH=/usr/lib/jvm/msopenjdk-11/bin:${DEVTOOLSET_ROOTPATH}/usr/bin:
+ARG BUILD_LORT=false
+ARG BUILD_ATEN=false
 
 #Build manylinux2014 docker image begin
 FROM $BASEIMAGE AS runtime_base
@@ -156,7 +158,14 @@ ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
-RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
+RUN if [ $BUILD_LORT = true ]; then \
+    cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_lort.sh ; \
+    else if [ $BUILD_ATEN = true ]; then  \
+    cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_aten.sh ; \
+    else \
+    cd /tmp/scripts && /tmp/scripts/manylinux/install_deps.sh ; \
+    fi
+RUN rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
