@@ -257,8 +257,8 @@ def profile_group_norm_func(
         )
 
 
-def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, silu=True, has_skip=True, sort=True):
-    with ke.benchmark(sort):
+def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, silu=True, has_skip=True):
+    with ke.benchmark():
         for func in dtype_to_funcs(dtype):
             profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, silu, has_skip, func)
         # ck function
@@ -293,10 +293,8 @@ def profile():
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("batch_size", type=int)
     group.add_argument("height", type=int)
     group.add_argument("width", type=int)
@@ -305,13 +303,12 @@ if __name__ == "__main__":
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("--silu", action="store_true")
     group.add_argument("--has_skip", action="store_true")
-    group.add_argument("--sort", action="store_true")
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(
+        args.func(
             args.batch_size,
             args.height,
             args.width,
@@ -320,5 +317,4 @@ if __name__ == "__main__":
             args.dtype,
             args.silu,
             args.has_skip,
-            args.sort,
         )

@@ -209,7 +209,7 @@ def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int,
         ke.report(StridedBatchedGemmMetric(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k, batch))
 
 
-def profile_with_args(dtype, transa, transb, m, n, k, batch, sort):
+def profile_with_args(dtype, transa, transb, m, n, k, batch):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
     fn_rocblas = getattr(ke, "RocBlasStridedBatchedGemm" + dtype_suffix)
@@ -217,7 +217,7 @@ def profile_with_args(dtype, transa, transb, m, n, k, batch, sort):
     fn_tunable = getattr(ke, "StridedBatchedGemmTunable" + dtype_suffix + transab_suffix)
     if ke.is_hipblaslt_available():
         fn_hipblaslt = getattr(ke, "StridedBatchedGemmHipBlasLt" + dtype_suffix + transab_suffix)
-    with ke.benchmark(sort):
+    with ke.benchmark():
         profile_gemm_func(fn_rocblas, dtype, transa, transb, m, n, k, batch)
         profile_gemm_func(fn_ck, dtype, transa, transb, m, n, k, batch)
         profile_gemm_func(fn_tunable, dtype, transa, transb, m, n, k, batch)
@@ -230,14 +230,12 @@ def profile():
     for dtype in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=False):
             for batch in [1, 32, 64]:
-                profile_with_args(dtype, False, False, m, n, k, batch, True)
+                profile_with_args(dtype, False, False, m, n, k, batch)
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("transa", choices="NT")
     group.add_argument("transb", choices="NT")
@@ -245,12 +243,9 @@ if __name__ == "__main__":
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
     group.add_argument("batch", type=int)
-    group.add_argument("--sort", action="store_true")
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(
-            args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch, args.sort
-        )
+        args.func(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch)

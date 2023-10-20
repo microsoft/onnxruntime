@@ -93,8 +93,8 @@ def profile_gemm_func(m, n, k, dtype, func):
     ke.report(MatrixMulMetric(func, dtype, duration_ms, total_bytes, m, n, k))
 
 
-def profile_with_args(m, n, k, dtype, sort):
-    with ke.benchmark(sort):
+def profile_with_args(m, n, k, dtype):
+    with ke.benchmark():
         for func in dtype_to_funcs(dtype):
             profile_matmul_fp_int4_func(m, n, k, dtype, func, True)
 
@@ -117,23 +117,20 @@ def profile():
                 (11008, 4096),
                 (2 * 11008, 4096),
             ):
-                profile_with_args(m, n, k, dt, False)
+                profile_with_args(m, n, k, dt)
                 print()
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("m", type=int)
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
     group.add_argument("dtype", choices=dtypes)
-    group.add_argument("--sort", action="store_true")
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.m, args.n, args.k, args.dtype, args.sort)
+        args.func(args.m, args.n, args.k, args.dtype)

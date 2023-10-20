@@ -9,6 +9,7 @@ import ctypes
 import os
 import sys
 from abc import abstractmethod
+from argparse import ArgumentParser, Action
 from contextlib import contextmanager
 from dataclasses import dataclass
 
@@ -38,10 +39,14 @@ library_files_to_load = [
     "onnxruntime_pybind11_state.so",
     "libonnxruntime_providers_shared.so",
 ]
+_is_cuda_available = False
+_is_rocm_available = False
 if "CUDAExecutionProvider" in available_providers:
     library_files_to_load.append("libonnxruntime_providers_cuda.so")
+    _is_cuda_available = True
 if "ROCMExecutionProvider" in available_providers:
     library_files_to_load.append("libonnxruntime_providers_rocm.so")
+    _is_rocm_available = True
 
 library_to_load = []
 
@@ -56,7 +61,8 @@ for lib in library_files_to_load:
 
 
 # use RTLD_GLOBAL to bring all symbols to global name space
-libraries = [ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL) for lib_path in library_to_load]
+_libraries = [ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL) for lib_path in library_to_load]
+del library_files_to_load, library_to_load
 
 # pylint: disable=wrong-import-position, disable=unused-import
 import _kernel_explorer  # noqa: E402, F401
@@ -112,19 +118,23 @@ class ComputeAndBandwidthMetric(ComputeMetric, BandwidthMetric):
     pass
 
 
+@dataclass
+class _KeContext:
+    sort: bool = False
+
+
+_ke_context = _KeContext()
+
+
 class InstanceBenchmarkReporter:
     def __init__(self):
-        self.sort = False
         self.best = float("inf")
         self.reporters = []
-
-    def set_sort(self, sort):
-        self.sort = sort
 
     def make_report(self):
         self.reporters.sort()
         for item in self.reporters:
-            if item.milliseconds_duration > 0 and item.milliseconds_duration < self.best:
+            if not _ke_context.sort and item.milliseconds_duration > 0 and item.milliseconds_duration < self.best:
                 self.best = item.milliseconds_duration
                 print(item.report(), "*")
             else:
@@ -133,16 +143,19 @@ class InstanceBenchmarkReporter:
 
     def receive(self, status):
         self.reporters.append(status)
-        if not self.sort:
+        if not _ke_context.sort:
             self.make_report()
+
+    def _reset_best(self):
+        self.best = float("inf")
 
 
 _reporter = InstanceBenchmarkReporter()
 
 
 @contextmanager
-def benchmark(sort):
-    _reporter.set_sort(sort)
+def benchmark():
+    _reporter._reset_best()
     try:
         yield
     finally:
@@ -151,3 +164,85 @@ def benchmark(sort):
 
 def report(status):
     _reporter.receive(status)
+
+
+def register_common_arguments(parser: ArgumentParser):
+    class SortAction(Action):
+        def __init__(self, option_strings, dest, default=False, help=None):
+            super().__init__(option_strings=option_strings, dest=dest, nargs=0, default=default, help=help)
+
+        def __call__(self, parser, namespace, values, option_string=None):
+            # super().__call__(parser, namespace, values, option_string=option_string)
+            setattr(namespace, self.dest, True)
+            _ke_context.sort = True
+
+    def set_ort_severity(v):
+        v = int(v)
+        onnxruntime_pybind11_state.set_default_logger_severity(v)
+        return v
+
+    def set_ort_verbosity(v):
+        v = int(v)
+        onnxruntime_pybind11_state.set_default_logger_verbosity(v)
+        return v
+
+    def set_func_name(name):
+        import inspect
+
+        main_module_globals = inspect.stack()[-1].frame.f_globals
+        f = main_module_globals.get(name, None)
+        if f is None:
+            from difflib import SequenceMatcher as matcher
+
+            scored_attrs = list(reversed(sorted([(matcher(None, name, a).ratio(), a) for a in main_module_globals])))
+            top10 = "\n    ".join([a for _, a in scored_attrs[:10]])
+            msg = f""""{name}" is not valid function for "--func" argument, top 10 matches are:\n    {top10}"""
+            print(msg)
+            raise ValueError(msg)
+        return f
+
+    group = parser.add_argument_group("KE args", "Common arguments for kernel explorer")
+    group.add_argument(
+        "--sort",
+        action=SortAction,
+        help="control the sort of ke benchmark results based on timing",
+    )
+    group.add_argument(
+        "--ort_default_logger_severity",
+        default=2,
+        choices=[0, 1, 2, 3, 4],
+        type=set_ort_severity,
+        help="0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal",
+    )
+    group.add_argument("--ort_default_logger_verbosity", default=0, type=set_ort_verbosity)
+    group.add_argument(
+        "--func",
+        default="profile_with_args",
+        help="run test of the pytest function, if not set run profile_with_args, the test function must be accessible from the main module.",
+        type=set_func_name,
+    )
+
+    return parser
+
+
+def get_argument_parser():
+    parser = ArgumentParser()
+    return register_common_arguments(parser)
+
+
+def has_args():
+    if "--help" in sys.argv or "-h" in sys.argv or "--func" in sys.argv:
+        return True
+
+    # parse the KE args group
+    parser = get_argument_parser()
+    _, remainder = parser.parse_known_args(sys.argv)
+    return len(remainder) > 1  # the file path is always the remainder
+
+
+def is_cuda_available():
+    return _is_cuda_available
+
+
+def is_rocm_available():
+    return _is_rocm_available

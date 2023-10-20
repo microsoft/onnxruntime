@@ -175,8 +175,8 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func, 
     ke.report(SkipLayerNormMetric(func, dtype, duration_ms, total_bytes, batch_size, seq_len, hidden_size))
 
 
-def profile_with_args(batch_size, seq_len, hidden_size, dtype, sort=True, has_optional_output=False, simplified=False):
-    with ke.benchmark(sort):
+def profile_with_args(batch_size, seq_len, hidden_size, dtype, has_optional_output=False, simplified=False):
+    with ke.benchmark():
         for func in dtype_to_funcs(dtype, simplified):
             profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func, has_optional_output)
 
@@ -189,28 +189,24 @@ def profile():
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("batch_size", type=int)
     group.add_argument("seq_len", type=int)
     group.add_argument("hidden_size", type=int)
     group.add_argument("dtype", choices=dtypes)
-    group.add_argument("--sort", action="store_true")
     group.add_argument("--has_optional_output", "-o", action="store_true")
     group.add_argument("--simplified", "-s", action="store_true", default=False)
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(
+        args.func(
             args.batch_size,
             args.seq_len,
             args.hidden_size,
             args.dtype,
-            args.sort,
             args.has_optional_output,
             args.simplified,
         )

@@ -48,8 +48,8 @@ def profile_dequantize_int4_func(n, k, dtype, func):
     ke.report(DequantizeInt4Metric(func, dtype, duration_ms, total_bytes, n, k))
 
 
-def profile_with_args(n, k, dtype, sort):
-    with ke.benchmark(sort):
+def profile_with_args(n, k, dtype):
+    with ke.benchmark():
         for func in dtype_to_funcs(dtype):
             profile_dequantize_int4_func(n, k, dtype, func)
 
@@ -57,22 +57,19 @@ def profile_with_args(n, k, dtype, sort):
 def profile():
     for dt in dtypes:
         for n, k in ((4096, 4096), (4096, 12288), (12288, 4096)):
-            profile_with_args(n, k, dt, True)
+            profile_with_args(n, k, dt)
             print()
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
     group.add_argument("dtype", choices=dtypes)
-    group.add_argument("--sort", action="store_true")
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.n, args.k, args.dtype, args.sort)
+        args.func(args.n, args.k, args.dtype)

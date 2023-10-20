@@ -153,10 +153,10 @@ def profile_gemmfastgelu_func(my_func, dtype: str, m: int, n: int, k: int, trans
         ke.report(GemmFastGeluMetric(impl, dtype, duration_ms, floating_point_operations, transa, transb, m, n, k))
 
 
-def profile_with_args(transa, transb, dtype, m, n, k, sort):
+def profile_with_args(transa, transb, dtype, m, n, k):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
-    with ke.benchmark(sort):
+    with ke.benchmark():
         profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluUnfused" + dtype_suffix), dtype, m, n, k, transa, transb)
         profile_gemmfastgelu_func(
             getattr(ke, "CKGemmFastGelu" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
@@ -173,24 +173,22 @@ def profile_with_args(transa, transb, dtype, m, n, k, sort):
 def profile():
     for dtype in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=True):
-            profile_with_args(False, False, dtype, m, n, k, True)
+            profile_with_args(False, False, dtype, m, n, k)
             print()
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("transa", choices="NT")
     group.add_argument("transb", choices="NT")
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("m", type=int)
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
-    group.add_argument("--sort", action="store_true")
-    if len(sys.argv) == 1:
+
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k, args.sort)
+        args.func(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k)

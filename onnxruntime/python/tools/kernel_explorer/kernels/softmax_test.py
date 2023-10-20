@@ -104,8 +104,8 @@ def profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, f
         ke.report(SoftmaxMetric(impl, dtype, duration_ms, total_bytes, batch_count, softmax_elements, is_log_softmax))
 
 
-def profile_with_args(batch_count, softmax_elements, is_log_softmax, dtype, sort):
-    with ke.benchmark(sort):
+def profile_with_args(batch_count, softmax_elements, is_log_softmax, dtype):
+    with ke.benchmark():
         for func in dtype_to_funcs(dtype):
             profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, func)
         # ck function
@@ -119,23 +119,20 @@ profile_size = [(1, 2048), (8, 2048), (65536, 4096)]
 def profile():
     for dtype in dtypes:
         for batch_count, softmax_elements in profile_size:
-            profile_with_args(batch_count, softmax_elements, False, dtype, True)
+            profile_with_args(batch_count, softmax_elements, False, dtype)
             print()
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("batch_count", type=int)
     group.add_argument("softmax_elements", type=int)
     group.add_argument("is_log_softmax", type=int)
     group.add_argument("dtype", choices=dtypes)
-    group.add_argument("--sort", action="store_true")
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.batch_count, args.softmax_elements, args.is_log_softmax, args.dtype, args.sort)
+        args.func(args.batch_count, args.softmax_elements, args.is_log_softmax, args.dtype)
