@@ -6,14 +6,25 @@ parameters:
   type: boolean
   default: false
 
-steps:
-- ${{ if eq(parameters.DownloadCUDA, 'true') }}:
-  - powershell: |
-      azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+- jobs:
+  - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
+    - job: Download CUDA
+      strategy:
+        matrix:
+          CUDA12:
+            CUDA_VERSION: '12.2'
+          CUDA11:
+            CUDA_VERSION: '11.8'
+        steps:
 
-- task: BatchScript@1
-  displayName: 'setup env'
-  inputs:
-    filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
-    modifyEnvironment: true
-    workingFolder: '$(Build.BinariesDirectory)'
+          - powershell: |
+              azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v$(CUDA_VERSION)" $(Agent.TempDirectory)
+  - job: Setup Env
+    dependsOn: Download CUDA
+    tasks:
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
