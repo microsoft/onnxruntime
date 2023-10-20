@@ -108,7 +108,7 @@ struct OpenVINO_Provider : Provider {
       if (num_of_threads <= 0) {
         num_of_threads = 1;
         LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_threads' should be in the positive range.\n "
-                         << "Executing with num_threads=1";
+                              << "Executing with num_threads=1";
       }
     }
 
@@ -117,7 +117,7 @@ struct OpenVINO_Provider : Provider {
       if (num_streams <= 0) {
         num_streams = 1;
         LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'num_streams' should be in the range of 1-8.\n "
-                         << "Executing with num_streams=1";
+                              << "Executing with num_streams=1";
       }
     }
     std::string bool_flag = "";
