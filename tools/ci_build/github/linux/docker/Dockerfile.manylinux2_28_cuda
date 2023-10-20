@@ -8,7 +8,6 @@ ARG BASEIMAGE=nvidia/cuda:12.2.0-devel-ubi8
 ARG DEVTOOLSET_ROOTPATH=/usr
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64
 ARG PREPEND_PATH=/usr/local/cuda/binet
-ARG TRT_VERSION=none
 ARG INSTALL_CUDNN=false
 
 #Build manylinux docker image begin
@@ -165,9 +164,8 @@ RUN if [ "$INSTALL_CUDNN" = true ]; then  \
 fi
 
 #Install TensorRT only if TRT_VERSION is not empty
-RUN if [ "$TRT_VERSION" = none ]; then  \
-    echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
-else \
+RUN if [ -n "$TRT_VERSION" ]; then  \
+    echo "TRT_VERSION is $TRT_VERSION" && \
     dnf -y install  \
     libnvinfer8-${TRT_VERSION}  \
     libnvparsers8-${TRT_VERSION}  \
@@ -181,6 +179,8 @@ else \
     libnvinfer-vc-plugin-devel-${TRT_VERSION}  \
     libnvinfer-headers-devel-${TRT_VERSION}  \
     libnvinfer-headers-plugin-devel-${TRT_VERSION};  \
+else \
+    echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
 
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
