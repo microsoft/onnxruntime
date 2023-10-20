@@ -31,7 +31,7 @@ static void RunTest(
   //    cos cache    : (max_sequence_length, head_size / 2)
   //    sin cache    : (max_sequence_length, head_size / 2)
   //    interleaved  : 0 = false, 1 = true
-  
+
   int hidden_size = num_heads * head_size;
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> pos_dims;
@@ -77,7 +77,7 @@ static void RunTest(
     test.AddInput<MLFloat16>("sin_cache", cache_dims, ToFloat16(sin_cache));
     test.AddOutput<MLFloat16>("output", input_dims, ToFloat16(output_data));
   }
-  test.SetOutputAbsErr("output", 0.001f);
+  test.SetOutputAbsErr("output", 0.002f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 

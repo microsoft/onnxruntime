@@ -1031,11 +1031,11 @@ class FusionRotaryEmbeddings(Fusion):
             self.add_nodes_to_remove(position_ids_from_sin_path[:-1])
             self.add_nodes_to_remove(position_ids_from_cos_path[:-1])
 
-            if past_seq_len_path is None and len(self.model.get_children(past_seq_len_path[0])) == 1:
+            if past_seq_len_path is not None and len(self.model.get_children(past_seq_len_path[0])) == 1:
                 # In merged HF model, output of Gather in past_seq_len_path is used twice
                 # for past_key_values.0.key and once for other past_key_values
                 self.add_nodes_to_remove(past_seq_len_path)
-            if curr_seq_len_path is None:
+            if curr_seq_len_path is not None:
                 self.add_nodes_to_remove(curr_seq_len_path[:-1])
 
         self.increase_counter(self.base_name)
