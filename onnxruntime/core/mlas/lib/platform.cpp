@@ -487,6 +487,16 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
+#if defined(__linux__)
+    //
+    // Check if the processor supports ASIMD I8MM instructions.
+    //
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmla;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
+    }
+#endif
+
 #endif // MLAS_TARGET_ARM64
 #if defined(MLAS_TARGET_POWER)
     this->GemmFloatKernel = MlasSgemmKernel;
