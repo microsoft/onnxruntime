@@ -2942,18 +2942,8 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   float* input_tensor_data = nullptr;
   ONNXTensorElementDataType type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
 
-  std::cout << "cudaMalloc size is " << tensor_size * type_size;
-  assert(cudaMalloc(&input_tensor_data, tensor_size * type_size) == cudaSuccess);
+  assert(cudaMallocHost(&input_tensor_data, tensor_size * type_size) == cudaSuccess);
   assert(cudaMemcpy(input_tensor_data, x_values.data(), tensor_size * type_size, cudaMemcpyHostToDevice) == cudaSuccess);
-
-
-  std::array<float, 3 * 2> x_values_0;
-  assert(cudaMemcpy(x_values_0.data(), input_tensor_data, sizeof(float) * x_values_0.size(), cudaMemcpyDeviceToHost) == cudaSuccess);
-
-  std::cout << "input: " << std::endl;
-  for (auto x : x_values_0) {
-    std::cout << x << std::endl;
-  }
 
   Ort::Value ort_input_tensor_value = Ort::Value::CreateTensor(memory_info_gpu, input_tensor_data, tensor_size * type_size,
                                                                x_shape.data(), x_shape.size(), type);
@@ -2963,7 +2953,7 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
   const std::array<int64_t, 2> y_shape = {3, 2};
   tensor_size = expected_y.size();
-  assert(cudaMalloc(&output_tensor_data, tensor_size * type_size) == cudaSuccess);
+  assert(cudaMallocHost(&output_tensor_data, tensor_size * type_size) == cudaSuccess);
   Ort::Value ort_output_tensor_value = Ort::Value::CreateTensor(memory_info_gpu, output_tensor_data, tensor_size * type_size,
                                                                y_shape.data(), y_shape.size(), type);
 
