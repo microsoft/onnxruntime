@@ -9,39 +9,50 @@
 namespace onnxruntime {
 
 namespace matmulbnfusion {
-std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> ignorable_nodes{
+const std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> ignorable_nodes{
     {"Reshape", {1, 5, 13, 14, 19}},
     {"Transpose", {1, 13}}};
-std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>> dest = {"BatchNormalization", {1, 6, 7, 9, 14, 15}};
+const std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>> dest = {"BatchNormalization", {1, 6, 7, 9, 14, 15}};
 }  // namespace matmulbnfusion
 
-std::optional<std::reference_wrapper<const Node>> MatchPath(
-    const Node& parent_node,
-    const Node& curr_node,
-    const std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>& dest,
-    const gsl::span<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>>& ignorable_nodes,
-    std::vector<bool>& ignorable_nodes_visited) {
-  // curr_node has different execution provider then it's parent or has > 1 output
-  if (curr_node.GetExecutionProviderType() != parent_node.GetExecutionProviderType() ||
-      curr_node.GetOutputEdgesCount() != 1) {
-    return std::nullopt;
-  }
+bool NodeIsIgnorable(const Graph& graph, const Node& root_node, NodeIndex curr_node_index) {
+  const Node* curr_node = graph.GetNode(curr_node_index);
 
-  // curr_node == dest_node
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(curr_node, dest.first, dest.second)) {
-    return curr_node;
+  // curr_node has different execution provider then it's parent or has > 1 output
+  if (curr_node->GetExecutionProviderType() != root_node.GetExecutionProviderType() ||
+      curr_node->GetOutputEdgesCount() != 1) {
+    return false;
   }
 
   // curr_node can be any of the ignorable_nodes.
-  for (size_t index = 0; index < ignorable_nodes.size(); index++) {
-    if (!ignorable_nodes_visited[index] &&
-        graph_utils::IsSupportedOptypeVersionAndDomain(curr_node, ignorable_nodes[index].first, ignorable_nodes[index].second)) {
-      ignorable_nodes_visited[index] = true;
-      return MatchPath(curr_node, *curr_node.OutputNodesBegin(), dest, ignorable_nodes, ignorable_nodes_visited);
+  for (size_t index = 0; index < matmulbnfusion::ignorable_nodes.size(); index++) {
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*curr_node, matmulbnfusion::ignorable_nodes[index].first,
+                                                       matmulbnfusion::ignorable_nodes[index].second)) {
+      return true;
     }
   }
 
-  // curr_node neither a dest node nor any of the ignorable_nodes.
+  return false;
+}
+
+std::optional<NodeIndex> MatchPath(const Graph& graph, const Node& root_node, NodeIndex curr_node_index) {
+  while (NodeIsIgnorable(graph, root_node, curr_node_index)) {
+    curr_node_index = graph.GetNode(curr_node_index)->OutputNodesBegin()->Index();
+  }
+
+  // curr_node is neither ignorable nor dest
+  const Node* curr_node = graph.GetNode(curr_node_index);
+  if (curr_node->OpType() != matmulbnfusion::dest.first) {
+    return std::nullopt;
+  }
+
+  if (curr_node->GetExecutionProviderType() == root_node.GetExecutionProviderType() &&
+      graph_utils::IsSupportedOptypeVersionAndDomain(*curr_node, matmulbnfusion::dest.first, matmulbnfusion::dest.second)) {
+    return curr_node_index;
+  }
+
+  // either curr_node has different execution provider or
+  // has invalid opset.
   return std::nullopt;
 }
 
@@ -54,7 +65,7 @@ std::optional<std::reference_wrapper<const Node>> MatchPath(
  *             Transpose ^             Transpose ^
  *                  |
  *        BatchNormalization
- * Note: ^ means there can be 0 or 1 occurrences of that node.
+ * Note: ^ means there can be 0 or any occurrences of that node.
  * Other Conditions:
  *   - B tensor of MatMul should be constant.
  *   - scale, B, mean, var tensors of BatchNormalization should be constant.
@@ -66,39 +77,36 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
     return false;
   }
 
-  const Node& child_node = *node.OutputNodesBegin();
-  std::vector<bool> ignorable_nodes_visited(matmulbnfusion::ignorable_nodes.size(), false);
-  std::optional<std::reference_wrapper<const Node>> batch_norm_node = MatchPath(
-      node,
-      child_node,
-      matmulbnfusion::dest,
-      matmulbnfusion::ignorable_nodes,
-      ignorable_nodes_visited);
-  if (!batch_norm_node.has_value()) {
+  if (graph.NodeProducesGraphOutput(node)) {
     return false;
   }
 
+  // because <node> is not producing graph output, it means it will have a child node
+  NodeIndex child_node_index = node.OutputNodesBegin()->Index();
+  std::optional<NodeIndex> batch_norm_index = MatchPath(graph, node, child_node_index);
+  if (!batch_norm_index.has_value()) {
+    return false;
+  }
+
+  const Node* batch_norm_node = graph.GetNode(*batch_norm_index);
+
   // Check that the appropriate inputs to the Matmul and BN nodes are constants.
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
-      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->get().InputDefs()[1]) ||
-      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->get().InputDefs()[2]) ||
-      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->get().InputDefs()[3]) ||
-      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->get().InputDefs()[4])) {
+      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->InputDefs()[1]) ||
+      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->InputDefs()[2]) ||
+      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->InputDefs()[3]) ||
+      !graph_utils::NodeArgIsConstant(graph, *batch_norm_node->InputDefs()[4])) {
     return false;
   }
 
   // First output from BN is required. Others are optional. If any optional outputs exist we can't fuse.
-  const auto& output_defs = batch_norm_node->get().OutputDefs();
+  const auto& output_defs = batch_norm_node->OutputDefs();
   if (output_defs.size() > 1) {
     for (size_t i = 1, end = output_defs.size(); i < end; ++i) {
       if (output_defs[i] != nullptr && output_defs[i]->Exists()) {
         return false;
       }
     }
-  }
-
-  if (graph.NodeProducesGraphOutput(node)) {
-    return false;
   }
 
   return true;
@@ -116,16 +124,8 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
  *
  */
 Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
-  const Node& child_node = *matmul_node.OutputNodesBegin();
-  std::vector<bool> ignorable_nodes_visited(matmulbnfusion::ignorable_nodes.size(), false);
-  NodeIndex batch_norm_node_index = MatchPath(
-                                        matmul_node,
-                                        child_node,
-                                        matmulbnfusion::dest,
-                                        matmulbnfusion::ignorable_nodes,
-                                        ignorable_nodes_visited)
-                                        ->get()
-                                        .Index();
+  NodeIndex child_node_index = matmul_node.OutputNodesBegin()->Index();
+  NodeIndex batch_norm_node_index = MatchPath(graph, matmul_node, child_node_index).value();
 
   Node& batch_norm_node = *graph.GetNode(batch_norm_node_index);  // need mutable node, that's why extracting node from graph
 
@@ -213,7 +213,7 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
   // Delete optional empty output defs.
   // Delete BatchNormalization node and update the input of the child of BatchNormalization
   batch_norm_node.MutableOutputDefs().resize(1);
-  NodeIndex batch_norm_parent_index = child_node.OpType() == "BatchNormalization" ? gemm_node.Index() : batch_norm_node.InputNodesBegin()->Index();
+  NodeIndex batch_norm_parent_index = graph.GetNode(child_node_index)->OpType() == "BatchNormalization" ? gemm_node.Index() : batch_norm_node.InputNodesBegin()->Index();
   graph_utils::FinalizeNodeFusion(graph, *graph.GetNode(batch_norm_parent_index), batch_norm_node);
 
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
