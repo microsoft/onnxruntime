@@ -790,7 +790,8 @@ def main():
             raise Exception(f"Could not recognize {args.quantization_method} as a quantization method")
 
     elif args.precision == Precision.INT4:
-        old_paths = convert_to_float16(args, l_config, old_paths)
+        if args.execution_provider != "cpu":
+            old_paths = convert_to_float16(args, l_config, old_paths)
 
         decoder_model_int4_path = os.path.join(args.output, f"{args.model_name}_decoder_model_int4.onnx")
         decoder_with_past_model_int4_path = os.path.join(
@@ -799,34 +800,39 @@ def main():
         decoder_merged_model_int4_path = os.path.join(args.output, f"{args.model_name}_decoder_merged_model_int4.onnx")
         new_paths = [decoder_model_int4_path, decoder_with_past_model_int4_path, decoder_merged_model_int4_path]
 
-        for fp16_path, int4_path in zip(old_paths, new_paths):
-            if os.path.exists(fp16_path):
-                model = onnx.load_model(fp16_path, load_external_data=True)
+        for fp_path, int4_path in zip(old_paths, new_paths):
+            if os.path.exists(fp_path):
+                model = onnx.load_model(fp_path, load_external_data=True)
                 quant = MatMul4BitsQuantizer(model, args.block_size, is_symmetric=True, nodes_to_exclude=[])
                 quant.process()
                 quant.model.save_model_to_file(int4_path, use_external_data_format=True)
                 del model
                 del quant
-                logger.info(f"The ONNX model at {fp16_path} has been quantized to int4 and saved at {int4_path}!")
-                remove_existing_model(fp16_path)
+                logger.info(f"The ONNX model at {fp_path} has been quantized to int4 and saved at {int4_path}!")
+                remove_existing_model(fp_path)
 
-    # Verify parity on all saved ONNX models
     del llama  # Delete LLaMA model from memory since it will be loaded again during parity check
     logger.info("Verifying parity on all ONNX models created")
+
+    # Use FP32 precision for FP32, INT8, INT4 CPU models, use FP16 precision for FP16 and INT4 GPU models
+    args.precision = "fp32" if args.precision in {"int8", "fp32"} or (args.precision == Precision.INT4 and args.execution_provider == "cpu") else "fp16"
+
+    # Verify parity on all saved ONNX models
     for filename in os.listdir(args.output):
         if ".data" in filename or ".onnx" not in filename:
             continue
 
-        # Use FP32 precision for FP32 and INT8 models, use FP16 precision for FP16 and INT4 models
-        precision = "fp32" if "fp32" in filename or "int8" in filename else "fp16"
-
-        parity_cmd = ["-m", f"{original_model_name}", "-o", f"{os.path.join(args.output, filename)}", "-fp", precision]
+        parity_cmd = [
+            "-m", original_model_name,
+            "-o", os.path.join(args.output, filename),
+            "-ep", args.execution_provider,
+            "-id", args.device_id,
+            "-fp", args.precision,
+        ]
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
         if "merged" in filename:
             parity_cmd.append("--merged")
-        if precision == "fp16":
-            parity_cmd.extend(["--execution_provider", "cuda", "--device-id", args.device_id])
 
         try:
             parity_check(parity_cmd)

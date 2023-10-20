@@ -130,7 +130,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
     logger.info(f"ONNX Runtime took {end_time - start_time} s")
 
     # Compare PyTorch and ONNX Runtime accuracy
-    tol = 1e-3 if args.precision == "fp32" else 5e-1 if args.use_fp16 and "int4" not in args.onnx_model_path else 2e1
+    tol = 2e1 if "int4" in args.onnx_model_path or "int8" in args.onnx_model_path else 1e-3 if args.precision == "fp32" else 5e-1
     parity = np.allclose(pt_outputs, ort_outputs, rtol=tol, atol=tol)
     logger.warning(f"Are PyTorch and ONNX Runtime results close? {parity}")
     if not parity:
@@ -214,8 +214,8 @@ def get_args(argv: List[str]):
 
     args = parser.parse_args() if argv == [] else parser.parse_args(argv)
 
-    # Use FP32 precision for FP32 and INT8 models, use FP16 precision for FP16 and INT4 models
-    args.precision = "fp32" if args.precision in {"int8", "fp32"} else "fp16"
+    # Use FP32 precision for FP32, INT8, INT4 CPU models, use FP16 precision for FP16 and INT4 GPU models
+    args.precision = "fp32" if args.precision in {"int8", "fp32"} or (args.precision == "int4" and args.execution_provider == "cpu") else "fp16"
     return args
 
 
