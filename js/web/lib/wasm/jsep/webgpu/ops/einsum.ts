@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -54,7 +54,7 @@ class EinsumTerm {
 }
 
 class EinsumEquation {
-  constructor(inputs: readonly TensorView[], equation: string) {
+  constructor(inputs: readonly TensorView[], public readonly equation: string) {
     this.hasEllipsis = false;
     this.symbolToInfo = new Map<string, SymbolInfo>();
     this.lhs = new Array<EinsumTerm>();
@@ -177,84 +177,78 @@ class EinsumEquation {
   outputDims: number[];                   // Output dimensions of the equation
 }  // End of class EinsumEquation
 
-
-const createEinsumProgramMetadata = (inputCount: number, cacheHint: string): ProgramMetadata =>
-    ({name: 'Einsum', inputTypes: Array(inputCount).fill(GpuDataType.default), cacheHint});
-
-const createEinsumProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], einsumEquation: EinsumEquation): ProgramInfo => {
-      const dataType = inputs[0].dataType;
-      const inputVars = new Array<IndicesHelper>(inputs.length);
-      for (let i = 0; i < inputs.length; ++i) {
-        inputVars[i] = inputVariable(`input${i}`, dataType, inputs[i].dims);
-      }
-      const outputShape = einsumEquation.outputDims;
-      const outputSize = ShapeUtil.size(outputShape);
-      const output = outputVariable('output', dataType, outputShape);
-      const idxCopy: string[] = [];
-      const rhsSymbols = Array.from(einsumEquation.rhs.symbolToIndices.keys());
-      const initProd = 'var prod = 1.0;';
-      const initSum = 'var sum = 0.0;';
-      const updateSum = 'sum += prod;';
-      const reduceOpsSetIndices: string[] = [];
-      const reduceOpsLoopHeaders: string[] = [];
-      const reduceOpsLoopFooters: string[] = [];
-      const reduceOpCompute: string[] = [];
-      const isReduceOpsWithoutLoop = einsumEquation.symbolToInfo.size === rhsSymbols.length;
-      einsumEquation.symbolToInfo.forEach((info, symbol) => {
-        if (rhsSymbols.includes(symbol)) {
-          const outputIndex = rhsSymbols.indexOf(symbol);
-          einsumEquation.lhs.forEach((term, i) => {
-            if (info.inputIndices.includes(i)) {
-              const indices = term.symbolToIndices.get(symbol);
-              if (indices === undefined) {
-                throw new Error('Invalid symbol error');
-              }
-              indices.forEach((index) => {
-                idxCopy.push(`${
-                    inputVars[i].indicesSet(
-                        `input${i}Indices`, index, output.indicesGet('outputIndices', outputIndex))}`);
-              });
-            }
+const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: EinsumEquation): ProgramInfo => {
+  const dataType = inputs[0].dataType;
+  const inputVars = new Array<IndicesHelper>(inputs.length);
+  for (let i = 0; i < inputs.length; ++i) {
+    inputVars[i] = inputVariable(`input${i}`, dataType, inputs[i].dims);
+  }
+  const outputShape = einsumEquation.outputDims;
+  const outputSize = ShapeUtil.size(outputShape);
+  const output = outputVariable('output', dataType, outputShape);
+  const idxCopy: string[] = [];
+  const rhsSymbols = Array.from(einsumEquation.rhs.symbolToIndices.keys());
+  const initProd = 'var prod = 1.0;';
+  const initSum = 'var sum = 0.0;';
+  const updateSum = 'sum += prod;';
+  const reduceOpsSetIndices: string[] = [];
+  const reduceOpsLoopHeaders: string[] = [];
+  const reduceOpsLoopFooters: string[] = [];
+  const reduceOpCompute: string[] = [];
+  const isReduceOpsWithoutLoop = einsumEquation.symbolToInfo.size === rhsSymbols.length;
+  einsumEquation.symbolToInfo.forEach((info, symbol) => {
+    if (rhsSymbols.includes(symbol)) {
+      const outputIndex = rhsSymbols.indexOf(symbol);
+      einsumEquation.lhs.forEach((term, i) => {
+        if (info.inputIndices.includes(i)) {
+          const indices = term.symbolToIndices.get(symbol);
+          if (indices === undefined) {
+            throw new Error('Invalid symbol error');
+          }
+          indices.forEach((index) => {
+            idxCopy.push(`${
+                inputVars[i].indicesSet(`input${i}Indices`, index, output.indicesGet('outputIndices', outputIndex))}`);
           });
-        } else {
-          einsumEquation.lhs.forEach((term, i) => {
-            const info = einsumEquation.symbolToInfo.get(symbol);
-            if (info === undefined) {
-              throw new Error('Invalid symbol error');
-            }
-            if (info.inputIndices.includes(i)) {
-              const indices = term.symbolToIndices.get(symbol);
-              if (indices === undefined) {
-                throw new Error('Invalid symbol error');
-              }
-              indices.forEach((index) => {
-                reduceOpsSetIndices.push(`${inputVars[i].indicesSet(`input${i}Indices`, index, `${symbol}`)}`);
-              });
-              reduceOpCompute.push(`prod *= ${inputVars[i].getByIndices(`input${i}Indices`)};`);
-            }
-          });
-          reduceOpsLoopHeaders.push(`for(var ${symbol}: u32 = 0; ${symbol} < ${
-              einsumEquation.symbolToInfo.get(symbol)?.dimValue}; ${symbol}++) {`);
-          reduceOpsLoopFooters.push('}');
         }
       });
-      const reduceOps = isReduceOpsWithoutLoop ?
-          [
-            ...idxCopy,
-            `let sum = ${inputVars.map((inputVar, i) => inputVar.getByIndices(`input${i}Indices`)).join(' * ')};`
-          ] :
-          [
-            ...idxCopy,
-            initSum,
-            ...reduceOpsLoopHeaders,
-            ...reduceOpsSetIndices,
-            initProd,
-            ...reduceOpCompute,
-            updateSum,
-            ...reduceOpsLoopFooters,
-          ];
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+    } else {
+      einsumEquation.lhs.forEach((term, i) => {
+        const info = einsumEquation.symbolToInfo.get(symbol);
+        if (info === undefined) {
+          throw new Error('Invalid symbol error');
+        }
+        if (info.inputIndices.includes(i)) {
+          const indices = term.symbolToIndices.get(symbol);
+          if (indices === undefined) {
+            throw new Error('Invalid symbol error');
+          }
+          indices.forEach((index) => {
+            reduceOpsSetIndices.push(`${inputVars[i].indicesSet(`input${i}Indices`, index, `${symbol}`)}`);
+          });
+          reduceOpCompute.push(`prod *= ${inputVars[i].getByIndices(`input${i}Indices`)};`);
+        }
+      });
+      reduceOpsLoopHeaders.push(`for(var ${symbol}: u32 = 0; ${symbol} < ${
+          einsumEquation.symbolToInfo.get(symbol)?.dimValue}; ${symbol}++) {`);
+      reduceOpsLoopFooters.push('}');
+    }
+  });
+  const reduceOps = isReduceOpsWithoutLoop ?
+      [
+        ...idxCopy,
+        `let sum = ${inputVars.map((inputVar, i) => inputVar.getByIndices(`input${i}Indices`)).join(' * ')};`
+      ] :
+      [
+        ...idxCopy,
+        initSum,
+        ...reduceOpsLoopHeaders,
+        ...reduceOpsSetIndices,
+        initProd,
+        ...reduceOpCompute,
+        updateSum,
+        ...reduceOpsLoopFooters,
+      ];
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${shaderHelper.declareVariables(...inputVars, output)}
 
       ${shaderHelper.mainStart()}
@@ -264,24 +258,20 @@ const createEinsumProgramInfo =
         ${reduceOps.join('\n')};
         ${output.setByOffset('global_idx', 'sum')};
       }`;
-      return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        getShaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
-      };
-    };
-
-const createEinsumProgramInfoLoader =
-    (inputs: readonly TensorView[], einsumEquation: EinsumEquation, attributes: EinsumAttributes):
-        ProgramInfoLoader => {
-          const metadata = createEinsumProgramMetadata(inputs.length, attributes.cacheKey);
-          return {...metadata, get: () => createEinsumProgramInfo(metadata, inputs, einsumEquation)};
-        };
+  return {
+    name: 'Einsum',
+    shaderCache: {hint: einsumEquation.equation},
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+    }),
+    getShaderSource,
+  };
+};
 
 export const einsum = (context: ComputeContext, attributes: EinsumAttributes): void => {
   const einsumEquation = new EinsumEquation(context.inputs, attributes.equation);
-  context.compute(createEinsumProgramInfoLoader(context.inputs, einsumEquation, attributes));
+  context.compute(createEinsumProgramInfo(context.inputs, einsumEquation));
 };
 
 export const parseEinsumAttributes = (attributes: Record<string, unknown>): EinsumAttributes => {

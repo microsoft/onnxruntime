@@ -1,191 +1,447 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {spawnSync} from 'child_process';
-import * as fs from 'fs-extra';
+import * as esbuild from 'esbuild';
 import minimist from 'minimist';
-import npmlog from 'npmlog';
-import * as path from 'path';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 
-// CMD args
-const args = minimist(process.argv);
+/**
+ * @summary Build script for ort-web using esbuild.
+ */
 
-// --bundle-mode=prod (default)
-// --bundle-mode=dev
-// --bundle-mode=perf
-// --bundle-mode=node
-const MODE = args['bundle-mode'] || 'prod';
-if (['prod', 'dev', 'perf', 'node'].indexOf(MODE) === -1) {
-  throw new Error(`unknown build mode: ${MODE}`);
-}
+const args = minimist(process.argv.slice(2));
+/**
+ * --bundle-mode=prod (default)
+ *   Build multiple ort-web bundles for production.
+ *
+ * --bundle-mode=dev
+ *   Build a single ort-web bundle for development, and a test bundle.
+ *
+ * --bundle-mode=perf
+ *   Build a single ort-web bundle for performance test, and a test bundle.
+ *
+ * --bundle-mode=node
+ *   Build a single ort-web bundle for nodejs.
+ */
+const BUNDLE_MODE: 'prod'|'dev'|'perf'|'node' = args['bundle-mode'] || 'prod';
 
-// --wasm (default)
-// --no-wasm
-const WASM = typeof args.wasm === 'undefined' ? true : !!args.wasm;
+/**
+ * --debug
+ *   Enable debug mode. In this mode, esbuild metafile feature will be enabled. Simple bundle analysis will be printed.
+ *
+ * --debug=verbose
+ *   Enable debug mode. In this mode, esbuild metafile feature will be enabled. Detailed bundle analysis will be
+ * printed.
+ *
+ * --debug=save
+ *  Enable debug mode. In this mode, esbuild metafile feature will be enabled. Full bundle analysis will be saved to a
+ * file as JSON.
+ */
+const DEBUG = args.debug;  // boolean|'verbose'|'save'
 
-// -a; --analyzer
-const ANALYZER = !!args.a || !!args.analyzer;
+const SOURCE_ROOT_FOLDER = path.join(__dirname, '../..');  // <ORT_ROOT>/js/
+const DEFAULT_DEFINE = {
+  'BUILD_DEFS.DISABLE_WEBGL': 'false',
+  'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+  'BUILD_DEFS.DISABLE_WASM': 'false',
+  'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
+  'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
+  'BUILD_DEFS.DISABLE_TRAINING': 'true',
+};
 
-// -f; --filter=<regex>
-const FILTER = args.f || args.filter;
-
-// Path variables
-const ROOT_FOLDER = path.join(__dirname, '..');
-const WASM_BINDING_FOLDER = path.join(ROOT_FOLDER, 'lib', 'wasm', 'binding');
-const WASM_BINDING_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm.js');
-const WASM_BINDING_THREADED_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.js');
-const WASM_BINDING_SIMD_THREADED_JSEP_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-simd-threaded.jsep.js');
-const WASM_BINDING_THREADED_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.worker.js');
-const WASM_BINDING_THREADED_MIN_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.min.js');
-const WASM_BINDING_SIMD_THREADED_JSEP_MIN_JS_PATH =
-    path.join(WASM_BINDING_FOLDER, 'ort-wasm-simd-threaded.jsep.min.js');
-const WASM_BINDING_THREADED_MIN_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.min.worker.js');
-
-const WASM_DIST_FOLDER = path.join(ROOT_FOLDER, 'dist');
-const WASM_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm.wasm');
-const WASM_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.wasm');
-const WASM_SIMD_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd.wasm');
-const WASM_SIMD_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd-threaded.wasm');
-const WASM_SIMD_JSEP_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd.jsep.wasm');
-const WASM_SIMD_THREADED_JSEP_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm');
-const WASM_THREADED_WORKER_JS_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.worker.js');
-const WASM_THREADED_JS_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.js');
-const WASM_SIMD_THREADED_JSEP_JS_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd-threaded.jsep.js');
-
-function validateFile(path: string): void {
-  npmlog.info('Build', `Ensure file: ${path}`);
-  if (!fs.pathExistsSync(path)) {
-    throw new Error(`file does not exist: ${path}`);
-  }
-  if (fs.statSync(path).size === 0) {
-    throw new Error(`file is empty: ${path}`);
-  }
-}
-
-if (WASM) {
-  npmlog.info('Build', 'Validating WebAssembly artifacts...');
-  try {
-    validateFile(WASM_BINDING_JS_PATH);
-    validateFile(WASM_BINDING_THREADED_JS_PATH);
-    validateFile(WASM_BINDING_SIMD_THREADED_JSEP_JS_PATH);
-    validateFile(WASM_BINDING_THREADED_WORKER_JS_PATH);
-    validateFile(WASM_WASM_PATH);
-    validateFile(WASM_THREADED_WASM_PATH);
-    validateFile(WASM_SIMD_WASM_PATH);
-    validateFile(WASM_SIMD_THREADED_WASM_PATH);
-    validateFile(WASM_SIMD_JSEP_WASM_PATH);
-    validateFile(WASM_SIMD_THREADED_JSEP_WASM_PATH);
-  } catch (e) {
-    npmlog.error('Build', `WebAssembly files are not ready. build WASM first. ERR: ${e}`);
-    throw e;
-  }
-  npmlog.info('Build', 'Validating WebAssembly artifacts... DONE');
-
-  const VERSION = require(path.join(__dirname, '../package.json')).version;
-  const COPYRIGHT_BANNER = `/*!
- * ONNX Runtime Web v${VERSION}
+const COPYRIGHT_HEADER = `/*!
+ * ONNX Runtime Web v${require('../package.json').version}
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
- */
-`;
+ */`;
 
-  npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.js"...');
-  try {
-    const terser = spawnSync(
-        'npx',
-        [
-          'terser', WASM_BINDING_THREADED_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false', '--mangle',
-          'reserved=[_scriptDir,startWorker]', '--module'
-        ],
-        {shell: true, encoding: 'utf-8', cwd: ROOT_FOLDER});
-    if (terser.status !== 0) {
-      console.error(terser.error);
-      process.exit(terser.status === null ? undefined : terser.status);
-    }
-
-    fs.writeFileSync(WASM_BINDING_THREADED_MIN_JS_PATH, terser.stdout);
-    fs.writeFileSync(WASM_THREADED_JS_PATH, `${COPYRIGHT_BANNER}${terser.stdout}`);
-
-    validateFile(WASM_BINDING_THREADED_MIN_JS_PATH);
-    validateFile(WASM_THREADED_JS_PATH);
-  } catch (e) {
-    npmlog.error('Build', `Failed to run terser on ort-wasm-threaded.js. ERR: ${e}`);
-    throw e;
-  }
-  npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.js"... DONE');
-
-  npmlog.info('Build', 'Minimizing file "ort-wasm-simd-threaded.jsep.js"...');
-  try {
-    const terser = spawnSync(
-        'npx',
-        [
-          'terser', WASM_BINDING_SIMD_THREADED_JSEP_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false',
-          '--mangle', 'reserved=[_scriptDir,startWorker]', '--module'
-        ],
-        {shell: true, encoding: 'utf-8', cwd: ROOT_FOLDER});
-    if (terser.status !== 0) {
-      console.error(terser.error);
-      process.exit(terser.status === null ? undefined : terser.status);
-    }
-
-    fs.writeFileSync(WASM_BINDING_SIMD_THREADED_JSEP_MIN_JS_PATH, terser.stdout);
-    fs.writeFileSync(WASM_SIMD_THREADED_JSEP_JS_PATH, `${COPYRIGHT_BANNER}${terser.stdout}`);
-
-    validateFile(WASM_BINDING_SIMD_THREADED_JSEP_MIN_JS_PATH);
-    validateFile(WASM_SIMD_THREADED_JSEP_JS_PATH);
-  } catch (e) {
-    npmlog.error('Build', `Failed to run terser on ort-wasm-threaded.js. ERR: ${e}`);
-    throw e;
-  }
-  npmlog.info('Build', 'Minimizing file "ort-wasm-simd-threaded.jsep.js"... DONE');
-
-  npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.worker.js"...');
-  try {
-    const terser = spawnSync(
-        'npx',
-        [
-          'terser', WASM_BINDING_THREADED_WORKER_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false',
-          '--mangle', 'reserved=[_scriptDir,startWorker]', '--toplevel'
-        ],
-        {shell: true, encoding: 'utf-8'});
-    if (terser.status !== 0) {
-      console.error(terser.error);
-      process.exit(terser.status === null ? undefined : terser.status);
-    }
-
-    fs.writeFileSync(WASM_BINDING_THREADED_MIN_WORKER_JS_PATH, terser.stdout);
-    fs.writeFileSync(WASM_THREADED_WORKER_JS_PATH, `${COPYRIGHT_BANNER}${terser.stdout}`);
-
-    validateFile(WASM_BINDING_THREADED_MIN_WORKER_JS_PATH);
-    validateFile(WASM_THREADED_WORKER_JS_PATH);
-  } catch (e) {
-    npmlog.error('Build', `Failed to run terser on ort-wasm-threaded.worker.js. ERR: ${e}`);
-    throw e;
-  }
-  npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.worker.js"... DONE');
+interface OrtBuildOptions {
+  isProduction?: boolean;
+  isNode?: boolean;
+  format: 'iife'|'cjs'|'esm';
+  outputBundleName: string;
+  define?: Record<string, string>;
 }
 
-npmlog.info('Build', 'Building bundle...');
-{
-  npmlog.info('Build.Bundle', 'Running webpack to generate bundles...');
-  const webpackArgs = ['webpack', '--env', `--bundle-mode=${MODE}`];
-  if (ANALYZER) {
-    webpackArgs.push('--env', '-a');
-  }
-  if (FILTER) {
-    webpackArgs.push('--env', `-f=${FILTER}`);
-  }
-  npmlog.info('Build.Bundle', `CMD: npx ${webpackArgs.join(' ')}`);
-  const webpack = spawnSync('npx', webpackArgs, {
-    shell: true,
-    stdio: 'inherit',
-    cwd: ROOT_FOLDER,
-    env: {...process.env, NODE_OPTIONS: (process.env.NODE_OPTIONS ?? '') + ' --max-old-space-size=5120'}
+async function buildBundle(options: esbuild.BuildOptions) {
+  const result = await esbuild.build({
+    logLevel: DEBUG ? (DEBUG === 'verbose' || DEBUG === 'save' ? 'verbose' : 'debug') : 'info',
+    metafile: !!DEBUG,
+    absWorkingDir: SOURCE_ROOT_FOLDER,
+    bundle: true,
+    banner: {js: COPYRIGHT_HEADER},
+    ...options
   });
-  if (webpack.status !== 0) {
-    console.error(webpack.error);
-    process.exit(webpack.status === null ? undefined : webpack.status);
+  if (DEBUG) {
+    if (DEBUG === 'save') {
+      await fs.writeFile(
+          `${path.basename(options.outfile!)}.esbuild.metafile.json`, JSON.stringify(result.metafile!, null, 2));
+    } else {
+      console.log(await esbuild.analyzeMetafile(result.metafile!, {verbose: DEBUG === 'verbose'}));
+    }
   }
-  npmlog.info('Build.Bundle', 'Running webpack to generate bundles... DONE');
+  return result;
 }
-npmlog.info('Build', 'Building bundle... DONE');
+
+async function minifyCode(sourceCode: string): Promise<string> {
+  const result = await esbuild.transform(sourceCode, {
+    minify: true,
+    legalComments: 'none',
+  });
+  return result.code;
+}
+
+async function buildOrt({
+  isProduction = false,
+  isNode = false,
+  format,
+  outputBundleName,
+  define = DEFAULT_DEFINE,
+}: OrtBuildOptions) {
+  // #region Plugin: resolve ignore imports
+
+  /**
+   * This plugin is used to ignore a few nodejs imports that are not used in the browser. Those imported functions are
+   * not really used in the browser because they are usually put behind a feature check. However, esbuild does not know
+   * that. It will complain about those imports are not available in the browser.
+   *
+   * This plugin will ignore those imports and replace them with empty exports.
+   */
+  const excludeNodejsImports = {
+    name: 'exclude-nodejs-imports',
+    setup(build: esbuild.PluginBuild) {
+      build.onResolve({filter: /(^node:|^worker_threads$|^fs$|^path$|^perf_hooks$|^os$)/}, args => ({
+                                                                                             namespace: 'nodejs-ignore',
+                                                                                             path: args.path,
+                                                                                             sideEffects: false,
+                                                                                           }));
+      build.onLoad({filter: /.*/, namespace: 'nodejs-ignore'}, args => {
+        switch (args.path) {
+          case 'node:fs/promises':
+          case 'node:fs':
+          case 'fs':
+            return {contents: 'export const readFile = undefined;'};
+          case 'node:os':
+          case 'os':
+            return {contents: 'export const cpus = undefined;'};
+          case 'node:path':
+          case 'path':
+            return {contents: 'export const join = undefined;'};
+          default:
+            return {contents: ''};
+        }
+      });
+    },
+  };
+  // #endregion
+
+  // #region Plugin: web assembly multi-thread worker loader
+
+  /**
+   * This plugin is used to load web assembly multi-thread worker code as string.
+   *
+   * This allows to create the worker from a Blob, so we don't need to create a separate file for the worker.
+   */
+  const wasmThreadedHandler = {
+    name: 'wasm-threaded-handler',
+    setup(build: esbuild.PluginBuild) {
+      build.onLoad({filter: /[\\/]ort-wasm-threaded\.worker\.js$/}, async args => {
+        let contents = await fs.readFile(args.path, {encoding: 'utf-8'});
+        if (isProduction) {
+          contents = await minifyCode(contents);
+        }
+        return {loader: 'text', contents};
+      });
+    },
+  };
+  // #endregion
+
+  // #region Plugin: generated emscripten .js loader
+
+  /**
+   * This plugin is used to patch the generated emscripten .js file for multi-thread build.
+   *
+   * Since we use inline worker for multi-thread, we make an optimization to use function.toString() to get the
+   * implementation of the exported `ortWasmThreaded` function to reduce the size of the bundle. However, the generated
+   * function uses a variable `_scriptDir` which is defined inside an IIFE closure. When we use function.toString(), the
+   * worker code will throw "_scriptDir is not defined" error.
+   *
+   * To fix this error, we need to patch the generated code to replace access to `_scriptDir` with `typeof _scriptDir
+   * !== "undefined" && _scriptDir`.
+   */
+  const emscriptenThreadedJsHandler = {
+    name: 'emscripten-threaded-js-handler',
+    setup(build: esbuild.PluginBuild) {
+      build.onLoad({filter: /ort-wasm.*-threaded.*\.js$/}, async args => {
+        let contents = await fs.readFile(args.path, {encoding: 'utf-8'});
+        // For debug build, Emscripten generates the following code:
+        //
+        // if (_scriptDir) {
+        //   scriptDirectory = _scriptDir;
+        // }
+        //
+        // We replace it with:
+        //
+        // if (typeof _scriptDir !== "undefined" && _scriptDir) {
+        //   scriptDirectory = _scriptDir;
+        // }
+        contents = contents.replace('if (_scriptDir) {', 'if (typeof _scriptDir !== "undefined" && _scriptDir) {');
+
+        // For release build, Emscripten generates the following code:
+        //
+        // ...,_scriptDir&&(H=_scriptDir),...
+        // We replace it with:
+        // ...,(typeof _scriptDir !== "undefined" && _scriptDir)&&(H=_scriptDir),...
+        contents =
+            contents.replace(/_scriptDir(&&\(.+=_scriptDir\))/, '(typeof _scriptDir !== "undefined" && _scriptDir)$1');
+
+        return {contents};
+      });
+    }
+  };
+  // #endregion
+
+  // #region Plugin: proxy worker loader
+
+  /**
+   * This plugin is used to load proxy worker code as string.
+   */
+  const proxyWorkerHandler = {
+    name: 'proxy-worker-handler',
+    setup(build: esbuild.PluginBuild) {
+      build.onResolve(
+          {filter: /proxy-worker\/main$/},
+          async args => ({path: args.path, namespace: 'proxy-worker', pluginData: args.resolveDir}));
+
+      build.onLoad({filter: /.*/, namespace: 'proxy-worker'}, async args => {
+        const result = await buildBundle({
+          entryPoints: [path.resolve(args.pluginData, args.path)],
+          outfile: `web/dist/${outputBundleName}.proxy.js`,
+          platform: 'browser',
+          plugins: [excludeNodejsImports, wasmThreadedHandler, emscriptenThreadedJsHandler],
+          define: {
+            ...build.initialOptions.define,
+            'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+          },
+          sourcemap: isProduction ? false : 'inline',
+          minify: isProduction,
+          write: false,
+        });
+
+        return {loader: 'text', contents: result.outputFiles![0].text};
+      });
+    },
+  };
+  // #endregion
+
+  await buildBundle({
+    entryPoints: ['web/lib/index.ts'],
+    outfile: `web/dist/${outputBundleName}.js`,
+    platform: isNode ? 'node' : 'browser',
+    format,
+    globalName: 'ort',
+    plugins: isNode ? undefined :
+                      [excludeNodejsImports, proxyWorkerHandler, wasmThreadedHandler, emscriptenThreadedJsHandler],
+    external: isNode ? ['onnxruntime-common'] : undefined,
+    define,
+    sourcemap: isProduction ? 'linked' : 'inline',
+    minify: isProduction,
+  });
+}
+
+async function buildTest() {
+  const isProduction = BUNDLE_MODE === 'perf';
+
+  await buildBundle({
+    absWorkingDir: path.join(SOURCE_ROOT_FOLDER, 'web/test'),
+
+    entryPoints: ['test-main.ts'],
+    outfile: isProduction ? 'ort.test.min.js' : 'ort.test.js',
+    platform: 'browser',
+    format: 'iife',
+    define: DEFAULT_DEFINE,
+    sourcemap: isProduction ? false : 'inline',
+    sourceRoot: path.join(SOURCE_ROOT_FOLDER, 'web/test'),
+    external: ['../../node'],
+    plugins: [
+      // polyfill nodejs modules
+      require('esbuild-plugin-polyfill-node').polyfillNode({globals: false}),
+      // make "ort" external
+      {
+        name: 'make-ort-external',
+        setup(build: esbuild.PluginBuild) {
+          build.onResolve(
+              {filter: /^onnxruntime-common$/},
+              _args => ({path: 'onnxruntime-common', namespace: 'make-ort-external'}));
+          build.onLoad(
+              {filter: /.*/, namespace: 'make-ort-external'},
+              _args => ({contents: 'module.exports = globalThis.ort;'}));
+        }
+      }
+    ],
+    minify: isProduction,
+  });
+}
+
+async function main() {
+  // tasks for each esbuild bundle
+  const buildTasks: Array<Promise<void>> = [];
+  /**
+   * add one build task
+   */
+  const addBuildTask = async (task: Promise<void>) => {
+    if (DEBUG) {
+      // in DEBUG mode, build sequentially
+      await task;
+    } else {
+      buildTasks.push(task);
+    }
+  };
+  /**
+   * add all 6 build tasks for web bundles. Includes:
+   * - IIFE, debug:                [name].js
+   * - IIFE, production:           [name].min.js
+   * - CJS, debug:                 cjs/[name].js
+   * - CJS, production:            cjs/[name].min.js
+   * - ESM, debug:                 esm/[name].js
+   * - ESM, production:            esm/[name].min.js
+   */
+  const addAllWebBuildTasks = async (options: Omit<OrtBuildOptions, 'format'>) => {
+    // [name].js
+    await addBuildTask(buildOrt({
+      ...options,
+      format: 'iife',
+    }));
+    // [name].min.js
+    await addBuildTask(buildOrt({
+      ...options,
+      outputBundleName: options.outputBundleName + '.min',
+      format: 'iife',
+      isProduction: true,
+    }));
+    // cjs/[name].js
+    await addBuildTask(buildOrt({
+      ...options,
+      outputBundleName: 'cjs/' + options.outputBundleName,
+      format: 'cjs',
+    }));
+    // cjs/[name].min.js
+    await addBuildTask(buildOrt({
+      ...options,
+      outputBundleName: 'cjs/' + options.outputBundleName + '.min',
+      format: 'cjs',
+      isProduction: true,
+    }));
+    // esm/[name].js
+    await addBuildTask(buildOrt({
+      ...options,
+      outputBundleName: 'esm/' + options.outputBundleName,
+      format: 'esm',
+    }));
+    // esm/[name].min.js
+    await addBuildTask(buildOrt({
+      ...options,
+      outputBundleName: 'esm/' + options.outputBundleName + '.min',
+      format: 'esm',
+      isProduction: true,
+    }));
+  };
+
+  if (BUNDLE_MODE === 'node' || BUNDLE_MODE === 'prod') {
+    // ort.node.min.js
+    await addBuildTask(buildOrt({
+      isProduction: true,
+      isNode: true,
+      format: 'cjs',
+      outputBundleName: 'ort.node.min',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+        'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
+      },
+    }));
+  }
+
+  if (BUNDLE_MODE === 'dev') {
+    // ort.all.js
+    await addBuildTask(buildOrt({
+      outputBundleName: 'ort.all',
+      format: 'iife',
+    }));
+  }
+
+  if (BUNDLE_MODE === 'perf') {
+    // ort.all.min.js
+    await addBuildTask(buildOrt({
+      isProduction: true,
+      outputBundleName: 'ort.all.min',
+      format: 'iife',
+    }));
+  }
+
+  if (BUNDLE_MODE === 'prod') {
+    // ort.all[.min].js
+    await addAllWebBuildTasks({outputBundleName: 'ort.all'});
+
+    // ort[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort',
+      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true'},
+    });
+    // ort.webgpu[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.webgpu',
+      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
+    });
+    // ort.wasm[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.wasm',
+      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
+    });
+    // ort.webgl[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.webgl',
+      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true', 'BUILD_DEFS.DISABLE_WASM': 'true'},
+    });
+    // ort.wasm-core[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.wasm-core',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+        'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
+      },
+    });
+    // ort.training.wasm[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.training.wasm',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_TRAINING': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+      },
+    });
+  }
+
+  if (BUNDLE_MODE === 'dev' || BUNDLE_MODE === 'perf') {
+    await addBuildTask(buildTest());
+  }
+
+  await Promise.all(buildTasks);
+
+  if (BUNDLE_MODE === 'prod') {
+    // generate package.json files under each of the dist folders for commonJS and ESModule
+    // this trick allows typescript to import this package as different module type
+    // see also: https://evertpot.com/universal-commonjs-esm-typescript-packages/
+    await fs.writeFile(path.resolve(__dirname, '../dist/cjs', 'package.json'), '{"type": "commonjs"}');
+    await fs.writeFile(path.resolve(__dirname, '../dist/esm', 'package.json'), '{"type": "module"}');
+  }
+}
+
+void main();

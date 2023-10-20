@@ -447,8 +447,9 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Log_U16) {
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
 // Test that the default axis (-1) for SoftMax opset 13 works.
 TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_DefaultAxis) {
+  const std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
   RunQDQOpTest<uint8_t>("Softmax",
-                        {TestInputDef<float>({1, 2, 3}, false, -5.0f, 5.0f)},
+                        {TestInputDef<float>({1, 2, 3}, false, input_data)},
                         {},  // Uses default axis of -1 for opset 13
                         13,
                         ExpectedEPNodeAssignment::All);
@@ -466,14 +467,43 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_U16_DefaultAxis) {
                          true);        // Use com.microsoft domain for Q/DQ ops
 }
 
-// Check that QNN compiles DQ -> Softmax -> Q as a single unit.
-// Test that an axis != -1 is not supported.
-TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_UnsupportedAxis) {
+// Test that 8-bit QDQ Softmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_NonLastAxis) {
+  const std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 10.0f, 11.0f, 12.0f, 100.0f, 110.0f, 120.0f,
+                                         1.0856307f, 0.99734545f, 0.2829785f, 1.5062947f, 0.5786002f, 1.6514366f,
+                                         2.4266791f, 0.42891264f, 1.2659363f};
   RunQDQOpTest<uint8_t>("Softmax",
-                        {TestInputDef<float>({1, 2, 3}, false, -5.0f, 5.0f)},
+                        {TestInputDef<float>({1, 2, 3, 3}, false, input_data)},
                         {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
                         13,
-                        ExpectedEPNodeAssignment::None);
+                        ExpectedEPNodeAssignment::All);
+}
+
+// Test that 8-bit QDQ Softmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+// This is a configuration used in one of our partner's models.
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_NonLastAxis_LargeInput) {
+  const std::vector<float> input_data = GetFloatDataInRange(-50.0f, 50.0f, 124);
+  RunQDQOpTest<uint8_t>("Softmax",
+                        {TestInputDef<float>({1, 124, 1}, false, input_data)},
+                        {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
+// Test that 16-bit QDQ Softmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+// This is a configuration used in one of our partner's models.
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_U16_NonLastAxis_LargeInput) {
+  const std::vector<float> input_data = GetFloatDataInRange(-50.0f, 50.0f, 124);
+  RunQDQOpTest<uint16_t>("Softmax",
+                         {TestInputDef<float>({1, 124, 1}, false, input_data)},
+                         {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                         13,
+                         ExpectedEPNodeAssignment::All,
+                         kOnnxDomain,
+                         true);
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
@@ -507,15 +537,15 @@ TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax13_DefaultAxis) {
                         ExpectedEPNodeAssignment::All);
 }
 
-// Check that QNN compiles DQ -> LogSoftmax -> Q as a single unit.
-// Test that an axis != -1 is not supported.
-TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax13_UnsupportedAxis) {
+// Test that 8-bit QDQ LogSoftmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax13_NonLastAxis) {
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
   RunQDQOpTest<uint8_t>("LogSoftmax",
                         {TestInputDef<float>({1, 2, 3}, false, input_data)},
                         {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
                         13,
-                        ExpectedEPNodeAssignment::None);
+                        ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> LogSoftmax -> Q as a single unit.
@@ -679,10 +709,11 @@ TEST_F(QnnHTPBackendTests, SpaceToDepthOp_U16) {
                          true);        // Use com.microsoft domain for Q/DQ ops
 }
 
-// Run QDQ model on HTP twice
-// 1st run will generate the Qnn context cache binary file
-// 2nd run will load and run from Qnn context cache binary file
-TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
+// Run QDQ model on HTP 3 times
+// 1st run will generate the Qnn context cache onnx file
+// 2nd run will load and run from QDQ model + Qnn context cache model
+// 3rd run directly loads and run from Qnn context cache model
+TEST_F(QnnHTPBackendTests, ContextBinaryCacheEmbedModeTest) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -690,7 +721,7 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
   provider_options["qnn_context_cache_enable"] = "1";
-  const std::string context_binary_file = "./qnn_context_binary_test.bin";
+  const std::string context_binary_file = "./qnn_context_binary_test.onnx";
   provider_options["qnn_context_cache_path"] = context_binary_file;
 
   const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
@@ -707,12 +738,120 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
   // Make sure the Qnn context cache binary file is generated
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
 
-  // 2nd run will load and run from Qnn context cache binary file
+  // 2nd run loads and run from QDQ model + Qnn context cache model
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
                        BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
                        provider_options,
                        14,
                        ExpectedEPNodeAssignment::All);
+
+  // 3rd run directly loads and run from Qnn context cache model
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All,
+                       1e-4f,
+                       logging::Severity::kERROR,
+                       context_binary_file);
+}
+
+// Run QDQ model on HTP 3 times
+// 1st run will generate the Onnx skeleton file + Qnn context cache binary file
+// 2nd run will loads and run from QDQ model + Onnx skeleton file + Qnn context cache binary file
+// 3rd run directly loads and run from Onnx skeleton file + Qnn context cache binary file
+TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["qnn_context_cache_enable"] = "1";
+  const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
+  provider_options["qnn_context_cache_path"] = context_binary_file;
+  provider_options["qnn_context_embed_mode"] = "0";
+
+  const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
+  const std::string op_type = "Atan";
+
+  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
+  // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All);
+
+  // Check the Onnx skeleton file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+  // Check the Qnn context cache binary file is generated
+  EXPECT_TRUE(std::filesystem::exists("qnn_context_cache_non_embed.onnx_QNN_8283143575221199085_1.bin"));
+
+  // 2nd run loads and run from QDQ model + Onnx skeleton file + Qnn context cache binary file
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All);
+
+  // 3rd run directly loads and run from Onnx skeleton file + Qnn context cache binary file
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All,
+                       1e-4f,
+                       logging::Severity::kERROR,
+                       context_binary_file);
+}
+
+// Run QDQ model on HTP with 2 inputs
+// 1st run will generate the Qnn context cache onnx file
+// 2nd run will load and run from QDQ model + Qnn context cache model
+// 3rd run directly loads and run from Qnn context cache model
+TEST_F(QnnHTPBackendTests, ContextBinary2InputsTest) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["qnn_context_cache_enable"] = "1";
+  const std::string context_binary_file = "./qnn_context_binary_2inputs_test.onnx";
+  provider_options["qnn_context_cache_path"] = context_binary_file;
+
+  const TestInputDef<float> input_def1({1, 2, 3}, false, -10.0f, 10.0f);
+  const TestInputDef<float> input_def2({1, 2, 3}, false, -10.0f, 10.0f);
+  const std::string op_type = "Add";
+
+  // Runs model with DQ-> Add-> Q and compares the outputs of the CPU and QNN EPs.
+  // 1st run will generate the Qnn context cache binary file
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All);
+
+  // Make sure the Qnn context cache binary file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+
+  // 2nd run loads and run from QDQ model + Qnn context cache model
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All);
+
+  // 3rd run directly loads and run from Qnn context cache model
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All,
+                       1e-4f,
+                       logging::Severity::kERROR,
+                       context_binary_file);
 }
 
 TEST_F(QnnHTPBackendTests, QuantAccuracyTest) {
