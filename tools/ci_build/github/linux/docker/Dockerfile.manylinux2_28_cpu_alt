@@ -1,0 +1,19 @@
+ARG BASEIMAGE=registry.access.redhat.com/ubi8/ubi
+
+ARG BUILD_LORT=false
+ARG BUILD_ATEN=false
+
+FROM $BASEIMAGE AS runtime_base
+ADD scripts /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
+RUN if [ $BUILD_LORT = true ]; then \
+    cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_lort.sh ; \
+    else [ $BUILD_ATEN = true ]; then  \
+    cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_aten.sh ; \
+RUN rm -rf /tmp/scripts
+
+ARG BUILD_UID=1002
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER

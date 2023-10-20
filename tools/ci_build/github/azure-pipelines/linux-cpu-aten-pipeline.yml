@@ -55,7 +55,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu_alt
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
       --build-arg BUILD_ATEN=true
