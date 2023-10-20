@@ -11,10 +11,12 @@ import kernel_explorer as ke
 import numpy as np
 import pytest
 from utils import dtype_to_suffix, get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, matmul, transab_to_suffix
+from ml_dtypes import float8_e4m3fn
 
 
+@ke.dispatchable
 def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, alpha=1.0, beta=0.0):
-    assert dtype in ["float32", "float16"]
+    assert dtype in ["float32", "float16", "float8_e4m3"]
 
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
@@ -76,6 +78,7 @@ all_transabs = list(product([True, False], repeat=2))
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=True) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
+@ke.dispatchable
 def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k):
     _test_gemm(getattr(ke, "RocBlasGemm_" + dtype_to_suffix(dtype)), dtype, transa, transb, m, n, k)
 
@@ -84,6 +87,7 @@ def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k):
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
+@ke.dispatchable
 def test_ck_gemm_bert_cases(dtype, transa, transb, m, n, k):
     wrapper_name = f"CKGemm_{dtype_to_suffix(dtype)}_{transab_to_suffix((transa, transb))}"
     _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k)
@@ -93,6 +97,7 @@ def test_ck_gemm_bert_cases(dtype, transa, transb, m, n, k):
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
+@ke.dispatchable
 def test_gemm_tunable_bert_cases(dtype, transa, transb, m, n, k):
     wrapper_name = f"GemmTunable_{dtype_to_suffix(dtype)}_{transab_to_suffix((transa, transb))}"
     _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k)
@@ -142,6 +147,7 @@ class GemmMetric(ke.ComputeMetric):
         return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
+@ke.dispatchable(pattern_arg=0)
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
@@ -172,14 +178,17 @@ def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int,
         ke.report(GemmMetric(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k))
 
 
-def profile_with_args(dtype, transa, transb, m, n, k, sort):
+@ke.dispatchable
+def profile_with_args(dtype, transa, transb, m, n, k):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
-    with ke.benchmark(sort):
-        profile_gemm_func(getattr(ke, "RocBlasGemm" + dtype_suffix), dtype, transa, transb, m, n, k)
-        profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
+    with ke.benchmark():
+        if ke.is_rocm_available():
+            profile_gemm_func(getattr(ke, "RocBlasGemm" + dtype_suffix), dtype, transa, transb, m, n, k)
+            profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
         profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
-        profile_gemm_func(getattr(ke, "GemmBenchmark" + dtype_suffix), dtype, transa, transb, m, n, k)
+        if ke.is_cuda_available():
+            profile_gemm_func(getattr(ke, "GemmBenchmark" + dtype_suffix), dtype, transa, transb, m, n, k)
         if ke.is_hipblaslt_available():
             profile_gemm_func(
                 getattr(ke, "GemmHipBlasLt" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k
@@ -190,24 +199,21 @@ def profile_with_args(dtype, transa, transb, m, n, k, sort):
 def profile():
     for dtype in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=True):
-            profile_with_args(dtype, False, False, m, n, k, True)
+            profile_with_args(dtype, False, False, m, n, k)
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("transa", choices="NT")
     group.add_argument("transb", choices="NT")
     group.add_argument("m", type=int)
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
-    group.add_argument("--sort", action="store_true")
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.sort)
+        args.dispatch(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k)

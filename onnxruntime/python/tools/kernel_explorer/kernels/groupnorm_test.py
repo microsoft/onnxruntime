@@ -135,6 +135,7 @@ class GroupNormNHWCMetric(ke.BandwidthMetric):
         return "not supported          " + common
 
 
+@ke.dispatchable(pattern_args=7)
 def profile_group_norm_func(
     batch_size: int, height: int, width: int, num_channels: int, num_groups: int, dtype: str, swish: bool, func
 ):
@@ -181,8 +182,9 @@ def profile_group_norm_func(
         )
 
 
-def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, swish=True, sort=True):
-    with ke.benchmark(sort):
+@ke.dispatchable
+def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, swish=True):
+    with ke.benchmark():
         for func in dtype_to_funcs(dtype):
             profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, func)
         # ck function
@@ -217,10 +219,8 @@ def profile():
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("batch_size", type=int)
     group.add_argument("height", type=int)
     group.add_argument("width", type=int)
@@ -228,13 +228,12 @@ if __name__ == "__main__":
     group.add_argument("num_groups", type=int)
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("--swish", action="store_true")
-    group.add_argument("--sort", action="store_true")
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(
+        args.dispatch(
             args.batch_size,
             args.height,
             args.width,
@@ -242,5 +241,4 @@ if __name__ == "__main__":
             args.num_groups,
             args.dtype,
             args.swish,
-            args.sort,
         )

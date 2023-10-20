@@ -5,12 +5,20 @@
 
 """This file provides wrapper for native _kernel_explorer.so library and benchmark reporter for operator"""
 
+from __future__ import annotations
+from typing import Callable
+
 import ctypes
 import os
+import json
+import inspect
 import sys
 from abc import abstractmethod
+from argparse import ArgumentParser, Action
 from contextlib import contextmanager
 from dataclasses import dataclass
+from fnmatch import fnmatch
+from functools import wraps
 
 build_dir = os.environ.get("KERNEL_EXPLORER_BUILD_DIR", None)
 if build_dir is None:
@@ -38,10 +46,14 @@ library_files_to_load = [
     "onnxruntime_pybind11_state.so",
     "libonnxruntime_providers_shared.so",
 ]
+_is_cuda_available = False
+_is_rocm_available = False
 if "CUDAExecutionProvider" in available_providers:
     library_files_to_load.append("libonnxruntime_providers_cuda.so")
+    _is_cuda_available = True
 if "ROCMExecutionProvider" in available_providers:
     library_files_to_load.append("libonnxruntime_providers_rocm.so")
+    _is_rocm_available = True
 
 library_to_load = []
 
@@ -56,13 +68,33 @@ for lib in library_files_to_load:
 
 
 # use RTLD_GLOBAL to bring all symbols to global name space
-libraries = [ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL) for lib_path in library_to_load]
+_libraries = [ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL) for lib_path in library_to_load]
+del library_files_to_load, library_to_load
 
 # pylint: disable=wrong-import-position, disable=unused-import
 import _kernel_explorer  # noqa: E402, F401
 
 # pylint: disable=wrong-import-position, disable=unused-import, disable=wildcard-import
 from _kernel_explorer import *  # noqa: F403, E402
+
+
+@dataclass
+class _KeContext:
+    sort: bool = False
+
+    pattern = "*"
+
+    # mapping the module to dispatch to
+    dispatchable = {}
+    instance_dispatchable = {}  # can be filter with pattern
+
+    dispatch_depth = 0
+
+    save_tuning_results: str | None = None
+    return_tuning_results: bool = False
+
+
+_ke_context = _KeContext()
 
 
 # Benchmark Reporter
@@ -114,30 +146,34 @@ class ComputeAndBandwidthMetric(ComputeMetric, BandwidthMetric):
 
 class InstanceBenchmarkReporter:
     def __init__(self):
-        self.sort = False
+        self.best = float("inf")
         self.reporters = []
-
-    def set_sort(self, sort):
-        self.sort = sort
 
     def make_report(self):
         self.reporters.sort()
         for item in self.reporters:
-            print(item.report())
+            if not _ke_context.sort and item.milliseconds_duration > 0 and item.milliseconds_duration < self.best:
+                self.best = item.milliseconds_duration
+                print(item.report(), "*")
+            else:
+                print(item.report())
         self.reporters.clear()
 
     def receive(self, status):
         self.reporters.append(status)
-        if not self.sort:
+        if not _ke_context.sort:
             self.make_report()
+
+    def _reset_best(self):
+        self.best = float("inf")
 
 
 _reporter = InstanceBenchmarkReporter()
 
 
 @contextmanager
-def benchmark(sort):
-    _reporter.set_sort(sort)
+def benchmark():
+    _reporter._reset_best()
     try:
         yield
     finally:
@@ -146,3 +182,182 @@ def benchmark(sort):
 
 def report(status):
     _reporter.receive(status)
+
+
+def register_common_arguments(parser: ArgumentParser):
+    class SortAction(Action):
+        def __init__(self, option_strings, dest, default=False, help=None):
+            super().__init__(option_strings=option_strings, dest=dest, nargs=0, default=default, help=help)
+
+        def __call__(self, parser, namespace, values, option_string=None):
+            setattr(namespace, self.dest, True)
+            _ke_context.sort = True
+
+    def set_ort_severity(v):
+        v = int(v)
+        onnxruntime_pybind11_state.set_default_logger_severity(v)
+        return v
+
+    def set_ort_verbosity(v):
+        v = int(v)
+        onnxruntime_pybind11_state.set_default_logger_verbosity(v)
+        return v
+
+    def set_dispatch(name):
+        if name in _ke_context.dispatchable:
+            dispatch = _ke_context.dispatchable[name]
+            _ke_context.dispatch = dispatch
+            return dispatch
+
+        if name in _ke_context.instance_dispatchable:
+            msg = f"'{name}' needs an instance to dispatch, thus it is not dispatchable from commandline."
+            print(msg)
+            raise ValueError(msg)
+
+        from difflib import SequenceMatcher as matcher
+
+        valid_names = list(_ke_context.dispatchable.keys())
+        scored_names = list(reversed(sorted([(matcher(None, name, a).ratio(), a) for a in valid_names])))
+        top10 = "\n    ".join([a for _, a in scored_names[:10]])
+        msg = f"'{name}' is not registered for dispatch. Top 10 matches are:\n    {top10}"
+        print(msg)
+        raise ValueError(msg)
+
+    def set_pattern(pattern):
+        pattern = str(pattern)
+        _ke_context.pattern = pattern
+
+    # class SaveTuningResultsAction(Action):
+    #     def __init__(self, option_strings, dest, default=False, help=None):
+    #         super().__init__(option_strings=option_strings, dest=dest, nargs=0, default=default, help=help)
+
+    #     def __call__(self, parser, namespace, values, option_string=None):
+    #         setattr(namespace, self.dest, True)
+
+    def set_save_tuning_results(path):
+        _ke_context.save_tuning_results = path
+        return path
+
+    group = parser.add_argument_group("kernel explorer args", "Common arguments for kernel explorer")
+    group.add_argument(
+        "--sort",
+        action=SortAction,
+        help="control the sort of ke benchmark results based on timing",
+    )
+    group.add_argument(
+        "--ort_default_logger_severity",
+        default=2,
+        choices=[0, 1, 2, 3, 4],
+        type=set_ort_severity,
+        help="0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal",
+    )
+    group.add_argument("--ort_default_logger_verbosity", default=0, type=set_ort_verbosity)
+    group.add_argument(
+        "--dispatch",
+        default="profile_with_args",
+        help="dispatch a registered dispatchable.",
+        type=set_dispatch,
+    )
+    group.add_argument(
+        "--pattern",
+        default="*",
+        help="filter the register instanced dispatchables, only matched pattern will be ran.",
+        type=set_pattern,
+    )
+    group.add_argument(
+        "--save_tuning_results",
+        default=None,
+        type=set_save_tuning_results,
+        help="patch the dispatch function to save tuning results to the specified path.",
+    )
+
+    return parser
+
+
+def get_argument_parser():
+    parser = ArgumentParser()
+    return register_common_arguments(parser)
+
+
+def has_args():
+    if "--help" in sys.argv or "-h" in sys.argv or "--func" in sys.argv:
+        return True
+
+    # parse the KE args group
+    parser = get_argument_parser()
+    _, remainder = parser.parse_known_args(sys.argv)
+    return len(remainder) > 1  # the file path is always the remainder
+
+
+def is_cuda_available():
+    return _is_cuda_available
+
+
+def is_rocm_available():
+    return _is_rocm_available
+
+
+def dispatchable(f: Callable | None = None, *, pattern_arg: int | None = None):
+    def wrap_dispatch(f, *args, **kwargs):
+        _ke_context.dispatch_depth += 1
+        ret = f(*args, **kwargs)
+        _ke_context.dispatch_depth -= 1
+        if _ke_context.dispatch_depth == 0:
+            if _ke_context.save_tuning_results is not None:
+                try:
+                    trs = _kernel_explorer.get_collected_tuning_results()
+                    json.dump(trs, open(_ke_context.save_tuning_results, "x"))
+                finally:
+                    pass
+
+            if _ke_context.return_tuning_results:
+                if ret is not None:
+                    print(
+                        f"WARNING: kernel explorer wants to override the return value of {f.__name__},",
+                        "but original return value is not None!",
+                    )
+                    return ret
+                try:
+                    trs = _kernel_explorer.get_collected_tuning_results()
+                finally:
+                    return trs
+
+        return ret
+
+    if f is None:  # Used with ke.dispatchable(...)
+        assert pattern_arg is not None
+
+        def decorator(f):
+            _ke_context.instance_dispatchable[f.__name__] = f
+
+            @wraps(f)
+            def wrapper(*args, **kwargs):
+                func_name = args[pattern_arg] if isinstance(args[pattern_arg], str) else args[pattern_arg].__name__
+                if not fnmatch(func_name, _ke_context.pattern):
+                    print(
+                        f"Trying to run {func_name},",
+                        f"does not match allowed function name pattern '{_ke_context.pattern}', skip...",
+                    )
+                    return
+                return wrap_dispatch(f, *args, **kwargs)
+
+            return wrapper
+
+        return decorator
+
+    else:  # Used with @ke.dispatchable
+        _ke_context.dispatchable[f.__name__] = f
+
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            return wrap_dispatch(f, *args, **kwargs)
+
+        return wrapper
+
+
+def set_dispatchable_pattern(p: str = "*"):
+    _ke_context.pattern = p
+
+
+def set_return_tuning_results(b: bool = True):
+    _ke_context.return_tuning_results = b

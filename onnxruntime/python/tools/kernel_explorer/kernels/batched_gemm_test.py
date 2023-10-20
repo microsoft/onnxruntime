@@ -23,6 +23,7 @@ def dtype_to_suffix(dtype):
     }[dtype]
 
 
+@ke.dispatchable
 def _test_batched_gemm(
     func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int, alpha=1.0, beta=0.0
 ):
@@ -148,6 +149,7 @@ class BatchedGemmMetric(ke.ComputeMetric):
         return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
+@ke.dispatchable(pattern_arg=0)
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
@@ -177,12 +179,13 @@ def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int,
         ke.report(BatchedGemmMetric(impl, dtype, duration_ms, flops, transa, transb, m, n, k, batch))
 
 
-def profile_with_args(dtype, transa, transb, m, n, k, batch, sort):
+@ke.dispatchable
+def profile_with_args(dtype, transa, transb, m, n, k, batch):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
     fn_rocblas = getattr(ke, "RocBlasBatchedGemm" + dtype_suffix)
     fn_tunable = getattr(ke, "BatchedGemmTunable" + dtype_suffix + transab_suffix)
-    with ke.benchmark(sort):
+    with ke.benchmark():
         profile_gemm_func(fn_rocblas, dtype, transa, transb, m, n, k, batch)
         profile_gemm_func(fn_tunable, dtype, transa, transb, m, n, k, batch)
     print()
@@ -192,14 +195,12 @@ def profile():
     for dtype in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=False):
             for batch in [1, 32, 64]:
-                profile_with_args(dtype, False, False, m, n, k, batch, True)
+                profile_with_args(dtype, False, False, m, n, k, batch)
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("transa", choices="NT")
     group.add_argument("transb", choices="NT")
@@ -207,12 +208,9 @@ if __name__ == "__main__":
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
     group.add_argument("batch", type=int)
-    group.add_argument("--sort", action="store_true")
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(
-            args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch, args.sort
-        )
+        args.dispatch(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch)
