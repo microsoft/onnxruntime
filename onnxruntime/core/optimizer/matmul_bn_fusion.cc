@@ -48,11 +48,11 @@ std::optional<std::reference_wrapper<const Node>> MatchPath(
 
 /*
  *   Given a MatMul node, it will verify the following pattern.
- *                MatMul  
- *                  |     
- *               Reshape ^
- *                  |
- *             Transpose ^
+ *                MatMul                  GEMM 
+ *                  |                       |     
+ *               Reshape ^     --->      Reshape ^
+ *                  |                       |
+ *             Transpose ^             Transpose ^
  *                  |
  *        BatchNormalization
  * Note: ^ means there can be 0 or 1 occurrences of that node. 
