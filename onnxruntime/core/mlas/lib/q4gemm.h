@@ -42,8 +42,6 @@ MLAS_FORCEINLINE
 void
 MlasBlkQ4DequantB(float* FpData, const uint8_t* PackedB, size_t CountN, size_t CountK, size_t ldb);
 
-
-inline
 MLAS_FORCEINLINE
 void
 MlasAddBiasForGemm(const float* Bias, float* C, size_t CountM, size_t CountN, size_t ldc) {
