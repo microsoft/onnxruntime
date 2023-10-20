@@ -11,6 +11,7 @@
 # -------------------------------------------------------------------------
 import math
 import os
+import platform
 import random
 import unittest
 
@@ -1135,7 +1136,7 @@ def parity_check_gqa_past_no_buff(
 
 class TestMHA(unittest.TestCase):
     def test_packed_mha(self):
-        if not torch.cuda.is_available():
+        if not torch.cuda.is_available() or platform.system() != "Linux":
             return
         major, _ = torch.cuda.get_device_capability()
         if major < 8:
@@ -1153,7 +1154,7 @@ class TestMHA(unittest.TestCase):
                         parity_check_mha(config, True)
 
     def test_mha(self):
-        if not torch.cuda.is_available():
+        if not torch.cuda.is_available() or platform.system() != "Linux":
             return
         major, _ = torch.cuda.get_device_capability()
         if major < 8:
@@ -1191,8 +1192,6 @@ class TestGQA(unittest.TestCase):
         if not torch.cuda.is_available():
             return
         major, minor = torch.cuda.get_device_capability()
-        if major < 8:
-            return
         torch.manual_seed(69)
         print("-------- TEST GQA ---------")
         batches = [2] if pipeline_mode else [1, 5]
@@ -1212,7 +1211,9 @@ class TestGQA(unittest.TestCase):
         )
         num_h = [(9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 256] if pipeline_mode else [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        if major < 5 or (major == 5 and minor < 3):
+            return
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         for b in batches:
             for s, s2 in seqs:
                 for n, n2 in num_h:
@@ -1220,9 +1221,9 @@ class TestGQA(unittest.TestCase):
                         for causal in [True, False]:
                             config = Config(b, s, s2, 0, n, n2, h)
                             parity_check_gqa_no_past(config, causal=causal)
-        if major < 5 or (major == 5 and minor < 3):
+        if major < 8 or platform.system() != "Linux":
             return
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         for b in batches:
             for s, s2 in seqs:
                 for n, n2 in num_h:
@@ -1235,8 +1236,9 @@ class TestGQA(unittest.TestCase):
         if not torch.cuda.is_available():
             return
         major, minor = torch.cuda.get_device_capability()
-        if major < 8:
+        if major < 5 or (major == 5 and minor < 3):
             return
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         print("-------- TEST GQA PAST ---------")
         batches = [2] if pipeline_mode else [1, 2]
         seqs = (
@@ -1281,9 +1283,9 @@ class TestGQA(unittest.TestCase):
                                     rtol=1e-3,
                                     atol=1e-3,
                                 )
-        if major < 5 or (major == 5 and minor < 3):
+        if major < 8 or platform.system() != "Linux":
             return
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         for b in batches:
             for s, s2 in seqs:
                 for n, n2 in num_h:
