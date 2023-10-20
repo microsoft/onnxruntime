@@ -637,7 +637,7 @@ class FusionAttention(Fusion):
             hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
             output (str): output name of MHA
             key_padding_mask (str): name of key padding mask
-            add_qk (str): name of add after Q x K' - (batch_size, 1, source_sequence_length, target_sequence_length)
+            add_qk (str): name of add after Q x K'
             past_k (str): name of past K value - (batch_size, num_heads, past_sequence_length, head_size)
             past_v (str): name of past V value - (batch_size, num_heads, past_sequence_length, head_size)
             present_k (str): name of present K value - (batch_size, num_heads, sequence_length, head_size)
@@ -692,18 +692,9 @@ class FusionAttention(Fusion):
         else:
             mha_inputs.append("")
 
-        mha_inputs.append(key_padding_mask)
-
-        # Reshape add_qk from (B,1,S,T) to (B,N,S,T)
-        if add_qk:
-            mask_output_name = self.reshape_add_qk(add_qk)
-            mha_inputs.append(mask_output_name)
-        else:
-            mha_inputs.append("")
-
         # Add optional inputs for MHA
         if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
-            mha_inputs.extend([past_k, past_v])
+            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
 
         # Add outputs for MHA
         mha_outputs = [output]

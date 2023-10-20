@@ -815,7 +815,11 @@ def main():
     logger.info("Verifying parity on all ONNX models created")
 
     # Use FP32 precision for FP32, INT8, INT4 CPU models, use FP16 precision for FP16 and INT4 GPU models
-    args.precision = "fp32" if args.precision in {"int8", "fp32"} or (args.precision == Precision.INT4 and args.execution_provider == "cpu") else "fp16"
+    args.precision = (
+        "fp32"
+        if args.precision in {"int8", "fp32"} or (args.precision == Precision.INT4 and args.execution_provider == "cpu")
+        else "fp16"
+    )
 
     # Verify parity on all saved ONNX models
     for filename in os.listdir(args.output):
@@ -823,11 +827,16 @@ def main():
             continue
 
         parity_cmd = [
-            "-m", original_model_name,
-            "-o", os.path.join(args.output, filename),
-            "-ep", args.execution_provider,
-            "-id", args.device_id,
-            "-fp", args.precision,
+            "-m",
+            original_model_name,
+            "-o",
+            os.path.join(args.output, filename),
+            "-ep",
+            args.execution_provider,
+            "-id",
+            args.device_id,
+            "-fp",
+            args.precision,
         ]
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")

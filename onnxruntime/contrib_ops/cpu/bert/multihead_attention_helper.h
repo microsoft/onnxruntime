@@ -217,11 +217,15 @@ Status CheckInputs(const T* query,
       } else if (mask_dims[0] == static_cast<int64_t>(3) * static_cast<int64_t>(batch_size) + static_cast<int64_t>(2)) {
         mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
       }
-    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
+    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) &&
+               mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
-    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(total_sequence_length)) {
+    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) &&
+               mask_dims[1] == static_cast<int64_t>(total_sequence_length)) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
-    } else if (mask_dims.size() == 3 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(sequence_length) && mask_dims[2] == static_cast<int64_t>(total_sequence_length)) {
+    } else if (mask_dims.size() == 3 && mask_dims[0] == static_cast<int64_t>(batch_size) &&
+               mask_dims[1] == static_cast<int64_t>(sequence_length) &&
+               mask_dims[2] == static_cast<int64_t>(total_sequence_length)) {
       mask_type = AttentionMaskType::MASK_3D_ATTENTION;
     }
 

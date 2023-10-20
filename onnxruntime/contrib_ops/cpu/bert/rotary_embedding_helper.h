@@ -40,8 +40,8 @@ Status CheckInputs(const T* input,
   // Check position_ids
   const auto& position_ids_dims = position_ids->Shape().GetDims();
   if (!onnxruntime::IsScalarOr1ElementVector(position_ids) && position_ids_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' is expected to have 0, 1, or 2 dimensions, got ",
-                           position_ids_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' is expected to have 0, 1, or 2 ",
+                           "dimensions, got ", position_ids_dims.size());
   }
   // Check cos_cache and sin_cache
   const auto& cos_cache_dims = cos_cache->Shape().GetDims();
@@ -55,7 +55,8 @@ Status CheckInputs(const T* input,
                            sin_cache_dims.size());
   }
   if (cos_cache_dims[0] != sin_cache_dims[0] || cos_cache_dims[1] != sin_cache_dims[1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'cos_cache' and 'sin_cache' are expected to have the same shape");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'cos_cache' and 'sin_cache' are expected to have ",
+                           "the same shape");
   }
 
   // Get attributes from inputs
@@ -70,12 +71,12 @@ Status CheckInputs(const T* input,
   // Check position_ids input shapes
   if (!onnxruntime::IsScalarOr1ElementVector(position_ids)) {
     if (batch_size != static_cast<int>(position_ids_dims[0])) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 0 should be of size batch_size, got ",
-                             position_ids_dims[0]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 0 should be of size ",
+                             "batch_size, got ", position_ids_dims[0]);
     }
     if (sequence_length != static_cast<int>(position_ids_dims[1])) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 1 should be of size sequence_length, got ",
-                             position_ids_dims[1]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 1 should be of size ",
+                             "sequence_length, got ", position_ids_dims[1]);
     }
     position_ids_format = 1;
   } else {
@@ -83,21 +84,21 @@ Status CheckInputs(const T* input,
   }
   // Check cos_cache input shapes
   if (max_sequence_length != static_cast<int>(cos_cache_dims[0])) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 0 should be same as max_sequence_length, got ",
-                           cos_cache_dims[0]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 0 should be same as ",
+                           "max_sequence_length, got ", cos_cache_dims[0]);
   }
   if ((head_size / 2) != static_cast<int>(cos_cache_dims[1])) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 1 should be same as head_size / 2, got ",
-                           cos_cache_dims[1]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 1 should be same as ",
+                           "head_size / 2, got ", cos_cache_dims[1]);
   }
   // Check sin_cache input shapes
   if (max_sequence_length != static_cast<int>(sin_cache_dims[0])) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'sin_cache' dimension 0 should be same as max_sequence_length, got ",
-                           sin_cache_dims[0]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'sin_cache' dimension 0 should be same as ",
+                           "max_sequence_length, got ", sin_cache_dims[0]);
   }
   if ((head_size / 2) != static_cast<int>(sin_cache_dims[1])) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'sin_cache' dimension 1 should be same as head_size / 2, got ",
-                           sin_cache_dims[1]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'sin_cache' dimension 1 should be same as ",
+                           "head_size / 2, got ", sin_cache_dims[1]);
   }
 
   // Set rotary parameters

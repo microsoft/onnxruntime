@@ -633,7 +633,9 @@ def get_args():
     args.sequence_lengths = args.sequence_lengths.split(" ")
 
     # Use FP32 precision for FP32, INT8, INT4 CPU models, use FP16 precision for FP16 and INT4 GPU models
-    args.precision = "fp32" if args.precision in {"int8", "fp32"} or (args.precision == "int4" and args.device == "cpu") else "fp16"
+    args.precision = (
+        "fp32" if args.precision in {"int8", "fp32"} or (args.precision == "int4" and args.device == "cpu") else "fp16"
+    )
 
     # Check that only one (batch_size, sequence_length) combination is set for profiling
     if args.profile:
