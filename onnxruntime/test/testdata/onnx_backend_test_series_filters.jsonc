@@ -290,7 +290,21 @@
         "^test_isnan",
         "^test_isnan_float16",
         "^test_reduce_max_bool_inputs",
-        "^test_reduce_min_bool_inputs"
+        "^test_reduce_min_bool_inputs",
+        "^test_reduce_min_empty_set",
+        "^test_reduce_l1_empty_set",
+        "^test_reduce_l1_empty_set_expanded",
+        "^test_reduce_l2_empty_set",
+        "^test_reduce_l2_empty_set_expanded",
+        "^test_reduce_log_sum_empty_set",
+        "^test_reduce_log_sum_empty_set_expanded",
+        "^test_reduce_log_sum_exp_empty_set",
+        "^test_reduce_log_sum_exp_empty_set_expanded",
+        "^test_reduce_prod_empty_set",
+        "^test_reduce_sum_empty_set",
+        "^test_reduce_sum_empty_set_non_reduced_axis_zero",
+        "^test_reduce_sum_square_empty_set",
+        "^test_reduce_sum_square_empty_set_expanded"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
