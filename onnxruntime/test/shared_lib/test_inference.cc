@@ -2832,10 +2832,9 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 #endif
 
 #ifdef USE_TENSORRT
-TEST(CApiTest, TestExternalCUDAStreamWithIOBinding2) {
+TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
   const auto& api = Ort::GetApi();
   Ort::SessionOptions session_options;
-
 
   OrtTensorRTProviderOptionsV2* trt_options;
   ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
@@ -2843,7 +2842,7 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding2) {
       rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
 
 
-    // updating provider option with user provided compute stream
+  // updating provider option with user provided compute stream
   cudaStream_t compute_stream = nullptr;
   void* user_compute_stream = nullptr;
   cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
@@ -2908,11 +2907,14 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding2) {
   binding.ClearBoundOutputs();
 }
 
-TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
+TEST(CApiTest, TestExternalCUDAStreamWithIOBinding2) {
   const auto& api = Ort::GetApi();
+  Ort::SessionOptions session_options;
+
   OrtTensorRTProviderOptionsV2* trt_options;
   ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
-  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
+      rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
 
   // updating provider option with user provided compute stream
   cudaStream_t compute_stream = nullptr;
@@ -2922,66 +2924,69 @@ TEST(TensorRTTest, TestExternalCUDAStreamWithIOBinding) {
   ASSERT_TRUE(api.GetTensorRTProviderOptionsByName(rel_trt_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
   ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
 
-  std::basic_string<ORTCHAR_T> model_uri = MODEL_URI;
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_trt_options.get()) == nullptr);
 
-  Ort::SessionOptions session_options;
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(static_cast<OrtSessionOptions*>(session_options), rel_trt_options.get()) == nullptr);
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+  Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 
-  std::unique_ptr<Ort::Session> session;
-  session.reset(new Ort::Session(*ort_env, model_uri.c_str(), session_options));
+  Ort::Allocator cuda_allocator(session, info_cuda);
+  auto allocator_info = cuda_allocator.GetInfo();
+  ASSERT_TRUE(info_cuda == allocator_info);
 
-  Ort::IoBinding iobindings(*session);
-
-  // input tensor on gpu
-  Ort::MemoryInfo memory_info_gpu{"Cuda", OrtDeviceAllocator, 0, OrtMemTypeDefault};
-
+  const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  std::vector<int64_t> x_shape({3, 2});
-  int type_size = sizeof(float);
-  size_t tensor_size = x_values.size();
-  float* input_tensor_data = nullptr;
-  ONNXTensorElementDataType type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
 
-  assert(cudaMallocHost(&input_tensor_data, tensor_size * type_size) == cudaSuccess);
-  assert(cudaMemcpy(input_tensor_data, x_values.data(), tensor_size * type_size, cudaMemcpyHostToDevice) == cudaSuccess);
+  float* input_data;
+  cudaMallocHost(&input_data, 3 * 2 * sizeof(float));
+  ASSERT_NE(input_data, nullptr);
+  cudaMemcpy(input_data, x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
-  Ort::Value ort_input_tensor_value = Ort::Value::CreateTensor(memory_info_gpu, input_tensor_data, tensor_size * type_size,
-                                                               x_shape.data(), x_shape.size(), type);
-
-  // output tensor on gpu 
-  void* output_tensor_data = nullptr;
-  const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-  const std::array<int64_t, 2> y_shape = {3, 2};
-  tensor_size = expected_y.size();
-  assert(cudaMallocHost(&output_tensor_data, tensor_size * type_size) == cudaSuccess);
-  Ort::Value ort_output_tensor_value = Ort::Value::CreateTensor(memory_info_gpu, output_tensor_data, tensor_size * type_size,
-                                                               y_shape.data(), y_shape.size(), type);
-
-  iobindings.BindInput("X", ort_input_tensor_value);
-  iobindings.BindOutput("Y", ort_output_tensor_value);
-  // Sychronize to make sure the copy on default stream is done since TensorRT isn't using default stream.
-  iobindings.SynchronizeInputs();
-
-  session->Run(Ort::RunOptions(), iobindings);
-
-  iobindings.SynchronizeOutputs();
-  assert(cudaStreamSynchronize(compute_stream) == cudaSuccess);
-
-  std::array<float, 3 * 2> y_values_0;
-  cudaMemcpy(y_values_0.data(), output_tensor_data, sizeof(float) * y_values_0.size(), cudaMemcpyDeviceToHost);
-
-  std::cout << "output: " << std::endl;
-  for (auto y : y_values_0) {
-    std::cout << y << std::endl;
+  std::cout << "input tesnor:" << std::endl;
+  for (int i = 0; i < 6; i++) {
+    std::cout << input_data[i] << std::endl;
   }
 
-  ASSERT_TRUE(std::equal(std::begin(y_values_0), std::end(y_values_0), std::begin(expected_y)));
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data), x_values.size(),
+                                                x_shape.data(), x_shape.size());
 
-  iobindings.ClearBoundInputs();
-  iobindings.ClearBoundOutputs();
+  const std::array<int64_t, 2> expected_y_shape = {3, 2};
+  std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  cudaFree(input_tensor_data);
-  cudaFree(output_tensor_data);
+  float* output_data;
+  cudaMallocHost(&output_data, 3 * 2 * sizeof(float));
+  ASSERT_NE(output_data, nullptr);
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data),
+                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+
+  // Create IoBinding for inputs and outputs.
+  Ort::IoBinding binding(session);
+  binding.BindInput("X", bound_x);
+  binding.BindOutput("Y", bound_y);
+
+  // One regular run for necessary memory allocation and graph capturing
+  session.Run(Ort::RunOptions(), binding);
+
+  // Check the values against the bound raw memory (needs copying from device to host first)
+  std::array<float, 3 * 2> y_values;
+  cudaMemcpy(y_values.data(), output_data, sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+
+  std::cout << "output: " << std::endl;
+  for (auto y : y_values) {
+    std::cout << y << std::endl;
+  }
+  ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
+
+  // Clean up
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+
+  cudaFree(input_data);
+  cudaFree(output_data);
   cudaStreamDestroy(compute_stream);
 }
 
