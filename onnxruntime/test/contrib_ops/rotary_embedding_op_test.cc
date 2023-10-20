@@ -19,7 +19,6 @@ static void RunTest(
     const std::vector<float>& output_data,
     int batch_size,
     int sequence_length,
-    int hidden_size,
     int head_size,
     int num_heads,
     int max_sequence_length,
@@ -32,12 +31,12 @@ static void RunTest(
   //    cos cache    : (max_sequence_length, head_size / 2)
   //    sin cache    : (max_sequence_length, head_size / 2)
   //    interleaved  : 0 = false, 1 = true
-
+  
+  int hidden_size = num_heads * head_size;
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> pos_dims;
   std::vector<int64_t> cache_dims = {max_sequence_length, head_size / 2};
 
-  UNREFERENCED_PARAMETER(num_heads);  // only referenced in assert
   assert(hidden_size != 0 && head_size != 0 && num_heads != 0 && max_sequence_length != 0);
   assert(max_sequence_length >= sequence_length);
   if (position_ids.size() == 1) {
@@ -89,7 +88,6 @@ static void RunTests(const std::vector<float>& input_data,
                      const std::vector<float>& output_data,
                      int batch_size,
                      int sequence_length,
-                     int hidden_size = 0,
                      int head_size = 0,
                      int num_heads = 0,
                      int max_sequence_length = 0,
@@ -103,7 +101,6 @@ static void RunTests(const std::vector<float>& input_data,
           output_data,
           batch_size,
           sequence_length,
-          hidden_size,
           head_size,
           num_heads,
           max_sequence_length,
@@ -120,7 +117,6 @@ static void RunTests(const std::vector<float>& input_data,
           output_data,
           batch_size,
           sequence_length,
-          hidden_size,
           head_size,
           num_heads,
           max_sequence_length,
@@ -138,7 +134,6 @@ static void RunTests(const std::vector<float>& input_data,
             output_data,
             batch_size,
             sequence_length,
-            hidden_size,
             head_size,
             num_heads,
             max_sequence_length,
@@ -155,7 +150,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
   int sequence_length = 3;
   int num_heads = 2;
   int head_size = 4;
-  int hidden_size = num_heads * head_size;
   int max_sequence_length = 8;
   int64_t interleaved = 1;  // true
 
@@ -186,7 +180,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
            output_data,
            batch_size,
            sequence_length,
-           hidden_size,
            head_size,
            num_heads,
            max_sequence_length,
@@ -199,7 +192,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
   int sequence_length = 8;
   int num_heads = 4;
   int head_size = 6;
-  int hidden_size = num_heads * head_size;
   int max_sequence_length = 16;
   int64_t interleaved = 1;  // true
 
@@ -386,7 +378,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
            output_data,
            batch_size,
            sequence_length,
-           hidden_size,
            head_size,
            num_heads,
            max_sequence_length,
@@ -399,7 +390,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
   int sequence_length = 8;
   int num_heads = 4;
   int head_size = 6;
-  int hidden_size = num_heads * head_size;
   int max_sequence_length = 16;
   int64_t interleaved = 0;  // false
 
@@ -586,7 +576,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
            output_data,
            batch_size,
            sequence_length,
-           hidden_size,
            head_size,
            num_heads,
            max_sequence_length,
@@ -599,7 +588,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
   int sequence_length = 2;
   int num_heads = 3;
   int head_size = 6;
-  int hidden_size = num_heads * head_size;
   int max_sequence_length = 4;
   int64_t interleaved = 0;  // false
 
@@ -634,7 +622,6 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
            output_data,
            batch_size,
            sequence_length,
-           hidden_size,
            head_size,
            num_heads,
            max_sequence_length,
