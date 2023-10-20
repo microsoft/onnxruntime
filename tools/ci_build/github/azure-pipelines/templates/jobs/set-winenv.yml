@@ -6,20 +6,19 @@ parameters:
   type: boolean
   default: false
 
-- jobs:
+- steps:
   - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
-    - job: Download CUDA
+    - step: Download CUDA
       strategy:
         matrix:
           CUDA12:
             CUDA_VERSION: '12.2'
           CUDA11:
             CUDA_VERSION: '11.8'
-        steps:
-
+        task:
           - powershell: |
               azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v$(CUDA_VERSION)" $(Agent.TempDirectory)
-  - job: Setup Env
+  - step: Setup Env
     dependsOn: Download CUDA
     tasks:
     - task: BatchScript@1
