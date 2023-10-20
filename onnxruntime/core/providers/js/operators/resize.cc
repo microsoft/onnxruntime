@@ -13,7 +13,7 @@ namespace js {
       kJsExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                   \
           .InputMemoryType(OrtMemTypeCPUInput, 1)                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
+          .TypeConstraint("T", JsepSupportedFloatTypes()),            \
       Resize);
 
 #define REGISTER_RESIZE_VERSIONED_KERNEL(domain, sinceVersion, endVerion) \
@@ -26,8 +26,8 @@ namespace js {
           .InputMemoryType(OrtMemTypeCPUInput, 1)                         \
           .InputMemoryType(OrtMemTypeCPUInput, 2)                         \
           .InputMemoryType(OrtMemTypeCPUInput, 3)                         \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())     \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),    \
+          .TypeConstraint("T1", JsepSupportedFloatTypes())                \
+          .TypeConstraint("T2", JsepSupportedFloatTypes()),               \
       Resize);
 
 #define REGISTER_RESIZE_KERNEL(domain, sinceVersion)                   \
@@ -40,8 +40,8 @@ namespace js {
           .InputMemoryType(OrtMemTypeCPUInput, 1)                      \
           .InputMemoryType(OrtMemTypeCPUInput, 2)                      \
           .InputMemoryType(OrtMemTypeCPUInput, 3)                      \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())  \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()), \
+          .TypeConstraint("T1", JsepSupportedFloatTypes())             \
+          .TypeConstraint("T2", JsepSupportedFloatTypes()),            \
       Resize);
 
 #define REGISTER_RESIZE_KERNEL_DOMAIN(domain)       \
