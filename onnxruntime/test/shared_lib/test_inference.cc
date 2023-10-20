@@ -2841,7 +2841,6 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
   std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
       rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
 
-
   // updating provider option with user provided compute stream
   cudaStream_t compute_stream = nullptr;
   void* user_compute_stream = nullptr;
@@ -2850,11 +2849,9 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
   ASSERT_TRUE(api.GetTensorRTProviderOptionsByName(rel_trt_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
   ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
 
-
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_trt_options.get()) == nullptr);
-
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
@@ -2889,7 +2886,6 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
 
-  // One regular run for necessary memory allocation and graph capturing
   session.Run(Ort::RunOptions(), binding);
 
   // Check the values against the bound raw memory (needs copying from device to host first)
@@ -2931,18 +2927,18 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding2) {
   Ort::Session session(*ort_env, MODEL_URI, session_options);
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 
-  Ort::Allocator cuda_allocator(session, info_cuda);
-  auto allocator_info = cuda_allocator.GetInfo();
-  ASSERT_TRUE(info_cuda == allocator_info);
-
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 
+  /*
+   * Use cudaMallocHost() (pinned memory allocation) to create input/output tensors
+   */
   float* input_data;
   cudaMallocHost(&input_data, 3 * 2 * sizeof(float));
   ASSERT_NE(input_data, nullptr);
   cudaMemcpy(input_data, x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
+  std::cout << "pinned memory allocation" << std::endl;
   std::cout << "input tesnor:" << std::endl;
   for (int i = 0; i < 6; i++) {
     std::cout << input_data[i] << std::endl;
@@ -2968,13 +2964,52 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding2) {
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
 
-  // One regular run for necessary memory allocation and graph capturing
+  /*
+   * Use cudaMalloc() (pageable memory allocation first and then implicit pinned memory allocation) to create input/output tensors
+   */
+  float* input_data_2;
+  cudaMalloc(&input_data_2, 3 * 2 * sizeof(float));
+  ASSERT_NE(input_data_2, nullptr);
+  cudaMemcpy(input_data_2, x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_x_2 = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data_2), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+
+  float* output_data_2;
+  cudaMallocHost(&output_data_2, 3 * 2 * sizeof(float));
+  ASSERT_NE(output_data_2, nullptr);
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_y_2 = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data_2),
+                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+
+  // Create IoBinding for inputs and outputs.
+  Ort::IoBinding binding_2(session);
+  binding_2.BindInput("X", bound_x_2);
+  binding_2.BindOutput("Y", bound_y_2);
+
+  // Run with first iobindings
   session.Run(Ort::RunOptions(), binding);
 
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
   cudaMemcpy(y_values.data(), output_data, sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
 
+  std::cout << "pinned memory allocation" << std::endl;
+  std::cout << "output: " << std::endl;
+  for (auto y : y_values) {
+    std::cout << y << std::endl;
+  }
+  ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
+
+  // Run with second iobindings
+  session.Run(Ort::RunOptions(), binding_2);
+
+  // Check the values against the bound raw memory (needs copying from device to host first)
+  cudaMemcpy(y_values.data(), output_data_2, sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+
+  std::cout << "pageable memory allocation" << std::endl;
   std::cout << "output: " << std::endl;
   for (auto y : y_values) {
     std::cout << y << std::endl;
@@ -2984,9 +3019,13 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding2) {
   // Clean up
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
+  binding_2.ClearBoundInputs();
+  binding_2.ClearBoundOutputs();
 
   cudaFree(input_data);
   cudaFree(output_data);
+  cudaFree(input_data_2);
+  cudaFree(output_data_2);
   cudaStreamDestroy(compute_stream);
 }
 
