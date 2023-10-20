@@ -147,6 +147,7 @@ template <typename T>
 SelectResult AttentionSelector<T>::Select(PackedAttentionParameters parameters, const cudaDeviceProp& device_prop) const {
   SelectResult result;
   result.use_flash_attention = false;
+#if USE_FLASH_ATTENTION
   if (!disable_flash_attention_) {
     result.use_flash_attention = !parameters.has_relative_position_bias &&
                                  parameters.head_size == parameters.v_head_size &&
@@ -155,7 +156,7 @@ SelectResult AttentionSelector<T>::Select(PackedAttentionParameters parameters, 
                                                                   parameters.num_heads,
                                                                   parameters.num_kv_heads);
   }
-
+#endif
   const bool is_unidirectional_ = true;
   result.fused_runner = (result.use_flash_attention ||
                          disable_TRT_flash_attention_ ||
@@ -255,10 +256,10 @@ Status PagedAttention<T>::CheckInputs(
                            key_cache->Shape(), " ", value_cache->Shape());
   }
 
-  if (positions && positions->Shape().Size() > 0 &&
-      positions->Shape()[positions->Shape().NumDimensions() - 1] != batch_size * seq_len) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid positions shape: ", positions->Shape());
-  }
+  // if (positions && positions->Shape().Size() > 0 &&
+  //     positions->Shape()[positions->Shape().NumDimensions() - 1] != batch_size * seq_len) {
+  //   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid positions shape: ", positions->Shape());
+  // }
 
   int64_t num_prompt_tokens = input_metadata->num_prompt_tokens;
 
@@ -525,7 +526,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t num_valid_tokens = input_metadata->num_valid_tokens;
   TensorShape output_shape = query->Shape();
   if (gemm_buffer.get() == nullptr) {
-    ORT_ENFORCE(query->Shape()[1] == num_heads_ * head_size_, "invlaid query shape");
+    ORT_ENFORCE(query->Shape()[2] == num_heads_ * head_size_, "invlaid query shape");
   } else {
     output_shape[output_shape.NumDimensions() - 1] = num_heads_ * head_size_;
     TensorShapeVector new_shape(2);
