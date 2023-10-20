@@ -52,6 +52,14 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
 
+#ifndef HWCAP2_I8MM
+#define HWCAP2_I8MM (1 << 13)
+#endif
+
+#ifndef HWCAP2_SVEI8MM
+#define HWCAP2_SVEI8MM (1 << 9)
+#endif
+
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
@@ -59,6 +67,9 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 
     // raw hack! Need CPUIDInfo implementation for more precise detection
     has_fp16_ = has_arm_neon_dot_;
+
+    has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
+    has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
 }
 #endif
 
