@@ -599,6 +599,7 @@ typedef struct OrtTensorRTProviderOptions {
  * \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
  */
 typedef struct OrtMIGraphXProviderOptions {
+
   int device_id;             // hip device id.
   int migraphx_fp16_enable;  // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true

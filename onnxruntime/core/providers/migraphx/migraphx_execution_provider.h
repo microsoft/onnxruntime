@@ -9,6 +9,7 @@
 #include "migraphx_execution_provider_info.h"
 
 #include <map>
+#include <unordered_map>
 #include "migraphx_inc.h"
 // TODO: find a better way to share this
 // #include "core/providers/cuda/rocm_stream_handle.h"
@@ -18,12 +19,12 @@
 namespace onnxruntime {
 
 namespace migraphx_env_vars {
-static const std::string kFP16Enable = "ORT_MIGRAPHX_FP16_ENABLE";
-static const std::string kINT8Enable = "ORT_MIGRAPHX_INT8_ENABLE";
-static const std::string dumpModelOps = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
-static const std::string kINT8CalibrationTableName = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME";
-static const std::string kCachePath = "ORT_MIGRAPHX_CACHE_PATH";
-static const std::string kINT8UseNativeMIGraphXCalibrationTable = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE";
+static const char kFP16Enable[] = "ORT_MIGRAPHX_FP16_ENABLE";
+static const char kINT8Enable[] = "ORT_MIGRAPHX_INT8_ENABLE";
+static const char dumpModelOps[] = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
+static const char kINT8CalibrationTableName[] = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME";
+static const char kCachePath[] = "ORT_MIGRAPHX_CACHE_PATH";
+static const char kINT8UseNativeMIGraphXCalibrationTable[] = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE";
 };  // namespace migraphx_env_vars
 
 // Information to construct kernel function state.

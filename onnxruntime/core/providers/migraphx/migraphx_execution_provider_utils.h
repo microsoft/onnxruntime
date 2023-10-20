@@ -8,8 +8,9 @@
 #include <string>
 #include <iostream>
 #include <filesystem>
+#include <memory>
 #include "flatbuffers/idl.h"
-#include "ort_trt_int8_cal_table.fbs.h"
+#include "core/providers/migraphx/ort_trt_int8_cal_table.fbs.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
 #include "core/common/path_string.h"
@@ -112,7 +113,10 @@ bool canEvalShapeGeneral(const GraphViewer& graph, const Node* node, std::vector
   return true;
 }
 
-bool canEvalNodeArgument(const GraphViewer& graph, const Node* node, std::vector<std::size_t> indices, std::vector<NodeIndex>& input_nodes) {
+bool canEvalNodeArgument(const GraphViewer& graph,
+                         const Node* node,
+                         std::vector<std::size_t> indices,
+                         std::vector<NodeIndex>& input_nodes) {
   input_nodes.clear();
   std::vector<const Node*> in_nodes;
   for (auto nit = node->InputNodesBegin(); nit != node->InputNodesEnd(); ++nit) {
@@ -148,7 +152,7 @@ bool canEvalNodeArgument(const GraphViewer& graph, const Node* node, std::vector
   return true;
 }
 
-float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
+float ConvertSinglePrecisionIEEE754ToFloat(uint64_t input) {
   int s = (input >> 31) & 0x01;
   int e = ((input & 0x7f800000) >> 23) - 127;
   int p = -1;
@@ -180,7 +184,10 @@ float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
  * Taken from the tensorRT EP to allow MIGraphX EP to reuse calibration tables for existing models
  *
  */
-bool ReadDynamicRange(const std::string file_name, const bool is_calibration_table, std::unordered_map<std::string, float>& dynamic_range_map) {
+bool ReadDynamicRange(const std::string file_name,
+                      const bool is_calibration_table,
+                      std::unordered_map<std::string,
+                      float>& dynamic_range_map) {
   std::ifstream infile(file_name, std::ios::binary | std::ios::in);
   if (!infile) {
     return false;
@@ -202,7 +209,7 @@ bool ReadDynamicRange(const std::string file_name, const bool is_calibration_tab
           std::getline(in_line, str, delim);
           std::string tensor_name = str;
           std::getline(in_line, str, delim);
-          unsigned long scale_int = std::strtoul(str.c_str(), nullptr, 16);
+          uint64_t scale_int = std::strtoul(str.c_str(), nullptr, 16);
           float scale_float = ConvertSinglePrecisionIEEE754ToFloat(scale_int);
           float dynamic_range = scale_float * 127.0f;
           dynamic_range_map[tensor_name] = dynamic_range;
@@ -219,7 +226,7 @@ bool ReadDynamicRange(const std::string file_name, const bool is_calibration_tab
     std::unique_ptr<char[]> data{new char[length]};
     infile.read((char*)data.get(), length);
     infile.close();
-    auto flat_table = flatbuffers::GetRoot<CalTableFlatBuffers::TrtTable>((const uint8_t*)data.get());
+    auto flat_table = flatbuffers::GetRoot<CalTableFlatBuffers::TrtTable>(reinterpret_cast<char*>(data.get()));
     auto flat_dict = flat_table->dict();
     for (size_t i = 0, end = flat_dict->size(); i < end; ++i) {
       flatbuffers::uoffset_t idx = static_cast<flatbuffers::uoffset_t>(i);

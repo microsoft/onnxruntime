@@ -756,7 +756,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else if (option.second == "False" || option.second == "false") {
             params.migraphx_fp16_enable = false;
           } else {
-            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be
+                                                                       'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_enable") {
           if (option.second == "True" || option.second == "true") {
@@ -764,14 +765,16 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else if (option.second == "False" || option.second == "false") {
             params.migraphx_int8_enable = false;
           } else {
-            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be
+                                                                       'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_calibration_table_name") {
           if (!option.second.empty()) {
             calibration_table = option.second;
             params.migraphx_int8_calibration_table_name = calibration_table.c_str();
           } else {
-            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a file name i.e. 'cal_table'.\n");
+            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a
+                                                                                       file name i.e. 'cal_table'.\n");
           }
         } else if (option.first == "migraphx_use_native_calibration_table") {
           if (option.second == "True" || option.second == "true") {
@@ -779,17 +782,20 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else if (option.second == "False" || option.second == "false") {
             params.migraphx_use_native_calibration_table = false;
           } else {
-            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be 'True' or 'False'. Default value is 'False'.\n");
+            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be
+                                                                      'True' or 'False'. Default value is 'False'.\n");
           }
         } else {
           ORT_THROW("Invalid MIGraphX EP option: ", option.first);
         }
       }
-      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
+      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
+                                                         onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
         return migraphx_provider_factory->CreateProvider();
       }
     } else {
-      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(cuda_device_id)) {
+      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
+                                                  onnxruntime::MIGraphXProviderFactoryCreator::Create(cuda_device_id)) {
         return migraphx_provider_factory->CreateProvider();
       }
     }
