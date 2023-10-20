@@ -32,9 +32,9 @@ bool MatchPath(const Node& parent_node,
 
 /*
  *   Given a MatMul node, it will verify the following pattern.
- *                MatMul
- *                  |
- *               Reshape
+ *                MatMul                MatMul
+ *                  |                     |
+ *               Reshape        OR   BatchNormalization
  *                  |
  *             Transpose
  *                  |
@@ -42,7 +42,7 @@ bool MatchPath(const Node& parent_node,
  * Other Conditions:
  *   - B tensor of MatMul should be constant.
  *   - scale, B, mean, var tensors of BatchNormalization should be constant.
- *   - Every node in the path except first and last node, should have only 1 output edge.
+ *   - Every node in the path, except the BatchNormalization, should have only 1 output edge.
  */
 bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {1, 9, 13}) ||
@@ -50,18 +50,20 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
     return false;
   }
 
+  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> path_with_reshape{
+      {"Reshape", {1, 5, 13, 14, 19}},
+      {"Transpose", {1, 13}},
+      {"BatchNormalization", {1, 6, 7, 9, 14, 15}}};
+
+  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> path_without_reshape{
+      {"BatchNormalization", {1, 6, 7, 9, 14, 15}}};
+
   const Node& child_node = *node.OutputNodesBegin();
-
-  std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> path{
-      {"Reshape", {1, 5}},
-      {"Transpose", {1}},
-      {"BatchNormalization", {1, 6, 7}}};
-
-  if (!MatchPath(node, path, child_node)) {
+  if (!(MatchPath(node, path_with_reshape, child_node) ^ MatchPath(node, path_without_reshape, child_node))) {
     return false;
   }
 
-  const auto& batch_norm_node = *child_node.OutputNodesBegin()->OutputNodesBegin();
+  const auto& batch_norm_node = child_node.OpType() == "Reshape" ? *child_node.OutputNodesBegin()->OutputNodesBegin() : child_node;
 
   // Check that the appropriate inputs to the Matmul and BN nodes are constants.
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
@@ -102,7 +104,8 @@ bool MatmulBNFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
  */
 Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   const Node& child_node = *matmul_node.OutputNodesBegin();
-  NodeIndex batch_norm_node_index = child_node.OutputNodesBegin()->OutputNodesBegin()->Index();
+  NodeIndex batch_norm_node_index = child_node.OpType() == "Reshape" ? 
+    child_node.OutputNodesBegin()->OutputNodesBegin()->Index() : child_node.Index();
   Node& batch_norm_node = *graph.GetNode(batch_norm_node_index);
 
   // only perform fusion if epsilon is present and is of float_32 type
@@ -172,7 +175,7 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
   new_gemm_bias_tensor.set_name(new_gemm_bias_name);
   NodeArg& new_gemm_bias_node_arg = graph_utils::AddInitializer(graph, new_gemm_bias_tensor);
 
-  graph.AddNode(
+  Node& gemm_node = graph.AddNode(
       graph.GenerateNodeArgName("MatMulBnFusion_Gemm"),
       "Gemm",
       "Generated from Matmul BatchNormalization fusion",
@@ -186,8 +189,11 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
   graph_utils::RemoveNodeOutputEdges(graph, *node);
   graph.RemoveNode(matmul_node.Index());
 
+  // Delete optional empty output defs.
   // Delete BatchNormalization node and update the input of the child of BatchNormalization
-  graph_utils::FinalizeNodeFusion(graph, *graph.GetNode(child_node.OutputNodesBegin()->Index()), batch_norm_node);
+  batch_norm_node.MutableOutputDefs().resize(1);
+  NodeIndex batch_norm_parent_index = child_node.OpType() == "Reshape" ? child_node.OutputNodesBegin()->Index() : gemm_node.Index();
+  graph_utils::FinalizeNodeFusion(graph, *graph.GetNode(batch_norm_parent_index), batch_norm_node);
 
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   return Status::OK();
