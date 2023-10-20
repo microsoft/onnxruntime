@@ -33,10 +33,8 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
 
     const auto* x_shape = x_arg.Shape();
     //'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1 (NCHW)
-    // but we just support 4-d tensor for now, batch must be 1 and channels must be known.
-    if (!x_shape || x_shape->dim_size() != 4 ||
-        x_shape->dim(0).dim_value() != 1 ||  // batch must be known and 1
-        x_shape->dim(1).dim_value() <= 0) {  // channels must be known
+    // but we just support 4-d tensor for now, and the channel must be known.
+    if (!x_shape || x_shape->dim_size() != 4 || x_shape->dim(1).dim_value() <= 0) {
       break;
     }
 
@@ -282,29 +280,29 @@ Status Resize::Compute(OpKernelContext* ctx) const {
   return ComputeInternal(ctx, X, output_shape);
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kOnnxDomain, 10, 10, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 10, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kOnnxDomain, 11, 12, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 11, 12, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kOnnxDomain, 13, 17, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
-                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
-                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
-                                  Resize);
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kOnnxDomain, 18, 18, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 13, 17, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 
-ONNX_OPERATOR_KERNEL_EX(Resize, kOnnxDomain, 19, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 18, 18, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
+                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
+                                  Resize);
+
+ONNX_OPERATOR_KERNEL_EX(Resize, kMSInternalNHWCDomain, 19, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
                                                                  DataTypeImpl::GetTensorType<uint8_t>(),
                                                                  DataTypeImpl::GetTensorType<int8_t>()}),

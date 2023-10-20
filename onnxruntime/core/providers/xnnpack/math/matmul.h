@@ -9,8 +9,6 @@
 #include "core/common/common.h"
 #include "core/util/math.h"
 
-#include "xnnpack/cache.h"
-
 namespace onnxruntime {
 class GraphViewer;
 class Node;

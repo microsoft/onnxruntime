@@ -203,6 +203,14 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     }
   }
 
+  // special-case the internal NHWC domain as it must match the ONNX opset if not explicitly imported
+  if (domain_to_version.find(kMSInternalNHWCDomain) == domain_to_version.end()) {
+    auto onnx_version = domain_to_version.find(kOnnxDomain);
+    if (onnx_version != domain_to_version.end()) {
+      domain_to_version[kMSInternalNHWCDomain] = onnx_version->second;
+    }
+  }
+
   auto domain_map = allow_official_onnx_release_only_final
                         ? schema_registry->GetLastReleasedOpsetVersions(false)
                         : schema_registry->GetLatestOpsetVersions(false);
