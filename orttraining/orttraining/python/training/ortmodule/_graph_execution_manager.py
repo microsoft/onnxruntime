@@ -143,9 +143,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._zero_stage3_param_map = {}
         if self._runtime_options.enable_zero_stage3_support:
             # Cannot toggle feature enabling/disabling after the first time enabled.
-            from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params
-
-            self._zero_stage3_param_map = _get_all_zero_stage3_params(self._flattened_module)
 
             configure_ort_compatible_zero_stage3(debug=False, stats_output_dir="ort_output", stats_overwrite=True)
 
@@ -420,8 +417,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             exported_model = post_process_enabling_autograd_function(exported_model)
 
         if self._runtime_options.enable_zero_stage3_support:
+            from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params
+
             from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat
 
+            self._zero_stage3_param_map = _get_all_zero_stage3_params(self._flattened_module)
             exported_model = post_processing_enable_zero_stage3_compat(
                 exported_model,
                 self._zero_stage3_param_map,

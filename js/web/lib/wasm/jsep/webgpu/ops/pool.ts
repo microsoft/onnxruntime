@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -56,10 +56,10 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
 };
 
 const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
-    shaderHelper: ShaderHelper, x: IndicesHelper, outputShape: readonly number[], attributes: AttributeType,
-    op1: string, op2: string, start: string): string => {
+    shaderHelper: ShaderHelper, x: IndicesHelper, xShape: readonly number[], outputShape: readonly number[],
+    attributes: AttributeType, op1: string, op2: string, start: string): string => {
   const isChannelsLast = attributes.format === 'NHWC';
-  const inputDims = x.shape;
+  const inputDims = xShape;
   const dataType = x.type.value;
   const rank = inputDims.length;
   const outputSize = ShapeUtil.size(outputShape);
@@ -237,30 +237,32 @@ export interface AveragePoolAttributes extends PoolCommonAttributes, AttributeWi
 }
 
 const createAveragePoolProgramInfo =
-    (input: TensorView, metadata: ProgramMetadata, isGlobalOperator: boolean, attributes: AveragePoolAttributes):
-        ProgramInfo => {
-          const [adjustedAttributes, outputShape] =
-              getAdjustedPoolAttributesAndOutputShape(input, attributes, isGlobalOperator);
-          const kernelSize = ShapeUtil.size(adjustedAttributes.kernelShape);
+    (name: string, input: TensorView, isGlobalOperator: boolean, attributes: AveragePoolAttributes): ProgramInfo => {
+      const [adjustedAttributes, outputShape] =
+          getAdjustedPoolAttributesAndOutputShape(input, attributes, isGlobalOperator);
+      const kernelSize = ShapeUtil.size(adjustedAttributes.kernelShape);
 
-          const x = inputVariable('x', input.dataType, input.dims);
-          const dataType = x.type.value;
+      const x = inputVariable('x', input.dataType, input.dims);
+      const dataType = x.type.value;
 
-          const op1 = 'value += x_val;';
-          let op2 = '';
-          if (adjustedAttributes.countIncludePad) {
-            op2 += `value /= ${dataType}(${kernelSize});`;
-          } else {
-            op2 += `value /= ${dataType}(${kernelSize} - pad);`;
-          }
-          return {
-            ...metadata,
-            outputs: [{dims: outputShape, dataType: input.dataType, gpuDataType: GpuDataType.default}],
-            getShaderSource: shaderHelper =>
-                generatePoolingCode(shaderHelper, x, outputShape, adjustedAttributes, op1, op2, '0.0'),
-            dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
-          };
-        };
+      const op1 = 'value += x_val;';
+      let op2 = '';
+      if (adjustedAttributes.countIncludePad) {
+        op2 += `value /= ${dataType}(${kernelSize});`;
+      } else {
+        op2 += `value /= ${dataType}(${kernelSize} - pad);`;
+      }
+      return {
+        name,
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: input.dataType}],
+          dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
+        }),
+        getShaderSource: shaderHelper =>
+            generatePoolingCode(shaderHelper, x, input.dims, outputShape, adjustedAttributes, op1, op2, '0.0'),
+      };
+    };
 
 export const parseAveragePoolAttributes = (attributes: Record<string, unknown>): AveragePoolAttributes => {
   const countIncludePad = (attributes.count_include_pad as number) === 0 ? false : true;
@@ -276,9 +278,7 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
 
 export const averagePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
   validateInputs(context.inputs);
-  const metadata = {name: 'AveragePool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
-  context.compute(
-      {...metadata, get: () => createAveragePoolProgramInfo(context.inputs[0], metadata, false, attributes)});
+  context.compute(createAveragePoolProgramInfo('AveragePool', context.inputs[0], false, attributes));
 };
 
 const globalPoolAttributes = {
@@ -300,9 +300,7 @@ export const parseGlobalAveragePoolAttributes = (attributes: Record<string, unkn
 
 export const globalAveragePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
   validateInputs(context.inputs);
-  const metadata = {name: 'GlobalAveragePool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
-  context.compute(
-      {...metadata, get: () => createAveragePoolProgramInfo(context.inputs[0], metadata, true, attributes)});
+  context.compute(createAveragePoolProgramInfo('GlobalAveragePool', context.inputs[0], true, attributes));
 };
 
 export interface MaxPoolAttributes extends PoolCommonAttributes, AttributeWithCacheKey {
@@ -311,28 +309,29 @@ export interface MaxPoolAttributes extends PoolCommonAttributes, AttributeWithCa
 }
 
 const createMaxPoolProgramInfo =
-    (input: TensorView, metadata: ProgramMetadata, isGlobalOperator: boolean, attributes: MaxPoolAttributes):
-        ProgramInfo => {
-          const [adjustedAttributes, outputShape] =
-              getAdjustedPoolAttributesAndOutputShape(input, attributes, isGlobalOperator);
-          const op1 = `
+    (name: string, input: TensorView, isGlobalOperator: boolean, attributes: MaxPoolAttributes): ProgramInfo => {
+      const [adjustedAttributes, outputShape] =
+          getAdjustedPoolAttributesAndOutputShape(input, attributes, isGlobalOperator);
+      const op1 = `
       value = max(x_val, value);
     `;
-          const op2 = '';
-          const x = inputVariable('x', input.dataType, input.dims);
-          return {
-            ...metadata,
-            outputs: [{dims: outputShape, dataType: input.dataType, gpuDataType: GpuDataType.default}],
-            getShaderSource: shaderHelper =>
-                generatePoolingCode(shaderHelper, x, outputShape, adjustedAttributes, op1, op2, '-1e5'),
-            dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
-          };
-        };
+      const op2 = '';
+      const x = inputVariable('x', input.dataType, input.dims);
+      return {
+        name,
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: input.dataType}],
+          dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
+        }),
+        getShaderSource: shaderHelper =>
+            generatePoolingCode(shaderHelper, x, input.dims, outputShape, adjustedAttributes, op1, op2, '-1e5'),
+      };
+    };
 
 export const maxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
   validateInputs(context.inputs);
-  const metadata = {name: 'MaxPool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
-  context.compute({...metadata, get: () => createMaxPoolProgramInfo(context.inputs[0], metadata, false, attributes)});
+  context.compute(createMaxPoolProgramInfo('MaxPool', context.inputs[0], false, attributes));
 };
 
 export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {
@@ -358,6 +357,5 @@ export const parseGlobalMaxPoolAttributes = (attributes: Record<string, unknown>
 
 export const globalMaxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
   validateInputs(context.inputs);
-  const metadata = {name: 'GlobalMaxPool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
-  context.compute({...metadata, get: () => createMaxPoolProgramInfo(context.inputs[0], metadata, true, attributes)});
+  context.compute(createMaxPoolProgramInfo('GlobalMaxPool', context.inputs[0], true, attributes));
 };

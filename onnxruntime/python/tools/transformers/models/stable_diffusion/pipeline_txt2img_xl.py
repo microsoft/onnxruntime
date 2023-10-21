@@ -40,7 +40,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
             pipeline_info (PipelineInfo):
                 Version and Type of stable diffusion pipeline.
         """
-        assert pipeline_info.is_sd_xl_base()
+        assert pipeline_info.is_xl_base()
 
         super().__init__(pipeline_info, *args, **kwargs)
 
@@ -59,14 +59,13 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
         guidance=5.0,
         seed=None,
         warmup=False,
-        return_type="images",
+        return_type="image",
     ):
         assert len(prompt) == len(negative_prompt)
 
-        # TODO(tianleiwu): Need we use image_height and image_width for the target size here?
-        original_size = (1024, 1024)
+        original_size = (image_height, image_width)
         crops_coords_top_left = (0, 0)
-        target_size = (1024, 1024)
+        target_size = (image_height, image_width)
         batch_size = len(prompt)
 
         self.set_denoising_steps(denoising_steps)
@@ -86,7 +85,12 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
 
             # CLIP text encoder
             text_embeddings = self.encode_prompt(
-                prompt, negative_prompt, encoder="clip", tokenizer=self.tokenizer, output_hidden_states=True
+                prompt,
+                negative_prompt,
+                encoder="clip",
+                tokenizer=self.tokenizer,
+                output_hidden_states=True,
+                force_zeros_for_empty_prompt=True,
             )
             # CLIP text encoder 2
             text_embeddings2, pooled_embeddings2 = self.encode_prompt(
@@ -96,6 +100,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                 tokenizer=self.tokenizer2,
                 pooled_outputs=True,
                 output_hidden_states=True,
+                force_zeros_for_empty_prompt=True,
             )
 
             # Merged text embeddings
@@ -112,14 +117,18 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
 
             # UNet denoiser
             latents = self.denoise_latent(
-                latents, text_embeddings, denoiser="unetxl", guidance=guidance, add_kwargs=add_kwargs
+                latents,
+                text_embeddings,
+                denoiser="unetxl",
+                guidance=guidance,
+                add_kwargs=add_kwargs,
             )
 
             # VAE decode latent
-            if return_type == "latents":
-                images = latents * self.vae_scaling_factor
+            if return_type == "latent":
+                images = latents
             else:
-                images = self.decode_latent(latents)
+                images = self.decode_latent(latents / self.vae_scaling_factor)
 
             torch.cuda.synchronize()
             e2e_toc = time.perf_counter()
@@ -127,7 +136,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
             if not warmup:
                 print("SD-XL Base Pipeline")
                 self.print_summary(e2e_tic, e2e_toc, batch_size)
-                if return_type == "images":
+                if return_type != "latent":
                     self.save_images(images, "txt2img-xl", prompt)
 
             return images, (e2e_toc - e2e_tic) * 1000.0
@@ -142,7 +151,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
         guidance=5.0,
         seed=None,
         warmup=False,
-        return_type="images",
+        return_type="image",
     ):
         """
         Run the diffusion pipeline.
@@ -165,7 +174,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
             warmup (bool):
                 Indicate if this is a warmup run.
             return_type (str):
-                It can be "latents" or "images".
+                It can be "latent" or "image".
         """
 
         if self.is_backend_tensorrt():

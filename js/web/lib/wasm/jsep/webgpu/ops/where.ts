@@ -4,7 +4,7 @@
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -70,7 +70,7 @@ const createWhereOpProgramShader =
       }`;
     };
 
-const createWhereOpProgramInfo = (metadata: ProgramMetadata, inputs: readonly TensorView[]): ProgramInfo => {
+const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => {
   const dimsA = inputs[1].dims;
   const dimsB = inputs[2].dims;
   const dimsC = inputs[0].dims;
@@ -91,20 +91,16 @@ const createWhereOpProgramInfo = (metadata: ProgramMetadata, inputs: readonly Te
   }
 
   return {
-    ...metadata,
+    name: 'Where',
     getShaderSource: (shaderHelper) =>
         createWhereOpProgramShader(shaderHelper, inputs, outputShape, isBroadcast, outputDataType),
-    outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
-    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* vec size */)})
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: outputDataType}],
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* vec size */)}
+    }),
   };
 };
 
-const createWhereOpProgramInfoLoader = (inputs: readonly TensorView[], name: string): ProgramInfoLoader => {
-  const inputTypes = [GpuDataType.default, GpuDataType.default, GpuDataType.default];
-  const metadata: ProgramMetadata = {name, inputTypes};
-  return {...metadata, get: () => createWhereOpProgramInfo(metadata, inputs)};
-};
-
 export const where = (context: ComputeContext): void => {
-  context.compute(createWhereOpProgramInfoLoader(context.inputs, 'Where'));
+  context.compute(createWhereOpProgramInfo(context.inputs));
 };

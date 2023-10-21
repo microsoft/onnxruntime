@@ -112,7 +112,7 @@ export declare namespace TestRunnerCliArgs {
   type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
   type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'xnnpack'|'webnn';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
-  type BundleMode = 'prod'|'dev'|'perf';
+  type BundleMode = 'dev'|'perf';
   type IOBindingMode = 'none'|'gpu-tensor'|'gpu-location';
 }
 
@@ -129,19 +129,14 @@ export interface TestRunnerCliArgs {
   /**
    * Bundle Mode
    *
-   * this field affects the behavior of Karma and Webpack.
+   * this field affects the behavior of Karma and build script.
    *
-   * For Karma, if flag '--bundle-mode' is not set, the default behavior is 'dev'
-   * For Webpack, if flag '--bundle-mode' is not set, the default behavior is 'prod'
-   *
-   * For running tests, the default mode is 'dev'. If flag '--perf' is set, the mode will be set to 'perf'.
-   *
-   * Mode   | Output File           | Main                 | Source Map         | Webpack Config
-   * ------ | --------------------- | -------------------- | ------------------ | --------------
-   * prod   | /dist/ort.min.js      | /lib/index.ts        | source-map         | production
-   * node   | /dist/ort-web.node.js | /lib/index.ts        | source-map         | production
-   * dev    | /test/ort.dev.js      | /test/test-main.ts   | inline-source-map  | development
-   * perf   | /test/ort.perf.js     | /test/test-main.ts   | (none)             | production
+   * Mode "perf":
+   *   - use "dist/ort.all.min.js" as main file
+   *   - use "test/ort.test.min.js" as test file
+   * Mode "dev":
+   *   - use "dist/ort.all.js" as main file
+   *   - use "test/ort.test.js" as test file
    */
   bundleMode: TestRunnerCliArgs.BundleMode;
 

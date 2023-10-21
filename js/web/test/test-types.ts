@@ -128,6 +128,7 @@ export declare namespace Test {
     wasm: Partial<Env.WebAssemblyFlags>;
     webgl: Partial<Env.WebGLFlags>;
     webgpu: Partial<Env.WebGpuFlags>;
+    logLevel?: Env['logLevel'];
   }
 
   /**

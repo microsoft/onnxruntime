@@ -73,7 +73,7 @@ if __name__ == "__main__":
             denoising_steps=args.denoising_steps,
             guidance=args.guidance,
             seed=args.seed,
-            return_type="images",
+            return_type="image",
         )
 
     if not args.disable_cuda_graph:

@@ -32,9 +32,11 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputsTensorView: readonly TensorView[], inputs: GpuData[], outputs: GpuData[],
-      dispatchGroup: [number, number, number]): void {
+  run(buildArtifact: Artifact, inputTensorViews: readonly TensorView[], outputTensorViews: readonly TensorView[],
+      inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
+      uniformBufferBinding: GPUBindingResource|undefined): void {
     const device = this.backend.device;
+
     const computePassEncoder = this.backend.getComputePassEncoder();
     const profilingEnabled = this.backend.supportTimestampQuery && this.backend.env.webgpu.profilingMode === 'default';
     if (profilingEnabled) {
@@ -51,6 +53,9 @@ export class ProgramManager {
     }
     for (const output of outputs) {
       entries.push({binding: entries.length, resource: {buffer: output.buffer}});
+    }
+    if (uniformBufferBinding) {
+      entries.push({binding: entries.length, resource: uniformBufferBinding});
     }
     const bindGroup = device.createBindGroup(
         {layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries, label: buildArtifact.programInfo.name});
@@ -104,11 +109,11 @@ export class ProgramManager {
 
         this.backend.gpuDataManager.release(syncData.id);
         let inputShapes = '';
-        inputsTensorView.forEach((value, i) => {
+        inputTensorViews.forEach((value, i) => {
           inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
         });
         let outputShapes = '';
-        buildArtifact.programInfo.outputs.forEach((value, i) => {
+        outputTensorViews.forEach((value, i) => {
           outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
         });
         // eslint-disable-next-line no-console
@@ -142,7 +147,8 @@ export class ProgramManager {
     return {programInfo, computePipeline};
   }
 
-  normalizeDispatchGroupSize(dispatchGroup: ReturnType<ProgramInfo['dispatchGroup']>): [number, number, number] {
+  normalizeDispatchGroupSize(dispatchGroup: ReturnType<ProgramInfo['getRunData']>['dispatchGroup']):
+      [number, number, number] {
     const x = typeof dispatchGroup === 'number' ? dispatchGroup : dispatchGroup.x;
     const y = typeof dispatchGroup === 'number' ? 1 : (dispatchGroup.y || 1);
     const z = typeof dispatchGroup === 'number' ? 1 : (dispatchGroup.z || 1);
