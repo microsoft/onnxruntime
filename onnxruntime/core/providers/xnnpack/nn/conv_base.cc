@@ -299,6 +299,11 @@ bool ConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
   const onnxruntime::Node& node = node_unit.GetNode();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
+    // Internal NHWC domain starts at opset 11
+    if (node_unit.SinceVersion() < 11) {
+      break;
+    }
+
     // Conv has at least 2 inputs.
     const auto& inputs = node_unit.Inputs();
     const auto& x_arg = inputs[0].node_arg;

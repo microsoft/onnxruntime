@@ -66,17 +66,6 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   // handle special cases
-//#if defined(USE_XNNPACK)
-//  if (node.GetExecutionProviderType() == kXnnpackExecutionProvider) {
-//    if (node.OpType() == "Resize") {
-//      // XNNPACK supports NCHW and NHWC for Resize so we don't need to use the internal NHWC domain and wrap the Resize
-//      // with Transpose nodes. EPAwareHandleResize will allow an NCHW <-> NHWC Transpose to be pushed through
-//      // the Resize during transpose optimization.
-//      return false;
-//    }
-//  }
-//#endif
-
 #if defined(USE_JSEP)
   // TODO(fs-eire): Remove special case handing of JSEP once NHWC Resize implementation is fixed
   if (node.GetExecutionProviderType() == kJsExecutionProvider) {

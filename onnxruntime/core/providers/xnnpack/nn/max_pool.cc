@@ -41,6 +41,11 @@ bool MaxPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
   const onnxruntime::Node& node = node_unit.GetNode();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
+    // Internal NHWC domain starts at opset 11
+    if (node_unit.SinceVersion() < 11) {
+      break;
+    }
+
     // MaxPool has 1 input.
     auto input_defs = node.InputDefs();
     const auto& x_arg = *input_defs[0];

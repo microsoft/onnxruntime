@@ -19,6 +19,11 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
                                  const GraphViewer& graph_viewer) {
   bool supported = false;
   do {
+    // Internal NHWC domain starts at opset 11
+    if (node_unit.SinceVersion() < 11) {
+      break;
+    }
+
     // Resize has 1-4 input.
     const auto& inputs = node_unit.Inputs();
     const auto& x_arg = inputs[0].node_arg;

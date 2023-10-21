@@ -91,6 +91,11 @@ bool AveragePool::IsOnnxNodeSupported(const NodeUnit& node_unit,
   const auto& inputs = node_unit.Inputs();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
+    // Internal NHWC domain starts at opset 11
+    if (node_unit.SinceVersion() < 11) {
+      break;
+    }
+
     // AveragePool has 1 input.
     const auto& x_arg = inputs[0].node_arg;
 
