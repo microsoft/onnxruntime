@@ -7,6 +7,25 @@
 
 namespace onnxruntime {
 
+DeferredCpuAllocator::DeferredCpuAllocator(CudaStream& cuda_stream) : cuda_stream_(cuda_stream) {
+  OrtAllocator::version = ORT_API_VERSION;
+  OrtAllocator::Alloc =
+      [](OrtAllocator* this_, size_t size) {
+        auto self = reinterpret_cast<DeferredCpuAllocator*>(this_);
+        return self->cuda_stream_.GetCpuAllocator()->Alloc(size);
+      };
+  OrtAllocator::Free =
+      [](OrtAllocator* this_, void* p) {
+        auto self = reinterpret_cast<DeferredCpuAllocator*>(this_);
+        self->cuda_stream_.EnqueDeferredCPUBuffer(p);
+      };
+  OrtAllocator::Info =
+      [](const OrtAllocator* this_) {
+        auto self = reinterpret_cast<const DeferredCpuAllocator*>(this_);
+        return &self->cuda_stream_.GetCpuAllocator()->Info();
+      };
+}
+
 struct CudaNotification : public synchronize::Notification {
   CudaNotification(Stream& s) : Notification(s) {
     CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
@@ -46,7 +65,8 @@ CudaStream::CudaStream(cudaStream_t stream,
                        cublasHandle_t external_cublas_handle) : Stream(stream, device),
                                                                 own_stream_(own_flag),
                                                                 cpu_allocator_(cpu_allocator),
-                                                                release_cpu_buffer_on_cuda_stream_(release_cpu_buffer_on_cuda_stream) {
+                                                                release_cpu_buffer_on_cuda_stream_(release_cpu_buffer_on_cuda_stream),
+                                                                deferred_cpu_allocator_(*this) {
   if (own_flag) {
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
@@ -161,6 +181,9 @@ void* CudaStream::GetResource(int version, int id) const {
       break;
     case CudaResource::cublas_handle_t:
       return reinterpret_cast<void*>(cublas_handle_);
+      break;
+    case CudaResource::deferred_cpu_allocator_t:
+      return const_cast<DeferredCpuAllocator*>(&deferred_cpu_allocator_);
       break;
     default:
       break;
