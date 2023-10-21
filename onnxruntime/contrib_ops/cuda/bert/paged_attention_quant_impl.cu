@@ -799,12 +799,14 @@ __global__ void quantize_reshape_and_cache_kernel(
       int stride = block_size * (head_size / kv_quant_chunk_size);
       int64_t k_offset = ((int64_t)block_idx * num_heads * 2 + head_idx) * stride + quant_chunk_idx * block_size + block_offset;
       int64_t v_offset = k_offset + num_heads * stride;
+      float unit_scale_k = max_kv_fp32.x / 127.0f;
+      float unit_scale_v = max_kv_fp32.y / 127.0f;
       if (use_fp32_scales) {
-        *((float*)kv_param_cache + k_offset) = inv_unit_scale_k;
-        *((float*)kv_param_cache + v_offset) = inv_unit_scale_v;
+        *((float*)kv_param_cache + k_offset) = unit_scale_k;
+        *((float*)kv_param_cache + v_offset) = unit_scale_v;
       } else {
-        *((half*)kv_param_cache + k_offset) = __float2half(inv_unit_scale_k);
-        *((half*)kv_param_cache + v_offset) = __float2half(inv_unit_scale_v);
+        *((half*)kv_param_cache + k_offset) = __float2half(unit_scale_k);
+        *((half*)kv_param_cache + v_offset) = __float2half(unit_scale_v);
       }
     }
 
