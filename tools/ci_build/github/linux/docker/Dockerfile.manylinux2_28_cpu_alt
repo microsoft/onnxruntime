@@ -10,6 +10,7 @@ RUN if [ $BUILD_LORT = true ]; then \
     cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_lort.sh ; \
     elif [ $BUILD_ATEN = true ]; then  \
     cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_aten.sh ; \
+    fi
 RUN rm -rf /tmp/scripts
 
 ARG BUILD_UID=1002
