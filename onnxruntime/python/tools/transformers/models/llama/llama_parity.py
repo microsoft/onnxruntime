@@ -29,9 +29,9 @@ def get_sequence_lengths(args: argparse.Namespace):
 def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     # Dummy values for parity
     batch_size = 2
+    past_sequence_length, sequence_length, _ = get_sequence_lengths(args)
 
     if args.merged:
-        past_sequence_length, sequence_length, _ = get_sequence_lengths(args)
         inputs = get_merged_sample_with_past_kv_inputs(
             config,
             args.device,
@@ -47,6 +47,7 @@ def get_inputs(args: argparse.Namespace, config: LlamaConfig):
         )
     else:
         inputs = get_sample_inputs(config, args.device, batch_size, sequence_length, return_dict=True)
+
     return inputs
 
 
