@@ -83,9 +83,9 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
       T* output_data = output_dest + data_offset;
 
       // Cache is (M, H/2)
-      const int position_id = (position_ids_format == 0) \
-                              ? static_cast<int>(pos_ids_data[0]) + s \
-                              : static_cast<int>(pos_ids_data[b * sequence_length + s]);
+      const int position_id = (position_ids_format == 0)
+                                  ? static_cast<int>(pos_ids_data[0]) + s
+                                  : static_cast<int>(pos_ids_data[b * sequence_length + s]);
       const int cache_offset = position_id * half_head_size;
       const T* cos_data = cos_cache_data + cache_offset;
       const T* sin_data = sin_cache_data + cache_offset;
