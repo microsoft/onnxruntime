@@ -8,12 +8,12 @@
 
 namespace onnxruntime {
 
-namespace matmulbnfusion {
+namespace {
 const std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> ignorable_nodes{
     {"Reshape", {1, 5, 13, 14, 19}},
     {"Transpose", {1, 13}}};
 const std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>> dest = {"BatchNormalization", {1, 6, 7, 9, 14, 15}};
-}  // namespace matmulbnfusion
+}  // namespace
 
 bool NodeIsIgnorable(const Graph& graph, const Node& root_node, NodeIndex curr_node_index) {
   const Node* curr_node = graph.GetNode(curr_node_index);
@@ -25,9 +25,8 @@ bool NodeIsIgnorable(const Graph& graph, const Node& root_node, NodeIndex curr_n
   }
 
   // curr_node can be any of the ignorable_nodes.
-  for (size_t index = 0; index < matmulbnfusion::ignorable_nodes.size(); index++) {
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(*curr_node, matmulbnfusion::ignorable_nodes[index].first,
-                                                       matmulbnfusion::ignorable_nodes[index].second)) {
+  for (size_t index = 0; index < ignorable_nodes.size(); index++) {
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*curr_node, ignorable_nodes[index].first, ignorable_nodes[index].second)) {
       return true;
     }
   }
@@ -42,12 +41,12 @@ std::optional<NodeIndex> MatchPath(const Graph& graph, const Node& root_node, No
 
   // curr_node is neither ignorable nor dest
   const Node* curr_node = graph.GetNode(curr_node_index);
-  if (curr_node->OpType() != matmulbnfusion::dest.first) {
+  if (curr_node->OpType() != dest.first) {
     return std::nullopt;
   }
 
   if (curr_node->GetExecutionProviderType() == root_node.GetExecutionProviderType() &&
-      graph_utils::IsSupportedOptypeVersionAndDomain(*curr_node, matmulbnfusion::dest.first, matmulbnfusion::dest.second)) {
+      graph_utils::IsSupportedOptypeVersionAndDomain(*curr_node, dest.first, dest.second)) {
     return curr_node_index;
   }
 
