@@ -99,14 +99,42 @@ namespace onnxruntime {
         KernelDefBuilder builder_;
     };
 
+    #define INT(st) (static_cast<int>(st))
+
     struct KernelContextLite : public lite::IKernelContext {
-        KernelContextLite(OpKernelContext*) {}
+        KernelContextLite(OpKernelContext& context): context_(context) {
+            input_count_ = context_.InputCount();
+            output_count_ = context_.OutputCount();
+        }
+        const void* InputData(size_t index) const override {
+            ORT_ENFORCE(INT(index) < input_count_);
+            const auto* tensor = context_.Input<onnxruntime::Tensor>(INT(index));
+            ORT_ENFORCE(tensor);
+            return tensor->DataRaw();
+        };
+        const int64_t* InputShape(size_t index, size_t* num_dims) const override {
+            ORT_ENFORCE(INT(index) < input_count_);
+            const auto* tensor = context_.Input<onnxruntime::Tensor>(INT(index));
+            ORT_ENFORCE(tensor);
+            const auto dims = tensor->Shape().GetDims();
+            *num_dims = dims.size();
+            return dims.data();
+        };
+        void* AllocateOutput(size_t index, const lite::TensorShape& shape) override {
+            ORT_ENFORCE(INT(index) < output_count_);
+            auto* tensor = context_.Output(INT(index), shape);
+            ORT_ENFORCE(tensor);
+            return tensor->MutableDataRaw();
+        };
+        OpKernelContext& context_;
+        int input_count_ = 0;
+        int output_count_ = 0;
     };
 
     struct OpKernelLite : public OpKernel {
         OpKernelLite(const OpKernelInfo& info, lite::IKernel& lite_kernel) : OpKernel(info), lite_kernel_(lite_kernel) {}
         Status Compute(_Inout_ OpKernelContext* context) const override {
-            KernelContextLite context_lite(context);
+            KernelContextLite context_lite(*context);
             return lite_kernel_.Compute(&context_lite);
         };
         lite::IKernel& lite_kernel_;

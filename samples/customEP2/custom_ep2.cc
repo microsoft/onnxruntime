@@ -31,11 +31,27 @@ void MyRelu(const Ort::Custom::Tensor<float>& X, Ort::Custom::Tensor<float>& Y) 
 }
 */
 
+
 ///////////////////////////////////////////////////////////////////////////////////////
-onnxruntime::Status Identity(const onnxruntime::lite::TensorT<float>&,
-                             onnxruntime::lite::Aliased<float>&) {
+onnxruntime::Status Identity(const onnxruntime::lite::TensorV<float>& input,
+                             onnxruntime::lite::Aliased<float>& output) {
+  const auto& shape = input.Shape();
+  const float* input_data = input.Data();
+  float* output_data = output.Allocate(shape);
+  size_t number_of_elements = input.NumberOfElements();
+  for (size_t i = 0; i < number_of_elements; ++i) {
+      output_data[i] = input_data[i];
+  }
   return onnxruntime::Status::OK();
 }
+struct Celu {
+    Celu(lite::IKernelInfo&) {}
+    onnxruntime::Status Compute(const onnxruntime::lite::TensorT<float>&,
+                                onnxruntime::lite::Aliased<float>&) {
+      return onnxruntime::Status::OK();
+    }
+    float alpha = 0.f;
+};
 ///////////////////////////////////////////////////////////////////////////////////////
 
 struct CustomCPUAllocator : public OrtAllocator {
@@ -96,7 +112,8 @@ CustomEp2Info ProviderOption2CustomEpInfo(std::unordered_map<std::string, std::s
 }
 
 void CustomEp2::RegisterKernels(lite::IKernelRegistry& kernel_registry) {
-    lite::IKernelBuilder& builder = kernel_registry.RegisterKernel("CustomEP", "ms.onnx", "Identity", 10, 17, Identity);
+    lite::IKernelBuilder& identity_builder = kernel_registry.RegisterKernel("customEp2", "ai.onnx", "Identity", 10, 19, Identity);
+    lite::IKernelBuilder& celu_builder = kernel_registry.RegisterKernel<Celu>("customEp2", "ai.onnx", "Celu", 10, 19);
 }
 
 class CustomEP2Factory {
@@ -114,7 +131,13 @@ public:
 extern "C" {
 #endif
 
+/*
 ORT_API(onnxruntime::CustomEp2*, GetExternalProvider, const void* provider_options) {
+    std::unordered_map<std::string, std::string>* options = (std::unordered_map<std::string, std::string>*)(provider_options);
+    return onnxruntime::CustomEP2Factory::CreateCustomEp2(*options);
+}*/
+
+onnxruntime::CustomEp2* GetExternalProvider(const void* provider_options) {
     std::unordered_map<std::string, std::string>* options = (std::unordered_map<std::string, std::string>*)(provider_options);
     return onnxruntime::CustomEP2Factory::CreateCustomEp2(*options);
 }

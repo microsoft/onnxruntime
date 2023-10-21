@@ -1,5 +1,5 @@
-import numpy
-
+import os
+import numpy as np
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import RunOptions
@@ -13,15 +13,17 @@ from onnxruntime.capi.onnxruntime_pybind11_state import RunOptions
 
 #model_path = '/bert_ort/leca/models/CustomOpTwo.onnx'
 #model_path = '/bert_ort/leca/models/Detection/model.onnx'
-model_path = '/bert_ort/leca/models/Relu.onnx'
-shared_lib_path = '/bert_ort/leca/code/onnxruntime2/samples/customEP2/build/libcustomep2.so'
+#model_path = '/bert_ort/leca/models/Relu.onnx'
+#shared_lib_path = '/bert_ort/leca/code/onnxruntime2/samples/customEP2/build/libcustomep2.so'
+
+model_path = '/onnxruntime/samples/python/identity.onnx'
+shared_lib_path = '/onnxruntime/samples/customEP2/build/Debug/customep2.dll'
 
 onnxruntime.load_execution_provider_info('customEp2', shared_lib_path)
-print('Load External EP success')
+_ = input(os.getpid())
 session = onnxruntime.InferenceSession(model_path,
     providers=['customEp2'], provider_options=[{'int_property':'3', 'str_property':'strval'}])
-x = numpy.zeros(4, dtype=numpy.float32)
-x[0], x[1], x[2], x[3] = -3, 5, -2, 4
-y = session.run(['graphOut'], {'x': x})
-print('y:')
+x = np.random.rand(6).astype(np.float32)
+y = session.run(None, {'X': x})
 print(y)
+_ = input('done')

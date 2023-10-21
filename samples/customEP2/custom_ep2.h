@@ -1,20 +1,10 @@
 #pragma once
-//#include <memory>
-//#include <cmath>
-//#include <iostream>
-/*
-namespace std
-{
-    #include <cstdlib>
-};*/
 
-//#ifdef _WIN32
-//#include <cmath>
-//#include <cstring>
-//#include <cstdlib>
-//#include <iostream>
-//#endif
-//#define OUT_TREE_EP
+#ifdef _WIN32
+#define EXPORT_API __declspec(dllexport)
+#else
+#define EXPORT_API
+#endif
 #include <core/framework/custom_execution_provider.h>
 
 namespace onnxruntime {
@@ -41,7 +31,9 @@ private:
 extern "C" {
 #endif
 
-ORT_API(onnxruntime::CustomEp2*, GetExternalProvider, const void* options);
+//ORT_API(onnxruntime::CustomEp2*, GetExternalProvider, const void* options);
+
+EXPORT_API onnxruntime::CustomEp2* GetExternalProvider(const void* provider_options);
 
 #ifdef __cplusplus
 }
