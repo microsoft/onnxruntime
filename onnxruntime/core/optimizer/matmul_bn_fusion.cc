@@ -66,12 +66,12 @@ std::optional<NodeIndex> MatchPath(const Graph& graph, const Node& root_node, No
  *        BatchNormalization
  * Note: ^ means there can be 0 or any occurrences of that node.
  * Few example fusable pattern:
- *  - MatMul -> Reshape -> Transpose -> BatchNormalization
- *  - MatMul -> Reshape -> BatchNormalization
- *  - MatMul -> Transpose -> BatchNormalization
- *  - MatMul -> Reshape -> Reshape -> BatchNormalization
- *  - MatMul -> Reshape -> Transpose -> Reshape -> BatchNormalization
- *  - MatMul -> BatchNormalization
+ *  - MatMul -> Reshape -> Transpose -> BatchNormalization              ---> GEMM -> Reshape -> Transpose
+ *  - MatMul -> Reshape -> BatchNormalization                           ---> GEMM -> Reshape
+ *  - MatMul -> Transpose -> BatchNormalization                         ---> GEMM -> Transpose
+ *  - MatMul -> Reshape -> Reshape -> BatchNormalization                ---> GEMM -> Reshape -> Reshape
+ *  - MatMul -> Reshape -> Transpose -> Reshape -> BatchNormalization   ---> GEMM -> Reshape -> Transpose -> Reshape
+ *  - MatMul -> BatchNormalization                                      ---> GEMM
  * Other Conditions:
  *   - B tensor of MatMul should be constant.
  *   - scale, B, mean, var tensors of BatchNormalization should be constant.
