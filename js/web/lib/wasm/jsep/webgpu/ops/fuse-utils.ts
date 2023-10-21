@@ -11,7 +11,7 @@ export interface InternalActivationAttributes {
 }
 
 export const getActivationSnippet = (attributes: InternalActivationAttributes, isVec4 = false): {
-  activationFunction: string; applyActivation: string
+  activationFunction: string; applyActivation: string;
 } => {
   switch (attributes.activation) {
     case 'Relu':

@@ -7,11 +7,11 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
-#include "core/optimizer/utils.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/optimizer/selectors_actions/actions.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 
@@ -175,11 +175,13 @@ namespace actions {
 using NTO = NodesToOptimize;
 
 class FuseConvActivationAction : public ReplaceWithNew {
-  public:
+ public:
   FuseConvActivationAction(const std::string& domain = kMSDomain) : ReplaceWithNew(), domain_{domain} {}
+
  private:
   std::string OpType(const RuntimeState&) const override {
-    return domain_ == kMSDomain ? "FusedConv" : "Conv"; }
+    return domain_ == kMSDomain ? "FusedConv" : "Conv";
+  }
 
   std::string Domain(const RuntimeState&) const override { return domain_; }
 
@@ -231,8 +233,9 @@ class FuseConvActivationAction : public ReplaceWithNew {
 };
 
 class FuseConvAddRelu : public ReplaceWithNew {
-  public:
+ public:
   FuseConvAddRelu(std::string domain = kMSDomain) : ReplaceWithNew(), domain_{domain} {}
+
  private:
   std::string OpType(const RuntimeState&) const override { return domain_ == kMSDomain ? "FusedConv" : "Conv"; }
 

@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/js/js_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
+#include "core/providers/js/js_kernel.h"
 
 namespace onnxruntime {
 namespace js {
@@ -16,9 +16,9 @@ class Conv : public JsKernel {
     TensorShapeVector kernel_shape;
     const size_t pads_vec_size = conv_attrs_.pads.size() == 0 ? 4 : conv_attrs_.pads.size();
     std::vector<int32_t> local_pads(pads_vec_size, 0);
-      for (size_t i = 0; i < conv_attrs_.pads.size() && i < pads_vec_size; ++i) {
-        local_pads[i] = gsl::narrow_cast<int32_t>(conv_attrs_.pads[i]);
-      }
+    for (size_t i = 0; i < conv_attrs_.pads.size() && i < pads_vec_size; ++i) {
+      local_pads[i] = gsl::narrow_cast<int32_t>(conv_attrs_.pads[i]);
+    }
 
     if (conv_attrs_.kernel_shape_specified) {
       ORT_ENFORCE(info.GetAttrs("kernel_shape", kernel_shape).IsOK());
