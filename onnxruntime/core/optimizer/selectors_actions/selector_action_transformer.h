@@ -84,17 +84,17 @@ class SelectorActionRegistry {
                                  const OpVersionsMap& ops_and_versions,
                                  std::unique_ptr<NodeSelector> selector,
                                  std::unique_ptr<Action> action,
-                                 const std::string& domain = kMSDomain);
+                                 const std::string& domain = kOnnxDomain);
 
 #else  // !defined(ORT_MINIMAL_BUILD)
 
   // register an action
-  void RegisterAction(const std::string& name, std::unique_ptr<Action> action, const std::string& domain = kMSDomain);
+  void RegisterAction(const std::string& name, std::unique_ptr<Action> action, const std::string& domain = kOnnxDomain);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // return registered Entry or nullptr if not found
-  const Entry* LookUp(const std::string& name, const std::string& domain = kMSDomain) const;
+  const Entry* LookUp(const std::string& name, const std::string& domain = kOnnxDomain) const;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // return registered Entry or nullptr if not found
