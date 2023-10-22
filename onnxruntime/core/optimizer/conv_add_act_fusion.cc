@@ -299,7 +299,6 @@ void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   auto selector_ms_internal_nhwc = std::make_unique<selectors::ConvAddActivationSelector>();
   registry.RegisterSelectorAndAction("MSInternalNhwcFusedConvAct", {{"Conv", {1, 11}}},
                                      std::move(selector_ms_internal_nhwc), std::move(action_ms_internal_nhwc), kMSInternalNHWCDomain);
-
 }
 
 SelectorActionRegistry CreateSelectorActionRegistry() {
