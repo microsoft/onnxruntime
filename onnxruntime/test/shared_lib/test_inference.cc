@@ -2906,7 +2906,7 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
                                                   x_shape.data(), x_shape.size());
 
   float* output_data_2;
-  cudaMallocHost(&output_data_2, 3 * 2 * sizeof(float));
+  cudaMalloc(&output_data_2, 3 * 2 * sizeof(float));
   ASSERT_NE(output_data_2, nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
@@ -2951,8 +2951,8 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
   binding_2.ClearBoundInputs();
   binding_2.ClearBoundOutputs();
 
-  cudaFree(input_data);
-  cudaFree(output_data);
+  cudaFreeHost(input_data);
+  cudaFreeHost(output_data);
   cudaFree(input_data_2);
   cudaFree(output_data_2);
   cudaStreamDestroy(compute_stream);
