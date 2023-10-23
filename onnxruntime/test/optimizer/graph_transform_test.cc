@@ -1295,6 +1295,34 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyTranspose) {
   }
 }
 
+TEST_F(GraphTransformationTests, FuseMatmulBNWithoutBatchNormalization) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-only-transpose.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "BatchNormalization") {
+      graph_utils::RemoveNode(graph, node);
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["MatMul"], 1);
+
+  
+}
+
 // should not fuse
 TEST_F(GraphTransformationTests, FuseMatmulBNWithNonIgnorableNode) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-non-ignorable-node.onnx";
