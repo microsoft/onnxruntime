@@ -17,6 +17,9 @@ Abstract:
 
 #include "mlasi.h"
 
+#include "core/framework/allocator.h"
+#include "../../onnxruntime/contrib_ops/cpu/quantization/dequantize_blockwise.h"
+
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -425,10 +428,15 @@ Return Value:
     }
 }
 
+const float* scales_data;
+const uint8_t* zero_points_data;
+int64_t block_size_;
+int64_t nbits_;
+
 void
 MlasSgemmTransposePackB(
     float* D,
-    const float* B,
+    const uint8_t* srcB,
     size_t ldb,
     size_t CountY,
     size_t CountX
@@ -466,6 +474,19 @@ Return Value:
     // Transpose elements from matrix B into the packed buffer 16 rows at a
     // time.
     //
+    MLAS_DECLSPEC_ALIGN(float bufferB[MLAS_SGEMM_STRIDEN * MLAS_SGEMM_STRIDEK], 16 * sizeof(float));
+
+    onnxruntime::contrib::DequantizeBlockwise<float>(bufferB,
+                                                    srcB,
+                                                    scales_data,
+                                                    zero_points_data,
+                                                    static_cast<int32_t>(block_size_),
+                                                    static_cast<int32_t>(nbits_),
+                                                    static_cast<int32_t>(CountY),
+                                                    static_cast<int32_t>(CountX),
+                                                    nullptr);
+
+    const float* B = bufferB;
 
     while (CountY >= 16) {
 
@@ -1089,7 +1110,7 @@ MlasSgemmOperation(
     float alpha,
     const float* A,
     size_t lda,
-    const float* B,
+    const uint8_t* B,
     size_t ldb,
     float beta,
     float* C,
@@ -1169,7 +1190,8 @@ Return Value:
         }
 
         if (SgemmKernelM1Routine != nullptr) {
-            SgemmKernelM1Routine(A, B, C, K, N, ldb, beta);
+            //SgemmKernelM1Routine(A, B, C, K, N, ldb, beta);
+            abort();
             return;
         }
 
@@ -1204,7 +1226,8 @@ Return Value:
         }
 
         if (SgemmKernelM1Routine != nullptr) {
-            SgemmKernelM1Routine(B, A, C, K, M, lda, beta);
+            //SgemmKernelM1Routine(B, A, C, K, M, lda, beta);
+            abort();
             return;
         }
 
@@ -1272,7 +1295,8 @@ Return Value:
             //
 
             if (TransB == CblasNoTrans) {
-                MlasSgemmCopyPackB(PanelB, B + n + k * ldb, ldb, CountN, CountK);
+                abort();
+                //MlasSgemmCopyPackB(PanelB, B + n + k * ldb, ldb, CountN, CountK);
             } else {
                 MlasSgemmTransposePackB(PanelB, B + k + n * ldb, ldb, CountN, CountK);
             }
@@ -1546,7 +1570,8 @@ Return Value:
 
         const size_t ldb = DataParams->ldb;
 
-        const float* B = (const float*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
+        //const float* B = (const float*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
+        const uint8_t* B = (const uint8_t*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
 
         MlasSgemmOperation(TransA, TransB, RangeCountM, RangeCountN, K,
             DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
@@ -1733,7 +1758,8 @@ Return Value:
         if (TransB == CblasNoTrans) {
             MlasSgemmCopyPackB((float*)PackedB, B + k * ldb, ldb, N, CountK);
         } else {
-            MlasSgemmTransposePackB((float*)PackedB, B + k, ldb, N, CountK);
+            abort();
+            //MlasSgemmTransposePackB((float*)PackedB, B + k, ldb, N, CountK);
         }
 
         PackedB = (float*)PackedB + AlignedN * CountK;

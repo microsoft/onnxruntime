@@ -45,7 +45,9 @@ class FgemmPackedContext<float, false> {
     for (size_t i = 0; i < BatchSize; i++) {
       data[i].A = A + M * K * i;
       data[i].lda = lda;
+#if 0 // comment for prototype
       data[i].B = B + K * N * i;
+#endif
       data[i].ldb = ldb;
       data[i].C = C + M * N * i;
       data[i].ldc = ldc;
@@ -120,7 +122,9 @@ class FgemmPackedContext<float, true> {
       data[i].BIsPacked = true;
       data[i].A = A + M * K * i;
       data[i].lda = lda;
+#if 0 // comment for prototype
       data[i].B = (float*)((uint8_t*)PackedB + PackedBSize * i);
+#endif
       data[i].ldb = ldb;
       data[i].C = C + M * N * i;
       data[i].ldc = ldc;

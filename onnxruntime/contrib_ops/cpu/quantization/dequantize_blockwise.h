@@ -123,6 +123,7 @@ void DequantizeBlockwise(
         const BlockwiseQuantBlock<T, block_size, bits>* blob_ptr = src_blob + task_idx;
         size_t offset = SafeInt<size_t>(n) * K + k;
         if (nullptr != zero_points) {
+          abort();
           if constexpr (bits > 4) {  // zero point is stored with a byte
             blob_ptr->dequant(dst + offset, scale[task_idx], zero_points[task_idx], k, K);
           } else {  // zero points is stored with 4bits

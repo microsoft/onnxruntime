@@ -192,7 +192,9 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
     data[i].BIsPacked = bool(packed_b_);
     data[i].A = a_data + helper.LeftOffsets()[i];
     data[i].lda = lda;
+#if 0 // comment for prototype
     data[i].B = data[i].BIsPacked ? (float*)packed_b_.get() : b_data + helper.RightOffsets()[i];
+#endif
     data[i].ldb = ldb;
     data[i].C = y_data + helper.OutputOffsets()[i];
     data[i].ldc = N;

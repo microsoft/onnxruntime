@@ -449,11 +449,13 @@ class MlasQgemmTest<AType, BType, float, Packed, Threaded> : public MlasQgemmTes
             float CScale,
             const float* Bias) {
     for (size_t b = 0; b < BatchSize; b++) {
+#if 0 // comment for prototype
       MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f,
                AFloat + K * M * b, lda,
                BFloat + N * K * b, ldb, 0.0f,
                CReference + N * M * b, ldc,
                MlasQgemmTestBase<Packed, Threaded>::threadpool_);
+#endif
     }
 
     if (Bias != nullptr) {

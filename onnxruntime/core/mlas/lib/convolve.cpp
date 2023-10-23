@@ -590,9 +590,12 @@ Return Value:
                     SegmentStartN + n, CountN);
             }
 
+            abort();
+#if 0
             MlasSgemmOperation(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
                 CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
                 SegmentOutput, OutputSize);
+#endif
 
             beta = 1.0f;
         }
@@ -710,9 +713,12 @@ Return Value:
         // Invoke the non-threaded GEMM directly with the input tensor.
         //
 
+        abort();
+#if 0
         MlasSgemmOperation(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
                            K, 1.0f, filter, K, input, Parameters->u.GemmDirect.ldb, Beta, output,
                            OutputSize);
+#endif
 
         //
         // Apply the activation with optional bias.
@@ -935,9 +941,11 @@ Return Value:
                     // Invoke the threaded GEMM directly with the input tensor.
                     //
 
+#if 0 // comment for prototype
                     MlasGemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
                              K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb,
                              Parameters->Beta, Output, OutputSize, ThreadPool);
+#endif
 
                     //
                     // Apply the activation with optional bias.
@@ -962,9 +970,11 @@ Return Value:
                         MlasConvVol2Col(Parameters, Input, WorkingBuffer, 0, K, 0, OutputSize);
                     }
 
+#if 0 // comment for prototype
                     MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
                              K, WorkingBuffer, OutputSize, Parameters->Beta, Output, OutputSize,
                              ThreadPool);
+#endif
 
                     //
                     // Apply the activation with optional bias.

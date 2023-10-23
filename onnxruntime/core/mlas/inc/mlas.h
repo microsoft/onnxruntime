@@ -110,6 +110,8 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 // standalone MLAS test executables smaller.
 //
 
+#define DQ_INT4_IN_PACKING
+
 namespace onnxruntime {
     namespace concurrency {
         class ThreadPool;
@@ -202,7 +204,11 @@ MlasActivation(
 struct MLAS_SGEMM_DATA_PARAMS {
     const float* A = nullptr; /**< Supplies the address of matrix A */
     size_t lda = 0;           /**< Supplies the first dimension of matrix A. */
+#ifdef DQ_INT4_IN_PACKING
+    const uint8_t* B = nullptr; /**< Supplies the address of matrix B */
+#else
     const float* B = nullptr; /**< Supplies the address of matrix B */
+#endif
     size_t ldb = 0;           /**< Supplies the first dimension of matrix B. */
     float* C = nullptr;       /**< Supplies the address of matrix C */
     size_t ldc = 0;           /**< Supplies the first dimension of matrix C. */
@@ -297,7 +303,11 @@ MlasGemm(
     float alpha,
     const float* A,
     size_t lda,
+#ifdef DQ_INT4_IN_PACKING
+    const uint8_t* B,
+#else
     const float* B,
+#endif
     size_t ldb,
     float beta,
     float* C,
@@ -356,7 +366,11 @@ MlasGemm(
     MLAS_SGEMM_DATA_PARAMS DataParams;
     DataParams.A = A;
     DataParams.lda = lda;
+#ifdef DQ_INT4_IN_PACKING
+    DataParams.B = static_cast<const uint8_t*>(PackedB);
+#else
     DataParams.B = static_cast<const float*>(PackedB);
+#endif
     DataParams.ldb = 0;
     DataParams.C = C;
     DataParams.ldc = ldc;
