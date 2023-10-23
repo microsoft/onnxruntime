@@ -46,12 +46,10 @@ class GraphPartitioner {
   // The latter will be done by graph partitioning after Level1 optimizations are done.
   /// </summary>
   /// <param name="model">model instance</param>
-  /// <param name="graph">main graph</param>
   /// <param name="execution_providers">execution providers considered</param>
   /// <param name="kernel_registry_manager">registry manager</param>
   /// <returns></returns>
   Status InlineFunctionsAOT(Model& model,
-                            Graph& graph,
                             const ExecutionProviders& execution_providers,
                             const KernelRegistryManager& kernel_registry_manager) const;
 #endif

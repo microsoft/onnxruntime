@@ -567,7 +567,7 @@ TEST(FunctionTest, TestInlinedLocalFunctionNotRemoved) {
 
   using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
   const std::unordered_set<std::string> empty_set;
-  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NCHW);
   internal_testing_ep->EnableStaticKernels().TakeAllNodes();
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
@@ -580,7 +580,7 @@ TEST(FunctionTest, TestInlinedLocalFunctionNotRemoved) {
 
   ASSERT_STATUS_OK(session_object.Initialize());
 
-  // myfun is not removed because it was assigned to the kernel from a custom registry
+  // myfun is not removed because it was claimed by InternalTestingEP
   model_proto = session_object.GetModel().ToProto();
   ASSERT_EQ(1, model_proto.functions_size());
 }

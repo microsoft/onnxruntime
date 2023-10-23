@@ -292,9 +292,8 @@ class Model {
                                  flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
   /// <summary>
-  /// The functions cleans local function definitions in the model excluding
-  /// those that are contained within the retained.
-  /// This is called from GraphParitioner::InlineFunctionsAOT.
+  /// Frees local function definitions in the model, excluding those in the `retained` set.
+  /// Called from GraphPartitioner::InlineFunctionsAOT.
   /// </summary>
   /// <param name="retained">contains function IDs that should not be removed.</param>
   void RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained);
