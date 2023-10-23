@@ -121,8 +121,7 @@ static void TestDFTInvertible(bool complex, int since_version) {
       OpTester::AddNodes(graph, graph_inputs, intermediate_outputs, add_attribute_funcs);
       if (this->Opset() < kOpsetVersion20) {
         OpTester::AddAttribute("axis", axis_);
-      } else
-      {
+      } else {
         assert(intermediate_outputs.size() == 1);
         assert(graph_inputs.size() == 3);
         intermediate_outputs.push_back(graph_inputs[1]);

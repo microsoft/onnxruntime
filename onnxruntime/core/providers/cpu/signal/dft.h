@@ -19,7 +19,7 @@ class DFT final : public OpKernel {
     if (opset_ < 20)
       axis_ = info.GetAttrOrDefault<int64_t>("axis", 1);
     else
-      axis_ = -2; // default axis of DFT(20)
+      axis_ = -2;  // default axis of DFT(20)
     is_inverse_ = info.GetAttrOrDefault<int64_t>("inverse", 0);
   }
   Status Compute(OpKernelContext* ctx) const override;
