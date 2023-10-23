@@ -27,7 +27,7 @@ jobs:
       ${{ if eq(parameters.BuildConfig, 'Release') }}:
         value: 'onnxruntime_rocm'
       ${{ else }}:
-        value: 'onnxruntime_rocm_enable_profiling'
+        value: 'onnxruntime_rocm_Debug'
 
   steps:
   - task: CmdLine@2
@@ -73,6 +73,7 @@ jobs:
           --entrypoint $(PythonManylinuxDir)/bin/python3 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
+          -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
           --user onnxruntimedev \
           onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }} \
             /onnxruntime_src/tools/ci_build/build.py \
@@ -131,7 +132,7 @@ jobs:
       python3 tools/ci_build/upload_python_package_to_azure_storage.py \
           --python_wheel_path ${files[0]} \
           --final_storage
-    condition: and(succeeded(), eq(variables['DRY_RUN'], '0'))
+    condition: and(ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true'), and(succeeded(), eq(variables['DRY_RUN'], '0')))
     displayName: 'Upload Rocm wheel to release repository'
 
   - template: component-governance-component-detection-steps.yml

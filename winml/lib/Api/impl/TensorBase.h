@@ -875,7 +875,7 @@ struct TensorBase : TBase {
 
     WINML_THROW_HR_IF_TRUE_MSG(
       E_ILLEGAL_METHOD_CALL,
-      std::is_same<T, std::string>::value,
+      (std::is_same<T, std::string>::value),
       "TensorString objects cannot be created from IBuffers!"
     );
   }

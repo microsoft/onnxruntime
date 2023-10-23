@@ -39,11 +39,11 @@ const char* RocmErrString<rocblas_status>(rocblas_status e) {
     CASE_ENUM_TO_STR(rocblas_status_invalid_handle);
     CASE_ENUM_TO_STR(rocblas_status_not_implemented);
     CASE_ENUM_TO_STR(rocblas_status_invalid_pointer);
+    CASE_ENUM_TO_STR(rocblas_status_size_query_mismatch);
     CASE_ENUM_TO_STR(rocblas_status_invalid_size);
     CASE_ENUM_TO_STR(rocblas_status_memory_error);
     CASE_ENUM_TO_STR(rocblas_status_internal_error);
     CASE_ENUM_TO_STR(rocblas_status_perf_degraded);
-    CASE_ENUM_TO_STR(rocblas_status_size_query_mismatch);
     CASE_ENUM_TO_STR(rocblas_status_size_increased);
     CASE_ENUM_TO_STR(rocblas_status_size_unchanged);
     CASE_ENUM_TO_STR(rocblas_status_invalid_value);

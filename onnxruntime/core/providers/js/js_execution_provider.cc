@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "js_execution_provider.h"
 
@@ -13,9 +14,11 @@
 #endif
 
 #include "core/graph/function_utils.h"
+#include "core/graph/indexed_sub_graph.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/fallback_cpu_capability.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "allocator.h"
 #include "data_transfer.h"
@@ -229,6 +232,9 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomai
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 12, Unsqueeze);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Unsqueeze);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 9, 15, Where);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 16, Where);
+
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 12, Transpose);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Transpose);
 
@@ -315,9 +321,9 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Fla
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Tile);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Tile);
 
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 17, float, LayerNormalization);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 6, float, InstanceNormalization);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, float, InstanceNormalization);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 17, LayerNormalization);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 6, InstanceNormalization);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, InstanceNormalization);
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, Range);
 
@@ -496,6 +502,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 17, ReduceLogSumExp)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 18, ReduceLogSumExp)>,
 
+      KERNEL_CREATE_INFO_VERSIONED(9, 15, Where),
+      KERNEL_CREATE_INFO(16, Where),
+
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 12, Transpose)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Transpose)>,
 
@@ -584,9 +593,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Tile)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Tile)>,
 
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 17, float, LayerNormalization)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 6, float, InstanceNormalization)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, float, InstanceNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 17, LayerNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 6, InstanceNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, InstanceNormalization)>,
 
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, Range)>,
 
@@ -624,7 +633,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 using namespace js;
 
 JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
-    : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), true} {
+    : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), true},
+      preferred_data_layout_{info.data_layout} {
 }
 
 std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
@@ -638,7 +648,45 @@ std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
 std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& kernel_lookup) const {
-  return IExecutionProvider::GetCapability(graph, kernel_lookup);
+  InlinedVector<NodeIndex> candidates;
+  // `tenative_candidates` is a subset of `candidates`.
+  InlinedVector<NodeIndex> tenative_candidates;
+  for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
+    const auto* p_node = graph.GetNode(node_index);
+    if (p_node == nullptr)
+      continue;
+
+    const auto& node = *p_node;
+    if (!node.GetExecutionProviderType().empty()) {
+      // If the node was added by layout transformer, do not move it to CPU
+      if (node.GetExecutionProviderType() == kJsExecutionProvider) {
+        candidates.push_back(node.Index());
+      }
+      continue;
+    }
+
+    const KernelCreateInfo* webgpu_kernel_def = kernel_lookup.LookUpKernel(node);
+    // none of the provided registries has a webgpu kernel for this node
+    if (webgpu_kernel_def == nullptr) {
+      LOGS(*GetLogger(), INFO) << "webgpu kernel not found in registries for Op type: "
+                               << node.OpType() << " node name: " << node.Name();
+      continue;
+    }
+    candidates.push_back(node.Index());
+    tenative_candidates.push_back(node.Index());
+  }
+  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tenative_candidates);
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  for (auto& node_index : candidates) {
+    if (cpu_nodes.count(node_index) > 0) {
+      continue;
+    }
+
+    auto sub_graph = std::make_unique<IndexedSubGraph>();
+    sub_graph->nodes.push_back(node_index);
+    result.emplace_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  }
+  return result;
 }
 
 std::shared_ptr<KernelRegistry> JsExecutionProvider::GetKernelRegistry() const {

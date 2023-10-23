@@ -1,7 +1,7 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "module": "CommonJS",
+    "module": "Node16",
     "outDir": "dist"
   },
   "include": ["lib"]

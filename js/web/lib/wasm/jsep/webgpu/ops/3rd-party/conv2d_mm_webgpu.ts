@@ -22,7 +22,7 @@
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
-import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
+import {ProgramInfo} from '../../types';
 import {tensorTypeToWsglStorageType} from '../common';
 import {ConvAttributes} from '../conv';
 
@@ -154,26 +154,22 @@ const conv2dCommonSnippet =
     };
 
 export const createConv2DMatMulProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvAttributes,
-     outputShape: readonly number[], dimAOuter: number, dimBOuter: number, dimInner: number, hasBias: boolean,
-     sequentialAccessByThreads: boolean): ProgramInfo => {
+    (inputs: readonly TensorView[], attributes: ConvAttributes, outputShape: readonly number[], dimAOuter: number,
+     dimBOuter: number, dimInner: number, hasBias: boolean, sequentialAccessByThreads: boolean): ProgramInfo => {
       const isChannelsLast = attributes.format === 'NHWC';
       const inChannels = isChannelsLast ? inputs[0].dims[3] : inputs[0].dims[1];
       const batchSize = outputShape[0];
       const outWidth = isChannelsLast ? outputShape[2] : outputShape[3];
       const outHeight = isChannelsLast ? outputShape[1] : outputShape[2];
       const outChannels = isChannelsLast ? outputShape[3] : outputShape[1];
-      const isVec4 = (((inChannels % 4 === 0 || inChannels % 3 === 0) && isChannelsLast) ||
-                      (outWidth % 4 === 0 && !isChannelsLast)) &&
-          outChannels % 4 === 0;
+      // TODO: enable vec4 for NCHW
+      const isVec4 = isChannelsLast && (inChannels % 4 === 0 || inChannels % 3 === 0) && outChannels % 4 === 0;
 
       // TODO: fine tune size
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
-      const workGroupSize: [number, number, number] =
-          isVec4 ? [8, 8, 1] : [dispatchX <= 4 ? 4 : 16, dispatchX > 4 && dispatchY <= 4 ? 4 : 16, 1];
-      const elementsPerThread =
-          isVec4 ? [4, 4, 1] : [dispatchX <= 4 ? 1 : 2, dispatchX > 4 && dispatchY <= 4 ? 1 : 2, 1];
+      const workGroupSize: [number, number, number] = [8, 8, 1];
+      const elementsPerThread = dimAOuter <= 8 ? [4, 1, 1] : [4, 4, 1];
       const dispatch = [
         Math.ceil(dispatchX / workGroupSize[0] / elementsPerThread[0]),
         Math.ceil(dispatchY / workGroupSize[1] / elementsPerThread[1]),
@@ -216,9 +212,12 @@ export const createConv2DMatMulProgramInfo =
       }
 
       return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
+        name: 'Conv2DMatMul',
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
+        }),
         getShaderSource: () => `
         ${utilFunctions}
         //struct Uniforms { xShape : vec4<i32>, wShape : vec4<i32>, outShape : vec4<i32>,
