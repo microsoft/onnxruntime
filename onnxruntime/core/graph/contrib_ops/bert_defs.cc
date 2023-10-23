@@ -936,7 +936,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "key_padding_mask",
-               "Key padding mask with shape (batch_size) or (3 * batch_size + 2) or (batch_size, kv_sequence_length)",
+               "Key padding mask with shape (batch_size), (3 * batch_size + 2), (batch_size, kv_sequence_length), (batch_size, total_sequence_length), "
+               "or (batch_size, sequence_length, total_sequence_length)",
                "M",
                OpSchema::Optional)
         .Input(5,
@@ -1117,6 +1118,49 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("B", {"tensor(bool)"}, "Constrain key_padding_mask to bool tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           DecoderAttentionTypeAndShapeInference(ctx);
+        }));
+
+constexpr const char* RotaryEmbedding_ver1_doc = R"DOC(
+RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices 
+that are multiplied to query and key before the inner product of query and key is taken.
+)DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RotaryEmbedding, 1,
+    OpSchema()
+        .SetDoc(RotaryEmbedding_ver1_doc)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1.0",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("interleaved",
+              "Rotate using interleaved pattern. Default value is 0 (False).",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "input",
+               "3D tensor with shape (batch_size, sequence_length, hidden_size)",
+               "T")
+        .Input(1,
+               "position_ids",
+               "1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)",
+               "M")
+        .Input(2,
+               "cos_cache",
+               "2D tensor with shape (max_sequence_length, head_size / 2).",
+               "T")
+        .Input(3,
+               "sin_cache",
+               "2D tensor with shape (max_sequence_length, head_size / 2).",
+               "T")
+        .Output(0,
+                "output",
+                "3D tensor with shape (batch_size, sequence_length, hidden_size)",
+                "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+        .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
 constexpr const char* EmbedLayerNormalization_ver1_doc = R"DOC(

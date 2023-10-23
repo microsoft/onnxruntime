@@ -2,22 +2,21 @@
 // Licensed under the MIT License.
 
 #pragma once
-
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T, bool simplified>
-class SkipLayerNorm final : public OpKernel {
+template <typename T>
+class RotaryEmbedding final : public OpKernel {
  public:
-  SkipLayerNorm(const OpKernelInfo& op_kernel_info);
-  Status Compute(OpKernelContext* p_op_kernel_context) const override;
+  RotaryEmbedding(const OpKernelInfo& info);
+  Status Compute(OpKernelContext* context) const override;
 
- private:
-  float epsilon_;
+ protected:
+  float scale;
+  bool interleaved;
 };
 
 }  // namespace contrib
