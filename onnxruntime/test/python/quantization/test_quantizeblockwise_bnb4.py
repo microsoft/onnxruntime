@@ -32,7 +32,7 @@ def quantize_block_fp4(block: npt.ArrayLike):
     signs = (block < 0).astype(np.uint8) * 8
 
     # find the uint8 quantization index
-    # argmax finds the first occurance of True
+    # argmax finds the first occurrence of True
     quant_indices = pivot_indices[(np.abs(block)[:, None] <= pivots).argmax(axis=1)] + signs
 
     return np.bitwise_or(np.left_shift(quant_indices[::2], 4), quant_indices[1::2])

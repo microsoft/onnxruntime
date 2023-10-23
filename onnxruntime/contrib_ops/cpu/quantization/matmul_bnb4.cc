@@ -18,7 +18,9 @@ class MatMulBnb4 final : public OpKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("quant_type", &quant_type_));
-    ORT_ENFORCE(quant_type_ == FP4 || quant_type_ == NF4, "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
+    ORT_ENFORCE(
+        quant_type_ == FP4 || quant_type_ == NF4,
+        "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -45,14 +47,15 @@ Status MatMulBnb4::Compute(OpKernelContext* ctx) const {
   auto status = ctx->GetTempSpaceAllocator(&allocator);
   ORT_RETURN_IF_ERROR(status);
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
-  DequantizeBlockwiseBnb4<float>(tmp_b_data_ptr.get(),
-                                 b_quant_data,
-                                 absmax_data,
-                                 static_cast<int32_t>(block_size_),
-                                 static_cast<int32_t>(quant_type_),
-                                 static_cast<int32_t>(N_),
-                                 static_cast<int32_t>(K_),
-                                 thread_pool);
+  DequantizeBlockwiseBnb4<float>(
+      tmp_b_data_ptr.get(),
+      b_quant_data,
+      absmax_data,
+      static_cast<int32_t>(block_size_),
+      static_cast<int32_t>(quant_type_),
+      static_cast<int32_t>(N_),
+      static_cast<int32_t>(K_),
+      thread_pool);
 
   constexpr bool transa = false;
   constexpr bool transb = true;
@@ -63,8 +66,7 @@ Status MatMulBnb4::Compute(OpKernelContext* ctx) const {
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
-  if (y->Shape().Size() == 0)
-    return Status::OK();
+  if (y->Shape().Size() == 0) return Status::OK();
 
   auto* y_data = y->MutableData<float>();
 
@@ -88,8 +90,7 @@ Status MatMulBnb4::Compute(OpKernelContext* ctx) const {
     data[i].alpha = 1.f;
     data[i].beta = 0.0f;
   }
-  MlasGemmBatch(CblasNoTrans, CblasTrans,
-                M, N, K, data.data(), max_len, thread_pool);
+  MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data.data(), max_len, thread_pool);
 
   return Status::OK();
 }

@@ -35,8 +35,13 @@ struct DequantizeBnb4Params : cuda::tunable::OpParams {
 template <typename T>
 class DequantizeBnb4 : public IKernelExplorer {
  public:
-  DequantizeBnb4(int quant_type, DeviceArray& output, DeviceArray& quant, DeviceArray& absmax,  DeviceArray& quant_map_buffer, int n, int k)
-      : IKernelExplorer(), params_() {
+  DequantizeBnb4(
+      int quant_type,
+      DeviceArray& output,
+      DeviceArray& quant,
+      DeviceArray& absmax,
+      DeviceArray& quant_map_buffer,
+      int n, int k) {
     params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.quant_type_ = quant_type;
@@ -55,11 +60,11 @@ class DequantizeBnb4 : public IKernelExplorer {
         params_.StreamHandle()));
     ORT_THROW_IF_ERROR(contrib::cuda::DequantizeBnb4(
       params_.quant_map_buffer_,
-        params_.output_, 
-        params_.quant_, 
-        params_.absmax_, 
+        params_.output_,
+        params_.quant_,
+        params_.absmax_,
         64,
-        params_.n_ * params_.k_, 
+        params_.n_ * params_.k_,
         params_.StreamHandle()));
   }
 

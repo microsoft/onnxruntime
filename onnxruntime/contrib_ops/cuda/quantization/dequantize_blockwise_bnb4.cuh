@@ -15,7 +15,7 @@ template <class T>
 Status DequantizeBnb4(
     const T* quant_map,
     T* output,
-    const unsigned char* quant_data, 
+    const uint8_t* quant_data,
     const T* absmax,
     int block_size,
     int numel,

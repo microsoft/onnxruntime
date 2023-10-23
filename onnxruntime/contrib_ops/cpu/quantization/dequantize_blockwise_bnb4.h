@@ -51,7 +51,9 @@ void QuantizeBlockwiseBnb4(
     int32_t N,
     int32_t K,
     onnxruntime::concurrency::ThreadPool* thread_pool) {
-  ORT_ENFORCE(quant_type == FP4 || quant_type == NF4, "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
+  ORT_ENFORCE(
+      quant_type == FP4 || quant_type == NF4,
+      "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
 
   if (block_size == 16) {
     QuantizeBlockwiseBn4DataTyped(16, quant_type);
@@ -106,7 +108,9 @@ void DequantizeBlockwiseBnb4(
     int32_t N,
     int32_t K,
     onnxruntime::concurrency::ThreadPool* thread_pool) {
-  ORT_ENFORCE(quant_type == FP4 || quant_type == NF4, "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
+  ORT_ENFORCE(
+      quant_type == FP4 || quant_type == NF4,
+      "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
 
   if (block_size == 16) {
     DequantizeBlockwiseBn4DataTyped(16, quant_type);

@@ -22,7 +22,9 @@ class MatMulBnb4 final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("quant_type", &quant_type_));
-    ORT_ENFORCE(quant_type_ == FP4 || quant_type_ == NF4, "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
+    ORT_ENFORCE(
+        quant_type_ == FP4 || quant_type_ == NF4,
+        "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

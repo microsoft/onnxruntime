@@ -44,67 +44,79 @@ FORCEINLINE uint8_t QuantizeOneFP4(float x) {
 
   int sign = x < 0 ? 0b1000 : 0b0000;
   x = fabsf(x);
-  if (x > 0.29166667f)
-    if (x > 0.583333f)
-      if (x > 0.8333333f)
+  if (x > 0.29166667f) {
+    if (x > 0.583333f) {
+      if (x > 0.8333333f) {
         return 0b0011 + sign;
-      else
+      } else {
         return 0b0010 + sign;
-    else if (x > 0.4166667f)
+      }
+    } else if (x > 0.4166667f) {
       return 0b101 + sign;
-    else
+    } else {
       return 0b100 + sign;
-  else if (x > 0.0859375f)
-    if (x > 0.20833333f)
+    }
+  } else if (x > 0.0859375f) {
+    if (x > 0.20833333f) {
       return 0b0111 + sign;
-    else
+    } else {
       return 0b0110 + sign;
-  else if (x > 0.00260417f)
+    }
+  } else if (x > 0.00260417f) {
     return 0b0001 + sign;
-  else
+  } else {
     return 0b0000 + sign;
+  }
 }
 
 FORCEINLINE uint8_t QuantizeOneNF4(float x) {
-  if (x > 0.03979014977812767f)
-    if (x > 0.3893125355243683f)      // 1
-      if (x > 0.6427869200706482f)    // 11
-        if (x > 0.8614784181118011f)  // 111
+  if (x > 0.03979014977812767f) {
+    if (x > 0.3893125355243683f) {      // 1
+      if (x > 0.6427869200706482f) {    // 11
+        if (x > 0.8614784181118011f) {  // 111
           return 0b1111;
-        else
+        } else {
           return 0b1110;
-      else if (x > 0.5016634166240692f)  // 110
+        }
+      } else if (x > 0.5016634166240692f) {  // 110
         return 0b1101;
-      else
+      } else {
         return 0b1100;
-    else if (x > 0.2035212516784668f)  // 10
-      if (x > 0.2920137718319893f)     // 101
+      }
+    } else if (x > 0.2035212516784668f) {  // 10
+      if (x > 0.2920137718319893f) {       // 101
         return 0b1011;
-      else
+      } else {
         return 0b1010;
-    else if (x > 0.1202552504837513f)  // 100
+      }
+    } else if (x > 0.1202552504837513f) {  // 100
       return 0b1001;
-    else
+    } else {
       return 0b1000;
-  else if (x > -0.33967943489551544f)  // 0
-    if (x > -0.13791173323988914f)     // 01
-      if (x > -0.045525018125772476f)  // 011
+    }
+  } else if (x > -0.33967943489551544f) {  // 0
+    if (x > -0.13791173323988914f) {       // 01
+      if (x > -0.045525018125772476f) {    // 011
         return 0b0111;
-      else
+      } else {
         return 0b0110;
-    else if (x > -0.23460740596055984f)  // 010
+      }
+    } else if (x > -0.23460740596055984f) {  // 010
       return 0b0101;
-    else
+    } else {
       return 0b0100;
-  else if (x > -0.6106329262256622f)  // 00
-    if (x > -0.4599952697753906f)     // 001
+    }
+  } else if (x > -0.6106329262256622f) {  // 00
+    if (x > -0.4599952697753906f) {       // 001
       return 0b0011;
-    else
+    } else {
       return 0b0010;
-  else if (x > -0.8480964004993439f)  // 000
+    }
+  } else if (x > -0.8480964004993439f) {  // 000
     return 0b0001;
-  else
+  } else {
     return 0b0000;
+  }
 }
 
 template <int32_t DATA_TYPE>
@@ -142,17 +154,27 @@ FORCEINLINE void QuantizeBlockBnb4(const T* src, uint8_t* dst, T& absmax_block, 
   }
 }
 
-static float fp4_qaunt_map[16] = {
-    0.00000000f, 5.208333333e-03f, 0.66666667f, 1.00000000f,
-    0.33333333f, 0.50000000f, 0.16666667f, 0.25000000f,
-    -0.00000000f, -5.208333333e-03f, -0.66666667f, -1.00000000f,
-    -0.33333333f, -0.50000000f, -0.16666667f, -0.25000000f};
+static float fp4_qaunt_map[16] = {0.00000000f, 5.208333333e-03f, 0.66666667f, 1.00000000f,
+                                  0.33333333f, 0.50000000f, 0.16666667f, 0.25000000f,
+                                  -0.00000000f, -5.208333333e-03f, -0.66666667f, -1.00000000f,
+                                  -0.33333333f, -0.50000000f, -0.16666667f, -0.25000000f};
 
-static float nf4_qaunt_map[16] = {
-    -1.0f, -0.6961928009986877f, -0.5250730514526367f, -0.39491748809814453f,
-    -0.28444138169288635f, -0.18477343022823334f, -0.09105003625154495f, 0.0f,
-    0.07958029955625534f, 0.16093020141124725f, 0.24611230194568634f, 0.33791524171829224f,
-    0.44070982933044434f, 0.5626170039176941f, 0.7229568362236023f, 1.0f};
+static float nf4_qaunt_map[16] = {-1.0f,
+                                  -0.6961928009986877f,
+                                  -0.5250730514526367f,
+                                  -0.39491748809814453f,
+                                  -0.28444138169288635f,
+                                  -0.18477343022823334f,
+                                  -0.09105003625154495f,
+                                  0.0f,
+                                  0.07958029955625534f,
+                                  0.16093020141124725f,
+                                  0.24611230194568634f,
+                                  0.33791524171829224f,
+                                  0.44070982933044434f,
+                                  0.5626170039176941f,
+                                  0.7229568362236023f,
+                                  1.0f};
 
 template <typename T, int32_t DATA_TYPE>
 FORCEINLINE T DequantizeOneBnb4(uint8_t x) {
@@ -172,8 +194,7 @@ FORCEINLINE void DequantizeBlockBnb4(const uint8_t* src, T* dst, T absmax_block,
     const uint8_t val = src[src_offset + idx / 2];
 
     dst[dst_offset + idx] = DequantizeOneBnb4<T, DATA_TYPE>(val >> 4) * absmax_block;
-    if (idx + 1 < block_len)
-      dst[dst_offset + idx + 1] = DequantizeOneBnb4<T, DATA_TYPE>(val & 0xF) * absmax_block;
+    if (idx + 1 < block_len) dst[dst_offset + idx + 1] = DequantizeOneBnb4<T, DATA_TYPE>(val & 0xF) * absmax_block;
   }
 }
 
