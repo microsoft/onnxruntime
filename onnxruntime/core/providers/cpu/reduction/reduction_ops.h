@@ -181,7 +181,6 @@ class ReduceAggregator : public ReduceAggregatorBase {
   inline TVAL get_value() { return accumulator_; }
   static void fill_for_empty_set(Tensor&) { ORT_NOT_IMPLEMENTED(); }
 
-
  protected:
   static void CommonFastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                                   Tensor& output, concurrency::ThreadPool* tp,
@@ -448,7 +447,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
         [=](const T* p) -> T { return p[0]; },
         [=](T& value, const T* p, int64_t size) {
           T v = aggall(p, size);
-          if (v == value)
+          if (v > value)
             value = v;
         });
   }
@@ -480,12 +479,12 @@ class ReduceAggregatorMax<bool> : public ReduceAggregator<bool> {
     concurrency::ThreadPool::TryParallelFor(
         tp, onnxruntime::narrow<std::ptrdiff_t>(fast_shape[0]), ParallelReduceFastCost(1, stridei, sizeof(bool), 6),
         [data, stridei, out](std::ptrdiff_t first, std::ptrdiff_t last) {
-           EigenVectorMap<bool>(out + first, last - first) = ConstEigenMatrixMap<bool>(
-             data + first * stridei, onnxruntime::narrow<size_t>(stridei), last - first)
-             .cast<int>()
-             .colwise()
-             .maxCoeff()
-             .cast<bool>();
+          EigenVectorMap<bool>(out + first, last - first) = ConstEigenMatrixMap<bool>(
+                                                                data + first * stridei, onnxruntime::narrow<size_t>(stridei), last - first)
+                                                                .cast<int>()
+                                                                .colwise()
+                                                                .maxCoeff()
+                                                                .cast<bool>();
         });
   }
 
@@ -521,12 +520,12 @@ class ReduceAggregatorMax<bool> : public ReduceAggregator<bool> {
         [data, fast_shape, stridei, strideo, out](ptrdiff_t begin, ptrdiff_t end) {
           for (ptrdiff_t j = begin; j < end; ++j) {
             EigenVectorMap<bool>(out + j * strideo, onnxruntime::narrow<size_t>(strideo)) =
-                 ConstEigenMatrixMap<bool>(
-                   data + j * stridei, onnxruntime::narrow<size_t>(fast_shape[2]), onnxruntime::narrow<size_t>(fast_shape[1]))
-               .cast<int>()
-               .rowwise()
-               .maxCoeff()
-               .cast<bool>();
+                ConstEigenMatrixMap<bool>(
+                    data + j * stridei, onnxruntime::narrow<size_t>(fast_shape[2]), onnxruntime::narrow<size_t>(fast_shape[1]))
+                    .cast<int>()
+                    .rowwise()
+                    .maxCoeff()
+                    .cast<bool>();
             ;
           }
         });
@@ -539,7 +538,7 @@ class ReduceAggregatorMax<bool> : public ReduceAggregator<bool> {
         [=](const bool* p) -> bool { return p[0]; },
         [=](bool& value, const bool* p, int64_t size) {
           bool v = aggall(p, size);
-            value = value || v;
+          value = value || v;
         });
   }
 };
@@ -749,11 +748,11 @@ class ReduceAggregatorMin<bool> : public ReduceAggregator<bool, bool> {
         tp, onnxruntime::narrow<std::ptrdiff_t>(fast_shape[0]), ParallelReduceFastCost(1, stridei, sizeof(bool), 6),
         [data, stridei, out](std::ptrdiff_t first, std::ptrdiff_t last) {
           EigenVectorMap<bool>(out + first, last - first) = ConstEigenMatrixMap<bool>(
-            data + first * stridei, onnxruntime::narrow<size_t>(stridei), last - first)
-            .cast<int>()
-            .colwise()
-            .minCoeff()
-            .cast<bool>();
+                                                                data + first * stridei, onnxruntime::narrow<size_t>(stridei), last - first)
+                                                                .cast<int>()
+                                                                .colwise()
+                                                                .minCoeff()
+                                                                .cast<bool>();
         });
   }
 
@@ -772,7 +771,7 @@ class ReduceAggregatorMin<bool> : public ReduceAggregator<bool, bool> {
           for (int64_t row = 1; row < n_rows; ++row) {
             p = data + row * N;
             for (int64_t j = begin; j < end; ++j) {
-              out[j] = out[j]  && p[j];
+              out[j] = out[j] && p[j];
             }
           }
         });

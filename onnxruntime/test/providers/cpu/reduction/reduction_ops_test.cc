@@ -3451,9 +3451,8 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
   // reduce on all axes keeping dims. should allow the 0 to be the reduced value
   OpTester test("ReduceSum", 10);
   test.AddAttribute("keepdims", int64_t(1));
-  test.AddShapeToTensorData(true, 1);  // make second dim symbolic so that we don't break during shape inferencing
   test.AddInput<float>("data", {3, 0, 2}, {});
-  test.AddOutput<float>("reduced", {1, 0, 1}, {});
+  test.AddOutput<float>("reduced", {1, 1, 1}, {0.0f});
   run(test);
 }
 
@@ -3495,15 +3494,13 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
                });
   };
 
-  // reduction without keeping dims on all axes. can't reduce on an axis with value of 0
+  // reducing on all axes including one or more with 0 dimension, with keepdims=0, results a scalar of 0.
   OpTester test2("ReduceSum", 10);
   test2.AddAttribute("keepdims", int64_t(0));
   test2.AddShapeToTensorData(true, 1);
   test2.AddInput<float>("data", {3, 0, 2}, {});
-  test2.AddOutput<float>("reduced", {}, {0.f});
-  run(test2,
-      "Can't reduce on dim with value of 0 if 'keepdims' is false. "
-      "Invalid output shape would be produced. input_shape:{3,0,2}");
+  test2.AddOutput<float>("reduced", {}, {0.0f});
+  run(test2);
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero3) {
