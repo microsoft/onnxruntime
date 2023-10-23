@@ -702,7 +702,6 @@ def generate_files(line_list, args):
         )
 
         if is_windows():
-
             dll_list_path = os.path.join(openvino_path, "runtime\\bin\\intel64\\Release\\")
             tbb_list_path = os.path.join(openvino_path, "runtime\\3rdparty\\tbb\\bin\\")
 
