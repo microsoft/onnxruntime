@@ -126,15 +126,17 @@ namespace DmlGraphFusionHelper
         for (uint32_t i = 0; i < fusedNodeInputCount; i++)
         {
             auto iter = initializerNameToInitializerMap.find(subGraphInputArgNames[i]);
-            if (iter != initializerNameToInitializerMap.end()) {
+            if (iter != initializerNameToInitializerMap.end())
+            {
                 initializerToLastInputIndexMap[iter->second.first] = i;
             }
         }
 
         // Walk through each graph edge and mark used inputs
         inputsUsed.assign(fusedNodeInputCount, false);
-        for (uint32_t idx = 0; idx < inputEdgeCount; idx++) {
-            auto* edge = (const DML_INPUT_GRAPH_EDGE_DESC*)(inputEdges[idx].Desc);
+        for (uint32_t index = 0; index < inputEdgeCount; index++)
+        {
+            auto* edge = (const DML_INPUT_GRAPH_EDGE_DESC*)(inputEdges[index].Desc);
             inputsUsed[edge->GraphInputIndex] = true;
         }
 
@@ -308,13 +310,13 @@ namespace DmlGraphFusionHelper
         }
     }
 
-    template <size_t ALLOCATOR_SIZE>
+    template <size_t AllocatorSize>
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         const uint32_t inputCount,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         IDMLDevice* device,
-        StackAllocator<ALLOCATOR_SIZE>& allocator,
+        StackAllocator<AllocatorSize>& allocator,
         std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
         std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
@@ -330,7 +332,7 @@ namespace DmlGraphFusionHelper
             if (std::holds_alternative<AbstractOperatorDesc>(node.Desc))
             {
                 oldNodeIndexToNewNodeIndexMap[index] = static_cast<uint32_t>(dmlGraphNodes.size());
-                DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc<ALLOCATOR_SIZE>(std::get<AbstractOperatorDesc>(node.Desc), &allocator);
+                DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc<AllocatorSize>(std::get<AbstractOperatorDesc>(node.Desc), &allocator);
                 ComPtr<IDMLOperator> op;
                 ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
                 dmlOperators.push_back(op);

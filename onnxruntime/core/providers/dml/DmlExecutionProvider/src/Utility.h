@@ -89,9 +89,10 @@ namespace Dml
         std::ofstream file(fullSanitizedFileName, std::ios::binary);
         if (!file.is_open()) 
         {
-            std::wstringstream errorMessage;
-            errorMessage << "File named: " << fileName << " could not be opened\n";
-            ORT_THROW_HR(E_INVALIDARG);
+            std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>,wchar_t> g_converterToUtf16;
+            std::stringstream errorMessage;
+            errorMessage << "File named: " << g_converterToUtf16.to_bytes(fileName.data()) << " could not be opened\n";
+            throw std::ios::failure(errorMessage.str());
         }
         file.write(reinterpret_cast<const char*>(data), dataSize);
     }

@@ -435,15 +435,13 @@ template <typename EdgeType> void PopulateEdges(
     }
 }
 
-/*
-* - Handling of empty optional input/output/attibute for non-constant node:
-*   input/output
-*   - <DmlGraphNode.inputNames> and <DmlGraphNode.outputNames> will have an null entry
-*      but the actual OperatorNodeDesc variant's <OperatorNodeDesc.inputs> 
-*      and <OperatorNodeDesc.outputs> will not have any entry.
-*   attribute
-*   - <OperatorNodeDesc.attributes> will have null entry
-*/
+// - Handling of empty optional input/output/attibute for non-constant node:
+//   input/output
+//   - <DmlGraphNode.inputNames> and <DmlGraphNode.outputNames> will have an null entry
+//      but the actual OperatorNodeDesc variant's <OperatorNodeDesc.inputs> 
+//      and <OperatorNodeDesc.outputs> will not have any entry.
+//   attribute
+//   - <OperatorNodeDesc.attributes> will have null entry
 DmlSerializedGraphDesc DeserializeDmlGraph(
     const uint8_t* flatbufferGraphDescBlob,
     /*out*/ std::vector<std::unique_ptr<std::byte[]>>& rawData)

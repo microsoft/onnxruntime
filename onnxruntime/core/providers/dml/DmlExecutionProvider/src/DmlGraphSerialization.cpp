@@ -219,20 +219,20 @@ void SerializeAttributeDescs(
 
 flatbuffers::Offset<dml::ir::DmlBufferTensorDesc> SerializeDmlTensorDesc(
     flatbuffers::FlatBufferBuilder& builder,
-    const DmlBufferTensorDesc* tensorDesc)
+    const DmlBufferTensorDesc& tensorDesc)
 {
-    const std::vector<uint32_t> *strides = nullptr;
-    if (tensorDesc->strides.has_value())
+    const std::vector<uint32_t>* strides = nullptr;
+    if (tensorDesc.strides.has_value())
     {
-        strides = &tensorDesc->strides.value();
+        strides = &tensorDesc.strides.value();
     }
     
     flatbuffers::Offset<dml::ir::DmlBufferTensorDesc> offset = dml::ir::CreateDmlBufferTensorDescDirect(
         builder,
-        ApiTraits::StringifyHelpers::ToString(tensorDesc->dataType),
-        &tensorDesc->sizes,
+        ApiTraits::StringifyHelpers::ToString(tensorDesc.dataType),
+        &tensorDesc.sizes,
         strides,
-        tensorDesc->totalTensorSizeInBytes);
+        tensorDesc.totalTensorSizeInBytes);
     return offset;
 }
 
@@ -251,7 +251,7 @@ flatbuffers::Offset<void> SerializeOperatorNodeDesc(
         {
             continue;
         }
-        flatbuffers::Offset<dml::ir::DmlBufferTensorDesc> serializedDmlTensorDesc = SerializeDmlTensorDesc(builder, tensorDesc);
+        flatbuffers::Offset<dml::ir::DmlBufferTensorDesc> serializedDmlTensorDesc = SerializeDmlTensorDesc(builder, *tensorDesc);
         inputTensorDescs.push_back(serializedDmlTensorDesc);
     }
     
@@ -261,7 +261,7 @@ flatbuffers::Offset<void> SerializeOperatorNodeDesc(
         {
             continue;
         }
-        flatbuffers::Offset<dml::ir::DmlBufferTensorDesc> serializedDmlTensorDesc = SerializeDmlTensorDesc(builder, tensorDesc);
+        flatbuffers::Offset<dml::ir::DmlBufferTensorDesc> serializedDmlTensorDesc = SerializeDmlTensorDesc(builder, *tensorDesc);
         outputTensorDescs.push_back(serializedDmlTensorDesc);
     }
     
@@ -360,10 +360,8 @@ flatbuffers::Offset<dml::ir::DmlGraphNode> SerializeNode(
     return offset;
 }
 
-/*
-* validates input/output edges and throws exception if an edge 
-* does not have a name or if an edge has more than 1 names.
-*/
+// validates input/output edges and throws exception if an edge 
+// does not have a name or if an edge has more than 1 names.
 template <typename Edge>
 std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>> ConvertToEdgeIndexToNameMap(
     const std::vector<Edge>& edges,
@@ -380,6 +378,11 @@ std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>> ConvertTo
         else if constexpr (std::is_same_v<Edge, DmlOutputSerializedGraphEdge>)
         {
             index = edge.GraphOutputIndex;
+        }
+        else
+        {
+            // unknown template Edge
+            assert(false);
         }
         
         if (edge.Name.empty())
@@ -437,10 +440,8 @@ void PopulateConstantNodeInputOutputCount(
     }
 }
 
-/*
-* validates intermediate edge and throws exception if an edge 
-* does not have a name or if an edge has more than 1 names.
-*/
+// validates intermediate edge and throws exception if an edge 
+// does not have a name or if an edge has more than 1 names.
 void PopulateNodeInputOutputNames(
     flatbuffers::FlatBufferBuilder& builder,
     const DmlSerializedGraphDesc& graphDesc,
@@ -495,19 +496,17 @@ void PopulateNodeInputOutputNames(
 }
 
 
-/*
-* - If an edge is connected to multiple nodes, then there will be multiple instances 
-*   of input or intermediate edges, all with the same name.
-* - The input <graphDesc> will be validated incrementally throughout the execution 
-*   of the method.
-* - Handling of empty optional input/output/attibute for non-constant node:
-*   input/output
-*   - <DmlGraphNode.inputNames> and <DmlGraphNode.outputNames> will have an null entry
-*      but the actual OperatorNodeDesc variant's <OperatorNodeDesc.inputs> 
-*      and <OperatorNodeDesc.outputs> will not have any entry.
-*   attribute
-*   - <OperatorNodeDesc.attributes> will have null entry
-*/
+// - If an edge is connected to multiple nodes, then there will be multiple instances 
+//   of input or intermediate edges, all with the same name.
+// - The input <graphDesc> will be validated incrementally throughout the execution 
+//   of the method.
+// - Handling of empty optional input/output/attibute for non-constant node:
+//   input/output
+//   - <DmlGraphNode.inputNames> and <DmlGraphNode.outputNames> will have an null entry
+//      but the actual OperatorNodeDesc variant's <OperatorNodeDesc.inputs> 
+//      and <OperatorNodeDesc.outputs> will not have any entry.
+//   attribute
+//   - <OperatorNodeDesc.attributes> will have null entry
 flatbuffers::DetachedBuffer SerializeDmlGraph(const DmlSerializedGraphDesc& graphDesc)
 {
 
@@ -523,14 +522,12 @@ flatbuffers::DetachedBuffer SerializeDmlGraph(const DmlSerializedGraphDesc& grap
     std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>> graphOutputIndexToNameMap = 
         ConvertToEdgeIndexToNameMap<DmlOutputSerializedGraphEdge>(graphDesc.OutputEdges, builder);
 
-    /*
-    * - Calculate number of input/output for each operator to allocate
-    *   appropriate amount of memory for each node to store input/output names.
-    * - Non-constant node's input/output count can be determined by the
-    *   AbstractOperatorDesc.
-    * - Constant node will only have outgoing edges and those outgoing edges 
-    *   will be intermediate edges.
-    */
+    // - Calculate number of input/output for each operator to allocate
+    //   appropriate amount of memory for each node to store input/output names.
+    // - Non-constant node's input/output count can be determined by the
+    //   AbstractOperatorDesc.
+    // - Constant node will only have outgoing edges and those outgoing edges 
+    //   will be intermediate edges.
     std::vector<uint32_t> nodeInputCounts(graphDesc.Nodes.size(), 0);
     std::vector<uint32_t> nodeOutputCounts(graphDesc.Nodes.size(), 0);
     PopulateNonConstantNodeInputOutputCount(graphDesc.Nodes, nodeInputCounts, nodeOutputCounts);

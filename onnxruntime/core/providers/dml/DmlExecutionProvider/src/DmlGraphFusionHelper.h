@@ -45,12 +45,12 @@ namespace DmlGraphFusionHelper
         gsl::span<std::unique_ptr<GraphPartition>> partitions
     );
 
-    template <size_t ALLOCATOR_SIZE>
+    template <size_t AllocatorSize>
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         IDMLDevice* device,
-        StackAllocator<ALLOCATOR_SIZE>& allocator,
+        StackAllocator<AllocatorSize>& allocator,
         std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
         std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,

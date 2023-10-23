@@ -160,21 +160,19 @@ namespace Dml::GraphDescBuilder
         return operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap[operatorDmlGraphNodeIndex];
     }
 
-    /*
-    * Terminology:
-    *   SubGraph: partitioned ONNX graph from the original (main) ONNX graph
-    *   DmlGraph: a graph in DML currency converted from subGraph.
-    *   operatorDmlGraph: a graph in DML currency for a given node or operator
-    * DmlGraph aka mainDmlGraph to distinguish b/w operatorDmlGraph and DmlGraph.
-    * Main Points to note:
-    *   - GraphDesc will always has sequential indices for input and intermediate edges.
-    */
+    // Terminology:
+    //   Subgraph: partitioned ONNX graph from the original (main) ONNX graph
+    //   DmlGraph: a graph in DML currency converted from subgraph.
+    //   operatorDmlGraph: a graph in DML currency for a given node or operator
+    // DmlGraph aka mainDmlGraph to distinguish beetween operatorDmlGraph and DmlGraph.
+    // Main Points to note:
+    //   - GraphDesc will always has sequential indices for input and intermediate edges.
     GraphDesc BuildDmlGraphDesc(
         const uint8_t* isConstGpuGraphInput,
         const size_t isConstGpuGraphInputCount,
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
         const onnxruntime::Graph& graph,
-        const onnxruntime::IndexedSubGraph& indexedSubGraph,
+        const onnxruntime::IndexedSubGraph& indexedSubgraph,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
         const ExecutionProviderImpl* providerImpl,
@@ -182,19 +180,19 @@ namespace Dml::GraphDescBuilder
         std::unordered_map<std::string_view, uint32_t>& serializedGraphConstantNameToMainGraphInputIndex,
         /*out*/std::vector<std::unique_ptr<std::byte[]>>& smallConstantData)
     {
-        const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph.GetMetaDef()->inputs;
-        const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph.GetMetaDef()->outputs;
+        const gsl::span<const std::string> subgraphInputArgNames = indexedSubgraph.GetMetaDef()->inputs;
+        const gsl::span<const std::string> subgraphOutputArgNames = indexedSubgraph.GetMetaDef()->outputs;
         struct NodeAndIndex
         {
             uint32_t nodeIndex; // The index of the node itself
             uint32_t targetIndex; // The index of the input/output on the node (e.g. 1 for the second input on a node)
         };
 
-        // Map from ORT node argument names to input indices of the dml graph (fused kernel node).
+        // Map from ORT node argument names to input indices of the DML graph (fused kernel node).
         std::unordered_map<std::string_view, uint32_t> subGraphInputNameToInputIndexMap;
-        for (size_t inputIndex = 0; inputIndex < subGraphInputArgNames.size(); ++inputIndex)
+        for (size_t inputIndex = 0; inputIndex < subgraphInputArgNames.size(); ++inputIndex)
         {
-            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(subGraphInputArgNames[inputIndex]);
+            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(subgraphInputArgNames[inputIndex]);
             if (!graphInput)
             {
                 // This is a workaround for when node inputs get manipulated by transformers outside of our control,
@@ -237,7 +235,7 @@ namespace Dml::GraphDescBuilder
         std::vector<DmlOutputSerializedGraphEdge> dmlGraphOutputEdges;
         // Iterate through each node and create a corresponding node in the new graph
         // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
-        for (size_t sortedNodeIndex : indexedSubGraph.nodes)
+        for (size_t sortedNodeIndex : indexedSubgraph.nodes)
         {
             const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
 
@@ -281,16 +279,14 @@ namespace Dml::GraphDescBuilder
             std::unordered_map<uint32_t, uint32_t> operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap;
             const bool isNodeAsOpDesc = operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc.size() > 0;
 
-            /*
-            * Algorithm:
-            *  1. Create constant nodes by iterating through operatorDmlGraph's input edges and keep a map of it,
-            *     because there would be an intermediate edge from the constantNode and source of the intermediate edge
-            *     should come before the destination.
-            *  2. Again iterate through operatorDmlGraph's input edges to create mainGraph's input and intermediate edges.
-            *  3. Iterate through operatorDmlGraph's intermediate edges to create mainGraph's intermediate edges.
-            *  4. Iterate through operatorDmlGraph's output edges to populate outputEdgeNameToDmlGraphNodeAndIndex
-            *  5. While performing step 2, 3, and 4, insert operatorDmlGraphNode to the mainDmlGraphNode list.
-            */
+            // Algorithm:
+            //  1. Create constant nodes by iterating through operatorDmlGraph's input edges and keep a map of it,
+            //     because there would be an intermediate edge from the constantNode and source of the intermediate edge
+            //     should come before the destination.
+            //  2. Again iterate through operatorDmlGraph's input edges to create mainGraph's input and intermediate edges.
+            //  3. Iterate through operatorDmlGraph's intermediate edges to create mainGraph's intermediate edges.
+            //  4. Iterate through operatorDmlGraph's output edges to populate outputEdgeNameToDmlGraphNodeAndIndex
+            //  5. While performing step 2, 3, and 4, insert operatorDmlGraphNode to the mainDmlGraphNode list.
 
             for (auto& operatorDmlGraphInputEdge : operatorDmlGraphNodeCreateInfo.inputEdges)
             {
@@ -325,14 +321,6 @@ namespace Dml::GraphDescBuilder
 
                             ConstantData constantData = {smallConstantData.back().get(), constantInput->GetTensorByteSize()};
                             constantNode.Desc = constantData;
-
-                            
-                            /*DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
-                            edge.FromNodeIndex = static_cast<UINT>(graphNodes.size() - 1);
-                            edge.FromNodeOutputIndex = 0;
-                            edge.ToNodeIndex = mainGraphNodeIndex;
-                            edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;
-                            graphIntermediateEdges.push_back(edge);*/
                         }
                         else
                         {
@@ -467,9 +455,9 @@ namespace Dml::GraphDescBuilder
         }
 
         // Add graph output nodes, which might be in a different order from the encapsulating node
-        for (size_t outputIndex = 0; outputIndex < subGraphOutputArgNames.size(); ++outputIndex)
+        for (size_t outputIndex = 0; outputIndex < subgraphOutputArgNames.size(); ++outputIndex)
         {
-            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(subGraphOutputArgNames[outputIndex]);
+            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(subgraphOutputArgNames[outputIndex]);
 
             ORT_THROW_HR_IF_NULL_MSG(E_POINTER, graphOutput, "FusedNode's nodeArgList does not contain one of the nodeArg");
             const auto& outputNodeAndIndex = outputEdgeNameToDmlGraphNodeAndIndexMap.at(graphOutput->Name());
@@ -486,7 +474,7 @@ namespace Dml::GraphDescBuilder
 
         GraphDesc graphDesc{};
         graphDesc.InputCount = static_cast<uint32_t>(dmlGraphInputEdges.size());
-        graphDesc.OutputCount = static_cast<uint32_t>(subGraphOutputArgNames.size());
+        graphDesc.OutputCount = static_cast<uint32_t>(subgraphOutputArgNames.size());
         graphDesc.Nodes = std::move(dmlGraphNodes);
         graphDesc.InputEdges = std::move(dmlGraphInputEdges);
         graphDesc.OutputEdges = std::move(dmlGraphOutputEdges);
@@ -494,7 +482,7 @@ namespace Dml::GraphDescBuilder
         // Avoid using separate command lists for small graphs. This value can be reduced by tuning the
         // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
         // enough GPU work to be worth flushing immediately.
-        graphDesc.reuseCommandList = ((indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList) || providerImpl->IsMcdmDevice());
+        graphDesc.reuseCommandList = ((indexedSubgraph.nodes.size() >= minNodeCountToReuseCommandList) || providerImpl->IsMcdmDevice());
         return graphDesc;
     }
 }
