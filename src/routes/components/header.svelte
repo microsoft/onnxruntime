@@ -33,7 +33,7 @@
 				tabindex="0"
 				class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
 			>
-				<li><a rel="external" href="./blogs">Blogs</a></li>
+				<li><a href="./blogs">Blogs</a></li>
 				<li><a rel="external" href="./docs">Docs</a></li>
 				<li>
 					<p>Community</p>

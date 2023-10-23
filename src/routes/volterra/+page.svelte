@@ -1,4 +1,6 @@
 <script>
-	import Winarm from "../components/winarm.svelte";
+	import { browser } from '$app/environment';
+	if (browser) {
+		window.location.href = '/windows';
+	}
 </script>
-<Winarm />
