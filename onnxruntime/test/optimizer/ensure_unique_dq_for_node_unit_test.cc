@@ -233,4 +233,24 @@ TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodes) {
   EXPECT_EQ(OpCount(op_count_before, "DequantizeLinear") + 4, OpCount(op_count_after, "DequantizeLinear"));
 }
 
+TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodesPreservingAttributes) {
+  constexpr auto model_uri = ORT_TSTR("testdata/qdq_with_multi_consumer_q_dq_axis.onnx");
+
+  SessionOptions session_options{};
+  // test interaction with level 1 transformers
+  session_options.graph_optimization_level = TransformerLevel::Level1;
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session.Load(model_uri));
+
+  const auto op_count_before = CountOpsInGraph(session.GetGraph());
+
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto op_count_after = CountOpsInGraph(session.GetGraph());
+
+  EXPECT_EQ(OpCount(op_count_before, "DequantizeLinear") + 8, OpCount(op_count_after, "DequantizeLinear"));
+}
+
 }  // namespace onnxruntime::test
