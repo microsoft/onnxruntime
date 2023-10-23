@@ -227,7 +227,7 @@ Status PagedAttention<T>::CheckInputs(
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key_cache = context->Input<Tensor>(3);
   const Tensor* value_cache = context->Input<Tensor>(4);
-  const Tensor* positions = context->Input<Tensor>(6);
+  //const Tensor* positions = context->Input<Tensor>(6);
 
   const auto& query_shape = query->Shape();
   if (query_shape.NumDimensions() < 2 || query_shape.NumDimensions() > 3) {
@@ -526,7 +526,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t num_valid_tokens = input_metadata->num_valid_tokens;
   TensorShape output_shape = query->Shape();
   if (gemm_buffer.get() == nullptr) {
-    ORT_ENFORCE(query->Shape()[2] == num_heads_ * head_size_, "invlaid query shape");
+    ORT_ENFORCE(query->Shape()[query->Shape().NumDimensions()-1] == num_heads_ * head_size_, "invlaid query shape");
   } else {
     output_shape[output_shape.NumDimensions() - 1] = num_heads_ * head_size_;
     TensorShapeVector new_shape(2);

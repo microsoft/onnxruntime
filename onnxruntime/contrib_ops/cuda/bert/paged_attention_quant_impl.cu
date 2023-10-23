@@ -1037,9 +1037,11 @@ void reshape_and_cache_quant(
   // if constexpr (std::is_same_v<T, MLFloat16>) {
   if (dtype == 1) {
     // round it up to power of 2
-    constexpr int VEC_SIZE = 4;
-    int num_iters = (kv_quant_chunk_size / VEC_SIZE + (32 - 1)) / 32;
-    assert(num_iters == 1 || num_iters == 2);
+  constexpr int VEC_SIZE = 4;
+#ifndef NDEBUG
+  int num_iters = (kv_quant_chunk_size / VEC_SIZE + (32 - 1)) / 32;
+  assert(num_iters == 1 || num_iters == 2);
+#endif
 
     int num_threads_per_chunk = std::max(32, kv_quant_chunk_size / VEC_SIZE);
     int pow = (int)log2(num_threads_per_chunk);
