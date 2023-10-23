@@ -2844,7 +2844,7 @@ TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
   // updating provider option with user provided compute stream
   cudaStream_t compute_stream = nullptr;
   void* user_compute_stream = nullptr;
-  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  cudaStreamCreate(&compute_stream);
   ASSERT_TRUE(api.UpdateTensorRTProviderOptionsWithValue(rel_trt_options.get(), "user_compute_stream", compute_stream) == nullptr);
   ASSERT_TRUE(api.GetTensorRTProviderOptionsByName(rel_trt_options.get(), "user_compute_stream", &user_compute_stream) == nullptr);
   ASSERT_TRUE(user_compute_stream == (void*)compute_stream);
