@@ -627,16 +627,16 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     for (auto candidate_custom_op_domain : candidate_custom_op_domains) {
       for (auto registry_kernel : registry_kernels) {
         const auto& kernel_map = registry_kernel->GetKernelCreateMap();
-        bool need_resigter = true;
+        bool need_register = true;
         // If the kernel registry is the ep's custom op registry, we only need to check the first kernel,
         // because all kernels in one kernel registry should have the same domain name.
         for (auto iter = kernel_map.begin(); iter != kernel_map.end(); iter++) {
           if (iter->second.kernel_def->Domain() == candidate_custom_op_domain->domain_) {
-            need_resigter = false;
+            need_register = false;
             break;
           }
         }
-        if (need_resigter) {
+        if (need_register) {
           custom_op_domains.push_back(candidate_custom_op_domain);
         }
       }
