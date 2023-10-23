@@ -1098,7 +1098,8 @@ class ONNXQuantizer:
         reshape_dims = list(weights.shape)  # deep copy
         reshape_dims[channel_axis] = 1  # only one per channel for reshape
         quantized_weights = np.asarray(quantized_per_channel_data_list[0]).reshape(reshape_dims)
-        for i in range(1, len(quantized_per_channel_data_list)):
+        import tqdm
+        for i in tqdm.tqdm(range(1, len(quantized_per_channel_data_list))):
             channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
             quantized_weights = np.concatenate((quantized_weights, channel_weights), channel_axis)
 
