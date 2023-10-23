@@ -429,8 +429,6 @@ template <typename EdgeType> void PopulateEdges(
             }
             else if constexpr (std::is_same_v<EdgeType, DmlOutputSerializedGraphEdge>)
             {
-                std::string strr = edgeName->str();
-                size_t strrSize = strr.size();
                 edgeToOutgoingNodeIndexMap[edgeName->string_view()] = {nodeIndex, edgeIndex};
             }
         }

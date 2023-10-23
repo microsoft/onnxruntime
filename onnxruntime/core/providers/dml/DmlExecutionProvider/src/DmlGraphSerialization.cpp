@@ -462,7 +462,6 @@ void PopulateNodeInputOutputNames(
     std::unordered_map<uint32_t, std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>>> intermediateEdgeNames;
     for (uint32_t edgeIndex = 0; edgeIndex < static_cast<uint32_t>(graphDesc.IntermediateEdges.size()); edgeIndex++)
     {
-        size_t strSize = graphDesc.IntermediateEdges[edgeIndex].Name.size();
         auto& edge = graphDesc.IntermediateEdges[edgeIndex];
         if (edge.Name.empty())
         {
