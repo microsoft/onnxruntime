@@ -39,9 +39,9 @@ const createInstanceNormProgramInfo =
   const C: u32 = ${C};
   const normSize: u32 = ${normSize};
   const epsilon: f32 = ${attributes.epsilon};
-  var<workgroup> meanShared : ${dataType};
-  var<workgroup> squaredNormShared : ${dataType};
-  var<workgroup> workgroupShared : array<${dataType}, ${workgroupSize}>;
+  var<workgroup> meanShared : f32;
+  var<workgroup> squaredNormShared : f32;
+  var<workgroup> workgroupShared : array<f32, ${workgroupSize}>;
   const workgroupSize = ${workgroupSize}u;
   ${shaderHelper.declareVariables(...variables)}
   ${shaderHelper.mainStart(workgroupSize)}
@@ -51,9 +51,9 @@ const createInstanceNormProgramInfo =
     let localIndex = local_id.x;
 
     // initialize workgroup memory
-    var initial: ${dataType} = 0;
+    var initial: f32 = 0;
     for (var h = localIndex; h < normSize; h += workgroupSize) {
-      initial = initial + ${x.get('batch', 'channel', 'h')};
+      initial = initial + f32(${x.get('batch', 'channel', 'h')});
     }
     workgroupShared[localIndex] = initial;
     workgroupBarrier();
@@ -66,14 +66,14 @@ const createInstanceNormProgramInfo =
       workgroupBarrier();
     }
     if (localIndex == 0) {
-      meanShared = workgroupShared[0] / ${dataType}(normSize);
+      meanShared = workgroupShared[0] / f32(normSize);
     }
     workgroupBarrier();
 
     // reinitialize workgroup memory.
     initial = 0;
     for (var h = localIndex; h < normSize; h += workgroupSize) {
-      let deviation =  ${x.get('batch', 'channel', 'h')} - meanShared;
+      let deviation =  f32(${x.get('batch', 'channel', 'h')}) - meanShared;
       initial = initial + deviation * deviation;
     }
     workgroupShared[localIndex] = initial;
@@ -91,11 +91,11 @@ const createInstanceNormProgramInfo =
     }
     workgroupBarrier();
 
-    let invStdDev = 1 / sqrt(squaredNormShared / ${dataType}(normSize) + epsilon);
-    let channelScale = invStdDev * ${scale.getByOffset('channel')};
-    let channelShift = ${bias.getByOffset('channel')} - meanShared * channelScale;
+    let invStdDev = 1 / sqrt(squaredNormShared / f32(normSize) + epsilon);
+    let channelScale = invStdDev * f32(${scale.getByOffset('channel')});
+    let channelShift = f32(${bias.getByOffset('channel')}) - meanShared * channelScale;
     for (var h = localIndex; h < normSize; h += workgroupSize) {
-      let value = ${x.get('batch', 'channel', 'h')} * channelScale + channelShift;
+      let value = ${x.get('batch', 'channel', 'h')} * ${dataType}(channelScale) + ${dataType}(channelShift);
       ${output.set('batch', 'channel', 'h', 'value')};
     }
   }`;
