@@ -35,61 +35,95 @@ set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
 
 set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
 
+
 # the XNNPACK CMake setup doesn't include the WASM kernels so we have to manually set those up
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  file(READ "${XNNPACK_DIR}/BUILD.bazel" xnnpack_bazel_config)
+  # The source lists in BUILD.bazel are defined like this.
+  # wasm_srcs = ["src/amalgam/gen/wasm.c"],
+  #  wasmrelaxedsimd_srcs = [
+  #  "src/amalgam/gen/wasm.c",
+  #  "src/amalgam/gen/wasmrelaxedsimd.c",
+  #  "src/amalgam/gen/wasmsimd.c",
+  # ],
+  # wasmsimd_srcs = [
+  #  "src/amalgam/gen/wasm.c",
+  #  "src/amalgam/gen/wasmsimd.c",
+  # ],
 
-  # Replace newlines with semicolon so that it is treated as a list by CMake
-  # Also replace '[' and ']' so the bazel source lists don't get parsed as a nested list by cmake
-  string(REPLACE "\n" ";" xnnpack_bazel_config "${xnnpack_bazel_config}")
-  string(REPLACE "[" "{" xnnpack_bazel_config "${xnnpack_bazel_config}")
-  string(REPLACE "]" "}" xnnpack_bazel_config "${xnnpack_bazel_config}")
-
-  function(GetSrcListFromBazel src_list_name target_srcs)
-    set(_InSection FALSE)
-    set(bazel_srcs "")
-
-    foreach(_line ${xnnpack_bazel_config})
-      if(NOT _InSection)
-        if(_line MATCHES "^${src_list_name} = \\{")
-          set(_InSection TRUE)
-        endif()
-      else()
-        if(_line MATCHES "^\\}")
-          set(_InSection FALSE)
-        else()
-          # parse filename from quoted string with trailing comma
-          string(REPLACE "\"" "" _line "${_line}")
-          string(REPLACE "," "" _line "${_line}")
-          string(STRIP "${_line}" _line)
-
-          list(APPEND bazel_srcs "${XNNPACK_DIR}/${_line}")
-        endif()
-      endif()
-    endforeach()
-
-    set(${target_srcs} ${bazel_srcs} PARENT_SCOPE)
-  endfunction()
-
-  GetSrcListFromBazel("PROD_SCALAR_WASM_MICROKERNEL_SRCS" prod_scalar_wasm_srcs)
-  GetSrcListFromBazel("ALL_WASM_MICROKERNEL_SRCS" all_wasm_srcs)
-  GetSrcListFromBazel("WASM32_ASM_MICROKERNEL_SRCS" wasm32_asm_srcs)
-
-  message(DEBUG "prod_scalar_wasm_srcs: ${prod_scalar_wasm_srcs}\n")
-  message(DEBUG "all_wasm_srcs: ${all_wasm_srcs}\n")
-  message(DEBUG "wasm32_asm_srcs: ${wasm32_asm_srcs}\n")
+#   xnnpack_cc_library(
+#     name = "wasm_prod_microkernels",
+#     gcc_copts = xnnpack_gcc_std_copts() + [
+#         "-fno-fast-math",
+#         "-fno-math-errno",
+#     ],
+#     msvc_copts = xnnpack_msvc_std_copts(),
+#     wasm_srcs = ["src/amalgam/gen/wasm.c"],
+#     wasmrelaxedsimd_srcs = [
+#         "src/amalgam/gen/wasm.c",
+#         "src/amalgam/gen/wasmrelaxedsimd.c",
+#         "src/amalgam/gen/wasmsimd.c",
+#     ],
+#     wasmsimd_srcs = [
+#         "src/amalgam/gen/wasm.c",
+#         "src/amalgam/gen/wasmsimd.c",
+#     ],
+#     deps = [
+#         ":common",
+#         ":math",
+#         ":microkernels_h",
+#         ":microparams",
+#         ":prefetch",
+#         ":tables",
+#         ":unaligned",
+#     ],
+#   )
 
   message("Adding WebAssembly Source Files to XNNPACK")
   set(wasm_srcs "")
-  list(APPEND wasm_srcs ${prod_scalar_wasm_srcs})
-  list(APPEND wasm_srcs ${all_wasm_srcs})
-  list(APPEND wasm_srcs ${wasm32_asm_srcs})
+  # :common
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/common.h)
+  # :math
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/math.h)
+  # :microkernels_h
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/cache.h
+                        ${XNNPACK_DIR}/src/xnnpack/intrinsics-polyfill.h
+                        ${XNNPACK_DIR}/src/xnnpack/math-stubs.h
+                        ${XNNPACK_DIR}/src/xnnpack/requantization-stubs.h)
+  # :microparams
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/microparams.h)
+  # :prefetch
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/prefetch.h)
+  # :tables
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/tables/exp2-k-over-64.c
+                        ${XNNPACK_DIR}/src/tables/exp2-k-over-2048.c
+                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-4.c
+                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-8.c
+                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-16.c
+                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-32.c
+                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-64.c
+                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-2048.c
+                        ${XNNPACK_DIR}/src/tables/vlog.c)
+  # :unaligned
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/unaligned.h)
+
+  # not explicitly references in BAZEL.build but unresolved symbols if missing.
+  # e.g. see src/configs/abgpool-config.c has this which is implemented in scalar.c
+  # #elif XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  #   qu8_avgpool_config.unipass = (xnn_avgpool_unipass_ukernel_fn) xnn_qu8_avgpool_minmax_fp32_ukernel_9x__scalar_imagic_c1;
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/scalar.c)
+
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/wasm.c)
+
+  if(onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    #target_compile_definitions(XNNPACK PRIVATE XNN_ARCH_WASMSIMD)
+    #target_compile_definitions(XNNPACK PRIVATE __wasm_simd128__)
+    list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/wasmsimd.c)
+    target_compile_options(XNNPACK PRIVATE "-msimd128")
+  endif()
 
   target_sources(XNNPACK PRIVATE ${wasm_srcs})
 
-  if(onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-    GetSrcListFromBazel("ALL_WASMSIMD_MICROKERNEL_SRCS" all_wasmsimd_srcs)
-    message(DEBUG "all_wasmsimd_srcs: ${all_wasmsimd_srcs}")
-    target_sources(XNNPACK PRIVATE ${all_wasmsimd_srcs})
-  endif()
+  # add flags from BAZEL.build
+  target_compile_options(XNNPACK PRIVATE "-fno-fast-math")
+  target_compile_options(XNNPACK PRIVATE "-fno-math-errno")
 endif()
