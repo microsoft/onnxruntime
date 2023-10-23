@@ -20,20 +20,29 @@ namespace contrib {
       kCpuExecutionProvider,                                      \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SkipLayerNorm<T>);
+      SkipLayerNorm<T, false>);                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      SkipSimplifiedLayerNormalization,                           \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      SkipLayerNorm<T, true>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 
-template <typename T>
-SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
+template <typename T, bool simplified>
+SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
 }
 
-template <typename T>
-Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
+template <typename T, bool simplified>
+Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* input = p_ctx->Input<Tensor>(0);
   const Tensor* skip = p_ctx->Input<Tensor>(1);
   const Tensor* gamma = p_ctx->Input<Tensor>(2);
@@ -102,10 +111,16 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
         }
 
         mean = mean / hidden_size;
-        mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
+        if (simplified) {
+          mean_square = sqrt(mean_square / hidden_size + epsilon_);
+        } else {
+          mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
+        }
 
         for (int64_t h = 0; h < hidden_size; h++) {
-          if (nullptr == beta_data) {
+          if (simplified) {
+            p_output[h] = p_output[h] / mean_square * gamma_data[h];
+          } else if (nullptr == beta_data) {
             p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h];
           } else {
             p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
