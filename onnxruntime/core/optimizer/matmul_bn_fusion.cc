@@ -18,7 +18,7 @@ const std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>> 
 bool NodeIsIgnorable(const Graph& graph, const Node& root_node, NodeIndex curr_node_index) {
   const Node* curr_node = graph.GetNode(curr_node_index);
 
-  // curr_node has different execution provider then it's parent or 
+  // curr_node has different execution provider then it's parent or
   // has output edge != 1 (this condition will handle the case when ignorable node
   // is graph output i.e. a graph like this "MatMul->Transpose")
   if (curr_node->GetExecutionProviderType() != root_node.GetExecutionProviderType() ||

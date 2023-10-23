@@ -1319,8 +1319,6 @@ TEST_F(GraphTransformationTests, FuseMatmulBNWithoutBatchNormalization) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["MatMul"], 1);
-
-  
 }
 
 // should not fuse
