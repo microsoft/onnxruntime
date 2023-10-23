@@ -1,10 +1,10 @@
 name: Close stale issues
 on:
   # Allows you to dictate when you want this workflow to run using cron syntax (times in UTC)
-  # schedule:
-  #   - cron: "0 15 * * *"
+  schedule:
+    - cron: "0 15 * * *"
   # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+  # workflow_dispatch:
 
 jobs:
   close-stale-issues:
