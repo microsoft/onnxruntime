@@ -1,20 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env, InferenceSession, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
+import {env, InferenceSession, OnnxValue, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
 
 import {SerializableModeldata} from './proxy-messages';
 import {decodeTensorMetadata, encodeTensorMetadata} from './session-handler-inference';
 import {createSessionAllocate, initRuntime, isOrtEnvInitialized} from './wasm-core-impl';
-import {createCheckpointHandle, createTrainingSessionHandle, releaseTrainingSessionAndCheckpoint, runTrainStep} from './wasm-training-core-impl';
+import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getParametersSize,
+  releaseTrainingSessionAndCheckpoint, runTrainStep, loadParametersBuffer} from './wasm-training-core-impl';
 
 export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
-  async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {
-    throw new Error('Method not implemented.');
-  }
-  async getContiguousParameters(_trainableOnly: boolean): Promise<Uint8Array> {
-    throw new Error('Method not implemented.');
-  }
   private sessionId: number;
   private checkpointId: number;
 
@@ -102,6 +97,18 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
       resultMap[this.outputNames[outputIndices[i]]] = outputArray[i] ?? decodeTensorMetadata(results[i]);
     }
     return resultMap;
+  }
+
+  async getParametersSize(trainableOnly: boolean): Promise<number> {
+    return getParametersSize(this.sessionId, trainableOnly);
+  }
+
+  async loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void> {
+    await loadParametersBuffer(this.sessionId, array, trainableOnly);
+  }
+  async getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue> {
+    const tensorResult = await getContiguousParameters(this.sessionId, trainableOnly);
+    return decodeTensorMetadata(tensorResult);
   }
 
   async dispose(): Promise<void> {

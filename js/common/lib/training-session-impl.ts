@@ -150,12 +150,16 @@ export class TrainingSession implements TrainingSessionInterface {
     return returnValue;
   }
 
-  async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {
-    throw new Error('Method not implemented.');
+  async getParametersSize(trainableOnly: boolean): Promise<number> {
+    return this.handler.getParametersSize(trainableOnly);
   }
 
-  async getContiguousParameters(_trainableOnly: boolean): Promise<Uint8Array> {
-    throw new Error('Method not implemented.');
+  async loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void> {
+    return this.handler.loadParametersBuffer(array, trainableOnly);
+  }
+
+  async getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue> {
+    return this.handler.getContiguousParameters(trainableOnly);
   }
 
   async release(): Promise<void> {
