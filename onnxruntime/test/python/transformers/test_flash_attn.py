@@ -25,7 +25,7 @@ from onnxruntime import InferenceSession, OrtValue, SessionOptions
 
 torch.manual_seed(0)
 
-pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
+pipeline_mode = False  # Reduces number of tests so pipeline doesn't time out
 
 
 class Formats:
@@ -231,7 +231,9 @@ def create_group_query_attention_graph_no_past(config, causal=False):
     return model.SerializeToString()
 
 
-def create_group_query_attention_graph_past(config, causal=False, past_kv_format=Formats.BSNH, share_buffer=True):
+def create_group_query_attention_graph_past(
+    config, causal=False, past_kv_format=Formats.BSNH, share_buffer=True, local_window_size=-1
+):
     past_kv_seqlen = config.kv_sequence_length if share_buffer else config.past_sequence_length
     present_kv_seqlen = (
         config.kv_sequence_length if share_buffer else config.past_sequence_length + config.sequence_length
@@ -252,6 +254,7 @@ def create_group_query_attention_graph_past(config, causal=False, past_kv_format
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
             unidirectional=1 if causal else 0,
+            local_window_size=local_window_size,
             is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
             domain="com.microsoft",
         ),
@@ -570,8 +573,12 @@ def gqa_no_past_func(q, k, v, config, causal=True):
     return output
 
 
-def gqa_past_func(q, k, v, config, new_k, new_v, past_kv_format=Formats.BSNH, causal=False, share_buffer=True):
-    onnx_model_str = create_group_query_attention_graph_past(config, causal, past_kv_format, share_buffer)
+def gqa_past_func(
+    q, k, v, config, new_k, new_v, past_kv_format=Formats.BSNH, causal=False, share_buffer=True, window_size=-1
+):
+    onnx_model_str = create_group_query_attention_graph_past(
+        config, causal or window_size >= 0, past_kv_format, share_buffer, local_window_size=window_size
+    )
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     past_k = k.clone()
     past_v = v.clone()
@@ -649,6 +656,28 @@ def construct_causal_mask(seqlen_q, seqlen_k, query_padding_mask=None, key_paddi
     return col_idx > row_idx + sk - sq
 
 
+def construct_local_mask(
+    seqlen_q,
+    seqlen_k,
+    window_size=(-1, -1),  # -1 means infinite window size
+    query_padding_mask=None,
+    key_padding_mask=None,
+    device=None,
+):
+    row_idx = rearrange(torch.arange(seqlen_q, device=device, dtype=torch.long), "s -> s 1")
+    col_idx = torch.arange(seqlen_k, device=device, dtype=torch.long)
+    sk = seqlen_k if key_padding_mask is None else rearrange(key_padding_mask.sum(-1), "b -> b 1 1 1")
+    sq = seqlen_q if query_padding_mask is None else rearrange(query_padding_mask.sum(-1), "b -> b 1 1 1")
+    if window_size[0] < 0:
+        return col_idx > row_idx + sk - sq + window_size[1]
+    else:
+        sk = torch.full_like(col_idx, seqlen_k) if key_padding_mask is None else sk
+        return torch.logical_or(
+            col_idx > torch.minimum(row_idx + sk - sq + window_size[1], sk),
+            col_idx < row_idx + sk - sq - window_size[0],
+        )
+
+
 def attention_ref(
     q,
     k,
@@ -658,6 +687,7 @@ def attention_ref(
     dropout_p=0.0,
     dropout_mask=None,
     causal=False,
+    window_size=(-1, -1),  # -1 means infinite window size
     upcast=True,
     reorder_ops=False,
 ):
@@ -670,6 +700,8 @@ def attention_ref(
         key_padding_mask: (batch_size, seqlen_k)
         dropout_p: float
         dropout_mask: (batch_size, nheads, seqlen_q, seqlen_k)
+        causal: whether to apply causal masking
+        window_size: (int, int), left and right window size
         upcast: whether to cast all inputs to fp32, do all computation in fp32, then cast
             output back to fp16/bf16.
         reorder_ops: whether to change the order of operations (scaling k instead of scaling k, etc.)
@@ -679,6 +711,8 @@ def attention_ref(
         output: (batch_size, seqlen_q, nheads, head_dim)
         attention: (batch_size, nheads, seqlen_q, seqlen_k), softmax after dropout
     """
+    if causal:
+        window_size = (window_size[0], 0)
     dtype_og = q.dtype
     if upcast:
         q, k, v = q.float(), k.float(), v.float()
@@ -692,13 +726,27 @@ def attention_ref(
         scores = torch.einsum("bthd,bshd->bhts", q, k / math.sqrt(d))
     if key_padding_mask is not None:
         scores.masked_fill_(rearrange(~key_padding_mask, "b s -> b 1 1 s"), float("-inf"))
-    if causal:
-        causal_mask = construct_causal_mask(seqlen_q, seqlen_k, query_padding_mask, key_padding_mask, q.device)
-        scores.masked_fill_(causal_mask, float("-inf"))
+    if window_size[0] >= 0 or window_size[1] >= 0:
+        local_mask = construct_local_mask(
+            seqlen_q,
+            seqlen_k,
+            window_size,
+            query_padding_mask,
+            key_padding_mask,
+            q.device,
+        )
+        scores.masked_fill_(local_mask, float("-inf"))
     attention = torch.softmax(scores, dim=-1)
-    if causal:  # Some rows are completely masked out so we fill them with zero instead of NaN
-        attention = attention.masked_fill(torch.all(causal_mask, dim=-1, keepdim=True), 0.0)
+    # Some rows might be completely masked out so we fill them with zero instead of NaN
+    if window_size[0] >= 0 or window_size[1] >= 0:
+        attention = attention.masked_fill(torch.all(local_mask, dim=-1, keepdim=True), 0.0)
+    # We want to mask here so that the attention matrix doesn't have any NaNs
+    # Otherwise we'll get NaN in dV
+    if query_padding_mask is not None:
+        attention = attention.masked_fill(rearrange(~query_padding_mask, "b s -> b 1 s 1"), 0.0)
     dropout_scaling = 1.0 / (1 - dropout_p)
+    # attention_drop = attention.masked_fill(~dropout_mask, 0.0) * dropout_scaling
+    # output = torch.einsum('bhts,bshd->bthd', attention_drop , v)
     if dropout_mask is not None:
         attention_drop = attention.masked_fill(~dropout_mask, 0.0)
     else:
@@ -706,7 +754,6 @@ def attention_ref(
     output = torch.einsum("bhts,bshd->bthd", attention_drop, v * dropout_scaling)
     if query_padding_mask is not None:
         output.masked_fill_(rearrange(~query_padding_mask, "b s -> b s 1 1"), 0.0)
-        attention = attention.masked_fill(rearrange(~query_padding_mask, "b s -> b 1 s 1"), 0.0)
     return output.to(dtype=dtype_og), attention.to(dtype=dtype_og)
 
 
@@ -881,6 +928,7 @@ def parity_check_gqa_no_past(
 def parity_check_gqa_past(
     config,
     causal=False,
+    local=False,
     past_format=Formats.BSNH,
     rtol=1e-3,
     atol=1e-3,
@@ -930,6 +978,14 @@ def parity_check_gqa_past(
         dtype=torch.float16,
         requires_grad=False,
     )
+    window_size = (-1, -1)
+    left_window_size = -1
+    if local:
+        left_window_size = random.randint(0, config.kv_sequence_length)
+        window_size = (left_window_size, 0)
+    elif causal:
+        left_window_size = -1
+        window_size = (-1, 0)
 
     # Pytorch to compare
     k_cache_ref = k.clone()
@@ -948,14 +1004,16 @@ def parity_check_gqa_past(
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
-    out_ref, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=causal)
+    out_ref, _ = attention_ref(
+        q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=causal, window_size=window_size
+    )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, past_format, causal, True)
+    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, past_format, causal, True, window_size[0])
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -998,6 +1056,7 @@ def parity_check_gqa_past(
 def parity_check_gqa_past_no_buff(
     config,
     causal=False,
+    local=False,
     past_format=Formats.BSNH,
     rtol=1e-3,
     atol=1e-3,
@@ -1047,6 +1106,7 @@ def parity_check_gqa_past_no_buff(
         dtype=torch.float16,
         requires_grad=False,
     )
+    window_size = (-1, -1) if not local else torch.randint(0, seqlen, (2,))
 
     # Pytorch to compare
     k_cache_ref = k.clone()
@@ -1059,14 +1119,18 @@ def parity_check_gqa_past_no_buff(
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = None
-    out_ref, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=causal)
+    out_ref, _ = attention_ref(
+        q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=causal, window_size=window_size
+    )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, past_format, causal, False)
+    out, present_k, present_v = gqa_past_func(
+        q, k, v, config, new_k, new_v, past_format, causal, False, window_size=window_size[0]
+    )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1188,6 +1252,55 @@ class TestMHA(unittest.TestCase):
 
 
 class TestGQA(unittest.TestCase):
+    def test_gqa_past_local(self):
+        print("-------- TEST GQA LOCAL ---------")
+        batches = [2] if pipeline_mode else [1, 2]
+        seqs = (
+            [(1, 128), (3, 1024), (64, 2048)]
+            if pipeline_mode
+            else [
+                (1, 128),
+                (1, 339),
+                (3, 1024),
+                (64, 800),
+                (64, 256),
+                (3, 799),
+                (64, 2048),
+                (16, 20000),
+                (1, 128 * 512),
+                (16, 128 * 512),
+                (128, 128),
+            ]
+        )
+        num_h = [(9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [16, 256] if pipeline_mode else [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]
+        random.seed(69)
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        for b in batches:
+            for s, s2 in seqs:
+                for n, n2 in num_h:
+                    for h in h_sizes:
+                        for causal, local in [(False, True)]:
+                            for past_kv_format in [Formats.BNSH, Formats.BSNH]:
+                                sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+                                config = Config(b, s, s2, sp, n, n2, h)
+                                parity_check_gqa_past(
+                                    config,
+                                    causal=causal,
+                                    local=local,
+                                    past_format=past_kv_format,
+                                    rtol=1e-3,
+                                    atol=1e-3,
+                                )
+                                # parity_check_gqa_past_no_buff(
+                                #     config,
+                                #     causal=causal,
+                                #     local=local,
+                                #     past_format=past_kv_format,
+                                #     rtol=1e-3,
+                                #     atol=1e-3,
+                                # )
+
     def test_gqa_no_past(self):
         if not torch.cuda.is_available():
             return
@@ -1265,13 +1378,14 @@ class TestGQA(unittest.TestCase):
             for s, s2 in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
-                        for causal in [True]:
+                        for causal, local in [(True, False), (False, True), (False, False)]:
                             for past_kv_format in [Formats.BNSH, Formats.BSNH]:
                                 sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                 config = Config(b, s, s2, sp, n, n2, h)
                                 parity_check_gqa_past(
                                     config,
                                     causal=causal,
+                                    local=local,
                                     past_format=past_kv_format,
                                     rtol=1e-3,
                                     atol=1e-3,
@@ -1279,6 +1393,7 @@ class TestGQA(unittest.TestCase):
                                 parity_check_gqa_past_no_buff(
                                     config,
                                     causal=causal,
+                                    local=local,
                                     past_format=past_kv_format,
                                     rtol=1e-3,
                                     atol=1e-3,
@@ -1290,13 +1405,14 @@ class TestGQA(unittest.TestCase):
             for s, s2 in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
-                        for causal in [True]:
+                        for causal, local in [(True, False), (False, True), (False, False)]:
                             for past_kv_format in [Formats.BNSH, Formats.BSNH]:
                                 sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                 config = Config(b, s, s2, sp, n, n2, h)
                                 parity_check_gqa_past(
                                     config,
                                     causal=causal,
+                                    local=local,
                                     past_format=past_kv_format,
                                     rtol=1e-3,
                                     atol=1e-3,
@@ -1304,6 +1420,7 @@ class TestGQA(unittest.TestCase):
                                 parity_check_gqa_past_no_buff(
                                     config,
                                     causal=causal,
+                                    local=local,
                                     past_format=past_kv_format,
                                     rtol=1e-3,
                                     atol=1e-3,
@@ -1311,4 +1428,6 @@ class TestGQA(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # unittest.main()
+    test_gqa = TestGQA()
+    test_gqa.test_gqa_past_local()

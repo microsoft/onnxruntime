@@ -45,6 +45,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 1) == 1;
+  local_window_size_ = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
   is_past_bsnh_ = info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -89,7 +90,12 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 is_past_bsnh_,
                                                                 scale_,
                                                                 device_prop.maxThreadsPerBlock));
+  if (!is_unidirectional_ && local_window_size_ > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "unidirectional must be true when using local (sliding window) attention.");
+  }
   parameters.is_unidirectional = is_unidirectional_;
+  parameters.local_window_size = local_window_size_;
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);

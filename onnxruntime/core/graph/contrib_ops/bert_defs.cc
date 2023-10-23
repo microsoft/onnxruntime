@@ -999,6 +999,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Whether every token can only attend to previous tokens. Default value is 1.",
               AttributeProto::INT,
               static_cast<int64_t>(1))
+        .Attr("local_window_size",
+              "left_window_size for local attention (like Mistral). Default value is -1 meaning infinite. Must be used"
+              "in conjunction with unidirectional (local attention is similar to causal but with a limited window).",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Attr("is_past_bsnh",
               "Whether past kv uses BSNH, otherwise BNSH. Default value is 1 (BSNH).",
               AttributeProto::INT,
