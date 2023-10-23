@@ -10,11 +10,23 @@
 namespace onnxruntime {
 namespace cuda {
 
+// Deduce output shape from ONNX Reshape's inputs.
+//
+// Arguments:
+//  data_tensor_shape: The shape of the data tensor (i.e., 1st input).
+//  shape_span: Elements in the shape tensor (i.e., 2nd input).
+//
+// Returns:
+//  The output shape of this Reshape. No symbolic values such as "-1" or "0".
 TensorShape InferReshapeOutputShape(
-  const Tensor* src,
-  const Tensor* shape,
-  bool allow_zero
-);
+    const TensorShape& data_tensor_shape,
+    const gsl::span<const int64_t>& shape_span,
+    bool allow_zero);
+
+TensorShape InferReshapeOutputShape(
+    const Tensor* src,
+    const Tensor* shape,
+    bool allow_zero);
 
 Status FuncReshape(
     const CudaKernel* cuda_kernel,
@@ -29,8 +41,7 @@ std::unique_ptr<Tensor> FuncReshape(
     OpKernelContext* ctx,
     const Tensor* X,
     const Tensor* shape,
-    const bool allow_zero
-);
+    const bool allow_zero);
 
 class Reshape final : public CudaKernel {
  public:

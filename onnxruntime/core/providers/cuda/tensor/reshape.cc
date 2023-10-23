@@ -6,15 +6,24 @@
 namespace onnxruntime {
 namespace cuda {
 
-TensorShape InferReshapeOutputShape(const Tensor* src, const Tensor* shape, bool allow_zero) {
-    ORT_ENFORCE(shape != nullptr, "Cannot reshape to a null shape.");
-    ORT_ENFORCE(shape->Shape().NumDimensions() != 1, "Shape must be an 1-D tensor.");
-    ORT_ENFORCE(shape->Location().device.Type() == OrtDevice::CPU, "Shape must be on CPU.");
-
-    auto shape_span = shape->template DataAsSpan<int64_t>();
-    TensorShapeVector shape_vector(shape_span.begin(), shape_span.end());
-    ReshapeHelper helper(src->Shape(), shape_vector, allow_zero);
+TensorShape InferReshapeOutputShape(
+    const TensorShape& data_tensor_shape,        // Data tensor's shape.
+    const gsl::span<const int64_t>& shape_span,  // Shape that data tensor reshape to.
+    bool allow_zero) {
+  TensorShapeVector shape_vector(shape_span.begin(), shape_span.end());
+  ReshapeHelper helper(data_tensor_shape, shape_vector, allow_zero);
   return TensorShape(shape_vector);
+}
+
+TensorShape InferReshapeOutputShape(const Tensor* src, const Tensor* shape, bool allow_zero) {
+  ORT_ENFORCE(shape != nullptr, "Cannot reshape to a null shape.");
+  ORT_ENFORCE(shape->Shape().NumDimensions() == 1, "Shape must be an 1-D tensor.");
+  ORT_ENFORCE(shape->Location().device.Type() == OrtDevice::CPU, "Shape must be on CPU.");
+
+  return InferReshapeOutputShape(
+      src->Shape(),
+      shape->template DataAsSpan<int64_t>(),
+      allow_zero);
 }
 
 Status FuncReshape(
@@ -24,25 +33,25 @@ Status FuncReshape(
     const Tensor* shape,
     const bool /*allow_zero*/,
     Tensor* Y) {
-    if (!X) return Status(common::ONNXRUNTIME, common::FAIL, "Missing data tensor to be reshaped.");
-    if (!shape) return Status(common::ONNXRUNTIME, common::FAIL, "Missing shape tensor for reshaping.");
-    if (shape->Shape().NumDimensions() != 1) {
-      return ORT_MAKE_STATUS(
+  if (!X) return Status(common::ONNXRUNTIME, common::FAIL, "Missing data tensor to be reshaped.");
+  if (!shape) return Status(common::ONNXRUNTIME, common::FAIL, "Missing shape tensor for reshaping.");
+  if (shape->Shape().NumDimensions() != 1) {
+    return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL, "The shape tensor for reshaping must be a vector, but got ", shape->Shape(), ".");
-    }
-    if (shape->Location().device.Type() != OrtDevice::CPU) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Shape tensor must be on CPU.");
-    }
+  }
+  if (shape->Location().device.Type() != OrtDevice::CPU) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "Shape tensor must be on CPU.");
+  }
 
-    const void* src_data = X->DataRaw();
-    void* dst_data = Y->MutableDataRaw();
-    // If source and target pointers are not equal (non-inplace operation), we need to copy the data.
-    if (src_data != dst_data) {
-      ORT_ENFORCE(ctx->GetComputeStream());
-      ORT_RETURN_IF_ERROR(cuda_kernel->CopyTensor(*X, *Y, *ctx->GetComputeStream()));
-    }
+  const void* src_data = X->DataRaw();
+  void* dst_data = Y->MutableDataRaw();
+  // If source and target pointers are not equal (non-inplace operation), we need to copy the data.
+  if (src_data != dst_data) {
+    ORT_ENFORCE(ctx->GetComputeStream());
+    ORT_RETURN_IF_ERROR(cuda_kernel->CopyTensor(*X, *Y, *ctx->GetComputeStream()));
+  }
 
-    return Status::OK();
+  return Status::OK();
 }
 
 std::unique_ptr<Tensor> FuncReshape(
@@ -50,8 +59,7 @@ std::unique_ptr<Tensor> FuncReshape(
     OpKernelContext* ctx,
     const Tensor* X,
     const Tensor* shape,
-    const bool allow_zero
-) {
+    const bool allow_zero) {
   // TODO(wechi): Study if Tensor can be created as view to existing tensor.
   // This feature can refine code for re-sharding and shape broadcasting.
 

@@ -76,6 +76,43 @@ class DeviceMesh {
   void Print() const {
     std::cout << ToString() << std::endl;
   }
+
+  static DeviceMesh Create1D(std::vector<int64_t> device_mesh_elements, size_t repeats = 1) {
+    DeviceMesh device_mesh;
+    device_mesh.device_mesh_shape.push_back(device_mesh_elements.size() * repeats);
+    for (size_t i = 0; i < repeats; ++i) {
+      device_mesh.device_mesh_elements.insert(
+          device_mesh.device_mesh_elements.end(),
+          device_mesh_elements.begin(),
+          device_mesh_elements.end());
+    }
+    return device_mesh;
+  }
+
+  // If the two meshes have the same shape and elements, return true.
+  // Otherwise, return false.
+  bool operator==(const DeviceMesh& other) const {
+    if (device_mesh_shape.size() != other.device_mesh_shape.size() ||
+        device_mesh_elements.size() != other.device_mesh_elements.size()) {
+      return false;
+    }
+
+    for (size_t i = 0; i < device_mesh_elements.size(); ++i) {
+      if (device_mesh_elements.at(i) != other.device_mesh_elements.at(i)) {
+        return false;
+      }
+    }
+    for (size_t i = 0; i < device_mesh_shape.size(); ++i) {
+      if (device_mesh_shape.at(i) != other.device_mesh_shape.at(i)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool operator!=(const DeviceMesh& other) const {
+    return !(*this == other);
+  }
 };
 
 class AxisPartitionSpec {
@@ -135,6 +172,14 @@ class AxisPartitionSpec {
   // Call this in GDB to visualize the spec.
   void Print() const {
     std::cout << ToString() << std::endl;
+  }
+
+  bool operator==(const AxisPartitionSpec& other) const {
+    return cond == other.cond && device_mesh_axis == other.device_mesh_axis;
+  }
+
+  bool operator!=(const AxisPartitionSpec& other) const {
+    return !(*this == other);
   }
 };
 
@@ -333,7 +378,7 @@ class TensorPartitionSpec {
   // Return the number of shards along the first sharded tensor axis.
   // This value matches the number of devices along the associated mesh axis.
   // Return 1 if there is no sharding.
-  int64_t GetPartitionCount(int64_t axis) const {
+  int64_t GetDeviceCount(int64_t axis) const {
     ValidateAxisIndex(axis, Rank());
     auto axis_spec = GetAxisSpec(axis);
     if (axis_spec.cond == AxisPartitionSpec::Condition::Replica) {
@@ -341,6 +386,37 @@ class TensorPartitionSpec {
     } else {
       return device_mesh.device_mesh_shape.at(axis_spec.device_mesh_axis);
     }
+  }
+
+  // Similar to GetDeviceCount(), but returns the number of unique devices
+  // along the first sharded tensor axis.
+  int64_t GetUniqueDeviceCount(int64_t axis) const {
+    ValidateAxisIndex(axis, Rank());
+    auto axis_spec = GetAxisSpec(axis);
+    if (axis_spec.cond == AxisPartitionSpec::Condition::Replica) {
+      return 1;
+    } else {
+      std::set<int64_t> device_ids(
+          device_mesh.device_mesh_elements.begin(),
+          device_mesh.device_mesh_elements.end());
+      return device_ids.size();
+    }
+  }
+
+  bool operator==(const TensorPartitionSpec& other) const {
+    if (axis_specs.size() != other.axis_specs.size()) {
+      return false;
+    }
+    for (size_t i = 0; i < axis_specs.size(); ++i) {
+      if (!(axis_specs.at(i) == other.axis_specs.at(i))) {
+        return false;
+      }
+    }
+    return device_mesh == other.device_mesh;
+  }
+
+  bool operator!=(const TensorPartitionSpec& other) const {
+    return !(*this == other);
   }
 };
 
