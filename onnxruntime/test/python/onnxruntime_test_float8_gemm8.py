@@ -5,7 +5,6 @@
 # Note: the precision is different on V100, H100 even with the same code.
 # The thresholds were adjusted on H100 as the precision seems lower on this machine.
 
-import onnxruntime
 import itertools
 import unittest
 import warnings
@@ -267,17 +266,11 @@ class TestFloat8Gemm8(unittest.TestCase):
         try:
             expected = (a.T if transA else a) @ (b.T if transB else b)
         except Exception as e:
-            raise AssertionError(
-                f"Unable to multiply shapes={shapeA}x{shapeB}, "
-                f"transA={transA}, transB={transB}, row_major_compute={row_major_compute}"
-            ) from e
+            raise AssertionError(f"Unable to multiply shapes={shapeA}x{shapeB}, transA={transA}, transB={transB}") from e
         try:
             got = sess.run(None, {"A": a, "B": b})
         except Exception as e:
-            raise AssertionError(
-                f"Unable to run Gemm with shapes={shapeA}x{shapeB}, "
-                f"transA={transA}, transB={transB}, row_major_compute={row_major_compute}"
-            ) from e
+            raise AssertionError(f"Unable to run Gemm with shapes={shapeA}x{shapeB}, transA={transA}, transB={transB}") from e
         self.assertEqual(expected.shape, got[0].shape)
         self.assertEqual(expected.dtype, got[0].dtype)
         assert_allclose(expected, got[0])
