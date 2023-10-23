@@ -102,6 +102,7 @@ def _get_ort_compatible_allgather_fn():
 
     return _ort_compatible_allgather_fn_zero_stage3
 
+
 def _get_ort_compatible_broadcast():
     from deepspeed.utils import get_caller_func
 
@@ -110,7 +111,7 @@ def _get_ort_compatible_broadcast():
 
     # Monkey patching the original broadcast function
     def _ort_compatible_broadcast_zero_stage3(
-        tensor, src, group=None, prof=False, log_name='broadcast', debug=output_get_caller_func
+        tensor, src, group=None, prof=False, log_name="broadcast", debug=output_get_caller_func
     ):
         if torch.onnx.is_in_onnx_export():
             return DummyWork()
@@ -118,6 +119,7 @@ def _get_ort_compatible_broadcast():
         return original_broadcast(tensor, src, group=group, prof=prof, log_name=log_name, debug=debug)
 
     return _ort_compatible_broadcast_zero_stage3
+
 
 # Adapted from https://github.com/microsoft/DeepSpeed/blob/e8318634b4313eaad89842cf4322e1762d34ced3/deepspeed/runtime/zero/linear.py#L104
 # In the original logic, if bias is None, after export to ONNX, None becomes a constant, so backward op complains
