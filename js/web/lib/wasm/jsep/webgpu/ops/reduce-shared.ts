@@ -221,8 +221,8 @@ const reduceCommon =
 
       context.compute(
           createReduceSharedProgramInfo(
-              name, {hint: updatedAttributes.cacheKey}, [input], reduceType, context.inputs[0].dataType,
-              finalOutputShape, reduceShape),
+              name, {hint: updatedAttributes.cacheKey, inputDependencies: ['type']}, [input], reduceType,
+              context.inputs[0].dataType, finalOutputShape, reduceShape),
           {inputs: [input]});
     };
 
