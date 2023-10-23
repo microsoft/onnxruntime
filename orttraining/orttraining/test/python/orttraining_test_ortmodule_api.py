@@ -1773,13 +1773,17 @@ def test_aten_upsample_nearest(input_rank, use_factor):
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
-def test_aten_upsample_bilinear():
+@pytest.mark.parametrize("interpolate_size_scale", ({"size": (8, 12)}, {"scale_factor": 4.7}))
+@pytest.mark.parametrize("align_corners", (True, False))
+def test_resize_grad_correctness_bilinear_2d(interpolate_size_scale, align_corners):
     class _NeuralNetUpsampleBilinear(torch.nn.Module):
         def __init__(self):
             super().__init__()
 
         def forward(self, input):
-            return torch.nn.functional.interpolate(input, size=(8, 12), mode="bilinear")
+            return torch.nn.functional.interpolate(
+                input, align_corners=align_corners, mode="bilinear", **interpolate_size_scale
+            )
 
     device = "cuda"
     pt_model = _NeuralNetUpsampleBilinear().to(device)

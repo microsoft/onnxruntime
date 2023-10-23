@@ -53,8 +53,7 @@ void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retain
          it != model_local_functions_.end();) {
       if (retained.find(it->first) == retained_end) {
         model_local_function_templates_maps_.erase(it->first);
-        // Post increment for compatibility between abseil and STL
-        model_local_functions_.erase(it++);
+        it = model_local_functions_.erase(it);
       } else {
         ++it;
       }

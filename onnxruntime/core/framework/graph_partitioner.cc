@@ -797,9 +797,10 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 #ifndef ORT_MINIMAL_BUILD
 
 Status GraphPartitioner::InlineFunctionsAOT(Model& model,
-                                            Graph& graph,
                                             const ExecutionProviders& execution_providers,
                                             const KernelRegistryManager& kernel_registry_manager) const {
+
+  auto& graph = model.MainGraph();
   InlinedHashSet<std::string> not_inlined;
   do {
     size_t inlined_count = 0;
