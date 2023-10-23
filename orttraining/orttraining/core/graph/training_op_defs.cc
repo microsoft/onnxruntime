@@ -3908,10 +3908,27 @@ Return true if all elements are true and false otherwise.
           AttributeProto::INTS)
       // Other attributes.
       .Attr(
-          "inplace",
-          "Indicate if the output should reuse input memory.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
+          "tensor_reuse_map",
+          "A int array indicating whether output at each index is reusing specific input or not."
+          "If the given index is -1, it means the output is not reusing any input."
+          "For example, there are 2 tensor inputs and 3 tensor outputs (including ctx), "
+          "tensor_reuse_map = [-1, 1, 0] means"
+          "- the output 0 (ctx) don't reuse any input buffer."
+          "- the output 1 reuses the input 1."
+          "- the output 2 reuses the input 0.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "bw_tensor_reuse_map",
+          "Used for backward op only."
+          "A int array indicating whether output at each index is reusing specific input or now."
+          "If the given index is -1, it means the output is not reusing any input."
+          "For example, there are 3 inputs (including ctx) and 2 outputs, tensor_reuse_map = [2, 1] means"
+          "- the output 0 reuses the input 2."
+          "- the output 1 reuses the input 1."
+          "Be noted: the input 0 is ctx.",
+          AttributeProto::INTS,
+          false)
       .Attr(
           "training_mode",
           "Indicate if the model is exported in training_mode, by default, False.",
@@ -4034,11 +4051,6 @@ Return true if all elements are true and false otherwise.
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
-          "inplace",
-          "Indicate if the output should reuse input memory. Todo(pengwa): do we need it?",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Attr(
           "input_tensor_types",
           "Input types of autograd.Function.backward (including only tensor inputs)."
           "This attribute is mostly used for input checks for better robustness.",
@@ -4069,6 +4081,16 @@ Return true if all elements are true and false otherwise.
           "A string inidicating autograd.Function.backward outputs's type."
           "value 'c' - non-tensor output; value 'd' - tensor output.",
           AttributeProto::STRING)
+      .Attr(
+          "tensor_reuse_map",
+          "A int array indicating whether output at each index is reusing specific input or not."
+          "If the given index is -1, it means the output is not reusing any input."
+          "For example, there are 3 inputs (including ctx) and 2 outputs, tensor_reuse_map = [2, 1] means"
+          "- the output 0 reuses the input 2."
+          "- the output 1 reuses the input 1."
+          "Be noted: the input 0 is ctx.",
+          AttributeProto::INTS,
+          false)
       .Attr(
           "comment",
           "comment only for debugging purposes.",
@@ -4979,6 +5001,26 @@ Return true if all elements are true and false otherwise.
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ResizeGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "Gradient of output Y.", "T")
+      .Input(1, "X", "Input tensor to the Resize operator.", "T")
+      .Input(2, "roi", "The roi input to the Resize operator.", "T", OpSchema::Optional)
+      .Input(3, "scales", "The scales input to the Resize operator.", "tensor(float)", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of the input X.", "T")
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (hasInputShape(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 1, 0);
+        }
+      });
 }
 
 }  // namespace training

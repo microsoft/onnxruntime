@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <type_traits>
-#include <memory>
 #include <stdint.h>
 #include <vector>
 #include <mutex>
@@ -294,6 +292,14 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+template <>
+__device__ __inline__ half _Gelu(half a) {
+  const half kHalf = half(0.5);
+  const half kOne = half(1.0);
+  const half kAlpha = half(M_SQRT1_2);
+  return a * kHalf * (kOne + _Erf(kAlpha * a));
+}
+
 template <typename T>
 __device__ __inline__ T _Mod(T a, T b) {
   T r = a % b;
@@ -348,21 +354,19 @@ struct GridDim {
   };
 };
 
-// aligned vector generates vectorized load/store
+// aligned vector generates vectorized load/store on ROCM
 template <typename T, int vec_size>
 struct alignas(sizeof(T) * vec_size) aligned_vector {
   T val[vec_size];
 };
 
-#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)     \
+#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)      \
   HIP_LONG id = blockDim.x * blockIdx.x + threadIdx.x; \
-  if (id >= N)                                         \
+  if (id >= N)                                          \
     return;
 
 // HIP_KERNEL_ASSERT is a macro that wraps an assert() call inside rocm kernels.
-// TODO ROCM added support recently, should verify.
-#define HIP_KERNEL_ASSERT(...)
-// #define HIP_KERNEL_ASSERT(...) assert(__VA_ARGS__)
+#define HIP_KERNEL_ASSERT(...) assert(__VA_ARGS__)
 
 // WARP related definitions and functions
 constexpr int GPU_WARP_SIZE = warpSize;

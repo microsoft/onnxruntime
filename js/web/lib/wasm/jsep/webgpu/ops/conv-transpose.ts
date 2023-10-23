@@ -1,14 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext} from '../types';
 
+import {createConv2DTransposeMatMulProgramInfo} from './3rd-party/conv_backprop_mm_webgpu';
 import {createConvTranspose2DProgramInfo} from './3rd-party/conv_backprop_webgpu';
 import {ConvAttributes} from './conv';
 import {parseInternalActivationAttributes} from './fuse-utils';
+import {createTransposeProgramInfo} from './transpose';
 
 const computeTotalPad =
     (inDim: number, stride: number, adj: number, kernel: number, dilation: number, outSize: number) =>
@@ -63,7 +64,7 @@ const getAdjustedConvTransposeAttributes =
     <T extends ConvTransposeAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
       const kernelShape = attributes.kernelShape.slice();
       // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
-      if (attributes.kernelShape.length === 0 || attributes.kernelShape.reduce((a, b) => a * b, 0) === 0) {
+      if (attributes.kernelShape.length === 0 || attributes.kernelShape.reduce((a, b) => a * b, 1) === 0) {
         kernelShape.length = 0;
         for (let i = 2; i < inputs[1].dims.length; ++i) {
           kernelShape.push(inputs[1].dims[i]);
@@ -95,9 +96,11 @@ const getAdjustedConvTransposeAttributes =
 
       // always return a new object so does not modify the original attributes
       const newAttributes: T = Object.assign({}, attributes);
-      Object.assign(
-          newAttributes,
-          {kernelShape, pads, outputPadding, outputShape, dilations, strides, cacheKey: attributes.cacheKey});
+      const cacheKey = attributes.cacheKey + [
+        kernelShape.join('n,'), pads.join(','), strides.join(','), outputPadding.join(','), outputShape.join(','),
+        dilations.join(',')
+      ].join('_');
+      Object.assign(newAttributes, {kernelShape, pads, outputPadding, outputShape, dilations, strides, cacheKey});
       return newAttributes;
     };
 
@@ -197,41 +200,62 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
   if (attributes.outputShape.length !== 0 && attributes.outputShape.length !== inputs[0].dims.length - 2) {
     throw new Error('invalid output shape');
   }
-
-  // TODO : Need to add support for float64
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('ConvTranspose input(X,W) should be float tensor');
-  }
-
-  if (inputs.length === 3 && inputs[2].dataType !== DataType.float) {
-    throw new Error('ConvTranspose input(bias) should be float tensor');
-  }
 };
 
-const createConvTranspose2DProgramMetadata = (hasBias: boolean, cacheHint: string): ProgramMetadata => ({
-  name: 'ConvTranspose2D',
-  inputTypes: hasBias ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
-                        [GpuDataType.default, GpuDataType.default],
-  cacheHint
-});
-
-const createConvTranspose2DProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
-     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfoLoader => {
-      const hasBias = inputs.length === 3;
-      const metadata = createConvTranspose2DProgramMetadata(hasBias, attributes.cacheKey);
-      return {
-        ...metadata,
-        get: () => createConvTranspose2DProgramInfo(inputs, metadata, attributes, squeezeOutputShapeFunction)
-      };
-    };
+// for transposing weight tensor from [C, M/group, KH, KW] to [KH, KW, M/group, C]
+const weightTransposePerm = [2, 3, 1, 0];
 
 const convTranspose2d =
     (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {
       const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
+      const isChannelsLast = attributes.format === 'NHWC';
+      const hasBias = inputs.length === 3;
+      if (adjustedAttributes.group !== 1) {
+        context.compute(createConvTranspose2DProgramInfo(inputs, adjustedAttributes));
+        return;
+      }
+      const outputShape = adjustedAttributes.outputShape;
+      const outHeight = outputShape[isChannelsLast ? 1 : 2];
+      const outWidth = outputShape[isChannelsLast ? 2 : 3];
+      const outChannels = outputShape[isChannelsLast ? 3 : 1];
+      const weightHeight = inputs[1].dims[2];
+      const weightWidth = inputs[1].dims[3];
+      const inputChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
 
-      context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes));
+      const dimAOuter = isChannelsLast ? outHeight * outWidth : outChannels;
+      const dimBOuter = isChannelsLast ? outChannels : outHeight * outWidth;
+      const dimInner = weightHeight * weightWidth * inputChannels;
+
+      const sequentialAccessByThreads = /* backend.adapterInfo.isIntel() */ true;
+
+
+      // STEP.1: transpose weight
+      const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
+          context.compute(
+              createTransposeProgramInfo(inputs[1], weightTransposePerm),
+              {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
+      if (attributes.wIsConst && !context.kernelCustomData.wT) {
+        context.kernelCustomData.wT = transposedWeight;
+      }
+
+      // STEP.2: prepare reshaped inputs
+      const convTransposeInputs = [inputs[0], transposedWeight];
+      if (hasBias) {
+        if (!isChannelsLast && inputs[2].dims.length === 1) {
+          convTransposeInputs.push(inputs[2].reshape([inputs[2].dims[0], 1, 1]));
+        } else {
+          convTransposeInputs.push(inputs[2]);
+        }
+      }
+
+      // STEP.3: compute matmul
+      context.compute(
+          createConv2DTransposeMatMulProgramInfo(
+              convTransposeInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
+              sequentialAccessByThreads),
+          {inputs: convTransposeInputs});
     };
+
 const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttributes): void => {
   // extend the input to 2D by adding H dimension
   const isChannelLast = attributes.format === 'NHWC';
@@ -271,7 +295,7 @@ const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttri
   kernelShape = [1].concat(kernelShape);
   const adjustedAttributes =
       getAdjustedConvTransposeAttributes({...attributes, pads, strides, dilations, kernelShape}, inputs);
-  context.compute(createConvTranspose2DProgramInfoLoader(
+  context.compute(createConvTranspose2DProgramInfo(
       inputs, adjustedAttributes,
       outputShape => isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] :
                                      [outputShape[0], outputShape[1], outputShape[3]]));

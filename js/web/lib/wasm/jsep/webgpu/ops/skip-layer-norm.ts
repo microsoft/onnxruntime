@@ -5,9 +5,9 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
-import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
+import {castToF32, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType,} from './common';
 
 export interface SkipLayerNormAttributes extends AttributeWithCacheKey {
   epsilon: number;
@@ -18,9 +18,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('layerNorm requires at least 3 inputs.');
   }
 
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('inputs should be float type');
-  }
   const input: TensorView = inputs[0];
   const skip: TensorView = inputs[1];
   const gamma: TensorView = inputs[2];
@@ -74,98 +71,91 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const createSkipLayerNormProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number,
-     isTraining: boolean): ProgramInfo => {
-      const inputShape = inputs[0].dims;
-      const inputSize = ShapeUtil.size(inputShape);
-      const outputShape = inputShape;
-      const outputSize = inputSize;
-      const hiddenSize = inputShape.slice(-1)[0];
-      const meanInvStdDevDim = isTraining ? inputShape.slice(0, -1).concat(1) : [];
-      const hasBetaInput = inputs.length > 3;
-      const hasBiasInput = inputs.length > 4;
-      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-      const hasMeanOutput = isTraining && outputCount > 1;
-      const hasInvStdDevOutput = isTraining && outputCount > 2;
-      const hasInputSkipBiasSumOutput = outputCount > 3;
-      let bindingNumber = 0;
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
-      const hiddenSize: u32 = ${hiddenSize};
+    (inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number, isTraining: boolean):
+        ProgramInfo => {
+          const inputShape = inputs[0].dims;
+          const inputSize = ShapeUtil.size(inputShape);
+          const outputShape = inputShape;
+          const outputSize = inputSize;
+          const hiddenSize = inputShape.slice(-1)[0];
+          const meanInvStdDevDim = isTraining ? inputShape.slice(0, -1).concat(1) : [];
+          const hasBetaInput = inputs.length > 3;
+          const hasBiasInput = inputs.length > 4;
+          const hasMeanOutput = isTraining && outputCount > 1;
+          const hasInvStdDevOutput = isTraining && outputCount > 2;
+          const hasInputSkipBiasSumOutput = outputCount > 3;
+
+          const components = getMaxComponents(hiddenSize);
+          const variables = [
+            inputVariable('x', inputs[0].dataType, inputs[0].dims, components),
+            inputVariable('skip', inputs[1].dataType, inputs[1].dims, components),
+            inputVariable('gamma', inputs[2].dataType, inputs[2].dims, components),
+          ];
+          if (hasBetaInput) {
+            variables.push(inputVariable('beta', inputs[3].dataType, inputs[3].dims, components));
+          }
+          if (hasBiasInput) {
+            variables.push(inputVariable('bias', inputs[4].dataType, inputs[4].dims, components));
+          }
+          variables.push(outputVariable('output', inputs[0].dataType, outputShape, components));
+          if (hasMeanOutput) {
+            variables.push(outputVariable('meanOutput', DataType.float, meanInvStdDevDim));
+          }
+          if (hasInvStdDevOutput) {
+            variables.push(outputVariable('invStdOutput', DataType.float, meanInvStdDevDim));
+          }
+          if (hasInputSkipBiasSumOutput) {
+            variables.push(outputVariable('inputSkipBiasSum', inputs[0].dataType, outputShape, components));
+          }
+          const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+          const getShaderSource = (shaderHelper: ShaderHelper) => `
+      const hiddenSize: f32 = ${hiddenSize};
+      const hiddenSizeVectorized: u32 = ${hiddenSize / components};
       const epsilon: f32 = ${attributes.epsilon};
 
-      @group(0) @binding(${bindingNumber++}) var<storage, read> x : array<${dataType}>;
-      @group(0) @binding(${bindingNumber++}) var<storage, read> skip : array<${dataType}>;
-      @group(0) @binding(${bindingNumber++}) var<storage, read> gamma : array<${dataType}>;
-      ${hasBetaInput ? `@group(0) @binding(${bindingNumber++}) var<storage, read> beta : array<${dataType}>;` : ''}
-      ${hasBiasInput ? `@group(0) @binding(${bindingNumber++}) var<storage, read> bias : array<${dataType}>;` : ''}
-      @group(0) @binding(${bindingNumber++}) var<storage, read_write> output : array<${dataType}>;
-      ${
-          hasMeanOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> meanOutput : array<${dataType}>;` :
-              ''}
-      ${
-          hasInvStdDevOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> invStdOutput : array<${dataType}>;` :
-              ''}
-      ${
-          hasInputSkipBiasSumOutput ?
-              `@group(0) @binding(${bindingNumber++}) var<storage, read_write> inputSkipBiasSum : array<${dataType}>;` :
-              ''}
+      ${shaderHelper.declareVariables(...variables)}
 
       ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize / hiddenSize)}
-        let offset = global_idx * hiddenSize;
-        var sum: f32 = 0.0;
-        var squareSum: f32 = 0.0;
-        for (var i: u32 = 0; i < hiddenSize; i++) {
+        let offset = global_idx * hiddenSizeVectorized;
+        var sum = ${fillVector('f32', components)};
+        var squareSum = ${fillVector('f32', components)};
+        for (var i: u32 = 0; i < hiddenSizeVectorized; i++) {
           let skipValue = skip[offset + i];
           let biasValue = ${hasBiasInput ? 'bias[i]' : '0.0'};
           let inputValue = x[offset + i];
           let value = inputValue + skipValue + biasValue;
           ${hasInputSkipBiasSumOutput ? 'inputSkipBiasSum[offset + i] = value;' : ''}
           output[offset + i] = value;
-          sum += value;
-          squareSum += value * value;
+          let f32Value = ${castToF32(dataType, components, 'value')};
+          sum += f32Value;
+          squareSum += f32Value * f32Value;
         }
-        let mean: f32 = sum / f32(hiddenSize);
-        let variance: f32 = sqrt(squareSum / f32(hiddenSize) - mean * mean + epsilon);
+        let mean = ${sumVector('sum', components)} / hiddenSize;
+        let variance = sqrt(${sumVector('squareSum', components)} / hiddenSize - mean * mean + epsilon);
         ${hasMeanOutput ? 'meanOutput[global_idx] = mean;' : ''}
         ${hasInvStdDevOutput ? 'invStdOutput[global_idx] = 1.0 / variance;' : ''}
-        for (var i: u32 = 0; i < hiddenSize; i++) {
-          output[offset + i] = (output[offset + i] - mean) / variance * gamma[i] + ${hasBetaInput ? 'beta[i]' : '0.0'};
+        for (var i: u32 = 0; i < hiddenSizeVectorized; i++) {
+          output[offset + i] = (output[offset + i] - ${dataType}(mean)) / ${dataType}(variance) * gamma[i]
+           + ${hasBetaInput ? 'beta[i]' : '0.0'};
         }
       }`;
-      const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
-      if (outputCount > 1) {
-        outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
-      }
-      if (outputCount > 2) {
-        outputs.push({dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
-      }
-      if (outputCount > 3) {
-        outputs.push({dims: inputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
-      }
+          const outputs = [{dims: outputShape, dataType: inputs[0].dataType}];
+          if (outputCount > 1) {
+            outputs.push({dims: meanInvStdDevDim, dataType: DataType.float});
+          }
+          if (outputCount > 2) {
+            outputs.push({dims: meanInvStdDevDim, dataType: DataType.float});
+          }
+          if (outputCount > 3) {
+            outputs.push({dims: inputShape, dataType: inputs[0].dataType});
+          }
 
-      return {
-        ...metadata,
-        getShaderSource,
-        outputs,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / hiddenSize / 64)})
-      };
-    };
-
-const createSkipLayerNormProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number, isTraining: boolean):
-        ProgramInfoLoader => {
-          const inputTypes = new Array(inputs.length).fill(GpuDataType.default);
-          const metadata: ProgramMetadata = {
-            name: 'SkipLayerNormalization',
-            inputTypes,
-            cacheHint: attributes.cacheKey,
-          };
           return {
-            ...metadata,
-            get: () => createSkipLayerNormProgramInfo(metadata, inputs, attributes, outputCount, isTraining)
+            name: 'SkipLayerNormalization',
+            shaderCache: {hint: attributes.cacheKey},
+            getShaderSource,
+            getRunData: () => ({outputs, dispatchGroup: {x: Math.ceil(outputSize / hiddenSize / 64)}}),
           };
         };
 
@@ -186,7 +176,7 @@ export const skipLayerNorm = (context: ComputeContext, attributes: SkipLayerNorm
     outputs.push(3);
   }
   context.compute(
-      createSkipLayerNormProgramInfoLoader(context.inputs, attributes, context.outputCount, isTraining), {outputs});
+      createSkipLayerNormProgramInfo(context.inputs, attributes, context.outputCount, isTraining), {outputs});
 };
 
 export const parseSkipLayerNormAttributes = (attributes: Record<string, unknown>): SkipLayerNormAttributes => {

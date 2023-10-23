@@ -29,7 +29,7 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplicitOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
+  Status ExplicitOpCheck(const NodeUnit& node_unit) const;
   Status ProcessSigmoidOrTanhOutput(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     std::vector<std::string>&& input_names,
@@ -41,29 +41,8 @@ class SimpleOpBuilder : public BaseOpBuilder {
   static constexpr std::array<std::string_view, 3> gridsample_supported_padding_modes = {"zeros", "border", "reflection"};
 };
 
-static int32_t GetDefaultAxisAttribute(const std::string& op_type, int opset_version) {
-  if (op_type == "Softmax" || op_type == "LogSoftmax") {
-    // Default axis changed from 1 to -1 in opset 13.
-    return opset_version < 13 ? 1 : -1;
-  }
-
-  return 0;
-}
-
-Status SimpleOpBuilder::ExplicitOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
+Status SimpleOpBuilder::ExplicitOpCheck(const NodeUnit& node_unit) const {
   const std::string& op_type = node_unit.OpType();
-
-  // QNN Softmax and LogSoftmax only support an axis value equal to input_rank - 1 (i.e., same as -1).
-  if (op_type == "Softmax" || op_type == "LogSoftmax") {
-    int32_t axis = GetDefaultAxisAttribute(op_type, node_unit.SinceVersion());
-    Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
-    std::vector<uint32_t> input_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
-                      "QNN EP: Cannot get shape for Softmax input");
-    ORT_RETURN_IF(axis != static_cast<int32_t>(input_shape.size() - 1),
-                  "QNN ", op_type.c_str(), " only supports an `axis` attribute equal to input_rank-1 (or -1)");
-  }
 
   if (op_type == "GridSample") {
     NodeAttrHelper node_helper(node_unit);
@@ -231,17 +210,28 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const std::string& op_type = node_unit.OpType();
 
   if (do_op_validation) {
-    ORT_RETURN_IF_ERROR(ExplicitOpCheck(qnn_model_wrapper, node_unit));
+    ORT_RETURN_IF_ERROR(ExplicitOpCheck(node_unit));
     // Skip the op validation for DepthToSpace & SpaceToDepth if it's not NHWC data layout
     if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth" || op_type == "GridSample")) {
       return Status::OK();
+    }
+
+    // Explicitly skip the Op validation for Q & DQ node with 5D because of QNN bug.
+    // TODO (hecli), remove once QNN v2.17 is ready
+    if (op_type == "QuantizeLinear" || op_type == "DequantizeLinear") {
+      std::vector<uint32_t> input_shape;
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
+                        "QNN EP: Cannot get input shape");
+      if (input_shape.size() == 5) {
+        return Status::OK();
+      }
     }
   }
 
   std::vector<std::string> param_tensor_names;
   // Add attribute
-  if (op_type == "LogSoftmax" || op_type == "Softmax" || op_type == "Concat") {
-    int32_t default_axis = GetDefaultAxisAttribute(op_type, node_unit.SinceVersion());
+  if (op_type == "Concat") {
+    int32_t default_axis = 0;
     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
     ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
     QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_SOFTMAX_PARAM_AXIS, axis_qnn_scalar);
@@ -381,10 +371,14 @@ Status SimpleOpBuilder::ProcessSigmoidOrTanhOutput(QnnModelWrapper& qnn_model_wr
       const float scale = output_info.quant_param.scaleOffsetEncoding.scale;
 
       LOGS(logger, VERBOSE) << "QNN requires that 16-bit quantized " << op_type << " operators use offset/scale values "
-                            << "of <" << offset << ", " << scale << ">. QNN EP will override the original values.";
+                            << "of <" << offset << ", " << scale << ">. QNN EP will override the original values for output "
+                            << output_name;
     }
   }
 
+  ORT_RETURN_IF(qnn_model_wrapper.IsQnnTensorWrapperExist(output_name),
+                "QNN EP is unable to override output quantization parameters for ", op_type.c_str(),
+                " operator. Node name: ", node_unit.Name().c_str(), ", output name: ", output_name.c_str());
   Qnn_TensorType_t tensor_type = qnn_model_wrapper.IsGraphOutput(output_name) ? QNN_TENSOR_TYPE_APP_READ
                                                                               : QNN_TENSOR_TYPE_NATIVE;
   QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, output_info.qnn_data_type, output_info.quant_param,

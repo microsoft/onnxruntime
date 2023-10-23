@@ -33,6 +33,7 @@ class Precision(Enum):
     FLOAT32 = "fp32"
     FLOAT16 = "fp16"
     INT8 = "int8"
+    INT4 = "int4"
 
     def __str__(self):
         return self.value
@@ -542,7 +543,7 @@ class RocmMemoryMonitor(MemoryMonitor):
         while True:
             for i in range(device_count):
                 max_gpu_usage[i] = max(max_gpu_usage[i], self.get_used_memory(i))
-            time.sleep(0.005)  # 2ms
+            time.sleep(0.005)  # 5ms
             if not self.keep_measuring:
                 break
         return [
@@ -555,7 +556,7 @@ class RocmMemoryMonitor(MemoryMonitor):
         ]
 
 
-def measure_memory(is_gpu, func, monitor_type="cuda"):
+def measure_memory(is_gpu, func, monitor_type="cuda", start_memory=None):
     memory_monitor_type = None
     if monitor_type == "rocm":
         memory_monitor_type = RocmMemoryMonitor
@@ -565,9 +566,15 @@ def measure_memory(is_gpu, func, monitor_type="cuda"):
     monitor = memory_monitor_type(False)
 
     if is_gpu:
-        memory_before_test = monitor.measure_gpu_usage()
+        if start_memory is not None:
+            memory_before_test = start_memory
+        else:
+            memory_before_test = monitor.measure_gpu_usage()
         if memory_before_test is None:
             return None
+
+        if func is None:
+            return memory_before_test
 
         with ThreadPoolExecutor() as executor:
             monitor = memory_monitor_type()
@@ -595,10 +602,16 @@ def measure_memory(is_gpu, func, monitor_type="cuda"):
         return None
 
     # CPU memory
-    memory_before_test = monitor.measure_cpu_usage()
+    if start_memory is not None:
+        memory_before_test = start_memory
+    else:
+        memory_before_test = monitor.measure_cpu_usage()
+
+    if func is None:
+        return memory_before_test
 
     with ThreadPoolExecutor() as executor:
-        monitor = MemoryMonitor()
+        monitor = memory_monitor_type()
         mem_thread = executor.submit(monitor.measure_cpu_usage)
         try:
             fn_thread = executor.submit(func)

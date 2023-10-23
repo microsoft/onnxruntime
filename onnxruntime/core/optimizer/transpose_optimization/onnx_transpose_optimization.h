@@ -98,6 +98,7 @@ bool HandleSimpleNodeWithAxis(HandlerArgs& args, std::optional<int64_t> default_
 
 // base handlers that are used by extended handlers. add from transpose_optimizer.cc as needed.
 bool HandleReduceOps(HandlerArgs& args);
+bool HandleResize([[maybe_unused]] HandlerArgs& args);
 
 void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
                     const std::vector<int64_t>& perm,

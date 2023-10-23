@@ -150,6 +150,8 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
 
     # CUFFT -> HIPFFT
     s = s.replace("CUFFT", "HIPFFT")
+    s = s.replace("cufftXtMakePlanMany", "hipfftXtMakePlanMany")
+    s = s.replace("cufftXtExec", "hipfftXtExec")
 
     # Undo where above hipify steps went too far.
     s = s.replace("id, ROCM", "id, CUDA")  # cuda_execution_provider.cc
@@ -169,6 +171,24 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("#include <hiprand_kernel.h>", "#include <hiprand/hiprand_kernel.h>")
     s = s.replace("#include <rocblas.h>", "#include <rocblas/rocblas.h>")
     s = s.replace("#include <hipblas.h>", "#include <hipblas/hipblas.h>")
+    s = s.replace("#include <hipfft.h>", "#include <hipfft/hipfft.h>")
+    s = s.replace('#include "hipfft.h"', "#include <hipfft/hipfft.h>")
+    s = s.replace('#include "hipfftXt.h"', "#include <hipfft/hipfftXt.h>")
+
+    # Fix onnxruntime/contrib_ops/rocm/transformers. They include cpu headers which use "cuda" in their names.
+    s = s.replace("rocm_device_prop_", "cuda_device_prop_")
+    s = s.replace("rocm_device_arch_", "cuda_device_arch_")
+
+    # We want hipfft, which needs hipDataType etc, but only do this for files that have "fft" in their names
+    # And we do this last, undoing or fixing hipify mistakes.
+    if "fft" in src_file_path:
+        s = s.replace("rocblas_datatype", "hipDataType")
+        s = s.replace("hipDataType_f32_c", "HIP_C_32F")
+        s = s.replace("hipDataType_f32_r", "HIP_R_32F")
+        s = s.replace("hipDataType_f64_c", "HIP_C_64F")
+        s = s.replace("hipDataType_f64_r", "HIP_R_64F")
+        s = s.replace("hipDataType_f16_c", "HIP_C_16F")
+        s = s.replace("hipDataType_f16_r", "HIP_R_16F")
 
     with open(dst_file_path, "w") as f:
         f.write(s)

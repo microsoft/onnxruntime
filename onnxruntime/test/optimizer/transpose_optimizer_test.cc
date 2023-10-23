@@ -320,20 +320,6 @@ TEST(TransposeOptimizerTests, TestPadNonconst) {
                     /*opset_version*/ {11, 18});
 }
 
-// The CUDA Resize kernel assumes that the input is NCHW and
-// Resize can't be supported in ORT builds with CUDA enabled.
-// TODO: Enable this once the CUDA Resize kernel is implemented
-// "generically" (i.e.) aligning with the generic nature of the
-// ONNX spec.
-// See https://github.com/microsoft/onnxruntime/pull/10824 for
-// a similar fix applied to the CPU Resize kernel.
-// Per tests included in #10824, the ROCM EP also generates
-// incorrect results when this handler is used, so the Resize
-// handler is not enabled even for those builds.
-//
-// The QNN EP requires the input to be NHWC, so the Resize handler is also not enabled
-// for QNN builds.
-#if !defined(USE_CUDA) && !defined(USE_ROCM) && !defined(USE_QNN)
 TEST(TransposeOptimizerTests, TestResize) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
@@ -362,7 +348,9 @@ TEST(TransposeOptimizerTests, TestResize) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {10, 18});
 }
 
@@ -390,7 +378,9 @@ TEST(TransposeOptimizerTests, TestResizeOpset11) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {11, 18});
 }
 
@@ -418,7 +408,9 @@ TEST(TransposeOptimizerTests, TestResizeOpset15) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {15, 18});
 }
 
@@ -448,7 +440,9 @@ TEST(TransposeOptimizerTests, TestResizeSizeRoi) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {15, 18});
 }
 
@@ -482,7 +476,9 @@ TEST(TransposeOptimizerTests, TestResizeRoiScalesZeroRank0) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     {12, 18});
 }
 
@@ -511,7 +507,9 @@ TEST(TransposeOptimizerTests, TestResizeNonconst) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {11, 18});
 }
 
@@ -540,11 +538,12 @@ TEST(TransposeOptimizerTests, TestResizeNonconstOpset13) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {13, 18});
 }
 
-#endif
 TEST(TransposeOptimizerTests, TestAdd) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
@@ -4454,12 +4453,13 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
 }
 
+// These tests uses internal testing EP with static kernels which requires a full build,
+// and the NHWC Conv which requires contrib ops
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
 // Test a Transpose node followed by a Reshape that is logically equivalent to an Transpose can be merged.
 // The test graph was extracted from a model we were trying to use with the QNN EP.
 TEST(TransposeOptimizerTests, QnnTransposeReshape) {
-  // test uses internal testing EP with static kernels which requires a full build,
-  // and the NHWC Conv with requires contrib ops
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
   Status status;
   auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.onnx");
 
@@ -4509,13 +4509,9 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
       EXPECT_TRUE(inputs[1]->Exists());
     }
   }
-#endif
 }
 
 TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
-  // test uses internal testing EP with static kernels which requires a full build,
-  // and the NHWC Conv with requires contrib ops
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
   Status status;
   auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.qdq.onnx");
 
@@ -4552,8 +4548,48 @@ TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
     EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
                                                                 << "' was not assigned to the internal testing EP.";
   }
-#endif
 }
+
+// Validate handling for EP with layout specific Resize that prefers NHWC
+TEST(TransposeOptimizerTests, QnnResizeOpset11) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/nhwc_resize_scales_opset11.onnx");
+
+  SessionOptions so;
+  // Uncomment to debug
+  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                                << "' was not assigned to the internal testing EP.";
+    if (node.OpType() == "Resize") {
+      EXPECT_EQ(node.Domain(), kMSInternalNHWCDomain) << "Resize was not converted to NHWC layout";
+    }
+  }
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2) << "Resize should have been wrapped in 2 Transpose nodes to convert to NHWC";
+
+  // And the post-Resize Transpose should have been pushed all the way to the end
+  GraphViewer viewer(graph);
+  EXPECT_EQ(graph.GetNode(viewer.GetNodesInTopologicalOrder().back())->OpType(), "Transpose");
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 static void CheckSharedInitializerHandling(bool broadcast) {
   auto model_uri = broadcast ? ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast.onnx")
