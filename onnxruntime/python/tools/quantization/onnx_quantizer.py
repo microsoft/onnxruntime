@@ -645,6 +645,7 @@ class ONNXQuantizer:
         :return: List of newly created nodes in NodeProto format.
         """
         input_name = node.input[input_index]
+        assert input_name != "", "Cannot access undefined variable in graph."
         output_name = input_name + TENSOR_NAME_QUANT_SUFFIX
         ql_node_name = input_name + "_QuantizeLinear"
 

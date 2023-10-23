@@ -4,7 +4,6 @@
 // Distributed computation.
 #include "sharding.h"
 #include "distributed_matmul.h"
-#include "nccl_kernels.h"
 #include "mpi_include.h"
 
 // ORT system.
@@ -63,20 +62,7 @@ static TensorShape InferMatmulOutputShape(
 };
 
 template <typename T>
-DistributedMatMul<T>::DistributedMatMul(const OpKernelInfo& info) : NcclKernel(info) {
-  std::vector<int64_t> device_mesh_elements = info.GetAttrsOrDefault<int64_t>("device_mesh_elements");
-  std::vector<int64_t> device_mesh_shape = info.GetAttrsOrDefault<int64_t>("device_mesh_shape");
-  std::vector<std::string> input_shard_specs = info.GetAttrsOrDefault<std::string>("input_shard_specs");
-  std::vector<std::string> output_shard_specs = info.GetAttrsOrDefault<std::string>("output_shard_specs");
-
-  for (size_t i = 0; i < input_shard_specs.size(); ++i) {
-    auto spec = CreateTensorPartitionSpec(input_shard_specs[i], device_mesh_shape, device_mesh_elements);
-    input_shard_specs_.push_back(spec);
-  }
-  for (size_t i = 0; i < output_shard_specs.size(); ++i) {
-    auto spec = CreateTensorPartitionSpec(output_shard_specs[i], device_mesh_shape, device_mesh_elements);
-    output_shard_specs_.push_back(spec);
-  }
+DistributedMatMul<T>::DistributedMatMul(const OpKernelInfo& info) : DistributedKernel(info) {
 }
 
 template <typename T>

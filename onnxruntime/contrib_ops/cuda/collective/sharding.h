@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#pragma once
 
 #include "sharding_spec.h"
 #include "nccl_kernels.h"
-
-#pragma once
 
 namespace onnxruntime {
 namespace contrib {
@@ -49,6 +48,16 @@ void ReshardTensor(
     const Tensor* src,
     Tensor* dst);
 
+// Output from ctx
+void ReshardTensor(
+    const NcclKernel* nccl_kernel,
+    OpKernelContext* ctx,
+    const TensorPartitionSpec& src_spec,
+    const TensorPartitionSpec& dst_spec,
+    const int64_t device_id,
+    const Tensor* src,
+    int output_idx);
+
 std::unique_ptr<Tensor> ReshardTensor(
     const NcclKernel* nccl_kernel,
     OpKernelContext* ctx,
@@ -56,6 +65,17 @@ std::unique_ptr<Tensor> ReshardTensor(
     const TensorPartitionSpec& dst_spec,
     const int64_t device_id,
     const Tensor* src);
+
+class TensorPartitionSpec;
+
+class DistributedKernel : public NcclKernel {
+ public:
+  explicit DistributedKernel(const OpKernelInfo& info);
+
+ protected:
+  std::vector<TensorPartitionSpec> input_shard_specs_;
+  std::vector<TensorPartitionSpec> output_shard_specs_;
+};
 
 #endif
 
