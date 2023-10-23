@@ -38,61 +38,20 @@ set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
 
 # the XNNPACK CMake setup doesn't include the WASM kernels so we have to manually set those up
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  # The source lists in BUILD.bazel are defined like this.
-  # wasm_srcs = ["src/amalgam/gen/wasm.c"],
-  #  wasmrelaxedsimd_srcs = [
-  #  "src/amalgam/gen/wasm.c",
-  #  "src/amalgam/gen/wasmrelaxedsimd.c",
-  #  "src/amalgam/gen/wasmsimd.c",
-  # ],
-  # wasmsimd_srcs = [
-  #  "src/amalgam/gen/wasm.c",
-  #  "src/amalgam/gen/wasmsimd.c",
-  # ],
-
-#   xnnpack_cc_library(
-#     name = "wasm_prod_microkernels",
-#     gcc_copts = xnnpack_gcc_std_copts() + [
-#         "-fno-fast-math",
-#         "-fno-math-errno",
-#     ],
-#     msvc_copts = xnnpack_msvc_std_copts(),
-#     wasm_srcs = ["src/amalgam/gen/wasm.c"],
-#     wasmrelaxedsimd_srcs = [
-#         "src/amalgam/gen/wasm.c",
-#         "src/amalgam/gen/wasmrelaxedsimd.c",
-#         "src/amalgam/gen/wasmsimd.c",
-#     ],
-#     wasmsimd_srcs = [
-#         "src/amalgam/gen/wasm.c",
-#         "src/amalgam/gen/wasmsimd.c",
-#     ],
-#     deps = [
-#         ":common",
-#         ":math",
-#         ":microkernels_h",
-#         ":microparams",
-#         ":prefetch",
-#         ":tables",
-#         ":unaligned",
-#     ],
-#   )
-
+  # See source lists in _deps/googlexnnpack-src/BUILD.bazel for wasm_prod_microkernels
   message("Adding WebAssembly Source Files to XNNPACK")
   set(wasm_srcs "")
-  # :common
   list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/common.h)
-  # :math
   list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/math.h)
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/microparams.h)
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/prefetch.h)
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/unaligned.h)
+
   # :microkernels_h
   list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/cache.h
                         ${XNNPACK_DIR}/src/xnnpack/intrinsics-polyfill.h
                         ${XNNPACK_DIR}/src/xnnpack/math-stubs.h
                         ${XNNPACK_DIR}/src/xnnpack/requantization-stubs.h)
-  # :microparams
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/microparams.h)
-  # :prefetch
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/prefetch.h)
   # :tables
   list(APPEND wasm_srcs ${XNNPACK_DIR}/src/tables/exp2-k-over-64.c
                         ${XNNPACK_DIR}/src/tables/exp2-k-over-2048.c
@@ -103,20 +62,44 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
                         ${XNNPACK_DIR}/src/tables/exp2minus-k-over-64.c
                         ${XNNPACK_DIR}/src/tables/exp2minus-k-over-2048.c
                         ${XNNPACK_DIR}/src/tables/vlog.c)
-  # :unaligned
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/unaligned.h)
+  # operators
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/compute.h
+                        ${XNNPACK_DIR}/src/xnnpack/operator.h
+                        ${XNNPACK_DIR}/src/operator-delete.c
+                        ${XNNPACK_DIR}/src/operator-run.c
+                        ${XNNPACK_DIR}/src/operators/argmax-pooling-nhwc.c
+                        ${XNNPACK_DIR}/src/operators/average-pooling-nhwc.c
+                        ${XNNPACK_DIR}/src/operators/batch-matrix-multiply-nc.c
+                        ${XNNPACK_DIR}/src/operators/binary-elementwise-nd.c
+                        ${XNNPACK_DIR}/src/operators/channel-shuffle-nc.c
+                        ${XNNPACK_DIR}/src/operators/constant-pad-nd.c
+                        ${XNNPACK_DIR}/src/operators/convolution-nchw.c
+                        ${XNNPACK_DIR}/src/operators/convolution-nhwc.c
+                        ${XNNPACK_DIR}/src/operators/deconvolution-nhwc.c
+                        ${XNNPACK_DIR}/src/operators/dynamic-fully-connected-nc.c
+                        ${XNNPACK_DIR}/src/operators/fully-connected-nc.c
+                        ${XNNPACK_DIR}/src/operators/global-average-pooling-ncw.c
+                        ${XNNPACK_DIR}/src/operators/global-average-pooling-nwc.c
+                        ${XNNPACK_DIR}/src/operators/lut-elementwise-nc.c
+                        ${XNNPACK_DIR}/src/operators/max-pooling-nhwc.c
+                        ${XNNPACK_DIR}/src/operators/prelu-nc.c
+                        ${XNNPACK_DIR}/src/operators/reduce-nd.c
+                        ${XNNPACK_DIR}/src/operators/resize-bilinear-nchw.c
+                        ${XNNPACK_DIR}/src/operators/resize-bilinear-nhwc.c
+                        ${XNNPACK_DIR}/src/operators/rope-nthc.c
+                        ${XNNPACK_DIR}/src/operators/scaled-dot-product-attention-nhtc.c
+                        ${XNNPACK_DIR}/src/operators/slice-nd.c
+                        ${XNNPACK_DIR}/src/operators/softmax-nc.c
+                        ${XNNPACK_DIR}/src/operators/transpose-nd.c
+                        ${XNNPACK_DIR}/src/operators/unary-elementwise-nc.c
+                        ${XNNPACK_DIR}/src/operators/unpooling-nhwc.c
+  )
 
-  # not explicitly references in BAZEL.build but unresolved symbols if missing.
-  # e.g. see src/configs/abgpool-config.c has this which is implemented in scalar.c
-  # #elif XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-  #   qu8_avgpool_config.unipass = (xnn_avgpool_unipass_ukernel_fn) xnn_qu8_avgpool_minmax_fp32_ukernel_9x__scalar_imagic_c1;
+  # kernels
   list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/scalar.c)
-
   list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/wasm.c)
 
   if(onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-    #target_compile_definitions(XNNPACK PRIVATE XNN_ARCH_WASMSIMD)
-    #target_compile_definitions(XNNPACK PRIVATE __wasm_simd128__)
     list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/wasmsimd.c)
     target_compile_options(XNNPACK PRIVATE "-msimd128")
   endif()
