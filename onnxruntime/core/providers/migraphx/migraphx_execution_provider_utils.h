@@ -152,7 +152,7 @@ bool canEvalNodeArgument(const GraphViewer& graph,
   return true;
 }
 
-float ConvertSinglePrecisionIEEE754ToFloat(uint64_t input) {
+float ConvertSinglePrecisionIEEE754ToFloat(uint32_t input) {
   int s = (input >> 31) & 0x01;
   int e = ((input & 0x7f800000) >> 23) - 127;
   int p = -1;
@@ -209,7 +209,7 @@ bool ReadDynamicRange(const std::string file_name,
           std::getline(in_line, str, delim);
           std::string tensor_name = str;
           std::getline(in_line, str, delim);
-          uint64_t scale_int = std::strtoul(str.c_str(), nullptr, 16);
+          uint32_t scale_int = std::strtoul(str.c_str(), nullptr, 16);
           float scale_float = ConvertSinglePrecisionIEEE754ToFloat(scale_int);
           float dynamic_range = scale_float * 127.0f;
           dynamic_range_map[tensor_name] = dynamic_range;
