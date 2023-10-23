@@ -193,11 +193,11 @@ OperatorFieldVariant CreateAttribute(
 
 OperatorFieldTypes::TensorDesc CreateBufferTensorDesc(
     const dml::ir::DmlBufferTensorDesc* tensorDesc,
-    const bool isConstantTensor = false)
+    const bool isLargeConstantTensor = false)
 {
     DmlBufferTensorDesc bufferTensorDesc = {};
     bufferTensorDesc.dataType = ApiTraits::StringifyHelpers::FromString<DML_TENSOR_DATA_TYPE>(tensorDesc->dataType()->c_str());
-    if (isConstantTensor)
+    if (isLargeConstantTensor)
     {
         bufferTensorDesc.flags = DML_TENSOR_FLAG_OWNED_BY_DML;
     }
@@ -215,12 +215,12 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
     const dml::ir::OperatorNodeDesc* flatbufferOperatorNodeDesc,
     const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>* nodeInputNames,
     const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>* nodeOutputNames,
-    const std::unordered_set<std::string_view>& constantInputs)
+    const std::unordered_set<std::string_view>& largeConstantInputs)
 {
     DML_OPERATOR_TYPE type = ApiTraits::StringifyHelpers::FromString<DML_OPERATOR_TYPE>(flatbufferOperatorNodeDesc->type()->c_str());
     if (type == DML_OPERATOR_INVALID)
     {
-        throw std::invalid_argument("Graph operator node at index:" + std::to_string(nodeIndex) +
+        throw std::invalid_argument("Graph operator node at index: " + std::to_string(nodeIndex) +
                                     " either has empty or invalid operator type.");
     }
     const DML_OPERATOR_SCHEMA& schema = SchemaHelpers::GetSchema(type);
@@ -246,7 +246,7 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
             {
                 if (inputNameItr == nodeInputNames->end())
                 {
-                    throw std::invalid_argument("Missing input names for node at index:" + std::to_string(nodeIndex));
+                    throw std::invalid_argument("Missing input names for node at index: " + std::to_string(nodeIndex));
                 }
 
                 if (schemaField->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC)
@@ -258,15 +258,15 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
                         field = OperatorFieldTypes::TensorDesc();
                         break;
                     }
-                    bool isConstantTensor = !constantInputs.empty() && constantInputs.find(inputName->c_str()) != constantInputs.end();
+                    bool isLargeConstantTensor = !largeConstantInputs.empty() && largeConstantInputs.find(inputName->c_str()) != largeConstantInputs.end();
 
                     if (flatbufferOperatorNodeDesc->inputs()->size() <= inputTensorDescIndex)
                     {
                         throw std::invalid_argument("Expecting at least " + std::to_string(inputTensorDescIndex + 1) + 
-                                                    "input tensor desc for graph operator node at index:" + std::to_string(nodeIndex));
+                                                    " input tensor desc for graph operator node at index: " + std::to_string(nodeIndex));
                     }
                     const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->inputs()->Get(inputTensorDescIndex++);
-                    field = CreateBufferTensorDesc(tensorDesc, isConstantTensor);
+                    field = CreateBufferTensorDesc(tensorDesc, isLargeConstantTensor);
                 }
                 else if (schemaField->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC_ARRAY)
                 {
@@ -275,15 +275,15 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
                     {
                         const flatbuffers::String* inputName = *inputNameItr;
                         inputNameItr++;
-                        bool isConstantTensor = !constantInputs.empty() && constantInputs.find(inputName->c_str()) != constantInputs.end();
+                        bool isLargeConstantTensor = !largeConstantInputs.empty() && largeConstantInputs.find(inputName->c_str()) != largeConstantInputs.end();
                         
                         if (flatbufferOperatorNodeDesc->inputs()->size() <= inputTensorDescIndex)
                         {
                             throw std::invalid_argument("Expecting at least " + std::to_string(inputTensorDescIndex + 1) + 
-                                                        "input tensor desc for graph operator node at index:" + std::to_string(nodeIndex));
+                                                        " input tensor desc for graph operator node at index: " + std::to_string(nodeIndex));
                         }
                         const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->inputs()->Get(inputTensorDescIndex++);
-                        tensors.push_back(CreateBufferTensorDesc(tensorDesc, isConstantTensor).value());
+                        tensors.push_back(CreateBufferTensorDesc(tensorDesc, isLargeConstantTensor).value());
                     }
                     field = tensors;
                 }
@@ -293,7 +293,7 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
             {
                 if (outputNameItr == nodeOutputNames->end())
                 {
-                    throw std::invalid_argument("Missing output names for node at index:" + std::to_string(nodeIndex));
+                    throw std::invalid_argument("Missing output names for node at index: " + std::to_string(nodeIndex));
                 }
 
                 if (schemaField->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC)
@@ -310,7 +310,7 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
                     if (flatbufferOperatorNodeDesc->outputs()->size() <= outputTensorDescIndex)
                     {
                         throw std::invalid_argument("Expecting at least " + std::to_string(outputTensorDescIndex + 1) + 
-                                                    "output tensor desc for graph operator node at index:" + std::to_string(nodeIndex));
+                                                    " output tensor desc for graph operator node at index: " + std::to_string(nodeIndex));
                     }
                     const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->outputs()->Get(outputTensorDescIndex++);
                     field = CreateBufferTensorDesc(tensorDesc);
@@ -323,7 +323,7 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
                         if (flatbufferOperatorNodeDesc->outputs()->size() <= outputTensorDescIndex)
                         {
                             throw std::invalid_argument("Expecting at least " + std::to_string(outputTensorDescIndex + 1) + 
-                                                        "output tensor desc for graph operator node at index:" + std::to_string(nodeIndex));
+                                                        " output tensor desc for graph operator node at index: " + std::to_string(nodeIndex));
                         }
                         const dml::ir::DmlBufferTensorDesc* tensorDesc = flatbufferOperatorNodeDesc->outputs()->Get(outputTensorDescIndex++);
                         tensors.push_back(CreateBufferTensorDesc(tensorDesc).value());
@@ -337,7 +337,7 @@ AbstractOperatorDesc CreateAbstractOperatorDesc(
                 if (flatbufferOperatorNodeDesc->attributes()->size() <= attributeIndex)
                 {
                     throw std::invalid_argument("Expecting at least " + std::to_string(attributeIndex + 1) + 
-                                                "attributes for graph operator node at index:" + std::to_string(nodeIndex));
+                                                " attributes for graph operator node at index: " + std::to_string(nodeIndex));
                 }
                 const dml::ir::operatorFieldTypes::AttributeDesc* attributeDesc = 
                     attributeIndex >= flatbufferOperatorNodeDesc->attributes()->size() ?
@@ -416,7 +416,7 @@ template <typename EdgeType> void PopulateEdges(
                 if (edgeToOutgoingNodeIndexMap.find(edgeName->string_view()) == edgeToOutgoingNodeIndexMap.end())
                 {
                     throw std::range_error("Neither there is any graph input with name " + edgeName->str() + 
-                                           "nor there is any node which has " + edgeName->str() + " as one of the output.");
+                                           " nor there is any node which has " + edgeName->str() + " as one of the output.");
                 }
                 auto& intermediateEdgeNodeIndex = edgeToOutgoingNodeIndexMap[edgeName->string_view()];
                 DmlIntermediateSerializedGraphEdge intermediateEdge = {};
@@ -429,6 +429,8 @@ template <typename EdgeType> void PopulateEdges(
             }
             else if constexpr (std::is_same_v<EdgeType, DmlOutputSerializedGraphEdge>)
             {
+                std::string strr = edgeName->str();
+                size_t strrSize = strr.size();
                 edgeToOutgoingNodeIndexMap[edgeName->string_view()] = {nodeIndex, edgeIndex};
             }
         }
@@ -458,12 +460,27 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
     std::unordered_map<std::string_view, uint32_t> graphOutputEdgeToIndexMap = ConvertToEdgeNameToIndexMap(flatbufferGraphDesc->graphOutputNames());
     
     std::unordered_map<std::string_view, NodeIndex> edgeToOutgoingNodeIndexMap;
-    std::unordered_set<std::string_view> constantInputs;
+    std::unordered_set<std::string_view> largeConstantInputs;
 
     std::vector<DmlSerializedGraphNode> nodes(flatbufferGraphDesc->nodes()->size());
     std::vector<DmlInputSerializedGraphEdge> inputEdges;
     std::vector<DmlOutputSerializedGraphEdge> outputEdges;
     std::vector<DmlIntermediateSerializedGraphEdge> intermediateEdges;
+
+    // Iterator on output edges of all nodes first because
+    // <edgeToOutgoingNodeIndexMap> needs to be filled first.
+    for (uint32_t nodeIndex = 0; nodeIndex < flatbufferGraphDesc->nodes()->size(); nodeIndex++)
+    {
+        const dml::ir::DmlGraphNode* flatbufferNode = flatbufferGraphDesc->nodes()->Get(nodeIndex);
+
+        PopulateEdges<DmlOutputSerializedGraphEdge>(
+            nodeIndex,
+            flatbufferNode->outputNames(),
+            graphOutputEdgeToIndexMap,
+            outputEdges,
+            intermediateEdges,
+            edgeToOutgoingNodeIndexMap);
+    }
 
     for (uint32_t nodeIndex = 0; nodeIndex < flatbufferGraphDesc->nodes()->size(); nodeIndex++)
     {
@@ -476,18 +493,11 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
             inputEdges,
             intermediateEdges,
             edgeToOutgoingNodeIndexMap);
-        PopulateEdges<DmlOutputSerializedGraphEdge>(
-            nodeIndex,
-            flatbufferNode->outputNames(),
-            graphOutputEdgeToIndexMap,
-            outputEdges,
-            intermediateEdges,
-            edgeToOutgoingNodeIndexMap);
 
         DmlSerializedGraphNode node = {};
         if (flatbufferNode->name()->size() == 0)
         {
-            throw std::invalid_argument("Graph node at index:" + std::to_string(nodeIndex) + " doesn't have any name");
+            throw std::invalid_argument("Graph node at index: " + std::to_string(nodeIndex) + " doesn't have any name");
         }
         node.Name = flatbufferNode->name()->c_str();
 
@@ -498,12 +508,18 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
             {
                 if (flatbufferConstantNode->data_as_ConstantName()->name()->size() == 0)
                 {
-                    throw std::invalid_argument("Constant node at index:" + std::to_string(nodeIndex) + 
+                    throw std::invalid_argument("Constant node at index: " + std::to_string(nodeIndex) + 
                                                 " doesn't have constant data name.");
                 }
 
                 ConstantName constantNode = {flatbufferConstantNode->data_as_ConstantName()->name()->c_str()};
                 node.Desc = constantNode;
+                
+                // output of this node will part of constantInputs list
+                for (uint32_t outputIndex = 0; outputIndex < flatbufferNode->outputNames()->size(); outputIndex++)
+                {
+                    largeConstantInputs.insert(flatbufferNode->outputNames()->Get(outputIndex)->c_str());
+                }
             }
             else if (flatbufferConstantNode->data_type() == dml::ir::ConstantNodeDescDetail_ConstantRawData)
             {
@@ -522,11 +538,6 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
                 node.Desc = constantData;
             }
 
-            // output of this node will part of constantInputs list
-            for (uint32_t outputIndex = 0; outputIndex < flatbufferNode->outputNames()->size(); outputIndex++)
-            {
-                constantInputs.insert(flatbufferNode->outputNames()->Get(outputIndex)->c_str());
-            }
 
         }
         else if (flatbufferNode->desc_type() == dml::ir::NodeDesc::NodeDesc_OperatorNodeDesc)
@@ -538,7 +549,7 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
                 flatbufferOperatorNodeDesc,
                 flatbufferNode->inputNames(),
                 flatbufferNode->outputNames(),
-                constantInputs);
+                largeConstantInputs);
         }
 
         nodes[nodeIndex] = node;

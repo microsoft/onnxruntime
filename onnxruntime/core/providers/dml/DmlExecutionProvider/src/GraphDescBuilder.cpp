@@ -387,7 +387,7 @@ namespace Dml::GraphDescBuilder
                             edge.FromNodeOutputIndex = constantNodeAndIndex.targetIndex;
                             edge.ToNodeIndex = mainDmlGraphNodeIndex;
                             edge.ToNodeInputIndex = operatorDmlGraphInputEdge.ToNodeInputIndex;
-                            edge.Name = arg->Name();
+                            edge.Name = arg->Name() + "-nodeIdx:" + std::to_string(edge.FromNodeIndex) + "-outputIdx:" + std::to_string(edge.FromNodeOutputIndex);
                             serializedGraphConstantNameToMainGraphInputIndex[iter->first] = mainDmlGraphInputIndex;
                             dmlGraphIntermediateEdges.push_back(edge);
                         }
@@ -446,7 +446,7 @@ namespace Dml::GraphDescBuilder
                 edge.ToNodeIndex = shiftedToNodeIndex;
                 edge.ToNodeInputIndex = operatorGraphIntermediateEdge.ToNodeInputIndex;
                 edge.Name = "nodeIdx:" + std::to_string(shiftedFromNodeIndex) + "-outputIdx:" + std::to_string(operatorGraphIntermediateEdge.FromNodeOutputIndex);
-                                dmlGraphIntermediateEdges.push_back(edge);
+                dmlGraphIntermediateEdges.push_back(edge);
             }
 
             // populate nameToNodeAndIndexMap (which will be used by above loop) for operatorGraphOutputEdges

@@ -289,7 +289,7 @@ flatbuffers::Offset<void> SerializeConstantNodeDesc(
         auto& constantName = std::get<ConstantName>(constantNodeDesc);
         if (constantName.name.empty())
         {
-            throw std::invalid_argument("Graph constant node at index:" + std::to_string(nodeIndex) +
+            throw std::invalid_argument("Graph constant node at index: " + std::to_string(nodeIndex) +
                                         " doesn't have the constant data name.");
         }
 
@@ -330,7 +330,7 @@ flatbuffers::Offset<dml::ir::DmlGraphNode> SerializeNode(
 {
     if (graphNode.Name.empty())
     {        
-        throw std::invalid_argument("Graph node at index:" + std::to_string(nodeIndex) + 
+        throw std::invalid_argument("Graph node at index: " + std::to_string(nodeIndex) + 
                                     " does not have any name.");
     }
 
@@ -462,12 +462,13 @@ void PopulateNodeInputOutputNames(
     std::unordered_map<uint32_t, std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>>> intermediateEdgeNames;
     for (uint32_t edgeIndex = 0; edgeIndex < static_cast<uint32_t>(graphDesc.IntermediateEdges.size()); edgeIndex++)
     {
+        size_t strSize = graphDesc.IntermediateEdges[edgeIndex].Name.size();
         auto& edge = graphDesc.IntermediateEdges[edgeIndex];
         if (edge.Name.empty())
         {
             throw std::invalid_argument(
-                    "Graph intermediate edge from nodeIndex:" + std::to_string(edge.FromNodeIndex) + 
-                    " & nodeOutputIndex:" + std::to_string(edge.FromNodeOutputIndex) + " doesn't have name.");
+                    "Graph intermediate edge from nodeIndex: " + std::to_string(edge.FromNodeIndex) + 
+                    " & nodeOutputIndex: " + std::to_string(edge.FromNodeOutputIndex) + " doesn't have name.");
         }
         
         if (intermediateEdgeNames.find(edge.FromNodeIndex) != intermediateEdgeNames.end() &&
@@ -481,8 +482,8 @@ void PopulateNodeInputOutputNames(
             if (edgeName->str() != edge.Name)
             {
                 throw std::invalid_argument(
-                    "Graph intermediate edge from nodeIndex:" + std::to_string(edge.FromNodeIndex) + 
-                    " & nodeOutputIndex:" + std::to_string(edge.FromNodeOutputIndex) + " has more than 1 names.");
+                    "Graph intermediate edge from nodeIndex: " + std::to_string(edge.FromNodeIndex) + 
+                    " & nodeOutputIndex: " + std::to_string(edge.FromNodeOutputIndex) + " has more than 1 names.");
             }
         }
         else
