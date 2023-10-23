@@ -77,7 +77,6 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
 #if !defined(__APPLE__)
@@ -91,7 +90,6 @@ Abstract:
 #endif // 
 #endif // ARM64
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
-#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 //
 // Basic Linear Algebra Subprograms (BLAS) types.

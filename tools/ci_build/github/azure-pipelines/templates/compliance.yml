@@ -12,32 +12,11 @@ steps:
     debugMode: false
   continueOnError: true
 
-- task: BinSkim@3
+- task: BinSkim@4
   displayName: 'Run BinSkim'
   inputs:
-    arguments: 'analyze $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.dll  --recurse --verbose'
+    AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
   continueOnError: true
-
-- task: DeleteFiles@1
-  displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-  inputs:
-    SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-    Contents: |
-     **/*.obj
-     **/*.pdb
-     **/*.dll
-
-# Manually set msBuildCommandline so that we can also set CAExcludePath
-- task: SDLNativeRules@3
-  displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-  inputs:
-    userProvideBuildInfo: msBuildInfo
-    msBuildArchitecture: x64
-    msBuildVersion: 17.0
-    msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="${{parameters.msbuildPlatform}}" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
-    excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files#C:\program files (x86)#C:\program files'
-    rulesetName: Custom
-    customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
 
 - task: SdtReport@2
   displayName: 'Create Security Analysis Report'

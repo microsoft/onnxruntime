@@ -1,4 +1,5 @@
 #include "testPch.h"
+#include <absl/strings/ascii.h>
 #include "test/onnx/TestCase.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/util/include/test/compare_ortvalue.h"
@@ -237,11 +238,16 @@ static std::vector<ITestCase*> GetAllTestCases() {
   // Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
   allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
 
+  auto broken_tests = GetBrokenTests("dml");
+  auto broken_tests_keyword_set = GetBrokenTestsKeyWordSet("dml");
+
   WINML_EXPECT_NO_THROW(LoadTests(
     dataDirs,
     whitelistedTestCases,
     TestTolerances(1e-3, 1e-3, {}, {}),
     allDisabledTests,
+    std::move(broken_tests),
+    std::move(broken_tests_keyword_set),
     [&tests](std::unique_ptr<ITestCase> l) {
       tests.push_back(l.get());
       ownedTests.push_back(std::move(l));
@@ -379,15 +385,8 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_";  // model name
   name += tokenizedModelPath[tokenizedModelPath.size() - 3];         // opset version
 
-  // To introduce models from model zoo, the model path is structured like this "<source>/<opset>/<model_name>/?.onnx"
-  std::string source = tokenizedModelPath[tokenizedModelPath.size() - 4];
-  // `models` means the root of models, to be ompatible with the old structure, that is, the source name is empty.
-  if (source != "models") {
-    name += "_" + source;
-  }
-
   std::replace_if(
-    name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_'
+    name.begin(), name.end(), [](char c) { return !absl::ascii_isalnum(c); }, '_'
   );
 
   // Determine if test should be skipped, using the generic name (no CPU or GPU suffix yet).
@@ -402,6 +401,13 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   // Check once more with the full name, lest any GPU-specific/CPU-specific cases exist.
   if (!isDisabled) {
     ModifyNameIfDisabledTest(/*inout*/ name, deviceKind);
+  }
+
+  // To introduce models from model zoo, the model path is structured like this "<source>/<opset>/<model_name>/?.onnx"
+  std::string source = tokenizedModelPath[tokenizedModelPath.size() - 4];
+  // `models` means the root of models, to be ompatible with the old structure, that is, the source name is empty.
+  if (source != "models") {
+    name += "_" + source;
   }
 
   return name;

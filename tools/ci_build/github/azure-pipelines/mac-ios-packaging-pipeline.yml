@@ -1,3 +1,4 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -24,6 +25,8 @@ pr:
     - BUILD.md
     - 'js/web'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 parameters:
 - name: buildType
   displayName: |-
@@ -97,50 +100,3 @@ stages:
 - template: templates/stages/mac-ios-packaging-build-stage.yml
   parameters:
     packageVariant: Training
-
-- stage: IosPackaging_TestPackageSwift_Full
-  dependsOn:
-  - IosPackaging_SetCommonVariables
-  - IosPackaging_Build_Full
-
-  jobs:
-  - job: j
-    displayName: "Test Package.swift with full package"
-
-    pool:
-      vmImage: "macOS-13"
-
-    variables:
-      xcodeVersion: "14.3"
-      ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
-      skipComponentGovernanceDetection: true
-
-    timeoutInMinutes: 10
-
-    steps:
-    - template: templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: ${{ variables.xcodeVersion }}
-
-    - download: current
-      artifact: ios_packaging_artifacts_full
-      displayName: "Download full build artifacts"
-
-    - script: |
-        set -e -x
-        shasum -a 256 "$(Pipeline.Workspace)/ios_packaging_artifacts_full/pod-archive-onnxruntime-c-$(ortPodVersion).zip"
-      displayName: "Print ORT iOS Pod checksum"
-
-    # copy the pod archive to a path relative to Package.swift and set the env var required by Package.swift to use that.
-    # xcodebuild will implicitly use Package.swift and build/run the .testTarget (tests in swift/onnxTests).
-    # once that's done cleanup the copy of the pod zip file
-    - script: |
-        set -e -x
-
-        SIMULATOR_DEVICE_ID=$(set -o pipefail; python3 tools/ci_build/github/apple/get_simulator_device_info.py | jq --raw-output '.device_udid')
-
-        cp "$(Pipeline.Workspace)/ios_packaging_artifacts_full/pod-archive-onnxruntime-c-$(ortPodVersion).zip" swift/
-        export ORT_IOS_POD_LOCAL_PATH="swift/pod-archive-onnxruntime-c-$(ortPodVersion).zip"
-        xcodebuild test -scheme onnxruntime -destination "platform=iOS Simulator,id=${SIMULATOR_DEVICE_ID}"
-        rm swift/pod-archive-onnxruntime-c-$(ortPodVersion).zip
-      displayName: "Test Package.swift usage"

@@ -1,4 +1,4 @@
-##### trigger Don't modified it manully ####
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -11,7 +11,6 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
 pr:
   branches:
@@ -25,7 +24,6 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
@@ -49,7 +47,6 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-A10
@@ -67,30 +64,11 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        # Some unit tests crash on A10 GPUs. So this job still needs to use A10.
+        # Some unit tests crash on A10 GPUs. So this job still needs to use T4.
         MachinePool: onnxruntime-Win2022-GPU-T4
         isTraining: true
-
-- stage: dml
-  dependsOn: []
-  jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
-      parameters:
-        BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env.bat
-        buildArch: x64
-        additionalBuildFlags: --enable_pybind --use_dml --enable_wcos  --use_winml
-        msbuildPlatform: x64
-        isX86: false
-        job_name_suffix: x64_RelWithDebInfo
-        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
-        ORT_EP_NAME: DML
-        WITH_CACHE: true
-        MachinePool: onnxruntime-Win2022-GPU-dml-A10
 
 - stage: kernelDocumentation
   dependsOn: []
@@ -106,7 +84,6 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: false
-        RunStaticCodeAnalysis: false
         GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
         WITH_CACHE: true

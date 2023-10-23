@@ -9,7 +9,7 @@
 #include "core/providers/js/js_kernel.h"
 namespace onnxruntime {
 namespace js {
-template <typename T, bool is_channels_last>
+template <bool is_channels_last>
 class ConvTranspose : public JsKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : JsKernel(info), conv_transpose_attrs_(info), w_is_const_(false) {
@@ -106,6 +106,23 @@ class ConvTranspose : public JsKernel {
                                  gsl::narrow_cast<int32_t>(local_output_shape.size()),
                                  reinterpret_cast<int32_t>(local_output_shape.size() > 0 ? local_output_shape.data() : nullptr) >> 2);
     }
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* /* prepacked_weights */) override {
+    is_packed = false;
+
+    if (input_idx == 1) {
+      // Only handle the common case of conv2D
+      if (tensor.Shape().NumDimensions() != 4 || tensor.SizeInBytes() == 0) {
+        return Status::OK();
+      }
+
+      w_is_const_ = true;
+    }
+
+    return Status::OK();
   }
 
  protected:

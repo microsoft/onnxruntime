@@ -890,49 +890,49 @@ Status ReduceL1<T>::Compute(OpKernelContext* ctx) const {
   // The following variable does not change if the input tensor and the
   // axes do not either. It could be either cached in ctx or precomputed
   // in the constructor if shape and axes are known at this stage.
-  CommonReduce1Loop<ReduceAggregatorL1<T>>(ctx, axes_, keepdims_);
+  CommonReduce1Loop<ReduceAggregatorL1<T>>(ctx, axes_, keepdims_, noop_with_empty_axes_);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceL2<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce1Loop<ReduceAggregatorL2<T>>(ctx, axes_, keepdims_);
+  CommonReduce1Loop<ReduceAggregatorL2<T>>(ctx, axes_, keepdims_, noop_with_empty_axes_);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceLogSum<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce1Loop<ReduceAggregatorLogSum<T>>(ctx, axes_, keepdims_);
+  CommonReduce1Loop<ReduceAggregatorLogSum<T>>(ctx, axes_, keepdims_, noop_with_empty_axes_);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceLogSumExp<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce2Loops<ReduceAggregatorLogSumExp<T>>(ctx, axes_, keepdims_);
+  CommonReduce2Loops<ReduceAggregatorLogSumExp<T>>(ctx, axes_, keepdims_, noop_with_empty_axes_);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce1Loop<ReduceAggregatorMax<T>>(ctx, axes_, keepdims_);
+  CommonReduce1Loop<ReduceAggregatorMax<T>>(ctx, axes_, keepdims_, noop_with_empty_axes_);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce1Loop<ReduceAggregatorMean<T>>(ctx, axes_, keepdims_);
+  CommonReduce1Loop<ReduceAggregatorMean<T>>(ctx, axes_, keepdims_, noop_with_empty_axes_);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceMin<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce1Loop<ReduceAggregatorMin<T>>(ctx, axes_, keepdims_);
+  CommonReduce1Loop<ReduceAggregatorMin<T>>(ctx, axes_, keepdims_, noop_with_empty_axes_);
   return Status::OK();
 }
 
 template <typename T>
 Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce1Loop<ReduceAggregatorProd<T>>(ctx, axes_, keepdims_);
+  CommonReduce1Loop<ReduceAggregatorProd<T>>(ctx, axes_, keepdims_, noop_with_empty_axes_);
   return Status::OK();
 }
 
@@ -1017,7 +1017,7 @@ std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, gsl::span<const 
 
 template <typename T>
 Status ReduceSumSquare<T>::Compute(OpKernelContext* ctx) const {
-  CommonReduce1Loop<ReduceAggregatorSumSquare<T>>(ctx, axes_, keepdims_);
+  CommonReduce1Loop<ReduceAggregatorSumSquare<T>>(ctx, axes_, keepdims_, noop_with_empty_axes_);
   return Status::OK();
 }
 

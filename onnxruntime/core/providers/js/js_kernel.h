@@ -11,6 +11,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/js/js_execution_provider.h"
+#include "core/providers/js/js_data_types.h"
 
 struct pthreadpool;
 
@@ -194,7 +195,9 @@ class JsKernel : public OpKernel {
       return status;
     }
 
-    int status_code = EM_ASM_INT({ return Module.jsepRun($0, $1); }, this, reinterpret_cast<int32_t>(p_serialized_kernel_context));
+    int status_code = EM_ASM_INT(
+        { return Module.jsepRunKernel($0, $1, Module.jsepSessionState.sessionHandle, Module.jsepSessionState.errors); },
+        this, reinterpret_cast<int32_t>(p_serialized_kernel_context));
 
     LOGS_DEFAULT(VERBOSE) << "outputs = " << context->OutputCount() << ". Y.data="
                           << (size_t)(context->Output<Tensor>(0)->DataRaw()) << ".";

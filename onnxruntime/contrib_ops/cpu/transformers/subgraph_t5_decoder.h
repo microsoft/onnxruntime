@@ -5,6 +5,7 @@
 
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -20,6 +21,13 @@ class T5DecoderSubgraph : public Subgraph {
                                         has_hidden_state_(false),
                                         use_sequence_as_input_ids_(true) {
     first_present_output_index_ = 1;
+
+    // Currently just using parent node's attribute. Maybe better to find it purely in subgraph.
+    const auto& attributes = node_in.GetAttributes();
+    if (attributes.find("decoder_output_cross_qk") != attributes.end()) {
+      auto& attr = attributes.at("decoder_output_cross_qk");
+      output_cross_qk_ = (attr.i() != 0LL);
+    }
   }
 
   // Create inputs for first inference of decoder subgraph.
@@ -62,7 +70,7 @@ class T5DecoderSubgraph : public Subgraph {
     return first_present_output_index_;
   }
 
-  bool UseSequenceAsInputIds() const {
+  inline bool UseSequenceAsInputIds() const {
     return use_sequence_as_input_ids_;
   }
 

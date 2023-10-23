@@ -1,4 +1,17 @@
-trigger: none
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 pr:
   branches:
     include:
@@ -11,8 +24,9 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 
 # gid of video and render group on gcramdrr1-mi100-085 and -86
@@ -22,7 +36,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 5.6
+    value: 5.7
 
 jobs:
 - job: Linux_Build
@@ -85,6 +99,7 @@ jobs:
             ccache -s; \
             python tools/ci_build/build.py \
               --config Release \
+              --enable_training \
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
                 onnxruntime_BUILD_KERNEL_EXPLORER=OFF \
@@ -167,7 +182,7 @@ jobs:
           /bin/bash -c "
             set -ex; \
             cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
-            bash /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh"
+            bash /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
 

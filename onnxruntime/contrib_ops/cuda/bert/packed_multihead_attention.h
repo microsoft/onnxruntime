@@ -31,6 +31,8 @@ class PackedMultiHeadAttention final : public TrtFusedAttention<T>, public CudaK
   float scale_;    // the scale for softmax in memory efficient attention or unfused attention.
 
   bool disable_memory_efficient_attention_;
+  bool disable_flash_attention_;
+  int min_seq_len_for_flash_attention_packed_qkv_;
 };
 
 }  // namespace cuda

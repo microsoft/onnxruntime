@@ -319,6 +319,11 @@ else()
     string(APPEND CMAKE_CXX_FLAGS " -g -O0 --coverage ")
     string(APPEND CMAKE_C_FLAGS   " -g -O0 --coverage ")
   endif()
+  if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
+    # suppress warnings from flatbuffers
+    string(APPEND CMAKE_CXX_FLAGS " -Wno-restrict ")
+    string(APPEND CMAKE_C_FLAGS   " -Wno-restrict ")
+  endif()
   # Check support for AVX and f16c.
   include(CheckCXXCompilerFlag)
   check_cxx_compiler_flag("-mf16c" COMPILER_SUPPORT_MF16C)

@@ -4,10 +4,12 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include "test/providers/qnn/qnn_test_utils.h"
+#include <cassert>
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
 
+#include "core/platform/env_var_utils.h"
 #include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph.h"
@@ -15,7 +17,47 @@
 namespace onnxruntime {
 namespace test {
 
-void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
+std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems) {
+  if (num_elems == 0) {
+    return {};
+  }
+
+  if (num_elems == 1) {
+    return {min_val};
+  }
+
+  std::vector<float> data;
+  data.reserve(num_elems);
+
+  const float step_size = (max_val - min_val) / static_cast<float>(num_elems - 1);
+  float val = min_val;
+  for (size_t i = 0; i < num_elems; i++) {
+    data.push_back(val);
+    val += step_size;
+  }
+
+  // Ensure that max_val is included exactly (due to rounding from adding step sizes).
+  data[num_elems - 1] = max_val;
+
+  return data;
+}
+
+void TryEnableQNNSaver(ProviderOptions& qnn_options) {
+  // Allow dumping QNN API calls to file by setting an environment variable that enables the QNN Saver backend.
+  constexpr auto kEnableQNNSaverEnvironmentVariableName = "ORT_UNIT_TEST_ENABLE_QNN_SAVER";
+  static std::optional<int> enable_qnn_saver = onnxruntime::ParseEnvironmentVariable<int>(
+      kEnableQNNSaverEnvironmentVariableName);
+
+  if (enable_qnn_saver.has_value() && *enable_qnn_saver != 0) {
+#if defined(_WIN32)
+    qnn_options["qnn_saver_path"] = "QnnSaver.dll";
+#else
+    qnn_options["qnn_saver_path"] = "libQnnSaver.so";
+#endif  // defined(_WIN32)
+  }
+}
+
+void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err, logging::Severity log_severity) {
   EPVerificationParams verification_params;
@@ -39,6 +81,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
+  TryEnableQNNSaver(provider_options);
   RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
                             helper.feeds_, verification_params);
@@ -47,7 +90,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
 void InferenceModel(const std::string& model_data, const char* log_id,
                     std::unique_ptr<IExecutionProvider> execution_provider,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
-                    std::vector<std::string>& output_names, std::vector<OrtValue>& output_vals) {
+                    std::vector<OrtValue>& output_vals) {
   SessionOptions so;
   so.session_logid = log_id;
   RunOptions run_options;
@@ -76,21 +119,20 @@ void InferenceModel(const std::string& model_data, const char* log_id,
   }
 
   const auto& outputs = graph.GetOutputs();
+  std::vector<std::string> output_names;
 
-  // fetch all outputs if necessary.
-  if (output_names.empty()) {
-    output_names.reserve(outputs.size());
-    for (const auto* node_arg : outputs) {
-      if (node_arg->Exists()) {
-        output_names.push_back(node_arg->Name());
-      }
+  output_names.reserve(outputs.size());
+  for (const auto* node_arg : outputs) {
+    if (node_arg->Exists()) {
+      output_names.push_back(node_arg->Name());
     }
   }
 
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &output_vals));
 }
 
-NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale) {
+NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
+                              bool use_contrib_qdq) {
   NodeArg* bias_int32 = nullptr;
 
   // Bias must be int32 to be detected as a QDQ node unit.
@@ -98,7 +140,8 @@ NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<floa
   if (bias_def.IsRandomData()) {
     // Create random initializer def that is quantized to int32
     const auto& rand_info = bias_def.GetRandomDataInfo();
-    TestInputDef<int32_t> bias_int32_def(bias_def.GetShape(), bias_def.IsInitializer(), static_cast<int32_t>(rand_info.min / bias_scale),
+    TestInputDef<int32_t> bias_int32_def(bias_def.GetShape(), bias_def.IsInitializer(),
+                                         static_cast<int32_t>(rand_info.min / bias_scale),
                                          static_cast<int32_t>(rand_info.max / bias_scale));
     bias_int32 = MakeTestInput(builder, bias_int32_def);
   } else {
@@ -117,7 +160,7 @@ NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<floa
   }
 
   auto* bias = builder.MakeIntermediate();
-  builder.AddDequantizeLinearNode<int32_t>(bias_int32, bias_scale, 0, bias);
+  builder.AddDequantizeLinearNode<int32_t>(bias_int32, bias_scale, 0, bias, use_contrib_qdq);
 
   return bias;
 }

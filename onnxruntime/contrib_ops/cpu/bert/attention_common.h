@@ -37,6 +37,7 @@ enum AttentionKernelType {
   AttentionKernel_TrtFlashAttention,
   AttentionKernel_TrtFusedCrossAttention,
   AttentionKernel_CutlassMemoryEfficientAttention,
+  AttentionKernel_FlashAttention,
   AttentionKernel_Default
 };
 
@@ -81,6 +82,26 @@ struct PackedAttentionParameters {
   bool broadcast_res_pos_bias;
 };
 
+// Parameters deduced from node attributes and inputs/outputs.
+struct GroupQueryAttentionParameters {
+  int batch_size;
+  int sequence_length;
+  int past_sequence_length;     // actual sequence length of past_key and past_value
+  int kv_sequence_length;       // sequence length of key and value (or new_k and new_v when past is present)
+  int present_sequence_length;  // past_sequence_length + kv_sequence_length
+  int max_sequence_length;      // allocated length of past_key and past_value
+  int hidden_size;
+  int num_heads;
+  int head_size;
+  int kv_hidden_size;
+  int kv_num_heads;
+  bool is_unidirectional;  // causal
+  float scale;
+  int num_splits;  // number of splits for splitkv
+  AttentionQkvFormat qkv_format;
+  AttentionQkvFormat past_kv_format;
+};
+
 namespace attention {
 // Environment variable to enable or disable TRT fused self attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedSelfAttention = "ORT_DISABLE_FUSED_ATTENTION";
@@ -98,8 +119,16 @@ constexpr const char* kDisableTrtFlashAttention = "ORT_DISABLE_TRT_FLASH_ATTENTI
 // Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).
 constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION";
 
+// Environment variable to enable or disable flash attention. Default is 0 (enabled).
+constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
+
 // Minimum sequence length to enable memory efficient attention in FP32.
-constexpr int kMinSequenceLengthForMemoryEfficientAttentionFp32 = 256;
+constexpr int kMinSeqLenForMemoryEfficientAttentionFp32 = 256;
+
+// Minimum sequence length to prefer flash attention when input format is packed QKV for MultiHeadAttention
+constexpr const char* kMinSeqLenForFlashAttentionPackedQKV = "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV";
+// Default value for the above setting.
+constexpr int kDefaultMinSeqLenForFlashAttentionPackedQKV = 513;
 
 }  // namespace attention
 

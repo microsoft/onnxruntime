@@ -65,6 +65,7 @@ def generate_artifacts(
         ort_format (bool): Whether to save the generated artifacts in ORT format or not. Default is False.
         custom_op_library (str | os.PathLike): The path to the custom op library.
                                                If not specified, no custom op library is used.
+        additional_output_names (List[str]): List of additional output names to be added to the training/eval model.
 
     Raises:
         RuntimeError: If the loss provided is neither one of the supported losses nor an instance of `onnxblock.Block`
@@ -104,6 +105,20 @@ def generate_artifacts(
             self._loss = _loss
 
         def build(self, *inputs_to_loss):
+            if "additional_output_names" in extra_options:
+                # If additional output names is not a list, raise an error
+                if not isinstance(extra_options["additional_output_names"], list):
+                    raise RuntimeError(
+                        f"Unknown type provided for additional output names {type(extra_options['additional_output_names'])}. "
+                        "Expected additional output names to be a list of strings."
+                    )
+
+                loss_output = self._loss(*inputs_to_loss)
+                if isinstance(loss_output, tuple):
+                    return (*loss_output, *tuple(extra_options["additional_output_names"]))
+                else:
+                    return (loss_output, *tuple(extra_options["additional_output_names"]))
+
             return self._loss(*inputs_to_loss)
 
     training_block = _TrainingBlock(loss_block)

@@ -20,6 +20,8 @@
 #pragma warning(pop)
 #endif
 
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
@@ -42,12 +44,6 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 class Graph;
@@ -1139,6 +1135,7 @@ class Graph {
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.
+  The Graph needs to be Resolve()d after this call.
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */

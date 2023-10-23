@@ -533,12 +533,44 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         ORT_UNUSED_PARAMETER(obj);
 #endif
   });
-  m.def("register_torch_autograd_function", [](std::string key, py::object obj) -> void {
+  m.def("register_torch_autograd_function", [](std::string function_full_qual_name, py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterTorchAutogradFunction(key, obj.ptr());
+    pool.RegisterTorchAutogradFunction(function_full_qual_name, obj.ptr());
 #else
-        ORT_UNUSED_PARAMETER(key);
+        ORT_UNUSED_PARAMETER(function_full_qual_name);
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("register_shape_inference_function", [](std::string function_full_qual_name, py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterShapeInferenceFunction(function_full_qual_name, obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(function_full_qual_name);
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("get_shape_inference_function", [](std::string function_full_qual_name) -> py::object {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    auto py_object = pool.TryGettingShapeInferenceFunction(function_full_qual_name);
+    if (py_object.has_value()) {
+      Py_INCREF(py_object.value());
+      return py::reinterpret_steal<py::object>(py_object.value());
+    }
+#else
+        ORT_UNUSED_PARAMETER(function_full_qual_name);
+#endif
+    return py::none();
+  });
+
+  m.def("register_input_alias_function", [](std::string function_full_qual_name, py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterInputAliasFunction(function_full_qual_name, obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(function_full_qual_name);
         ORT_UNUSED_PARAMETER(obj);
 #endif
   });
@@ -1065,17 +1097,60 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       checkpoint_state(m, "CheckpointState", R"pbdoc(CheckpointState.)pbdoc");
   checkpoint_state
       .def(py::init())
-      .def("add_property", [](onnxruntime::training::api::CheckpointState* state,
-                              const std::string& property_name,
-                              const std::variant<int64_t, float, std::string>& property_value) {
-        state->property_bag.AddProperty(property_name, property_value);
-      })
-      .def("get_property", [](onnxruntime::training::api::CheckpointState* state, const std::string& property_name) {
-        return state->property_bag.GetProperty<onnxruntime::training::api::PropertyDataType>(property_name);
-      })
-      .def("has_property", [](onnxruntime::training::api::CheckpointState* state, const std::string& property_name) {
-        return state->property_bag.HasProperty(property_name);
-      });
+      .def("add_property",
+           [](onnxruntime::training::api::CheckpointState* state,
+              const std::string& property_name,
+              const std::variant<int64_t, float, std::string>& property_value) {
+             state->property_bag.AddProperty(property_name, property_value);
+           })
+      .def("get_property",
+           [](onnxruntime::training::api::CheckpointState* state, const std::string& property_name) {
+             return state->property_bag.GetProperty<onnxruntime::training::api::PropertyDataType>(property_name);
+           })
+      .def("has_property",
+           [](onnxruntime::training::api::CheckpointState* state, const std::string& property_name) {
+             return state->property_bag.HasProperty(property_name);
+           })
+      .def("copy_parameter_from",
+           [](onnxruntime::training::api::CheckpointState* state,
+              const std::string& parameter_name, OrtValue& value) -> void {
+             auto it = state->module_checkpoint_state.named_parameters.find(parameter_name);
+             if (it == state->module_checkpoint_state.named_parameters.end()) {
+               ORT_THROW("Parameter with name ", parameter_name, " does not exist.");
+             }
+             ORT_THROW_IF_ERROR(it->second->CopyFrom(
+                 state->module_checkpoint_state.train_session_data_transfer_mgr, value));
+           })
+      .def("get_parameter",
+           [](onnxruntime::training::api::CheckpointState* state, const std::string& parameter_name) {
+             auto it = state->module_checkpoint_state.named_parameters.find(parameter_name);
+             if (it == state->module_checkpoint_state.named_parameters.end()) {
+               ORT_THROW("Parameter with name ", parameter_name, " does not exist.");
+             }
+             return it->second;
+           })
+      .def("has_parameter",
+           [](onnxruntime::training::api::CheckpointState* state, const std::string& parameter_name) {
+             return state->module_checkpoint_state.named_parameters.count(parameter_name);
+           })
+      .def("parameter_names",
+           [](onnxruntime::training::api::CheckpointState* state) {
+             std::vector<std::string> names;
+             for ([[maybe_unused]] auto& [name, value] : state->module_checkpoint_state.named_parameters) {
+               names.push_back(name);
+             }
+             std::sort(names.begin(), names.end());
+             return names;
+           })
+      .def("property_names",
+           [](onnxruntime::training::api::CheckpointState* state) {
+             std::vector<std::string> names;
+             for ([[maybe_unused]] auto& [name, value] : state->property_bag) {
+               names.push_back(name);
+             }
+             std::sort(names.begin(), names.end());
+             return names;
+           });
 
   py::class_<PyOptimizer>
       training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
@@ -1110,6 +1185,21 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("scheduler_step", [](onnxruntime::training::api::LinearLRScheduler* scheduler) -> void {
         ORT_THROW_IF_ERROR(scheduler->Step());
       });
+
+  py::class_<onnxruntime::training::api::Parameter,
+             std::unique_ptr<onnxruntime::training::api::Parameter, py::nodelete>>
+      parameter(m, "Parameter");
+  parameter
+      .def_property_readonly("name", &onnxruntime::training::api::Parameter::Name)
+      .def_property_readonly("data", &onnxruntime::training::api::Parameter::Data)
+      .def_property_readonly("grad", &onnxruntime::training::api::Parameter::Gradient)
+      .def_property_readonly("requires_grad", &onnxruntime::training::api::Parameter::RequiresGrad)
+      .def("copy_from",
+           [](onnxruntime::training::api::Parameter* parameter,
+              onnxruntime::training::api::CheckpointState* state,
+              OrtValue& value) -> void {
+             ORT_THROW_IF_ERROR(parameter->CopyFrom(state->module_checkpoint_state.train_session_data_transfer_mgr, value));
+           });
 
   m.def(
       "save_checkpoint",

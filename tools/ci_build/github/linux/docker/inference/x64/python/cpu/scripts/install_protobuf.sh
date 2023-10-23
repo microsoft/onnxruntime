@@ -69,7 +69,7 @@ if [[ "$absl_url" = https* ]]; then
 else
   cp $absl_url absl_src.zip
   unzip absl_src.zip
-  cd *
+  cd */
 fi
 
 CC=$GCC_PATH CXX=$GPLUSPLUS_PATH  cmake "."  "-DABSL_PROPAGATE_CXX_STD=ON" "-DCMAKE_BUILD_TYPE=Release" "-DBUILD_TESTING=OFF" "-DABSL_USE_EXTERNAL_GOOGLETEST=ON" "-DCMAKE_PREFIX_PATH=$INSTALL_PREFIX" "-DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX" $EXTRA_CMAKE_ARGS

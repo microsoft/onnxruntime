@@ -24,9 +24,9 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
   unzip lsb-release
 
 # cmake
-RUN CMAKE_VERSION=3.26.3 && \
+RUN CMAKE_VERSION=3.27.3 && \
   aria2c -q -d /tmp -o cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz \
-  --checksum=sha-256=28d4d1d0db94b47d8dfd4f7dec969a3c747304f4a28ddd6fd340f553f2384dc2 \
+  --checksum=sha-256=62e7819fe0867658b6ea765a711686d637dce76cdf6eb0a6b0f1b879e0344fa7 \
   https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
   tar -zxf /tmp/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz --strip=1 -C /usr
 
@@ -55,7 +55,7 @@ WORKDIR /workspace
 
 # install Android SDK and tools
 ENV ANDROID_HOME=~/android-sdk
-ENV NDK_VERSION=25.0.8775105
+ENV NDK_VERSION=26.0.10792818
 ENV ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}
 
 RUN aria2c -q -d /tmp -o cmdline-tools.zip \

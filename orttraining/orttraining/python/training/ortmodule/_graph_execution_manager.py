@@ -19,10 +19,10 @@ from torch.utils.cpp_extension import ROCM_HOME
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from onnxruntime.training.utils import ORTModelInputOutputSchemaType
+from onnxruntime.training.utils import ORTModelInputOutputSchemaType, onnx_dtype_to_pytorch
+from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
-from ._custom_autograd_function_exporter import _post_process_after_export
 from ._fallback import (
     ORTModuleDeviceException,
     ORTModuleONNXModelException,
@@ -139,6 +139,12 @@ class GraphExecutionManager(GraphExecutionInterface):
             from onnxruntime.training.ort_triton import register_triton_op_executor
 
             register_triton_op_executor()
+
+        self._zero_stage3_param_map = {}
+        if self._runtime_options.enable_zero_stage3_support:
+            # Cannot toggle feature enabling/disabling after the first time enabled.
+
+            configure_ort_compatible_zero_stage3(debug=False, stats_output_dir="ort_output", stats_overwrite=True)
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
@@ -281,7 +287,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             # All required models have already been exported previously
             return False
         self._set_device_from_module(inputs, kwargs)
-        self._onnx_models.exported_model = self._get_exported_model(schema, *inputs, **kwargs)
+
+        from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
+
+        with no_increase_global_step():
+            self._onnx_models.exported_model = self._get_exported_model(schema, *inputs, **kwargs)
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(
                 self._debug_options.save_onnx_models.path,
@@ -311,7 +321,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # WARNING/ERROR -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # Be noted: rank 0 log only is controlled by logger configured in _logger.py
         torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.INFO
-        self._logger.info("Exporting the PyTorch model to ONNX...")
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
@@ -327,6 +336,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
         self._flattened_module._input_info = self._input_info
 
+        self._logger.info("Exporting the PyTorch model to ONNX...")
+
         # Leverage cached model if available
         cache_dir = self._runtime_options.ortmodule_cache_dir
         if cache_dir:
@@ -335,7 +346,8 @@ class GraphExecutionManager(GraphExecutionInterface):
             )
             if os.path.exists(cache_dir) and os.path.isfile(filename):
                 self._logger.info(
-                    f"Cached model detected! Cached model will be used to save export and initialization time. If you want the model to be re-exported then DELETE {filename}."
+                    f"Cached model detected! Cached model will be used to save export and initialization time."
+                    f"If you want the model to be re-exported then DELETE {filename}."
                 )
                 exported_model = onnx.load(filename)
                 return exported_model
@@ -399,9 +411,27 @@ class GraphExecutionManager(GraphExecutionInterface):
             )
         exported_model = onnx.load_model_from_string(f.getvalue())
 
-        exported_model = _post_process_after_export(
-            exported_model, self._runtime_options.enable_custom_autograd_function
-        )
+        if self._runtime_options.enable_custom_autograd_function:
+            from ._custom_autograd_function_exporter import post_process_enabling_autograd_function
+
+            exported_model = post_process_enabling_autograd_function(exported_model)
+
+        if self._runtime_options.enable_zero_stage3_support:
+            from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params
+
+            from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat
+
+            self._zero_stage3_param_map = _get_all_zero_stage3_params(self._flattened_module)
+            exported_model = post_processing_enable_zero_stage3_compat(
+                exported_model,
+                self._zero_stage3_param_map,
+                [name for name, _ in self._flattened_module.named_parameters()],
+            )
+
+            # Cannot append pull weight trigger name to input names as following, otherwise, the later check (
+            # https://github.com/microsoft/onnxruntime/blob/068300d97eb25e5b52324e7af54a45ed1fa6a4c3/orttraining/orttraining/python/training/ortmodule/_training_manager.py#L466C18-L466C18)
+            # find input info mismatch, will re-initialize the graph builder.
+            # self._input_info.require_grad_names.append(STAGE3_PULL_WEIGHT_TRIGGER_NAME)
 
         # Cache model for future runs
         if cache_dir:
@@ -467,7 +497,14 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config = C.OrtModuleGraphBuilderConfiguration()
         grad_builder_config.initializer_names = initializer_names
         grad_builder_config.initializer_names_to_train = initializer_names_to_train
-        grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
+
+        input_names_require_grad = self._input_info.require_grad_names
+        if self._runtime_options.enable_zero_stage3_support:
+            from ._zero_stage3_compatibility import STAGE3_PULL_WEIGHT_TRIGGER_NAME
+
+            # Add stage3 pull weight trigger name to require_grad_names, so that it will be included in the gradient graph.
+            input_names_require_grad.append(STAGE3_PULL_WEIGHT_TRIGGER_NAME)
+        grad_builder_config.input_names_require_grad = input_names_require_grad
         grad_builder_config.build_gradient_graph = self._export_mode == torch.onnx.TrainingMode.TRAINING
         grad_builder_config.enable_caching = self._runtime_options.enable_grad_acc_optimization
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(
@@ -543,6 +580,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                     inputs, kwargs
                 )
 
+                if self._runtime_options.enable_zero_stage3_support:
+                    self._append_pull_weight_trigger_as_input(kwargs, detected_device)
+
                 _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
                     self._graph_initializers,
                     self._graph_builder.get_graph_info().user_input_names,
@@ -552,6 +592,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     kwargs,
                     detected_device,
                     self._runtime_inspector,
+                    self._zero_stage3_param_map,
                 )
 
                 # Enable sparsity-based optimization when applicable.
@@ -576,6 +617,21 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._runtime_options.print_memory_stat:
             self._runtime_inspector.enable_memory_inspector(self._original_module)
+
+    def _append_pull_weight_trigger_as_input(self, kwargs: Dict, device: torch.device):
+        from ._zero_stage3_compatibility import (
+            STAGE3_PULL_WEIGHT_TRIGGER_NAME,
+            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
+            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+        )
+
+        kwargs[STAGE3_PULL_WEIGHT_TRIGGER_NAME] = torch.zeros(
+            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+            dtype=onnx_dtype_to_pytorch(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE),
+            device=device,
+        ).requires_grad_()
+
+        return kwargs
 
     def _log_feature_stats(self):
         if get_rank() != 0:
@@ -658,6 +714,14 @@ class GraphExecutionManager(GraphExecutionInterface):
                     f"Use offline tuning results from {self._runtime_options.tuning_results_path}",
                 )
             )
+
+        feature_map.append(
+            (
+                "ZeRO Stage3 Support",
+                self._runtime_options.enable_zero_stage3_support,
+                "Enable/Disable with env ORTMODULE_ENABLE_ZERO_STAGE3=1/0",
+            )
+        )
 
         mode = "training" if self._export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
         mode = f"{_logger.LogColor.UNDERLINE}{mode}{_logger.LogColor.ENDC}"

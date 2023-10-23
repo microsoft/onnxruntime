@@ -26,8 +26,9 @@
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
-#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
+#include "orttraining/core/optimizer/scaled_sum_fusion.h"
+#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/lstm_replacement.h"
 #include "orttraining/core/optimizer/gru_replacement.h"
 #ifdef ENABLE_TRITON
@@ -1301,6 +1302,284 @@ TEST_F(GraphTransformationTests, MegatronBARTSelfAttentionPartitionCorrectnessTe
 
 // end of USE_CUDA
 #endif
+
+/*
+Test graph as below.
+      graph input [1, 1, 256, 256] (float)  scalar_0     graph input [1, 1, 256, 256] (float)
+                                         \   /          /
+                                           Div         Div -- scalar_1
+[1, 1, 256, 256] (float)  scalar_3           \         /
+                \           /                  Add
+                      Div                       /
+                        \                     /
+                          \                /
+                                Add
+                                 |
+                               Identity
+                                 |
+                graph out [1, 1, 256, 256] (float)
+
+*/
+TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs) {
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Div"] == 3);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 2);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 3U);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.size() == 2U);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.ScaledSum"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Identity"] == 1);
+
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "ScaledSum") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 3U);
+
+        auto& attrs = node.GetAttributes();
+        TEST_RETURN_IF_NOT(attrs.find("scale_0") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_1") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_2") != attrs.end());
+        TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.2f == attrs.at("scale_2").f());
+      }
+    }
+
+    return Status::OK();
+  };
+
+  InlinedVector<bool> switch_orders{false, true};
+  for (bool switch_order : switch_orders) {
+    auto build_test_case = [switch_order](ModelTestBuilder& builder) {
+      auto* input_0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_1_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_2_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* scalar_0_arg = builder.MakeScalarInitializer<float>(0.5f);
+      auto* scalar_1_arg = builder.MakeScalarInitializer<float>(0.3f);
+      auto* scalar_2_arg = builder.MakeScalarInitializer<float>(0.2f);
+      auto* div0_out = builder.MakeIntermediate();
+      auto* div1_out = builder.MakeIntermediate();
+      auto* div2_out = builder.MakeIntermediate();
+      builder.AddNode("Div", {input_0_arg, scalar_0_arg}, {div0_out});
+      builder.AddNode("Div", {input_1_arg, scalar_1_arg}, {div1_out});
+
+      auto* add1_out = builder.MakeIntermediate();
+      builder.AddNode("Add", {div0_out, div1_out}, {add1_out});
+
+      builder.AddNode("Div", {input_2_arg, scalar_2_arg}, {div2_out});
+      auto* add2_out = builder.MakeIntermediate();
+      if (switch_order) {
+        builder.AddNode("Add", {div2_out, add1_out}, {add2_out});
+      } else {
+        builder.AddNode("Add", {add1_out, div2_out}, {add2_out});
+      }
+
+      auto* graph_out = builder.MakeOutput();
+      builder.AddNode("Identity", {add2_out}, {graph_out});
+    };
+
+    const std::vector<int> opsets{12, 13, 14, 15};
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
+  }
+}
+
+/*
+Test graph as below.
+      graph input [1, 1, 256, 256] (float)  scalar_0   graph input [1, 1, 256, 256] (float)
+                                         \   /          |
+                                           Div         Div -- scalar_1
+[1, 1, 256, 256] (float)  scalar_3           \         /
+                \           /                  Add
+                      Sub                       /
+                        \                     /
+                          \                /
+                                Add
+                                 |
+                               Identity
+                                 |
+                graph out [1, 1, 256, 256] (float)
+
+*/
+TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs_LastAddNotHaveScaleInput) {
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 4U);
+    TEST_RETURN_IF_NOT(op_count_pre["Div"] == 2);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 2);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Sub"] == 1);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 3U);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.ScaledSum"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Identity"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Sub"] == 1);
+
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "ScaledSum") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 3U);
+
+        auto& attrs = node.GetAttributes();
+        TEST_RETURN_IF_NOT(attrs.find("scale_0") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_1") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_2") != attrs.end());
+        TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
+        TEST_RETURN_IF_NOT(1.0f == attrs.at("scale_2").f());
+      }
+    }
+
+    return Status::OK();
+  };
+
+  InlinedVector<bool> switch_orders{false, true};
+  for (bool switch_order : switch_orders) {
+    auto build_test_case = [switch_order](ModelTestBuilder& builder) {
+      auto* input_0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_1_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_2_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* scalar_0_arg = builder.MakeScalarInitializer<float>(0.5f);
+      auto* scalar_1_arg = builder.MakeScalarInitializer<float>(0.3f);
+      auto* scalar_2_arg = builder.MakeScalarInitializer<float>(0.2f);
+      auto* div0_out = builder.MakeIntermediate();
+      auto* div1_out = builder.MakeIntermediate();
+      auto* sub0_out = builder.MakeIntermediate();
+      builder.AddNode("Div", {input_0_arg, scalar_0_arg}, {div0_out});
+      builder.AddNode("Div", {input_1_arg, scalar_1_arg}, {div1_out});
+
+      auto* add1_out = builder.MakeIntermediate();
+      builder.AddNode("Add", {div0_out, div1_out}, {add1_out});
+
+      builder.AddNode("Sub", {input_2_arg, scalar_2_arg}, {sub0_out});
+      auto* add2_out = builder.MakeIntermediate();
+      if (switch_order) {
+        builder.AddNode("Add", {sub0_out, add1_out}, {add2_out});
+      } else {
+        builder.AddNode("Add", {add1_out, sub0_out}, {add2_out});
+      }
+
+      auto* graph_out = builder.MakeOutput();
+      builder.AddNode("Identity", {add2_out}, {graph_out});
+    };
+
+    const std::vector<int> opsets{12, 13, 14, 15};
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
+  }
+}
+
+/*
+Test graph as below.
+      graph input [1, 1, 256, 256] (float)  scalar_0     graph input [1, 1, 256, 256] (float)
+                                         \   /          /
+                                           Div         Div -- scalar_1
+[1, 1, 256, 256] (float)  scalar_3           \         /
+                \           /                  Add
+                      Div                       / \
+                        \                     /  Identity
+                          \                /       |
+                                Add              graph out [1, 1, 256, 256] (float)
+                                 |
+                               Identity
+                                 |
+                graph out [1, 1, 256, 256] (float)
+
+*/
+TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Div"] == 3);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 2);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 2);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 3U);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.size() == 4U);
+    TEST_RETURN_IF_NOT(op_count["Div"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.ScaledSum"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Identity"] == 2);
+
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "ScaledSum") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 2U);
+
+        auto& attrs = node.GetAttributes();
+        TEST_RETURN_IF_NOT(attrs.find("scale_0") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_1") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_2") == attrs.end());
+        TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
+      }
+    }
+    return Status::OK();
+  };
+
+  InlinedVector<bool> switch_orders{false, true};
+  for (bool switch_order : switch_orders) {
+    auto build_test_case = [switch_order](ModelTestBuilder& builder) {
+      auto* input_0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_1_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_2_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* scalar_0_arg = builder.MakeScalarInitializer<float>(0.5f);
+      auto* scalar_1_arg = builder.MakeScalarInitializer<float>(0.3f);
+      auto* scalar_2_arg = builder.MakeScalarInitializer<float>(0.2f);
+      auto* div0_out = builder.MakeIntermediate();
+      auto* div1_out = builder.MakeIntermediate();
+      auto* div2_out = builder.MakeIntermediate();
+      builder.AddNode("Div", {input_0_arg, scalar_0_arg}, {div0_out});
+      builder.AddNode("Div", {input_1_arg, scalar_1_arg}, {div1_out});
+
+      auto* add1_out = builder.MakeIntermediate();
+      builder.AddNode("Add", {div0_out, div1_out}, {add1_out});
+
+      builder.AddNode("Div", {input_2_arg, scalar_2_arg}, {div2_out});
+      auto* add2_out = builder.MakeIntermediate();
+      if (switch_order) {
+        builder.AddNode("Add", {div2_out, add1_out}, {add2_out});
+      } else {
+        builder.AddNode("Add", {add1_out, div2_out}, {add2_out});
+      }
+
+      auto* graph_out = builder.MakeOutput();
+      builder.AddNode("Identity", {add2_out}, {graph_out});
+
+      auto* graph_output2 = builder.MakeOutput();
+      builder.AddNode("Identity", {add1_out}, {graph_output2});
+    };
+
+    const std::vector<int> opsets{12, 13, 14, 15};
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
+  }
+}
 
 // end of DISABLE_CONTRIB_OPS
 #endif

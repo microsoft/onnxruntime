@@ -1,3 +1,4 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
     include:
@@ -5,6 +6,10 @@ trigger:
     - rel-*
   paths:
     exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
     - 'js/web'
     - 'onnxruntime/core/providers/js'
 pr:
@@ -14,8 +19,14 @@ pr:
     - rel-*
   paths:
     exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
     - 'js/web'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 jobs:
 - job: CoreML_CI
   workspace:

@@ -151,8 +151,10 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
     }
   }
   // use relative path as data storage.
-  for (auto i = 0; i < model_proto.graph().initializer_size(); ++i) {
-    auto initializer = model_proto.mutable_graph()->mutable_initializer(i);
+  auto graph_proto = model_proto.mutable_graph();
+  *graph_proto = graph.ToGraphProto();
+  for (auto i = 0; i < graph_proto->initializer_size(); ++i) {
+    auto initializer = graph_proto->mutable_initializer(i);
     for (auto j = 0; j < initializer->external_data_size(); ++j) {
       auto external_data = initializer->mutable_external_data(j);
       if (external_data->key() == "location") {

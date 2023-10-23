@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {tensorDataTypeEnumToString} from '../../wasm-common';
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
+import {TensorView} from '../tensor-view';
 
 import {createShaderHelper} from './ops/common';
 import {Artifact, GpuData, ProgramInfo} from './types';
@@ -30,8 +32,11 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number]): void {
+  run(buildArtifact: Artifact, inputTensorViews: readonly TensorView[], outputTensorViews: readonly TensorView[],
+      inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
+      uniformBufferBinding: GPUBindingResource|undefined): void {
     const device = this.backend.device;
+
     const computePassEncoder = this.backend.getComputePassEncoder();
     const profilingEnabled = this.backend.supportTimestampQuery && this.backend.env.webgpu.profilingMode === 'default';
     if (profilingEnabled) {
@@ -49,7 +54,11 @@ export class ProgramManager {
     for (const output of outputs) {
       entries.push({binding: entries.length, resource: {buffer: output.buffer}});
     }
-    const bindGroup = device.createBindGroup({layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries});
+    if (uniformBufferBinding) {
+      entries.push({binding: entries.length, resource: uniformBufferBinding});
+    }
+    const bindGroup = device.createBindGroup(
+        {layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries, label: buildArtifact.programInfo.name});
     computePassEncoder.setBindGroup(0, bindGroup);
 
     computePassEncoder.dispatchWorkgroups(...dispatchGroup);
@@ -77,7 +86,8 @@ export class ProgramManager {
       this.backend.flush();
 
       const kernelId = this.backend.currentKernelId!;
-      const kernelName = this.backend.kernels.get(kernelId)![0];
+      const kernelInfo = this.backend.kernels.get(kernelId)!;
+      const kernelName = `[${kernelInfo[0]}] ${kernelInfo[1]}`;
 
       syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
         const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
@@ -98,9 +108,17 @@ export class ProgramManager {
         }
 
         this.backend.gpuDataManager.release(syncData.id);
-
+        let inputShapes = '';
+        inputTensorViews.forEach((value, i) => {
+          inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+        });
+        let outputShapes = '';
+        outputTensorViews.forEach((value, i) => {
+          outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+        });
         // eslint-disable-next-line no-console
-        console.log(`[profiling] kernel "${kernelId}|${kernelName}" execution time: ${endTime - startTime} ns`);
+        console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
+            endTime - startTime} ns`);
       });
     }
 
@@ -113,20 +131,24 @@ export class ProgramManager {
   }
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
     const device = this.backend.device;
-
+    const extensions: string[] = [];
+    if (device.features.has('shader-f16')) {
+      extensions.push('enable f16;');
+    }
     const shaderHelper = createShaderHelper(normalizedDispatchGroupSize);
     const userCode = programInfo.getShaderSource(shaderHelper);
-    const code = `${shaderHelper.additionalImplementations}\n${userCode}`;
-    const shaderModule = device.createShaderModule({code});
+    const code = `${extensions.join('\n')}\n${shaderHelper.additionalImplementations}\n${userCode}`;
+    const shaderModule = device.createShaderModule({code, label: programInfo.name});
     LOG_DEBUG('verbose', () => `[WebGPU] shader code: ${code}`);
 
-    const computePipeline =
-        device.createComputePipeline({compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto'});
+    const computePipeline = device.createComputePipeline(
+        {compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto', label: programInfo.name});
 
     return {programInfo, computePipeline};
   }
 
-  normalizeDispatchGroupSize(dispatchGroup: ReturnType<ProgramInfo['dispatchGroup']>): [number, number, number] {
+  normalizeDispatchGroupSize(dispatchGroup: ReturnType<ProgramInfo['getRunData']>['dispatchGroup']):
+      [number, number, number] {
     const x = typeof dispatchGroup === 'number' ? dispatchGroup : dispatchGroup.x;
     const y = typeof dispatchGroup === 'number' ? 1 : (dispatchGroup.y || 1);
     const z = typeof dispatchGroup === 'number' ? 1 : (dispatchGroup.z || 1);

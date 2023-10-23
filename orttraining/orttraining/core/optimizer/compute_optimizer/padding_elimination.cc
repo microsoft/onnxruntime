@@ -300,10 +300,17 @@ void IterateSubgraphFromNode(Graph& graph,
         candidate_outputs.insert(cur);
         continue;
       }
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "LayerNormalization", {1, 17}, kOnnxDomain)) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "LayerNormalization", {1, 17}, kOnnxDomain) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "SimplifiedLayerNormalization", {1}, kOnnxDomain)) {
       if (subgraph.find(cur->MutableInputDefs()[0]) == subgraph.end()) {
         LOG_DEBUG_INFO(logger, "PaddingElimination::First input of Normalization: " + cur->Name() +
                                    " is not in subgraph.");
+        candidate_outputs.insert(cur);
+        continue;
+      }
+      if (!cur->InputDefs()[0]->Shape()) {
+        LOG_DEBUG_INFO(logger, "PaddingElimination::First input of Normalization: " + cur->Name() +
+                                   " has no shape.");
         candidate_outputs.insert(cur);
         continue;
       }
@@ -322,7 +329,8 @@ void IterateSubgraphFromNode(Graph& graph,
       subgraph.insert(cur->MutableOutputDefs()[0]);
       subgraph.insert(cur->MutableOutputDefs()[1]);
       PushAllOutputNode(graph, to_visit, cur, visited);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Cast", {9, 13})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Cast", {9, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Gelu", {1}, kMSDomain)) {
       ORT_ENFORCE(subgraph.find(cur->MutableInputDefs()[0]) != subgraph.end());
       subgraph.insert(cur->MutableOutputDefs()[0]);
       PushAllOutputNode(graph, to_visit, cur, visited);
@@ -360,6 +368,31 @@ void IterateSubgraphFromNode(Graph& graph,
         PushAllOutputNode(graph, to_visit, cur, visited);
       } else {
         candidate_outputs.insert(cur);
+      }
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "ReduceMean", {1, 11, 13, 18})) {
+      if (cur->InputDefs()[0]->Shape()) {
+        auto axes = cur->GetAttributes().at("axes").ints();
+        bool axes_check = (axes.size() > 0);
+        for (int64_t axis : axes) {
+          axis = axis < 0 ? axis + cur->InputDefs()[0]->Shape()->dim_size() : axis;
+          if (axis < 2) {
+            LOG_DEBUG_INFO(logger, "PaddingElimination::axis of ReduceMean: " + cur->Name() + " is " +
+                                       std::to_string(axis) + ", which blocks merging leading two dims.");
+            axes_check = false;
+            break;
+          }
+        }
+        if (axes_check) {
+          LOG_DEBUG_INFO(logger, "PaddingElimination::ReduceMean: " + cur->Name() + " is added to subgraph.");
+          subgraph.insert(cur->MutableOutputDefs()[0]);
+          PushAllOutputNode(graph, to_visit, cur, visited);
+        } else {
+          candidate_outputs.insert(cur);
+        }
+      } else {
+        LOG_DEBUG_INFO(logger, "PaddingElimination::shape of input of ReduceMean: " + cur->Name() + " is unknown.");
+        candidate_outputs.insert(cur);
+        continue;
       }
     } else {
       candidate_outputs.insert(cur);

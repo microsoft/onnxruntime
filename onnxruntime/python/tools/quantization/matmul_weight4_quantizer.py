@@ -189,7 +189,7 @@ class MatMulWeight4Quantizer:
                         # recursive call to take care of sub-graph
                         graph_stack.append(attr.g)
                         kv = {attr.name: self._process_subgraph(graph_stack)}
-                    elif attr.type == onnx.AttributeProto.GRAPH:
+                    elif attr.type == onnx.AttributeProto.GRAPHS:
                         value = []
                         for subgraph in attr.graphs:
                             # recursive call to take care of sub-graph

@@ -4,55 +4,67 @@
 # --------------------------------------------------------------------------
 
 import sys
-from typing import Callable, ClassVar, Dict, Optional
 
-import onnx
 import torch
 import torch.utils.checkpoint
+from onnx import ModelProto
 from packaging import version
 from torch.onnx import symbolic_helper
 
-from onnxruntime.capi._pybind_state import register_miscellaneous_const_input, register_torch_autograd_function
+from onnxruntime.capi._pybind_state import (
+    register_input_alias_function,
+    register_miscellaneous_const_input,
+    register_shape_inference_function,
+    register_torch_autograd_function,
+)
 from onnxruntime.training import ortmodule
+from onnxruntime.training.utils import pytorch_dtype_to_onnx
 
-from ._custom_op_symbolic_registry import pytorch_type_to_onnx, wrap_custom_export_function
+from ._custom_op_symbolic_registry import wrap_custom_export_function
 from ._fallback import ORTModuleONNXModelException, wrap_exception
 from ._utils import get_fully_qualified_class_name, get_runtime_pytorch_version
 
 
-class PythonOpShapeInferStore:
-    """A class to store shape inference functions for torch.autograd.Function."""
+def register_custom_function_schema_supplementary(kclass: torch.autograd.Function) -> None:
+    """Register a shape inference function for a torch.autograd.Function if there is staticmethod
+    "infer_shape" defined.
 
-    _CLASS_MAP: ClassVar[Dict[str, Callable]] = {}
+    The signature of the shape inference function should be:
+        @staticmethod
+        def infer_shape(
+            node: onnx.NodeProto,
+            tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+            tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+        ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+            tensor_output_shapes = []
+            tensor_output_dtypes = []
+            ...
+            return tensor_output_shapes, tensor_output_dtypes
 
-    @classmethod
-    def register(cls, kclass: torch.autograd.Function) -> None:
-        """Register a shape inference function for a torch.autograd.Function if there is staticmethod "infer_shape" defined.
+    The tensor_input_shapes and tensor_input_dtypes are lists of shapes and dtypes of the input tensors.
+    The tensor_output_shapes and tensor_output_dtypes are lists of shapes and dtypes of the output tensors.
+    Be noted: we only pass in tensor inputs, and return tensor outputs, non-tensor inputs/outputs are ignored.
 
-        The signature of the shape inference function should be:
-            @staticmethod
-            def infer_shape(
-                node: onnx.NodeProto,
-                tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-                tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-            ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
-                tensor_output_shapes = []
-                tensor_output_dtypes = []
-                ...
-                return tensor_output_shapes, tensor_output_dtypes
 
-        The tensor_input_shapes and tensor_input_dtypes are lists of shapes and dtypes of the input tensors.
-        The tensor_output_shapes and tensor_output_dtypes are lists of shapes and dtypes of the output tensors.
-        Be noted: we only pass in tensor inputs, and return tensor outputs, non-tensor inputs/outputs are ignored.
+    The signature of the alias input function should be:
+        @staticmethod
+        def alias_input(node_proto_str: str) -> Tuple[List[int], List[int]]:
+            fw_alias_map = [1, -1, -1]
+            bw_alias_map = [-1, 0]
+            return fw_alias_map, bw_alias_map
 
-        """
-        kclass_name = get_fully_qualified_class_name(kclass)
-        if hasattr(kclass, "infer_shape") and kclass_name not in cls._CLASS_MAP:
-            cls._CLASS_MAP[kclass_name] = kclass.infer_shape
+    The alias input function should return a tuple of two lists:
+    - The first list is the forward alias map, its length is equal to the number of all outputs of the node.
+    - The second list is the backward alias map, its length is equal to the number of all inputs
+        (tensor and non-tensor) of the node.
 
-    @classmethod
-    def get_shape_infer(cls, name: str) -> Optional[Callable]:
-        return cls._CLASS_MAP.get(name, None)
+    """
+    kclass_name = get_fully_qualified_class_name(kclass)
+    if hasattr(kclass, "infer_shape"):
+        register_shape_inference_function(kclass_name, kclass.infer_shape)
+
+    if hasattr(kclass, "alias_input"):
+        register_input_alias_function(kclass_name, kclass.alias_input)
 
 
 """
@@ -111,7 +123,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 "wrap exportable sub-nn.Module's as ORTModule."
             )
 
-        inplace = kwargs["inplace"]
         # TODO move to public API once the exporter team exposes that
         training_mode = None
         if get_runtime_pytorch_version() >= version.parse("1.12"):
@@ -168,7 +179,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
+                scalar_type = pytorch_dtype_to_onnx(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
                 continue
@@ -227,9 +238,9 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 input_float_tuples.extend(list(arg))
                 continue
 
-            is_inspect_activation = (
-                func_full_qual_name == "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation"
-            )
+            from onnxruntime.training.utils.hooks._statistics_subscriber import _InspectActivation
+
+            is_inspect_activation = func_full_qual_name == get_fully_qualified_class_name(_InspectActivation)
             if is_inspect_activation and isinstance(arg, str):
                 # _InspectActivation is a special case where the first argument is a string
                 # that is used to determine the activation name to be inspected.
@@ -247,13 +258,12 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
+            scalar_type = pytorch_dtype_to_onnx(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 
         attrs = {
             "func_name_s": func_full_qual_name,
-            "inplace_i": inplace,
             "input_convention_s": cconv,
             "outputs": n.outputsSize(),
             "input_tensor_types_i": input_tensor_types,
@@ -294,8 +304,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         # Register function with class names.
         register_torch_autograd_function(func_full_qual_name, func_class)
 
-        # Register shape inference function.
-        PythonOpShapeInferStore.register(func_class)
+        register_custom_function_schema_supplementary(func_class)
+
         return returned_args
     except Exception as e:
         sys.stdout.flush()
@@ -306,16 +316,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 _export = wrap_custom_export_function(_export_pt_1_10)
 
 
-def _post_process_after_export(
-    exported_model: onnx.ModelProto, enable_custom_autograd_function: bool
-) -> onnx.ModelProto:
-    """Post process the exported model."""
-    if enable_custom_autograd_function:
-        exported_model = _post_process_enabling_autograd_function(exported_model)
-    return exported_model
-
-
-def _post_process_enabling_autograd_function(exported_model: onnx.ModelProto) -> onnx.ModelProto:
+def post_process_enabling_autograd_function(exported_model: ModelProto) -> ModelProto:
     # Loop all PythonOp, append "_ctx" as the first output.
     index = 0
     for node in exported_model.graph.node:
@@ -331,8 +332,7 @@ def _post_process_enabling_autograd_function(exported_model: onnx.ModelProto) ->
                     op_name_prefix = kclass_name
                     break
 
-        if not node.name:
             node.name = f"{op_name_prefix}_id_{index}"
-            index += 1
+        index += 1
 
     return exported_model

@@ -1,4 +1,17 @@
-trigger: none
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 pr:
   branches:
     include:
@@ -11,14 +24,14 @@ pr:
     - CONTRIBUTING.md
     - BUILD.md
     - 'js/web'
-    - 'js/node'
     - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 jobs:
 - template: templates/linux-ci.yml
   parameters:
     AgentPool : 'Onnxruntime-Linux-GPU-NC6sv3'
     JobName: 'Onnxruntime_Linux_GPU_Training'
-    SubmoduleCheckoutMode: 'recursive'
     RunDockerBuildArgs: >
       -o ubuntu20.04 -d gpu
       -t onnxruntime_orttraining_ortmodule_tests_image
@@ -26,24 +39,16 @@ jobs:
       -e
       -x "
       --enable_training
-      --config $(buildConfig)
+      --config Release
       --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8
       --build_wheel
       --enable_nvtx_profile
       --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70
       "
-    DoNugetPack: 'false'
     RunInjectedPipeline: 'true'
-    InjectedPipeline: 'orttraining-linux-gpu-ortmodule-test-ci-pipeline.yml'
+    InjectedPipeline: 'orttraining-linux-gpu-test-ci-pipeline.yml'
     DockerImageTag: 'onnxruntime_orttraining_ortmodule_tests_image'
-    BuildConfig: $(buildConfig)
-    ArtifactName: 'drop-linux'
     TimeoutInMinutes: 140
     # Enable unreleased onnx opsets in CI builds
     # This facilitates testing the implementation for the new opsets
     AllowReleasedOpsetOnly: '0'
-    Strategy:
-      maxParallel: 2
-      matrix:
-        Release:
-          buildConfig: Release

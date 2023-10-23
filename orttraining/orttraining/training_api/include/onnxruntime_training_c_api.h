@@ -608,14 +608,14 @@ struct OrtTrainingApi {
   /// \name Accessing The Training Session State
   /// @{
 
-  /** \brief Adds the given property to the checkpoint state.
+  /** \brief Adds or updates the given property to/in the checkpoint state.
    *
    * Runtime properties such as epoch, training step, best score, and others can be added to the checkpoint
-   * state by the user if they desire by calling this function with the appropriate property name and
-   * value. The given property name must be unique to be able to successfully add the property.
+   * state by the user by calling this function with the corresponding property name and value.
+   * The given property name must be unique to be able to successfully add the property.
    *
    * \param[in] checkpoint_state The checkpoint state which should hold the property.
-   * \param[in] property_name Unique name of the property being added.
+   * \param[in] property_name Name of the property being added or updated.
    * \param[in] property_type Type of the property associated with the given name.
    * \param[in] property_value Property value associated with the given name.
    *
@@ -632,7 +632,7 @@ struct OrtTrainingApi {
    * exist in the checkpoint state to be able to retrieve it successfully.
    *
    * \param[in] checkpoint_state The checkpoint state that is currently holding the property.
-   * \param[in] property_name Unique name of the property being retrieved.
+   * \param[in] property_name Name of the property being retrieved.
    * \param[in] allocator Allocator used to allocate the memory for the property_value.
    * \param[out] property_type Type of the property associated with the given name.
    * \param[out] property_value Property value associated with the given name.
@@ -668,6 +668,57 @@ struct OrtTrainingApi {
    */
   ORT_API2_STATUS(LoadCheckpointFromBuffer, _In_ const void* checkpoint_buffer,
                   _In_ const size_t num_bytes, _Outptr_ OrtCheckpointState** checkpoint_state);
+
+  /** \brief Retrieves the type and shape information of the parameter associated with the given parameter name.
+   *
+   * This function retrieves the type and shape of the parameter associated with the given parameter name.
+   * The parameter must exist in the checkpoint state to be able to retrieve its type and shape information successfully.
+   *
+   * \param[in] checkpoint_state The checkpoint state.
+   * \param[in] parameter_name Name of the parameter being retrieved.
+   * \param[out] parameter_type_and_shape The type and shape of the parameter being retrieved.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(GetParameterTypeAndShape, _In_ const OrtCheckpointState* checkpoint_state,
+                  _In_ const char* parameter_name, _Outptr_ OrtTensorTypeAndShapeInfo** parameter_type_and_shape);
+
+  /** \brief Updates the data associated with the model parameter in the checkpoint state for the given parameter name.
+   *
+   * This function updates a model parameter in the checkpoint state with the given parameter data.
+   * The training session must be already created with the checkpoint state that contains the parameter
+   * being updated. The given parameter is copied over to the registered device for the training session.
+   * The parameter must exist in the checkpoint state to be able to update it successfully.
+   *
+   * \param[in] checkpoint_state The checkpoint state.
+   * \param[in] parameter_name Name of the parameter being updated.
+   * \param[in] parameter The parameter data that should replace the existing parameter data.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(UpdateParameter, _Inout_ OrtCheckpointState* checkpoint_state,
+                  _In_ const char* parameter_name, _In_ OrtValue* parameter);
+
+  /** \brief Gets the data associated with the model parameter from the checkpoint state for the given parameter name.
+   *
+   * This function retrieves the model parameter data from the checkpoint state for the given parameter name.
+   * The parameter is copied over and returned as an OrtValue. The training session must be already created
+   * with the checkpoint state that contains the parameter being retrieved.
+   * The parameter must exist in the checkpoint state to be able to retrieve it successfully.
+   *
+   * \param[in] checkpoint_state The checkpoint state.
+   * \param[in] parameter_name Name of the parameter being retrieved.
+   * \param[in] allocator Allocator used to allocate the memory for the parameter.
+   * \param[out] parameter The parameter data that is retrieved from the checkpoint state.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(GetParameter, _In_ const OrtCheckpointState* checkpoint_state,
+                  _In_ const char* parameter_name, _Inout_ OrtAllocator* allocator,
+                  _Outptr_ OrtValue** parameter);
 
   /// @}
 };

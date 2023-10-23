@@ -3025,6 +3025,69 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
                                                          x_datas, {}, true, false, &execution_providers));
   EXPECT_IS_TINY(max_error);
 }
+
+TEST(GradientCheckerTest, ScaledSumGrad) {
+  // Two inputs.
+  {
+    float max_error;
+    GradientChecker<float, float, float> gradient_checker;
+    OpDef op_def{"ScaledSum", kMSDomain, 1};
+    TensorInfo x_info({4, 3});
+    TensorInfo y_info({4, 3});
+    std::vector<std::vector<float>> x_datas = {
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+        {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f},
+    };
+
+    TensorInfo output0_info({4, 3}, true);
+    std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
+    attributes.push_back(MakeAttribute("scale_0", static_cast<float>(0.5)));
+    attributes.push_back(MakeAttribute("scale_1", static_cast<float>(0.3)));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, y_info},
+                                                           {output0_info}, &max_error,
+                                                           x_datas, attributes, true, false, &execution_providers));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // Three inputs.
+  {
+    float max_error;
+    GradientChecker<float, float, float> gradient_checker;
+    OpDef op_def{"ScaledSum", kMSDomain, 1};
+    TensorInfo x_info({4, 3});
+    TensorInfo y_info({4, 3});
+    TensorInfo z_info({4, 3});
+    std::vector<std::vector<float>> x_datas = {
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+        {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f},
+        {0.01f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f, -0.07f, -0.08f, -0.09f, -0.10f, -0.11f, -0.12f},
+    };
+
+    TensorInfo output0_info({4, 3}, true);
+    std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
+    attributes.push_back(MakeAttribute("scale_0", static_cast<float>(0.2)));
+    attributes.push_back(MakeAttribute("scale_1", static_cast<float>(0.3)));
+    attributes.push_back(MakeAttribute("scale_2", static_cast<float>(0.5)));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, y_info, z_info},
+                                                           {output0_info}, &max_error,
+                                                           x_datas, attributes, true, false, &execution_providers));
+    EXPECT_IS_TINY(max_error);
+  }
+}
 #endif
 
 TEST(GradientCheckerTest, ReciprocalGrad) {
@@ -3038,6 +3101,239 @@ TEST(GradientCheckerTest, LeakyReluGrad) {
   std::function<float(float)> transformer = [](float x) { return x > 0 ? x + 0.2f : x - 0.2f; };
   UnaryOpGradientTest("LeakyRelu", kOnnxDomain, 16, nullptr, &transformer);
 }
+
+#ifdef USE_CUDA
+void ConvTransposeGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"ConvTranspose"};
+
+  float error_tolerance = 3e-1f;
+
+  // 1D convolution
+  {
+    TensorShape x_shape({2, 2, 5});
+    TensorShape w_shape({2, 2, 3});
+    TensorShape b_shape({2});
+    TensorShape y_shape({2, 2, 5});
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{3}), MakeAttribute("pads", std::vector<int64_t>{1, 1})},
+        false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 1D strided convolution
+  {
+    TensorShape x_shape({2, 1, 7});
+    TensorShape w_shape({1, 1, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 13});
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{3}), MakeAttribute("pads", std::vector<int64_t>{1, 1}),
+         MakeAttribute("strides", std::vector<int64_t>{2})},
+        false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 1D pointwise convolution (with padding)
+  {
+    TensorShape x_shape({2, 1, 5});
+    TensorShape w_shape({1, 1, 1});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 3});
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{1}), MakeAttribute("pads", std::vector<int64_t>{1, 1})},
+        false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 1D pointwise convolution (no padding)
+  {
+    TensorShape x_shape({2, 1, 5});
+    TensorShape w_shape({1, 1, 1});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 5});
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{1}), MakeAttribute("pads", std::vector<int64_t>{0, 0})},
+        false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 2D convolution
+  {
+    TensorShape x_shape({1, 1, 3, 3});
+    TensorShape w_shape({1, 1, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({1, 1, 3, 3});
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
+                                              false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 2D convolution
+  {
+    TensorShape x_shape({2, 1, 5, 5});
+    TensorShape w_shape({1, 1, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 5, 5});
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
+                                              false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 2D pointwise convolution (with padding)
+  {
+    TensorShape x_shape({1, 1, 3, 3});
+    TensorShape w_shape({1, 1, 1, 1});
+    TensorShape b_shape({1});
+    TensorShape y_shape({1, 1, 1, 1});
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
+                                              false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 2D pointwise convolution (no padding)
+  {
+    TensorShape x_shape({1, 1, 3, 3});
+    TensorShape w_shape({1, 1, 1, 1});
+    TensorShape b_shape({1});
+    TensorShape y_shape({1, 1, 3, 3});
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                                               MakeAttribute("pads", std::vector<int64_t>{0, 0, 0, 0})},
+                                              false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 2D strided convolution
+  {
+    TensorShape x_shape({2, 1, 7, 5});
+    TensorShape w_shape({1, 1, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 13, 9});
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+         MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}), MakeAttribute("strides", std::vector<int64_t>{2, 2})},
+        false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 2D dilated convolution (no padding)
+  {
+    TensorShape x_shape({2, 1, 5, 5});
+    TensorShape w_shape({1, 1, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 9, 9});
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{0, 0, 0, 0}),
+                                               MakeAttribute("dilations", std::vector<int64_t>{2, 2})},
+                                              false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 2D dilated convolution (with padding)
+  {
+    TensorShape x_shape({2, 1, 7, 5});
+    TensorShape w_shape({1, 1, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 9, 7});
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}),
+                                               MakeAttribute("dilations", std::vector<int64_t>{2, 2})},
+                                              false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 3D convolution
+  {
+    TensorShape x_shape({2, 1, 5, 5, 5});
+    TensorShape w_shape({1, 1, 3, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 5, 5, 5});
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1})},
+                                              false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // 3D strided convolution
+  {
+    TensorShape x_shape({2, 1, 7, 5, 5});
+    TensorShape w_shape({1, 1, 3, 3, 3});
+    TensorShape b_shape({1});
+    TensorShape y_shape({2, 1, 13, 9, 9});
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1}),
+                                               MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})},
+                                              false, false, execution_providers));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+}
+
+TEST(GradientCheckerTest, ConvTransposeGrad) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  ConvTransposeGradientCheckerTest(&execution_providers);
+}
+
+// TODO: Enable test for ROCM
+TEST(GradientCheckerTest, ResizeGrad) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {
+      MakeAttribute("coordinate_transformation_mode", "half_pixel"),
+      MakeAttribute("cubic_coeff_a", -0.75f),
+      MakeAttribute("exclude_outside", static_cast<int64_t>(0)),
+      MakeAttribute("extrapolation_value", 0.0f),
+      MakeAttribute("mode", "linear"),
+      MakeAttribute("nearest_mode", "floor")};
+
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Resize", kOnnxDomain, 18};
+
+  TensorInfo x_info({1, 2, 4, 4}, true);
+  TensorInfo roi_info({4}, false, nullptr, DataTypeImpl::GetTensorType<float>());
+  TensorInfo scales_info({4}, false, nullptr, DataTypeImpl::GetTensorType<float>());
+
+  TensorInfo y_info({1, 2, 8, 8}, true);
+
+  std::vector<std::vector<float>> x_datas = {{0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f,
+                                              0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f,
+                                              0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f,
+                                              0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f},
+                                             {1.0f, 1.0f, 1.0f, 1.0f},
+                                             {1.0f, 1.0f, 2.0f, 2.0f}};
+
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, roi_info, scales_info},
+                                                         {y_info}, &max_error, x_datas, attributes, true, false, &execution_providers));
+  EXPECT_IS_TINY(max_error);
+}
+
+#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace onnxruntime

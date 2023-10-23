@@ -80,7 +80,7 @@ template <class U, class T>
 }
 
 [[nodiscard]] inline gsl::span<const std::byte> AsByteSpan(const void* data, size_t length) {
-  return gsl::span(reinterpret_cast<const std::byte*>(data), length);
+  return gsl::span<const std::byte>(reinterpret_cast<const std::byte*>(data), length);
 }
 
 template <class T1, size_t Extent1, class T2, size_t Extent2>
