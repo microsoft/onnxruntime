@@ -68,6 +68,9 @@
 #include "core/optimizer/pre_shape_node_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+#include "orttraining/core/optimizer/pythonop_rewriter.h"
+#endif
 
 namespace onnxruntime {
 namespace training {
@@ -106,6 +109,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<LSTMReplacement>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GRUReplacement>()));
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<PythonOpRewriter>()));
+#endif
 
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by

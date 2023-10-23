@@ -129,7 +129,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         output_type = logits_casted.type()
     else:
         # For higher version torch we can get node output types
-        loss_output = list(node.outputs())[0]
+        loss_output = next(iter(node.outputs()))
         output_type = loss_output.type()
     ##################################
 
@@ -808,16 +808,3 @@ def upsample_nearest2d(g, input, output_size, scale_factors):
 @register_symbolic("upsample_nearest3d")
 def upsample_nearest3d(g, input, output_size, scale_factors):
     return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
-
-
-@register_symbolic("upsample_bilinear2d")
-def upsample_bilinear2d(g, input, output_size, align_corners, scale_factors):
-    return g.op(
-        "org.pytorch.aten::ATen",
-        input,
-        output_size,
-        align_corners,
-        scale_factors,
-        operator_s="upsample_bilinear2d",
-        overload_name_s="vec",
-    )

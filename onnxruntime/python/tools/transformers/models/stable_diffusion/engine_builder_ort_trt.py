@@ -12,9 +12,9 @@ import torch
 from cuda import cudart
 from diffusion_models import PipelineInfo
 from engine_builder import EngineBuilder, EngineType
+from ort_utils import CudaSession
 
 import onnxruntime as ort
-from onnxruntime.transformers.io_binding_helper import CudaSession
 
 logger = logging.getLogger(__name__)
 
