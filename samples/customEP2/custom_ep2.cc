@@ -45,12 +45,30 @@ onnxruntime::Status Identity(const onnxruntime::lite::TensorV<float>& input,
   return onnxruntime::Status::OK();
 }
 struct Celu {
-    Celu(lite::IKernelInfo&) {}
-    onnxruntime::Status Compute(const onnxruntime::lite::TensorT<float>&,
-                                onnxruntime::lite::Aliased<float>&) {
+  Celu(lite::IKernelInfo&) {}
+  onnxruntime::Status Compute(const onnxruntime::lite::TensorT<float>& input,
+                              onnxruntime::lite::Aliased<float>& output) {
+      const auto& shape = input.Shape();
+      const float* input_data = input.Data();
+      float* output_data = output.Allocate(shape);
+      size_t number_of_elements = input.NumberOfElements();
+
+      onnxruntime::lite::TensorV<float> identity_input(input_data, shape);
+      onnxruntime::lite::Aliased<float> identity_output(output_data, shape);
+      auto status = Identity(identity_input, identity_output);
+      if (!status.IsOK()) {
+        return status;
+      }
+
+      for (size_t i = 0; i < number_of_elements; ++i) {
+        if (input_data[i] < 0) {
+          output_data[i] = 0.f;
+        }
+      }
+
       return onnxruntime::Status::OK();
-    }
-    float alpha = 0.f;
+  }
+  float alpha = 0.f;
 };
 ///////////////////////////////////////////////////////////////////////////////////////
 

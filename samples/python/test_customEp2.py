@@ -21,7 +21,11 @@ shared_lib_path = '/onnxruntime/samples/customEP2/build/Debug/customep2.dll'
 
 onnxruntime.load_execution_provider_info('customEp2', shared_lib_path)
 _ = input(os.getpid())
-session = onnxruntime.InferenceSession(model_path,
+
+sess_options = onnxruntime.SessionOptions()
+sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+
+session = onnxruntime.InferenceSession(model_path, sess_options,
     providers=['customEp2'], provider_options=[{'int_property':'3', 'str_property':'strval'}])
 x = np.random.rand(6).astype(np.float32)
 y = session.run(None, {'X': x})

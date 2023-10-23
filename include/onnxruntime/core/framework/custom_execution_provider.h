@@ -99,29 +99,29 @@ struct Tensor : public IArg {
 template <typename T>
 struct TensorT : public Tensor<T> {
   TensorT(IKernelContext* ctx, size_t index) : Tensor(ctx, index, true) {}
+  TensorT(const T* readonly_data, const TensorShape& shape) : Tensor(readonly_data, shape) {}
 };
 
 template <typename T>
 struct TensorT1 : public Tensor<T> {
   TensorT1(IKernelContext* ctx, size_t index) : Tensor(ctx, index, true) {}
+  TensorT1(const T* readonly_data, const TensorShape& shape) : Tensor(readonly_data, shape) {}
 };
 
 template <typename T>
 struct TensorV : public Tensor<T> {
   TensorV(IKernelContext* ctx, size_t index) : Tensor(ctx, index, true) {}
-  ~TensorV() {
-    des++;
-  }
-  int des = 0;
+  TensorV(const T* readonly_data, const TensorShape& shape) : Tensor(readonly_data, shape) {}
 };
 
 template <typename T, int ith_input_to_reuse = 0>
 struct Reused : public Tensor<T> {
   using MyType = Tensor<T>;
   Reused(IKernelContext* ctx, size_t index) : Tensor(ctx, index, false) {}
-  T* Data() {
-    return {};
-  }
+  Reused(T* mutable_data, const TensorShape& shape) : Tensor(mutable_data, shape) {}
+  //T* Data() {
+  //  return {};
+  //}
   static int InputIndice() { return ith_input_to_reuse; }
 };
 
@@ -129,9 +129,10 @@ template <typename T, int ith_input_to_alias_from = 0>
 struct Aliased : public Reused<T, ith_input_to_alias_from> {
   using MyType = Tensor<T>;
   Aliased(IKernelContext* ctx, size_t index) : Reused(ctx, index) {}
-  T* Data() {
-    return {};
-  }
+  Aliased(T* mutable_data, const TensorShape& shape) : Reused(mutable_data, shape) {}
+  //T* Data() {
+  //  return {};
+  //}
   static int InputIndice() { return ith_input_to_alias_from; }
 };
 
@@ -239,7 +240,7 @@ struct IKernelBuilder {
   // IKernelBuilder() = default;
   // IKernelBuilder(const IKernelBuilder&) = delete;
   explicit IKernelBuilder() = default;
-  IKernelBuilder(const IKernelBuilder&){};
+  IKernelBuilder(const IKernelBuilder&) = delete;
 
   virtual ~IKernelBuilder() = default;
   virtual IKernelBuilder& Provider(const char*) = 0;

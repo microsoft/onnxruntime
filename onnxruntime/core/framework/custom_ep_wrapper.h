@@ -145,23 +145,25 @@ namespace onnxruntime {
             registry_ = std::make_shared<KernelRegistry>();
         }
         lite::IKernelBuilder& CreateBuilder() override {
-            builders_.emplace_back();
-            return builders_.back();
+            builders_.push_back(std::make_unique<KernelBuilderLite>());
+            return *builders_.back();
         }
         void BuildKernels() {
-            for (auto& builder : builders_) {
-              KernelCreateInfo kci(builder.builder_.Build(),
-                                   [&](FuncManager&,
+            for (auto& b : builders_) {
+              KernelBuilderLite* builder = b.get();
+              KernelCreateInfo kci(builder->builder_.Build(),
+                                   [=](FuncManager&,
                                        const OpKernelInfo& info,
                                        std::unique_ptr<OpKernel>& out) -> onnxruntime::common::Status {
-                                     out = std::make_unique<OpKernelLite>(info, *builder.kernel_);
+                                     out = std::make_unique<OpKernelLite>(info, *builder->kernel_);
                                      return onnxruntime::common::Status::OK();
                                    });
               ORT_ENFORCE(registry_->Register(std::move(kci)).IsOK());
             }
         }
         std::shared_ptr<KernelRegistry> registry_;
-        std::vector<KernelBuilderLite> builders_;
+        using BuilderPtr = std::unique_ptr<KernelBuilderLite>;
+        std::vector<BuilderPtr> builders_;
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
