@@ -925,7 +925,7 @@ namespace Windows::AI::MachineLearning::Adapter
                     // Shape inference is only done when all dimensions of all inputs have known values,
                     // so the input tensors will always have shapes at this point.
                     assert(inputType->tensor_type().shape().dim(i).has_dim_value());
-                    dimensions[i] = static_cast<uint32_t>(inputType->tensor_type().shape().dim(i).dim_value());
+                    dimensions[i] = gsl::narrow_cast<uint32_t>(inputType->tensor_type().shape().dim(i).dim_value());
                 }
             }
 
@@ -985,7 +985,7 @@ namespace Windows::AI::MachineLearning::Adapter
                     // Shape inference is only done when all dimensions of all inputs have known values,
                     // so the input tensors will always have shapes at this point.
                     assert(elemType.tensor_type().shape().dim(i).has_dim_value());
-                    dimensions[i] = static_cast<uint32_t>(elemType.tensor_type().shape().dim(i).dim_value());
+                    dimensions[i] = gsl::narrow_cast<uint32_t>(elemType.tensor_type().shape().dim(i).dim_value());
                 }
             }
 
@@ -2787,8 +2787,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 {
                     if (shape.dim(output_dim).has_dim_value())
                     {
-                        int64_t expected_size = shape.dim(output_dim).dim_value();
-                        int64_t actual_size = outputShapes.GetShape(outputIndex)[output_dim];
+                        uint32_t expected_size = gsl::narrow_cast<uint32_t>(shape.dim(output_dim).dim_value());
+                        uint32_t actual_size = gsl::narrow_cast<uint32_t>(outputShapes.GetShape(outputIndex)[output_dim]);
                         assert(expected_size == actual_size);
                         ML_CHECK_BOOL(expected_size == actual_size);
                     }
@@ -2936,7 +2936,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 return false;
             }
 
-            shapeDims[dimIndex] = gsl::narrow<uint32_t>(shape.dim(dimIndex).dim_value());
+            shapeDims[dimIndex] = gsl::narrow_cast<uint32_t>(shape.dim(dimIndex).dim_value());
         }
 
         return true;
