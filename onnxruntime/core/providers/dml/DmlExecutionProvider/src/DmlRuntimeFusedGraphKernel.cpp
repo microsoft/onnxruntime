@@ -241,12 +241,12 @@ namespace Dml
                 inputPtrs[i] = m_provider->DecodeResource(MLOperatorTensor(inputTensors[i].Get()).GetDataInterface().Get());
             }
 
-            auto aux = contextWrapper.GetOutputTensors(m_outputShapes);
+            auto outputTensors = contextWrapper.GetOutputTensors(m_outputShapes);
             ExecuteOperator(
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 inputPtrs,
-                aux);
+                outputTensors);
 
             ORT_THROW_IF_FAILED(m_provider->AddUAVBarrier());
 
