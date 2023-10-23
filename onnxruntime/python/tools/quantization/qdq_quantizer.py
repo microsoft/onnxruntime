@@ -37,11 +37,13 @@ class QDQQuantTensorType(Enum):
 
 
 class QDQTensorQuantInfo:
-    def __init__(self, tensor_type=QDQQuantTensorType.ACTIVATION, quant_para_provider=None, axis=None):
+    def __init__(self, tensor_type=QDQQuantTensorType.ACTIVATION, quant_para_provider=None, axis=None, data_type=None):
         self.tensor_type = tensor_type
         self.quant_para_provider = quant_para_provider
         self.axis = axis
         self.is_shared = quant_para_provider is not None
+        assert data_type is not None
+        self.data_type = data_type
 
 
 class QDQQuantizer(ONNXQuantizer):
@@ -134,6 +136,19 @@ class QDQQuantizer(ONNXQuantizer):
             )
             self.qdq_op_domain = ms_domain
 
+    def _get_tensor_type(self, tensor_name):
+        """
+        Check if tensor can be quantized
+        """
+        weight = find_by_name(tensor_name, self.model.initializer())
+        if weight is not None:
+            return weight.data_type
+        elif tensor_name in self.value_infos:
+            vi = self.value_infos[tensor_name]
+            if vi.type.HasField("tensor_type"):
+                return vi.type.tensor_type.elem_type
+        return None
+
     def _is_tensor_quantizable(self, tensor_name):
         """
         Check if tensor can be quantized
@@ -174,7 +189,8 @@ class QDQQuantizer(ONNXQuantizer):
                     tensor_type=tensor_type, quant_para_provider=quant_sharing_param
                 )
             elif tensor_name not in self.tensors_to_quantize:
-                self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(tensor_type=tensor_type)
+                data_type = self._get_tensor_type(tensor_name)
+                self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(tensor_type=tensor_type, data_type=data_type)
 
     def quantize_activation_tensor(self, tensor_name, quant_sharing_param=None):
         """
@@ -201,7 +217,7 @@ class QDQQuantizer(ONNXQuantizer):
         if weight:
             if weight.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
                 self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(
-                    tensor_type=QDQQuantTensorType.WEIGHT, axis=axis
+                    tensor_type=QDQQuantTensorType.WEIGHT, axis=axis, data_type=weight.data_type
                 )
         else:
             logging.warning(f"only support per-channel quantization on weight. Tensor: {tensor_name} is not quantized.")
@@ -330,7 +346,7 @@ class QDQQuantizer(ONNXQuantizer):
             )
             self.model.add_node(dequant_node)
 
-    def _add_qdq_pair_for_activation(self, tensor_name, scale_name, zp_name):
+    def _add_qdq_pair_for_activation(self, tensor_name, scale_name, zp_name, data_type=None):
         if (
             self.dedicated_qdq_pair
             and tensor_name in self.tensor_to_its_receiving_nodes
@@ -363,6 +379,7 @@ class QDQQuantizer(ONNXQuantizer):
                         scale_name,
                         zp_name,
                         QuantizedValueType.Input,
+                        scale_type=data_type,
                     )
                     self.quantized_value_map[tensor_name] = quantized_value
         else:
@@ -392,6 +409,7 @@ class QDQQuantizer(ONNXQuantizer):
                 scale_name,
                 zp_name,
                 QuantizedValueType.Input,
+                scale_type=data_type,
             )
             self.quantized_value_map[tensor_name] = quantized_value
 
@@ -407,6 +425,10 @@ class QDQQuantizer(ONNXQuantizer):
                     self._add_qdq_pair_for_initializer(initializer, tensor_info.tensor_type, tensor_info.axis)
                 else:
                     used_scale, used_zp = self.find_quant_scale_zp(tensor_name)
+                    if used_scale is not None and not hasattr(used_scale, "dtype"):
+                        raise TypeError(
+                            f"Unexpected type {type(used_scale)} for used_scale and tensor_name={tensor_name!r}"
+                        )
                     data_found, scale_name, zp_name, _, _ = self._get_quantization_params(
                         tensor_name, used_scale, used_zp
                     )
@@ -417,7 +439,7 @@ class QDQQuantizer(ONNXQuantizer):
                             "In static mode quantization params for inputs and outputs of nodes to be quantized are required."
                         )
 
-                    self._add_qdq_pair_for_activation(tensor_name, scale_name, zp_name)
+                    self._add_qdq_pair_for_activation(tensor_name, scale_name, zp_name, data_type=tensor_info.data_type)
 
                 del self.tensors_to_quantize[tensor_name]
 
@@ -441,7 +463,8 @@ class QDQQuantizer(ONNXQuantizer):
                 continue
             # Quantize the input
             self.quantize_bias_static(bias_name, input_name, weight_name, beta)
-            self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
+            init = find_by_name(bias_name, self.model.initializer())
+            self.model.remove_initializer(init)
             quant_value = self.quantized_value_map[bias_name]
             if quant_value.node_type == "Cast":
                 # simple cast to float 16 and not DequantizeLinear
@@ -452,7 +475,7 @@ class QDQQuantizer(ONNXQuantizer):
                     [quant_value.q_name],
                     [bias_name],
                     name=node_name,
-                    to=onnx.TensorProto.FLOAT,  # TODO: FLOAT or FLOAT16
+                    to=init.data_type,
                 )
             elif quant_value.node_type in (None, "DequantizeLinear"):
                 if quant_value.node_qtype in {

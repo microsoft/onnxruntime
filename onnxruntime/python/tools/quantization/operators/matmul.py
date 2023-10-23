@@ -75,12 +75,13 @@ class MatMulInteger(QOpMatMul):
 
         # Add cast operation to cast matmulInteger output to float.
         cast_op_output = matmul_integer_output + "_cast_output"
+        otype = self.quantizer.get_tensor_type(node.output[0])
         cast_node = onnx.helper.make_node(
             "Cast",
             [matmul_integer_output],
             [cast_op_output],
             matmul_integer_output + "_cast",
-            to=onnx_proto.TensorProto.FLOAT,  # TODO: FLOAT or FLOAT16
+            to=otype,
         )
         nodes.append(cast_node)
 

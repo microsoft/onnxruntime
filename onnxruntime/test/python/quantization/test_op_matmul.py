@@ -21,12 +21,12 @@ from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, 
 
 
 class TestOpMatMul(unittest.TestCase):
-    def input_feeds(self, n, name2shape):
+    def input_feeds(self, n, name2shape, dtype):
         input_data_list = []
         for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+                inputs.update({name: np.random.randint(-1, 2, shape).astype(dtype)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -296,7 +296,9 @@ class TestOpMatMul(unittest.TestCase):
             np.random.seed(1)
             model_fp_path = "matmul_fp.onnx"
             self.construct_model_matmul(model_fp_path, tensor_type=tt)
-            data_reader = self.input_feeds(1, {"input": [5, 10]})
+            data_reader = self.input_feeds(
+                1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
+            )
 
             self.static_quant_test(
                 model_fp_path,
@@ -322,7 +324,9 @@ class TestOpMatMul(unittest.TestCase):
             np.random.seed(1)
             model_fp_path = "matmul_fp.onnx"
             self.construct_model_matmul(model_fp_path, tensor_type=tt)
-            data_reader = self.input_feeds(1, {"input": [5, 10]})
+            data_reader = self.input_feeds(
+                1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
+            )
 
             self.static_quant_test(
                 model_fp_path,
@@ -348,7 +352,9 @@ class TestOpMatMul(unittest.TestCase):
             np.random.seed(1)
             model_fp_path = "matmul_fp.onnx"
             self.construct_model_matmul(model_fp_path, add_clip=False, tensor_type=tt)
-            data_reader = self.input_feeds(1, {"input": [5, 10]})
+            data_reader = self.input_feeds(
+                1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
+            )
 
             self.static_quant_test_qdq(
                 model_fp_path,
@@ -372,7 +378,9 @@ class TestOpMatMul(unittest.TestCase):
             np.random.seed(1)
             model_fp_path = "matmul_fp.onnx"
             self.construct_model_matmul(model_fp_path, add_clip=False, tensor_type=tt)
-            data_reader = self.input_feeds(1, {"input": [5, 10]})
+            data_reader = self.input_feeds(
+                1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
+            )
 
             self.static_quant_test_qdq(
                 model_fp_path,

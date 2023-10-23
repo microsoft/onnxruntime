@@ -23,11 +23,17 @@ from .quant_utils import apply_plot, load_model_with_shape_infer, smooth_distrib
 
 class TensorData:
     _allowed = frozenset(["avg", "std", "lowest", "highest", "hist", "hist_edges", "bins"])
+    _floats = frozenset(["avg", "std", "lowest", "highest", "hist_edges"])
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
             if k not in TensorData._allowed:
                 raise ValueError(f"Unexpected value {k!r} not in {TensorData._allowed}.")
+            if k in TensorData._floats:
+                if not hasattr(v, "dtype"):
+                    raise ValueError(f"Unexpected type {type(v)} for k={k!r}")
+                if v.dtype not in (np.float16, np.float32):
+                    raise ValueError(f"Unexpected dtype {v.dtype} for k={k!r}")
             setattr(self, k, v)
 
     @property
@@ -364,24 +370,18 @@ class MinMaxCalibrater(CalibraterBase):
 
         pairs = []
         for i in range(0, len(added_output_names), 2):
-            min_value = 0
-            max_value = 0
             if self.moving_average:
                 min_value_array = np.mean(merged_added_output_dict[added_output_names[i]], axis=0)
                 max_value_array = np.mean(merged_added_output_dict[added_output_names[i + 1]], axis=0)
             else:
-                min_value_array = min(merged_added_output_dict[added_output_names[i]])
-                max_value_array = max(merged_added_output_dict[added_output_names[i + 1]])
-            if isinstance(min_value_array, int) or min_value_array.size > 0:
-                min_value = float(min_value_array)
-            if isinstance(max_value_array, int) or max_value_array.size > 0:
-                max_value = float(max_value_array)
+                min_value_array = np.min(merged_added_output_dict[added_output_names[i]], axis=0)
+                max_value_array = np.max(merged_added_output_dict[added_output_names[i + 1]], axis=0)
 
             if self.symmetric:
-                max_absolute_value = max(abs(min_value), abs(max_value))
+                max_absolute_value = max(np.abs(min_value_array), np.abs(max_value_array))
                 pairs.append(tuple([-max_absolute_value, max_absolute_value]))
             else:
-                pairs.append(tuple([min_value, max_value]))
+                pairs.append(tuple([min_value_array, max_value_array]))
 
         new_calibrate_tensors_range = TensorsData(CalibrationMethod.MinMax, dict(zip(calibrate_tensor_names, pairs)))
         if self.calibrate_tensors_range:
@@ -679,7 +679,7 @@ class HistogramCollector(CalibrationDataCollector):
         Collect histogram on absolute value
         """
         for tensor, data_arr in name_to_arr.items():
-            data_arr = np.asarray(data_arr)  # noqa: PLW2901
+            assert isinstance(data_arr, np.ndarray)
             data_arr = data_arr.flatten()  # noqa: PLW2901
             if data_arr.size > 0:
                 min_value = np.min(data_arr)
@@ -693,6 +693,8 @@ class HistogramCollector(CalibrationDataCollector):
             if tensor not in self.histogram_dict:
                 # first time it uses num_bins to compute histogram.
                 hist, hist_edges = np.histogram(data_arr, bins=self.num_bins)
+                hist_edges = hist_edges.astype(data_arr.dtype)
+                assert data_arr.dtype != np.float64
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
@@ -708,7 +710,9 @@ class HistogramCollector(CalibrationDataCollector):
                     new_bin_edges = np.arange(old_hist_edges[-1] + width, temp_amax + width, width)
                     old_hist_edges = np.hstack((old_hist_edges, new_bin_edges))
                 hist, hist_edges = np.histogram(data_arr, bins=old_hist_edges)
+                hist_edges = hist_edges.astype(data_arr.dtype)
                 hist[: len(old_hist)] += old_hist
+                assert data_arr.dtype != np.float64
                 self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):
@@ -868,11 +872,11 @@ class HistogramCollector(CalibrationDataCollector):
         if power == 1:
             avg = (hist * values).sum() / hist.sum()
             std = ((hist * values**2).sum() / hist.sum() - avg**2) ** 0.5
-            return avg, std
+            return np.array(avg, dtype=hist_edges.dtype), np.array(std, dtype=hist_edges.dtype)
         if int(power) == power and int(power) % 2 == 1:
             avg = (hist * values**power).sum() / hist.sum()
             std = ((hist * (values**power - avg) ** 2).sum() / hist.sum()) ** 0.5
-            return avg, std
+            return np.array(avg, dtype=hist_edges.dtype), np.array(std, dtype=hist_edges.dtype)
 
         fact = np.abs(values) / values
         fact[np.isnan(fact)] = 1
@@ -880,7 +884,7 @@ class HistogramCollector(CalibrationDataCollector):
         values = np.abs(values) ** power * fact
         avg = (hist * values).sum() / hist.sum()
         std = ((hist * values**2).sum() / hist.sum() - avg**2) ** 0.5
-        return avg, std
+        return np.array(avg, dtype=hist_edges.dtype), np.array(std, dtype=hist_edges.dtype)
 
     def compute_distribution(self):
         if self.num_bins < 512:
@@ -897,12 +901,16 @@ class HistogramCollector(CalibrationDataCollector):
             hist = histogram[0]
             hist_edges = histogram[1]
 
+            assert hist_edges.dtype != np.float64
             if self.scenario == "same":
                 avg_coef, std_coef = self._avg_std(hist, hist_edges, power=1)
             elif self.scenario == "p3":
                 avg_coef, std_coef = self._avg_std(hist, hist_edges, power=1.0 / 3.0)
             else:
                 raise ValueError("Invalid scenario. Must be in {'same', 'p3'}.")
+            assert avg_coef.dtype != np.float64
+            assert std_coef.dtype != np.float64
+            assert hist_edges.dtype != np.float64
             thresholds_dict[tensor] = TensorData(avg=avg_coef, std=std_coef, hist=hist, hist_edges=hist_edges)
 
             # Plot histogram for debug only

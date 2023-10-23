@@ -433,7 +433,11 @@ def check_model_correctness(
             )
         # Needs pv.Version(onnx.__version__) >= pv.Version("1.16.0")
         ref = ReferenceEvaluator(model_check, new_ops=reference_new_ops)
-        target_results = ref.run(None, inputs)
+        try:
+            target_results = ref.run(None, inputs)
+        except Exception:
+            ref = ReferenceEvaluator(model_check, new_ops=reference_new_ops, verbose=10)
+            target_results = ref.run(None, inputs)
         testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
         for idx, ref_output in enumerate(origin_results):
             output = target_results[idx]

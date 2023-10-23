@@ -155,6 +155,12 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
     ):
         if zero_point != 0:
             raise NotImplementedError(f"zero_point is expected to be null for float 8 not {zero_point!r}.")
+        if arr.dtype == numpy.float32:
+            onnx_type = TensorProto.FLOAT
+        elif arr.dtype == numpy.float16:
+            onnx_type = TensorProto.FLOAT16
+        else:
+            raise ValueError(f"Unexpected dtype {arr.dtype}.")
         onnx_model = make_model(
             make_graph(
                 [
@@ -165,14 +171,14 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
                 ],
                 "qu",
                 [
-                    make_tensor_value_info("X", TensorProto.FLOAT, None),  # TODO: FLOAT or FLOAT16
-                    make_tensor_value_info("scale", TensorProto.FLOAT, None),  # TODO: FLOAT or FLOAT16
+                    make_tensor_value_info("X", onnx_type, None),
+                    make_tensor_value_info("scale", onnx_type, None),
                 ],
                 [make_tensor_value_info("Y", qType, None)],
             )
         )
         ref = ReferenceEvaluator(onnx_model)
-        return ref.run(None, {"X": arr.astype(numpy.float32), "scale": scale.astype(numpy.float32)})[0]
+        return ref.run(None, {"X": arr, "scale": scale})[0]
     else:
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
         (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
@@ -208,20 +214,20 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
     # Adjust rmin and rmax such that 0 is included in the range. This is
     # required to make sure zero can be represented by the quantization data
     # type (i.e. to make sure qmin <= zero_point <= qmax)
-    rmin = min(rmin, 0)
-    rmax = max(rmax, 0)
+    rmin = numpy.minimum(rmin, numpy.array(0, dtype=rmin.dtype))
+    rmax = numpy.maximum(rmax, numpy.array(0, dtype=rmax.dtype))
 
     if symmetric:
-        absmax = max(abs(rmin), abs(rmax))
+        absmax = numpy.maximum(numpy.abs(rmin), numpy.abs(rmax))
         rmin = -absmax
         rmax = +absmax
 
-    scale = (rmax - rmin) / float(qmax - qmin)
-    if scale < numpy.finfo(numpy.float32).tiny:
-        scale = 1.0
+    scale = (rmax - rmin) / numpy.array(qmax - qmin, dtype=rmax.dtype)
+    if scale < numpy.finfo(scale.dtype).tiny:
+        scale = numpy.array(1.0, dtype=scale.dtype)
         zero_point = 0
     else:
-        zero_point = round(qmin - rmin / scale)
+        zero_point = numpy.round(qmin - rmin / scale).astype(numpy.int32)
 
     return [zero_point, scale]
 
@@ -250,7 +256,7 @@ def compute_scale_zp_float8(element_type, std):
 
     std_f8 = numpy.std(FLOAT8_DISTRIBUTIONS[element_type])
     zero = 0
-    scale = std / std_f8
+    scale = numpy.array(std / std_f8, dtype=std.dtype)
     return [zero, scale]
 
 
@@ -276,20 +282,22 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     - *S*: scale
     - *z*: zero point
     """
+    if not isinstance(data, numpy.ndarray):
+        raise TypeError(f"Weight must be given as an array not {type(data)}.")
     rmin = 0
     rmax = 0
     zero_point = 0
     scale = 1.0
     if len(data):
-        rmin = min(data)
-        rmax = max(data)
+        rmin = data.min()
+        rmax = data.max()
 
     if qType == TensorProto.FLOAT8E4M3FN:
         if reduce_range:
             raise RuntimeError("Unsupported option reduce_range=True for float 8.")
         std = numpy.std(data)
         zero_point, scale = compute_scale_zp_float8(qType, std)
-        quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+        quantized_data = quantize_nparray(qType, data, scale, zero_point)
         if any((quantized_data.astype(numpy.uint8).ravel() & 127) == 127):
             np_data = numpy.asarray(data)
             raise RuntimeError(
@@ -302,7 +310,7 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
         if len(data):
             qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
             zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
-        quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+        quantized_data = quantize_nparray(qType, data, scale, zero_point)
         return rmin, rmax, zero_point, scale, quantized_data
 
     raise ValueError(f"Unexpected value for qType={qType}.")
@@ -388,6 +396,7 @@ class QuantizedValue:
         axis=None,
         node_type=None,
         node_qtype=None,
+        scale_type=None,
     ):
         self.original_name = name
         self.q_name = new_quantized_name
@@ -397,6 +406,7 @@ class QuantizedValue:
         self.axis = axis
         self.node_type = node_type
         self.node_qtype = node_qtype
+        self.scale_type = scale_type
 
 
 class BiasToQuantize:

@@ -42,7 +42,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Union
 
 import numpy
 import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import helper, numpy_helper
 
 import onnxruntime
 
@@ -86,7 +86,7 @@ def modify_model_output_intermediate_tensors(
         op_types_for_saving = []
     saver = CalibraterBase(input_model_path, op_types_to_calibrate=op_types_for_saving)
     model_to_augment = saver.model
-    tensors, _ = saver.select_tensors_to_calibrate(model_to_augment)
+    tensors, value_infos = saver.select_tensors_to_calibrate(model_to_augment)
     reshape_shape_name = "LinearReshape_" + str(time.time())
     reshape_shape = numpy_helper.from_array(numpy.array([-1], dtype=numpy.int64), reshape_shape_name)
     model_to_augment.graph.initializer.append(reshape_shape)
@@ -100,8 +100,9 @@ def modify_model_output_intermediate_tensors(
             name=reshape_output,
         )
         model_to_augment.graph.node.append(reshape_node)
-        # TODO: FLOAT or FLOAT16
-        reshape_output_value_info = helper.make_tensor_value_info(reshape_output, TensorProto.FLOAT, [-1])
+        reshape_output_value_info = helper.make_tensor_value_info(
+            reshape_output, value_infos[tensor_name].type.tensor_type.elem_type, [-1]
+        )
         model_to_augment.graph.output.append(reshape_output_value_info)
 
     onnx.save(
