@@ -8,17 +8,20 @@ import {setSessionOptions} from './session-options';
 import {getInstance} from './wasm-factory';
 import {checkLastError} from './wasm-utils';
 
-const NO_TRAIN_FUNCS_MSG = 'Built without training APIs enabled. ' +
-    'Make sure to use the onnxruntime-training package for training functionality.';
+const NO_TRAIN_FUNCS_MSG =
+    `Built without training API's enabled. Use the onnxruntime-web/training import for training \
+    functionality, and make sure that all the correct artifacts are built & moved to the correct folder if \
+    using a custom build. Check https://onnxruntime.ai/docs/build/web.html for more information.`;
 
 export const createCheckpointHandle = (checkpointData: SerializableModeldata): number => {
   const wasm = getInstance();
 
+  const [checkpointDataOffset, checkpointDataLength] = checkpointData;
   let checkpointHandle = 0;
 
   try {
     if (wasm._OrtTrainingLoadCheckpoint) {
-      checkpointHandle = wasm._OrtTrainingLoadCheckpoint(checkpointData[0], checkpointData[1]);
+      checkpointHandle = wasm._OrtTrainingLoadCheckpoint(checkpointDataOffset, checkpointDataLength);
     } else {
       throw new Error(NO_TRAIN_FUNCS_MSG);
     }
@@ -44,7 +47,7 @@ const getTrainingModelInputOutputCount = (trainingSessionId: number): [number, n
   try {
     const dataOffset = wasm.stackAlloc(8);
     if (wasm._OrtTrainingGetInputOutputCount) {
-      const errorCode = wasm._OrtTrainingGetInputOutputCount(trainingSessionId, dataOffset, dataOffset + 4);
+      const errorCode = wasm._OrtTrainingGetInputOutputCount(trainingSessionId, dataOffset, dataOffset + 4, false);
       if (errorCode !== 0) {
         checkLastError('Can\'t get session input/output count.');
       }
@@ -65,7 +68,7 @@ const getTrainingNamesLoop = (trainingSessionId: number, count: number, isInput:
 
   for (let i = 0; i < count; i++) {
     if (wasm._OrtTrainingGetInputOutputName) {
-      const name = wasm._OrtTrainingGetInputOutputName(trainingSessionId, i, isInput);
+      const name = wasm._OrtTrainingGetInputOutputName(trainingSessionId, i, isInput, false);
       if (name === 0) {
         checkLastError('Can\'t get input or output name');
       }

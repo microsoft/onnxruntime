@@ -433,27 +433,33 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_sessio
                                                              bool trainable_only);
 
 /**
- * Gets the input count and output count of the training model associated with the given training handle.
+ * Gets the input count and output count of the training or eval model associated with the given training handle.
  * @param traning_handle handle of the traning session
  * @param input_count [out] a pointer to a size_t variable to accept input_count
  * @param output_count [out] a pointer to a size_t variable to accept output_count
+ * @param isEvalModel when false, returns input & output count of the training model. When true, returns input & output
+ *                    count of the eval model.
  * @returns ORT error code. If not zero, call OrtGetLastError() to get a detailed error message.
  */
 int EMSCRIPTEN_KEEPALIVE OrtTrainingGetInputOutputCount(ort_training_session_handle_t training_handle,
                                                         size_t* input_count,
-                                                        size_t* output_count);
+                                                        size_t* output_count,
+                                                        bool isEvalModel);
 
 /**
- * Gets the input or output name at the specified index associated with the training model from the
+ * Gets the input or output name at the specified index associated with the training or eval model from the
  * given training session.
  * @param traning_handle handle of the traning session
  * @param index the input or output index
  * @param isInput if true, this method retrieves an input name. If false, this method retrieves an output name.
+ * @param isEvalModel when false, returns input & output names of the training model. When true, returns input & output
+ *                    names of the eval model.
  * @returns a pointer to a buffer which contains C-style string. Caller must release the C style string after use by
  */
 char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetInputOutputName(ort_training_session_handle_t training_handle,
                                                          size_t index,
-                                                         bool isInput);
+                                                         bool isInput,
+                                                         bool isEvalModel);
 
 /**
  * @brief Release the specified ORT training session.

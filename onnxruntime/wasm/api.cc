@@ -581,30 +581,52 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_sessio
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingGetInputOutputCount(ort_training_session_handle_t training_handle,
                                                         size_t* input_count,
-                                                        size_t* output_count) {
-  RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetTrainingModelInputCount, training_handle, input_count);
-  RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetTrainingModelOutputCount, training_handle, output_count);
-  return ORT_OK;
+                                                        size_t* output_count,
+                                                        bool isEvalModel) {
+  if (isEvalModel) {
+    RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetEvalModelInputCount, training_handle, input_count);
+    RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetEvalModelOutputCount, training_handle, output_count);
+    return ORT_OK;
+  } else {
+    RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetTrainingModelInputCount, training_handle, input_count);
+    RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetTrainingModelOutputCount, training_handle, output_count);
+    return ORT_OK;
+  }
 }
 
 char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetInputOutputName(ort_training_session_handle_t training_handle,
                                                          size_t index,
-                                                         bool isInput) {
+                                                         bool isInput,
+                                                         bool isEvalModel) {
   OrtAllocator* allocator = nullptr;
   RETURN_NULLPTR_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
 
   char* name = nullptr;
 
-  if (isInput) {
-    return (CHECK_TRAINING_STATUS(TrainingSessionGetTrainingModelInputName, training_handle, index,
-                                  allocator, &name) == ORT_OK)
-               ? name
-               : nullptr;
+  if (isEvalModel) {
+    if (isInput) {
+      return (CHECK_TRAINING_STATUS(TrainingSessionGetEvalModelInputName, training_handle, index,
+                                    allocator, &name) == ORT_OK)
+                 ? name
+                 : nullptr;
+    } else {
+      return (CHECK_TRAINING_STATUS(TrainingSessionGetEvalModelOutputName, training_handle, index,
+                                    allocator, &name) == ORT_OK)
+                 ? name
+                 : nullptr;
+    }
   } else {
-    return (CHECK_TRAINING_STATUS(TrainingSessionGetTrainingModelOutputName, training_handle, index,
-                                  allocator, &name) == ORT_OK)
-               ? name
-               : nullptr;
+    if (isInput) {
+      return (CHECK_TRAINING_STATUS(TrainingSessionGetTrainingModelInputName, training_handle, index,
+                                    allocator, &name) == ORT_OK)
+                 ? name
+                 : nullptr;
+    } else {
+      return (CHECK_TRAINING_STATUS(TrainingSessionGetTrainingModelOutputName, training_handle, index,
+                                    allocator, &name) == ORT_OK)
+                 ? name
+                 : nullptr;
+    }
   }
 }
 
