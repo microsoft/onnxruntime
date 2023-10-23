@@ -26,13 +26,13 @@ public:
 private:
     onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph,
                                           bool& modified,
-                                          int graph_level,
+                                          int graphLevel,
                                           const onnxruntime::logging::Logger& logger) const final;
 
     onnxruntime::common::Status ApplyImplHelper(
         onnxruntime::Graph& graph,
         bool& modified,
-        int graph_level,
+        int graphLevel,
         const onnxruntime::logging::Logger& logger,
         const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputDefs) const;
 
