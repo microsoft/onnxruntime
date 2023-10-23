@@ -1,2 +1,4 @@
 -r requirements.txt
-onnxruntime>=1.17.0
+#onnxruntime>=1.17.0
+--extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
+ort-nightly

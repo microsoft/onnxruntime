@@ -1,6 +1,8 @@
 git+https://github.com/huggingface/optimum.git
 transformers>=4.33.2
-torch>=2.2.0.dev20230920
+#torch>=2.2.0.dev20230920
+--extra-index-url https://download.pytorch.org/whl/nightly/cpu
+torch
 onnx>=1.14.0
 datasets>=2.8.0
 protobuf==3.20.2
