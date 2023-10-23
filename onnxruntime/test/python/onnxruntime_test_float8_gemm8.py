@@ -10,13 +10,12 @@ import unittest
 import warnings
 
 import numpy as np
+import parameterized
 from numpy.testing import assert_allclose
 from onnx import TensorProto
 from onnx.checker import check_model
 from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info
 from onnx.numpy_helper import from_array
-
-import parameterized
 
 from onnxruntime import InferenceSession
 
@@ -227,7 +226,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         )
 
     @parameterized.parameterized.expand(list(itertools.product([0, 1], [0, 1])))
-    def test_combinations(self, transA, transB):
+    def test_combinations_square_matrices(self, transA, transB):
         self.common_test_model_gemm("FLOAT", transA=transA, transB=transB, rtol=1e-3)
 
     @parameterized.parameterized.expand(
@@ -266,11 +265,15 @@ class TestFloat8Gemm8(unittest.TestCase):
         try:
             expected = (a.T if transA else a) @ (b.T if transB else b)
         except Exception as e:
-            raise AssertionError(f"Unable to multiply shapes={shapeA}x{shapeB}, transA={transA}, transB={transB}") from e
+            raise AssertionError(
+                f"Unable to multiply shapes={shapeA}x{shapeB}, transA={transA}, transB={transB}"
+            ) from e
         try:
             got = sess.run(None, {"A": a, "B": b})
         except Exception as e:
-            raise AssertionError(f"Unable to run Gemm with shapes={shapeA}x{shapeB}, transA={transA}, transB={transB}") from e
+            raise AssertionError(
+                f"Unable to run Gemm with shapes={shapeA}x{shapeB}, transA={transA}, transB={transB}"
+            ) from e
         self.assertEqual(expected.shape, got[0].shape)
         self.assertEqual(expected.dtype, got[0].dtype)
         assert_allclose(expected, got[0])

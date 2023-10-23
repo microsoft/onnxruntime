@@ -2583,7 +2583,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
 
 ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                             OpSchema()
-                                .SetDoc(R"DOC(Gemm for float and float 8.)DOC")
+                                .SetDoc(R"DOC(Generic Gemm for float and float 8.)DOC")
                                 .Attr(
                                     "transA",
                                     "Whether A should be transposed. Float 8 only supprted transA=0.",
