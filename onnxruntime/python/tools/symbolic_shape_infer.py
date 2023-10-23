@@ -231,7 +231,6 @@ class SymbolicShapeInference:
             "upsample_nearest1d": self._infer_aten_upsample,
             "upsample_nearest2d": self._infer_aten_upsample,
             "upsample_nearest3d": self._infer_aten_upsample,
-            "upsample_bilinear2d": self._infer_aten_upsample,
         }
         self.run_ = True
         self.suggested_merge_ = {}
