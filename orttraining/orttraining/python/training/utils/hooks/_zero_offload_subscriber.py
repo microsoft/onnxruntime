@@ -106,7 +106,7 @@ def _get_ort_compatible_allgather_fn():
 def _get_ort_compatible_broadcast():
     from deepspeed.utils import get_caller_func
 
-    original_broadcast = deepspeed.comm.broadcast
+    orig_broadcast = deepspeed.comm.broadcast
     output_get_caller_func = get_caller_func()
 
     # Monkey patching the original broadcast function
@@ -116,7 +116,7 @@ def _get_ort_compatible_broadcast():
         if torch.onnx.is_in_onnx_export():
             return DummyWork()
 
-        return original_broadcast(tensor, src, group=group, async_op=async_op, prof=prof, log_name=log_name, debug=debug)
+        return orig_broadcast(tensor, src, group=group, async_op=async_op, prof=prof, log_name=log_name, debug=debug)
 
     return _ort_compatible_broadcast_zero_stage3
 
