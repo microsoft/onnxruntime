@@ -11,17 +11,17 @@
 
 namespace onnxruntime {
 
-#define REGISTER_KERNEL_TYPED(T) \
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(GridSample, kOnnxDomain, 16, 19, T, kCpuExecutionProvider,  \
-                                        KernelDefBuilder()                                          \
-                                          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())   \
-                                          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),  \
-                                        GridSample<T>);                                             \
-ONNX_OPERATOR_TYPED_KERNEL_EX(GridSample, kOnnxDomain, 20, T, kCpuExecutionProvider,                \
-                              KernelDefBuilder()                                                    \
-                                .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())             \
-                                .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),            \
-                              GridSample<T>);
+#define REGISTER_KERNEL_TYPED(T)                                                                       \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(GridSample, kOnnxDomain, 16, 19, T, kCpuExecutionProvider,   \
+                                          KernelDefBuilder()                                           \
+                                              .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+                                              .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
+                                          GridSample<T>);                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(GridSample, kOnnxDomain, 20, T, kCpuExecutionProvider,                 \
+                                KernelDefBuilder()                                                     \
+                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
+                                    .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),           \
+                                GridSample<T>);
 
 REGISTER_KERNEL_TYPED(float)
 
@@ -159,10 +159,10 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
 
   int64_t data_dims = input_dims.NumDimensions() - 2;
   ORT_ENFORCE(static_cast<int64_t>(grid_dims.NumDimensions()) == data_dims + 2,
-    "grid dimensions must be ", data_dims + 2, "for input dimension of ", data_dims);
+              "grid dimensions must be ", data_dims + 2, "for input dimension of ", data_dims);
 
   ORT_ENFORCE(grid_dims[grid_dims.NumDimensions() - 1] == data_dims,
-    "Last dimension of grid: ", grid_dims[grid_dims.NumDimensions() - 1], ", expect ", data_dims);
+              "Last dimension of grid: ", grid_dims[grid_dims.NumDimensions() - 1], ", expect ", data_dims);
 
   ORT_ENFORCE(input_dims.NumDimensions() == 4 || input_dims.NumDimensions() == 5, "Only 4-D or 5-D tensor is supported");
 
@@ -319,7 +319,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
 
                     // x, y are integers in all padding modes
                     *Y_gridpoint = PixelAtGrid3D(X_data, static_cast<int64_t>(z), static_cast<int64_t>(y), static_cast<int64_t>(x),
-                      D_in, H_in, W_in, border);
+                                                 D_in, H_in, W_in, border);
                   } else if (mode_ == Linear) {
                     int64_t x1 = static_cast<int64_t>(std::floor(x));
                     int64_t y1 = static_cast<int64_t>(std::floor(y));
