@@ -14,6 +14,7 @@ extern const float* scales_data;
 extern const uint8_t* zero_points_data;
 extern int64_t block_size_;
 extern int64_t nbits_;
+extern size_t ldfb;
 
 namespace onnxruntime {
 namespace contrib {
@@ -92,7 +93,14 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
+#if 1
+  const int64_t n_blocks_per_col = (K + block_size_ - 1) / block_size_;
+  const int64_t blob_size = block_size_ / 8 * nbits_;
+  const size_t ldb = static_cast<size_t>(n_blocks_per_col * blob_size);
+  ldfb = helper.Ldb(true);
+#else
   const size_t ldb = helper.Ldb(true);
+#endif
 
   // TODO: implement with native kernel
   std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
@@ -111,8 +119,10 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     data[i].alpha = 1.f;
     data[i].beta = 0.0f;
   }
+  const char* env_p = std::getenv("PAR");
+  //std::cerr << "data[i].B: " << (void*)(data[0].B) << std::endl;
   MlasGemmBatch(CblasNoTrans, CblasTrans,
-                M, N, K, data.data(), max_len, thread_pool);
+                M, N, K, data.data(), max_len, env_p ? thread_pool : nullptr);
 
   return Status::OK();
 }

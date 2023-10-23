@@ -432,12 +432,14 @@ const float* scales_data;
 const uint8_t* zero_points_data;
 int64_t block_size_;
 int64_t nbits_;
+size_t ldfb;
 
 void
 MlasSgemmTransposePackB(
     float* D,
     const uint8_t* srcB,
     size_t ldb,
+    const float* scales,
     size_t CountY,
     size_t CountX
     )
@@ -470,6 +472,7 @@ Return Value:
 
 --*/
 {
+    std::cerr << "MlasSgemmTransposePackB invoked\n";
     //
     // Transpose elements from matrix B into the packed buffer 16 rows at a
     // time.
@@ -478,7 +481,7 @@ Return Value:
 
     onnxruntime::contrib::DequantizeBlockwise<float>(bufferB,
                                                     srcB,
-                                                    scales_data,
+                                                    scales,
                                                     zero_points_data,
                                                     static_cast<int32_t>(block_size_),
                                                     static_cast<int32_t>(nbits_),
@@ -487,6 +490,12 @@ Return Value:
                                                     nullptr);
 
     const float* B = bufferB;
+
+    for (int x = 0; x < CountX; ++x) {
+        for (int y = 0; y < CountX; ++y) {
+            std::cerr << "B[" << x << "][" << y << "]" << B[x * CountY + y] << "\n";
+        }
+    }
 
     while (CountY >= 16) {
 
@@ -1114,7 +1123,8 @@ MlasSgemmOperation(
     size_t ldb,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    const float* scales
     )
 /*++
 
@@ -1190,8 +1200,8 @@ Return Value:
         }
 
         if (SgemmKernelM1Routine != nullptr) {
-            //SgemmKernelM1Routine(A, B, C, K, N, ldb, beta);
             abort();
+            //SgemmKernelM1Routine(A, B, C, K, N, ldb, beta);
             return;
         }
 
@@ -1226,8 +1236,8 @@ Return Value:
         }
 
         if (SgemmKernelM1Routine != nullptr) {
-            //SgemmKernelM1Routine(B, A, C, K, M, lda, beta);
             abort();
+            //SgemmKernelM1Routine(B, A, C, K, M, lda, beta);
             return;
         }
 
@@ -1298,7 +1308,16 @@ Return Value:
                 abort();
                 //MlasSgemmCopyPackB(PanelB, B + n + k * ldb, ldb, CountN, CountK);
             } else {
-                MlasSgemmTransposePackB(PanelB, B + k + n * ldb, ldb, CountN, CountK);
+                //MlasSgemmTransposePackB(PanelB, B + k + n * ldb, ldb, CountN, CountK);
+
+                const int64_t n_blocks_per_col = (K + block_size_ - 1) / block_size_;
+                const int64_t blob_size = block_size_ / 8 * nbits_;
+
+                //std::cerr << "PanelB: " << (void*)PanelB << ", B: " << (void*)B << ", k: " << k << ", n: " << n << ", ldb: " << ldb << ", CountN: " << CountN << ", CountK: " << CountK << std::endl; 
+                //MlasSgemmTransposePackB(PanelB, B + k / block_size_ * blob_size + n * n_blocks_per_col * blob_size, CountK, scales + k / block_size_ + n * n_blocks_per_col, CountN, CountK);
+                //std::cerr << "k / block_size_ * blob_size: " << k / block_size_ * blob_size << std::endl;
+                //std::cerr << "k / block_size_: " << k / block_size_ << std::endl;
+                MlasSgemmTransposePackB(PanelB, B + k / block_size_ * blob_size + n * ldb, /*CountK*/ldfb, scales + k / block_size_ + n * n_blocks_per_col, CountN, CountK);
             }
 
             //
@@ -1570,11 +1589,18 @@ Return Value:
 
         const size_t ldb = DataParams->ldb;
 
+        const int64_t n_blocks_per_col = (K + block_size_ - 1) / block_size_;
+        const int64_t blob_size = block_size_ / 8 * nbits_;
+#if 1
         //const float* B = (const float*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
         const uint8_t* B = (const uint8_t*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
+#else
+        const uint8_t* B = (const uint8_t*)DataParams->B + RangeStartN * n_blocks_per_col * blob_size;
+#endif
+        const float* scales = (const float*)scales_data + RangeStartN * n_blocks_per_col;
 
         MlasSgemmOperation(TransA, TransB, RangeCountM, RangeCountN, K,
-            DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
+            DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc, scales);
     }
 }
 #if defined(_MSC_VER) && !defined(__clang__)

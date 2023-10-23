@@ -133,6 +133,7 @@ void DequantizeBlockwise(
           }
         } else {
           blob_ptr->dequant(dst + offset, scale[task_idx], k, K);
+          //std::cerr << "offset: " << offset << ", task_idx: " << task_idx << ", k: " << k << ", K: " << K << std::endl;
         }
       },
       0);

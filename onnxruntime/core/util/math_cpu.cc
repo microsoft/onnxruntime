@@ -78,7 +78,8 @@ void Gemm<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptr
                              float* C, ThreadPool* threadpool) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
-#if 0 // comment for prototype
+  abort();
+#if 0
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
 #endif
 }
@@ -184,7 +185,8 @@ void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, pt
 
 template <>
 void MatMul<float>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
-#if 0 // comment for prototype
+  abort();
+#if 0
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
 #endif
 }
@@ -202,7 +204,8 @@ template <>
 void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                                float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
                                int ldc, ThreadPool* threadpool) {
-#if 0 // comment for prototype
+  abort();
+#if 0
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
 #endif
 }

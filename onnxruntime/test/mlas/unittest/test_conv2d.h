@@ -127,7 +127,8 @@ class MlasConv2DTest : public MlasTestBase {
           Input += InputSize;
         }
 
-#if 0 // comment for prototype
+        abort();
+#if 0
         MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f,
                  filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, threadpool_);
 #endif
