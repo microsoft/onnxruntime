@@ -734,10 +734,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
-     std::string calibration_table;
-      auto it = provider_options_map.find(type);
-      if (it != provider_options_map.end()) {
-        OrtMIGraphXProviderOptions params{
+    std::string calibration_table;
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      OrtMIGraphXProviderOptions params{
           0,
           0,
           0,
@@ -756,7 +756,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else if (option.second == "False" || option.second == "false") {
             params.migraphx_fp16_enable = false;
           } else {
-            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be \
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be \
                                                                        'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_enable") {
@@ -765,7 +766,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else if (option.second == "False" || option.second == "false") {
             params.migraphx_int8_enable = false;
           } else {
-            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be \
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be \
                                                                        'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_calibration_table_name") {
@@ -773,7 +775,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             calibration_table = option.second;
             params.migraphx_int8_calibration_table_name = calibration_table.c_str();
           } else {
-            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a \
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a \
                                                                                        file name i.e. 'cal_table'.\n");
           }
         } else if (option.first == "migraphx_use_native_calibration_table") {
@@ -782,7 +785,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else if (option.second == "False" || option.second == "false") {
             params.migraphx_use_native_calibration_table = false;
           } else {
-            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be \
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be \
                                                                       'True' or 'False'. Default value is 'False'.\n");
           }
         } else {
@@ -790,12 +794,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
       if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
-                                                         onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
+              onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
         return migraphx_provider_factory->CreateProvider();
       }
     } else {
       if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
-                                                  onnxruntime::MIGraphXProviderFactoryCreator::Create(cuda_device_id)) {
+              onnxruntime::MIGraphXProviderFactoryCreator::Create(cuda_device_id)) {
         return migraphx_provider_factory->CreateProvider();
       }
     }
@@ -828,8 +832,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     LOGS_DEFAULT(WARNING) << "Failed to create "
                           << type
                           << ". Please reference
-                          https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements
-                          to ensure all dependencies are met.";
+                             https :  // onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements
+                                      to ensure all dependencies are met.";
 #endif
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM

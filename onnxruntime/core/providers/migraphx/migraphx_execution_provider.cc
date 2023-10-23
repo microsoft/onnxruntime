@@ -102,8 +102,7 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 }
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
-                                                                   info.device_id), true}, device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id), true}, device_id_(info.device_id) {
   InitProviderOrtApi();
   // Set GPU device to be used
   HIP_CALL_THROW(hipSetDevice(device_id_));
@@ -123,7 +122,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
 
   if (int8_enable_) {
     const std::string int8_calibration_cache_name_env =
-                                           onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8CalibrationTableName);
+        onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8CalibrationTableName);
     if (!int8_calibration_cache_name_env.empty()) {
       int8_calibration_cache_name_ = int8_calibration_cache_name_env;
     }
@@ -134,10 +133,10 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     }
 
     const std::string int8_use_native_migraphx_calibration_table_env =
-                              onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8UseNativeMIGraphXCalibrationTable);
+        onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8UseNativeMIGraphXCalibrationTable);
     if (!int8_use_native_migraphx_calibration_table_env.empty()) {
       int8_use_native_migraphx_calibration_table_ =
-                                        (std::stoi(int8_use_native_migraphx_calibration_table_env) == 0 ? false : true);
+          (std::stoi(int8_use_native_migraphx_calibration_table_env) == 0 ? false : true);
     }
   }
 
@@ -934,7 +933,8 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                   &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
               if(is_input && graph_viewer.GetAllInitializedTensors().count(node_arg.Name())) {
                 mgx_required_initializers.insert(node_arg.Name());
-              } }, true);
+              } },
+                                                 true);
     } else {
       unsupported_nodes_idx.push_back(node_idx);
     }

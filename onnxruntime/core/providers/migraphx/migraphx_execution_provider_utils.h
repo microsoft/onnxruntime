@@ -187,7 +187,7 @@ float ConvertSinglePrecisionIEEE754ToFloat(uint64_t input) {
 bool ReadDynamicRange(const std::string file_name,
                       const bool is_calibration_table,
                       std::unordered_map<std::string,
-                      float>& dynamic_range_map) {
+                                         float>& dynamic_range_map) {
   std::ifstream infile(file_name, std::ios::binary | std::ios::in);
   if (!infile) {
     return false;
