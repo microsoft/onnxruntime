@@ -47,7 +47,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
-  * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulBnb4</a>
+  * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
@@ -2528,9 +2528,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>N</tt> : int (required)</dt>
 <dd>size of each output feature</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
-<dd>number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.</dd>
+<dd>number of groupsize used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
 <dt><tt>quant_type</tt> : int (required)</dt>
-<dd>Quantization data type. 0 for FP4, 1 for NF4.</dd>
+<dd>quantization data type. 0 for FP4, 1 for NF4.</dd>
 </dl>
 
 #### Inputs
@@ -2541,7 +2541,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>B</tt> : T2</dt>
 <dd>1-dimensional quantized data for weight</dd>
 <dt><tt>absmax</tt> : T1</dt>
-<dd>Quantization constants</dd>
+<dd>quantization constants</dd>
 </dl>
 
 #### Outputs

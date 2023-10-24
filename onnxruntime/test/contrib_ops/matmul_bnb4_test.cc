@@ -72,7 +72,7 @@ void RunTest(int64_t quant_type, int64_t M, int64_t N, int64_t K, int64_t block_
   QuantizeDequantizeBnb4(input1_f_vals,
                          input1_vals,
                          absmax,
-                         quant_type,
+                         static_cast<int32_t>(quant_type),
                          static_cast<int32_t>(N),
                          static_cast<int32_t>(K),
                          static_cast<int32_t>(block_size));

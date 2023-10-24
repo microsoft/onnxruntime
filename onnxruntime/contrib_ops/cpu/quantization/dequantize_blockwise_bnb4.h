@@ -30,7 +30,7 @@ void QuantizeBlockwiseBnb4(
       thread_pool,
       total_block_count,
       [&](ptrdiff_t block_idx) {
-        QuantizeBlockBnb4<T, block_size, DATA_TYPE>(src, dst, absmax[block_idx], block_idx, numel);
+        QuantizeBlockBnb4<T, block_size, DATA_TYPE>(src, dst, absmax[block_idx], static_cast<int32_t>(block_idx), numel);
       },
       0);
 }
@@ -87,7 +87,7 @@ void DequantizeBlockwiseBnb4(
       thread_pool,
       total_block_count,
       [&](ptrdiff_t block_idx) {
-        DequantizeBlockBnb4<T, block_size, DATA_TYPE>(src, dst, absmax[block_idx], block_idx, numel);
+        DequantizeBlockBnb4<T, block_size, DATA_TYPE>(src, dst, absmax[block_idx], static_cast<int32_t>(block_idx), numel);
       },
       0);
 }

@@ -35,7 +35,7 @@ template Status SetBnbQuantMap<float>(int quant_type, float* quant_map_buffer, c
 
 template Status SetBnbQuantMap<half>(int quant_type, half* quant_map_buffer, cudaStream_t stream);
 
-template <typename T, int TILE_SIZE, int THREADS, int NUM_PER_TH>
+template <class T, int TILE_SIZE, int THREADS, int NUM_PER_TH>
 __global__ void kDequantizeBlockwise(
     const T* quant_map,
     T* output,

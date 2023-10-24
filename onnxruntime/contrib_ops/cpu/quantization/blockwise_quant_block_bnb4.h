@@ -42,7 +42,7 @@ FORCEINLINE uint8_t QuantizeOneFP4(float x) {
   // that is difficult to noice if you add an extra
   // zero somewhere!
 
-  int sign = x < 0 ? 0b1000 : 0b0000;
+  uint8_t sign = x < 0 ? 0b1000 : 0b0000;
   x = fabsf(x);
   if (x > 0.29166667f) {
     if (x > 0.583333f) {

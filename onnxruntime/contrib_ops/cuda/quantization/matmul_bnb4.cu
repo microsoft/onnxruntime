@@ -13,7 +13,7 @@ namespace contrib {
 namespace cuda {
 
 #define num_values_4bit 32
-template <typename T, int THREADS, int BITS>
+template <class T, int THREADS, int BITS>
 __global__ void kgemm_4bit_inference_naive(
     int M,
     int N,

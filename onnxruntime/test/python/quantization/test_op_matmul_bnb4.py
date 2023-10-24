@@ -13,7 +13,6 @@ from typing import Dict, Tuple, Union
 
 import numpy as np
 import onnx
-import parameterized
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
 
@@ -141,7 +140,11 @@ class TestOpMatMulBnb4(unittest.TestCase):
 
         onnx.save(model, output_model_path)
 
-    def quant_test(self, model_fp32_path: str, data_reader: TestDataFeeds, quant_type: int, block_size: int):
+    def quant_test(self, quant_type: int, block_size: int):
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath(f"matmul_fp32_{quant_type}.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, quant_type)
+        data_reader = self.input_feeds(1, {"input": [100, 52]})
+
         model_bnb4_path = str(
             Path(self._tmp_model_dir.name).joinpath(f"MatMulBnb4_{quant_type}_{block_size}.onnx").absolute()
         )
@@ -167,14 +170,16 @@ class TestOpMatMulBnb4(unittest.TestCase):
     @unittest.skipIf(
         find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_bnb4"
     )
-    @parameterized.parameterized.expand([0, 1])
-    def test_quantize_matmul_bnb4(self, quant_type):
+    def test_quantize_matmul_bnb4_fp4(self):
         np.random.seed(13)
+        self.quant_test(0, 64)
 
-        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath(f"matmul_fp32_{quant_type}.onnx").absolute())
-        self.construct_model_matmul(model_fp32_path, quant_type)
-        data_reader = self.input_feeds(1, {"input": [100, 52]})
-        self.quant_test(model_fp32_path, data_reader, quant_type, 64)
+    @unittest.skipIf(
+        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_bnb4"
+    )
+    def test_quantize_matmul_bnb4_nf4(self):
+        np.random.seed(13)
+        self.quant_test(1, 64)
 
 
 if __name__ == "__main__":
