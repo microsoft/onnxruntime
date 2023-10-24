@@ -1793,6 +1793,7 @@
 					class="nav-item tab tab-bordered tab-lg"
 					class:tab-active={activeTab == index}
 					on:click={() => (activeTab = index)}
+					on:keypress={() => (activeTab = index)}
 					id={index == 0 ? 'OI_tab' : 'OT_tab'}
 					data-toggle="pill"
 					aria-controls="panel{index}"

@@ -1,3 +1,9 @@
+<svelte:head>
+	<meta
+		name="description"
+		content="Quickly ramp up with ONNX Runtime, using a variety of platforms to deploy on hardware of your choice."
+	/>
+</svelte:head>
 <script lang="ts">
 	import Table from './table.svelte';
 	import githublogo from '../../images/logos/GitHub-Logo.svg';

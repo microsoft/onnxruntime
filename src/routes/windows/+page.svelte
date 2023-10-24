@@ -1,3 +1,9 @@
+<svelte:head>
+	<meta
+		name="description"
+		content="Learn about using ONNX Runtime to create AI experiences on Windows."
+	/>
+</svelte:head>
 <script lang="ts">
 	import OnnxLight from '../../images/ONNX-Light.svelte';
 	import LandingHero from '../components/landing-hero.svelte';

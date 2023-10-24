@@ -1,3 +1,9 @@
+<svelte:head>
+	<meta
+		name="description"
+		content="Learn how you can use ONNX Runtime to accelerate your Machine Learning Training workloads."
+	/>
+</svelte:head>
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	import ImageLargemodeltraining from '../../images/undraw/image_largemodeltraining.svelte';

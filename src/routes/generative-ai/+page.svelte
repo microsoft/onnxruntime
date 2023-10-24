@@ -1,3 +1,9 @@
+<svelte:head>
+	<meta
+		name="description"
+		content="Integrate the power of generative AI in your apps and services with ONNX Runtime."
+	/>
+</svelte:head>
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	const title = 'Generative AI + ONNX Runtime';

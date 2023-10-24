@@ -1,3 +1,9 @@
+<svelte:head>
+	<meta
+		name="description"
+		content="ONNX Runtime Blogs - your source for staying updated on the latest ONNX Runtime updated and information."
+	/>
+</svelte:head>
 <script>
 	// @ts-nocheck
 

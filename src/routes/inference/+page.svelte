@@ -1,3 +1,9 @@
+<svelte:head>
+	<meta
+		name="description"
+		content="Learn about how ONNX Runtime can be used in various Machine Learning Inferencing scenarios."
+	/>
+</svelte:head>
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	import ImageInference2 from '../../images/undraw/image_inference2.svelte';

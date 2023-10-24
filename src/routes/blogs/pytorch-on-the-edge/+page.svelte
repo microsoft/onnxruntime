@@ -1,3 +1,9 @@
+<svelte:head>
+	<meta
+		name="description"
+		content="Everything you need to know about running PyTorch models on the edge with ONNX Runtime."
+	/>
+</svelte:head>
 <script>
     import Highlight from 'svelte-highlight';
 	import python from 'svelte-highlight/languages/python';

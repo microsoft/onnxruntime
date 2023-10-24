@@ -1,3 +1,9 @@
+<svelte:head>
+	<meta
+		name="description"
+		content="Learn about the benefits of using ONNX Runtime with your PyTorch models."
+	/>
+</svelte:head>
 <script lang="ts">
 	import Highlight from 'svelte-highlight';
 	import python from 'svelte-highlight/languages/python';

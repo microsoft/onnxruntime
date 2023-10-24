@@ -1,3 +1,9 @@
+<svelte:head>
+	<meta
+		name="description"
+		content="ONNX Runtime's many customer testimonials."
+	/>
+</svelte:head>
 <script>
 	import TestimonialCard from './testimonial-card.svelte';
 	import ImageTestimonials from '../../images/undraw/image_testimonials.svelte';

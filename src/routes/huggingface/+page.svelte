@@ -1,3 +1,9 @@
+<svelte:head>
+	<meta
+		name="description"
+		content="Learn about how ONNX Runtime works with hundreds of thousands of models on Hugging Face."
+	/>
+</svelte:head>
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	import ImagesHf1 from '../../images/undraw/image_HF1.svelte';
