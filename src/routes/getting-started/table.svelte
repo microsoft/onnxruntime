@@ -1217,11 +1217,14 @@
 			if (selection.id == opts[category]) {
 				jq(selection).removeClass('selected');
 				jq(selection).removeClass('unsupported');
+				jq(selection).removeClass('btn-primary');
 				opts[category] = '';
 			} else {
 				jq(option).removeClass('selected');
 				jq(option).removeClass('unsupported');
+				jq(option).removeClass('btn-primary');
 				jq(selection).addClass('selected');
+				jq(selection).addClass('btn-primary');
 				opts[category] = selection.id;
 			}
 
@@ -1259,17 +1262,18 @@
 		function ot_selectedOption(option, selection, category) {
 			//allow deselect, disable for architecture since they only have 1 item
 			if (
-				selection.id == ot_opts[category] &&
-				ot_defaultSelection == false &&
-				category != 'ot_architecture'
+				selection.id == ot_opts[category] 
 			) {
 				jq(selection).removeClass('selected');
 				jq(selection).removeClass('unsupported');
+				jq(selection).removeClass('btn-primary');
 				ot_opts[category] = '';
 			} else {
 				jq(option).removeClass('selected');
 				jq(option).removeClass('unsupported');
+				jq(option).removeClass('btn-primary');
 				jq(selection).addClass('selected');
+				jq(selection).addClass('btn-primary');
 				ot_opts[category] = selection.id;
 			}
 
@@ -1350,8 +1354,10 @@
 			for (var i = 0; i < elements.length; i++) {
 				if (elements[i].classList.contains(selection)) {
 					jq(elements[i]).addClass('selected');
+					jq(elements[i]).addClass('btn-primary');
 				} else {
 					jq(elements[i]).removeClass('selected');
+					jq(elements[i]).removeClass('btn-primary');
 				}
 			}
 		}
@@ -1827,16 +1833,13 @@
 						aria-describedby="decriptionOS"
 					>
 						{#each platforms as platform, i}
-							<input
+							<a
 								class="r-option version btn rounded"
 								role="option"
 								aria-selected="false"
-								type="radio"
-								name="platform"
-								value={platform}
 								aria-label={platform}
 								id={platformIDs[i]}
-							/>
+							>{platform}</a>
 						{/each}
 					</div>
 				</div>
@@ -1856,16 +1859,13 @@
 						class="r-content language grid grid-cols-8 gap-4"
 					>
 						{#each apis as api, i}
-							<input
+							<a
 								class="r-option btn rounded w-full"
 								role="option"
 								aria-selected="false"
-								type="radio"
-								name="api"
-								value={api}
 								aria-label={api}
 								id={apiIDs[i]}
-							/>
+							>{api}</a>
 						{/each}
 					</div>
 				</div>
@@ -1884,16 +1884,13 @@
 						aria-describedby="decriptionArchitecture"
 					>
 						{#each architectures as architecture, i}
-							<input
+							<a
 								class="r-option join-item btn rounded"
 								role="option"
 								aria-selected="false"
-								type="radio"
-								name="architecture"
-								value={architecture}
 								aria-label={architecture}
 								id={architecturesIDs[i]}
-							/>
+							>{architecture}</a>
 						{/each}
 					</div>
 				</div>
@@ -1914,16 +1911,13 @@
 						aria-describedby="decriptionHardwareAcceleration"
 					>
 						{#each hardwareAccelerations as hardware, i}
-							<input
+							<a
 								class="r-option version join-item btn rounded"
 								role="option"
 								aria-selected="false"
-								type="radio"
-								name="hardware"
-								value={hardware}
 								aria-label={hardware}
 								id={hardwareAccelerationIDs[i]}
-							/>
+							>{hardware}</a>
 						{/each}
 					</div>
 				</div>
@@ -1960,16 +1954,13 @@
 					aria-describedby="ot_decriptionScenario"
 				>
 					{#each TrainingScenarios as trainingscenario, i}
-						<input
+						<a
 							class="r-option version join-item btn rounded"
 							role="option"
 							aria-selected="false"
-							type="radio"
-							name="ot_scenario"
-							value={trainingscenario}
 							aria-label={trainingscenario}
 							id={TrainingScenarioIds[i]}
-						/>
+						>{trainingscenario}</a>
 					{/each}
 				</div>
 			</div>
@@ -1986,16 +1977,13 @@
 			>
 				<div class="grid grid-cols-5 gap-4 ot_os">
 					{#each TrainingPlatforms as trainingplatform, i}
-						<input
+						<a
 							class="r-option version join-item btn rounded"
 							role="option"
 							aria-selected="false"
-							type="radio"
-							name="ot_os"
-							value={trainingplatform}
 							aria-label={trainingplatform}
 							id={TrainingPlatformIds[i]}
-						/>
+						>{trainingplatform}</a>
 					{/each}
 				</div>
 			</div>
@@ -2013,16 +2001,13 @@
 			>
 				<div class="grid grid-cols-6 gap-4 ot_language">
 					{#each TrainingAPIs as trainingapi, i}
-						<input
+						<a
 							class="r-option version join-item btn rounded"
 							role="option"
 							aria-selected="false"
-							type="radio"
-							name="ot_language"
-							value={trainingapi}
 							aria-label={trainingapi}
 							id={TrainingAPIIds[i]}
-						/>
+						>{trainingapi}</a>
 					{/each}
 				</div>
 			</div>
@@ -2042,16 +2027,13 @@
 			>
 				<div class="grid grid-cols-3 gap-4 ot_hardwareAcceleration">
 					{#each TrainingVersions as version, i}
-						<input
+						<a
 							class="r-option version join-item btn rounded"
 							role="option"
 							aria-selected="false"
-							type="radio"
-							name="ot_hardwareAcceleration"
-							value={version}
 							aria-label={version}
 							id={TrainingVersionIds[i]}
-						/>
+						>{version}</a>
 					{/each}
 				</div>
 			</div>
@@ -2068,16 +2050,13 @@
 			>
 				<div class="grid grid-cols-2 gap-4 ot_build">
 					{#each TrainingBuilds as build, i}
-						<input
+						<a
 							class="r-option version join-item btn rounded"
 							role="option"
 							aria-selected="false"
-							type="radio"
-							name="ot_decriptionBuild"
-							value={build}
 							aria-label={build}
 							id={TrainingBuildIds[i]}
-						/>
+						>{build}</a>
 					{/each}
 				</div>
 			</div>
