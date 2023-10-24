@@ -6,8 +6,7 @@ import {env, InferenceSession, OnnxValue, SessionHandler, Tensor, TrainingSessio
 import {SerializableModeldata} from './proxy-messages';
 import {decodeTensorMetadata, encodeTensorMetadata} from './session-handler-inference';
 import {createSessionAllocate, initRuntime, isOrtEnvInitialized} from './wasm-core-impl';
-import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getParametersSize,
-  releaseTrainingSessionAndCheckpoint, runTrainStep, loadParametersBuffer} from './wasm-training-core-impl';
+import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getParametersSize, loadParametersBuffer, releaseTrainingSessionAndCheckpoint, runTrainStep} from './wasm-training-core-impl';
 
 export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
   private sessionId: number;
