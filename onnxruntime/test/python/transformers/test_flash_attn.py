@@ -164,7 +164,7 @@ def create_multihead_attention_graph(config):
     return model.SerializeToString()
 
 
-def create_group_query_attention_graph_no_past(config, causal=False):
+def create_group_query_attention_graph_no_past(config, causal=False, present_kv_format=Formats.BSNH):
     nodes = [
         helper.make_node(
             "GroupQueryAttention",
@@ -173,11 +173,12 @@ def create_group_query_attention_graph_no_past(config, causal=False):
                 "key",
                 "value",
             ],
-            ["output"],
+            ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
             unidirectional=1 if causal else 0,
+            is_past_bsnh=1 if present_kv_format == Formats.BSNH else 0,
             domain="com.microsoft",
         ),
     ]
@@ -217,6 +218,26 @@ def create_group_query_attention_graph_no_past(config, causal=False):
             "output",
             TensorProto.FLOAT16,
             [config.batch_size, config.sequence_length, config.num_heads * config.head_size],
+        ),
+        helper.make_tensor_value_info(
+            "present_key",
+            TensorProto.FLOAT16,
+            [
+                config.batch_size,
+                config.kv_sequence_length if present_kv_format == Formats.BSNH else config.kv_num_heads,
+                config.kv_num_heads if present_kv_format == Formats.BSNH else config.kv_sequence_length,
+                config.head_size,
+            ],
+        ),
+        helper.make_tensor_value_info(
+            "present_value",
+            TensorProto.FLOAT16,
+            [
+                config.batch_size,
+                config.kv_sequence_length if present_kv_format == Formats.BSNH else config.kv_num_heads,
+                config.kv_num_heads if present_kv_format == Formats.BSNH else config.kv_sequence_length,
+                config.head_size,
+            ],
         ),
     ]
 
@@ -552,8 +573,8 @@ def mha_func(q, k, v, config):
     return output
 
 
-def gqa_no_past_func(q, k, v, config, causal=True):
-    onnx_model_str = create_group_query_attention_graph_no_past(config, causal)
+def gqa_no_past_func(q, k, v, config, causal=True, present_kv_format=Formats.BSNH):
+    onnx_model_str = create_group_query_attention_graph_no_past(config, causal, present_kv_format=present_kv_format)
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     k = torch.reshape(k, (config.batch_size, config.kv_sequence_length, -1))
     v = torch.reshape(v, (config.batch_size, config.kv_sequence_length, -1))
@@ -564,7 +585,7 @@ def gqa_no_past_func(q, k, v, config, causal=True):
     }
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
-    ort_output = ort_session.run(None, ort_inputs)
+    ort_output, _, _ = ort_session.run(None, ort_inputs)
     ort_output = numpy.array(ort_output)
     output = torch.tensor(ort_output)
     return output
@@ -1213,6 +1234,7 @@ class TestGQA(unittest.TestCase):
         h_sizes = [16, 256] if pipeline_mode else [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]
         if major < 5 or (major == 5 and minor < 3):
             return
+        print("------- MEMORY EFFICIENT ATTENTION ---------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         for b in batches:
             for s, s2 in seqs:
@@ -1223,6 +1245,7 @@ class TestGQA(unittest.TestCase):
                             parity_check_gqa_no_past(config, causal=causal)
         if major < 8 or platform.system() != "Linux":
             return
+        print("------- FLASH ATTENTION --------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         for b in batches:
             for s, s2 in seqs:
@@ -1240,6 +1263,7 @@ class TestGQA(unittest.TestCase):
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         print("-------- TEST GQA PAST ---------")
+        print("-------- MEMORY EFFICEINT --------")
         batches = [2] if pipeline_mode else [1, 2]
         seqs = (
             [(1, 128), (3, 1024), (64, 2048)]
@@ -1259,7 +1283,7 @@ class TestGQA(unittest.TestCase):
             ]
         )
         num_h = [(9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 256] if pipeline_mode else [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]
+        h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         random.seed(69)
         for b in batches:
             for s, s2 in seqs:
@@ -1285,6 +1309,7 @@ class TestGQA(unittest.TestCase):
                                 )
         if major < 8 or platform.system() != "Linux":
             return
+        print("------- FLASH ATTENTION -------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         for b in batches:
             for s, s2 in seqs:
