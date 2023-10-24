@@ -706,7 +706,7 @@ def generate_files(line_list, args):
         )
 
         if is_windows():
-            if "2022" in openvino_path:
+            if "2022" in openvino_path or "2023" in openvino_path:
                 dll_list_path = os.path.join(openvino_path, "runtime\\bin\\intel64\\Release\\")
                 tbb_list_path = os.path.join(openvino_path, "runtime\\3rdparty\\tbb\\bin\\")
             else:
@@ -746,7 +746,7 @@ def generate_files(line_list, args):
             )
             # usb-ma2x8x.mvcmd
             # OpenVINO 2022.3 doesn't have usb-ma2x8x.mvcmd
-            if "2022.3" not in openvino_path:
+            if "2022.3" not in openvino_path and "2023" not in openvino_path:
                 files_list.append(
                     "<file src="
                     + '"'
