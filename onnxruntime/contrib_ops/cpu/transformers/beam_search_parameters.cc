@@ -130,7 +130,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
     if (temperature_tensor->IsDataType<float>()) {
       temperature = *temperature_tensor->Data<float>();
     } else {
-      temperature = static_cast<float>(*temperature_tensor->Data<MLFloat16>());
+      temperature = static_cast<MLFloat16>(*temperature_tensor->Data<MLFloat16>());
     }
   } else {
     temperature = 1.0f;
