@@ -25,26 +25,25 @@ using IsInfTypesOpset20 =
         float,
         double
 #if !defined(DISABLE_FLOAT8_TYPES)
-        ,Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+        ,
+        Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
 #endif
         >;
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-  kCpuExecutionProvider,
-  kOnnxDomain,
-  IsInf,
-  20,
-  Input,
-  0, 
-  IsInfTypesOpset20);
+    kCpuExecutionProvider,
+    kOnnxDomain,
+    IsInf,
+    20,
+    Input,
+    0,
+    IsInfTypesOpset20);
 }  // namespace op_kernel_type_control
-
-
 
 class IsInf final : public OpKernel {
  public:
   using EnabledDataTypes10 = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
-                                                                          IsInf, 10, Input, 0);
+                                                                 IsInf, 10, Input, 0);
   using EnabledDataTypes20 = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
                                                                  IsInf, 20, Input, 0);
 
@@ -75,7 +74,6 @@ ONNX_CPU_OPERATOR_KERNEL(
                         BuildKernelDefConstraintsFromTypeList<IsInf::EnabledDataTypes20>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     IsInf);
-
 
 IsInf::IsInf(const OpKernelInfo& info) : OpKernel(info) {
   Status status = info.GetAttr("detect_positive", &detect_positive_);
@@ -116,6 +114,7 @@ struct ComputeDispatchTarget {
   }
 };
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 template <>
 struct ComputeDispatchTarget<Float8E4M3FN> {
   void operator()(const Tensor&, Tensor& Y, bool, bool) const {
@@ -156,6 +155,7 @@ struct ComputeDispatchTarget<Float8E5M2FNUZ> {
     EigenMap<bool>(Y).array() = false;
   }
 };
+#endif
 }  // namespace isinf_internal
 
 Status IsInf::Compute(OpKernelContext* context) const {

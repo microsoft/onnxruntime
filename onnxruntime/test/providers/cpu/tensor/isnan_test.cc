@@ -59,6 +59,7 @@ TEST(IsNaNOpTest, IsNaNDouble20) {
   run_is_nan_test(20, dims, input, output);
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 TEST(IsNaNOpTest, IsNaNFloat8E4M3FN) {
   std::vector<int64_t> dims{2, 2};
   std::initializer_list<Float8E4M3FN> input = {Float8E4M3FN(1.0f), Float8E4M3FN(-NAN), Float8E4M3FN(2.0f), Float8E4M3FN(NAN)};
@@ -86,5 +87,6 @@ TEST(IsNaNOpTest, IsNaN_Float8E5M2FNUZ) {
   std::initializer_list<bool> output = {false, true, false, true};
   run_is_nan_test(20, dims, input, output);
 }
+#endif
 }  // namespace test
 }  // namespace onnxruntime

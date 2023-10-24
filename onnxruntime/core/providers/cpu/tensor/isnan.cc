@@ -49,10 +49,13 @@ ADD_TYPED_ISNAN_OP_13(MLFloat16);
 ADD_TYPED_ISNAN_OP(float);
 ADD_TYPED_ISNAN_OP(double);
 ADD_TYPED_ISNAN_OP(MLFloat16);
+
+#if !defined(DISABLE_FLOAT8_TYPES)
 ADD_TYPED_ISNAN_OP(Float8E4M3FN);
 ADD_TYPED_ISNAN_OP(Float8E4M3FNUZ);
 ADD_TYPED_ISNAN_OP(Float8E5M2);
 ADD_TYPED_ISNAN_OP(Float8E5M2FNUZ);
+#endif
 
 template <typename T>
 Status IsNaN<T>::Compute(OpKernelContext* context) const {
@@ -88,17 +91,18 @@ Status IsNaN<MLFloat16>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 template <>
 Status IsNaN<Float8E4M3FN>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   auto& dims = X->Shape();
-  auto& Y = *context->Output(0, dims);  
+  auto& Y = *context->Output(0, dims);
 
   auto input = ConstEigenVectorMap<uint8_t>(static_cast<const uint8_t*>(static_cast<const void*>(X->Data<Float8E4M3FN>())), onnxruntime::narrow<size_t>(dims.Size()));
   auto output = EigenMap<bool>(Y);
 
   // S.1111.111
-  std::transform(input.begin(), input.end(), output.begin(), [](uint8_t c) { return (c & 0x7f) == 0x7f;});
+  std::transform(input.begin(), input.end(), output.begin(), [](uint8_t c) { return (c & 0x7f) == 0x7f; });
   return Status::OK();
 }
 
@@ -126,9 +130,8 @@ Status IsNaN<Float8E5M2>::Compute(OpKernelContext* context) const {
   auto input = ConstEigenVectorMap<uint8_t>(static_cast<const uint8_t*>(static_cast<const void*>(X->Data<Float8E5M2>())), onnxruntime::narrow<size_t>(dims.Size()));
   auto output = EigenMap<bool>(Y);
 
-  // S.11111.{01, 10, 11} 
-  std::transform(input.begin(), input.end(), output.begin(), [](uint8_t c) { 
-    return ((c & 0x7c) == 0x7c) && ((c & 0x03) != 0x00); });
+  // S.11111.{01, 10, 11}
+  std::transform(input.begin(), input.end(), output.begin(), [](uint8_t c) { return ((c & 0x7c) == 0x7c) && ((c & 0x03) != 0x00); });
   return Status::OK();
 }
 
@@ -145,4 +148,5 @@ Status IsNaN<Float8E5M2FNUZ>::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+#endif
 }  // namespace onnxruntime
