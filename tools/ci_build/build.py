@@ -339,6 +339,11 @@ def parse_arguments():
         help="[cross-compiling] Create ARM64EC makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed",
     )
+    parser.add_argument("--riscv",
+        action='store_true',
+        help="[cross-compiling] Create RISC-V makefiles. Requires --update and no existing cache "
+        "CMake setup. Delete CMakeCache.txt if needed",
+    )
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
@@ -1054,7 +1059,7 @@ def generate_build_tree(
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
     # (no native compilation supported through this script).
-    if args.arm64 or args.arm64ec or args.arm:
+    if args.arm64 or args.arm64ec or args.arm or args.riscv:
         add_default_definition(cmake_extra_defines, "onnxruntime_CROSS_COMPILING", "ON")
         if args.use_extensions:
             add_default_definition(cmake_extra_defines, "OPENCV_SKIP_SYSTEM_PROCESSOR_DETECTION", "ON")
