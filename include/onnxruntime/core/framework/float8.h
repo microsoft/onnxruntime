@@ -208,9 +208,10 @@ struct Float8E4M3FNUZ {
     val = static_cast<uint8_t>((b & 0x80000000) >> 24);  // sign
     if ((b & 0x7fffffff) == 0x7f800000) {                // infinity
       if (saturate) {
+        // the highest available value
         val |= 0x7F;
       } else {
-        // infinity
+        // NaN
         val = 0x80;
       }
     } else if ((b & 0x7F800000) == 0x7F800000) {  // NaN
@@ -362,8 +363,10 @@ struct Float8E5M2 {
     val = (b & 0x80000000) >> 24;          // sign
     if ((b & 0x7FFFFFFF) == 0x7F800000) {  // inf
       if (saturate) {
+        // the highest available value
         val |= 0x7B;
       } else {
+        // the infinity
         val |= 0x7C;
       }
     } else if ((b & 0x7F800000) == 0x7F800000) {  // NaN
