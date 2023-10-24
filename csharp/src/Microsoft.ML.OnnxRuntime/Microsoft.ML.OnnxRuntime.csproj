@@ -43,7 +43,18 @@
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
                              '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Azure' OR
                              '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu')">
-    <Net6Targets>net6.0;net6.0-android;net6.0-ios;net6.0-macos</Net6Targets>
+    <Net6Targets>net6.0</Net6Targets>
+  </PropertyGroup>
+
+  <!-- only set the .net6 targets for android, iOS and mac if we're building an ORT package and
+      the Xamarin mobile workloads are installed.
+      we can add .net6 support to other packages later as needed -->
+  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
+                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Azure' OR
+                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu') AND
+                             Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND
+                             Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
+    <Net6TargetsForAndoirdAndiOS>net6.0-android;net6.0-ios;net6.0-macos</Net6TargetsForAndoirdAndiOS>
   </PropertyGroup>
 
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training')">
@@ -55,12 +66,12 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(SelectedTargets)'=='Net6'">
-    <TargetFrameworks>$(Net6Targets);$(Net6TargetsForTrainingPackage)</TargetFrameworks>
+    <TargetFrameworks>$(Net6Targets);$(Net6TargetsForTrainingPackage);$(Net6TargetsForAndoirdAndiOS)</TargetFrameworks>
   </PropertyGroup>
 
   <!-- nuget package creation -->
   <PropertyGroup Condition="'$(SelectedTargets)'=='All'">
-    <TargetFrameworks>$(BaseTargets);$(XamarinTargets);$(XamarinTargetsForTraining);$(Net6Targets);$(Net6TargetsForTrainingPackage)</TargetFrameworks>
+    <TargetFrameworks>$(BaseTargets);$(XamarinTargets);$(XamarinTargetsForTraining);$(Net6Targets);$(Net6TargetsForTrainingPackage);$(Net6TargetsForAndoirdAndiOS)</TargetFrameworks>
   </PropertyGroup>
 
 
