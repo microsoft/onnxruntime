@@ -11,9 +11,8 @@ using namespace onnxruntime;
 namespace onnxruntime {
 struct WebNNProviderFactory : IExecutionProviderFactory {
   WebNNProviderFactory(const std::string& webnn_device_flags, const std::string& webnn_threads_number,
-      const std::string& webnn_power_flags)
-      : webnn_device_flags_(webnn_device_flags), webnn_threads_number_(webnn_threads_number),
-      webnn_power_flags_(webnn_power_flags) {}
+                       const std::string& webnn_power_flags)
+      : webnn_device_flags_(webnn_device_flags), webnn_threads_number_(webnn_threads_number), webnn_power_flags_(webnn_power_flags) {}
   ~WebNNProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;

@@ -18,7 +18,7 @@
 namespace onnxruntime {
 
 WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags,
-    const std::string& webnn_threads_number, const std::string& webnn_power_flags)
+                                               const std::string& webnn_threads_number, const std::string& webnn_power_flags)
     : IExecutionProvider{onnxruntime::kWebNNExecutionProvider, true} {
   // Create WebNN context and graph builder.
   const emscripten::val ml = emscripten::val::global("navigator")["ml"];

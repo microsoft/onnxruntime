@@ -19,7 +19,7 @@ class Model;
 class WebNNExecutionProvider : public IExecutionProvider {
  public:
   WebNNExecutionProvider(const std::string& webnn_device_flags, const std::string& webnn_threads_number,
-      const std::string& webnn_power_flags);
+                         const std::string& webnn_power_flags);
   virtual ~WebNNExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
