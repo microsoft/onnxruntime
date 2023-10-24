@@ -20,15 +20,15 @@ Do not modify directly.*
 | Asinh | ai.onnx(9+) |  |
 | Atan | ai.onnx(7+) |  |
 | Atanh | ai.onnx(9+) |  |
-| AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(11+) | need perf optimization; need implementing activation |
+| AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(7-9,10,11+) | need perf optimization; need implementing activation |
 | BiasAdd | com.microsoft(1+) |  |
 | BiasSplitGelu | com.microsoft(1+) |  |
 | Cast | ai.onnx(6-8,9-12,13-18,19+) |  |
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
 | Concat | ai.onnx(1-3,4-10,11-12,13+) |  |
-| Conv | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) | need perf optimization; conv3d is not supported; need implementing activation |
-| ConvTranspose | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) | need perf optimization; ConvTranspose3d is not supported; need implementing activation |
+| Conv | ai.onnx(1-10,11+); com.ms.internal.nhwc(1-10,11+) | need perf optimization; conv3d is not supported; need implementing activation |
+| ConvTranspose | ai.onnx(1-10,11+); com.ms.internal.nhwc(1-10,11+) | need perf optimization; ConvTranspose3d is not supported; need implementing activation |
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
@@ -56,7 +56,7 @@ Do not modify directly.*
 | LessOrEqual | ai.onnx(12-15,16+) |  |
 | Log | ai.onnx(6-12,13+) |  |
 | MatMul | ai.onnx(1-12,13+) |  |
-| MaxPool | ai.onnx(1-7,8-9,10,11,12+); com.ms.internal.nhwc(11,12+) | need perf optimization; need implementing activation |
+| MaxPool | ai.onnx(1-7,8-9,10,11,12+); com.ms.internal.nhwc(1-7,8-9,10,11,12+) | need perf optimization; need implementing activation |
 | MemcpyFromHost | ai.onnx(1+) |  |
 | MemcpyToHost | ai.onnx(1+) |  |
 | Mul | ai.onnx(7-12,13,14+) |  |
@@ -78,7 +78,7 @@ Do not modify directly.*
 | ReduceSumSquare | ai.onnx(1-10,11-12,13-17,18+) |  |
 | Relu | ai.onnx(6-12,13,14+) |  |
 | Reshape | ai.onnx(5-12,13,14+) | no GPU kernel |
-| Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
+| Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
 | Shape | ai.onnx(1-12,13-14,15+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | Sin | ai.onnx(7+) |  |

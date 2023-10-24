@@ -24,6 +24,13 @@ ONNX_OPERATOR_KERNEL_EX(
     ConvTranspose<false>);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     ConvTranspose,
+    kMSInternalNHWCDomain,
+    1, 10,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
+    ConvTranspose<true>);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    ConvTranspose,
     kOnnxDomain,
     1, 10,
     kJsExecutionProvider,
