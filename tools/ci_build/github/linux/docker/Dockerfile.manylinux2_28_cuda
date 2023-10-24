@@ -5,11 +5,10 @@
 ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
 ARG BASEIMAGE=nvidia/cuda:12.2.0-devel-ubi8
-ARG TRT_VERSION=8.6.1.6-1.cuda12.0
 ARG DEVTOOLSET_ROOTPATH=/usr
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64
 ARG PREPEND_PATH=/usr/local/cuda/binet
-
+ARG INSTALL_CUDNN=false
 
 #Build manylinux docker image begin
 FROM $BASEIMAGE AS runtime_base
@@ -118,7 +117,7 @@ RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.5
 
 FROM build_cpython AS build_cpython311
 COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.11.0b5
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.11.2
 
 FROM build_cpython AS all_python
 COPY build_scripts/install-pypy.sh \
@@ -155,23 +154,35 @@ CMD ["/bin/bash"]
 
 #Build manylinux docker image end
 
-#Install TensorRT 8.6.1.6
-RUN CUDA_VERSION=$(nvcc --version | sed -n 's/^.*release \([0-9]\+\.[0-9]\+\).*$/\1/p') &&\
-     dnf -y install\
-      libcudnn8-devel-*cuda${CUDA_VERSION}*\
-      libcudnn8-*cuda${CUDA_VERSION}*\
-      libnvinfer8-${TRT_VERSION}\
-      libnvparsers8-${TRT_VERSION}\
-      libnvonnxparsers8-${TRT_VERSION}\
-      libnvinfer-plugin8-${TRT_VERSION}\
-      libnvinfer-vc-plugin8-${TRT_VERSION}\
-      libnvinfer-devel-${TRT_VERSION}\
-      libnvparsers-devel-${TRT_VERSION}\
-      libnvonnxparsers-devel-${TRT_VERSION}\
-      libnvinfer-plugin-devel-${TRT_VERSION}\
-      libnvinfer-vc-plugin-devel-${TRT_VERSION}\
-      libnvinfer-headers-devel-${TRT_VERSION}\
-      libnvinfer-headers-plugin-devel-${TRT_VERSION}
+
+#Install optinal Cudnn
+RUN if [ "$INSTALL_CUDNN" = true ]; then  \
+     CUDA_VERSION=$(nvcc --version | sed -n 's/^.*release \([0-9]\+\.[0-9]\+\).*$/\1/p') &&  \
+     dnf -y install  \
+     libcudnn8-devel-*cuda${CUDA_VERSION}*  \
+     libcudnn8-*cuda${CUDA_VERSION}* ; \
+fi
+
+#Install TensorRT only if TRT_VERSION is not empty
+RUN if [ -n "$TRT_VERSION" ]; then  \
+    echo "TRT_VERSION is $TRT_VERSION" && \
+    dnf -y install  \
+    libnvinfer8-${TRT_VERSION}  \
+    libnvparsers8-${TRT_VERSION}  \
+    libnvonnxparsers8-${TRT_VERSION}  \
+    libnvinfer-plugin8-${TRT_VERSION}  \
+    libnvinfer-vc-plugin8-${TRT_VERSION}  \
+    libnvinfer-devel-${TRT_VERSION}  \
+    libnvparsers-devel-${TRT_VERSION}  \
+    libnvonnxparsers-devel-${TRT_VERSION}  \
+    libnvinfer-plugin-devel-${TRT_VERSION}  \
+    libnvinfer-vc-plugin-devel-${TRT_VERSION}  \
+    libnvinfer-headers-devel-${TRT_VERSION}  \
+    libnvinfer-headers-plugin-devel-${TRT_VERSION};  \
+else \
+    echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
+fi
+
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 #Add our own dependencies
 ADD scripts /tmp/scripts
