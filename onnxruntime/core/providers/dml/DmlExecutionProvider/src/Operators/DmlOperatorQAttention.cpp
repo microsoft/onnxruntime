@@ -135,7 +135,7 @@ public:
 
         if (hasPast)
         {
-            ML_CHECK_VALID_ARGUMENT(m_outputTensorDescs.size() == 2);
+            ML_CHECK_VALID_ARGUMENT(kernelCreationContext.IsOutputValid(presentIndex));
         }
 
         const uint32_t hiddenSize = weightTensorShape[1] / 3;
@@ -233,7 +233,7 @@ public:
         matMulIntToFloatOperatorDesc.BiasTensor = hasBias ? &inputDescs[InputIndex::biasIndex] : nullptr;
         matMulIntToFloatOperatorDesc.OutputTensor = &namedMatMulIntToFloatOutputTensorDesc;
 
-        const DML_OPERATOR_DESC matMulIntToFloatDesc = { static_cast<DML_OPERATOR_TYPE>(DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT), &matMulIntToFloatOperatorDesc};
+        const DML_OPERATOR_DESC matMulIntToFloatDesc = { DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT, &matMulIntToFloatOperatorDesc};
 
         std::array<uint32_t, 3> queryKeySlicedTensorShape = {batchSize, sequenceLength, hiddenSize + hiddenSize};
         TensorDesc queryKeySlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, queryKeySlicedTensorShape);
@@ -384,8 +384,8 @@ public:
         DML_MULTIHEAD_ATTENTION_OPERATOR_DESC mhaOperatorDesc = {};
         std::array<uint32_t, 5> presentKeyOutputShape = {1, batchSize, numHeads, pastSequenceLength + sequenceLength, headSize};
         std::array<uint32_t, 5> presentValueOutputShape = {1, batchSize, numHeads, pastSequenceLength + sequenceLength, headSize};
-        TensorDesc presetKeyTensorDesc;
-        TensorDesc presetValueTensorDesc;
+        TensorDesc presentKeyTensorDesc;
+        TensorDesc presentValueTensorDesc;
         DML_TENSOR_DESC namedPresentKeyOutputTensorDesc;
         DML_TENSOR_DESC namedPresentValueOutputTensorDesc;
 
@@ -412,10 +412,10 @@ public:
         mhaOperatorDesc.MaskType = maskType;
         if (hasPast)
         {
-            presetKeyTensorDesc = TensorDesc::ConstructDefaultTensorDesc(presentTensorDataType, presentKeyOutputShape);
-            namedPresentKeyOutputTensorDesc = presetKeyTensorDesc.GetDmlDesc();
-            presetValueTensorDesc = TensorDesc::ConstructDefaultTensorDesc(presentTensorDataType, presentValueOutputShape);
-            namedPresentValueOutputTensorDesc = presetValueTensorDesc.GetDmlDesc();
+            presentKeyTensorDesc = TensorDesc::ConstructDefaultTensorDesc(presentTensorDataType, presentKeyOutputShape);
+            namedPresentKeyOutputTensorDesc = presentKeyTensorDesc.GetDmlDesc();
+            presentValueTensorDesc = TensorDesc::ConstructDefaultTensorDesc(presentTensorDataType, presentValueOutputShape);
+            namedPresentValueOutputTensorDesc = presentValueTensorDesc.GetDmlDesc();
             mhaOperatorDesc.PastKeyTensor = &namedPastKeyOutputTensorDesc;
             mhaOperatorDesc.PastValueTensor = &namedPastValueOutputTensorDesc;
             mhaOperatorDesc.OutputPresentKeyTensor = &namedPresentKeyOutputTensorDesc;
@@ -424,20 +424,20 @@ public:
 
         const DML_OPERATOR_DESC mhaDesc = { DML_OPERATOR_MULTIHEAD_ATTENTION, &mhaOperatorDesc };
 
-        DML_JOIN_OPERATOR_DESC presetKeyValueJoinOperatorDesc = {};
+        DML_JOIN_OPERATOR_DESC presentKeyValueJoinOperatorDesc = {};
         std::vector<DML_TENSOR_DESC> joinInputDesc;
 
         if (hasPast)
         {
             joinInputDesc.push_back(namedPresentKeyOutputTensorDesc);
             joinInputDesc.push_back(namedPresentValueOutputTensorDesc);
-            presetKeyValueJoinOperatorDesc.InputCount = gsl::narrow_cast<uint32_t>(joinInputDesc.size());
-            presetKeyValueJoinOperatorDesc.InputTensors = joinInputDesc.data();
-            presetKeyValueJoinOperatorDesc.OutputTensor = &outputDescs[presentIndex];
-            presetKeyValueJoinOperatorDesc.Axis = gsl::narrow_cast<uint32_t>(0);
+            presentKeyValueJoinOperatorDesc.InputCount = gsl::narrow_cast<uint32_t>(joinInputDesc.size());
+            presentKeyValueJoinOperatorDesc.InputTensors = joinInputDesc.data();
+            presentKeyValueJoinOperatorDesc.OutputTensor = &outputDescs[presentIndex];
+            presentKeyValueJoinOperatorDesc.Axis = gsl::narrow_cast<uint32_t>(0);
         }
 
-        DML_OPERATOR_DESC presetKeyValueJoinDesc = { DML_OPERATOR_JOIN, &presetKeyValueJoinOperatorDesc };
+        DML_OPERATOR_DESC presentKeyValueJoinDesc = { DML_OPERATOR_JOIN, &presentKeyValueJoinOperatorDesc };
 
         // Construct the graph
         std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
@@ -474,7 +474,7 @@ public:
             pastKeySliceNodeIndex = currentNodeIndex++;
             opDescs.push_back(&pastValueSlicedDesc);
             pastValueSliceNodeIndex = currentNodeIndex++;
-            opDescs.push_back(&presetKeyValueJoinDesc);
+            opDescs.push_back(&presentKeyValueJoinDesc);
             concatNodeIndex = currentNodeIndex++;
         }
 

@@ -2784,7 +2784,6 @@ namespace OperatorHelper
     void QAttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
     {
         m_numHeads = gsl::narrow_cast<uint32_t>(kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::NumHeads));
-
     }
 
     std::vector<EdgeShapes> SkipLayerNormHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const

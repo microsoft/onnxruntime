@@ -1503,7 +1503,6 @@ public:
 
 private:
     void Initialize(const IKernelInformationAdapter& kernelInformation);
-    std::vector<int32_t> m_qkvHiddenSizes;
     uint32_t m_numHeads;
 };
 
