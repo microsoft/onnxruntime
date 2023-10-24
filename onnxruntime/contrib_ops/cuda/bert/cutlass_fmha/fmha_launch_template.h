@@ -54,7 +54,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
       p.custom_mask_type = Attention::CausalFromBottomRight;
     }
 
-    if (params.past_bsnh) {
+    if (params.is_bsnh) {
       // Input format is BxSxNxH, output is BxSxNxH
       p.q_strideH = params.qk_head_size;
       p.k_strideH = params.qk_head_size;

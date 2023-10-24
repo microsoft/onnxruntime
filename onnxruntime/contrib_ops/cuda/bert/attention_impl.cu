@@ -393,6 +393,7 @@ Status EfficientAttention(
   p.attn_bias = nullptr == data.relative_position_bias ? nullptr : data.relative_position_bias;
   p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
   p.output = data.output;
+  p.is_bsnh = true;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(parameters.v_head_size, sizeof(T) == sizeof(float))
                     ? data.scratch
                     : nullptr;
