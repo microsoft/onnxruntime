@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <type_traits>
+
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
@@ -145,7 +147,7 @@ bool TryMatMulBnb4(
   int ldc = n;
   int num_blocks = (n + 3) / 4;
 
-  constexpr int bits = ::cuda::std::is_same_v<T, half> ? 16 : 32;
+  constexpr int bits = std::is_same_v<T, half> ? 16 : 32;
   kgemm_4bit_inference_naive<T, 128, bits><<<num_blocks, 128, 0, stream>>>(m, n, k, a_data, b_data_quant, absmax, quant_map, output, lda, ldb, ldc, block_size);
 
   return true;
