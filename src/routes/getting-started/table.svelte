@@ -1399,7 +1399,7 @@
 				jq('#ot_command span').html('Please select a combination of resources');
 			} else if (!ot_validCombos.hasOwnProperty(key)) {
 				jq('#ot_command span').html(
-					'This combination is not supported. De-select to make another selection.'
+					'This combination is not supported. Make another selection.'
 				);
 				jq('#ot_command').addClass('invalid');
 				return false;
@@ -1427,7 +1427,7 @@
 				jq('#command span').html('Please select a combination of resources');
 			} else if (!validCombos.hasOwnProperty(key)) {
 				jq('#command span').html(
-					'This combination is not supported. De-select to make another selection.'
+					'This combination is not supported. Make another selection.'
 				);
 				jq('#command').addClass('invalid');
 				return false;
