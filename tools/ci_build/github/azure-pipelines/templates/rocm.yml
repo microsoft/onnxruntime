@@ -27,7 +27,7 @@ jobs:
       ${{ if eq(parameters.BuildConfig, 'Release') }}:
         value: 'onnxruntime_rocm'
       ${{ else }}:
-        value: 'onnxruntime_rocm_enable_profiling'
+        value: 'onnxruntime_rocm_Debug'
 
   steps:
   - task: CmdLine@2

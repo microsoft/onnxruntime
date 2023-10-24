@@ -180,8 +180,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         if (use_causal_fused_runner) {
           // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
           if (nullptr == fused_fp16_runner_.get()) {
-            fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                              enable_trt_flash_attention_, parameters.scale);
+            std::call_once(fused_fp16_runner_created_, [&]() {
+              fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                                enable_trt_flash_attention_, parameters.scale);
+            });
           }
 
           // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
@@ -201,8 +203,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       if (use_fused_runner) {
         // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
         if (nullptr == fused_fp16_runner_.get()) {
-          fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                            enable_trt_flash_attention_, parameters.scale);
+          std::call_once(fused_fp16_runner_created_, [&]() {
+            fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                              enable_trt_flash_attention_, parameters.scale);
+          });
         }
 
         // In case some kernel not loaded due to shared memory limit, we need to double check here.
@@ -239,11 +243,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  IAllocatorUniquePtr<T> gemm_buffer;
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
   int m = batch_size * sequence_length;
   int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   int k = parameters.input_hidden_size;
-  gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  IAllocatorUniquePtr<void> gemm_buffer = IAllocator::MakeUniquePtr<void>(allocator, static_cast<size_t>(m * n) * sizeof(T), false, context->GetComputeStream());
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -270,7 +275,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    use_flash_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention);
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
+  ;
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
