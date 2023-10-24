@@ -511,6 +511,10 @@ if (NOT MSVC AND NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS"))
   endif()
   set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
 endif()
+# Some stable cross toolchains of RISC-V still need this
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(riscv.*|RISCV.*)")
+  set(onnxruntime_LINK_LIBATOMIC true)
+endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
