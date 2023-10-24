@@ -469,6 +469,8 @@ class QDQQuantizer(ONNXQuantizer):
             if quant_value.node_type == "Cast":
                 # simple cast to float 16 and not DequantizeLinear
                 # cublasLtMatmul only supports (b)float16, float bias.
+                if not isinstance(init.data_type, int):
+                    raise TypeError(f"Unexpected type {type(init.data_type)} for input={input_name!r}")
                 node_name = add_dequant_suffix(bias_name)
                 dequant_node = onnx.helper.make_node(
                     "Cast",

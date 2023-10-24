@@ -457,9 +457,16 @@ def check_model_correctness(
             sess_options=sess_options,
             providers=providers,
         )
-    except C.Fail as e:
+    except (C.Fail, C.InvalidGraph) as e:
         # This should disabled when QDQ optimizers is implemented.
-        if "com.microsoft:QLinearMatMul(-1) is not a registered function/op" not in str(e):
+        se = str(e)
+        if (
+            "com.microsoft:QLinearMatMul(-1) is not a registered function/op" not in se
+            and "Type 'tensor(float16)' of input parameter (input) of operator (QuantizeLinear)" not in se
+            and "Type 'tensor(float16)' of input parameter (input) of operator (DynamicQuantizeLinear)" not in se
+        ):
+            # com.microsoft:QLinearMatMul is not yet implemented.
+            # QuantizeLinear supports float16 in opset 19
             raise e
         return
     target_results = target_sess.run([], inputs)

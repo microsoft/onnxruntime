@@ -355,21 +355,29 @@ class ONNXQuantizer:
             return False
         return self.parent.is_valid_quantize_weight(weight_name)
 
-    def get_tensor_type(self, tensor_name):
+    def get_tensor_type(self, tensor_name, mandatory=False):
         weight = find_by_name(tensor_name, self.model.initializer())
         if weight is not None:
             return weight.data_type
+        if tensor_name in self.value_infos:
+            vi = self.value_infos[tensor_name]
+            if vi.type.HasField("tensor_type"):
+                if mandatory and vi.type.tensor_type.elem_type == 0:
+                    raise RuntimeError(f"Unable to find data type for weight_name={tensor_name!r}")
+                return vi.type.tensor_type.elem_type
         if (not self.enable_subgraph_quantization) or (self.parent is None):
+            if mandatory:
+                raise RuntimeError(f"Unable to find data type for weight_name={tensor_name!r}")
             return None
         otype = self.parent.is_valid_quantize_weight(tensor_name)
         if otype is not None:
             return otype
-        if tensor_name in self.value_infos:
-            vi = self.value_infos[tensor_name]
-            if vi.type.HasField("tensor_type"):
-                return vi.type.tensor_type.elem_type
         if self.enable_subgraph_quantization and self.parent:
-            return self.parent.get_tensor_type(tensor_name)
+            res = self.parent.get_tensor_type(tensor_name)
+            if res is not None:
+                return res
+        if mandatory:
+            raise RuntimeError(f"Unable to find data type for weight_name={tensor_name!r}")
         return None
 
     def is_float_tensor(self, tensor_name):
@@ -434,7 +442,7 @@ class ONNXQuantizer:
         Create nodes for dynamic quantization of input to int8 and add them to nodes_list
             parameter input_name: Name of the input.
             parameter nodes_list: new nodes are appended to this list.
-            parameter initial_type: initial weight type (FLAOT or FLOAT16)
+            parameter initial_type: initial weight type (FLOAT or FLOAT16)
             return: scale_name, zero_point_name, scale_shape, zero_point_shape.
         """
         qType = onnx_proto.TensorProto.INT8  # noqa: N806
@@ -628,13 +636,13 @@ class ONNXQuantizer:
                     f"Specified values for output {param_name}: {params}"
                 )
 
-            zero_point_values = [params["zero_point"]]
+            zero_point_values = np.array([params["zero_point"]])
             if not hasattr(params["scale"], "dtype") or params["scale"].dtype not in (np.float32, np.float16):
                 raise ValueError(f"Unexpected type {type(params['scale'])} and param_name={param_name!r}")
             scale_values = np.array([params["scale"]])
             assert scale_values.dtype != np.float64
         else:
-            zero_point_values = [use_zeropoint]
+            zero_point_values = np.array([use_zeropoint])
             scale_values = np.array([use_scale])
             assert scale_values.dtype != np.float64
 
@@ -645,7 +653,9 @@ class ONNXQuantizer:
         scale_name = param_name + "_scale"
 
         # Add initializers
-        init_zp = onnx.helper.make_tensor(zero_point_name, zero_point_type, zero_point_shape, zero_point_values)
+        init_zp = onnx.helper.make_tensor(
+            zero_point_name, zero_point_type, zero_point_shape, zero_point_values.ravel().tolist()
+        )
         self.model.add_initializer(init_zp)
         if scale_values.dtype == np.float32:
             scale_type = onnx_proto.TensorProto.FLOAT

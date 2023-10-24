@@ -281,11 +281,13 @@ class TestOpMatMul(unittest.TestCase):
         qnode_io_qtypes = {"MatMulInteger": [["i", 2, activation_proto_qtype]]}
         check_qtype_by_node_type(self, model_qtype_path, qnode_io_qtypes)
         data_reader.rewind()
+        onx = onnx.load(model_fp_path)
+        tt = onx.graph.input[0].type.tensor_type.elem_type
         check_model_correctness(
             self,
             model_fp_path,
             model_qtype_path,
-            {"input": np.random.rand(5, 10).astype(np.float32)},
+            {"input": np.random.rand(5, 10).astype(np.float32 if tt == onnx.TensorProto.FLOAT else np.float16)},
             dynamic=True,
             is_gemm=True,
             op_matmul=True,

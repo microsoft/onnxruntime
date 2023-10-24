@@ -290,7 +290,9 @@ class MinMaxCalibrater(CalibraterBase):
             )
 
             self.model.graph.node.extend([reduce_node, reshape_node])
-            self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, TensorProto.FLOAT, [1]))
+            # This function assumes the output type is the same as the first input type.
+            onnx_type = self.model.graph.input[0].type.tensor_type.elem_type
+            self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, onnx_type, [1]))
 
         for tensor in tensors:
             add_reduce_min_max(tensor, "ReduceMin")
