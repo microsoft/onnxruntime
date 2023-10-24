@@ -144,7 +144,7 @@ Status AffineGrid<T>::Compute(OpKernelContext* context) const {
 
     concurrency::ThreadPool::TryBatchParallelFor(context->GetOperatorThreadPool(), narrow<size_t>(N), std::move(fn), 0);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "AffineGrid : Invalidate size - length of size shall be 4 or 5.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "AffineGrid : Invalidate size - length of size should be 4 or 5.");
   }
   return Status::OK();
 }
