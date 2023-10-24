@@ -40,7 +40,7 @@ Please follow the [README instructions](https://github.com/microsoft/Llama-2-Onn
 
 ### Option 3: from [Hugging Face Optimum](https://github.com/huggingface/optimum)
 
-Note that this will produce two ONNX models whereas the above two options produce one ONNX model. 
+Note that this may produce two ONNX models with older Optimum versions. The above two options produce one ONNX model and installing Optimum from source will now produce one ONNX model.
 
 First, log into the Hugging Face CLI in your terminal:
 
@@ -105,10 +105,10 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 Export for INT8 CPU (SmoothQuant)
 ```
 # From source:
-$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant --execution_provider cpu
+$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant --execution_provider cpu --no_merged
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant --execution_provider cpu
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant --execution_provider cpu --no_merged
 ```
 
 Note: [Intel's Neural Compressor](https://github.com/intel/neural-compressor) takes time to run the SmoothQuant quantization algorithm on LLMs. On an [Azure Standard_NC24s_v3 VM](https://learn.microsoft.com/en-us/azure/virtual-machines/ncv3-series), it takes about ~30-45 min for each of the exported ONNX models.
@@ -183,20 +183,7 @@ python3 -m models.llama.benchmark \
     --auth
 ```
 
-4. Optimum + ONNX Runtime, FP16, export via convert_to_onnx
-```
-python3 -m models.llama.benchmark \
-    --benchmark-type hf-ort \
-    --hf-ort-dir-path ./llama2-7b-fp16/ \
-    --model-name meta-llama/Llama-2-7b-hf \
-    --precision fp16 \
-    --batch-sizes "1 2" \
-    --sequence-lengths "8 16" \
-    --device cuda \
-    --auth
-```
-
-5. ONNX Runtime, FP32, Microsoft custom export
+4. ONNX Runtime, FP32, Microsoft custom export
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type ort-msft \
@@ -208,7 +195,7 @@ python3 -m models.llama.benchmark \
     --device cpu
 ```
 
-6. ONNX Runtime, FP16, Microsoft custom export
+5. ONNX Runtime, FP16, Microsoft custom export
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type ort-msft \
@@ -220,7 +207,7 @@ python3 -m models.llama.benchmark \
     --device cuda
 ```
 
-7. ONNX Runtime, FP32, convert_to_onnx
+6. ONNX Runtime, FP32, convert_to_onnx
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type ort-convert-to-onnx \
@@ -232,7 +219,7 @@ python3 -m models.llama.benchmark \
     --device cpu
 ```
 
-8. ONNX Runtime, FP16, convert_to_onnx
+7. ONNX Runtime, FP16, convert_to_onnx
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type ort-convert-to-onnx \
