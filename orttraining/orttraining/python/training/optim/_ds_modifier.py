@@ -34,10 +34,7 @@ def _compare_str_list(src, dest):
 
 
 def _get_normalized_str_list(source_str):
-    # source_str = source_str.replace('"', '\"')
     lines = source_str.split("\n")
-    # quoted_lines = [f"\"{l}\"" for l in lines]
-    # rejoined_lines = '\n'.join(quoted_lines)
     return lines
 
 

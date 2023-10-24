@@ -40,7 +40,7 @@ class OptimizerModifierTypeRegistry:
 
     @staticmethod
     def create_modifier(optimizer_full_qualified_name: str, optimizer, **kwargs) -> Optional[FP16OptimizerModifier]:
-        """ Create modifier for optimizer."""
+        """Create modifier for optimizer."""
         if optimizer_full_qualified_name in OptimizerModifierTypeRegistry._MAP:
             return OptimizerModifierTypeRegistry._MAP[optimizer_full_qualified_name](optimizer, **kwargs)
 
