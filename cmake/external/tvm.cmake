@@ -1,10 +1,11 @@
 if (onnxruntime_USE_TVM)
   message(STATUS "onnxruntime_USE_TVM: Fetch tvm for TVM EP")
 
+  # TVM 0.13.0 - 2023/07/14
   FetchContent_Declare(
     tvm
     GIT_REPOSITORY https://github.com/apache/tvm.git
-    GIT_TAG        2379917985919ed3918dc12cad47f469f245be7a
+    GIT_TAG        97c5de63ba6baa148fdf0c545ded2cd01d7838d1
   )
 
   FetchContent_GetProperties(tvm)

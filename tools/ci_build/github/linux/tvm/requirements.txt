@@ -3,7 +3,7 @@ decorator
 scipy
 wheel
 setuptools
-onnx==1.11.0
+onnx==1.14.1
 protobuf==3.20.2
 flatbuffers
 tornado
