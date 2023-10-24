@@ -9,9 +9,9 @@ import {getInstance} from './wasm-factory';
 import {checkLastError} from './wasm-utils';
 
 const NO_TRAIN_FUNCS_MSG =
-    `Built without training API's enabled. Use the onnxruntime-web/training import for training \
-    functionality, and make sure that all the correct artifacts are built & moved to the correct folder if \
-    using a custom build. Check https://onnxruntime.ai/docs/build/web.html for more information.`;
+    'Built without training API\'s enabled. Use the onnxruntime-web/training import for training ' +
+    'functionality, and make sure that all the correct artifacts are built & moved to the correct folder if ' +
+    'using a custom build. Check https://onnxruntime.ai/docs/build/web.html for more information.';
 
 export const createCheckpointHandle = (checkpointData: SerializableModeldata): number => {
   const wasm = getInstance();
