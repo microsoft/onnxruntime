@@ -745,7 +745,7 @@ def generate_files(line_list, args):
                 + '\\native" />'
             )
             # usb-ma2x8x.mvcmd
-            # OpenVINO 2022.3 doesn't have usb-ma2x8x.mvcmd
+            # OpenVINO 2022.3 and 2023 doesn't have usb-ma2x8x.mvcmd
             if "2022.3" not in openvino_path and "2023" not in openvino_path:
                 files_list.append(
                     "<file src="
