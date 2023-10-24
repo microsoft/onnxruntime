@@ -191,15 +191,16 @@ try:
                 to_preload_cann = []
 
                 cuda_dependencies = [
-                    "libcublas.so.12",
-                    "libcublasLt.so.12",
                     "libcublas.so.11",
+                    "libcublas.so.12",
                     "libcublasLt.so.11",
-                    "libcudnn.so.8",
-                    "libcudart.so.12.0",
+                    "libcublasLt.so.12",
                     "libcudart.so.11.0",
-                    "libcurand.so.10",
+                    "libcudart.so.12.0",
+                    "libcudnn.so.8",
                     "libcufft.so.10",
+                    "libcufft.so.11",
+                    "libcurand.so.10",
                 ]
                 rocm_dependencies = [
                     "librccl.so.1",
