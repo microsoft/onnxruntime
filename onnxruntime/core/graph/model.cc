@@ -41,6 +41,35 @@ namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained) {
+  auto* local_functions = model_proto_.mutable_functions();
+  if (retained.empty()) {
+    model_local_function_templates_maps_.clear();
+    model_local_functions_.clear();
+    local_functions->erase(local_functions->begin(), local_functions->end());
+  } else {
+    const auto retained_end = retained.cend();
+    for (auto it = model_local_functions_.begin();
+         it != model_local_functions_.end();) {
+      if (retained.find(it->first) == retained_end) {
+        model_local_function_templates_maps_.erase(it->first);
+        it = model_local_functions_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+
+    for (auto it = local_functions->begin(); it != local_functions->end();) {
+      const auto function_id = function_utils::GetFunctionIdentifier(it->domain(), it->name());
+      if (retained.find(function_id) == retained_end) {
+        it = local_functions->erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+}
+
 static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
 
 Model::Model(const std::string& graph_name,
@@ -95,10 +124,10 @@ Model::Model(const std::string& graph_name,
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()), func_ptr);
+    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()),
+                                            func_ptr);
   }
 
-  model_local_function_templates_.reserve(model_proto_.functions().size());
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
@@ -111,8 +140,8 @@ Model::Model(const std::string& graph_name,
     auto func_template_ptr = std::make_unique<FunctionTemplate>();
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
-    model_local_function_templates_.push_back(std::move(func_template_ptr));
-    model_local_function_templates_maps_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] = model_local_function_templates_.back().get();
+    model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()),
+                                                          std::move(func_template_ptr));
   }
 
   // need to call private ctor so can't use make_shared
@@ -228,7 +257,6 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), &func);
   }
 
-  model_local_function_templates_.reserve(model_proto_.functions().size());
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
@@ -241,9 +269,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     auto func_template_ptr = std::make_unique<FunctionTemplate>();
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
-    model_local_function_templates_.push_back(std::move(func_template_ptr));
-    model_local_function_templates_maps_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] =
-        model_local_function_templates_.back().get();
+    model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), std::move(func_template_ptr));
   }
 
   // create instance. need to call private ctor so can't use make_unique
@@ -252,7 +278,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
                          logger, options.strict_shape_type_inference));
 }
 
-const InlinedHashMap<std::string, FunctionTemplate*>& Model::GetModelLocalFunctionTemplates() const {
+const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetModelLocalFunctionTemplates() const {
   return model_local_function_templates_maps_;
 }
 
@@ -340,7 +366,7 @@ const Graph& Model::MainGraph() const noexcept {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-ModelProto Model::ToProto() {
+ModelProto Model::ToProto() const {
   // We want to return back the original proto
   // To that end invoke const overload of ToGraphProto()
   // that returns by value and, therefore, allows us to filter
@@ -354,7 +380,7 @@ ModelProto Model::ToProto() {
 
 ModelProto Model::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
                                                        const PathString& file_path,
-                                                       size_t initializer_size_threshold) {
+                                                       size_t initializer_size_threshold) const {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
