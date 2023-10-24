@@ -208,7 +208,7 @@ Return Value:
     }
 }
 
-#if !defined(MLAS_TARGET_WASM_SCALAR)
+#if !defined(MLAS_TARGET_SCALAR)
 
 void
 MlasSgemmCopyPackB(
@@ -734,7 +734,7 @@ Return Value:
     }
 }
 
-#else //defined(MLAS_TARGET_WASM_SCALAR)
+#else //defined(MLAS_TARGET_SCALAR)
 
 void
 MlasSgemmCopyPackB(

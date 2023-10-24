@@ -56,6 +56,9 @@ Abstract:
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC) || defined(MLAS_TARGET_ARM)
 #define MLAS_TARGET_ARM_ANY
 #endif
+#if defined(__riscv__)
+#define MLAS_TARGET_SCALAR
+#endif
 
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
@@ -65,7 +68,7 @@ Abstract:
 #if defined(__wasm_simd128__)
 #define MLAS_TARGET_WASM_SIMD
 #else
-#define MLAS_TARGET_WASM_SCALAR
+#define MLAS_TARGET_SCALAR
 #endif
 #endif
 
@@ -751,7 +754,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_SCALAR)
     MlasConvAlgorithmDepthwise,
 #endif
 };
