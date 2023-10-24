@@ -251,6 +251,27 @@ TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodesPreservingAttrib
   const auto op_count_after = CountOpsInGraph(session.GetGraph());
 
   EXPECT_EQ(OpCount(op_count_before, "DequantizeLinear") + 8, OpCount(op_count_after, "DequantizeLinear"));
+
+  int64_t given_axis = 0;  // all the following 4 DQ nodes and their duplicated one should have axis = 0
+  std::string axis_dq_name0 = "Convolution28_Output_0/fusedmuladd_B/DequantizeLinear";
+  std::string axis_dq_name1 = "Parameter5/DequantizeLinear";
+  std::string axis_dq_name2 = "Convolution110_Output_0/fusedmuladd_B/DequantizeLinear";
+  std::string axis_dq_name3 = "Parameter87/DequantizeLinear";
+  for (auto& node : session.GetGraph().Nodes()) {
+    if (node.OpType() == "DequantizeLinear") {
+      if (node.Name().find(axis_dq_name0) != std::string::npos ||
+        node.Name().find(axis_dq_name1) != std::string::npos ||
+        node.Name().find(axis_dq_name2) != std::string::npos ||
+        node.Name().find(axis_dq_name3) != std::string::npos)
+      {
+        auto attrs = node.GetAttributes();
+        EXPECT_TRUE(attrs.find("axis") != attrs.end());
+        auto& axis_attr = attrs.at("axis");
+        int64_t axis = axis_attr.i();
+        EXPECT_EQ(axis, given_axis);
+      }
+    }
+  }
 }
 
 }  // namespace onnxruntime::test
