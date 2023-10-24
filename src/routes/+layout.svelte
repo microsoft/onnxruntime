@@ -5,7 +5,9 @@
 	import oneLight from 'svelte-highlight/styles/one-light';
 	import { fade } from 'svelte/transition';
 	import Analytics from './components/analytics.svelte';
+	import { page } from '$app/stores';
 	export let data;
+	
 </script>
 
 <svelte:head>
@@ -19,9 +21,9 @@
 	<meta http-equiv="X-UA-Compatible" content="ie=edge" />
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<!-- <meta name="theme-color" content="#00D1B2" /> -->
-	<!-- <meta name="msapplication-TileColor" content="#da532c" /> -->
-	<!-- <meta name="theme-color" content="#ffffff" /> -->
+	<meta name="theme-color" content="#B2B2B2" />
+	<meta name="msapplication-TileColor" content="#B2B2B2" />
+	<meta name="theme-color" content="#B2B2B2" />
 	<!-- OpenGraph meta tags -->
 	<meta
 		property="og:description"
@@ -33,11 +35,15 @@
 </svelte:head>
 <Analytics />
 <div class="selection:bg-primary">
-	<Header />
+	{#if !$page.url.pathname.startsWith('/blogs/')}
+		<Header />
+	{/if}
 	{#key data.pathname}
 		<div in:fade={{ duration: 300, delay: 400 }} out:fade={{ duration: 300 }}>
 			<slot />
 		</div>
 	{/key}
-	<Footer />
+	{#if !$page.url.pathname.startsWith('/blogs/')}
+		<Footer />
+	{/if}
 </div>

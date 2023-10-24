@@ -61,5 +61,5 @@
 				<ImageTutorials widthscale={0.5} heightscale={0.5}/>
 			</div>
 		</div>
-	</div> mn
+	</div> 
 </div>

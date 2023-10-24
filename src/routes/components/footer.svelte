@@ -3,6 +3,7 @@
 	import FaGithub from 'svelte-icons/fa/FaGithub.svelte';
 	import FaYoutube from 'svelte-icons/fa/FaYoutube.svelte';
 	import FaLinkedinIn from 'svelte-icons/fa/FaLinkedinIn.svelte';
+	export let pathvar = '.';
 </script>
 
 <footer class="footer p-10 mt-10 bg-base-200 text-base-content z-40">
@@ -24,13 +25,13 @@
 	<div />
 	<div>
 		<span class="footer-title">Get Started</span>
-		<a href="./getting-started" class="link link-hover">Install</a>
-		<a href="./pytorch" class="link link-hover">PyTorch</a>
+		<a href={pathvar+"/getting-started"} class="link link-hover">Install</a>
+		<a href={pathvar+"/pytorch"} class="link link-hover">PyTorch</a>
 	</div>
 	<div>
 		<span class="footer-title">Resources</span>
-		<a href="./blogs" class="link link-hover">Blogs</a>
-		<a rel="external" href="./docs/tutorials" class="link link-hover">Tutorials</a>
-		<a rel="external" href="./docs/api/" class="link link-hover">APIs</a>
+		<a href={pathvar+"/blogs"} class="link link-hover">Blogs</a>
+		<a rel="external" href={pathvar+"/docs/tutorials"} class="link link-hover">Tutorials</a>
+		<a rel="external" href={pathvar+"/docs/api/"} class="link link-hover">APIs</a>
 	</div>
 </footer>

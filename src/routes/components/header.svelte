@@ -6,6 +6,7 @@
 	import FaYoutube from 'svelte-icons/fa/FaYoutube.svelte';
 	import FaLinkedinIn from 'svelte-icons/fa/FaLinkedinIn.svelte';
 	import OnnxLight from '../../images/ONNX-Light.svelte';
+	export let pathvar = '.';
 	onMount(() => {
 		themeChange(false);
 	});
@@ -33,12 +34,12 @@
 				tabindex="0"
 				class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
 			>
-				<li><a href="./blogs">Blogs</a></li>
-				<li><a rel="external" href="./docs">Docs</a></li>
+				<li><a href={pathvar+"/blogs"}>Blogs</a></li>
+				<li><a rel="external" href={pathvar+"/docs"}>Docs</a></li>
 				<li>
 					<p>Community</p>
 					<ul class="p-2">
-						<li><a href="./testimonials">Testimonials</a></li>
+						<li><a href={pathvar+"/testimonials"}>Testimonials</a></li>
 						<li>
 							<a href="https://www.youtube.com/onnxruntime" target="_blank"
 								><div class="w-4 h-4"><FaYoutube /></div>
@@ -61,7 +62,7 @@
 				</li>
 			</button>
 		</div>
-		<a href="./" class="btn btn-ghost normal-case text-xl">
+		<a href={pathvar+"/"} class="btn btn-ghost normal-case text-xl">
 			<div class="hidden lg:inline">
 				<OnnxLight width={32} height={32} />
 			</div>
@@ -73,14 +74,14 @@
 	</div>
 	<div class="navbar-center hidden lg:flex">
 		<ul class="menu menu-horizontal px-1">
-			<li><a href="./blogs">Blogs</a></li>
-			<li><a rel="external" href="./docs">Docs</a></li>
+			<li><a href={pathvar+"/blogs"}>Blogs</a></li>
+			<li><a rel="external" href={pathvar+"/docs"}>Docs</a></li>
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<li tabindex="0">
 				<details class="z-[1]">
 					<summary>Community</summary>
 					<ul class="p-2">
-						<li><a href="./testimonials">Testimonials</a></li>
+						<li><a href={pathvar+"/testimonials"}>Testimonials</a></li>
 						<li>
 							<a href="https://www.youtube.com/onnxruntime" target="_blank"
 								><div class="w-4 h-4"><FaYoutube /></div>

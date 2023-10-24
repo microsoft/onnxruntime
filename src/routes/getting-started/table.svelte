@@ -7,7 +7,7 @@
 	let apiIDs = ['Python', 'C++', 'C#', 'C-API', 'Java', 'JS', 'objectivec', 'WinRT'];
 	let architectures = ['X64', 'X86', 'ARM64', 'ARM32', 'IBM Power'];
 	let architecturesIDs = ['X64', 'X86', 'ARM64', 'ARM32', 'Power'];
-	let hardwareAcceleration = [
+	let hardwareAccelerations = [
 		'Default CPU',
 		'CoreML',
 		'CUDA',
@@ -60,6 +60,741 @@
 	const TrainingVersionIds = ['ot_CUDA118', 'ot_ROCm', 'ot_CPU'];
 	const TrainingBuilds = ['Stable', 'Preview (Nightly)'];
 	const TrainingBuildIds = ['ot_stable', 'ot_nightly'];
+	const validCombos = {
+		'windows,C-API,X64,CUDA':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'windows,C++,X64,CUDA':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'windows,C#,X64,CUDA':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'windows,Python,X64,CUDA':
+			"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'linux,Python,ARM64,CUDA':
+			"For Jetpack 4.4+, follow installation instructions from <a class='text-blue-500' href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
+
+		'linux,C-API,X64,CUDA':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'linux,C++,X64,CUDA':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'linux,C#,X64,CUDA':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'linux,Python,X64,CUDA':
+			"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'linux,C-API,ARM32,DefaultCPU':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
+
+		'linux,C++,ARM32,DefaultCPU':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
+
+		'linux,Python,ARM32,DefaultCPU':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
+
+		'windows,C-API,X64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C-API,X86,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C-API,ARM32,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C++,ARM32,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C#,ARM32,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C-API,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C++,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C#,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C++,X64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C++,X86,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C#,X64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'windows,C#,X86,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'linux,C-API,X64,DefaultCPU':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+		'linux,C++,X64,DefaultCPU':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+		'linux,C#,X64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'mac,C-API,X64,DefaultCPU':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+		'mac,C++,X64,DefaultCPU':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+		'mac,C#,X64,DefaultCPU':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+		'mac,C#,X64,CoreML':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+		'windows,Python,X64,DefaultCPU': 'pip install onnxruntime',
+
+		'mac,Python,X64,DefaultCPU': 'pip install onnxruntime',
+
+		'linux,Python,X64,DefaultCPU': 'pip install onnxruntime',
+
+		'linux,Python,ARM64,DefaultCPU': 'pip install onnxruntime',
+
+		'windows,C-API,X64,DNNL':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+		'windows,C++,X64,DNNL':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+		'windows,C#,X64,DNNL':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+		'windows,Python,X64,DNNL':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+		'linux,C-API,X64,DNNL':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+		'linux,C++,X64,DNNL':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+		'linux,C#,X64,DNNL':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+		'linux,Python,X64,DNNL':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
+
+		'linux,Python,X64,TVM':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+
+		'linux,Python,X86,TVM':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+
+		'linux,Python,ARM32,TVM':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+
+		'linux,Python,ARM64,TVM':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+
+		'windows,Python,X64,TVM':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+
+		'windows,Python,X86,TVM':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+
+		'windows,Python,ARM32,TVM':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+
+		'windows,Python,ARM64,TVM':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+
+		'linux,C-API,X64,OpenVINO':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+		'linux,C++,X64,OpenVINO':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+		'linux,C#,X64,OpenVINO':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+		'linux,Python,X64,OpenVINO':
+			"pip install onnxruntime-openvino <br/>Docker image also <a class='text-blue-500' href='https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18' target='_blank'>available</a>.",
+
+		'windows,C-API,X64,OpenVINO':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+		'windows,C++,X64,OpenVINO':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+		'windows,C#,X64,OpenVINO':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+
+		'windows,Python,X64,OpenVINO': 'pip install onnxruntime-openvino',
+
+		'windows,C-API,X64,TensorRT':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+
+		'windows,C++,X64,TensorRT':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+
+		'windows,C#,X64,TensorRT':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+
+		'windows,Python,X64,TensorRT':
+			"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'linux,C-API,X64,TensorRT':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+
+		'linux,C++,X64,TensorRT':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+
+		'linux,C#,X64,TensorRT':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+
+		'linux,Python,X64,TensorRT':
+			"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'linux,C#,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime",
+
+		'linux,Python,ARM64,TensorRT':
+			"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'windows,C-API,X86,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'windows,C++,X86,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+
+		'windows,C#,X86,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+
+		'windows,Python,X86,DirectML':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+
+		'windows,C-API,X64,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+
+		'windows,C++,X64,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+
+		'windows,C#,X64,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+
+		'windows,Python,X64,DirectML': 'pip install onnxruntime-directml',
+
+		'windows,C-API,ARM64,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+
+		'windows,C++,ARM64,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+
+		'windows,C#,ARM64,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+
+		'windows,Python,ARM64,DirectML':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+
+		'linux,Java,X64,DefaultCPU':
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
+
+		'linux,Java,X64,CUDA':
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'mac,Java,X64,DefaultCPU':
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
+
+		//javascript
+		'linux,JS,X64,DefaultCPU': 'npm install onnxruntime-node',
+
+		'mac,JS,X64,DefaultCPU': 'npm install onnxruntime-node',
+
+		'windows,JS,X64,DefaultCPU': 'npm install onnxruntime-node',
+
+		'web,JS,,': 'npm install onnxruntime-web',
+
+		'android,JS,ARM64,DefaultCPU': 'npm install onnxruntime-react-native',
+
+		'android,JS,X64,DefaultCPU': 'npm install onnxruntime-react-native',
+
+		'android,JS,X86,DefaultCPU': 'npm install onnxruntime-react-native',
+
+		'ios,JS,ARM64,DefaultCPU': 'npm install onnxruntime-react-native',
+
+		'windows,WinRT,X86,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+		'windows,WinRT,X64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+		'windows,WinRT,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+		'windows,WinRT,ARM32,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+		'windows,WinRT,X86,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+		'windows,WinRT,X64,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+		'windows,WinRT,ARM64,DirectML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+		'windows,Java,X64,DefaultCPU':
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
+
+		'windows,Java,X64,CUDA':
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'windows,Java,X64,TensorRT':
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+
+		'windows,Java,X64,DNNL':
+			"Follow <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a class='text-blue-500' href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+		'windows,Java,X64,OpenVINO':
+			"Follow <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a class='text-blue-500' href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+		'linux,Java,X64,TensorRT':
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+
+		'linux,Java,X64,DNNL':
+			"Follow <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a class='text-blue-500' href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+		'linux,Java,X64,OpenVINO':
+			"Follow <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a class='text-blue-500' href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+		'android,C-API,ARM64,NNAPI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+
+		'android,C++,ARM64,NNAPI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+
+		'android,Java,ARM64,NNAPI':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'android,C-API,X86,NNAPI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+
+		'android,C++,X86,NNAPI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+
+		'android,C#,X86,NNAPI':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
+
+		'android,Java,X64,NNAPI':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'android,C-API,X64,NNAPI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+
+		'android,C++,X64,NNAPI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+
+		'android,C#,X64,NNAPI':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
+
+		'android,Java,X86,NNAPI':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'android,C-API,ARM32,NNAPI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+
+		'android,C++,ARM32,NNAPI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+
+		'android,C#,ARM32,NNAPI':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
+
+		'android,Java,ARM32,NNAPI':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'android,C-API,ARM64,DefaultCPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+		'android,C++,ARM64,DefaultCPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+		'android,Java,ARM64,DefaultCPU':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'android,C-API,ARM32,DefaultCPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+		'android,C++,ARM32,DefaultCPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+		'android,C#,ARM32,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
+
+		'android,Java,ARM32,DefaultCPU':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'android,C-API,X86,DefaultCPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+		'android,C++,X86,DefaultCPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+		'android,C#,X86,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
+
+		'android,Java,X86,DefaultCPU':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'android,C-API,X64,DefaultCPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+		'android,C++,X64,DefaultCPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
+
+		'android,C#,X64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
+
+		'android,Java,X64,DefaultCPU':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'android,C#,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
+
+		'android,C#,ARM64,NNAPI':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
+
+		'ios,C-API,ARM64,DefaultCPU':
+			"Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'ios,C++,ARM64,DefaultCPU':
+			"Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'ios,C-API,ARM64,CoreML':
+			"Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'ios,C++,ARM64,CoreML':
+			"Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'ios,objectivec,ARM64,DefaultCPU':
+			"Add 'onnxruntime-objc' or 'onnxruntime-mobile-objc' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'ios,objectivec,ARM64,CoreML':
+			"Add 'onnxruntime-objc' or 'onnxruntime-mobile-objc' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'ios,C#,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
+
+		'ios,C#,ARM64,CoreML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
+
+		'windows,Python,X64,VitisAI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
+
+		'windows,C++,X64,VitisAI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
+
+		'linux,C++,ARM64,VitisAI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
+
+		'linux,Python,ARM64,VitisAI':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
+
+		'linux,Python,X64,MIGraphX':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
+
+		'linux,C-API,X64,MIGraphX':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
+
+		'linux,C++,X64,MIGraphX':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
+
+		'linux,Python,X64,ROCm':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+
+		'linux,C-API,X64,ROCm':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+
+		'linux,C++,X64,ROCm':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+
+		'linux,Python,ARM64,ACL':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
+
+		'linux,C-API,ARM64,ACL':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
+
+		'linux,C++,ARM64,ACL':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
+
+		'linux,Python,ARM32,ACL':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
+
+		'linux,C-API,ARM32,ACL':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
+
+		'linux,C++,ARM32,ACL':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
+
+		'linux,Python,ARM64,ArmNN':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
+
+		'linux,C-API,ARM64,ArmNN':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
+
+		'linux,C++,ARM64,ArmNN':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
+
+		'linux,Python,ARM32,ArmNN':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
+
+		'linux,C-API,ARM32,ArmNN':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
+
+		'linux,C++,ARM32,ArmNN':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
+
+		'linux,Python,ARM64,RockchipNPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
+
+		'linux,C-API,ARM64,RockchipNPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
+
+		'linux,C++,ARM64,RockchipNPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
+
+		//mac m1
+		'mac,C-API,ARM64,CoreML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'mac,C#,ARM64,CoreML':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'mac,C++,ARM64,CoreML':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+		'mac,Java,ARM64,CoreML':
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
+
+		'mac,Python,ARM64,DefaultCPU': 'pip install onnxruntime',
+
+		'mac,Java,ARM64,DefaultCPU':
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
+
+		'mac,C#,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'mac,C-API,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		'mac,C++,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+		//power
+		'linux,C-API,Power,DefaultCPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://onnxruntime.ai/docs/build/inferencing.html#build-instructions' target='_blank'>here</a>",
+
+		'linux,C++,Power,DefaultCPU':
+			"Follow build instructions from <a class='text-blue-500' href='https://onnxruntime.ai/docs/build/inferencing.html#build-instructions' target='_blank'>here</a>",
+
+		'linux,Python,Power,DefaultCPU': 'pip install onnxruntime-powerpc64le',
+
+		//QNN
+		'windows,C-API,ARM64,QNN':
+			"View installation instructions <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+
+		'windows,C++,ARM64,QNN':
+			"View installation instructions <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+
+		'windows,C#,ARM64,QNN':
+			"View installation instructions <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+
+		'linux,C-API,ARM64,QNN':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+
+		'linux,C++,ARM64,QNN':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+
+		'android,C-API,ARM64,QNN':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+
+		'android,C++,ARM64,QNN':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+
+		//Xnnpack
+		'ios,C-API,ARM64,XNNPACK':
+			"Add 'onnxruntime-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a> or Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+		'ios,objectivec,ARM64,XNNPACK':
+			"Add 'onnxruntime-objc' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'android,C-API,ARM64,XNNPACK':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+		'android,C++,ARM64,XNNPACK':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+		'android,Java,ARM64,XNNPACK':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'android,C-API,ARM32,XNNPACK':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+		'android,C++,ARM32,XNNPACK':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+		'android,Java,ARM32,XNNPACK':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'windows,C-API,X86,XNNPACK':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+		'windows,C++,X86,XNNPACK':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+		'linux,C-API,X86,XNNPACK':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+		'linux,C++,X86,XNNPACK':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+		'linux,Python,ARM64,CANN':
+			"pip install onnxruntime-cann <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'linux,C-API,ARM64,CANN':
+			"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+		'linux,C++,ARM64,CANN':
+			"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+		'linux,Python,X64,CANN':
+			"pip install onnxruntime-cann <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'linux,C-API,X64,CANN':
+			"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+		'linux,C++,X64,CANN':
+			"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+		'windows,Python,X64,Azure':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-azure' target='_blank'>here</a>",
+
+		'linux,Python,X64,Azure':
+			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-azure' target='_blank'>here</a>"
+	};
+	const ot_validCombos = {
+		'ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_stable':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
+
+		'ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_nightly':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
+
+		'ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_stable':
+			"pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a class='text-blue-500' href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+
+		'ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_nightly':
+			"pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a class='text-blue-500' href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+
+		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu',
+
+		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu',
+
+		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_stable':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training',
+
+		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_nightly':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training',
+
+		'ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+		'ot_linux,ot_on_device,ot_c,ot_X64,ot_CUDA118,ot_stable':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+		'ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA118,ot_stable':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+		'ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CUDA118,ot_stable':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+		'ot_linux,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+		'ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu',
+
+		'ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu',
+
+		'ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_stable':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+		'ot_windows,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+		'ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+		'ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+		'ot_windows,ot_on_device,ot_c,ot_X64,ot_CUDA118,ot_stable':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+		'ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA118,ot_stable':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+		'ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CUDA118,ot_stable':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+		'ot_android,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable':
+			"Follow installation instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
+
+		'ot_android,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable':
+			"Follow installation instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
+
+		'ot_android,ot_on_device,ot_java,ot_X64,ot_CPU,ot_stable':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-training-android</a> using Maven/Gradle and refer to the instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here.</a>",
+
+		'ot_android,ot_on_device,ot_c,ot_X64,ot_CPU,ot_nightly':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
+
+		'ot_android,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_nightly':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
+
+		'ot_android,ot_on_device,ot_java,ot_X64,ot_CPU,ot_nightly':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
+
+		'ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu',
+
+		'ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly':
+			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu',
+
+		'ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU,ot_stable':
+			"Add 'onnxruntime-training-objc' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'ot_ios,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable':
+			"Add 'onnxruntime-training-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable':
+			"Add 'onnxruntime-training-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+		'ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU,ot_nightly':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
+
+		'ot_ios,ot_on_device,ot_c,ot_X64,ot_CPU,ot_nightly':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
+
+		'ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_nightly':
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>"
+	};
 	onMount(() => {
 		var supportedOperatingSystemsNew = [
 			{ key: 'linux', value: 'linux' },
@@ -75,7 +810,6 @@
 			hardwareAcceleration: ''
 		};
 		var ot_opts = {
-			// os: getAnchorSelectedOS() || getDefaultSelectedOS(),
 			ot_scenario: '',
 			ot_os: '',
 			ot_architecture: 'ot_X64',
@@ -195,49 +929,6 @@
 				ot_selectedOption(ot_hardwareAcceleration, this, 'ot_hardwareAcceleration');
 			}
 		});
-
-		// Pre-select user's operating system
-		// jq(document).ready(function () {
-		//     var userOsOption = document.getElementById(opts.os);
-		//     var ot_userOsOption = document.getElementById(ot_opts.ot_os);
-		//     if (userOsOption) {
-		//         selectedOption(os, userOsOption, "os");
-
-		//     }
-		//     if (ot_userOsOption) {
-		//         ot_selectedOption(ot_os, ot_userOsOption, "ot_os");
-		//     }
-		// });
-
-		// determine os (mac, linux, windows) based on user's platform
-		// function getDefaultSelectedOS() {
-		//     var platform = navigator.platform.toLowerCase();
-		//     for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
-		//         if (platform.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
-		//             return supportedOperatingSystemsNew[idx].value;
-		//         }
-		//     }
-		//     // Just return something if user platform is not in our supported map
-		//     return supportedOperatingSystemsNew[0].value;
-		// }
-
-		// determine os based on location hash
-		// function getAnchorSelectedOS() {
-		//     var anchor = location.hash;
-		//     var ANCHOR_REGEX = /^#[^ ]+jq/;
-		//     // Look for anchor in the href
-		//     if (!ANCHOR_REGEX.test(anchor)) {
-		//         return false;
-		//     }
-		//     // Look for anchor with OS in the first portion
-		//     var testOS = anchor.slice(1).split("-")[0];
-		//     for (var idx = 0; idx < supportedOperatingSystemsNew.length; idx++ ) {
-		//         if (testOS.indexOf(supportedOperatingSystemsNew[idx].key) !== -1) {
-		//             return supportedOperatingSystemsNew[idx].value;
-		//         }
-		//     }
-		//     return false;
-		// }
 
 		function checkValidity() {
 			var current_os = opts['os'];
@@ -687,119 +1378,6 @@
 			);
 		}
 
-		var ot_validCombos = {
-			'ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_stable':
-				'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
-
-			'ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA118,ot_nightly':
-				'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
-
-			'ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_stable':
-				"pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a class='text-blue-500' href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
-
-			'ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_nightly':
-				"pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a class='text-blue-500' href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
-
-			'ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable':
-				'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu',
-
-			'ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly':
-				'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu',
-
-			'ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_stable':
-				'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training',
-
-			'ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_nightly':
-				'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training',
-
-			'ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable':
-				"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
-
-			'ot_linux,ot_on_device,ot_c,ot_X64,ot_CUDA118,ot_stable':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-
-			'ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA118,ot_stable':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-
-			'ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CUDA118,ot_stable':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-
-			'ot_linux,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable':
-				"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable':
-				'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu',
-
-			'ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly':
-				'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu',
-
-			'ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA118,ot_stable':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-
-			'ot_windows,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
-
-			'ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
-
-			'ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CPU,ot_stable':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
-
-			'ot_windows,ot_on_device,ot_c,ot_X64,ot_CUDA118,ot_stable':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-
-			'ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA118,ot_stable':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-
-			'ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CUDA118,ot_stable':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
-
-			'ot_android,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable':
-				"Follow installation instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
-
-			'ot_android,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable':
-				"Follow installation instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
-
-			'ot_android,ot_on_device,ot_java,ot_X64,ot_CPU,ot_stable':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-training-android</a> using Maven/Gradle and refer to the instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here.</a>",
-
-			'ot_android,ot_on_device,ot_c,ot_X64,ot_CPU,ot_nightly':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
-
-			'ot_android,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_nightly':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
-
-			'ot_android,ot_on_device,ot_java,ot_X64,ot_CPU,ot_nightly':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/android.html' target='_blank'>here</a>",
-
-			'ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable':
-				'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu',
-
-			'ot_mac,ot_on_device,ot_python,ot_X64,ot_CPU,ot_nightly':
-				'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-cpu',
-
-			'ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU,ot_stable':
-				"Add 'onnxruntime-training-objc' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'ot_ios,ot_on_device,ot_c,ot_X64,ot_CPU,ot_stable':
-				"Add 'onnxruntime-training-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_stable':
-				"Add 'onnxruntime-training-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'ot_ios,ot_on_device,ot_objc,ot_X64,ot_CPU,ot_nightly':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
-
-			'ot_ios,ot_on_device,ot_c,ot_X64,ot_CPU,ot_nightly':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>",
-
-			'ot_ios,ot_on_device,ot_cplusplus,ot_X64,ot_CPU,ot_nightly':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://onnxruntime.ai/docs/build/ios.html' target='_blank'>here</a>"
-		};
-
 		function ot_commandMessage(key) {
 			jq('#ot_command').removeClass('valid');
 			jq('#ot_command').removeClass('invalid');
@@ -825,630 +1403,6 @@
 				return true;
 			}
 		}
-
-		var validCombos = {
-			'windows,C-API,X64,CUDA':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'windows,C++,X64,CUDA':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'windows,C#,X64,CUDA':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'windows,Python,X64,CUDA':
-				"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'linux,Python,ARM64,CUDA':
-				"For Jetpack 4.4+, follow installation instructions from <a class='text-blue-500' href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
-
-			'linux,C-API,X64,CUDA':
-				"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'linux,C++,X64,CUDA':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'linux,C#,X64,CUDA':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'linux,Python,X64,CUDA':
-				"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'linux,C-API,ARM32,DefaultCPU':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
-
-			'linux,C++,ARM32,DefaultCPU':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
-
-			'linux,Python,ARM32,DefaultCPU':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
-
-			'windows,C-API,X64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C-API,X86,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C-API,ARM32,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C++,ARM32,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C#,ARM32,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C-API,ARM64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C++,ARM64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C#,ARM64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C++,X64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C++,X86,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C#,X64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'windows,C#,X86,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'linux,C-API,X64,DefaultCPU':
-				"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-			'linux,C++,X64,DefaultCPU':
-				"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-			'linux,C#,X64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'mac,C-API,X64,DefaultCPU':
-				"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-			'mac,C++,X64,DefaultCPU':
-				"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-			'mac,C#,X64,DefaultCPU':
-				"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-			'mac,C#,X64,CoreML':
-				"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-			'windows,Python,X64,DefaultCPU': 'pip install onnxruntime',
-
-			'mac,Python,X64,DefaultCPU': 'pip install onnxruntime',
-
-			'linux,Python,X64,DefaultCPU': 'pip install onnxruntime',
-
-			'linux,Python,ARM64,DefaultCPU': 'pip install onnxruntime',
-
-			'windows,C-API,X64,DNNL':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-			'windows,C++,X64,DNNL':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-			'windows,C#,X64,DNNL':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-			'windows,Python,X64,DNNL':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-			'linux,C-API,X64,DNNL':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-			'linux,C++,X64,DNNL':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-			'linux,C#,X64,DNNL':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-			'linux,Python,X64,DNNL':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-			'linux,Python,X64,TVM':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-
-			'linux,Python,X86,TVM':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-
-			'linux,Python,ARM32,TVM':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-
-			'linux,Python,ARM64,TVM':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-
-			'windows,Python,X64,TVM':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-
-			'windows,Python,X86,TVM':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-
-			'windows,Python,ARM32,TVM':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-
-			'windows,Python,ARM64,TVM':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
-
-			'linux,C-API,X64,OpenVINO':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-			'linux,C++,X64,OpenVINO':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-			'linux,C#,X64,OpenVINO':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-			'linux,Python,X64,OpenVINO':
-				"pip install onnxruntime-openvino <br/>Docker image also <a class='text-blue-500' href='https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18' target='_blank'>available</a>.",
-
-			'windows,C-API,X64,OpenVINO':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-			'windows,C++,X64,OpenVINO':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-			'windows,C#,X64,OpenVINO':
-				"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
-
-			'windows,Python,X64,OpenVINO': 'pip install onnxruntime-openvino',
-
-			'windows,C-API,X64,TensorRT':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
-
-			'windows,C++,X64,TensorRT':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
-
-			'windows,C#,X64,TensorRT':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
-
-			'windows,Python,X64,TensorRT':
-				"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'linux,C-API,X64,TensorRT':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
-
-			'linux,C++,X64,TensorRT':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
-
-			'linux,C#,X64,TensorRT':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
-
-			'linux,Python,X64,TensorRT':
-				"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'linux,C#,ARM64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime",
-
-			'linux,Python,ARM64,TensorRT':
-				"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'windows,C-API,X86,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'windows,C++,X86,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-			'windows,C#,X86,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-			'windows,Python,X86,DirectML':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-			'windows,C-API,X64,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-			'windows,C++,X64,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-			'windows,C#,X64,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-			'windows,Python,X64,DirectML': 'pip install onnxruntime-directml',
-
-			'windows,C-API,ARM64,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-			'windows,C++,ARM64,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-			'windows,C#,ARM64,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
-
-			'windows,Python,ARM64,DirectML':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
-
-			'linux,Java,X64,DefaultCPU':
-				"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
-
-			'linux,Java,X64,CUDA':
-				"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'mac,Java,X64,DefaultCPU':
-				"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
-
-			//javascript
-			'linux,JS,X64,DefaultCPU': 'npm install onnxruntime-node',
-
-			'mac,JS,X64,DefaultCPU': 'npm install onnxruntime-node',
-
-			'windows,JS,X64,DefaultCPU': 'npm install onnxruntime-node',
-
-			'web,JS,,': 'npm install onnxruntime-web',
-
-			'android,JS,ARM64,DefaultCPU': 'npm install onnxruntime-react-native',
-
-			'android,JS,X64,DefaultCPU': 'npm install onnxruntime-react-native',
-
-			'android,JS,X86,DefaultCPU': 'npm install onnxruntime-react-native',
-
-			'ios,JS,ARM64,DefaultCPU': 'npm install onnxruntime-react-native',
-
-			'windows,WinRT,X86,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-			'windows,WinRT,X64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-			'windows,WinRT,ARM64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-			'windows,WinRT,ARM32,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-			'windows,WinRT,X86,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-			'windows,WinRT,X64,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-			'windows,WinRT,ARM64,DirectML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
-
-			'windows,Java,X64,DefaultCPU':
-				"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
-
-			'windows,Java,X64,CUDA':
-				"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'windows,Java,X64,TensorRT':
-				"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
-
-			'windows,Java,X64,DNNL':
-				"Follow <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a class='text-blue-500' href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-			'windows,Java,X64,OpenVINO':
-				"Follow <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a class='text-blue-500' href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-			'linux,Java,X64,TensorRT':
-				"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
-
-			'linux,Java,X64,DNNL':
-				"Follow <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a class='text-blue-500' href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-			'linux,Java,X64,OpenVINO':
-				"Follow <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a class='text-blue-500' href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-			'android,C-API,ARM64,NNAPI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-
-			'android,C++,ARM64,NNAPI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-
-			'android,Java,ARM64,NNAPI':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'android,C-API,X86,NNAPI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-
-			'android,C++,X86,NNAPI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-
-			'android,C#,X86,NNAPI':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-
-			'android,Java,X64,NNAPI':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'android,C-API,X64,NNAPI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-
-			'android,C++,X64,NNAPI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-
-			'android,C#,X64,NNAPI':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-
-			'android,Java,X86,NNAPI':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'android,C-API,ARM32,NNAPI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-
-			'android,C++,ARM32,NNAPI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
-
-			'android,C#,ARM32,NNAPI':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-
-			'android,Java,ARM32,NNAPI':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'android,C-API,ARM64,DefaultCPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-
-			'android,C++,ARM64,DefaultCPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-
-			'android,Java,ARM64,DefaultCPU':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'android,C-API,ARM32,DefaultCPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-
-			'android,C++,ARM32,DefaultCPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-
-			'android,C#,ARM32,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-
-			'android,Java,ARM32,DefaultCPU':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'android,C-API,X86,DefaultCPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-
-			'android,C++,X86,DefaultCPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-
-			'android,C#,X86,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-
-			'android,Java,X86,DefaultCPU':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'android,C-API,X64,DefaultCPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-
-			'android,C++,X64,DefaultCPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
-
-			'android,C#,X64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-
-			'android,Java,X64,DefaultCPU':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> or <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'android,C#,ARM64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-
-			'android,C#,ARM64,NNAPI':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-
-			'ios,C-API,ARM64,DefaultCPU':
-				"Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'ios,C++,ARM64,DefaultCPU':
-				"Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'ios,C-API,ARM64,CoreML':
-				"Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'ios,C++,ARM64,CoreML':
-				"Add 'onnxruntime-c' or 'onnxruntime-mobile-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'ios,objectivec,ARM64,DefaultCPU':
-				"Add 'onnxruntime-objc' or 'onnxruntime-mobile-objc' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'ios,objectivec,ARM64,CoreML':
-				"Add 'onnxruntime-objc' or 'onnxruntime-mobile-objc' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'ios,C#,ARM64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-
-			'ios,C#,ARM64,CoreML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
-
-			'windows,Python,X64,VitisAI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-
-			'windows,C++,X64,VitisAI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-
-			'linux,C++,ARM64,VitisAI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-
-			'linux,Python,ARM64,VitisAI':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-
-			'linux,Python,X64,MIGraphX':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
-
-			'linux,C-API,X64,MIGraphX':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
-
-			'linux,C++,X64,MIGraphX':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
-
-			'linux,Python,X64,ROCm':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
-
-			'linux,C-API,X64,ROCm':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
-
-			'linux,C++,X64,ROCm':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
-
-			'linux,Python,ARM64,ACL':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-
-			'linux,C-API,ARM64,ACL':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-
-			'linux,C++,ARM64,ACL':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-
-			'linux,Python,ARM32,ACL':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-
-			'linux,C-API,ARM32,ACL':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-
-			'linux,C++,ARM32,ACL':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
-
-			'linux,Python,ARM64,ArmNN':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-
-			'linux,C-API,ARM64,ArmNN':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-
-			'linux,C++,ARM64,ArmNN':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-
-			'linux,Python,ARM32,ArmNN':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-
-			'linux,C-API,ARM32,ArmNN':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-
-			'linux,C++,ARM32,ArmNN':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
-
-			'linux,Python,ARM64,RockchipNPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
-
-			'linux,C-API,ARM64,RockchipNPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
-
-			'linux,C++,ARM64,RockchipNPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
-
-			//mac m1
-			'mac,C-API,ARM64,CoreML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'mac,C#,ARM64,CoreML':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'mac,C++,ARM64,CoreML':
-				"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
-
-			'mac,Java,ARM64,CoreML':
-				"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
-
-			'mac,Python,ARM64,DefaultCPU': 'pip install onnxruntime',
-
-			'mac,Java,ARM64,DefaultCPU':
-				"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
-
-			'mac,C#,ARM64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'mac,C-API,ARM64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			'mac,C++,ARM64,DefaultCPU':
-				"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
-
-			//power
-			'linux,C-API,Power,DefaultCPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://onnxruntime.ai/docs/build/inferencing.html#build-instructions' target='_blank'>here</a>",
-
-			'linux,C++,Power,DefaultCPU':
-				"Follow build instructions from <a class='text-blue-500' href='https://onnxruntime.ai/docs/build/inferencing.html#build-instructions' target='_blank'>here</a>",
-
-			'linux,Python,Power,DefaultCPU': 'pip install onnxruntime-powerpc64le',
-
-			//QNN
-			'windows,C-API,ARM64,QNN':
-				"View installation instructions <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
-
-			'windows,C++,ARM64,QNN':
-				"View installation instructions <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
-
-			'windows,C#,ARM64,QNN':
-				"View installation instructions <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
-
-			'linux,C-API,ARM64,QNN':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
-
-			'linux,C++,ARM64,QNN':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
-
-			'android,C-API,ARM64,QNN':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
-
-			'android,C++,ARM64,QNN':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
-
-			//Xnnpack
-			'ios,C-API,ARM64,XNNPACK':
-				"Add 'onnxruntime-c' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a> or Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
-
-			'ios,objectivec,ARM64,XNNPACK':
-				"Add 'onnxruntime-objc' using CocoaPods and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'android,C-API,ARM64,XNNPACK':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
-
-			'android,C++,ARM64,XNNPACK':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
-
-			'android,Java,ARM64,XNNPACK':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'android,C-API,ARM32,XNNPACK':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
-
-			'android,C++,ARM32,XNNPACK':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
-
-			'android,Java,ARM32,XNNPACK':
-				"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
-
-			'windows,C-API,X86,XNNPACK':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
-
-			'windows,C++,X86,XNNPACK':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
-
-			'linux,C-API,X86,XNNPACK':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
-
-			'linux,C++,X86,XNNPACK':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
-
-			'linux,Python,ARM64,CANN':
-				"pip install onnxruntime-cann <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'linux,C-API,ARM64,CANN':
-				"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
-
-			'linux,C++,ARM64,CANN':
-				"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
-
-			'linux,Python,X64,CANN':
-				"pip install onnxruntime-cann <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-			'linux,C-API,X64,CANN':
-				"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
-
-			'linux,C++,X64,CANN':
-				"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
-
-			'windows,Python,X64,Azure':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-azure' target='_blank'>here</a>",
-
-			'linux,Python,X64,Azure':
-				"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-azure' target='_blank'>here</a>"
-		};
 
 		function commandMessage(key) {
 			jq('#command').removeClass('valid');
@@ -1665,41 +1619,41 @@
 		// Modal Extension
 		// ===============================
 
-		jq('.modal-dialog').attr({ role: 'document' });
-		var modalhide = jq.fn.modal.Constructor.prototype.hide;
-		jq.fn.modal.Constructor.prototype.hide = function () {
-			modalhide.apply(this, arguments);
-			jq(document).off('keydown.bs.modal');
-		};
+		// jq('.modal-dialog').attr({ role: 'document' });
+		// var modalhide = jq.fn.modal.Constructor.prototype.hide;
+		// jq.fn.modal.Constructor.prototype.hide = function () {
+		// 	modalhide.apply(this, arguments);
+		// 	jq(document).off('keydown.bs.modal');
+		// };
 
-		var modalfocus = jq.fn.modal.Constructor.prototype.enforceFocus;
-		jq.fn.modal.Constructor.prototype.enforceFocus = function () {
-			var jqcontent = this.jqelement.find('.modal-content');
-			var focEls = jqcontent.find(':tabbable'),
-				jqlastEl = jq(focEls[focEls.length - 1]),
-				jqfirstEl = jq(focEls[0]);
-			jqlastEl.on(
-				'keydown.bs.modal',
-				jq.proxy(function (ev) {
-					if (ev.keyCode === 9 && !(ev.shiftKey | ev.ctrlKey | ev.metaKey | ev.altKey)) {
-						// TAB pressed
-						ev.preventDefault();
-						jqfirstEl.focus();
-					}
-				}, this)
-			);
-			jqfirstEl.on(
-				'keydown.bs.modal',
-				jq.proxy(function (ev) {
-					if (ev.keyCode === 9 && ev.shiftKey) {
-						// SHIFT-TAB pressed
-						ev.preventDefault();
-						jqlastEl.focus();
-					}
-				}, this)
-			);
-			modalfocus.apply(this, arguments);
-		};
+		// var modalfocus = jq.fn.modal.Constructor.prototype.enforceFocus;
+		// jq.fn.modal.Constructor.prototype.enforceFocus = function () {
+		// 	var jqcontent = this.jqelement.find('.modal-content');
+		// 	var focEls = jqcontent.find(':tabbable'),
+		// 		jqlastEl = jq(focEls[focEls.length - 1]),
+		// 		jqfirstEl = jq(focEls[0]);
+		// 	jqlastEl.on(
+		// 		'keydown.bs.modal',
+		// 		jq.proxy(function (ev) {
+		// 			if (ev.keyCode === 9 && !(ev.shiftKey | ev.ctrlKey | ev.metaKey | ev.altKey)) {
+		// 				// TAB pressed
+		// 				ev.preventDefault();
+		// 				jqfirstEl.focus();
+		// 			}
+		// 		}, this)
+		// 	);
+		// 	jqfirstEl.on(
+		// 		'keydown.bs.modal',
+		// 		jq.proxy(function (ev) {
+		// 			if (ev.keyCode === 9 && ev.shiftKey) {
+		// 				// SHIFT-TAB pressed
+		// 				ev.preventDefault();
+		// 				jqlastEl.focus();
+		// 			}
+		// 		}, this)
+		// 	);
+		// 	modalfocus.apply(this, arguments);
+		// };
 
 		jq(function () {
 			var tabs = jq('.custom-tab');
@@ -1958,7 +1912,7 @@
 						aria-labelledby="selectHardwareAcceleration"
 						aria-describedby="decriptionHardwareAcceleration"
 					>
-						{#each hardwareAcceleration as hardware, i}
+						{#each hardwareAccelerations as hardware, i}
 							<input
 								class="r-option version join-item btn rounded"
 								role="option"

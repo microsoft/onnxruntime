@@ -22,6 +22,13 @@
 	});
 	let featuredblog = [
 		{
+			title: 'Run PyTorch models on the edge',
+			date: 'October 12th, 2023',
+			blurb:
+				'Everything you need to know about running PyTorch models on the edge with ONNX Runtime.',
+			link: 'blogs/pytorch-on-the-edge'
+		},
+		{
 			title: 'On-Device Training with ONNX Runtime: A deep dive',
 			date: 'July 5th, 2023',
 			blurb:
@@ -35,6 +42,8 @@
 				'Learn how ONNX Runtime accelerates Whisper and makes it easy to deploy on desktop, mobile, in the cloud, and even in the browser.',
 			link: 'https://medium.com/microsoftazure/build-and-deploy-fast-and-portable-speech-recognition-applications-with-onnx-runtime-and-whisper-5bf0969dd56b'
 		},
+	];
+	let blogs = [
 		{
 			title: 'On-Device Training: Efficient training on the edge with ONNX Runtime',
 			date: 'May 31st, 2023',
@@ -42,8 +51,6 @@
 				'This blog introduces On-Device Training to enable training models on edge devices with the data available on-edge. It extends ORT Inference on edge to include federated learning and personalization scenarios.',
 			link: 'https://cloudblogs.microsoft.com/opensource/2023/05/31/on-device-training-efficient-training-on-the-edge-with-onnx-runtime/'
 		},
-	];
-	let blogs = [
 		{
 			title:
 				'Unlocking the end-to-end Windows AI developer experience using ONNX runtime and Olive',

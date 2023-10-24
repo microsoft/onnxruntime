@@ -15,6 +15,8 @@
 	import Training from '../../../images/blogs/pytorch-on-the-edge-training.png';
 	import TextGen from '../../../images/blogs/pytorch-on-the-edge-textgen.png';
 	import { androidstudio } from 'svelte-highlight/styles';
+    import Header from '../../components/header.svelte';
+	import Footer from '../../components/footer.svelte';
 	
 	let optimumcode = `from optimum.onnxruntime import ORTStableDiffusionPipeline
 pipeline = ORTStableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", export=True)
@@ -142,7 +144,7 @@ fun run(audioTensor: OnnxTensor): Result {
     try trainingSession.lazyResetGrad()
 }`;
 </script>
-
+<Header pathvar=""/>
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
 	<h1 class="text-5xl pb-2">Run PyTorch models on the edge</h1>
 	<p class="text-neutral">12TH OCTOBER, 2023</p>
@@ -463,3 +465,4 @@ fun run(audioTensor: OnnxTensor): Result {
 		</div>
 	</div>
 </div>
+<Footer pathvar=""/>
