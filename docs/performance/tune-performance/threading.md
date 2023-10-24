@@ -25,7 +25,7 @@ sess_options = rt.SessionOptions()
 sess_options.intra_op_num_threads = 0
 sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL
 sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
-sess_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1")
+sess_options.add_session_config_entry("session.intra_op.allow_spinning", "1")
 ```
 
 
