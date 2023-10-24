@@ -8,7 +8,7 @@
 #include "core/session/custom_ops.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/compute_capability.h"
-#include "core/optimizer/transpose_optimization/ort_optimizer_api_impl.h"
+#include "core/graph/graph_view_api_impl.h"
 #include <memory>
 
 namespace onnxruntime {

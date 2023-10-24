@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -151,7 +152,7 @@ class GraphViewRef {
   virtual std::optional<int64_t> Opset(std::string_view domain) const = 0;
 
   /// <returns>Topologically-sorted list of nodes in the graph</returns>
-  virtual std::vector<std::unique_ptr<NodeViewRef>> Nodes() const = 0;
+  virtual std::vector<std::unique_ptr<NodeViewRef>> NodeViews() const = 0;
 
   /// <summary>
   /// Checks whether the value name refers to a constant initializer and if so, returns a Tensor corresponding to it.
@@ -166,7 +167,7 @@ class GraphViewRef {
   /// the name does not refer to a value in the graph.
   /// <param name="name">Value name. Must be nonempty.</param>
   /// <returns>A ValueInfo instance corresponding to the value with the given name</returns>
-  virtual std::unique_ptr<onnxruntime::ValueInfoViewRef> GetValueInfo(std::string_view name) const = 0;
+  virtual std::unique_ptr<onnxruntime::ValueInfoViewRef> GetValueInfoView(std::string_view name) const = 0;
 #ifdef INTREE_EP
   virtual onnx::ModelProto ToModelProto() = 0;
 #endif

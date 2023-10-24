@@ -51,7 +51,7 @@ namespace api {
 /// graph input, graph initializer, or node output. Must be able to provide up-to-date information on the value of
 /// that name unless that value is removed from the graph (in which case behavior is undefined).
 /// </summary>
-class ValueInfoRef : public onnxruntime::ValueInfoViewRef {
+class ValueInfoRef : virtual public onnxruntime::ValueInfoViewRef {
  public:
   /// <summary>
   /// Set the inferred tensor shape. Only used for values that are node outputs. Graph inputs will not change shape
@@ -79,7 +79,7 @@ class ValueInfoRef : public onnxruntime::ValueInfoViewRef {
   virtual ~ValueInfoRef(){};
 };
 
-class NodeRef : public onnxruntime::NodeViewRef {
+class NodeRef : virtual public onnxruntime::NodeViewRef {
  public:
   /// <summary>
   /// Sets an int attribute with name and value. Overwrites existing value if present.
@@ -155,22 +155,10 @@ struct ValueConsumers {
 ///
 /// Access to parent graphs should be restricted, except GetConstant which may return initializers from parent graphs.
 /// </summary>
-class GraphRef {
+class GraphRef : virtual public onnxruntime::GraphViewRef {
  public:
-  /// <param name="domain">Domain name to find in model opset_import</param>
-  /// <returns>Opset of domain declared in model, or nullopt if domain is not present</returns>
-  virtual std::optional<int64_t> Opset(std::string_view domain) const = 0;
-
   /// <returns>Topologically-sorted list of nodes in the graph</returns>
   virtual std::vector<std::unique_ptr<NodeRef>> Nodes() const = 0;
-
-  /// <summary>
-  /// Checks whether the value name refers to a constant initializer and if so, returns a Tensor corresponding to it.
-  /// Constants from parent graphs may be included.
-  /// </summary>
-  /// <param name="name">Value name. Must be nonempty.</param>
-  /// <returns>Tensor corresponding to the constant initializer or nullptr</returns>
-  virtual std::unique_ptr<onnxruntime::TensorRef> GetConstant(std::string_view name) const = 0;
 
   /// <summary>
   /// Checks whether the value name refers to a constant initializer in the current graph and if so, returns a Tensor

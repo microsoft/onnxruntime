@@ -95,6 +95,15 @@ void CustomEp2::MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) {
   //memcpy(dst, src, bytes_count);
 }
 
+std::vector<std::unique_ptr<SubGraphDef>> CustomEp2::GetCapability(GraphViewRef* graph) {
+  auto opset = graph->Opset("");
+  return {};
+}
+
+common::Status CustomEp2::Compile(std::vector<std::unique_ptr<GraphViewRef>>&, std::vector<std::unique_ptr<NodeViewRef>>&, std::vector<NodeComputeInfo>&) {
+  return common::Status::OK();
+}
+
 CustomEp2Info ProviderOption2CustomEpInfo(std::unordered_map<std::string, std::string>& provider_option) {
   CustomEp2Info ret;
   if (provider_option.find("int_property") != provider_option.end()) {
