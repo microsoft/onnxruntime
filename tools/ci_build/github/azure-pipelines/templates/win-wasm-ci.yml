@@ -20,7 +20,7 @@ parameters:
   default: false
 
 - name: TimeoutInMinutes
-  default: 180
+  default: 240
 
 - name: BuildJsep
   type: boolean
