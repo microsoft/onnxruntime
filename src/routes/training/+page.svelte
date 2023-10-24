@@ -1,9 +1,3 @@
-<svelte:head>
-	<meta
-		name="description"
-		content="Learn how you can use ONNX Runtime to accelerate your Machine Learning Training workloads."
-	/>
-</svelte:head>
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	import ImageLargemodeltraining from '../../images/undraw/image_largemodeltraining.svelte';
@@ -17,6 +11,13 @@
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
 </script>
+
+<svelte:head>
+	<meta
+		name="description"
+		content="Learn how you can use ONNX Runtime to accelerate your Machine Learning Training workloads."
+	/>
+</svelte:head>
 
 <LandingHero {title} {description} {imgsrc} {imgalt} />
 <div class="container mx-auto px-10 my-10">
@@ -128,13 +129,13 @@
 			<div class="card bg-base-300">
 				<div class="card-body items-center text-center">
 					<div class="card-title">Average throughput improvement:</div>
-					<div class="stat-value">2.7x</div>	
+					<div class="stat-value">2.7x</div>
 				</div>
 			</div>
 			<div class="card bg-base-300">
 				<div class="card-body items-center text-center">
 					<div class="card-title">Median throughput improvement:</div>
-					<div class="stat-value">1.7x</div>	
+					<div class="stat-value">1.7x</div>
 				</div>
 			</div>
 		</div>

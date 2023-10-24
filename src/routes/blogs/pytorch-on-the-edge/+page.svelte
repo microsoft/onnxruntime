@@ -1,19 +1,13 @@
-<svelte:head>
-	<meta
-		name="description"
-		content="Everything you need to know about running PyTorch models on the edge with ONNX Runtime."
-	/>
-</svelte:head>
 <script>
-    import Highlight from 'svelte-highlight';
+	import Highlight from 'svelte-highlight';
 	import python from 'svelte-highlight/languages/python';
 	import csharp from 'svelte-highlight/languages/csharp';
-    import handlebars from 'svelte-highlight/languages/handlebars';
+	import handlebars from 'svelte-highlight/languages/handlebars';
 	import javascript from 'svelte-highlight/languages/javascript';
 	import java from 'svelte-highlight/languages/java';
 	import cpp from 'svelte-highlight/languages/cpp';
-    import swift from 'svelte-highlight/languages/swift';
-    import kotlin from 'svelte-highlight/languages/kotlin';
+	import swift from 'svelte-highlight/languages/swift';
+	import kotlin from 'svelte-highlight/languages/kotlin';
 
 	import ORT from '../../../images/blogs/pytorch-on-the-edge-with-ort.png';
 	import Puppies from '../../../images/blogs/pytorch-on-the-edge-puppies.png';
@@ -21,13 +15,13 @@
 	import Training from '../../../images/blogs/pytorch-on-the-edge-training.png';
 	import TextGen from '../../../images/blogs/pytorch-on-the-edge-textgen.png';
 	import { androidstudio } from 'svelte-highlight/styles';
-    import Header from '../../components/header.svelte';
+	import Header from '../../components/header.svelte';
 	import Footer from '../../components/footer.svelte';
-	
+
 	let optimumcode = `from optimum.onnxruntime import ORTStableDiffusionPipeline
 pipeline = ORTStableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", export=True)
 pipeline.save_pretrained("./onnx-stable-diffusion")`;
-let dotnetcode = `static void Main(string[] args)
+	let dotnetcode = `static void Main(string[] args)
 {
     var prompt = "Two golden retriever puppies playing in the grass.";
     var config = new StableDiffusionConfig
@@ -88,7 +82,7 @@ let dotnetcode = `static void Main(string[] args)
             });
         <\/script>    
     </body>
-</html>`
+</html>`;
 
 	let mobilecode = `init {
     val env = OrtEnvironment.getEnvironment()
@@ -150,7 +144,14 @@ fun run(audioTensor: OnnxTensor): Result {
     try trainingSession.lazyResetGrad()
 }`;
 </script>
-<Header pathvar=""/>
+
+<svelte:head>
+	<meta
+		name="description"
+		content="Everything you need to know about running PyTorch models on the edge with ONNX Runtime."
+	/>
+</svelte:head>
+<Header pathvar="" />
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
 	<h1 class="text-5xl pb-2">Run PyTorch models on the edge</h1>
 	<p class="text-neutral">12TH OCTOBER, 2023</p>
@@ -309,7 +310,7 @@ fun run(audioTensor: OnnxTensor): Result {
 			<p class="mb-4">
 				To run on the edge, four of the models can be exported to ONNX format from HuggingFace.
 			</p>
-            <Highlight language={python} code={optimumcode} />
+			<Highlight language={python} code={optimumcode} />
 			<p class="mb-4">
 				You don't have to export the fifth model, ClipTokenizer, as it is available in <a
 					href="https://onnxruntime.ai/docs/extensions"
@@ -324,7 +325,7 @@ fun run(audioTensor: OnnxTensor): Result {
 					class="bg-gray-200 p-1 rounded">ExecutionProviderTarget</code
 				> below.
 			</p>
-            <Highlight language={csharp} code={dotnetcode} />
+			<Highlight language={csharp} code={dotnetcode} />
 			<p class="mb-4">
 				This is the output of the model pipeline, running with 50 inference iterations:
 			</p>
@@ -348,7 +349,7 @@ fun run(audioTensor: OnnxTensor): Result {
 				to ONNX and served by the tranformers.js CDN, making inference in the browser a matter of writing
 				a few lines of HTML:
 			</p>
-            <Highlight language={handlebars} code={htmlcode} />
+			<Highlight language={handlebars} code={htmlcode} />
 			<p class="mb-4">
 				You can also embed the call to the transformers pipeline using vanilla JavaScript, or in a
 				web application, with React or Next.js, or write a browser extension.
@@ -391,7 +392,7 @@ fun run(audioTensor: OnnxTensor): Result {
 					class="text-blue-500">Android mobile app</a
 				> that performs speech transcription on short samples of audio is shown below:
 			</p>
-            <Highlight language={kotlin} code={mobilecode} />
+			<Highlight language={kotlin} code={mobilecode} />
 			<p class="mb-4">You can record a short audio clip to transcribe.</p>
 
 			<img
@@ -418,19 +419,19 @@ fun run(audioTensor: OnnxTensor): Result {
 				The PyTorch model is obtained from HuggingFace in your development environment, and extra
 				layers are added to perform the speaker classification:
 			</p>
-            <Highlight language={python} code={torchcode} />
+			<Highlight language={python} code={torchcode} />
 			<p class="mb-4">
 				The model and other components necessary for training (a loss function to measure the
 				quality of the model and an optimizer to instruct how the weights are adjusted during
 				training) are exported with ONNX Runtime Training:
 			</p>
-            <Highlight language={python} code={trainingcode} />
+			<Highlight language={python} code={trainingcode} />
 			<p class="mb-4">
 				This set of artifacts is now ready to be loaded by the mobile app, shown here as iOS Swift
 				code. The app asks the user for samples of their voice and the model is trained with the
 				samples.
 			</p>
-            <Highlight language={swift} code={swiftcode} />
+			<Highlight language={swift} code={swiftcode} />
 			<p class="mb-4">
 				Once the model is trained, you can run it to verify that a voice sample is you!
 			</p>
@@ -471,4 +472,4 @@ fun run(audioTensor: OnnxTensor): Result {
 		</div>
 	</div>
 </div>
-<Footer pathvar=""/>
+<Footer pathvar="" />

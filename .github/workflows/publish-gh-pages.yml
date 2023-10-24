@@ -111,7 +111,7 @@ jobs:
 
       - name: Generate build
         run: npm run build
-        
+
       - name: Move site into place
         run: |
           sudo mv ./build/* ./_site

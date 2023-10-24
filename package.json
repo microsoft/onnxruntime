@@ -9,7 +9,7 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --plugin-search-dir . --check . && eslint .",
-		"format": "prettier --plugin-search-dir . --write .",
+		"format": "prettier --plugin-search-dir . --write ./src",
 		"deploy": "npx gh-pages -d build -r git@github.com:MaanavD/onnxruntime.git",
 		"postbuild": "npx svelte-sitemap --domain https://onnxruntime.ai"
 	},

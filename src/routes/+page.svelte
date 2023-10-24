@@ -6,7 +6,7 @@
 	import CrossPlatform from './components/cross-platform.svelte';
 	import GenerativeAi from './components/generative-ai-hero.svelte';
 	import TrainingAndInference from './components/training-and-inference.svelte';
-	import IoIosClose from 'svelte-icons/io/IoIosClose.svelte'
+	import IoIosClose from 'svelte-icons/io/IoIosClose.svelte';
 	import { onMount } from 'svelte';
 	import anime from 'animejs';
 	import Saos from 'saos';

@@ -1,9 +1,3 @@
-<svelte:head>
-	<meta
-		name="description"
-		content="Integrate the power of generative AI in your apps and services with ONNX Runtime."
-	/>
-</svelte:head>
 <script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	const title = 'Generative AI + ONNX Runtime';
@@ -14,6 +8,13 @@
 	import stablediffusion1 from '../../images/StableDiffusion1.webp';
 	import stablediffusion2 from '../../images/StableDiffusion2.webp';
 </script>
+
+<svelte:head>
+	<meta
+		name="description"
+		content="Integrate the power of generative AI in your apps and services with ONNX Runtime."
+	/>
+</svelte:head>
 
 <LandingHero {title} {description} {imgsrc} {imgalt} />
 <div class="container mx-auto px-10 my-10">

@@ -119,13 +119,19 @@
 	</div>
 	<h1 class="text-2xl pt-10 pb-4">Learn more about how to use ONNX Runtime with</h1>
 	<div class="grid md:grid-cols-3 grid-cols-1 gap-4 mx-auto pb-10">
-		<a href="./pytorch" class="btn btn-primary bg-slate-300 border-solid border-2 border-secondary rounded h-full"
+		<a
+			href="./pytorch"
+			class="btn btn-primary bg-slate-300 border-solid border-2 border-secondary rounded h-full"
 			><img class="px-10 py-5" src={pytorchlogo} alt="PyTorch Logo" /></a
 		>
-		<a href="./windows" class="btn btn-primary bg-slate-300 border-solid border-2 border-secondary rounded h-full"
+		<a
+			href="./windows"
+			class="btn btn-primary bg-slate-300 border-solid border-2 border-secondary rounded h-full"
 			><img class="px-10 py-5" src={windowslogo} alt="Windows Logo" /></a
 		>
-		<a href="./huggingface" class="btn btn-primary bg-slate-300 border-solid border-2 border-secondary rounded h-full"
+		<a
+			href="./huggingface"
+			class="btn btn-primary bg-slate-300 border-solid border-2 border-secondary rounded h-full"
 			><img class="px-10 py-5" src={huggingfacelogoTitle} alt="HuggingFace Logo" /></a
 		>
 	</div>

@@ -19,8 +19,11 @@
 					<h1 class="text-2xl pb-2">Large Model Training</h1>
 					<p class="text-lg">
 						ORT Training can be used to accelerate training for a large number of popular models,
-						including <a href="https://huggingface.co/" class="text-blue-500">Hugging Face</a> models like Llama-2-7b and curated models from the <a href="https://ml.azure.com/" class="text-blue-500">Azure AI |
-						Machine Learning Studio</a> model catalog.
+						including <a href="https://huggingface.co/" class="text-blue-500">Hugging Face</a>
+						models like Llama-2-7b and curated models from the
+						<a href="https://ml.azure.com/" class="text-blue-500"
+							>Azure AI | Machine Learning Studio</a
+						> model catalog.
 					</p>
 				</div>
 				<div class="hidden xl:grid">

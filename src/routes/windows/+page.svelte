@@ -1,9 +1,3 @@
-<svelte:head>
-	<meta
-		name="description"
-		content="Learn about using ONNX Runtime to create AI experiences on Windows."
-	/>
-</svelte:head>
 <script lang="ts">
 	import OnnxLight from '../../images/ONNX-Light.svelte';
 	import LandingHero from '../components/landing-hero.svelte';
@@ -13,6 +7,13 @@
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
 </script>
+
+<svelte:head>
+	<meta
+		name="description"
+		content="Learn about using ONNX Runtime to create AI experiences on Windows."
+	/>
+</svelte:head>
 
 <div class="container mx-auto px-10 my-10">
 	<div class="grid grid-cols-1 md:grid-cols-3 gap-10">
@@ -29,7 +30,7 @@
 			>
 		</div>
 		<div class="m-auto">
-			<OnnxLight height={250} width={250}/>
+			<OnnxLight height={250} width={250} />
 		</div>
 	</div>
 </div>
@@ -82,8 +83,7 @@
 						class="text-blue-500"
 						href="https://docs.microsoft.com/en-us/windows/ai/windows-ml/">Windows ML</a
 					>
-					in an interactive format. The app is an interactive companion that shows the integration
-					of
+					in an interactive format. The app is an interactive companion that shows the integration of
 					<a
 						class="text-blue-500"
 						href="https://docs.microsoft.com/en-us/uwp/api/windows.ai.machinelearning"

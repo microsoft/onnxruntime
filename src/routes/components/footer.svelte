@@ -25,13 +25,13 @@
 	<div />
 	<div>
 		<span class="footer-title">Get Started</span>
-		<a href={pathvar+"/getting-started"} class="link link-hover">Install</a>
-		<a href={pathvar+"/pytorch"} class="link link-hover">PyTorch</a>
+		<a href={pathvar + '/getting-started'} class="link link-hover">Install</a>
+		<a href={pathvar + '/pytorch'} class="link link-hover">PyTorch</a>
 	</div>
 	<div>
 		<span class="footer-title">Resources</span>
-		<a href={pathvar+"/blogs"} class="link link-hover">Blogs</a>
-		<a rel="external" href={pathvar+"/docs/tutorials"} class="link link-hover">Tutorials</a>
-		<a rel="external" href={pathvar+"/docs/api/"} class="link link-hover">APIs</a>
+		<a href={pathvar + '/blogs'} class="link link-hover">Blogs</a>
+		<a rel="external" href={pathvar + '/docs/tutorials'} class="link link-hover">Tutorials</a>
+		<a rel="external" href={pathvar + '/docs/api/'} class="link link-hover">APIs</a>
 	</div>
 </footer>

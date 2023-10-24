@@ -1,9 +1,3 @@
-<svelte:head>
-	<meta
-		name="description"
-		content="ONNX Runtime Blogs - your source for staying updated on the latest ONNX Runtime updated and information."
-	/>
-</svelte:head>
 <script>
 	// @ts-nocheck
 
@@ -42,12 +36,13 @@
 			link: 'https://cloudblogs.microsoft.com/opensource/2023/07/05/on-device-training-with-onnx-runtime-a-deep-dive/'
 		},
 		{
-			title: 'Build and deploy fast and portable speech recognition applications with ONNX Runtime and Whisper',
+			title:
+				'Build and deploy fast and portable speech recognition applications with ONNX Runtime and Whisper',
 			date: 'June 7th, 2023',
 			blurb:
 				'Learn how ONNX Runtime accelerates Whisper and makes it easy to deploy on desktop, mobile, in the cloud, and even in the browser.',
 			link: 'https://medium.com/microsoftazure/build-and-deploy-fast-and-portable-speech-recognition-applications-with-onnx-runtime-and-whisper-5bf0969dd56b'
-		},
+		}
 	];
 	let blogs = [
 		{
@@ -219,7 +214,14 @@
 		}
 	];
 </script>
-	<div class="container mx-auto">
+
+<svelte:head>
+	<meta
+		name="description"
+		content="ONNX Runtime Blogs - your source for staying updated on the latest ONNX Runtime updated and information."
+	/>
+</svelte:head>
+<div class="container mx-auto">
 	<div class="flex">
 		<h1 class="text-5xl my-auto mx-4">Blogs & Announcements</h1>
 		<div class="ml-5 hidden md:flex">

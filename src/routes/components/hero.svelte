@@ -25,7 +25,7 @@
 	};
 	setTimeout(cycleWord, 2000);
 	let pythonCode = 'pip install onnxruntime';
-	let nugetCode = 'nuget get onnxruntime';
+	let nugetCode = 'nuget install Microsoft.ML.OnnxRuntime';
 	let copied = false;
 	let copy = async (code: string) => {
 		try {
@@ -67,8 +67,8 @@
 {/if}
 <div class="hero bg-gradient-to-b from-primary">
 	<div class="hero-content md:my-20">
-		<div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-			<div class="col-span-2 self-center md:mr-20">
+		<div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+			<div class="col-span-4 self-center md:mr-20">
 				{#key activeWord}
 					<h1
 						class="text-5xl"

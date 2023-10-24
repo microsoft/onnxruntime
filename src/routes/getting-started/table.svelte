@@ -1261,9 +1261,7 @@
 
 		function ot_selectedOption(option, selection, category) {
 			//allow deselect, disable for architecture since they only have 1 item
-			if (
-				selection.id == ot_opts[category] 
-			) {
+			if (selection.id == ot_opts[category]) {
 				jq(selection).removeClass('selected');
 				jq(selection).removeClass('unsupported');
 				jq(selection).removeClass('btn-primary');
@@ -1398,9 +1396,7 @@
 			) {
 				jq('#ot_command span').html('Please select a combination of resources');
 			} else if (!ot_validCombos.hasOwnProperty(key)) {
-				jq('#ot_command span').html(
-					'This combination is not supported. Make another selection.'
-				);
+				jq('#ot_command span').html('This combination is not supported. Make another selection.');
 				jq('#ot_command').addClass('invalid');
 				return false;
 			} else {
@@ -1426,9 +1422,7 @@
 			) {
 				jq('#command span').html('Please select a combination of resources');
 			} else if (!validCombos.hasOwnProperty(key)) {
-				jq('#command span').html(
-					'This combination is not supported. Make another selection.'
-				);
+				jq('#command span').html('This combination is not supported. Make another selection.');
 				jq('#command').addClass('invalid');
 				return false;
 			} else {
@@ -1838,8 +1832,8 @@
 								role="option"
 								aria-selected="false"
 								aria-label={platform}
-								id={platformIDs[i]}
-							>{platform}</a>
+								id={platformIDs[i]}>{platform}</a
+							>
 						{/each}
 					</div>
 				</div>
@@ -1864,8 +1858,8 @@
 								role="option"
 								aria-selected="false"
 								aria-label={api}
-								id={apiIDs[i]}
-							>{api}</a>
+								id={apiIDs[i]}>{api}</a
+							>
 						{/each}
 					</div>
 				</div>
@@ -1889,8 +1883,8 @@
 								role="option"
 								aria-selected="false"
 								aria-label={architecture}
-								id={architecturesIDs[i]}
-							>{architecture}</a>
+								id={architecturesIDs[i]}>{architecture}</a
+							>
 						{/each}
 					</div>
 				</div>
@@ -1916,8 +1910,8 @@
 								role="option"
 								aria-selected="false"
 								aria-label={hardware}
-								id={hardwareAccelerationIDs[i]}
-							>{hardware}</a>
+								id={hardwareAccelerationIDs[i]}>{hardware}</a
+							>
 						{/each}
 					</div>
 				</div>
@@ -1959,8 +1953,8 @@
 							role="option"
 							aria-selected="false"
 							aria-label={trainingscenario}
-							id={TrainingScenarioIds[i]}
-						>{trainingscenario}</a>
+							id={TrainingScenarioIds[i]}>{trainingscenario}</a
+						>
 					{/each}
 				</div>
 			</div>
@@ -1982,8 +1976,8 @@
 							role="option"
 							aria-selected="false"
 							aria-label={trainingplatform}
-							id={TrainingPlatformIds[i]}
-						>{trainingplatform}</a>
+							id={TrainingPlatformIds[i]}>{trainingplatform}</a
+						>
 					{/each}
 				</div>
 			</div>
@@ -2006,8 +2000,8 @@
 							role="option"
 							aria-selected="false"
 							aria-label={trainingapi}
-							id={TrainingAPIIds[i]}
-						>{trainingapi}</a>
+							id={TrainingAPIIds[i]}>{trainingapi}</a
+						>
 					{/each}
 				</div>
 			</div>
@@ -2032,8 +2026,8 @@
 							role="option"
 							aria-selected="false"
 							aria-label={version}
-							id={TrainingVersionIds[i]}
-						>{version}</a>
+							id={TrainingVersionIds[i]}>{version}</a
+						>
 					{/each}
 				</div>
 			</div>
@@ -2055,8 +2049,8 @@
 							role="option"
 							aria-selected="false"
 							aria-label={build}
-							id={TrainingBuildIds[i]}
-						>{build}</a>
+							id={TrainingBuildIds[i]}>{build}</a
+						>
 					{/each}
 				</div>
 			</div>

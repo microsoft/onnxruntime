@@ -1,9 +1,3 @@
-<svelte:head>
-	<meta
-		name="description"
-		content="Learn about the benefits of using ONNX Runtime with your PyTorch models."
-	/>
-</svelte:head>
 <script lang="ts">
 	import Highlight from 'svelte-highlight';
 	import python from 'svelte-highlight/languages/python';
@@ -21,6 +15,13 @@
 	const imgalt = 'ONNX Runtime Logo';
 	const pythonCode = 'import torch\n\ntorch.onnx.export(\nmodel,\ninputs,\n"model.onnx")';
 </script>
+
+<svelte:head>
+	<meta
+		name="description"
+		content="Learn about the benefits of using ONNX Runtime with your PyTorch models."
+	/>
+</svelte:head>
 
 <LandingHero {title} {description} {imgsrc} {imgalt} />
 <div class="container mx-auto px-10 my-10">
@@ -117,10 +118,16 @@
 						platforms.
 					</p>
 					<div class="card-actions">
-						<a class="btn btn-primary hidden md:grid" href="https://cloudblogs.microsoft.com/opensource/tag/onnx"
+						<a
+							class="btn btn-primary hidden md:grid"
+							href="https://cloudblogs.microsoft.com/opensource/tag/onnx"
 							>Check the latest on performance enhancements →</a
 						>
-						<a class="btn btn-primary md:hidden" href="https://cloudblogs.microsoft.com/opensource/tag/onnx">Performance enhancements →</a>
+						<a
+							class="btn btn-primary md:hidden"
+							href="https://cloudblogs.microsoft.com/opensource/tag/onnx"
+							>Performance enhancements →</a
+						>
 					</div>
 				</div>
 				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">

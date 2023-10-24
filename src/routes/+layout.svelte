@@ -7,13 +7,21 @@
 	import Analytics from './components/analytics.svelte';
 	import { page } from '$app/stores';
 	export let data;
-	
 </script>
 
 <svelte:head>
 	{@html oneLight}
-	<title>ONNX Runtime | {data.pathname == "/" ? "Home" : data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}</title>
-	<meta property="og:title" content="ONNX Runtime | {data.pathname == "/" ? "Home" : data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}" />
+	<title
+		>ONNX Runtime | {data.pathname == '/'
+			? 'Home'
+			: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}</title
+	>
+	<meta
+		property="og:title"
+		content="ONNX Runtime | {data.pathname == '/'
+			? 'Home'
+			: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}"
+	/>
 	<meta
 		name="description"
 		content="Cross-platform accelerated machine learning. Built-in optimizations speed up training and inferencing with your existing technology stack."
