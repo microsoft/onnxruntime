@@ -48,11 +48,11 @@ class QuantizationParams:
         self.data = {}
         for k, v in data.items():
             if not isinstance(k, str):
-                raise TypeError(f"Keys must be strings not {type(k)}.")
+                raise TypeError(f"Keys must be strings not {type(k)} for k={k!r}.")
             if not isinstance(v, (int, str, np.ndarray)):
-                raise TypeError(f"Values must be int, float, str not {type(v)}.")
+                raise TypeError(f"Values must be int, float, str not {type(v)} for k={k!r}.")
             if k == "scale" and v.dtype not in (np.float32, np.float16):
-                raise ValueError(f"scale must a float32 or float16 numpy element but is {v.dtype}")
+                raise ValueError(f"scale must a float32 or float16 numpy element but is {v.dtype} for k={k!r}")
             self.data[k] = v
 
     def __iter__(self):
@@ -1064,7 +1064,7 @@ class ONNXQuantizer:
                             f"\nraw={str(q_weight_initializer)[:200]}."
                         )
             else:
-                q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(
+                q_weight_data = np.asarray(q_weight_data, dtype=onnx.helper.tensor_dtype_to_np_dtype(qType)).reshape(
                     weight.dims
                 )
                 q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
@@ -1122,7 +1122,7 @@ class ONNXQuantizer:
             rmin_list.append(rmin)
             rmax_list.append(rmax)
             zero_point_list.append(zero_point)
-            scale_list.append(scale)
+            scale_list.append(float(scale))
             quantized_per_channel_data_list.append(quantized_per_channel_data)
 
         # combine per_channel_data into one
@@ -1149,9 +1149,7 @@ class ONNXQuantizer:
 
         # Update packed weight, zero point, and scale initializers
         zero_scale_shape = [initializer.dims[channel_axis]]
-        scale_initializer = onnx.helper.make_tensor(
-            scale_name, initializer.data_type, zero_scale_shape, scale_list.reshape((-1,)).tolist()
-        )
+        scale_initializer = onnx.helper.make_tensor(scale_name, initializer.data_type, zero_scale_shape, scale_list)
         zero_initializer = onnx.helper.make_tensor(zp_name, weight_qType, zero_scale_shape, zero_point_list)
 
         self.model.initializer_extend([scale_initializer, zero_initializer])
@@ -1169,7 +1167,7 @@ class ONNXQuantizer:
     def _dequantize_value(self, value_name):
         """
         Given a value (input/output) which is quantized, add a DequantizeLinear node to dequantize
-        it back to float32
+        it back to float32 or float16
             parameter value_name: value to dequantize
             parameter new_nodes_list: List of new nodes created before processing current node
             return: None if there is already a DequantizeLinear node that dequantizes it
@@ -1178,6 +1176,10 @@ class ONNXQuantizer:
         if (value_name in self.quantized_value_map) and (value_name not in self.generated_value_names):
             quantized_value = self.quantized_value_map[value_name]
             # Add DequantizeLinear Node for this input
+            scale_init = find_by_name(quantized_value.scale_name, self.model.initializer())
+            # axis is not specified so scale_init must be a scalar.
+            assert onnx.numpy_helper.to_array(scale_init).size == 1
+
             dqlinear_name = value_name + "_DequantizeLinear"
             dqlinear_node = self.model.find_node_by_name(dqlinear_name, self.new_nodes, self.model.graph())
             if dqlinear_node is None:

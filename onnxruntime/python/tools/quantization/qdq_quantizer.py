@@ -185,8 +185,9 @@ class QDQQuantizer(ONNXQuantizer):
         """
         if self._is_tensor_quantizable(tensor_name):
             if quant_sharing_param:
+                data_type = self._get_tensor_type(tensor_name)
                 self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(
-                    tensor_type=tensor_type, quant_para_provider=quant_sharing_param
+                    tensor_type=tensor_type, quant_para_provider=quant_sharing_param, data_type=data_type
                 )
             elif tensor_name not in self.tensors_to_quantize:
                 data_type = self._get_tensor_type(tensor_name)

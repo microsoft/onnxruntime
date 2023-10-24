@@ -12,8 +12,8 @@ from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, fl
 from onnx.reference.op_run import OpRun
 
 import onnxruntime
-from onnxruntime.quantization import CalibrationDataReader
 import onnxruntime.capi._pybind_state as C
+from onnxruntime.quantization import CalibrationDataReader
 
 onnx_recent_enough = hasattr(OpRun, "infer_name")
 
@@ -433,21 +433,27 @@ def check_model_correctness(
             )
         # Needs pv.Version(onnx.__version__) >= pv.Version("1.16.0")
         ref = ReferenceEvaluator(model_check, new_ops=reference_new_ops)
+        do_test = True
         try:
             target_results = ref.run(None, inputs)
-        except Exception:
-            ref = ReferenceEvaluator(model_check, new_ops=reference_new_ops, verbose=10)
-            target_results = ref.run(None, inputs)
-        testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
-        for idx, ref_output in enumerate(origin_results):
-            output = target_results[idx]
-            np.testing.assert_allclose(
-                ref_output,
-                output,
-                rtol=rtol,
-                atol=atol,
-                err_msg=f"Model {model_path_to_check!r} failed for providers={providers!r}.",
-            )
+        except Exception as e:
+            if "axis is out of boundary" not in str(e) and "list assignment index out of range" not in str(e):
+                # Run through the same failure with more logs
+                ref = ReferenceEvaluator(model_check, new_ops=reference_new_ops, verbose=10)
+                target_results = ref.run(None, inputs)
+            else:
+                do_test = False
+        if do_test:
+            testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
+            for idx, ref_output in enumerate(origin_results):
+                output = target_results[idx]
+                np.testing.assert_allclose(
+                    ref_output,
+                    output,
+                    rtol=rtol,
+                    atol=atol,
+                    err_msg=f"Model {model_path_to_check!r} failed for providers={providers!r}.",
+                )
 
     # enable QDQ transformers
     # sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
@@ -504,7 +510,8 @@ def check_qtype_by_node_type(testcase, model_to_check, check_list):
             input_output_check_list = check_list[node.op_type]
             for check_item in input_output_check_list:
                 tensor_name = node.input[check_item[1]] if check_item[0] == "i" else node.output[check_item[1]]
-                testcase.assertTrue((tensor_name in value_infos) or (tensor_name in initializers))
+                if tensor_name not in value_infos and tensor_name not in initializers:
+                    raise AssertionError(f"Unable to find tensor_name={tensor_name!r}\n{model}")
                 if tensor_name in value_infos:
                     vi = value_infos[tensor_name]
                     testcase.assertTrue(vi.type.HasField("tensor_type"))

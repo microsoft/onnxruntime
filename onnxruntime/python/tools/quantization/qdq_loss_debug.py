@@ -314,6 +314,14 @@ def create_weight_matching(float_model_path: str, qdq_model_path: str) -> Dict[s
             weight_zp = numpy.zeros(weight_scale.shape, dtype=numpy.int32)
 
         # Perform dequantization:
+        if weight_scale.size == weight_zp.size == 1:
+            # Avoids the confusion between a scaler and a tensor of one element.
+            weight_scale = weight_scale.reshape(tuple())
+            weight_zp = weight_zp.reshape(tuple())
+        if weight_scale.shape != weight_zp.shape:
+            raise RuntimeError(
+                f"scale and zero_point must have the same shape but {weight_scale.shape} != {weight_zp.shape}"
+            )
         weight_quant = _run_dequantize_linear(weight_tensor, weight_scale, weight_zp, channel_axis=axis)
         weight_name = weight_name[: -len(TENSOR_NAME_QUANT_SUFFIX)]
         if weight_quant is None:

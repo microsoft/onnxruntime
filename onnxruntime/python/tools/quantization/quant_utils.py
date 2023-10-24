@@ -222,12 +222,12 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
         rmin = -absmax
         rmax = +absmax
 
-    scale = (rmax - rmin) / numpy.array(qmax - qmin, dtype=rmax.dtype)
+    scale = numpy.array(numpy.array(rmax - rmin) / numpy.array(qmax - qmin, dtype=rmax.dtype))
     if scale < numpy.finfo(scale.dtype).tiny:
         scale = numpy.array(1.0, dtype=scale.dtype)
-        zero_point = 0
+        zero_point = numpy.array(0, dtype=numpy.int32)
     else:
-        zero_point = numpy.round(qmin - rmin / scale).astype(numpy.int32)
+        zero_point = numpy.array(numpy.round(qmin - rmin / scale), dtype=numpy.int32)
 
     return [zero_point, scale]
 
