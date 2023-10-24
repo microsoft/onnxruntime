@@ -70,8 +70,15 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
                   "number of inputs expected to be kFirstPastInputIndex + 4 * layers + 1, got:", num_subgraph_inputs);
   }
 
-  ORT_RETURN_IF(num_subgraph_outputs < 3 || (num_subgraph_outputs - first_present_output_index_) % 2 != 0,
-                "number of outputs expected to be 1 + 2 * layers, got:", num_subgraph_outputs);
+  if (!output_cross_qk_) {
+    ORT_RETURN_IF(num_subgraph_outputs < 3 || (num_subgraph_outputs - first_present_output_index_) % 2 != 0,
+                  "number of outputs expected to be first_present_output_index_",
+                  first_present_output_index_, " + 2 * layers, got:", num_subgraph_outputs);
+  } else {
+    ORT_RETURN_IF(num_subgraph_outputs < 4 || (num_subgraph_outputs - first_present_output_index_) % 3 != 0,
+                  "When outputing cross qk, number of outputs expected to be first_present_output_index_",
+                  first_present_output_index_, " + 3 * layers, got:", num_subgraph_outputs);
+  }
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
                 "decoder subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());
@@ -90,7 +97,8 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   // Save parameters related to the subgraph.
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
-  num_layers = (static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) / 2;
+
+  num_layers = (static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) / (output_cross_qk_ ? 3 : 2);
 
   // If input_ids's shape is ['batch_size', 1] then use next token as input_ids.
   // Otherwise in the case of shape ['batch_size', 'sequence'], use sequence as input_ids.
@@ -112,12 +120,7 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   for (int i = first_past_input_index_; i < first_past_input_index_ + 4 * num_layers; i++) {
     ORT_RETURN_IF(subgraph_inputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
-                  "decoder subgraph past inputs shall have same data type as that of encoder_hidden_states");
-  }
-
-  for (int i = 0; i < num_subgraph_outputs; i++) {
-    ORT_RETURN_IF(subgraph_outputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
-                  "decoder subgraph output shall have same data type as that of encoder_hidden_states");
+                  "decoder subgraph past inputs shall have same data type as that of encoder_hidden_states.");
   }
 
   is_output_float16_ = (subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type() == float16_type);
@@ -166,7 +169,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
 
   AllocatorPtr buffer_allocator = std::make_shared<onnxruntime::CPUAllocator>();
   size_t total_size = static_cast<size_t>(static_cast<long long>(cur_len) * batch_beam_size * sizeof(int));
-  auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size);
+  auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size, false, stream);
   int* seq_copy_ptr = seq_copy.get();
 
   if (!use_sequence_as_input_ids_) {

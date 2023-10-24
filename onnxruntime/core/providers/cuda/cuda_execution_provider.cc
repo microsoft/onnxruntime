@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
@@ -13,6 +14,10 @@
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cuda/cuda_contrib_kernels.h"
+#endif
+
+#ifdef ENABLE_CUDA_NHWC_OPS
+#include "core/providers/cuda/cuda_nhwc_kernels.h"
 #endif
 
 #ifdef ENABLE_TRAINING_OPS
@@ -233,6 +238,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)},
       info_{info},
       tuning_context_(this, &info_.tunable_op) {
+#ifndef ENABLE_CUDA_NHWC_OPS
+  ORT_ENFORCE(info_.prefer_nhwc == 0, "This build does not support NHWC layout");
+#endif
+
   CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
@@ -250,7 +259,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     if (info.external_allocator_info.UseExternalAllocator()) {
       use_ep_level_unified_stream_ = true;
       stream_ = nullptr;
-    } else if (info.enable_cuda_graph) {
+    } else if (info.enable_cuda_graph || info.use_ep_level_unified_stream) {
       // current cuda graph implementation only works with single stream
       // use EP level unified stream for all the reqeust
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
@@ -269,6 +278,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 #ifdef USE_TRITON_KERNEL
   onnxruntime::cuda::LoadOrtTritonKernel();
 #endif
+}
+
+DataLayout CUDAExecutionProvider::GetPreferredLayout() const {
+  return this->IsNHWCPreferred() ? DataLayout::NHWC : DataLayout::NCHW;
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
@@ -2328,6 +2341,10 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 
 #ifndef DISABLE_CONTRIB_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::cuda::RegisterCudaContribKernels(kernel_registry));
+#endif
+
+#ifdef ENABLE_CUDA_NHWC_OPS
+  ORT_RETURN_IF_ERROR(::onnxruntime::cuda::RegisterCudaNhwcKernels(kernel_registry));
 #endif
 
 #ifdef ENABLE_TRAINING_OPS
