@@ -197,7 +197,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   Status ReplayGraph() override;
 
  private:
-  TensorrtExecutionProviderInfo info_;
+  mutable TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;

@@ -613,9 +613,35 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  // Create Custom Op if EP requests it
+  // Register Custom Op if EP requests it
   std::vector<OrtCustomOpDomain*> custom_op_domains;
-  p_exec_provider->GetCustomOpDomainList(custom_op_domains);
+  std::vector<OrtCustomOpDomain*> candidate_custom_op_domains;
+  p_exec_provider->GetCustomOpDomainList(candidate_custom_op_domains);
+
+  auto registry_kernels = kernel_registry_manager_.GetKernelRegistriesByProviderType(p_exec_provider->Type());
+
+  // Register the custom op domain only if it has not been registered before
+  if (registry_kernels.empty()) {
+    custom_op_domains = candidate_custom_op_domains;
+  } else {
+    for (auto candidate_custom_op_domain : candidate_custom_op_domains) {
+      for (auto registry_kernel : registry_kernels) {
+        const auto& kernel_map = registry_kernel->GetKernelCreateMap();
+        bool need_register = true;
+        // If the kernel registry is the ep's custom op registry, we only need to check the first kernel,
+        // because all kernels in one kernel registry should have the same domain name.
+        for (auto iter = kernel_map.begin(); iter != kernel_map.end(); iter++) {
+          if (iter->second.kernel_def->Domain() == candidate_custom_op_domain->domain_) {
+            need_register = false;
+            break;
+          }
+        }
+        if (need_register) {
+          custom_op_domains.push_back(candidate_custom_op_domain);
+        }
+      }
+    }
+  }
 
   if (!custom_op_domains.empty()) {
     if (AddCustomOpDomains(custom_op_domains) != Status::OK()) {

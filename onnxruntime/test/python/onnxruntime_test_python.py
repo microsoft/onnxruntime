@@ -298,6 +298,20 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["trt_engine_cache_path"], str(engine_cache_path))
             self.assertEqual(option["trt_force_sequential_engine_build"], "1")
 
+            from onnxruntime.capi import _pybind_state as C
+
+            session_options = C.get_default_session_options()
+
+            # TRT plugins registered as custom op domain should only be added once in session option regardless of number of session creation
+            sess1 = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"), session_options, providers=["TensorrtExecutionProvider"]
+            )
+            sess2 = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"), session_options, providers=["TensorrtExecutionProvider"]
+            )
+            self.assertIn("TensorrtExecutionProvider", sess1.get_providers())
+            self.assertIn("TensorrtExecutionProvider", sess2.get_providers())
+
             # We currently disable following test code since that not all test machines/GPUs have nvidia int8 capability
 
             """
