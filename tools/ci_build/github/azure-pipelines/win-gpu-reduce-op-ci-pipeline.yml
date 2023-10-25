@@ -10,7 +10,7 @@ jobs:
         BuildConfig: 'MinSizeRel'
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
-    EnvSetupScript: setup_env_cuda.bat
+    EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 120

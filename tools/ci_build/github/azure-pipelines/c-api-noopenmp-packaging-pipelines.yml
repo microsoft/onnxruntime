@@ -193,7 +193,7 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: gpu
-    EnvSetupScript: setup_env_cuda.bat
+    EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
