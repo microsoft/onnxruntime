@@ -257,16 +257,16 @@ TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodesPreservingAttrib
   std::string axis_dq_name1 = "Parameter5/DequantizeLinear";
   std::string axis_dq_name2 = "Convolution110_Output_0/fusedmuladd_B/DequantizeLinear";
   std::string axis_dq_name3 = "Parameter87/DequantizeLinear";
-  for (auto& node : session.GetGraph().Nodes()) {
+  for (const auto& node : session.GetGraph().Nodes()) {
     if (node.OpType() == "DequantizeLinear") {
-      if (node.Name().find(axis_dq_name0) != std::string::npos ||
-        node.Name().find(axis_dq_name1) != std::string::npos ||
-        node.Name().find(axis_dq_name2) != std::string::npos ||
-        node.Name().find(axis_dq_name3) != std::string::npos)
+      if (node.Name().find(axis_dq_name0) == 0 ||
+        node.Name().find(axis_dq_name1) == 0 ||
+        node.Name().find(axis_dq_name2) == 0 ||
+        node.Name().find(axis_dq_name3) == 0)
       {
-        auto attrs = node.GetAttributes();
-        EXPECT_TRUE(attrs.find("axis") != attrs.end());
-        auto& axis_attr = attrs.at("axis");
+        const auto& attrs = node.GetAttributes();
+        ASSERT_TRUE(attrs.find("axis") != attrs.end());
+        const auto& axis_attr = attrs.at("axis");
         int64_t axis = axis_attr.i();
         EXPECT_EQ(axis, given_axis);
       }
