@@ -69,8 +69,15 @@ __global__ void kDequantizeBlockwise(
 
     #pragma unroll NUM_PER_TH
     for (int j = 0; j < NUM_PER_TH; j++) {
-      vals[j * 2] = quant_map[qvals[j] >> 4] * local_abs_max;
-      vals[j * 2 + 1] = quant_map[qvals[j] & 0x0F] * local_abs_max;
+      #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+        vals[j * 2] = quant_map[qvals[j] >> 4] * local_abs_max;
+        vals[j * 2 + 1] = quant_map[qvals[j] & 0x0F] * local_abs_max;
+      #else
+        // half multiplication not supported
+        vals[j * 2] = static_cast<T>(static_cast<float>(quant_map[qvals[j] >> 4]) * static_cast<float>(local_abs_max));
+        vals[j * 2 + 1] =
+            static_cast<T>(static_cast<float>(quant_map[qvals[j] & 0x0F]) * static_cast<float>(local_abs_max));
+      #endif
     }
 
     __syncthreads();

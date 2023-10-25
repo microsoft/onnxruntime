@@ -78,8 +78,18 @@ __global__ void kgemm_4bit_inference_naive(
     for (int i = 0; i < 4; i++) {
       #pragma unroll
       for (int k = 0; k < num_values_8bit / 4; k++) {
-        local_B[k * 2] = quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] >> 4] * local_absmax;
-        local_B[k * 2 + 1] = quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] & 0x0F] * local_absmax;
+        #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+          local_B[k * 2] = quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] >> 4] * local_absmax;
+          local_B[k * 2 + 1] = quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] & 0x0F] * local_absmax;
+        #else
+          // half multiplication not supported
+          local_B[k * 2] =
+              static_cast<T>(static_cast<float>(quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] >> 4]) *
+                            static_cast<float>(local_absmax));
+          local_B[k * 2 + 1] =
+              static_cast<T>(static_cast<float>(quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] & 0x0F]) *
+                            static_cast<float>(local_absmax));
+        #endif
       }
 
       if (inner_idx + (num_values_4bit / 4) + (i * num_values_4bit / 4) < K) {
@@ -106,7 +116,12 @@ __global__ void kgemm_4bit_inference_naive(
       // accumulate in float; small performance hit for Ampere, but lower error for outputs
       #pragma unroll
       for (int k = 0; k < num_values_4bit / 4; k++) {
-        local_C += (float)(local_A[k] * local_B[k]);
+        #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+          local_C += static_cast<float>(local_A[k] * local_B[k]);
+        #else
+          // half multiplication not supported
+          local_C += static_cast<float>(local_A[k]) * static_cast<float>(local_B[k]);
+        #endif
       }
     }
   }
