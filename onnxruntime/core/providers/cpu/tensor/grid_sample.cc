@@ -49,16 +49,15 @@ T GsDenormalize(T n, int64_t length, bool align_corners) {
 }
 
 // Reflect by the near border till within the borders
-// Use float for borders to avoid potential issues with integer T
 template <typename T>
-T GsReflect(T x, float x_min, float x_max) {
-  float dx = {};
-  float fx = static_cast<float>(x);
-  float range = x_max - x_min;
+T GsReflect(T x, T x_min, T x_max) {
+  T dx = {};
+  T fx = static_cast<T>(x);
+  T range = x_max - x_min;
   if (fx < x_min) {
     dx = x_min - fx;
     int n = static_cast<int>(dx / range);
-    float r = dx - n * range;
+    T r = dx - n * range;
     if (n % 2 == 0) {
       fx = x_min + r;
     } else {
@@ -67,7 +66,7 @@ T GsReflect(T x, float x_min, float x_max) {
   } else if (fx > x_max) {
     dx = fx - x_max;
     int n = static_cast<int>(dx / range);
-    float r = dx - n * range;
+    T r = dx - n * range;
     if (n % 2 == 0) {
       fx = x_max - r;
     } else {
@@ -80,9 +79,9 @@ T GsReflect(T x, float x_min, float x_max) {
 
 // Calculate cubic convolution interpolation coefficients
 // ROBERT G. KEYS https://ieeexplore.ieee.org/document/1163711
-// Use float to avoid potential issues with integer T
-void GsGetCubicCoeffs(float x, float coeffs[4]) {
-  constexpr float cubic_alpha = -0.75f;
+template <typename T>
+void GsGetCubicCoeffs(T x, T coeffs[4]) {
+  constexpr T cubic_alpha = -0.75f;
   x = std::abs(x);
   coeffs[0] = ((cubic_alpha * (x + 1) - 5 * cubic_alpha) * (x + 1) + 8 * cubic_alpha) * (x + 1) - 4 * cubic_alpha;
   coeffs[1] = ((cubic_alpha + 2) * x - (cubic_alpha + 3)) * x * x + 1;
@@ -91,9 +90,9 @@ void GsGetCubicCoeffs(float x, float coeffs[4]) {
 }
 
 template <typename T>
-T GsBicubicInterpolate(T p[4][4], float x, float y) {
-  float v[4] = {};
-  float coeffs[4] = {};
+T GsBicubicInterpolate(T p[4][4], T x, T y) {
+  T v[4] = {};
+  T coeffs[4] = {};
   GsGetCubicCoeffs(x, coeffs);
   for (int64_t i = 0; i < 4; i++) {
     v[i] = coeffs[0] * p[i][0] + coeffs[1] * p[i][1] + coeffs[2] * p[i][2] + coeffs[3] * p[i][3];
@@ -103,7 +102,7 @@ T GsBicubicInterpolate(T p[4][4], float x, float y) {
 }
 
 template <typename T>
-T GridSample<T>::PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, int64_t W, float border[/* 4 */]) const {
+T GridSample<T>::PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, int64_t W, T border[/* 4 */]) const {
   T pixel = {};  // default 0
   if (padding_mode_ == Zeros) {
     if (c >= 0 && c < W && r >= 0 && r < H) {
@@ -122,7 +121,7 @@ T GridSample<T>::PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, in
 }
 
 template <typename T>
-T GridSample<T>::PixelAtGrid3D(const T* image, int64_t d, int64_t h, int64_t w, int64_t D, int64_t H, int64_t W, float border[/* 6 */]) const {
+T GridSample<T>::PixelAtGrid3D(const T* image, int64_t d, int64_t h, int64_t w, int64_t D, int64_t H, int64_t W, T border[/* 6 */]) const {
   T pixel = {};  // default 0
   if (padding_mode_ == Zeros) {
     if (w >= 0 && w < W && h >= 0 && h < H && d >= 0 && d < D) {
@@ -190,11 +189,10 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
       return Status::OK();
     }
 
-    // Force float here to avoid possible issue in integer T case
-    float x_min = -0.5f;
-    float x_max = W_in - 0.5f;
-    float y_min = -0.5f;
-    float y_max = H_in - 0.5f;
+    T x_min = -0.5f;
+    T x_max = W_in - 0.5f;
+    T y_min = -0.5f;
+    T y_max = H_in - 0.5f;
 
     if (align_corners_) {
       x_min = 0.f;
@@ -202,7 +200,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
       y_min = 0.f;
       y_max = H_in - 1.f;
     }
-    float border[] = {x_min, y_min, x_max, y_max};  // l-t-r-b
+    T border[] = {x_min, y_min, x_max, y_max};  // l-t-r-b
 
     concurrency::ThreadPool* tp = H_out * W_out > 64 ? context->GetOperatorThreadPool() : nullptr;
     for (int64_t n = 0; n < N; n++) {
@@ -223,8 +221,8 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
                 auto y = GsDenormalize<T>(ny, H_in, align_corners_);
 
                 if (mode_ == Nearest) {
-                  x = static_cast<T>(std::nearbyintf(static_cast<float>(x)));
-                  y = static_cast<T>(std::nearbyintf(static_cast<float>(y)));
+                  x = static_cast<T>(std::nearbyint(static_cast<T>(x)));
+                  y = static_cast<T>(std::nearbyint(static_cast<T>(y)));
                   // x, y are integers in all padding modes
                   *Y_gridpoint = PixelAtGrid(X_data, static_cast<int64_t>(y), static_cast<int64_t>(x), H_in, W_in, border);
                 } else if (mode_ == Linear) {
@@ -255,7 +253,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
                   }
                   T dx = static_cast<T>(x - x0 - 1);
                   T dy = static_cast<T>(y - y0 - 1);
-                  *Y_gridpoint = GsBicubicInterpolate(p, static_cast<float>(dx), static_cast<float>(dy));
+                  *Y_gridpoint = GsBicubicInterpolate(p, dx, dy);
                 }
               }
             }
@@ -276,13 +274,12 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
       return Status::OK();
     }
 
-    // Force float here to avoid possible issue in integer T case
-    float x_min = -0.5f;
-    float x_max = W_in - 0.5f;
-    float y_min = -0.5f;
-    float y_max = H_in - 0.5f;
-    float z_min = -0.5f;
-    float z_max = D_in - 0.5f;
+    T x_min = -0.5f;
+    T x_max = W_in - 0.5f;
+    T y_min = -0.5f;
+    T y_max = H_in - 0.5f;
+    T z_min = -0.5f;
+    T z_max = D_in - 0.5f;
 
     if (align_corners_) {
       x_min = 0.f;
@@ -292,7 +289,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
       z_min = 0.f;
       z_max = D_in - 1.f;
     }
-    float border[] = {x_min, y_min, z_min, x_max, y_max, z_max};
+    T border[] = {x_min, y_min, z_min, x_max, y_max, z_max};
 
     concurrency::ThreadPool* tp = D_out * H_out * W_out > 64 ? context->GetOperatorThreadPool() : nullptr;
     for (int64_t n = 0; n < N; n++) {
@@ -316,9 +313,9 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
                   auto z = GsDenormalize<T>(nz, D_in, align_corners_);
 
                   if (mode_ == Nearest) {
-                    x = static_cast<T>(std::nearbyintf(static_cast<float>(x)));
-                    y = static_cast<T>(std::nearbyintf(static_cast<float>(y)));
-                    z = static_cast<T>(std::nearbyintf(static_cast<float>(z)));
+                    x = static_cast<T>(std::nearbyint(static_cast<T>(x)));
+                    y = static_cast<T>(std::nearbyint(static_cast<T>(y)));
+                    z = static_cast<T>(std::nearbyint(static_cast<T>(z)));
 
                     // x, y are integers in all padding modes
                     *Y_gridpoint = PixelAtGrid3D(X_data, static_cast<int64_t>(z), static_cast<int64_t>(y), static_cast<int64_t>(x),

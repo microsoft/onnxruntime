@@ -68,8 +68,8 @@ class GridSample final : public OpKernel {
     Reflection
   };
 
-  T PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, int64_t W, float border[/* 4 */]) const;
-  T PixelAtGrid3D(const T* image, int64_t d, int64_t h, int64_t w, int64_t D, int64_t H, int64_t W, float border[/* 6 */]) const;
+  T PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, int64_t W, T border[/* 4 */]) const;
+  T PixelAtGrid3D(const T* image, int64_t d, int64_t h, int64_t w, int64_t D, int64_t H, int64_t W, T border[/* 6 */]) const;
 
   GridSampleInterpolationMode mode_{Linear};
   GridSamplePaddingMode padding_mode_{Zeros};
