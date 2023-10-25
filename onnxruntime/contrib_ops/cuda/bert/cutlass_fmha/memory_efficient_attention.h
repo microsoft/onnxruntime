@@ -14,6 +14,7 @@ namespace cuda {
 struct MemoryEfficientAttentionParams {
   int32_t sm;
   bool is_half;
+  bool is_bsnh = true;
   int32_t batch_size;
   int32_t num_heads;
   int32_t sequence_length;

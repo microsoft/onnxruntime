@@ -54,22 +54,41 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
       p.custom_mask_type = Attention::CausalFromBottomRight;
     }
 
-    // Input format is BxSxNxH, output is BxSxNxH
-    p.q_strideH = params.qk_head_size;
-    p.k_strideH = params.qk_head_size;
-    p.v_strideH = params.v_head_size;
-    p.bias_strideH = nullptr == params.attn_bias ? 0 : p.num_queries * p.num_keys;
+    if (params.is_bsnh) {
+      // Input format is BxSxNxH, output is BxSxNxH
+      p.q_strideH = params.qk_head_size;
+      p.k_strideH = params.qk_head_size;
+      p.v_strideH = params.v_head_size;
+      p.bias_strideH = nullptr == params.attn_bias ? 0 : p.num_queries * p.num_keys;
 
-    p.q_strideM = params.num_heads * params.qk_head_size;
-    p.k_strideM = params.num_heads * params.qk_head_size;
-    p.v_strideM = params.num_heads * params.v_head_size;
-    p.o_strideM = params.num_heads * params.v_head_size;
-    p.bias_strideM = nullptr == params.attn_bias ? 0 : p.num_keys;
+      p.q_strideM = params.num_heads * params.qk_head_size;
+      p.k_strideM = params.num_heads * params.qk_head_size;
+      p.v_strideM = params.num_heads * params.v_head_size;
+      p.o_strideM = params.num_heads * params.v_head_size;
+      p.bias_strideM = nullptr == params.attn_bias ? 0 : p.num_keys;
 
-    p.q_strideB = static_cast<int64_t>(p.q_strideM) * params.sequence_length;
-    p.k_strideB = static_cast<int64_t>(p.k_strideM) * params.kv_sequence_length;
-    p.v_strideB = static_cast<int64_t>(p.v_strideM) * params.kv_sequence_length;
-    p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
+      p.q_strideB = static_cast<int64_t>(p.q_strideM) * params.sequence_length;
+      p.k_strideB = static_cast<int64_t>(p.k_strideM) * params.kv_sequence_length;
+      p.v_strideB = static_cast<int64_t>(p.v_strideM) * params.kv_sequence_length;
+      p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
+    } else {
+      // Input format is BxNxSxH, output is BxNxSxH
+      p.q_strideH = params.qk_head_size;
+      p.k_strideH = params.kv_sequence_length * params.qk_head_size;
+      p.v_strideH = params.kv_sequence_length * params.v_head_size;
+      p.bias_strideH = nullptr == params.attn_bias ? 0 : p.num_queries * p.num_keys;
+
+      p.q_strideM = params.num_heads * params.qk_head_size;
+      p.k_strideM = params.qk_head_size;
+      p.v_strideM = params.v_head_size;
+      p.o_strideM = params.num_heads * params.v_head_size;
+      p.bias_strideM = nullptr == params.attn_bias ? 0 : p.num_keys;
+
+      p.q_strideB = params.num_heads * params.qk_head_size * params.sequence_length;
+      p.k_strideB = params.num_heads * params.qk_head_size * params.kv_sequence_length;
+      p.v_strideB = params.num_heads * params.v_head_size * params.kv_sequence_length;
+      p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
+    }
   }
 
   constexpr auto kernel_fn = attention_kernel_batched_impl<Attention>;

@@ -160,13 +160,11 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       has_memory_efficient_attention(sm, sizeof(T) == 2);
   // allocate buffers
   size_t kv_buffer_bytes = 0;
-  const bool needs_buff = (parameters.num_heads != parameters.kv_num_heads) || (parameters.past_kv_format != AttentionQkvFormat::Q_K_V_BSNH) || (past_key != nullptr && parameters.present_sequence_length != parameters.past_sequence_length + parameters.kv_sequence_length);
+  // need a buffer if we must ungroup kv or if kv-cache is present
+  const bool needs_buff = ((parameters.num_heads != parameters.kv_num_heads) ||
+                           (past_key != nullptr && parameters.present_sequence_length != parameters.past_sequence_length + parameters.kv_sequence_length));
   if (use_memory_efficient_attention && needs_buff) {
-    if (past_key == nullptr) {
-      kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.kv_sequence_length * parameters.head_size);
-    } else {
-      kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * (parameters.past_sequence_length + parameters.kv_sequence_length) * parameters.head_size);
-    }
+    kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * (parameters.past_sequence_length + parameters.kv_sequence_length) * parameters.head_size);
   }
   size_t fmha_buffer_bytes = 0;
   if (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float))) {
