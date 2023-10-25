@@ -370,7 +370,7 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t 
                                                   ort_run_options_handle_t run_options = nullptr);
 
 /**
- * Computs outputs for the eval model associated with the given training session.
+ * Computes outputs for the eval model associated with the given training session.
  * @param training_handle handle of the training session
  * @param options run options for this eval step
  * @param input_count number of user inputs to the eval model

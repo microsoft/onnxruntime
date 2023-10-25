@@ -39,11 +39,32 @@ export interface TrainingSession {
    * @param feeds - Representation of the model input.
    * @param fetches - Representation of the model output.
    * detail.
-   * @param options - Optional. A set of options that controls the behavior of model inference.
+   * @param options - Optional. A set of options that controls the behavior of model training.
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
    values.
    */
   runTrainStep(
+      feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
+      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+
+  /**
+   * Runs a single optimizer step, which performs weight updates for the trainable parameters using the optimizer model.
+   *
+   * @param options - Optional. A set of options that controls the behavior of model optimizing.
+   */
+  runOptimizerStep(options?: InferenceSession.RunOptions): Promise<void>;
+
+  /**
+   * Run a single eval step with the given inputs and options using the eval model.
+   *
+   * @param feeds - Representation of the model input.
+   * @param fetches - Representation of the model output.
+   * detail.
+   * @param options - Optional. A set of options that controls the behavior of model eval step.
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
+   values.
+   */
+  runEvalStep(
       feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 

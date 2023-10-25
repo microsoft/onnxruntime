@@ -150,6 +150,13 @@ export class TrainingSession implements TrainingSessionInterface {
     return returnValue;
   }
 
+  runOptimizerStep(options?: InferenceSession.RunOptions | undefined): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  runEvalStep(feeds: InferenceSession.OnnxValueMapType, fetches: InferenceSession.FetchesType, options?: InferenceSession.RunOptions | undefined): Promise<InferenceSession.OnnxValueMapType> {
+    throw new Error('Method not implemented.');
+  }
+
   async getParametersSize(trainableOnly: boolean): Promise<number> {
     return this.handler.getParametersSize(trainableOnly);
   }
