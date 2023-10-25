@@ -271,32 +271,34 @@ class FuseConvAddRelu : public ReplaceWithNew {
 void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAct";
   auto action = std::make_unique<actions::FuseConvActivationAction>();
+  auto action2 = std::make_unique<actions::FuseConvActivationAction>(kMSInternalNHWCDomain);
 #if !defined(ORT_MINIMAL_BUILD)
   auto selector = std::make_unique<selectors::ConvActivationSelector>();
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
   auto selector2 = std::make_unique<selectors::ConvActivationSelector>();
-  auto action2 = std::make_unique<actions::FuseConvActivationAction>(kMSInternalNHWCDomain);
   registry.RegisterSelectorAndAction("MSInternalNHWCConvAct", {{"Conv", {1, 11}}},
                                      std::move(selector2), std::move(action2), kMSInternalNHWCDomain);
 #else
   registry.RegisterAction(name, std::move(action));
+  registry.RegisterAction(name, std::move(action2));
 #endif
 }
 
 void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAddRelu";
   auto action = std::make_unique<actions::FuseConvAddRelu>();
+  auto action2 = std::make_unique<actions::FuseConvActivationAction>(kMSInternalNHWCDomain);
 #if !defined(ORT_MINIMAL_BUILD)
   auto selector = std::make_unique<selectors::ConvAddRelu>();
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
+  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}, {"ConvTranspose", {1, 11}}},
                                      std::move(selector), std::move(action));
   auto selector2 = std::make_unique<selectors::ConvAddRelu>();
-  auto action2 = std::make_unique<actions::FuseConvActivationAction>(kMSInternalNHWCDomain);
   registry.RegisterSelectorAndAction("MSInternalNHWCDomainConvAddRelu", {{"Conv", {1, 11}}},
                                      std::move(selector2), std::move(action2), kMSInternalNHWCDomain);
 #else
   registry.RegisterAction(name, std::move(action));
+  registry.RegisterAction(name, std::move(action2));
 #endif
 }
 
