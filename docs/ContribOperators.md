@@ -91,6 +91,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.RemovePadding">com.microsoft.RemovePadding</a>
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
+  * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
@@ -2900,7 +2901,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>key_padding_mask</tt> (optional) : M</dt>
-<dd>Key padding mask with shape (batch_size) or (3 * batch_size + 2) or (batch_size, kv_sequence_length)</dd>
+<dd>Key padding mask with shape (batch_size), (3 * batch_size + 2), (batch_size, kv_sequence_length), (batch_size, total_sequence_length), or (batch_size, sequence_length, total_sequence_length)</dd>
 <dt><tt>relative_position_bias</tt> (optional) : T</dt>
 <dd>relative position bias: addition to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length) or (1, num_heads, sequence_length, total_sequence_length)</dd>
 <dt><tt>past_key</tt> (optional) : T</dt>
@@ -4859,6 +4860,54 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.RotaryEmbedding"></a><a name="com.microsoft.rotaryembedding">**com.microsoft.RotaryEmbedding**</a>
+
+  RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices 
+  that are multiplied to query and key before the inner product of query and key is taken.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>interleaved</tt> : int</dt>
+<dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1.0</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>3D tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>position_ids</tt> : M</dt>
+<dd>1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)</dd>
+<dt><tt>cos_cache</tt> : T</dt>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dt><tt>sin_cache</tt> : T</dt>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int64)</dt>
+<dd>Constrain input and output types to integer tensors</dd>
 </dl>
 
 
