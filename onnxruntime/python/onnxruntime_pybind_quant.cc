@@ -6,6 +6,7 @@
 #include <pybind11/functional.h>
 
 #include "contrib_ops/cpu/quantization/dequantize_blockwise.h"
+#include "contrib_ops/cpu/quantization/dequantize_blockwise_bnb4.h"
 #include "core/util/thread_utils.h"
 
 namespace pybind11 {
@@ -64,9 +65,39 @@ void QuantizeMatMul4BitsBlockwise(
       tp.get());
 }
 
+template <typename T>
+void QuantizeMatMulBnb4Blockwise(
+    py::array_t<uint8_t> dst,
+    py::array_t<T> src,
+    py::array_t<T> absmax,
+    int32_t block_size,
+    int32_t quant_type,
+    int32_t N,
+    int32_t K) {
+  OrtThreadPoolParams to;
+  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
+                                          concurrency::ThreadPoolType::INTRA_OP);
+
+  py::buffer_info dst_buf = dst.request();
+  py::buffer_info src_buf = src.request();
+  py::buffer_info absmax_buf = absmax.request();
+
+  contrib::QuantizeBlockwiseBnb4<T>(
+      static_cast<uint8_t*>(dst_buf.ptr),
+      static_cast<const T*>(src_buf.ptr),
+      static_cast<T*>(absmax_buf.ptr),
+      block_size,
+      quant_type,
+      N,
+      K,
+      tp.get());
+}
+
 void CreateQuantPybindModule(py::module& m) {
   m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<float>);
   m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<MLFloat16>);
+  m.def("quantize_matmul_bnb4", &QuantizeMatMulBnb4Blockwise<float>);
+  m.def("quantize_matmul_bnb4", &QuantizeMatMulBnb4Blockwise<MLFloat16>);
 }
 
 }  // namespace python
