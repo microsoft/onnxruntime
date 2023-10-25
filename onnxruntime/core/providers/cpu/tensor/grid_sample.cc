@@ -17,12 +17,12 @@ namespace onnxruntime {
                                               .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
                                               .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
                                           GridSample<T>);
-#define REGISTER_KERNEL_TYPED20(T)                                                                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(GridSample, kOnnxDomain, 20, T, kCpuExecutionProvider,                 \
-                                KernelDefBuilder()                                                     \
-                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
-                                    .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),           \
-                                GridSample<T>);
+
+#define REGISTER_KERNEL_TYPED20(T)                                                          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(GridSample, kOnnxDomain, 20, T, kCpuExecutionProvider,       \
+                                KernelDefBuilder()                                           \
+                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+                                    .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED20(float)
