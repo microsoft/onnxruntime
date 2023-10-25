@@ -41,13 +41,14 @@ export const createCheckpointHandle = (checkpointData: SerializableModeldata): n
   }
 };
 
-const getModelInputOutputCount = (trainingSessionId: number, IsEvalModel: boolean): [number, number] => {
+const getModelInputOutputCount = (trainingSessionId: number, isEvalModel: boolean): [number, number] => {
   const wasm = getInstance();
   const stack = wasm.stackSave();
   try {
     const dataOffset = wasm.stackAlloc(8);
-    if (wasm._OrtTrainingGetInputOutputCount) {
-      const errorCode = wasm._OrtTrainingGetInputOutputCount(trainingSessionId, dataOffset, dataOffset + 4, false);
+    if (wasm._OrtTrainingGetModelInputOutputCount) {
+      const errorCode =
+          wasm._OrtTrainingGetModelInputOutputCount(trainingSessionId, dataOffset, dataOffset + 4, isEvalModel);
       if (errorCode !== 0) {
         checkLastError('Can\'t get session input/output count.');
       }
@@ -60,33 +61,35 @@ const getModelInputOutputCount = (trainingSessionId: number, IsEvalModel: boolea
   }
 };
 
-const getModelInputOutputNamesLoop = (trainingSessionId: number, count: number, isInput: boolean, IsEvalModel:boolean): [string[], number[]] => {
-  const names = [];
-  const wasm = getInstance();
+const getModelInputOutputNamesLoop =
+    (trainingSessionId: number, count: number, isInput: boolean, isEvalModel: boolean): [string[], number[]] => {
+      const names = [];
+      const wasm = getInstance();
 
-  const namesUTF8Encoded = [];
+      const namesUTF8Encoded = [];
 
-  for (let i = 0; i < count; i++) {
-    if (wasm._OrtTrainingGetInputOutputName) {
-      const name = wasm._OrtTrainingGetInputOutputName(trainingSessionId, i, isInput, false);
-      if (name === 0) {
-        checkLastError('Can\'t get input or output name');
+      for (let i = 0; i < count; i++) {
+        if (wasm._OrtTrainingGetModelInputOutputName) {
+          const name = wasm._OrtTrainingGetModelInputOutputName(trainingSessionId, i, isInput, isEvalModel);
+          if (name === 0) {
+            checkLastError('Can\'t get input or output name');
+          }
+
+          namesUTF8Encoded.push(name);
+          names.push(wasm.UTF8ToString(name));
+        } else {
+          throw new Error(NO_TRAIN_FUNCS_MSG);
+        }
       }
-
-      namesUTF8Encoded.push(name);
-      names.push(wasm.UTF8ToString(name));
-    } else {
-      throw new Error(NO_TRAIN_FUNCS_MSG);
-    }
-  }
-  return [names, namesUTF8Encoded];
-};
+      return [names, namesUTF8Encoded];
+    };
 
 const getTrainingModelInputOutputNames = (trainingSessionId: number): [string[], number[], string[], number[]] => {
-  const [inputCount, outputCount] = getTrainingModelInputOutputCount(trainingSessionId);
+  const [inputCount, outputCount] = getModelInputOutputCount(trainingSessionId, false);
 
-  const [inputNames, inputNamesUTF8Encoded] = getTrainingNamesLoop(trainingSessionId, inputCount, true);
-  const [outputNames, outputNamesUTF8Encoded] = getTrainingNamesLoop(trainingSessionId, outputCount, false);
+  const [inputNames, inputNamesUTF8Encoded] = getModelInputOutputNamesLoop(trainingSessionId, inputCount, true, false);
+  const [outputNames, outputNamesUTF8Encoded] =
+      getModelInputOutputNamesLoop(trainingSessionId, outputCount, false, false);
 
   return [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded];
 };
@@ -150,10 +153,10 @@ export const releaseTrainingSessionAndCheckpoint =
           inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
           outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
 
-          if (wasm._OrtTrainingReleaseCheckpoint) {
-            wasm._OrtTrainingReleaseCheckpoint(checkpointId);
-          }
           if (wasm._OrtTrainingReleaseSession) {
             wasm._OrtTrainingReleaseSession(sessionId);
+          }
+          if (wasm._OrtTrainingReleaseCheckpoint) {
+            wasm._OrtTrainingReleaseCheckpoint(checkpointId);
           }
         };

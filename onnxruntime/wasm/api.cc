@@ -580,9 +580,9 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_sessio
 }
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputCount(ort_training_session_handle_t training_handle,
-                                                        size_t* input_count,
-                                                        size_t* output_count,
-                                                        bool isEvalModel) {
+                                                             size_t* input_count,
+                                                             size_t* output_count,
+                                                             bool isEvalModel) {
   if (isEvalModel) {
     RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetEvalModelInputCount, training_handle, input_count);
     RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetEvalModelOutputCount, training_handle, output_count);
@@ -594,10 +594,10 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputCount(ort_training_sessio
   }
 }
 
-char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetInputOutputName(ort_training_session_handle_t training_handle,
-                                                         size_t index,
-                                                         bool isInput,
-                                                         bool isEvalModel) {
+char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputName(ort_training_session_handle_t training_handle,
+                                                              size_t index,
+                                                              bool isInput,
+                                                              bool isEvalModel) {
   OrtAllocator* allocator = nullptr;
   RETURN_NULLPTR_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
 
