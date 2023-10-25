@@ -34,7 +34,7 @@ constexpr static int kSizes[] = {64, 128, 256, 320, 384, 512};
 constexpr static size_t kNumOfSizes = sizeof(kSizes) / sizeof(kSizes[0]);
 constexpr static int kMaxSize = kSizes[kNumOfSizes - 1];
 
-int NextSize(int x) {
+int nextSize(int x) {
   assert(x <= kMaxSize);
 
   for (size_t i = 0; i < kNumOfSizes; ++i) {
@@ -370,8 +370,6 @@ void groupNormNHWCScale(GroupNormNHWCParams<T> const& params, cudaStream_t strea
   // The number of instances.
   grid.z = params.n;
 
-  int next_size = NextSize(params.cPerBlock);
-
   switch (params.threads_per_block) {
     case 256:
       groupNormNHWCScaleKernel<T><<<grid, 256, 0, stream>>>(params);
@@ -462,8 +460,8 @@ Status LaunchGroupNormKernel(
       break;
     case 2304:
     case 1152:
-       cPerBlock = 288;
-       break;
+      cPerBlock = 288;
+      break;
     case 128:
       cPerBlock = 128;
       break;
@@ -500,15 +498,16 @@ Status LaunchGroupNormKernel(
   params.hwc = params.hw * params.c;
   params.invHWC = 1.F / (float)(params.hw * params.cPerGroup);
   params.groupsPerBlock = cPerBlock / params.cPerGroup;
-  params.threads_per_block = NextSize(cPerBlock) / CHANNELS_PER_THREAD;
 
   // TODO: Update the kernel to support CHANNELS_PER_THREAD==1
   if (cPerBlock > 512 || (params.cPerGroup % CHANNELS_PER_THREAD != 0)) {
-    printf("n=%d h=%d w=%d c=%d groups=%d hw=%d hwPerBlock=%d cPerBlock=%d cPerGroup=%d threads=%d\n",
+    printf("n=%d h=%d w=%d c=%d groups=%d hw=%d hwPerBlock=%d cPerBlock=%d cPerGroup=%d\n",
            params.n, params.h, params.w, params.c, params.groups, params.hw, params.hwPerBlock,
-           params.cPerBlock, params.cPerGroup, params.threads_per_block);
+           params.cPerBlock, params.cPerGroup);
     ORT_NOT_IMPLEMENTED("Not implemented");
   }
+
+  params.threads_per_block = nextSize(cPerBlock) / CHANNELS_PER_THREAD;
 
   cudaMemsetAsync(params.redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), stream);
 
