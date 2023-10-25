@@ -16,6 +16,8 @@
 #include "core/common/optional.h"
 #include "core/common/path_string.h"
 #include "core/framework/arena_extend_strategy.h"
+#include "interface/provider/provider.h"
+#include "core/framework/provider_adapter.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/provider_options_utils.h"
@@ -34,6 +36,10 @@
 
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
+#endif
+
+#ifdef USE_INTREE
+#include "core/providers/intree/intree_execution_provider.h"
 #endif
 
 #include <pybind11/functional.h>
@@ -357,23 +363,10 @@ py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data
   return obj;
 }
 
-static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
-    const std::string& ep_shared_lib_path,
-    const ProviderOptions& provider_options = {},
-    const std::string& entry_symbol_name = "GetProvider") {
-  void* handle;
-  const auto path_str = ToPathString(ep_shared_lib_path);
-  auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
-  if (!error.IsOK()) {
-    throw std::runtime_error(error.ErrorMessage());
-  }
-
-  Provider* (*PGetProvider)();
-  OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProvider));
-
-  Provider* provider = PGetProvider();
-  std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
-  return ep_factory->CreateProvider();
+static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExternalExecutionProvider(const ProviderOptions& provider_options,
+    const std::string& provider_type){
+  auto env = GetEnv();
+  return std::make_unique<ExecutionProviderAdapter>(env->CreateExternalEPInstance(provider_type, provider_options));
 }
 
 #ifdef USE_CUDA
@@ -945,12 +938,17 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
                cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
         ->CreateProvider();
 #endif
+  } else if (type == "InTreeExecutionProvider") {
+#ifdef USE_INTREE
+    const auto cit = provider_options_map.find(type);
+    InTreeExecutionProvider* intree_ep = onnxruntime::InTreeExecutionProviderFactory::CreateInTreeExecutionProvider(cit->second);
+    std::unique_ptr<ExecutionProviderAdapter> ret = std::make_unique<ExecutionProviderAdapter>(intree_ep);
+    return ret;
+#endif
   } else {
     // check whether it is a dynamic load EP:
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
-      if (shared_lib_path_it != it->second.end()) {
         // this is an EP with dynamic loading
         // construct the provider option
         ProviderOptions provider_options;
@@ -961,9 +959,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else if (option.first != kExecutionProviderSharedLibraryPath) {
             provider_options.insert(option);
           }
-        }
-        return LoadExecutionProvider(shared_lib_path_it->second, provider_options, entry_symbol);
       }
+      return LoadExternalExecutionProvider(provider_options, type);
     }
     // unknown provider
     throw std::runtime_error("Unknown Provider Type: " + type);
@@ -1127,6 +1124,13 @@ void addGlobalMethods(py::module& m) {
         auto st = env->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
         if (!st.IsOK()) {
           throw std::runtime_error("Error when creating and registering allocator in create_and_register_allocator_v2: " + st.ErrorMessage());
+        }
+      });
+  m.def("load_execution_provider_info", [](const std::string& provider_type, const std::string& library_path) -> void {
+        auto env = GetEnv();
+        auto st = env->LoadExternalExecutionProvider(provider_type, library_path);
+        if (!st.IsOK()) {
+          throw std::runtime_error("Error when loading external EP: " + st.ErrorMessage());
         }
       });
 

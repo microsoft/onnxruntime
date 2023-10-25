@@ -55,6 +55,46 @@ std::once_flag schemaRegistrationOnceFlag;
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
 #endif  // USE_CUDA
 
+void ProviderLibrary2::Load() {
+    const auto path_str = ToPathString(library_path_);
+    ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(path_str, false, &handle_));
+}
+
+// TODO: Unload ProviderLibrary2 in Envronment's desctructor?
+void ProviderLibrary2::Unload() {
+    if (handle_) {
+      auto status = Env::Default().UnloadDynamicLibrary(handle_);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      }
+
+      handle_ = nullptr;
+    }
+}
+
+interface::ExecutionProvider* ProviderLibrary2::CreateExternalEPInstance(const std::unordered_map<std::string, std::string>& provider_options) {
+  if (handle_) {
+    interface::ExecutionProvider* (*PGetExternalProvider)(const void*);
+    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetExternalProvider",  (void**)&PGetExternalProvider));
+    return PGetExternalProvider(&provider_options);
+  }
+  return nullptr;
+}
+
+Status Environment::LoadExternalExecutionProvider(const std::string& provider_type, const std::string& library_path) {
+  auto provider_lib = std::make_unique<ProviderLibrary2>(library_path.c_str());
+  provider_lib->Load();
+  external_ep_libs_.insert({provider_type, std::move(provider_lib)});
+  return Status::OK();
+}
+
+interface::ExecutionProvider* Environment::CreateExternalEPInstance(const std::string& provider_type, const std::unordered_map<std::string, std::string>& provider_options) {
+  if (auto it = external_ep_libs_.find(provider_type); it != external_ep_libs_.end()) {
+    return it->second->CreateExternalEPInstance(provider_options);
+  }
+  return nullptr;
+}
+
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                            std::unique_ptr<Environment>& environment,
                            const OrtThreadingOptions* tp_options,

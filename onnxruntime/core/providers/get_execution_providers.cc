@@ -165,6 +165,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kInTreeExecutionProvider,
+#ifdef USE_INTREE
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kCannExecutionProvider,
 #ifdef USE_CANN
             true,

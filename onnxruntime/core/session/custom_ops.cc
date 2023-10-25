@@ -648,8 +648,7 @@ ORT_API_STATUS_IMPL(OrtApis::Logger_GetLoggingSeverityLevel, _In_ const OrtLogge
 #include "core/framework/customregistry.h"
 namespace onnxruntime {
 
-struct CustomOpKernel : OpKernel {
-  CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
+  CustomOpKernel::CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
     if (op_.version > ORT_API_VERSION) {
       ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
     }
@@ -669,11 +668,7 @@ struct CustomOpKernel : OpKernel {
     }
   }
 
-  ~CustomOpKernel() override {
-    op_.KernelDestroy(op_kernel_);
-  }
-
-  Status Compute(OpKernelContext* ctx) const override {
+  Status CustomOpKernel::Compute(OpKernelContext* ctx) const {
     if (op_.version >= min_ort_version_with_compute_v2_support &&
         op_.KernelComputeV2) {
       auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
@@ -684,22 +679,14 @@ struct CustomOpKernel : OpKernel {
     }
   }
 
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpKernel);
-
-  const OrtCustomOp& op_;
-  void* op_kernel_;
-};
-
 #if !defined(ORT_MINIMAL_BUILD)
-KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op) {
+KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op, int version_start, int version_end) {
   const size_t input_count = op->GetInputTypeCount(op);
   const size_t output_count = op->GetOutputTypeCount(op);
 
   KernelDefBuilder def_builder;
   def_builder.SetName(op->GetName(op))
-      .SetDomain(domain)
-      .SinceVersion(1);
+      .SetDomain(domain).SinceVersion(version_start, version_end);
 
   // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
   // to work with newer versions (> 12) of the ORT binary.

@@ -10,9 +10,29 @@
 #include "core/platform/threadpool.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "interface/provider/provider.h"
 
 struct OrtThreadingOptions;
 namespace onnxruntime {
+struct ProviderLibrary2 {
+  ProviderLibrary2(const ORTCHAR_T* library_path) : library_path_{library_path} {}
+  ~ProviderLibrary2() {
+    // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
+  }
+
+  void Load();
+
+  void Unload();
+
+  interface::ExecutionProvider* CreateExternalEPInstance(const std::unordered_map<std::string, std::string>& provider_options);
+
+ private:
+  const ORTCHAR_T* library_path_;
+  void* handle_{};
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary2);
+};
+
 /** TODO: remove this class
    Provides the runtime environment for onnxruntime.
    Create one instance for the duration of execution.
@@ -88,6 +108,10 @@ class Environment {
    */
   Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
+  Status LoadExternalExecutionProvider(const std::string& provider_type, const std::string& library_path);
+
+  interface::ExecutionProvider* CreateExternalEPInstance(const std::string& provider_type, const std::unordered_map<std::string, std::string>& provider_options);
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
@@ -99,5 +123,6 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
   std::vector<AllocatorPtr> shared_allocators_;
+  std::unordered_map<std::string, std::unique_ptr<ProviderLibrary2>> external_ep_libs_;
 };
 }  // namespace onnxruntime

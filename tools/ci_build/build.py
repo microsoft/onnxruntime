@@ -692,6 +692,7 @@ def parse_arguments():
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
+    parser.add_argument("--use_intree", action="store_true", help="Enable intree EP.")
     parser.add_argument("--use_azure", action="store_true", help="Enable azure EP.")
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
@@ -1044,6 +1045,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
         "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
+        "-Donnxruntime_USE_INTREE=" + ("ON" if args.use_intree else "OFF"),
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
         "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),

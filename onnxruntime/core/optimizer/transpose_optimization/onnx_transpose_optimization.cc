@@ -20,14 +20,14 @@ namespace onnx_transpose_optimization {
 /////// <Helper Utils> ///////
 /* Small utilities for editing nodes and manipulating axes/permutations */
 
-static std::vector<int64_t> DataInt64(api::TensorRef& tensor) {
+static std::vector<int64_t> DataInt64(onnxruntime::interface::TensorRef& tensor) {
   std::vector<uint8_t> raw_data = tensor.Data();
   int64_t* data_int = reinterpret_cast<int64_t*>(raw_data.data());
   std::vector<int64_t> result(data_int, data_int + tensor.NumElements());
   return result;
 }
 
-static std::vector<int32_t> DataInt32(api::TensorRef& tensor) {
+static std::vector<int32_t> DataInt32(onnxruntime::interface::TensorRef& tensor) {
   std::vector<uint8_t> raw_data = tensor.Data();
   int32_t* data_int = reinterpret_cast<int32_t*>(raw_data.data());
   std::vector<int32_t> result(data_int, data_int + tensor.NumElements());
@@ -38,14 +38,14 @@ static std::string_view AddInitializerInt64(api::GraphRef& graph, const std::vec
                                             const std::vector<int64_t>& values) {
   const uint8_t* raw_data = reinterpret_cast<const uint8_t*>(values.data());
   std::vector<uint8_t> data(raw_data, raw_data + values.size() * sizeof(int64_t));
-  return graph.AddInitializer(api::DataType::INT64, shape, data);
+  return graph.AddInitializer(onnxruntime::DataType::INT64, shape, data);
 }
 
 static std::string_view AddInitializerInt32(api::GraphRef& graph, const std::vector<int64_t>& shape,
                                             const std::vector<int32_t>& values) {
   const uint8_t* raw_data = reinterpret_cast<const uint8_t*>(values.data());
   std::vector<uint8_t> data(raw_data, raw_data + values.size() * sizeof(int32_t));
-  return graph.AddInitializer(api::DataType::INT32, shape, data);
+  return graph.AddInitializer(onnxruntime::DataType::INT32, shape, data);
 }
 
 // Replaces all node inputs referencing old_value with references to new_value. Values must be non-empty strings.
@@ -415,7 +415,7 @@ static std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::vector
 static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, const std::vector<int64_t>& axes) {
   std::string_view input = node.Inputs()[i];
 
-  std::unique_ptr<api::TensorRef> constant = ctx.graph.GetLocalConstant(input);
+  std::unique_ptr<onnxruntime::interface::TensorRef> constant = ctx.graph.GetLocalConstant(input);
 
   // allow a constant initializer coming via a DQ node with a single consumer
   std::unique_ptr<api::NodeRef> dq_node;
@@ -560,7 +560,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
   node.SetInput(i, unsq_out);
 }
 
-static void Permute1DConstant(api::GraphRef& graph, api::NodeRef& node, api::TensorRef& constant,
+static void Permute1DConstant(api::GraphRef& graph, api::NodeRef& node, onnxruntime::interface::TensorRef& constant,
                               size_t i, std::string_view input_name, const std::vector<int64_t>& perm) {
   // Create new transposed initializer
   auto rank = perm.size();
@@ -592,7 +592,7 @@ static void TransposeInputImpl(api::GraphRef& graph,
   std::string_view input = node.Inputs()[i];
 
   // Only local constants are editable
-  std::unique_ptr<api::TensorRef> constant = graph.GetLocalConstant(input);
+  std::unique_ptr<onnxruntime::interface::TensorRef> constant = graph.GetLocalConstant(input);
 
   // allow a constant initializer coming via a DQ node with a single consumer
   std::unique_ptr<api::NodeRef> dq_node;
@@ -950,7 +950,7 @@ static bool IsConstant(const api::GraphRef& graph, const api::NodeRef& node,
 
   if (!producer_node) {
     // initializer. may or may not be constant depending on whether it has a matching graph input
-    std::unique_ptr<api::TensorRef> constant = graph.GetConstant(value_name);
+    std::unique_ptr<onnxruntime::interface::TensorRef> constant = graph.GetConstant(value_name);
     return constant != nullptr;
   }
 
@@ -1359,7 +1359,7 @@ bool HandleReduceOps(HandlerArgs& args) {
   bool keepdims = args.node.GetAttributeIntDefault("keepdims", 1) != 0;
 
   const std::vector<std::string_view>& inputs = args.node.Inputs();
-  std::unique_ptr<api::TensorRef> axes_const = nullptr;
+  std::unique_ptr<onnxruntime::interface::TensorRef> axes_const = nullptr;
   bool empty_axes = false;
 
   if (inputs.size() < 2 || inputs[1] == "") {
@@ -1544,10 +1544,10 @@ constexpr HandlerInfo arg_min_max_handler = {&FirstInput, &HandleArgMinMax};
 
 // Creates an int32 or int64 initializer and returns the name (Slice supports int64 or int32 axes)
 static std::string_view AddIntInitializerMatchingDtype(api::GraphRef& graph, std::vector<int64_t> values,
-                                                       api::DataType dtype) {
+                                                       onnxruntime::DataType dtype) {
   std::vector<int64_t> shape{gsl::narrow_cast<int64_t>(values.size())};
 
-  if (dtype == api::DataType::INT32) {
+  if (dtype == onnxruntime::DataType::INT32) {
     std::vector<int32_t> values_int32;
     values_int32.reserve(values.size());
     for (int64_t v : values) {
@@ -1561,8 +1561,8 @@ static std::string_view AddIntInitializerMatchingDtype(api::GraphRef& graph, std
 }
 
 // Gets int data from an int32 or int64 tensor
-static std::vector<int64_t> TensorIntData(api::TensorRef& tensor, api::DataType dtype) {
-  if (dtype == api::DataType::INT32) {
+static std::vector<int64_t> TensorIntData(onnxruntime::interface::TensorRef& tensor, onnxruntime::DataType dtype) {
+  if (dtype == onnxruntime::DataType::INT32) {
     std::vector<int32_t> values_int32 = DataInt32(tensor);
     std::vector<int64_t> values;
     values.reserve(values_int32.size());
@@ -1612,7 +1612,7 @@ static bool HandleSlice(HandlerArgs& args) {
     // Case 1: Axes is missing. Compute using length of starts.
     auto starts_value_info = args.ctx.graph.GetValueInfo(inputs[1]);
     const std::optional<std::vector<int64_t>> starts_shape = starts_value_info->Shape();
-    api::DataType int_dtype = starts_value_info->DType();
+    onnxruntime::DataType int_dtype = starts_value_info->DType();
 
     if (starts_shape == std::nullopt || starts_shape->size() != 1 || (*starts_shape)[0] < 0) {
       return false;
@@ -1630,12 +1630,12 @@ static bool HandleSlice(HandlerArgs& args) {
   } else {
     // Case 2: Axes input provided. Update if constant.
     std::string_view axes_inp = inputs[3];
-    std::unique_ptr<api::TensorRef> axes_const = args.ctx.graph.GetConstant(axes_inp);
+    std::unique_ptr<onnxruntime::interface::TensorRef> axes_const = args.ctx.graph.GetConstant(axes_inp);
     if (axes_const == nullptr) {
       return false;
     }
 
-    api::DataType int_dtype = axes_const->DType();
+    onnxruntime::DataType int_dtype = axes_const->DType();
     auto axes = TensorIntData(*axes_const, int_dtype);
     if (!NormalizeAndValidateAxes(axes, rank)) {
       return false;
@@ -1662,7 +1662,7 @@ static bool HandleTile(HandlerArgs& args) {
   std::vector<int64_t> perm_shape{gsl::narrow_cast<int64_t>(rank)};
 
   std::string_view repeats_inp = args.node.Inputs()[1];
-  std::unique_ptr<api::TensorRef> repeats_const = args.ctx.graph.GetConstant(repeats_inp);
+  std::unique_ptr<onnxruntime::interface::TensorRef> repeats_const = args.ctx.graph.GetConstant(repeats_inp);
   if (repeats_const != nullptr) {
     // Case 1: Repeats is constant. Shuffle order.
     const std::vector<int64_t>& repeats = DataInt64(*repeats_const);

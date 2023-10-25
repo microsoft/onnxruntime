@@ -110,3 +110,7 @@ onnxruntime::common::Status OrtEnv::UnregisterAllocator(const OrtMemoryInfo& mem
 onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
   return value_->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
 }
+
+onnxruntime::common::Status OrtEnv::LoadExternalExecutionProvider(const std::string& provider_type, const std::string& library_path) {
+  return value_->LoadExternalExecutionProvider(provider_type, library_path);
+}

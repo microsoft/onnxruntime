@@ -56,6 +56,10 @@ class KernelDef {
     return type_constraints_;
   }
 
+  std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() {
+    return type_constraints_;
+  }
+
   const std::vector<std::pair<int, int>>& MayInplace() const {
     return inplace_map_;
   }

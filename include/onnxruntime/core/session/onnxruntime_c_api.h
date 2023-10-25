@@ -4512,6 +4512,10 @@ struct OrtApi {
    * \since Version 1.17.
    */
   ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
+
+  ORT_API2_STATUS(RegisterCustomEP, _In_ const char* library_path, _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys, _In_ OrtSessionOptions* options);
+
+  ORT_API2_STATUS(LoadExecutionProviderInfo, _In_ OrtEnv* env, _In_ const char* execution_provider_type, _In_ const char* library_path);
 };
 
 /*
@@ -4605,6 +4609,9 @@ struct OrtCustomOp {
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
 
   OrtStatusPtr(ORT_API_CALL* InferOutputShapeFn)(_In_ const struct OrtCustomOp* op, _In_ OrtShapeInferContext*);
+
+  void(ORT_API_CALL* SetOpsetVersionFrom)(_In_ uint32_t version_from);
+  void(ORT_API_CALL* SetOpsetVersionTo)(_In_ uint32_t version_to);
 };
 
 /*

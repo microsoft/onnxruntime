@@ -78,6 +78,10 @@ class KernelRegistry {
     return kernel_creator_fn_map_;
   }
 
+  KernelCreateMap& GetKernelCreateMap() {
+    return kernel_creator_fn_map_;
+  }
+
  private:
   // TryFindKernel implementation. Either kernel_type_str_resolver or type_constraints is provided.
   Status TryFindKernelImpl(const Node& node, ProviderType exec_provider,

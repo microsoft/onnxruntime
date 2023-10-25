@@ -33,7 +33,7 @@ NhwcConvLookup(
     return nullptr;
   }
   const auto info = graph.GetValueInfo(inputs[0]);
-  const api::DataType dtype = info->DType();
+  const onnxruntime::DataType dtype = info->DType();
   OpIdInfo key{optype, domain, dtype};
 
   const auto iter = conv_table.find(key);
@@ -67,10 +67,10 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
-          OpIdInfo("QLinearConv", kOnnxDomain, api::DataType::INT8),
+          OpIdInfo("QLinearConv", kOnnxDomain, onnxruntime::DataType::INT8),
           OpTransformInfo{qconv_int8.op_type_, qconv_int8.domain_, qconv_int8.version_, true});
       conv_table_.emplace(
-          OpIdInfo("QLinearConv", kMSDomain, api::DataType::INT8),
+          OpIdInfo("QLinearConv", kMSDomain, onnxruntime::DataType::INT8),
           OpTransformInfo{qconv_int8.op_type_, qconv_int8.domain_, qconv_int8.version_, true});
     }
   }
@@ -86,10 +86,10 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
-          OpIdInfo("QLinearConv", kOnnxDomain, api::DataType::UINT8),
+          OpIdInfo("QLinearConv", kOnnxDomain, onnxruntime::DataType::UINT8),
           OpTransformInfo{qconv_uint8.op_type_, qconv_uint8.domain_, qconv_uint8.version_, true});
       conv_table_.emplace(
-          OpIdInfo("QLinearConv", kMSDomain, api::DataType::UINT8),
+          OpIdInfo("QLinearConv", kMSDomain, onnxruntime::DataType::UINT8),
           OpTransformInfo{qconv_uint8.op_type_, qconv_uint8.domain_, qconv_uint8.version_, true});
     }
   }
@@ -106,10 +106,10 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
-          OpIdInfo("Conv", kOnnxDomain, api::DataType::FLOAT16),
+          OpIdInfo("Conv", kOnnxDomain, onnxruntime::DataType::FLOAT16),
           OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false});
       conv_table_.emplace(
-          OpIdInfo("FusedConv", kMSDomain, api::DataType::FLOAT16),
+          OpIdInfo("FusedConv", kMSDomain, onnxruntime::DataType::FLOAT16),
           OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false});
     }
   }
@@ -126,7 +126,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
-          OpIdInfo("MaxPool", kOnnxDomain, api::DataType::FLOAT16),
+          OpIdInfo("MaxPool", kOnnxDomain, onnxruntime::DataType::FLOAT16),
           OpTransformInfo{nhwc_maxpool_fp16.op_type_, nhwc_maxpool_fp16.domain_, nhwc_maxpool_fp16.version_, false});
     }
   }
@@ -143,7 +143,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
-          OpIdInfo("AveragePool", kOnnxDomain, api::DataType::FLOAT16),
+          OpIdInfo("AveragePool", kOnnxDomain, onnxruntime::DataType::FLOAT16),
           OpTransformInfo{nhwc_avgpool_fp16.op_type_, nhwc_avgpool_fp16.domain_, nhwc_avgpool_fp16.version_, false});
     }
   }
@@ -160,7 +160,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
-          OpIdInfo("GlobalAveragePool", kOnnxDomain, api::DataType::FLOAT16),
+          OpIdInfo("GlobalAveragePool", kOnnxDomain, onnxruntime::DataType::FLOAT16),
           OpTransformInfo{nhwc_gavgpool_fp16.op_type_, nhwc_gavgpool_fp16.domain_, nhwc_gavgpool_fp16.version_, false});
     }
   }

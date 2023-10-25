@@ -23,6 +23,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/framework/allocator.h"
+#include "core/framework/provider_adapter.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value.h"
 #include "core/providers/get_execution_providers.h"
@@ -754,6 +755,17 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
     if (provider) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
     }
+  }
+
+  if (options->external_shared_lib_path_.length() > 0) {
+    auto path_str = onnxruntime::ToPathString(options->external_shared_lib_path_);
+    void* library_handle;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::Env::Default().LoadDynamicLibrary(path_str, false, &library_handle));
+
+    interface::ExecutionProvider* (*PGetExternalProvider)(const void*);
+    ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::Env::Default().GetSymbolFromLibrary(library_handle, "GetExternalProvider", (void**)&PGetExternalProvider));
+    std::unique_ptr<ExecutionProviderAdapter> externalEP = std::make_unique<ExecutionProviderAdapter>(PGetExternalProvider(&(options->provider_options_)));
+    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(externalEP)));
   }
 
   if (prepacked_weights_container != nullptr) {
@@ -2354,6 +2366,32 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #endif
 }
 
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomEP, _In_ const char* library_path, _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys, _In_ OrtSessionOptions* options) {
+  options->external_shared_lib_path_ = library_path;
+  for (size_t i = 0; i != num_keys; i++) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
+    }
+
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Maximum string length for a provider options key/value is 1024.");
+    }
+    options->provider_options_[provider_options_keys[i]] = provider_options_values[i];
+  }
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::LoadExecutionProviderInfo, _In_ OrtEnv* env, _In_ const char* execution_provider_type, _In_ const char* library_path) {
+  auto st = env->LoadExternalExecutionProvider(execution_provider_type, library_path);
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Cannot load external EP ");
+  }
+  return nullptr;
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -2721,6 +2759,9 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::ShapeInferContext_SetOutputTypeShape,
     &OrtApis::SetSymbolicDimensions,
     &OrtApis::ReadOpAttr,
+
+    &OrtApis::RegisterCustomEP,
+    &OrtApis::LoadExecutionProviderInfo,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

@@ -3,195 +3,21 @@
 
 // The ONNX Runtime specific implementation of the generic transpose optimizer API.
 
-#include "core/optimizer/transpose_optimization/optimizer_api.h"
-
-#include <algorithm>
-#include <deque>
-#include <iterator>
-#include <optional>
-
-#include "core/framework/execution_provider.h"
+#include "core/optimizer/transpose_optimization/ort_optimizer_api_impl.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/graph_utils.h"
 #include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
-#include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "core/graph/model.h"
+#include "core/graph/graph_proto_serializer.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
-using namespace onnxruntime::layout_transformation;
-using namespace onnx_transpose_optimization;
 
 namespace onnxruntime {
-class ApiValueInfo final : public api::ValueInfoRef {
- private:
-  NodeArg& node_arg_;
-
- public:
-  explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg) {}
-  std::string_view Name() const override;
-  std::optional<std::vector<int64_t>> Shape() const override;
-  api::DataType DType() const override;
-
-  void SetShape(const std::vector<int64_t>* shape) override;
-  void PermuteDims(const std::vector<int64_t>& perm) override;
-  void UnsqueezeDims(const std::vector<int64_t>& axes) override;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiValueInfo);
-};
-
-class ApiTensor final : public api::TensorRef {
- private:
-  const onnx::TensorProto& tensor_proto_;
-  const Path& model_path_;
-  AllocatorPtr cpu_allocator_;
-
- public:
-  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Path& model_path, AllocatorPtr cpu_allocator)
-      : tensor_proto_(tensor_proto), model_path_(model_path), cpu_allocator_(std::move(cpu_allocator)) {}
-
-  const onnx::TensorProto& TensorProto() {
-    return tensor_proto_;
-  }
-
-  std::vector<int64_t> Shape() const override;
-  size_t NumElements() const override;
-  api::DataType DType() const override;
-  std::vector<uint8_t> Data() const override;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiTensor);
-};
-
-class ApiNode final : public api::NodeRef {
- private:
-  onnxruntime::Node& node_;
-  Graph& graph_;
-
- public:
-  explicit ApiNode(onnxruntime::Node& node, Graph& graph) : node_(node), graph_(graph) {}
-
-  onnxruntime::Node& Node() {
-    return node_;
-  }
-
-  std::string_view OpType() const override {
-    return node_.OpType();
-  }
-  std::string_view Domain() const override {
-    return node_.Domain();
-  }
-  std::vector<std::string_view> Inputs() const override;
-  std::vector<std::string_view> Outputs() const override;
-  std::optional<int64_t> GetAttributeInt(std::string_view name) const override;
-  std::optional<std::string> GetAttributeString(std::string_view name) const override;
-  std::optional<std::vector<int64_t>> GetAttributeInts(std::string_view name) const override;
-  void SetAttributeInt(std::string_view name, int64_t value) override;
-  void SetAttributeInts(std::string_view name, const std::vector<int64_t>& value) override;
-  void CopyAttributes(const api::NodeRef& node) override;
-  void ClearAttribute(std::string_view name) override;
-  void SetInput(size_t i, std::string_view name) override;
-  std::string_view GetExecutionProviderType() const override;
-  int SinceVersion() const override;
-  int64_t Id() const override;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
-};
-
-class ApiGraph final : public api::GraphRef {
- private:
-  onnxruntime::Graph& graph_;
-  AllocatorPtr cpu_allocator_;
-  const char* new_node_ep_;
-
- public:
-  explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const char* new_node_ep)
-      : graph_(graph), cpu_allocator_(std::move(cpu_allocator)), new_node_ep_(new_node_ep) {}
-
-  onnxruntime::Graph& Graph() {
-    return graph_;
-  }
-
-  std::optional<int64_t> Opset(std::string_view domain = "") const override;
-  std::vector<std::unique_ptr<api::NodeRef>> Nodes() const override;
-  std::unique_ptr<api::TensorRef> GetConstant(std::string_view name) const override;
-  std::unique_ptr<api::TensorRef> GetLocalConstant(std::string_view name) const override;
-  std::unique_ptr<api::ValueInfoRef> GetValueInfo(std::string_view name) const override;
-  std::unique_ptr<api::ValueConsumers> GetValueConsumers(std::string_view name) const override;
-  std::unique_ptr<api::NodeRef> GetNodeProducingOutput(std::string_view name) const override;
-  void TransposeInitializer(std::string_view name, const std::vector<int64_t>& perm) override;
-  void ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) override;
-  std::unique_ptr<api::NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                        size_t num_outputs = 1, std::string_view domain = "") override;
-
-  std::unique_ptr<api::NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type,
-                                         std::string_view domain = "",
-                                         std::optional<int> since_version = std::nullopt) override;
-  void RemoveNode(api::NodeRef& node) override;
-  void RemoveInitializer(std::string_view name) override;
-  std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
-                                  const std::vector<uint8_t>& data) override;
-  void MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& dst_node, size_t dst_idx) override;
-  void CopyValueInfo(std::string_view src_name, std::string_view dst_name) override;
-  bool HasValueConsumers(std::string_view name) const override;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiGraph);
-};
 
 // <ApiValueInfo>
-std::string_view ApiValueInfo::Name() const {
-  return node_arg_.Name();
-}
-
-const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
-  if (node_arg == nullptr) {
-    return nullptr;
-  }
-
-  const auto* type = node_arg->TypeAsProto();
-  if (type == nullptr) {
-    return nullptr;
-  }
-
-  return utils::TryGetShape(*type);
-}
-
-std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
-  const auto* shape_proto = GetNodeArgShape(&node_arg_);
-  if (shape_proto == nullptr) {
-    return std::nullopt;
-  }
-
-  TensorShape shape = utils::GetTensorShapeFromTensorShapeProto(*shape_proto);
-  const auto dims = shape.GetDims();
-  std::vector<int64_t> result;
-  result.reserve(dims.size());
-  result.assign(dims.begin(), dims.end());
-  return result;
-}
-
-api::DataType ApiValueInfo::DType() const {
-  const auto* type = node_arg_.TypeAsProto();
-  if (!type) {
-    return api::DataType::UNDEFINED;
-  }
-
-  if (!utils::HasTensorType(*type)) {
-    return api::DataType::UNDEFINED;
-  }
-
-  if (!utils::HasElementType(*type)) {
-    return api::DataType::UNDEFINED;
-  }
-
-  return gsl::narrow_cast<api::DataType>(type->tensor_type().elem_type());
-}
-
 void ApiValueInfo::SetShape(const std::vector<int64_t>* shape) {
   if (shape == nullptr) {
     node_arg_.ClearShape();
@@ -258,90 +84,7 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
 }
 // </ApiValueInfo>
 
-// <ApiTensor>
-std::vector<int64_t> ApiTensor::Shape() const {
-  TensorShape shape = utils::GetTensorShapeFromTensorProto(tensor_proto_);
-  const auto dims = shape.GetDims();
-  return std::vector<int64_t>{dims.begin(), dims.end()};
-}
-
-size_t ApiTensor::NumElements() const {
-  int64_t size = utils::GetTensorShapeFromTensorProto(tensor_proto_).Size();
-  ORT_ENFORCE(size >= 0, "Failed to get size of TensorProto");
-  return gsl::narrow_cast<size_t>(size);
-}
-
-api::DataType ApiTensor::DType() const {
-  return gsl::narrow_cast<api::DataType>(tensor_proto_.data_type());
-}
-
-std::vector<uint8_t> ApiTensor::Data() const {
-  // Reading tensor values from tensor_proto requires some work because of external storage and special/raw_data fields
-  const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto_.data_type())->GetElementType();
-  auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
-  TensorShape tensor_shape{std::move(tensor_shape_dims)};
-  onnxruntime::Tensor tensor(tensor_dtype, tensor_shape, cpu_allocator_);
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_.ToPathString().c_str(),
-                                                tensor_proto_, tensor));
-  size_t num_bytes = gsl::narrow_cast<size_t>(tensor.SizeInBytes());
-  const uint8_t* data = static_cast<const uint8_t*>(tensor.DataRaw());
-  return std::vector<uint8_t>(data, data + num_bytes);
-}
-// </ApiTensor>
-
 // <ApiNode>
-std::vector<std::string_view> NodeArgsToStrings(ConstPointerContainer<std::vector<NodeArg*>> node_args) {
-  std::vector<std::string_view> result;
-  result.reserve(node_args.size());
-  for (const auto* arg : node_args) {
-    result.push_back(arg->Name());
-  }
-
-  return result;
-}
-
-std::vector<std::string_view> ApiNode::Inputs() const {
-  return NodeArgsToStrings(node_.InputDefs());
-}
-
-std::vector<std::string_view> ApiNode::Outputs() const {
-  return NodeArgsToStrings(node_.OutputDefs());
-}
-
-std::optional<int64_t> ApiNode::GetAttributeInt(std::string_view name) const {
-  const onnx::AttributeProto* attr = graph_utils::GetNodeAttribute(node_, std::string(name));
-  if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_INT) {
-    return std::nullopt;
-  }
-
-  return attr->i();
-}
-
-std::optional<std::string> ApiNode::GetAttributeString(std::string_view name) const {
-  const onnx::AttributeProto* attr = graph_utils::GetNodeAttribute(node_, std::string(name));
-  if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_STRING) {
-    return std::nullopt;
-  }
-
-  return attr->s();
-}
-
-std::optional<std::vector<int64_t>> ApiNode::GetAttributeInts(std::string_view name) const {
-  const onnx::AttributeProto* attr = graph_utils::GetNodeAttribute(node_, std::string(name));
-  if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_INTS) {
-    return std::nullopt;
-  }
-
-  std::vector<int64_t> value;
-  const auto& ints = attr->ints();
-  value.reserve(ints.size());
-  for (int64_t x : ints) {
-    value.push_back(x);
-  }
-
-  return value;
-}
-
 void ApiNode::SetAttributeInt(std::string_view name, int64_t value) {
   node_.AddAttribute(std::string(name), value);
 }
@@ -351,7 +94,7 @@ void ApiNode::SetAttributeInts(std::string_view name, const std::vector<int64_t>
 }
 
 void ApiNode::CopyAttributes(const api::NodeRef& node) {
-  const ApiNode& ort_node = static_cast<const ApiNode&>(node);
+  const ApiNode& ort_node = dynamic_cast<const ApiNode&>(node);
   const NodeAttributes& attributes = ort_node.node_.GetAttributes();
   for (const auto& pair : attributes) {
     node_.AddAttributeProto(pair.second);
@@ -414,25 +157,11 @@ std::string_view ApiNode::GetExecutionProviderType() const {
   return node_.GetExecutionProviderType();
 }
 
-int ApiNode::SinceVersion() const {
-  return node_.SinceVersion();
-}
-
 int64_t ApiNode::Id() const {
   return node_.Index();
 }
 
 // </ApiNode>
-
-std::optional<int64_t> ApiGraph::Opset(std::string_view domain) const {
-  const auto& version_map = graph_.DomainToVersionMap();
-  auto match = version_map.find(std::string(domain));
-  if (match == version_map.end()) {
-    return std::nullopt;
-  }
-
-  return match->second;
-}
 
 std::vector<std::unique_ptr<api::NodeRef>> ApiGraph::Nodes() const {
   GraphViewer graph_viewer(graph_);
@@ -447,22 +176,8 @@ std::vector<std::unique_ptr<api::NodeRef>> ApiGraph::Nodes() const {
   return nodes;
 }
 
-std::unique_ptr<api::TensorRef> ApiGraph::GetConstant(std::string_view name) const {
-  const auto* tensor = graph_.GetConstantInitializer(std::string(name), /*check_outer_scope*/ true);
-  if (tensor == nullptr) {
-    return nullptr;
-  }
-
-  return std::make_unique<ApiTensor>(*tensor, graph_.ModelPath(), cpu_allocator_);
-}
-
-std::unique_ptr<api::TensorRef> ApiGraph::GetLocalConstant(std::string_view name) const {
-  const auto* tensor = graph_.GetConstantInitializer(std::string(name), /*check_outer_scope*/ false);
-  if (tensor == nullptr) {
-    return nullptr;
-  }
-
-  return std::make_unique<ApiTensor>(*tensor, graph_.ModelPath(), cpu_allocator_);
+std::unique_ptr<interface::TensorRef> ApiGraph::GetLocalConstant(std::string_view name) const {
+  return CreateApiTensor(graph_.GetConstantInitializer(std::string(name), /*check_outer_scope*/ false), graph_.ModelPath(), cpu_allocator_);
 }
 
 std::unique_ptr<api::ValueInfoRef> ApiGraph::GetValueInfo(std::string_view name) const {
@@ -744,7 +459,7 @@ std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node
 }
 
 void ApiGraph::RemoveNode(api::NodeRef& node) {
-  Node& ort_node = static_cast<ApiNode&>(node).Node();
+  Node& ort_node = dynamic_cast<ApiNode&>(node).Node();
   for (const auto* node_arg : ort_node.InputDefs()) {
     if (node_arg->Exists()) {
       graph_.RemoveConsumerNode(node_arg->Name(), &ort_node);
@@ -758,7 +473,7 @@ void ApiGraph::RemoveInitializer(std::string_view name) {
   graph_.RemoveInitializedTensor(std::string(name));
 }
 
-std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
+std::string_view ApiGraph::AddInitializer(onnxruntime::DataType dtype, const std::vector<int64_t>& shape,
                                           const std::vector<uint8_t>& data) {
   std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
 
@@ -775,8 +490,8 @@ std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector
 }
 
 void ApiGraph::MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& dst_node, size_t dst_idx) {
-  Node& src_ort_node = static_cast<ApiNode&>(src_node).Node();
-  Node& dst_ort_node = static_cast<ApiNode&>(dst_node).Node();
+  Node& src_ort_node = dynamic_cast<ApiNode&>(src_node).Node();
+  Node& dst_ort_node = dynamic_cast<ApiNode&>(dst_node).Node();
 
   std::vector<NodeArg*>& src_output_defs = src_ort_node.MutableOutputDefs();
   std::vector<NodeArg*>& dst_output_defs = dst_ort_node.MutableOutputDefs();
@@ -837,11 +552,11 @@ std::unique_ptr<api::NodeRef> MakeApiNode(onnxruntime::Graph& graph, onnxruntime
 }
 
 onnxruntime::Graph& GraphFromApiGraph(onnx_transpose_optimization::api::GraphRef& graph) {
-  return static_cast<ApiGraph&>(graph).Graph();
+  return dynamic_cast<ApiGraph&>(graph).Graph();
 }
 
 onnxruntime::Node& NodeFromApiNode(onnx_transpose_optimization::api::NodeRef& node) {
-  return static_cast<ApiNode&>(node).Node();
+  return dynamic_cast<ApiNode&>(node).Node();
 }
 
 }  // namespace onnxruntime

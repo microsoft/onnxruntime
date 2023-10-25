@@ -78,6 +78,7 @@ with open(args.output_source, "w") as file:
             "xnnpack",
             "cann",
             "dnnl",
+            "intree",
             "tensorrt",
         ):
             file.write(f"#include <core/providers/{c}/{c}_provider_factory.h>\n")

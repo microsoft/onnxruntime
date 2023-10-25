@@ -39,6 +39,35 @@ bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX
   return true;
 }
 
+// TODO: should this function return a enum with 3 states: match/mismatch/arg not exists?
+bool IsTypeCompatibleOnIthArg(const ConstPointerContainer<std::vector<NodeArg*>>& actual_inputs, const ConstPointerContainer<std::vector<NodeArg*>>& actual_outputs,
+                              const std::vector<int>& actual_input_arg_counts, const InlinedVector<int> actual_input_arg_offsets,
+                              const std::vector<MLDataType>& enabled_types, const ArgType& arg_type, const size_t& formal_arg_idx, std::string& mismatch_reason) {
+  const NodeArg* arg;
+  if (arg_type == ArgType::kInput) {
+    if (formal_arg_idx >= actual_input_arg_counts.size() ||
+        actual_input_arg_counts[formal_arg_idx] == 0) {
+      arg = nullptr;
+    } else {
+      const auto first_arg_idx = actual_input_arg_offsets[formal_arg_idx];
+      ORT_ENFORCE(static_cast<size_t>(first_arg_idx) < actual_inputs.size());
+      arg = actual_inputs[first_arg_idx];
+    }
+  } else {
+    arg = formal_arg_idx < actual_outputs.size() ? actual_outputs[formal_arg_idx] : nullptr;
+  }
+
+  if (arg && arg->Exists()) {
+    const ONNX_NAMESPACE::TypeProto* type_proto = arg->TypeAsProto();
+    ORT_ENFORCE(type_proto != nullptr);
+
+    if (!IsTypeProtoCompatible(enabled_types, *type_proto, mismatch_reason)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // match the kernel using type info from the Node's args
 bool MatchKernelDefTypes(const Node& node,
                          const std::unordered_map<std::string, std::vector<MLDataType>>& kernel_type_constraints,
@@ -61,6 +90,30 @@ bool MatchKernelDefTypes(const Node& node,
     return offsets;
   }();
 
+  // custom kernel's type constraints look like {"Input0"->[float, double], "Input1"->[..,..], "Output0"->[..,..]}
+  // compare the ith arg with the node's corresponding arg directly
+  if (kernel_type_constraints.find("Input0") != kernel_type_constraints.end() ||
+      kernel_type_constraints.find("Output0") != kernel_type_constraints.end()) {
+    for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {
+      ArgType arg_type = ArgType::kInput;
+      size_t arg_idx = 0;
+      if (kernel_type_str.substr(0, 5) == "Input") {
+        arg_idx = std::stoi(kernel_type_str.substr(5));
+      } else if (kernel_type_str.substr(0, 6) == "Output") {
+        arg_type = ArgType::kOutput;
+        arg_idx = std::stoi(kernel_type_str.substr(6));
+      }
+      else {
+        mismatch_reason = "Custom Op but key does not start with 'Input' or 'Output' in type constraints";
+        return false;
+      }
+
+      if (!IsTypeCompatibleOnIthArg(actual_inputs, actual_outputs, actual_input_arg_counts, actual_input_arg_offsets,
+                                    enabled_types, arg_type, arg_idx, mismatch_reason)) return false;
+    }
+    return true;
+  }
+
   // for each type constraint
   //   map type constraint to arg
   //   check arg type against type constraint enabled types
@@ -69,31 +122,11 @@ bool MatchKernelDefTypes(const Node& node,
     ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str, constraint_args));
 
     for (const auto& [arg_type, formal_arg_idx] : constraint_args) {
-      const NodeArg* arg;
-      if (arg_type == ArgType::kInput) {
-        if (formal_arg_idx >= actual_input_arg_counts.size() ||
-            actual_input_arg_counts[formal_arg_idx] == 0) {
-          arg = nullptr;
-        } else {
-          const auto first_arg_idx = actual_input_arg_offsets[formal_arg_idx];
-          ORT_ENFORCE(static_cast<size_t>(first_arg_idx) < actual_inputs.size());
-          arg = actual_inputs[first_arg_idx];
-        }
-      } else {
-        arg = formal_arg_idx < actual_outputs.size() ? actual_outputs[formal_arg_idx] : nullptr;
-      }
-
-      if (arg && arg->Exists()) {
-        const ONNX_NAMESPACE::TypeProto* type_proto = arg->TypeAsProto();
-        ORT_ENFORCE(type_proto != nullptr);
-
-        if (!IsTypeProtoCompatible(enabled_types, *type_proto, mismatch_reason)) {
-          return false;
-        }
+        if (!IsTypeCompatibleOnIthArg(actual_inputs, actual_outputs, actual_input_arg_counts, actual_input_arg_offsets,
+                                    enabled_types, arg_type, formal_arg_idx, mismatch_reason)) return false;
 
         // found a match, don't need to check other args with this constraint
         break;
-      }
     }
   }
 
