@@ -1,5 +1,18 @@
 # LLaMA-2
 
+## Prerequisites
+
+Please note the package versions needed for using LLaMA-2 in the `requirements.txt` file that fits your scenario.
+- `requirements-cpu.txt`
+  - For running LLaMA-2 on CPU
+- `requirements-cuda.txt`
+  - For running LLaMA-2 on CUDA
+  - Note that `torch` with CUDA enabled is not installed automatically. This is because `torch` should be installed with the CUDA version used on your machine. Please visit [the PyTorch website](https://pytorch.org/get-started/locally/) to download the `torch` version that is used with the CUDA version installed on your machine and satisfies the requirement listed in the file.
+- `requirements-quant.txt`
+  - For running the SmoothQuant algorithm using [Intel's Neural Compressor](https://github.com/intel/neural-compressor)
+- `requirements.txt`
+  - Package versions needed in each of the above files
+
 ## Exporting LLaMA-2
 
 There are several ways to export LLaMA-2 models (using LLaMA-2 7B as an example).
