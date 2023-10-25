@@ -10,6 +10,7 @@
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "onnx/defs/parser.h"
 
 #include "asserts.h"
 #include "core/common/span_utils.h"
@@ -1018,6 +1019,70 @@ TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
   op_to_count = CountOpsInGraph(graph);
 
   ASSERT_EQ(op_to_count.size(), 0U) << "Identity node should have been removed";
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInlining) {
+  const char* code = R"(
+  <
+  ir_version: 8,
+  opset_import: [ "" : 16, "local" : 1 ]
+  >
+  agraph (float[N] x, float[Y] x1) => (float[N] y)
+  {
+      y = local.aten_gather <dim: int = 1, sparse_grad: int = 0> (x, x1)
+  }
+  <
+    opset_import: [ "" : 16, "local" : 1],
+    domain: "local"
+  >
+  aten_gather <dim>(self, index) => (result_16)
+  {
+     tmp = Shape (index)
+     tmp_0 = Size (tmp)
+     int64_0 = Constant <value: tensor = int64 int64_0 {0}> ()
+     int64_0_cast = CastLike (int64_0, tmp_0)
+     cond = Equal (tmp_0, int64_0_cast)
+     result_16 = If (cond) <then_branch: graph = thenGraph_10 () => ( result) {
+        result = Identity (self)
+     }, else_branch: graph = elseGraph_10 () => ( result_15) {
+        tmp_1 = Shape (self)
+        tmp_2 = Size (tmp_1)
+        int64_0_3 = Constant <value: tensor = int64 int64_0_3 {0}> ()
+        int64_0_3_cast = CastLike (int64_0_3, tmp_2)
+        cond_4 = Equal (tmp_2, int64_0_3_cast)
+        self_8 = If (cond_4) <then_branch: graph = thenGraph_13 () => ( self_6) {
+           tmp_5 = Constant <value_ints: ints = [-1]> ()
+           self_6 = Reshape (self, tmp_5)
+        }, else_branch: graph = elseGraph_13 () => ( self_7) {
+           self_7 = Identity (self)
+        }>
+        tmp_9 = Size (index)
+        int64_0_10 = Constant <value: tensor = int64 int64_0_10 {0}> ()
+        int64_0_10_cast = CastLike (int64_0_10, tmp_9)
+        cond_11 = Equal (tmp_9, int64_0_10_cast)
+        result_15 = If (cond_11) <then_branch: graph = thenGraph_15 () => ( result_12) {
+           result_12 = CastLike (index, self_8)
+        }, else_branch: graph = elseGraph_15 () => ( result_14) {
+           index_13 = Cast <to: int = 7> (index)
+           result_14 = GatherElements <axis: int = @dim> (self_8, index_13)
+        }>
+     }>
+  }
+)";
+
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto parse_status = parser.Parse(model_proto);
+  ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), p_model, nullptr, *logger_));
+
+  //std::string serialized_model;
+  //const bool serialization_status = model.SerializeToString(&serialized_model);
+  //ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
+
 }
 
 // Check transformations in the case of a subgraph with constant inputs.
