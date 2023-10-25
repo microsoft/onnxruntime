@@ -10,11 +10,12 @@
 
 #define DQ_INT4_IN_PACKING
 
-extern const float* scales_data;
-extern const uint8_t* zero_points_data;
-extern int64_t block_size_;
-extern int64_t nbits_;
-extern size_t ldfb;
+extern const float* G_scales_data;
+extern const uint8_t* G_zero_points_data;
+extern int64_t G_block_size_;
+extern int64_t G_nbits_;
+extern size_t G_ldfb;
+extern size_t G_K;
 
 namespace onnxruntime {
 namespace contrib {
@@ -47,16 +48,20 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 
   const auto* a_data = a->Data<float>();
   const uint8_t* b_data = b->Data<uint8_t>();
-  /*const auto**/ scales_data = scales->Data<float>();
-  /*const auto**/ zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
+  const auto* scales_data = scales->Data<float>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
+#ifdef DQ_INT4_IN_PACKING
+  G_scales_data = scales_data;
+  G_zero_points_data = zero_points_data;
+#endif
 
   AllocatorPtr allocator;
   auto status = ctx->GetTempSpaceAllocator(&allocator);
   ORT_RETURN_IF_ERROR(status);
 #ifdef DQ_INT4_IN_PACKING
-  ::block_size_ = this->block_size_;
-  ::nbits_ = this->nbits_;
-#else
+  G_block_size_ = this->block_size_;
+  G_nbits_ = this->nbits_;
+#endif
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
   DequantizeBlockwise<float>(tmp_b_data_ptr.get(),
                              b_data,
@@ -67,7 +72,6 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
                              static_cast<int32_t>(N_),
                              static_cast<int32_t>(K_),
                              thread_pool);
-#endif
 
 #if 0  // for debug
   auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
@@ -93,7 +97,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
-#if 1
+#if 0
   const int64_t n_blocks_per_col = (K + block_size_ - 1) / block_size_;
   const int64_t blob_size = block_size_ / 8 * nbits_;
   const size_t ldb = static_cast<size_t>(n_blocks_per_col * blob_size);
@@ -101,6 +105,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 #else
   const size_t ldb = helper.Ldb(true);
 #endif
+  G_K = K;
 
   // TODO: implement with native kernel
   std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
@@ -110,17 +115,26 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     data[i].lda = lda;
 #ifdef DQ_INT4_IN_PACKING
     data[i].B = b_data + helper.RightOffsets()[i];
+    data[i].ldb = -1;
 #else
     data[i].B = tmp_b_data_ptr.get() + helper.RightOffsets()[i];
-#endif
     data[i].ldb = ldb;
+#endif
     data[i].C = y_data + helper.OutputOffsets()[i];
     data[i].ldc = N;
     data[i].alpha = 1.f;
     data[i].beta = 0.0f;
   }
   const char* env_p = std::getenv("PAR");
-  //std::cerr << "data[i].B: " << (void*)(data[0].B) << std::endl;
+#if 0
+  std::cerr << "data[i].B: " << (void*)(data[0].B) << std::endl;
+  for (int y = 0; y < N; ++y) {
+      for (int x = 0; x < K; ++x) {
+          std::cerr << "data[0].B[" << y << "][" << x << "]" << (tmp_b_data_ptr.get() + helper.RightOffsets()[0])[y * ldb + x] << "\n";
+      }
+  }
+#endif
+
   MlasGemmBatch(CblasNoTrans, CblasTrans,
                 M, N, K, data.data(), max_len, env_p ? thread_pool : nullptr);
 
