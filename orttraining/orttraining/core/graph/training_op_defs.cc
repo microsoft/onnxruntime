@@ -3938,6 +3938,15 @@ Return true if all elements are true and false otherwise.
           "comment",
           "comment only for debugging purposes.",
           AttributeProto::STRING, false)
+      .Attr(
+          "safe_run_mode",
+          "Indicate if the function is running in safe mode or not. "
+          "Safe mode support common use cases of PyTorch ctx for example, save for backward, mark as dirty,"
+          "or materialize gradient. In this mode, inpace operation is detected on the fly. "
+          "Unsafe mode is used to run the function faster not considering the above ctx usage."
+          "Additional requirement running in this mode: provide correct input alis map.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -4096,6 +4105,15 @@ Return true if all elements are true and false otherwise.
           "comment only for debugging purposes.",
           AttributeProto::STRING,
           false)
+      .Attr(
+          "safe_run_mode",
+          "Indicate if the function is running in safe mode or not. "
+          "Safe mode support common use cases of PyTorch ctx for example, save for backward, mark as dirty,"
+          "or materialize gradient. In this mode, inpace operation is detected on the fly. "
+          "Unsafe mode is used to run the function faster not considering the above ctx usage."
+          "Additional requirement running in this mode: provide correct input alis map.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
