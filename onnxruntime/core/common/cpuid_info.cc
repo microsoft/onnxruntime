@@ -22,14 +22,6 @@
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
 
-#ifndef HWCAP2_I8MM
-#define HWCAP2_I8MM (1 << 13)
-#endif
-
-#ifndef HWCAP2_SVEI8MM
-#define HWCAP2_SVEI8MM (1 << 9)
-#endif
-
 #endif  // ARM
 
 #endif  // Linux
@@ -146,9 +138,6 @@ void CPUIDInfo::ArmLinuxInit() {
   is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
   has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
   has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
-  has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
-  has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
-
   const uint32_t core_cnt = cpuinfo_get_cores_count();
   core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
   is_armv8_narrow_ld_.resize(core_cnt, false);
@@ -173,10 +162,6 @@ void CPUIDInfo::ArmLinuxInit() {
   pytorch_cpuinfo_init_ = false;
   has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
   has_fp16_ |= has_arm_neon_dot_;
-
-  has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
-  has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
-
 #endif
 }
 
@@ -271,9 +256,6 @@ void CPUIDInfo::ArmWindowsInit() {
 
   has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
   has_fp16_ |= has_arm_neon_dot_;
-  /* TODO: implement them when hw+sw is available for testing these features */
-  has_arm_neon_i8mm_ = false;
-  has_arm_sve_i8mm_ = false;
 }
 
 #endif /* (arm or arm64) and windows */
