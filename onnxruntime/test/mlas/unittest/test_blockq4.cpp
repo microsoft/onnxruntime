@@ -44,9 +44,9 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
     uint8_t* elements = InputElements.GetBuffer(((rows + 1) / 2) * columns, true);
 
     int v = 7;
-    for (size_t c = 0; c < columns; c++) {
-      for (size_t r = 0; r < rows; r += 2) {
-		size_t idx = c * ((rows + 1) / 2) + r / 2;
+    for (int c = 0; c < columns; c++) {
+      for (int r = 0; r < rows; r += 2) {
+		int idx = c * ((rows + 1) / 2) + r / 2;
         uint8_t v0 = static_cast<uint8_t>(v);
         v = (v + 5) % 16;
         if (v == 11 || v == 7 || v == 3) {
@@ -69,9 +69,9 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
     float* scales = InputScales.GetBuffer(meta_rows * meta_cols);
     uint8_t* zp = symmetric ? nullptr : InputOffsets.GetBuffer(((meta_rows + 1) / 2) * meta_cols, true);
     if (zp) {
-      for (size_t c = 0; c < meta_cols; c++) {
-        for (size_t r = 0; r < meta_rows; r += 2) {
-          size_t idx = c * ((meta_rows + 1) / 2) + r / 2;
+      for (int c = 0; c < meta_cols; c++) {
+        for (int r = 0; r < meta_rows; r += 2) {
+          int idx = c * ((meta_rows + 1) / 2) + r / 2;
           uint8_t v0 = static_cast<uint8_t>(v);
           v = (v + 5) % 16;
           if (v == 11 || v == 7 || v == 3) {
@@ -104,26 +104,26 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
 
     MlasQuantizeBlockwise(o_elements, o_scales, o_zp, transposed, block_size, columnwise, rows, columns, columns, threadpool_ptr);
 
-    for (size_t c = 0; c < columns; c++) {
-      for (size_t r = 0; r < rows; r+=2) {
-        size_t idx = c * ((rows + 1) / 2) + r / 2;
+    for (int c = 0; c < columns; c++) {
+      for (int r = 0; r < rows; r+=2) {
+        int idx = c * ((rows + 1) / 2) + r / 2;
         ASSERT_EQ(o_elements[idx], elements[idx]) << ", index=" << idx << ", [" << rows << "x"
                                                   << columns << "] block: " << block_size;
       }
 	}
 
-    for (size_t c = 0; c < meta_cols; c++) {
-      for (size_t r = 0; r < meta_rows; r++) {
-        size_t idx = c * meta_rows + r;
+    for (int c = 0; c < meta_cols; c++) {
+      for (int r = 0; r < meta_rows; r++) {
+        int idx = c * meta_rows + r;
         ASSERT_EQ(o_scales[idx], scales[idx]) << ", index=" << idx << ", [" << rows << "x"
                                               << columns << "] block: " << block_size;
       }
     }
 
     if (symmetric) return;
-    for (size_t c = 0; c < meta_cols; c++) {
-        for (size_t r = 0; r < meta_rows; r += 2) {
-		  size_t idx = c * ((meta_rows + 1) / 2) + r / 2;
+    for (int c = 0; c < meta_cols; c++) {
+        for (int r = 0; r < meta_rows; r += 2) {
+		  int idx = c * ((meta_rows + 1) / 2) + r / 2;
           ASSERT_EQ(o_zp[idx], zp[idx]) << ", index=" << idx << ", [" << rows << "x"
                                         << columns << "] block: " << block_size;
 	  }
