@@ -133,7 +133,8 @@ Status LaunchDynamicTimeWarping(
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(&result_len, result_len_device_buf, sizeof(size_t), cudaMemcpyDeviceToHost, stream)));
-  return CUDA_CALL(cudaGetLastError());
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+  return CUDA_CALL(cudaStreamSynchronize(stream));
 }
 
 }  // namespace cuda
