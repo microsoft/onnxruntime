@@ -277,7 +277,7 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
   auto selector2 = std::make_unique<selectors::ConvActivationSelector>();
-  registry.RegisterSelectorAndAction("MSInternalNHWCConvAct", {{"Conv", {1, 11}}},
+  registry.RegisterSelectorAndAction("MSInternalNHWCConvAct", {{"Conv", {1, 11}}, {"ConvTranspose", {1, 11}}},
                                      std::move(selector2), std::move(action2), kMSInternalNHWCDomain);
 #else
   registry.RegisterAction(name, std::move(action));
@@ -294,7 +294,7 @@ void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry) {
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}, {"ConvTranspose", {1, 11}}},
                                      std::move(selector), std::move(action));
   auto selector2 = std::make_unique<selectors::ConvAddRelu>();
-  registry.RegisterSelectorAndAction("MSInternalNHWCDomainConvAddRelu", {{"Conv", {1, 11}}},
+  registry.RegisterSelectorAndAction("MSInternalNHWCDomainConvAddRelu", {{"Conv", {1, 11}}, {"ConvTranspose", {1, 11}}},
                                      std::move(selector2), std::move(action2), kMSInternalNHWCDomain);
 #else
   registry.RegisterAction(name, std::move(action));
