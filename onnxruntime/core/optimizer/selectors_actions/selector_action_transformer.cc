@@ -33,7 +33,7 @@ void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,
   const Entry& entry = name_to_entry_it->second;
   for (const auto& [op_type, versions] : entry.ops_and_versions) {
     ORT_UNUSED_PARAMETER(versions);
-    op_type_to_entry_.emplace(op_type + domain, &entry);
+    op_type_to_entry_.emplace(op_type + ":" + domain, &entry);
   }
 }
 
@@ -60,7 +60,7 @@ const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::s
 #if !defined(ORT_MINIMAL_BUILD)
 auto SelectorActionRegistry::LookUpByOpTypeAndDomain(const std::string& op_type, const std::string& domain) const
     -> std::vector<gsl::not_null<const Entry*>> {
-  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(op_type + domain);
+  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(op_type + ":" + domain);
   std::vector<gsl::not_null<const Entry*>> result{};
   result.reserve(std::distance(range_begin, range_end));
   std::transform(range_begin, range_end, std::back_inserter(result),
