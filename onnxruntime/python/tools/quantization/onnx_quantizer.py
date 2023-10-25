@@ -1042,7 +1042,7 @@ class ONNXQuantizer:
 
         scale_dtype = weight.data_type
         scale_initializer = onnx.helper.make_tensor(scale_name, scale_dtype, [], scale.reshape((-1,)).tolist())
-        zero_initializer = onnx.helper.make_tensor(zp_name, qType, [], [zero_point])
+        zero_initializer = onnx.helper.make_tensor(zp_name, qType, [], zero_point.reshape((-1,)).tolist())
         self.model.initializer_extend([scale_initializer, zero_initializer])
 
         if not keep_float_weight:

@@ -26,14 +26,16 @@ class TestOpMatMul(unittest.TestCase):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-    def construct_model_matmul(self, output_model_path, add_clip=True, tensor_type=onnx.TensorProto.FLOAT):
+    def construct_model_matmul(
+        self, output_model_path, add_clip=True, tensor_type=onnx.TensorProto.FLOAT, opset=18, ir_version=8
+    ):
         #      (input)
         #         |
-        #        Gemm
+        #        MatMul
         #         |
         #        Clip
         #         |
-        #        Gemm
+        #        MatMul
         #         |
         #      (output)
         dtype = np.float32 if tensor_type == onnx.TensorProto.FLOAT else np.float16
@@ -89,8 +91,8 @@ class TestOpMatMul(unittest.TestCase):
             [output_tensor],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
-        model.ir_version = 8  # use stable onnx ir version
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+        model.ir_version = ir_version
 
         onnx.save(model, output_model_path)
 

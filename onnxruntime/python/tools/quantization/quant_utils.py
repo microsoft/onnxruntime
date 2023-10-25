@@ -222,12 +222,13 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
         rmin = -absmax
         rmax = +absmax
 
-    scale = numpy.array(numpy.array(rmax - rmin) / numpy.array(qmax - qmin, dtype=rmax.dtype))
-    if scale < numpy.finfo(scale.dtype).tiny:
-        scale = numpy.array(1.0, dtype=scale.dtype)
+    scale = numpy.array(numpy.array(rmax - rmin, dtype=numpy.float64) / numpy.array(qmax - qmin, dtype=numpy.float64))
+    if scale < numpy.finfo(rmax.dtype).tiny:
+        scale = numpy.array(1.0, dtype=rmax.dtype)
         zero_point = numpy.array(0, dtype=numpy.int32)
     else:
         zero_point = numpy.array(numpy.round(qmin - rmin / scale), dtype=numpy.int32)
+        scale = scale.astype(rmax.dtype)
 
     return [zero_point, scale]
 
@@ -255,7 +256,7 @@ def compute_scale_zp_float8(element_type, std):
         FLOAT8_DISTRIBUTIONS[element_type] = values
 
     std_f8 = numpy.std(FLOAT8_DISTRIBUTIONS[element_type])
-    zero = 0
+    zero = numpy.array(0, dtype=std.dtype)
     scale = numpy.array(std / std_f8, dtype=std.dtype)
     return [zero, scale]
 
