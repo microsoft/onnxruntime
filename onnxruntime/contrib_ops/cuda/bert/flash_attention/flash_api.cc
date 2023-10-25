@@ -189,6 +189,26 @@ int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_hea
   return 1;
 }
 
+// Returns (num_splits, softmax_lse_accum bytes, out_accum bytes)
+std::tuple<int, int, int> get_num_splits_and_buffer_sizes(int batch_size, int seqlen_q, int seqlen_k, int num_heads,
+                                                          int head_size, int num_SMs) {
+  int max_splits = 128;
+  // split kv buffers
+  int num_splits = num_splits_heuristic(batch_size, seqlen_q, seqlen_k, num_heads, head_size,
+                                                            num_SMs, max_splits);
+  if (num_splits > 1) {
+    // softmax_lse_accum buffer
+    int softmax_lse_accum_bytes = get_softmax_lse_accum_size(num_splits, batch_size, num_heads, seqlen_q);
+    // out_accum buffer
+    auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
+    const int head_size_rounded = round_multiple(head_size, 32);
+    int out_accum_bytes = get_out_accum_size(num_splits, batch_size, num_heads, seqlen_q, head_size_rounded);
+    return {num_splits, softmax_lse_accum_bytes, out_accum_bytes};
+  } else {
+    return {0, 0, 0};
+  }
+}
+
 Status mha_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
                void* q,            // batch_size x seqlen_q x num_heads x head_size

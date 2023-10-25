@@ -31,6 +31,7 @@
 #if USE_FLASH_ATTENTION
 
 #include "core/providers/cuda/cuda_common.h"
+#include <tuple>
 
 namespace onnxruntime {
 namespace flash {
@@ -99,10 +100,9 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
 );
 
 size_t get_softmax_lse_size(int max_seqlen_q, int batch_size, int num_heads);
-size_t get_softmax_lse_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q);
-size_t get_out_accum_size(int num_splits, int batch_size, int num_heads, int seqlen_q, int head_size_rounded);
 
-int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_heads, int head_size, int num_SMs, int max_splits);
+std::tuple<int, int, int> get_num_splits_and_buffer_sizes(int batch_size, int seqlen_q, int seqlen_k, int num_heads,
+                                                          int head_size, int num_SMs);
 
 bool is_supported(const cudaDeviceProp& dprops, int head_size, int num_heads, int num_heads_k);
 

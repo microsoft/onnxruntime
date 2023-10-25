@@ -157,20 +157,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t softmax_lse_accum_bytes = 0;
   size_t out_accum_bytes = 0;
   if (use_flash_attention) {
-    // split kv buffers
-    parameters.num_splits = onnxruntime::flash::num_splits_heuristic(
+    using namespace std;
+    auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
         parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
-        parameters.head_size, device_prop.multiProcessorCount, 128);
-    if (parameters.num_splits > 1) {
-      // softmax_lse_accum buffer
-      softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(
-          parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length);
-      // out_accum buffer
-      auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
-      const int head_size_rounded = round_multiple(parameters.head_size, 32);
-      out_accum_bytes = onnxruntime::flash::get_out_accum_size(
-          parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, head_size_rounded);
-    }
+        parameters.head_size, device_prop.multiProcessorCount);
+    parameters.num_splits = num_splits;
+    softmax_lse_accum_bytes = slse_accum_bytes;
+    out_accum_bytes = o_accum_bytes;
   }
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
   auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
