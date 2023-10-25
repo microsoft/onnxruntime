@@ -10,116 +10,37 @@
 # - has_overflow_partitioned_grads_serial : https://github.com/microsoft/DeepSpeed/blob/d8e9ef6f99e27bb95e10bd146d145b3372b4cfda/deepspeed/runtime/zero/stage2.py#L1799
 # --------------------------------------------------------------------------
 
+from __future__ import annotations
+
 import inspect
 import types
 import warnings
-from typing import Dict, List
 
 import torch
 from numpy import inf
 from packaging.version import Version
 
+from ._ds_code_store import Stage1And2_DeepSpeedZeroOptimizer_0_9_2
 from ._modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads
 from ._multi_tensor_apply import MultiTensorApply
 
 multi_tensor_applier = MultiTensorApply(2048 * 32)
 
 
-def _get_sources(function) -> str:
+def _get_normalized_str(function) -> str:
     return inspect.getsource(function)
 
 
-def _compare_str_list(src, dest):
-    return "".join(src) == "".join(dest)
+def _dynamic_checks(cur_ds_version: Version, optimizer) -> bool:
+    _functions_to_override = ["has_overflow_serial", "get_grad_norm_direct", "has_overflow_partitioned_grads_serial"]
 
+    _version_to_source_code_map = {"0.9.2": Stage1And2_DeepSpeedZeroOptimizer_0_9_2}
 
-def _get_normalized_str_list(source_str):
-    lines = source_str.split("\n")
-    return lines
-
-
-_DS_VERSION_TO_SOURCES_MAP: Dict[str, Dict[str, List[str]]] = {
-    "0.9.2": {
-        "has_overflow_serial": [
-            "    def has_overflow_serial(self, params, is_grad_list=False):",
-            "        for p in params:",
-            "            if p.grad is not None and self._has_inf_or_nan(p.grad.data):",
-            "                return True",
-            "",
-            "        return False",
-            "",
-        ],
-        "get_grad_norm_direct": [
-            "    def get_grad_norm_direct(self, gradients, params, norm_type=2):",
-            '        """Clips gradient norm of an iterable of parameters.',
-            "",
-            "        This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and",
-            "        added functionality to handle model parallel parameters. Note that",
-            "        the gradients are modified in place.",
-            "",
-            "        Arguments:",
-            "            parameters (Iterable[Tensor] or Tensor): an iterable of Tensors or a",
-            "                single Tensor that will have gradients normalized",
-            "            max_norm (float or int): max norm of the gradients",
-            "            norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for",
-            "                infinity norm.",
-            "",
-            "        Returns:",
-            "            Total norm of the parameters (viewed as a single vector).",
-            '        """',
-            "        norm_type = float(norm_type)",
-            "        if norm_type == inf:",
-            "            total_norm = max(g.data.abs().max() for g in gradients)",
-            "            total_norm_cuda = get_accelerator().FloatTensor([float(total_norm)])",
-            "            dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.MAX, group=self.dp_process_group)",
-            "",
-            "            # Take max across all GPUs.",
-            "            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)",
-            "            total_norm = total_norm_cuda[0].item()",
-            "        else:",
-            "            total_norm = 0.0",
-            "            # if dist.get_rank() == 0:",
-            '            #    logger.info(f"Total Norm beginning {total_norm}")',
-            "            for g, p in zip(gradients, params):",
-            "                # Pipeline parallelism may replicate parameters. Avoid multi-counting.",
-            "                if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:",
-            "                    continue",
-            "                if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):",
-            "                    param_norm = g.data.double().norm(2)",
-            "                    total_norm += param_norm.item()**2",
-            "            # Sum across all model parallel GPUs.",
-            "            total_norm_cuda = get_accelerator().FloatTensor([float(total_norm)])",
-            "            dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.SUM, group=self.dp_process_group)",
-            "",
-            "            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)",
-            "",
-            "            total_norm = total_norm_cuda[0].item()**(1. / norm_type)",
-            "",
-            "        if total_norm == float('inf') or total_norm == -float('inf') or total_norm != total_norm:",
-            "            total_norm = -1",
-            "",
-            "        return total_norm",
-            "",
-        ],
-        "has_overflow_partitioned_grads_serial": [
-            "    def has_overflow_partitioned_grads_serial(self):",
-            "        for i in range(len(self.bit16_groups)):",
-            "            for j, grad in enumerate(self.averaged_gradients[i]):",
-            "                if grad is not None and self._has_inf_or_nan(grad.data, j):",
-            "                    return True",
-            "        return False",
-            "",
-        ],
-    }
-}
-
-
-def _dynamic_checks(cur_ds_version, optimizer):
     # Try to find the biggest version that is smaller than or equal to cur_ds_version.
     # then compare the source code (in case the found version is the latest version supported);
-    # If current code did not match the found version, return False, and raise a warning to
+    # If current code does not match the found version, return False, and raise a warning to
     # add the new version to the list.
-    versions = [Version(v) for v in _DS_VERSION_TO_SOURCES_MAP]
+    versions = [Version(v) for v in _version_to_source_code_map]
     sorted_versions = sorted(versions, reverse=True)
     version_to_compare = None
     for sv in sorted_versions:
@@ -135,24 +56,25 @@ def _dynamic_checks(cur_ds_version, optimizer):
         )
         return False
 
+    v_optimizer_cls = _version_to_source_code_map[str(version_to_compare)]
     all_match = True
-    for func_name, normalized_str in _DS_VERSION_TO_SOURCES_MAP[str(version_to_compare)].items():
+    for func_name in _functions_to_override:
         if not getattr(optimizer, func_name):
             warnings.warn(
                 f"DeepSpeed function {func_name} is not found in optimizer. Skip modifying optimizer.", UserWarning
             )
             all_match = False
-        cur_code_str = _get_sources(getattr(optimizer, func_name))
-        cur_normalized_str = _get_normalized_str_list(cur_code_str)
-        if not _compare_str_list(cur_normalized_str, normalized_str):
+        cur_code_str = _get_normalized_str(getattr(optimizer, func_name))
+        v_code_str = _get_normalized_str(getattr(v_optimizer_cls, func_name))
+        if cur_code_str != v_code_str:
             warnings.warn(
-                f"DeepSpeed function {func_name} has changed after DeepSpeed version {version_to_compare}. "
-                f"Please update the sources of version {cur_ds_version} in _DS_VERSION_TO_SOURCES_MAP.\n"
+                f"DeepSpeed function {func_name} has changed after version {version_to_compare}. "
+                f"Please append new version {cur_ds_version} in _version_to_source_code_map and _ds_code_store.py.\n"
                 f"---[{func_name}] Old Source Code Start----\n"
-                f"{normalized_str}\n"
+                f"{v_code_str}\n"
                 f"---{func_name} Old Source Code End----\n"
                 f"---[{func_name}] New Source Code Start----\n"
-                f"{cur_normalized_str}\n"
+                f"{cur_code_str}\n"
                 f"---{func_name} New Source Code End----",
                 UserWarning,
             )
@@ -168,25 +90,32 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
     def can_be_modified(self):
         import deepspeed
 
+        # Note 1:
         # This modifier relies on the implementation of has_overflow_serial, get_grad_norm_direct,
         # and has_overflow_partitioned_grads_serial
         # in https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/runtime/zero/stage_1_and_2.py.
-        # Everytime if we want to update this version supporting list to a newer version,
-        # we need to check if the implementation of these functions are changed.
-        # An easy way to check is to check the history of this file, if there is no change during the update,
+        # The minimum supported version is 0.4.0, and the maximum supported version is 0.9.1. All versions in between
+        # are manually checked to make sure the implementation of these functions are not changed.
+        # The way we did the check is to check the history of this file, if there is no change during the update,
         # it's safe to update the version supporting list. Otherwise, or the file is moved or renamed,
         # we need to check the implementation of these functions in detail.
+        #
+        # Note 2:
+        # Since version 0.9.2, we added dynamic source code check, by comparing installed version of code with
+        # the source code in our code store. If the source code is changed, we will raise a warning to ask user
+        # to add the new version to the code store. Otherwise, we will override the functions.
+
         ds_version = Version(deepspeed.__version__)
         if ds_version < Version("0.4.0"):
             warnings.warn(
-                "Skip modifying optimizer because of unsupported DeepSpeed version {}, "
-                "minimum supported version: 0.4.0, current version".format(deepspeed.__version__),
+                f"Skip modifying optimizer because of unsupported DeepSpeed version {ds_version}, "
+                "minimum supported version: 0.4.0, current version",
                 UserWarning,
             )
             return False
         if ds_version > Version("0.9.1") and not _dynamic_checks(ds_version, self._optimizer):
             warnings.warn(
-                "Skip modifying optimizer because of unsupported DeepSpeed version {}.".format(deepspeed.__version__),
+                f"Skip modifying optimizer because of unsupported DeepSpeed version {ds_version}.",
                 UserWarning,
             )
             return False
