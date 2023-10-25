@@ -706,6 +706,8 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
       def_builder.SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
     } else if (op->GetStartVersion) {
       def_builder.SinceVersion(op->GetStartVersion(op));
+    } else {
+      def_builder.SinceVersion(1);
     }
   } else {
     def_builder.SinceVersion(1);
@@ -830,10 +832,8 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     schema.TypeConstraint(output_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
   }
   schema.SetDomain(domain);
-  if (op->version >= min_ort_version_with_custom_version) {
-    if (op->GetStartVersion) {
+  if (op->version >= min_ort_version_with_custom_version && op->GetStartVersion) {
       schema.SinceVersion(op->GetStartVersion(op));
-    }
   } else {
     schema.SinceVersion(1);
   }
