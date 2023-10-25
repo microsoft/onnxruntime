@@ -25,6 +25,7 @@ Do not modify directly.*
 |||13|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||[7, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |Affine|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
+|AffineGrid|*in* theta:**T1**<br> *in* size:**T2**<br> *out* grid:**T1**|20+|**T1** = tensor(double), tensor(float)<br/> **T2** = tensor(int64)|
 |And|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|7+|**T** = tensor(bool)<br/> **T1** = tensor(bool)|
 |ArgMax|*in* data:**T**<br> *out* reduced:**tensor(int64)**|13+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int8), tensor(uint8)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int8), tensor(uint8)|
