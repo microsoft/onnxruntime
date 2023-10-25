@@ -96,7 +96,12 @@ Status DequantizeBnb4(
     cudaStream_t stream) {
   int tile_size = 1024;
   kDequantizeBlockwise<T, 512, 64, 8><<<(numel + tile_size - 1) / tile_size, 64, 0, stream>>>(
-      quant_map, output, quant_data, absmax, block_size / 2, numel);
+      quant_map,
+      output,
+      quant_data,
+      absmax,
+      block_size / 2,
+      numel);
 
   return Status::OK();
 }
