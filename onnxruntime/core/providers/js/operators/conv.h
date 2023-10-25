@@ -9,10 +9,10 @@
 namespace onnxruntime {
 namespace js {
 
-template <bool is_channels_last, bool is_fused_conv = false>
-class Conv : public JsKernel {
+
+class ConvBase : public JsKernel {
  public:
-  Conv(const OpKernelInfo& info) : JsKernel(info), conv_attrs_(info), w_is_const_(false) {
+  ConvBase(const OpKernelInfo& info, bool is_channel_last, bool is_fused_conv) : JsKernel(info), conv_attrs_(info), w_is_const_(false) {
     TensorShapeVector kernel_shape;
     const size_t pads_vec_size = conv_attrs_.pads.size() == 0 ? 4 : conv_attrs_.pads.size();
     std::vector<int32_t> local_pads(pads_vec_size, 0);
@@ -114,6 +114,12 @@ class Conv : public JsKernel {
   bool w_is_const_;
   std::vector<float> activation_params_;
   // Tensor w_transposed_;
+};
+template <bool is_channels_last, bool is_fused_conv = false>
+class Conv : public ConvBase {
+public:
+   Conv(const OpKernelInfo& info) : ConvBase(info, is_channels_last, is_fused_conv) {
+   }
 };
 
 }  // namespace js
