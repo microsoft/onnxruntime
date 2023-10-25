@@ -214,7 +214,6 @@ Status mha_fwd(const cudaDeviceProp& dprops,
   const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
 
   Flash_fwd_params params;
-  params.dprops = &dprops;
   set_params_fprop(params,
                    batch_size,
                    seqlen_q, seqlen_k,
@@ -229,7 +228,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    softmax_scale,
                    is_causal,
                    kv_bsnh);
-
+  params.dprops = &dprops;
   params.knew_ptr = nullptr;
   params.vnew_ptr = nullptr;
   params.knew_batch_stride = 0;
@@ -275,7 +274,6 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   const int seqlen_k_rounded = round_multiple(max_seqlen_k, 128);
 
   Flash_fwd_params params;
-  params.dprops = &dprops;
   set_params_fprop(params,
                    batch_size,
                    max_seqlen_q, max_seqlen_k,
@@ -289,6 +287,12 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    softmax_lse,
                    softmax_scale,
                    is_causal);
+  params.dprops = &dprops;
+  params.num_splits = 0;
+  params.softmax_lseaccum_ptr = nullptr;
+  params.oaccum_ptr = nullptr;
+  params.knew_ptr = nullptr;
+  params.vnew_ptr = nullptr;
   run_mha_fwd(params, stream);
   return Status::OK();
 }
@@ -335,7 +339,6 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
   const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
 
   Flash_fwd_params params;
-  params.dprops = &dprops;
   set_params_fprop(params,
                    batch_size,
                    seqlen_q, seqlen_k,
@@ -350,6 +353,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                    softmax_scale,
                    is_causal,
                    past_bsnh);
+  params.dprops = &dprops;
 
   if (k != nullptr && v != nullptr) {
     params.seqlen_knew = seqlen_k_new;
