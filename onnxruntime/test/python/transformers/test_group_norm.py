@@ -96,7 +96,7 @@ def group_norm_ort(
 
     if measure_latency:
         latency_list = []
-        for _ in range(100):
+        for _ in range(10000):
             start_time = perf_counter()
             session.infer(ort_inputs)
             end_time = perf_counter()
@@ -252,8 +252,9 @@ def run_odd_channels(fp16, measure_latency=True):
 
 
 def run_performance(fp16):
-    for h, w in get_latent_height_width():
-        for c in [1152, 2304, 2880]:
+    # Run perf test to tune parameters for given number of channels.
+    for h, w in get_latent_height_width()[2:3]:
+        for c in [2304]:
             config = GroupNormConfig(2, h, w, c, fp16=fp16, num_groups=32)
             run_parity(config, measure_latency=True)
 
