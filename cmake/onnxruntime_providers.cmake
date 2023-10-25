@@ -199,6 +199,10 @@ if (onnxruntime_USE_XNNPACK)
   include(onnxruntime_providers_xnnpack.cmake)
 endif()
 
+if (onnxruntime_USE_INTREE)
+  include(onnxruntime_providers_intree.cmake)
+endif()
+
 if (onnxruntime_USE_CANN)
   include(onnxruntime_providers_cann.cmake)
 endif()
