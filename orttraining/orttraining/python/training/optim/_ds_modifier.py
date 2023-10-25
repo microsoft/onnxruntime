@@ -94,8 +94,8 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         # This modifier relies on the implementation of has_overflow_serial, get_grad_norm_direct,
         # and has_overflow_partitioned_grads_serial
         # in https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/runtime/zero/stage_1_and_2.py.
-        # The minimum supported version is 0.4.0, and the maximum supported version is 0.9.1. All versions in between
-        # are manually checked to make sure the implementation of these functions are not changed.
+        # The minimum version supported is 0.4.0, all versions in between [0.4.0, 0.9.1]
+        # are manually checked to make sure the implementation of these functions are "logically" not changed.
         # The way we did the check is to check the history of this file, if there is no change during the update,
         # it's safe to update the version supporting list. Otherwise, or the file is moved or renamed,
         # we need to check the implementation of these functions in detail.
