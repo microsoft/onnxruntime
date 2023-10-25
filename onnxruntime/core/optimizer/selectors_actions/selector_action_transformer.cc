@@ -50,8 +50,8 @@ void SelectorActionRegistry::RegisterAction(const std::string& name,
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::string& name, const std::string& domain) const {
-  if (const auto it = name_to_entry_.find(name + domain); it != name_to_entry_.end()) {
+const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::string& name) const {
+  if (const auto it = name_to_entry_.find(name); it != name_to_entry_.end()) {
     return &it->second;
   }
   return nullptr;

@@ -94,7 +94,7 @@ class SelectorActionRegistry {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // return registered Entry or nullptr if not found
-  const Entry* LookUp(const std::string& name, const std::string& domain = kOnnxDomain) const;
+  const Entry* LookUp(const std::string& name) const;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // return registered Entry or nullptr if not found
