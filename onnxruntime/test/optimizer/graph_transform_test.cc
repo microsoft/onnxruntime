@@ -11,6 +11,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "onnx/defs/parser.h"
+#include "onnx/defs/printer.h"
 
 #include "asserts.h"
 #include "core/common/span_utils.h"
@@ -1022,12 +1023,22 @@ TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
 }
 
 TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInlining) {
+  // This test covers the following necessary cases:
+  // The input refers to the explicit or implicit inputs of If node.
+  // The output of the node is the output of the subgraph being inlined.
+  // Constant nodes and initializers are promoted to the outer graph.
+  // The initializer or a constant node is the output of the subgraph being inlined.
+  // Nested subgraphs names are renamed as appropriate.
+  // In all If node is constant folded twice. The last If node is not constant
+  // folded because the input is indirectly dependent on the size of the input.
+  // XXX: Can we constant fold Size() if the graph input shape is fixed?
+
   const char* code = R"(
   <
   ir_version: 8,
   opset_import: [ "" : 16, "local" : 1 ]
   >
-  agraph (float[N] x, float[Y] x1) => (float[N] y)
+  agraph (float[128] x, float[128] x1) => (float[N] y)
   {
       y = local.aten_gather <dim: int = 1, sparse_grad: int = 0> (x, x1)
   }
@@ -1076,13 +1087,60 @@ TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInlining) {
   ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
   ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
 
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), p_model, nullptr, *logger_));
+  {
+    // Test that the model is loadable and check the function call node.
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(std::move(model_proto), p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["local.aten_gather"], 1);
+    model_proto = p_model->ToProto();
+  }
 
-  //std::string serialized_model;
-  //const bool serialization_status = model.SerializeToString(&serialized_model);
-  //ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
+  std::string serialized_model;
+  const bool serialization_status = model_proto.SerializeToString(&serialized_model);
+  ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
 
+  // AOT inlining is necessary in this case, so the If nodes within the function
+  // are brought out to the outer scope. So we load this into a session object.
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  std::stringstream sstr(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+
+  //const auto resulting_model_proto = session_object.GetModel().ToProto();
+  //std::string printed_model = ONNX_NAMESPACE::ProtoToString(resulting_model_proto);
+  //ASSERT_FALSE(printed_model.empty());
+  //std::cout << printed_model << std::endl;
+
+  // This is the resulting model proto.
+  // The remaining If node is not constant foldable because Size() does not constant fold
+  // although the shape is fixed.
+  /*
+    <
+       ir_version: 8,
+       opset_import: ["" : 16, "local" : 1, "com.microsoft.nchwc" : 1, "ai.onnx.ml" : 4, "com.ms.internal.nhwc" : 20, "ai.onnx.training" : 1, "ai.onnx.preview.training" : 1, "com.microsoft" : 1, "com.microsoft.experimental" : 1, "org.pytorch.aten" : 1]
+    >
+    agraph (float[128] x, float[128] x1) => (float[128] y) {
+       _if_elseGraph_10__inlfunc_aten_gather_tmp_9 = Size (x1)
+       _if_elseGraph_10__inlfunc_aten_gather_cond_11 = Equal (_if_elseGraph_10__inlfunc_aten_gather_tmp_9, ortshared_7_0_1_0_token_10)
+       y = If (_if_elseGraph_10__inlfunc_aten_gather_cond_11) <then_branch: graph = thenGraph_15 () => (float[128] _inlfunc_aten_gather_result_12) {
+          _inlfunc_aten_gather_result_12 = Cast <to: int = 1> (x1)
+       }, else_branch: graph = elseGraph_15 () => (float[128] _inlfunc_aten_gather_result_14) {
+          _inlfunc_aten_gather_index_13 = Cast <to: int = 7> (x1)
+          _inlfunc_aten_gather_result_14 = GatherElements <axis: int = 1> (x, _inlfunc_aten_gather_index_13)
+       }>
+    }
+  */
+
+  auto& graph = session_object.GetModel().MainGraph();
+  auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["local.aten_gather"], 0);
+  ASSERT_EQ(op_to_count["If"], 1);
 }
 
 // Check transformations in the case of a subgraph with constant inputs.

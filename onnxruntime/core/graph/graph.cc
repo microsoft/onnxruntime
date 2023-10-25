@@ -4092,14 +4092,16 @@ static void RenameNodeAttributesSubgraphDependentNames(const InlinedHashMap<std:
 
 Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
   std::string unique_id{if_node.Name()};
-  unique_id.append("/if_subgraph/").append(graph_to_inline.Name());
+  unique_id.append("_if_").append(graph_to_inline.Name());
 
   unique_id = GenerateNodeName(unique_id);
 
   auto make_unique = [&unique_id](const std::string& name) {
-    return unique_id + '/' + name;
+    return unique_id + '_' + name;
   };
 
+  // Check if the name is an input or implicit input.
+  // These are not renamed.
   InlinedHashSet<std::string_view> if_all_inputs;
   const auto if_inputs = if_node.InputDefs();
   const auto if_implicit_inputs = if_node.ImplicitInputDefs();
@@ -4118,8 +4120,8 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
   // we also use this to process any subgraphs in the graph we are inlining
   InlinedHashMap<std::string, std::string> name_mapping;
 
-  // We are going to map the inputs of the graph to inline to the inputs of the If node
-  // assuming they are in the same order
+  // We are going to map the outputs of the graph to inline to the outputs of the If node.
+  // They are assumed to be in the same order.
   const auto node_output_defs = if_node.OutputDefs();
   const auto graph_output_defs = graph_to_inline.GetOutputs();
   ORT_ENFORCE(node_output_defs.size() >= graph_output_defs.size());
@@ -4128,7 +4130,7 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
   }
 
   // Process constant nodes and initializers first
-  // to create defs from them and make renaming easier
+  // to create defs from them to retain the type, and make renaming easier
   for (const auto& node : graph_to_inline.Nodes()) {
     if (node.OpType() == kConstant) {
       // Copy constant nodes _value to name_to_initial_tensor_
@@ -4181,6 +4183,9 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
 #endif
   }
 
+  // We want to make sure we get nodes in topological order
+  // because Constant folding may cause the nodes appear in
+  // a different order.
   GraphViewer graph(graph_to_inline);
   for (const auto node_idx : graph.GetNodesInTopologicalOrder()) {
     const auto* node = graph_to_inline.GetNode(node_idx);
@@ -4196,17 +4201,17 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
       if (if_all_inputs.count(input_name) > 0) {
         auto* node_arg = GetNodeArgIncludingParentGraphs(input_name);
         ORT_ENFORCE(node_arg != nullptr,
-                    "Implicit input expected to have existing node_arg: ", input_name);
+                    "Implicit or explicit input is expected to have existing node_arg: ", input_name);
         new_node_input_defs.push_back(node_arg);
       } else {
         auto hit = name_mapping.find(input_name);
         if (hit != name_mapping.cend()) {
+          // This is other node output, constant node or initializer that was renamed.
           auto* node_arg = GetNodeArg(hit->second);
           ORT_ENFORCE(node_arg != nullptr,
                       "Expecting to exist node_arg: ", input_name);
           new_node_input_defs.push_back(node_arg);
         } else {
-          // This requires the nodes to be in topological order
           auto new_name = GenerateNodeArgName(make_unique(input_name));
           new_node_input_defs.push_back(&GetOrCreateNodeArg(new_name, input_def->TypeAsProto()));
           ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(input_name, std::move(new_name)));
@@ -4219,12 +4224,14 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
       const auto& output_name = output_def->Name();
       auto hit = name_mapping.find(output_name);
       if (hit != name_mapping.cend()) {
+        // This is one of the graph outputs, we rename it to
+        // If node output.
         auto* node_arg = GetNodeArg(hit->second);
         ORT_ENFORCE(node_arg != nullptr,
                     "Expecting to exist output node_arg: ", output_name);
         new_node_output_defs.push_back(node_arg);
       } else {
-        // This requires the nodes to be in topological order
+        // We generate an output to downstream nodes.
         auto new_name = GenerateNodeArgName(make_unique(output_name));
         new_node_output_defs.push_back(&GetOrCreateNodeArg(new_name, output_def->TypeAsProto()));
         ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(output_name, std::move(new_name)));
