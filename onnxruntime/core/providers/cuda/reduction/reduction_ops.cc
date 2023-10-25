@@ -16,7 +16,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_UNTILL_VERSIONED_TYPED(name, T, end)                               \
+#define REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, end)                               \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
@@ -38,7 +38,7 @@ namespace cuda {
       name<T>);
 
 #define REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(name, T, last, cur)                \
-  REGISTER_KERNEL_UNTILL_VERSIONED_TYPED(name, T, last)                                    \
+  REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, last)                                    \
   REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, cur)
 
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
@@ -808,13 +808,13 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
 }  // namespace ReductionOps
 
 // CUDA ArgMax/ArgMin doesn't have OpSet12+ implementation (with select_last_index attr) yet
-REGISTER_KERNEL_UNTILL_VERSIONED_TYPED(ArgMax, MLFloat16, 11)
-REGISTER_KERNEL_UNTILL_VERSIONED_TYPED(ArgMax, float, 11)
-REGISTER_KERNEL_UNTILL_VERSIONED_TYPED(ArgMax, double, 11)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, MLFloat16, 11)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, float, 11)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, double, 11)
 
-REGISTER_KERNEL_UNTILL_VERSIONED_TYPED(ArgMin, MLFloat16, 11)
-REGISTER_KERNEL_UNTILL_VERSIONED_TYPED(ArgMin, float, 11)
-REGISTER_KERNEL_UNTILL_VERSIONED_TYPED(ArgMin, double, 11)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, MLFloat16, 11)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, float, 11)
+REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, double, 11)
 
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, MLFloat16, 17, 18)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, float, 17, 18)
