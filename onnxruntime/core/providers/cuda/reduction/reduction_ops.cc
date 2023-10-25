@@ -16,7 +16,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, end)                               \
+#define REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, end)                                \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
@@ -26,19 +26,18 @@ namespace cuda {
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-#define REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, version)                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      version,                                                                             \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
-                                   .InputMemoryType(OrtMemTypeCPUInput, 1),                \
+#define REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, version)                                                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                  \
+      name,                                                                                                                       \
+      kOnnxDomain,                                                                                                                \
+      version,                                                                                                                    \
+      T,                                                                                                                          \
+      kCudaExecutionProvider,                                                                                                     \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).InputMemoryType(OrtMemTypeCPUInput, 1), \
       name<T>);
 
-#define REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(name, T, last, cur)                \
-  REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, last)                                    \
+#define REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(name, T, last, cur) \
+  REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, last)                      \
   REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, cur)
 
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
@@ -843,7 +842,6 @@ REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, float, 17, 18)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, double, 17, 18)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, BFloat16, 17, 18)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, int32_t, 17, 18)
-
 
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, MLFloat16, 12, 13)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, float, 12, 13)
