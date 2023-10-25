@@ -1597,8 +1597,8 @@ activation.)DOC")
 ONNX_MS_OPERATOR_SET_SCHEMA(FusedConvTranspose, 1,
                             OpSchema()
                                 .SetDoc(R"DOC(
-The fused convolution transpose operator schema is the same as ConvTranspose besides it includes an attribute
-activation.)DOC")
+The fused convolution transpose operator schema is the same as ConvTranspose with the addition of an attribute
+for the activation.)DOC")
                                 .Attr(
                                     "auto_pad",
                                     "",
