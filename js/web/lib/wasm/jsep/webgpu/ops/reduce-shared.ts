@@ -173,7 +173,7 @@ export const createReduceSharedProgramInfo =
           output.setByOffset(
               'outputIndex',
               `${
-                  reduceType === 'mean' ? `bestValue / ${output.type.storage}(${reduceSize})` :
+                  reduceType === 'mean' ? `bestValue / ${output.type.storage}(uniforms.reduceSize)` :
                                           `${reduceOutputValues[reduceType]}`}`)};
          }
         }`;
@@ -208,8 +208,7 @@ const reduceCommon =
       const permutedAxes = getAxesPermutation(axes, context.inputs[0].dims.length);
       if (permutedAxes.length > 0) {
         input = context.compute(
-            createTransposeProgramInfo(context.inputs[0].dataType, context.inputs[0].dims.length, permutedAxes),
-            {inputs: [0], outputs: [-1]})[0];
+            createTransposeProgramInfo(context.inputs[0], permutedAxes), {inputs: [0], outputs: [-1]})[0];
         axes = getInnerMostAxes(axes.length, input.dims.length);
       }
 
