@@ -18,6 +18,7 @@ from llama_inputs import (
     get_msft_sample_inputs,
     get_sample_inputs,
     get_sample_with_past_kv_inputs,
+    get_dml_sample_inputs,
 )
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
@@ -186,6 +187,24 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             device_id=args.device_id,
         )
 
+    elif args.benchmark_type == "ort-dml":
+        # Olive-optimized model from https://github.com/microsoft/Olive/tree/user/pavignol/directml-llama-sample/examples/directml/llama_v2
+        # specialized for DirectML
+        init_inputs = get_dml_sample_inputs(
+            args.config,
+            args.batch_size,
+            seq_len=args.sequence_length,
+            use_fp16=args.use_fp16,
+            use_cache_branch=False,
+        )
+        iter_inputs = get_dml_sample_inputs(
+            args.config,
+            args.batch_size,
+            seq_len=1,
+            use_fp16=args.use_fp16,
+            use_cache_branch=True,
+        )
+
     else:
         raise Exception("Unable to auto-detect inputs for provided model")
 
@@ -224,6 +243,14 @@ def get_model(args: argparse.Namespace):
             sess_options.log_verbosity_level = 1
             sess_options.log_severity_level = 1
 
+    elif args.benchmark_type == "ort-dml":
+        sess_options = ort.SessionOptions()
+        sess_options.enable_profiling = args.profile
+        sess_options.add_free_dimension_override_by_name("max_seq_len", 2048)
+        sess_options.log_severity_level = 3
+        if args.verbose:
+            sess_options.log_verbosity_level = 1
+
     else:
         raise Exception(f"Cannot recognize {args.benchmark_type}")
 
@@ -259,7 +286,7 @@ def get_model(args: argparse.Namespace):
         )
         end_time = time.time()
 
-    if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}:
+    if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx", "ort-dml"}:
         # Ex: Microsoft export from https://github.com/microsoft/Llama-2-Onnx
         logger.info(f"Loading model from {args.ort_model_path}")
         start_time = time.time()
@@ -278,7 +305,7 @@ def time_fn(args, fn, inputs):
     # Warm up
     warmup_range = (
         range(args.warmup_runs)
-        if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}
+        if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx", "ort-dml"}
         else trange(args.warmup_runs, file=sys.stdout, desc="Warm up")
     )
 
@@ -290,24 +317,24 @@ def time_fn(args, fn, inputs):
         fn(inputs)
 
     # Benchmark
-    if args.device != "cpu":
+    if args.device != "cpu" and args.device != "dml":
         torch.cuda.synchronize()
     start_time = time.time()
 
     bench_range = (
         range(args.num_runs)
-        if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}
+        if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx", "ort-dml"}
         else trange(args.num_runs, file=sys.stdout, desc="Benchmark")
     )
     for _ in bench_range:
         fn(inputs)
 
-    if args.device != "cpu":
+    if args.device != "cpu" and args.device != "dml":
         torch.cuda.synchronize()
     end_time = time.time()
 
     # Newline print after trange in order to print metrics on new lines without progress bar on same line
-    if args.benchmark_type not in {"ort-msft", "ort-convert-to-onnx"}:
+    if args.benchmark_type not in {"ort-msft", "ort-convert-to-onnx", "ort-dml"}:
         logger.info("")
 
     latency = (end_time - start_time) / args.num_runs
@@ -517,7 +544,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
 def run_inference(args, init_inputs, iter_inputs, model):
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile", "hf-ort"}:
         run_hf_inference(args, init_inputs, iter_inputs, model)
-    elif args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}:
+    elif args.benchmark_type in {"ort-msft", "ort-convert-to-onnx", "ort-dml"}:
         run_ort_inference(args, init_inputs, iter_inputs, model)
     else:
         raise Exception(f"Cannot recognize {args.benchmark_type}")
@@ -530,7 +557,7 @@ def get_args():
         "--benchmark-type",
         type=str,
         required=True,
-        choices=["hf-pt-eager", "hf-pt-compile", "hf-ort", "ort-msft", "ort-convert-to-onnx"],
+        choices=["hf-pt-eager", "hf-pt-compile", "hf-ort", "ort-msft", "ort-convert-to-onnx", "ort-dml"],
     )
     parser.add_argument(
         "-m",
@@ -588,7 +615,7 @@ def get_args():
         "--device",
         type=str,
         default="cuda" if torch.cuda.is_available() else "cpu",
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda", "rocm", "dml"],
     )
     parser.add_argument("-id", "--device-id", type=int, default=0)
     parser.add_argument("-w", "--warmup-runs", type=int, default=5)
@@ -616,7 +643,10 @@ def get_args():
 
     # Set runtime properties
     if "ort" in args.benchmark_type:
-        setattr(args, "execution_provider", f"{args.device.upper()}ExecutionProvider")  # noqa: B010
+        if args.device.upper() == "DML":
+            setattr(args, "execution_provider", "DmlExecutionProvider")  # noqa: B010
+        else:
+            setattr(args, "execution_provider", f"{args.device.upper()}ExecutionProvider")  # noqa: B010
         if args.execution_provider == "CUDAExecutionProvider":
             args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
         elif args.execution_provider == "ROCMExecutionProvider":
@@ -626,7 +656,7 @@ def get_args():
     # Check that paths have been specified for any benchmarking with ORT
     if args.benchmark_type == "hf-ort":
         assert args.hf_ort_dir_path, "Please specify a path to `--hf-ort-dir-path`"
-    if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}:
+    if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx", "ort-dml"}:
         assert args.ort_model_path, "Please specify a path to `--ort-model-path`"
 
     args.batch_sizes = args.batch_sizes.split(" ")
