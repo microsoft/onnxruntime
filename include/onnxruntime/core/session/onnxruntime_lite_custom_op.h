@@ -837,6 +837,8 @@ struct OrtLiteCustomOp : public OrtCustomOp {
     OrtCustomOp::KernelCompute = {};
 
     OrtCustomOp::InferOutputShapeFn = {};
+    OrtCustomOp::GetStartVersion = {};
+    OrtCustomOp::GetEndVersion = {};
   }
 
   const std::string op_name_;

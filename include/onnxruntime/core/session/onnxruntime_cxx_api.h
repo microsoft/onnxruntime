@@ -2280,6 +2280,8 @@ struct CustomOpBase : OrtCustomOp {
     }
 
     SetShapeInferFn<TOp>(0);
+    OrtCustomOp::GetStartVersion = nullptr;
+    OrtCustomOp::GetEndVersion = nullptr;
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider

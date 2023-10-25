@@ -25,6 +25,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
 static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
+static constexpr uint32_t min_ort_version_with_custom_version = 17;
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
@@ -698,8 +699,17 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
 
   KernelDefBuilder def_builder;
   def_builder.SetName(op->GetName(op))
-      .SetDomain(domain)
-      .SinceVersion(1);
+      .SetDomain(domain);
+
+  if (op->version >= min_ort_version_with_custom_version) {
+    if (op->GetStartVersion && op->GetEndVersion) {
+      def_builder.SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
+    } else if (op->GetStartVersion) {
+      def_builder.SinceVersion(op->GetStartVersion(op));
+    }
+  } else {
+    def_builder.SinceVersion(1);
+  }
 
   // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
   // to work with newer versions (> 12) of the ORT binary.
@@ -820,7 +830,13 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     schema.TypeConstraint(output_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
   }
   schema.SetDomain(domain);
-  schema.SinceVersion(1);
+  if (op->version >= min_ort_version_with_custom_version) {
+    if (op->GetStartVersion) {
+      schema.SinceVersion(op->GetStartVersion(op));
+    }
+  } else {
+    schema.SinceVersion(1);
+  }
   schema.AllowUncheckedAttributes();
 
   if (op->version >= min_ort_version_with_shape_inference && op->InferOutputShapeFn) {
