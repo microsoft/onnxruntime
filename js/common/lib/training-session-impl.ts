@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {resolveBackend} from './backend-impl.js';
-import {TrainingSessionHandler} from './backend.js';
+import {SessionHandler, TrainingSessionHandler} from './backend.js';
 import {InferenceSession as InferenceSession} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
 import {Tensor} from './tensor.js';
@@ -49,9 +49,16 @@ export class TrainingSession implements TrainingSessionInterface {
     }
   }
 
-  runTrainStep(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
-  runTrainStep(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
-  async runTrainStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
+  /**
+   * Helper function for the run methods
+   *
+   * @param feeds
+   * @param arg1
+   * @param arg2
+   * @returns
+   */
+  typeNarrowingForRunStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions):
+      [SessionHandler.FetchesType, RunOptions] {
     const fetches: {[name: string]: OnnxValue|null} = {};
     let options: RunOptions = {};
     // check inputs
@@ -135,7 +142,10 @@ export class TrainingSession implements TrainingSessionInterface {
       }
     }
 
-    const results = await this.handler.runTrainStep(feeds, fetches, options);
+    return [fetches, options];
+  }
+
+  processHandlerReturnToSessionReturn(results: SessionHandler.ReturnType): ReturnType {
     const returnValue: {[name: string]: OnnxValue} = {};
     for (const key in results) {
       if (Object.hasOwnProperty.call(results, key)) {
@@ -150,11 +160,24 @@ export class TrainingSession implements TrainingSessionInterface {
     return returnValue;
   }
 
-  runOptimizerStep(options?: InferenceSession.RunOptions | undefined): Promise<void> {
-    throw new Error('Method not implemented.');
+  runTrainStep(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
+  runTrainStep(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
+  async runTrainStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
+    const [fetches, options] = this.typeNarrowingForRunStep(feeds, arg1, arg2);
+    const results = await this.handler.runTrainStep(feeds, fetches, options);
+    return this.processHandlerReturnToSessionReturn(results);
   }
-  runEvalStep(feeds: InferenceSession.OnnxValueMapType, fetches: InferenceSession.FetchesType, options?: InferenceSession.RunOptions | undefined): Promise<InferenceSession.OnnxValueMapType> {
-    throw new Error('Method not implemented.');
+
+  async runOptimizerStep(options?: InferenceSession.RunOptions|undefined): Promise<void> {
+    await this.handler.runOptimizerStep(options || {});
+  }
+
+  runEvalStep(feeds: FeedsType, options?: RunOptions|undefined): Promise<ReturnType>;
+  runEvalStep(feeds: FeedsType, fetches: FetchesType, options?: RunOptions|undefined): Promise<ReturnType>;
+  async runEvalStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
+    const [fetches, options] = this.typeNarrowingForRunStep(feeds, arg1, arg2);
+    const results = await this.handler.runEvalStep(feeds, fetches, options);
+    return this.processHandlerReturnToSessionReturn(results);
   }
 
   async getParametersSize(trainableOnly: boolean): Promise<number> {
@@ -164,8 +187,9 @@ export class TrainingSession implements TrainingSessionInterface {
   async loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void> {
     const paramsSize = await this.getParametersSize(trainableOnly);
     if (array.length !== paramsSize) {
-      throw new Error('Size of the buffer passed into loadParametersBuffer must match the number of parameters in ' +
-        'the model. Please use getParametersSize method to check.');
+      throw new Error(
+          'Size of the buffer passed into loadParametersBuffer must match the number of parameters in ' +
+          'the model. Please use getParametersSize method to check.');
     }
     return this.handler.loadParametersBuffer(array, trainableOnly);
   }

@@ -58,6 +58,17 @@ export interface TrainingSession {
    * Run a single eval step with the given inputs and options using the eval model.
    *
    * @param feeds - Representation of the model input.
+   * @param options - Optional. A set of options that controls the behavior of model eval step.
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
+   values.
+   */
+  runEvalStep(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions):
+      Promise<InferenceSession.ReturnType>;
+
+  /**
+   * Run a single eval step with the given inputs and options using the eval model.
+   *
+   * @param feeds - Representation of the model input.
    * @param fetches - Representation of the model output.
    * detail.
    * @param options - Optional. A set of options that controls the behavior of model eval step.

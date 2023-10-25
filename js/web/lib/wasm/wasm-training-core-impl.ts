@@ -307,6 +307,83 @@ export const runTrainStep = async(
   }
 };
 
+export const runOptimizerStep =
+    async(trainingSessionId: number, options: InferenceSession.RunOptions): Promise<void> => {
+  const wasm = getInstance();
+
+  let runOptionsHandle = 0;
+  let runOptionsAllocs: number[] = [];
+
+  try {
+    [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
+
+    if (wasm._OrtTrainingOptimizerStep) {
+      const errCode = wasm._OrtTrainingOptimizerStep(trainingSessionId, runOptionsHandle);
+      ifErrCodeCheckLastError(errCode, 'Failed to call OrtTrainingOptimizerStep in the WebAssembly layer');
+    } else {
+      throw new Error(NO_TRAIN_FUNCS_MSG);
+    }
+  } finally {
+    if (runOptionsHandle !== 0) {
+      wasm._OrtReleaseRunOptions(runOptionsHandle);
+    }
+    runOptionsAllocs.forEach(p => wasm._free(p));
+  }
+};
+
+export const runEvalStep = async(
+    trainingSessionId: number, inputIndices: number[], inputTensors: TensorMetadata[], outputIndices: number[],
+    outputTensors: Array<TensorMetadata|null>, options: InferenceSession.RunOptions): Promise<TensorMetadata[]> => {
+  const wasm = getInstance();
+
+  const inputCount = inputIndices.length;
+  const outputCount = outputIndices.length;
+
+  let runOptionsHandle = 0;
+  let runOptionsAllocs: number[] = [];
+
+  const inputTensorHandles: number[] = [];
+  const outputTensorHandles: number[] = [];
+  const inputOutputAllocs: number[] = [];
+
+  const beforeRunStack = wasm.stackSave();
+
+  try {
+    // prepare parameters by moving them to heap
+    [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
+
+    // handle inputs -- you don't want anything added to the index
+    const inputValuesOffset = createAndAllocateTensors(
+        trainingSessionId, inputIndices, inputTensors, inputTensorHandles, inputOutputAllocs, 0);
+    // handle outputs
+    // you want inputCount to be added to the index of every output tensor passed to prepareInputOutputTensor
+    const outputValuesOffset = createAndAllocateTensors(
+        trainingSessionId, outputIndices, outputTensors, outputTensorHandles, inputOutputAllocs, inputCount);
+
+    if (wasm._OrtTrainingEvalStep) {
+      const errorCode = wasm._OrtTrainingEvalStep(
+          trainingSessionId, inputValuesOffset, inputCount, outputValuesOffset, outputCount, runOptionsHandle);
+
+      ifErrCodeCheckLastError(errorCode, 'failed to call OrtTrainingEvalStep in the WebAssembly layer');
+    } else {
+      throw new Error(NO_TRAIN_FUNCS_MSG);
+    }
+
+    return moveOutputToTensorMetadataArr(outputValuesOffset, outputCount);
+  } finally {
+    wasm.stackRestore(beforeRunStack);
+
+    inputTensorHandles.forEach(v => wasm._OrtReleaseTensor(v));
+    outputTensorHandles.forEach(v => wasm._OrtReleaseTensor(v));
+    inputOutputAllocs.forEach(p => wasm._free(p));
+
+    if (runOptionsHandle !== 0) {
+      wasm._OrtReleaseRunOptions(runOptionsHandle);
+    }
+    runOptionsAllocs.forEach(p => wasm._free(p));
+  }
+};
+
 export const getParametersSize = (trainingSessionId: number, trainableOnly: boolean): number => {
   const wasm = getInstance();
   const stack = wasm.stackSave();

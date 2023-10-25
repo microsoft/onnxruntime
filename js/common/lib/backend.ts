@@ -52,6 +52,11 @@ export interface TrainingSessionHandler extends SessionHandler {
   getParametersSize(trainableOnly: boolean): Promise<number>;
   loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void>;
   getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue>;
+
+  runOptimizerStep(options: InferenceSession.RunOptions): Promise<void>;
+  runEvalStep(
+      feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
+      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
 }
 
 /**
