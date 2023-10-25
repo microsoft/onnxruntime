@@ -162,6 +162,11 @@ export class TrainingSession implements TrainingSessionInterface {
   }
 
   async loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void> {
+    const paramsSize = await this.getParametersSize(trainableOnly);
+    if (array.length !== paramsSize) {
+      throw new Error('Size of the buffer passed into loadParametersBuffer must match the number of parameters in ' +
+        'the model. Please use getParametersSize method to check.');
+    }
     return this.handler.loadParametersBuffer(array, trainableOnly);
   }
 
