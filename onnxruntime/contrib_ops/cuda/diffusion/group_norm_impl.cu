@@ -27,6 +27,26 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+namespace {
+constexpr static int32_t CHANNELS_PER_THREAD = 2;  // 2 channels per thread
+
+constexpr static int kSizes[] = {64, 128, 256, 320, 384, 512};
+constexpr static size_t kNumOfSizes = sizeof(kSizes) / sizeof(kSizes[0]);
+constexpr static int kMaxSize = kSizes[kNumOfSizes - 1];
+
+int NextSize(int x) {
+  assert(x <= kMaxSize);
+
+  for (size_t i = 0; i < kNumOfSizes; ++i) {
+    if (x <= kSizes[i]) {
+      return kSizes[i];
+    }
+  }
+
+  return kMaxSize;
+}
+}  // namespace
+
 static inline int32_t divUp(int32_t m, int32_t n) {
   return (m + n - 1) / n;
 }
@@ -97,6 +117,11 @@ struct GroupNormNHWCParams {
   float invHWC;
   // The precomputed number of groups per block.
   int32_t groupsPerBlock;
+
+  // Number of threads per block
+  int32_t threads_per_block;
+
+  float epsilon;
 };
 
 template <typename T>
@@ -128,21 +153,26 @@ inline __device__ void UpdateSum(const float* src, int64_t offset, float& sum, f
   sumSq += f2.x * f2.x + f2.y * f2.y;
 }
 
-template <typename T, int32_t tTHREADS_PER_BLOCK>
+template <typename T, int32_t THREADS_PER_BLOCK>
 __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   // The object in charge of doing the sums for the different blocks.
-  typedef cub::BlockScan<GroupSums, tTHREADS_PER_BLOCK> BlockScan;
+  typedef cub::BlockScan<GroupSums, THREADS_PER_BLOCK> BlockScan;
 
   // Allocate shared memory for BlockScan.
   __shared__ typename BlockScan::TempStorage tempStorage;
-  // Allocate shared memory for the groups. We could reduce the amount of shared
-  // memory reserved.
-  __shared__ float2 smem[tTHREADS_PER_BLOCK];
+
+  // Allocate shared memory for the groups. We could reduce the amount of shared memory reserved.
+  __shared__ float2 smem[THREADS_PER_BLOCK];
 
   // The instance in the batch.
   int32_t ni = blockIdx.z;
-  // The channel loaded by that thread (2 channels per thread for F16x2).
-  int32_t ci = blockIdx.x * params.cPerBlock + threadIdx.x * 2;
+
+  // The channel loaded by that thread.
+  int32_t ci = blockIdx.x * params.cPerBlock + threadIdx.x * CHANNELS_PER_THREAD;
+
+  if (ci >= params.c || threadIdx.x * CHANNELS_PER_THREAD >= params.cPerBlock) {
+    return;
+  }
 
   // The first activation loaded by that block.
   int32_t hwBegin = blockIdx.y * params.hwPerBlock;
@@ -154,28 +184,24 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   float sumSq = 0.F;
 
   // Iterate over the activations to compute the sums.
-  if (ci < params.c) {
-    for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi) {
-      // The offset.
-      int64_t offset = static_cast<int64_t>(ni) * params.hwc + static_cast<int64_t>(hwi) * params.c + ci;
-      UpdateSum(params.src, offset, sum, sumSq);
-    }
+  for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi) {
+    int64_t offset = static_cast<int64_t>(ni) * params.hwc + static_cast<int64_t>(hwi) * params.c + ci;
+    UpdateSum(params.src, offset, sum, sumSq);
   }
 
   // The group that thread works on and the channel in the group (modulus).
-  int32_t gi = threadIdx.x * 2 / params.cPerGroup;
-  int32_t cj = threadIdx.x * 2 - params.cPerGroup * gi;
+  int32_t gi = threadIdx.x * CHANNELS_PER_THREAD / params.cPerGroup;
+  int32_t cj = ci % params.cPerGroup;
 
   // The data for the summations.
   GroupSums inp{cj == 0 ? 1 : 0, sum, sumSq};
 
-  // Do the segmented scan.
+  // Do the segmented scan. InclusiveScan is not deterministic.
   GroupSums out;
   BlockScan(tempStorage).InclusiveScan(inp, out, GroupSumsOp());
 
-  // Store the results for the groups in shared memory (to produce coalesced
-  // stores later).
-  if (cj == params.cPerGroup - 2) {  //2 channels per thread
+  // Store the results for the groups in shared memory (to produce coalesced stores later).
+  if (cj == params.cPerGroup - CHANNELS_PER_THREAD) {
     smem[gi] = make_float2(out.sum, out.sumSq);
   }
 
@@ -200,35 +226,37 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
 
 template <typename T>
 void groupNormNHWCSum(GroupNormNHWCParams<T> const& params, cudaStream_t stream) {
-  // Make sure the values are as we expect.
-  ORT_ENFORCE(params.c % params.cPerBlock == 0 && params.hw % params.hwPerBlock == 0);
-  // Make sure a group does not span multiple blocks.
-  ORT_ENFORCE(params.cPerBlock % params.cPerGroup == 0);
-
   dim3 grid;
 
   // The number of blocks to compute all the channels.
-  grid.x = params.c / params.cPerBlock;
+  grid.x = divUp(params.c, params.cPerBlock);
+
   // The number of blocks to compute all the activations in a given instance.
   grid.y = divUp(params.hw, params.hwPerBlock);
+
   // The number of instances.
   grid.z = params.n;
 
-  switch (params.cPerBlock) {
-    case 320:
-      groupNormNHWCSumKernel<T, 160><<<grid, 160, 0, stream>>>(params);
-      break;
-    case 480:
+  // Threads_per_block is half of values in kSizes since CHANNELS_PER_THREAD = 2.
+  switch (params.threads_per_block) {
+    case 256:
       groupNormNHWCSumKernel<T, 256><<<grid, 256, 0, stream>>>(params);
       break;
-    case 256:
-      groupNormNHWCSumKernel<T, 128><<<grid, 128, 0, stream>>>(params);
+    case 192:
+      groupNormNHWCSumKernel<T, 192><<<grid, 192, 0, stream>>>(params);
+      break;
+    case 160:
+      groupNormNHWCSumKernel<T, 160><<<grid, 160, 0, stream>>>(params);
       break;
     case 128:
+      groupNormNHWCSumKernel<T, 128><<<grid, 128, 0, stream>>>(params);
+      break;
+    case 64:
       groupNormNHWCSumKernel<T, 64><<<grid, 64, 0, stream>>>(params);
       break;
-    default:
-      ORT_NOT_IMPLEMENTED("Not implemented");
+    case 32:
+      groupNormNHWCSumKernel<T, 32><<<grid, 32, 0, stream>>>(params);
+      break;
   }
 }
 
@@ -284,10 +312,10 @@ __device__ void computeGroupNorm(const float* src, float* dst, int64_t offset, f
   *reinterpret_cast<float2*>(&dst[offset]) = f2;
 }
 
-template <typename T, int32_t tTHREADS_PER_BLOCK>
+template <typename T>
 __global__ void groupNormNHWCScaleKernel(GroupNormNHWCParams<T> params) {
-  // The channel loaded by that thread (2 channels per thread for F16x2).
-  int32_t ci = blockIdx.x * params.cPerBlock + threadIdx.x * 2;
+  // The channel loaded by that thread.
+  int32_t ci = blockIdx.x * params.cPerBlock + threadIdx.x * CHANNELS_PER_THREAD;
   if (ci >= params.c) {
     return;
   }
@@ -314,7 +342,7 @@ __global__ void groupNormNHWCScaleKernel(GroupNormNHWCParams<T> params) {
   // Compute the variance.
   float var = sumSq * params.invHWC - (mean * mean);
   // Compute the inverse of the stddev.
-  float invStdDev = var <= 0.F ? 1.F : rsqrtf(var);
+  float invStdDev = var <= 0.F ? 1.F : rsqrtf(var + params.epsilon);
 
   // The first activation loaded by that block.
   int32_t hwBegin = blockIdx.y * params.hwPerBlock;
@@ -333,35 +361,36 @@ __global__ void groupNormNHWCScaleKernel(GroupNormNHWCParams<T> params) {
 
 template <typename T>
 void groupNormNHWCScale(GroupNormNHWCParams<T> const& params, cudaStream_t stream) {
-  // Make sure the dimensions are aligned with what we expect.
-  ORT_ENFORCE(params.c % params.cPerBlock == 0);
-  // Make sure a group does not span multiple blocks.
-  ORT_ENFORCE(params.cPerBlock % params.cPerGroup == 0);
-
   dim3 grid;
 
   // The number of blocks to compute all the channels.
-  grid.x = params.c / params.cPerBlock;
+  grid.x = divUp(params.c, params.cPerBlock);
   // The number of blocks to compute all the activations in a given instance.
   grid.y = divUp(params.hw, params.hwPerBlock);
   // The number of instances.
   grid.z = params.n;
 
-  switch (params.cPerBlock) {
-    case 320:
-      groupNormNHWCScaleKernel<T, 160><<<grid, 160, 0, stream>>>(params);
-      break;
-    case 480:
-      groupNormNHWCScaleKernel<T, 256><<<grid, 256, 0, stream>>>(params);
-      break;
+  int next_size = NextSize(params.cPerBlock);
+
+  switch (params.threads_per_block) {
     case 256:
-      groupNormNHWCScaleKernel<T, 128><<<grid, 128, 0, stream>>>(params);
+      groupNormNHWCScaleKernel<T><<<grid, 256, 0, stream>>>(params);
+      break;
+    case 192:
+      groupNormNHWCScaleKernel<T><<<grid, 192, 0, stream>>>(params);
+      break;
+    case 160:
+      groupNormNHWCScaleKernel<T><<<grid, 160, 0, stream>>>(params);
       break;
     case 128:
-      groupNormNHWCScaleKernel<T, 64><<<grid, 64, 0, stream>>>(params);
+      groupNormNHWCScaleKernel<T><<<grid, 128, 0, stream>>>(params);
       break;
-    default:
-      ORT_NOT_IMPLEMENTED("Not implemented");
+    case 64:
+      groupNormNHWCScaleKernel<T><<<grid, 64, 0, stream>>>(params);
+      break;
+    case 32:
+      groupNormNHWCScaleKernel<T><<<grid, 32, 0, stream>>>(params);
+      break;
   }
 }
 
@@ -403,28 +432,50 @@ Status LaunchGroupNormKernel(
                            "only support batch_size <= 32. Got", batch_size);
   }
 
-  if (num_groups != static_cast<int>(kGroupNormNumberOfGroups)) {
+  if (num_groups > static_cast<int>(kGroupNormNumberOfGroups)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
-                           "only num_groups=32 is supported. Got", num_groups);
+                           "only support num_groups <= 32. Got", num_groups);
   }
 
   GroupNormNHWCParams<T> params;
-  int32_t cPerBlock = 320;
-  int32_t maxBlocksPerHW = 1024;
+
+  int32_t cPerBlock;
   switch (num_channels) {
-    case 960:
+    case 2560:
+    case 2048:
+    case 1024:
+      cPerBlock = 512;
+      break;
     case 1920:
+    case 960:
       cPerBlock = 480;
+      break;
+    case 3072:
+    case 1536:
+    case 768:
+    case 384:
+      cPerBlock = 384;
       break;
     case 512:
     case 256:
       cPerBlock = 256;
       break;
+    case 2304:
+    case 1152:
+       cPerBlock = 288;
+       break;
     case 128:
       cPerBlock = 128;
       break;
     default:
       cPerBlock = 320;
+  }
+
+  // Find a maximum cPerBlock that num_channels could be divisible by it.
+  // Try to be close to 512 since we have multiple kSizes values are within [256, 512] range that could act as fallback.
+  int32_t cPerGroup = num_channels / num_groups;
+  if (cPerBlock % cPerGroup != 0) {
+    cPerBlock = findMaxDivisor(num_groups, kMaxSize / cPerGroup) * cPerGroup;
   }
 
   params.withSwish = use_swish_activation;
@@ -439,25 +490,40 @@ Status LaunchGroupNormKernel(
   params.c = num_channels;
   params.groups = num_groups;
   params.hw = params.h * params.w;
+
+  constexpr int32_t maxBlocksPerHW = 1024;
   const int32_t blocksPerHW = findMaxDivisor(params.hw, maxBlocksPerHW);
   params.hwPerBlock = divUp(params.hw, blocksPerHW);
+
   params.cPerBlock = cPerBlock;
-  params.cPerGroup = params.c / params.groups;
+  params.cPerGroup = cPerGroup;
   params.hwc = params.hw * params.c;
   params.invHWC = 1.F / (float)(params.hw * params.cPerGroup);
   params.groupsPerBlock = cPerBlock / params.cPerGroup;
+  params.threads_per_block = NextSize(cPerBlock) / CHANNELS_PER_THREAD;
 
-  DUMP_TENSOR_INIT();
-  DUMP_TENSOR("input", input, batch_size, num_channels, height * width);
-  DUMP_TENSOR("gamma", gamma, 1, num_channels);
-  DUMP_TENSOR("beta", beta, 1, num_channels);
+  // TODO: Update the kernel to support CHANNELS_PER_THREAD==1
+  if (cPerBlock > 512 || (params.cPerGroup % CHANNELS_PER_THREAD != 0)) {
+    printf("n=%d h=%d w=%d c=%d groups=%d hw=%d hwPerBlock=%d cPerBlock=%d cPerGroup=%d threads=%d\n",
+           params.n, params.h, params.w, params.c, params.groups, params.hw, params.hwPerBlock,
+           params.cPerBlock, params.cPerGroup, params.threads_per_block);
+    ORT_NOT_IMPLEMENTED("Not implemented");
+  }
+
   cudaMemsetAsync(params.redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), stream);
+
+  // Make sure the values are as we expect.
+  ORT_ENFORCE(params.c % params.cPerBlock == 0);
+
+  // Make sure a group does not span multiple blocks.
+  ORT_ENFORCE(params.cPerBlock % params.cPerGroup == 0);
+
   groupNormNHWCSum<T>(params, stream);
-  DUMP_TENSOR("workspace", params.redBuffer, batch_size, num_groups, 2);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
   groupNormNHWCScale<T>(params, stream);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  DUMP_TENSOR("output", output, batch_size, num_channels, height * width);
+
   return Status::OK();
 }
 
