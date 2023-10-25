@@ -644,6 +644,10 @@ class ONNXQuantizer:
         else:
             zero_point_values = np.array([use_zeropoint])
             scale_values = np.array([use_scale])
+            params = self.quantization_params[param_name]
+            if "scale" in params:
+                dtype = params["scale"].dtype
+                scale_values = scale_values.astype(dtype)
             assert scale_values.dtype != np.float64
 
         zero_point_shape = []

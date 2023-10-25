@@ -681,7 +681,8 @@ class HistogramCollector(CalibrationDataCollector):
         Collect histogram on absolute value
         """
         for tensor, data_arr in name_to_arr.items():
-            assert isinstance(data_arr, np.ndarray)
+            if not isinstance(data_arr, np.ndarray):
+                raise ValueError(f"Unexpected type {type(data_arr)} for tensor={tensor!r}")
             data_arr = data_arr.flatten()  # noqa: PLW2901
             if data_arr.size > 0:
                 min_value = np.min(data_arr)
