@@ -45,6 +45,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
+  * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
@@ -2410,6 +2411,62 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>G</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulBnb4"></a><a name="com.microsoft.matmulbnb4">**com.microsoft.MatMulBnb4**</a>
+
+  MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4 data type (https://arxiv.org/pdf/2305.14314.pdf). It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
+    1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
+    2. Input B is quantized with 4 bits with quantization data type specified by attribute 'quant_type'. It is transposed, flattened and quantized blockwisely with block size specified by attribute 'block_size'.
+       And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
+    3. Input B's quantization constants or scales are specified by input 'absmax'.
+  
+  Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
+  Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
+  
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>size of each input feature</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>size of each output feature</dd>
+<dt><tt>block_size</tt> : int (required)</dt>
+<dd>number of groupsize used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
+<dt><tt>quant_type</tt> : int (required)</dt>
+<dd>quantization data type. 0 for FP4, 1 for NF4.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>The input tensor, not quantized</dd>
+<dt><tt>B</tt> : T2</dt>
+<dd>1-dimensional quantized data for weight</dd>
+<dt><tt>absmax</tt> : T1</dt>
+<dd>quantization constants</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>tensor. The output tensor has the same rank as the input. </dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float/half_float tensors.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain quantized weight types to uint8.</dd>
 </dl>
 
 
