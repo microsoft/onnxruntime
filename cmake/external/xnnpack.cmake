@@ -41,59 +41,44 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   # See source lists in _deps/googlexnnpack-src/BUILD.bazel for wasm_prod_microkernels
   message("Adding WebAssembly Source Files to XNNPACK")
   set(wasm_srcs "")
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/common.h)
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/math.h)
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/microparams.h)
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/prefetch.h)
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/unaligned.h)
 
-  # :microkernels_h
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/cache.h
-                        ${XNNPACK_DIR}/src/xnnpack/intrinsics-polyfill.h
-                        ${XNNPACK_DIR}/src/xnnpack/math-stubs.h
-                        ${XNNPACK_DIR}/src/xnnpack/requantization-stubs.h)
-  # :tables
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/tables/exp2-k-over-64.c
-                        ${XNNPACK_DIR}/src/tables/exp2-k-over-2048.c
-                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-4.c
-                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-8.c
-                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-16.c
-                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-32.c
-                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-64.c
-                        ${XNNPACK_DIR}/src/tables/exp2minus-k-over-2048.c
-                        ${XNNPACK_DIR}/src/tables/vlog.c)
-  # operators
-  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/xnnpack/compute.h
-                        ${XNNPACK_DIR}/src/xnnpack/operator.h
-                        ${XNNPACK_DIR}/src/operator-delete.c
-                        ${XNNPACK_DIR}/src/operator-run.c
-                        ${XNNPACK_DIR}/src/operators/argmax-pooling-nhwc.c
-                        ${XNNPACK_DIR}/src/operators/average-pooling-nhwc.c
-                        ${XNNPACK_DIR}/src/operators/batch-matrix-multiply-nc.c
-                        ${XNNPACK_DIR}/src/operators/binary-elementwise-nd.c
-                        ${XNNPACK_DIR}/src/operators/channel-shuffle-nc.c
-                        ${XNNPACK_DIR}/src/operators/constant-pad-nd.c
-                        ${XNNPACK_DIR}/src/operators/convolution-nchw.c
-                        ${XNNPACK_DIR}/src/operators/convolution-nhwc.c
-                        ${XNNPACK_DIR}/src/operators/deconvolution-nhwc.c
-                        ${XNNPACK_DIR}/src/operators/dynamic-fully-connected-nc.c
-                        ${XNNPACK_DIR}/src/operators/fully-connected-nc.c
-                        ${XNNPACK_DIR}/src/operators/global-average-pooling-ncw.c
-                        ${XNNPACK_DIR}/src/operators/global-average-pooling-nwc.c
-                        ${XNNPACK_DIR}/src/operators/lut-elementwise-nc.c
-                        ${XNNPACK_DIR}/src/operators/max-pooling-nhwc.c
-                        ${XNNPACK_DIR}/src/operators/prelu-nc.c
-                        ${XNNPACK_DIR}/src/operators/reduce-nd.c
-                        ${XNNPACK_DIR}/src/operators/resize-bilinear-nchw.c
-                        ${XNNPACK_DIR}/src/operators/resize-bilinear-nhwc.c
-                        ${XNNPACK_DIR}/src/operators/rope-nthc.c
-                        ${XNNPACK_DIR}/src/operators/scaled-dot-product-attention-nhtc.c
-                        ${XNNPACK_DIR}/src/operators/slice-nd.c
-                        ${XNNPACK_DIR}/src/operators/softmax-nc.c
-                        ${XNNPACK_DIR}/src/operators/transpose-nd.c
-                        ${XNNPACK_DIR}/src/operators/unary-elementwise-nc.c
-                        ${XNNPACK_DIR}/src/operators/unpooling-nhwc.c
-  )
+  file(READ "${XNNPACK_DIR}/BUILD.bazel" xnnpack_bazel_config)
+
+  # Replace newlines with semicolon so that it is treated as a list by CMake
+  # Also replace '[' and ']' so the bazel source lists don't get parsed as a nested list by cmake
+  string(REPLACE "\n" ";" xnnpack_bazel_config "${xnnpack_bazel_config}")
+  string(REPLACE "[" "{" xnnpack_bazel_config "${xnnpack_bazel_config}")
+  string(REPLACE "]" "}" xnnpack_bazel_config "${xnnpack_bazel_config}")
+
+  function(GetSrcListFromBazel src_list_name target_srcs)
+    set(_InSection FALSE)
+    set(bazel_srcs "")
+
+    foreach(_line ${xnnpack_bazel_config})
+      if(NOT _InSection)
+        if(_line MATCHES "^${src_list_name} = \\{")
+          set(_InSection TRUE)
+        endif()
+      else()
+        if(_line MATCHES "^\\}")
+          set(_InSection FALSE)
+        else()
+          # parse filename from quoted string with trailing comma
+          string(REPLACE "\"" "" _line "${_line}")
+          string(REPLACE "," "" _line "${_line}")
+          string(STRIP "${_line}" _line)
+
+          list(APPEND bazel_srcs "${XNNPACK_DIR}/${_line}")
+        endif()
+      endif()
+    endforeach()
+
+    set(${target_srcs} ${bazel_srcs} PARENT_SCOPE)
+  endfunction()
+
+  GetSrcListFromBazel("OPERATOR_SRCS" operator_srcs)
+  GetSrcListFromBazel("TABLE_SRCS" table_srcs)
+  list(APPEND wasm_srcs ${operator_srcs} ${table_srcs})
 
   # kernels
   list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/scalar.c)
@@ -104,6 +89,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_compile_options(XNNPACK PRIVATE "-msimd128")
   endif()
 
+  message(DEBUG "wasm_srcs: ${wasm_srcs}\n")
   target_sources(XNNPACK PRIVATE ${wasm_srcs})
 
   # add flags from BAZEL.build
