@@ -41,7 +41,7 @@ export const createCheckpointHandle = (checkpointData: SerializableModeldata): n
   }
 };
 
-const getTrainingModelInputOutputCount = (trainingSessionId: number): [number, number] => {
+const getModelInputOutputCount = (trainingSessionId: number, IsEvalModel: boolean): [number, number] => {
   const wasm = getInstance();
   const stack = wasm.stackSave();
   try {
@@ -60,7 +60,7 @@ const getTrainingModelInputOutputCount = (trainingSessionId: number): [number, n
   }
 };
 
-const getTrainingNamesLoop = (trainingSessionId: number, count: number, isInput: boolean): [string[], number[]] => {
+const getModelInputOutputNamesLoop = (trainingSessionId: number, count: number, isInput: boolean, IsEvalModel:boolean): [string[], number[]] => {
   const names = [];
   const wasm = getInstance();
 
