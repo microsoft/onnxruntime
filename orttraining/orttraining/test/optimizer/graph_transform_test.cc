@@ -18,6 +18,7 @@
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
+#include "orttraining/core/optimizer/transpose_replacement.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
@@ -549,6 +550,47 @@ TEST_F(GraphTransformationTests, ConcatReplacement) {
 
   ASSERT_EQ(op_to_count["Concat"], 0);
   ASSERT_EQ(op_to_count["com.microsoft.ConcatTraining"], 1);
+}
+
+TEST_F(GraphTransformationTests, TransposeReplacement) {
+  {
+    auto model_uri = MODEL_FOLDER "transpose_to_reshape_valid.onnx";
+    std::shared_ptr<Model> p_model;
+    ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+    Graph& graph = p_model->MainGraph();
+
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("TransposeReplacement");
+    ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<TransposeReplacement>()));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
+  }
+
+  {
+    auto model_uri = MODEL_FOLDER "transpose_to_reshape_invalid.onnx";
+    std::shared_ptr<Model> p_model;
+    ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+    Graph& graph = p_model->MainGraph();
+
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("TransposeReplacement");
+    ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<TransposeReplacement>()));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+    ASSERT_EQ(op_to_count["Transpose"], 1);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
+  }
+
 }
 
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
