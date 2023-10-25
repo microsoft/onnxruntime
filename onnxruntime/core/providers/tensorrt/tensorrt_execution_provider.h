@@ -103,10 +103,10 @@ struct TensorrtFuncState {
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
   std::string fused_node_name;
+  nvinfer1::IBuilder* builder;
   tensorrt_ptr::unique_pointer<nvonnxparser::IParser>* parser = nullptr;
   std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
   std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
-  std::unique_ptr<nvinfer1::IBuilder>* builder = nullptr;
   std::unique_ptr<nvinfer1::INetworkDefinition>* network = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
@@ -156,6 +156,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
  public:
   explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
+
+  nvinfer1::IBuilder& GetBuilder() const;
 
   cublasHandle_t PerThreadDefaultCublasHandle() {
     return GetPerThreadContext().CublasHandle();
@@ -241,6 +243,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
+
+  mutable std::unique_ptr<nvinfer1::IBuilder> builder_;
 
   // Following maps that hold TRT objects will be accessible by different threads if ORT is using multithreading.
   // In general, TensorRT objects are not thread safe; accesses to an object from different threads must be serialized by the client.

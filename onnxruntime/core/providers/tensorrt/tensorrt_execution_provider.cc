@@ -1209,6 +1209,14 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
   return Status::OK();
 }
 
+nvinfer1::IBuilder& TensorrtExecutionProvider::GetBuilder() const {
+  if (!builder_) {
+    TensorrtLogger& trt_logger = GetTensorrtLogger();
+    builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+  }
+  return *builder_;
+}
+
 void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
   if (info_.custom_op_domain_list.empty()) {
     common::Status status = CreateTensorRTCustomOpDomainList(info_);
@@ -1568,9 +1576,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
-        auto trt_builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+        auto& trt_builder = GetBuilder();
         const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-        auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+        auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder.createNetworkV2(explicitBatch));
 
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
         trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path_);
@@ -1920,10 +1928,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     TensorrtLogger& trt_logger = GetTensorrtLogger();
-    auto trt_builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    auto& trt_builder = GetBuilder();
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
-    auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+    auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder.createNetworkV2(explicitBatch));
+    auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder.createBuilderConfig());
     auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
@@ -2004,7 +2012,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       has_explicit_profile = true;
       num_profiles = GetNumProfiles(profile_min_shapes_);
       for (int i = 0; i < num_profiles; i++) {
-        trt_profiles.push_back(trt_builder->createOptimizationProfile());
+        trt_profiles.push_back(trt_builder.createOptimizationProfile());
       }
     }
 
@@ -2074,19 +2082,19 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // If no explicit profile is applied and the input has dynamic shape, TRT EP simply creates one profile by default.
     // It will later set proper min/max/opt shape values duing EP compute time.
     else if (!has_explicit_profile && has_dynamic_shape) {
-      trt_profiles.push_back(trt_builder->createOptimizationProfile());
+      trt_profiles.push_back(trt_builder.createOptimizationProfile());
     }
 
     // Check platform availability for low precision
     if (fp16_enable_) {
-      if (!trt_builder->platformHasFastFp16()) {
+      if (!trt_builder.platformHasFastFp16()) {
         fp16_enable_ = false;
         LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
       }
     }
 
     if (int8_enable_) {
-      if (!trt_builder->platformHasFastInt8()) {
+      if (!trt_builder.platformHasFastInt8()) {
         int8_enable_ = false;
         LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_INT8_ENABLE is set, but platform doesn't support fast native int8";
       }
@@ -2120,7 +2128,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // Set DLA
     if (fp16_enable_ || int8_enable_) {
       if (dla_enable_ && dla_core_ >= 0) {  // DLA can only run with FP16 and INT8
-        int number_of_dla_core = trt_builder->getNbDLACores();
+        int number_of_dla_core = trt_builder.getNbDLACores();
         if (number_of_dla_core == 0) {
           LOGS_DEFAULT(WARNING) << "[TensorRT EP] Try to use DLA core, but platform doesn't have any DLA core";
           dla_enable_ = false;
@@ -2250,7 +2258,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
         } else {
           // Set INT8 per tensor dynamic range
-          if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
+          if (int8_enable_ && trt_builder.platformHasFastInt8() && int8_calibration_cache_available_) {
             trt_config->setInt8Calibrator(nullptr);
             if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -2278,7 +2286,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           if (detailed_build_log_) {
             engine_build_start = std::chrono::steady_clock::now();
           }
-          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
+          trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(trt_builder.buildEngineWithConfig(*trt_network, *trt_config));
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not build engine for fused node: " + fused_node.Name());
@@ -2373,7 +2381,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     parsers_.emplace(fused_node.Name(), std::move(trt_parser));
     engines_.emplace(fused_node.Name(), std::move(trt_engine));
     contexts_.emplace(fused_node.Name(), std::move(trt_context));
-    builders_.emplace(fused_node.Name(), std::move(trt_builder));
     networks_.emplace(fused_node.Name(), std::move(trt_network));
     input_info_[fused_node.Name()].push_back(input_indexes);
     output_info_[fused_node.Name()].push_back(output_indexes);
@@ -2391,8 +2398,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       if (!tactic_sources_.empty()) {
         tactics = GetTacticSourceFromString(tactic_sources_);
       }
-      *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name,
-            &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
+      *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
+            &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
@@ -2425,7 +2432,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
-      auto trt_builder = trt_state->builder->get();
+      auto trt_builder = trt_state->builder;
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
       auto trt_profiles = trt_state->profiles;
