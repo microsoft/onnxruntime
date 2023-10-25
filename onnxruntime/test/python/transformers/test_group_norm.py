@@ -129,7 +129,7 @@ def group_norm_torch(
 def run_parity(config, measure_latency=True):
     float_type = torch.float16 if config.fp16 else torch.float32
 
-    intput = torch.randn(
+    input_tensor = torch.randn(
         config.batch_size,
         config.height,
         config.width,
@@ -153,11 +153,10 @@ def run_parity(config, measure_latency=True):
         requires_grad=False,
     )
 
-    # Pytorch to compare
-    out_ort, latency = group_norm_ort(intput, gamma, beta, config, measure_latency=measure_latency)
+    out_ort, latency = group_norm_ort(input_tensor, gamma, beta, config, measure_latency=measure_latency)
     ort_result = out_ort.detach().cpu().numpy()
 
-    torch_out = group_norm_torch(intput, gamma, beta, config)
+    torch_out = group_norm_torch(input_tensor, gamma, beta, config)
     torch_result = torch_out.detach().cpu().numpy()
 
     is_close = numpy.allclose(

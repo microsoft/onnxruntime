@@ -16,6 +16,10 @@
  */
 
 // The CUDA kernel is modified from GroupNorm plugin of TensorRT 8.5
+// Modifications: support more cPerBlock
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
 #include <cub/cub.cuh>
