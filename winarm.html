@@ -101,19 +101,10 @@
                                     <p>Follow these steps to setup your device to use ONNX Runtime (ORT) with the built
                                         in NPU:
                                     <ol>
-                                        <li><a href="https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk/windows-on-snapdragon"
-                                                target="_blank">Request access</a> to the Neural Processing SDK for
-                                            Windows on Snapdragon. Qualcomm may reach out to you via email with further
-                                            registration instructions for approval. </li>
-                                        <li>Once approved, you will receive an email with links to download SNPE.
-                                            <ol type="a">
-                                                <li>Select the SNPE link which takes you to a Qualcomm login and
-                                                    download page. </li>
-                                                <li>Select the <i>Snapdragon_NPE_SDK.WIN.1.0 Installer</i> link,
-                                                    download and install.</li>
-                                            </ol>
-                                        <li><a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Snpe"
-                                                target="_blank">Download</a> and install the ONNX Runtime with SNPE
+                                        <li><a href="https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct"
+                                                target="_blank">Download</a> the Qualcomm AI Engine Direct SDK (QNN SDK) </li>
+                                        <li><a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN"
+                                                target="_blank">Download</a> and install the ONNX Runtime with QNN
                                             package</li>
                                         <li>Start using the ONNX Runtime API in your application.</li>
                                     </ol>
@@ -122,28 +113,13 @@
                                     <p><a href="https://onnx.ai" target="_blank">ONNX</a> is a standard format for
                                         representing ML models authored in frameworks like PyTorch, TensorFlow, and
                                         others. ONNX Runtime can run any ONNX model, however to make use of the NPU, you
-                                        currently need to use the following steps:
-                                    <ul>
-                                        <li>Run the tools provided in the SNPE SDK on your model to generate a binary
-                                            file.</li>
-                                        <li>Include the contents of the binary file as a node in the ONNX graph.</li>
-                                    </ul>
+                                        currently need to quantize the ONNX model to QDQ model.  
                                     <p>See our <a
-                                            href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_sharp/Snpe_EP/vgg16_image_classification"
+                                            href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP/mobilenetv2_classification"
                                             target="_blank">C# tutorial<a> for an example of how this is done.</p>
                                     <p>Many models can be optimized for the NPU using this process. Even if a model
-                                        cannot be optimized for NPU by the SNPE SDK, it can still be run by ONNX Runtime
+                                        cannot be optimized for NPU, it can still be run by ONNX Runtime
                                         on the CPU.</p>
-                                    <br />
-                                    <h2 class="blue-text">Tutorials</h2>
-                                    <ul>
-                                        <li><a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_sharp/Snpe_EP/vgg16_image_classification"
-                                                target="_blank">C# Image classification with VGG16 using ONNX Runtime
-                                                with SNPE<a></li>
-                                        <li><a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/Snpe_EP"
-                                                target="_blank">C++ image classification with Inception v3 using ONNX
-                                                Runtime with SNPE<a></li>
-                                    </ul>
                                     <br />
                                     <h2 class="blue-text">Getting help</h2>
                                     <p>For help with ONNX Runtime, you can <a
