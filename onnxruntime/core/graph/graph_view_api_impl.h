@@ -13,7 +13,6 @@ class ModelProto;
 }
 
 namespace onnxruntime {
-class GraphViewer;
 class NodeArg;
 class Path;
 
@@ -81,12 +80,11 @@ class ApiNodeView : virtual public NodeViewRef {
 
 class ApiGraphView : virtual public GraphViewRef {
  private:
-  const GraphViewer& graph_;
+  const Graph& graph_;
  protected:
   AllocatorPtr cpu_allocator_;
  public:
-  explicit ApiGraphView(const GraphViewer& graph, AllocatorPtr cpu_allocator)
-      : graph_(graph), cpu_allocator_(std::move(cpu_allocator)) {}
+  explicit ApiGraphView(const Graph& graph, AllocatorPtr cpu_allocator) : graph_(graph), cpu_allocator_(std::move(cpu_allocator)) {}
 
   std::optional<int64_t> Opset(std::string_view domain = "") const override;
   std::vector<std::unique_ptr<NodeViewRef>> NodeViews() const override;

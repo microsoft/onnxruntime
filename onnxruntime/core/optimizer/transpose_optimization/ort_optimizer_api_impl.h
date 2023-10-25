@@ -55,7 +55,7 @@ class ApiGraph final : virtual public api::GraphRef, public ApiGraphView {
   const char* new_node_ep_;
 
  public:
-  explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const char* new_node_ep) : ApiGraphView(GraphViewer(graph), std::move(cpu_allocator)), graph_(graph), new_node_ep_(new_node_ep) {}
+  explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const char* new_node_ep) : ApiGraphView(graph, std::move(cpu_allocator)), graph_(graph), new_node_ep_(new_node_ep) {}
   onnxruntime::Graph& Graph() {
     return graph_;
   }

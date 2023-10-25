@@ -168,8 +168,9 @@ std::optional<int64_t> ApiGraphView::Opset(std::string_view domain) const {
 }
 
 std::vector<std::unique_ptr<NodeViewRef>> ApiGraphView::NodeViews() const {
+  GraphViewer graph_viewer(graph_);
   std::vector<std::unique_ptr<NodeViewRef>> nodes;
-  const auto& sorted_nodes = graph_.GetNodesInTopologicalOrder();
+  const auto& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
   nodes.reserve(sorted_nodes.size());
   for (NodeIndex index : sorted_nodes) {
     auto& node = *graph_.GetNode(index);
