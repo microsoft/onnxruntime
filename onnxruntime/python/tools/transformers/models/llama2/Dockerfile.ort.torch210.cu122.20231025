@@ -1,0 +1,18 @@
+# Image: ort_torch210_cu122:20231025
+FROM nvcr.io/nvidia/pytorch:23.09-py3
+
+WORKDIR /root
+
+# Install ort, specify arch == 80 for faster compiling
+RUN git clone https://github.com/microsoft/onnxruntime && \
+    cd onnxruntime && \
+    git checkout linmin/llama2_bk && \
+    bash build.sh --use_cuda --cuda_version=12.2 --config=Release \
+        --build_wheel --update --build --cmake_generator Ninja --skip_tests --mpi_home=/usr/local/mpi \
+        --cuda_home=/usr/local/cuda --cudnn_home=/usr/lib/x86_64-linux-gnu --enable_nccl \
+        --use_mpi --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 && \
+    pip install build/Linux/Release/dist/*.whl
+
+RUN cd /tmp && python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
+
+RUN pip install mpi4py

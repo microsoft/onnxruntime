@@ -11,8 +11,8 @@ Sample installation commands:
 ```bash
 git clone https://github.com/microsoft/onnxruntime
 cd onnxruntime
-## tmp branch
-# git checkout linmin/llama2_bk
+# tmp branch
+git checkout linmin/llama2_bk
 bash build.sh --use_cuda --cuda_version=11.7 --config=Release \
     --build_wheel --update --build --cmake_generator Ninja --skip_tests --mpi_home=/usr/local/mpi \
     --cuda_home=/usr/local/cuda --cudnn_home=/usr/lib/x86_64-linux-gnu --enable_nccl \
