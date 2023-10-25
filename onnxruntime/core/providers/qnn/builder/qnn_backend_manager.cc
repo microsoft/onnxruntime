@@ -448,20 +448,7 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
   return context_buffer;
 }
 
-Status QnnBackendManager::LoadCachedQnnCtxFromOnnxModel(const std::string& ep_engine_cache,
-                                                        QnnModel& qnn_model,
-                                                        bool& loaded_from_cache) {
-  loaded_from_cache = false;
-
-  if (!ep_engine_cache.empty()) {
-    ORT_RETURN_IF_ERROR(LoadCachedQnnContextFromBuffer(ep_engine_cache, qnn_model));
-    loaded_from_cache = true;
-  }
-
-  return Status::OK();
-}
-
-Status QnnBackendManager::LoadCachedQnnContextFromBuffer(const std::string& buffer, QnnModel& qnn_model) {
+Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length, QnnModel& qnn_model) {
   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree;
@@ -474,8 +461,8 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(const std::string& buff
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size{0};
   rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
-                                                     static_cast<void*>(const_cast<char*>(buffer.c_str())),
-                                                     static_cast<uint64_t>(buffer.length()),
+                                                     static_cast<void*>(buffer),
+                                                     buffer_length,
                                                      &binary_info,
                                                      &binary_info_size);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary info.");
@@ -502,8 +489,8 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(const std::string& buff
   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                               device_handle_,
                                               (const QnnContext_Config_t**)&context_config_,
-                                              static_cast<void*>(const_cast<char*>(buffer.c_str())),
-                                              static_cast<uint64_t>(buffer.length()),
+                                              static_cast<void*>(buffer),
+                                              buffer_length,
                                               &context_,
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");

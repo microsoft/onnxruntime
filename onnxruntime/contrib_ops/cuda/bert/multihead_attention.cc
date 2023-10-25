@@ -194,8 +194,10 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
       constexpr bool is_unidirectional = false;
-      fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(
-          num_heads_, parameters.head_size, sm, is_unidirectional, enable_trt_flash_attention_, parameters.scale);
+      std::call_once(fused_fp16_runner_created_, [&]() {
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional,
+                                                          enable_trt_flash_attention_, parameters.scale);
+      });
     }
 
     // In case some kernel not loaded due to shared memory limit, we need to double check here.

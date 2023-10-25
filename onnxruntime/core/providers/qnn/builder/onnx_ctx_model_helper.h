@@ -18,6 +18,7 @@ namespace onnxruntime {
 namespace qnn {
 
 class QnnModel;
+class QnnBackendManager;
 
 static const std::string EPCONTEXT_OP = "EPContext";
 static const std::string MAIN_CONTEXT = "main_context";
@@ -37,32 +38,24 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
                       std::vector<NodeArg*>& node_args,
                       onnxruntime::Graph& graph);
 
-Status GetEpContextFromModel(const std::string& ctx_onnx_model_path,
-                             std::string& ep_engine_cache,
-                             const logging::Logger& logger);
-
-Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
-                             const std::string& ctx_onnx_model_path,
-                             std::string& ep_cache_context);
-
 class QnnCacheModelHandler {
  public:
   QnnCacheModelHandler(bool qnn_context_embed_mode) : qnn_context_embed_mode_(qnn_context_embed_mode) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnCacheModelHandler);
 
-  Status GetEpContext(const onnxruntime::GraphViewer& graph_viewer,
-                      const std::string& ctx_onnx_model_path,
-                      bool is_qnn_ctx_model,
-                      bool is_ctx_cache_file_exist,
-                      std::string& ep_engine_cache,
-                      const logging::Logger& logger) const {
+  Status LoadQnnCtxFromOnnxModel(const onnxruntime::GraphViewer& graph_viewer,
+                                 const std::string& ctx_onnx_model_path,
+                                 bool is_qnn_ctx_model,
+                                 bool is_ctx_cache_file_exist,
+                                 QnnBackendManager* qnn_backend_manager,
+                                 QnnModel& qnn_model,
+                                 const logging::Logger& logger) {
     if (is_qnn_ctx_model) {
-      ORT_RETURN_IF_ERROR(GetEpContextFromGraph(graph_viewer, ctx_onnx_model_path, ep_engine_cache));
+      return GetEpContextFromGraph(graph_viewer, ctx_onnx_model_path, qnn_backend_manager, qnn_model);
     } else if (is_ctx_cache_file_exist) {
-      ORT_RETURN_IF_ERROR(GetEpContextFromModel(ctx_onnx_model_path, ep_engine_cache, logger));
+      return GetEpContextFromModel(ctx_onnx_model_path, qnn_backend_manager, qnn_model, logger);
     }
-
     return Status::OK();
   }
 
@@ -93,11 +86,24 @@ class QnnCacheModelHandler {
                                    const logging::Logger& logger);
 
  private:
+  Status GetEpContextFromModel(const std::string& ctx_onnx_model_path,
+                               QnnBackendManager* qnn_backend_manager,
+                               QnnModel& qnn_model,
+                               const logging::Logger& logger);
+
+  Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
+                               const std::string& ctx_onnx_model_path,
+                               QnnBackendManager* qnn_backend_manager,
+                               QnnModel& qnn_model);
+
+ private:
   bool is_metadata_ready_ = false;
+  // model_name_ to cache_source_ -- metadata get from generated Qnn context binary Onnx model
   std::string model_name_ = "";
   std::string model_description_ = "";
   std::string graph_partition_name_ = "";
   std::string cache_source_ = "";
+
   std::string context_cache_path_ = "";
   bool ctx_file_exists_ = false;
   bool get_capability_round_2_ = false;

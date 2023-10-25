@@ -193,7 +193,7 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: gpu
-    EnvSetupScript: setup_env_cuda_11.bat
+    EnvSetupScript: setup_env_cuda.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
@@ -488,13 +488,13 @@ stages:
         Steps:
         - script: |
             tools/ci_build/get_docker_image.py \
-              --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11_8_tensorrt8_6 \
+              --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda \
               --context tools/ci_build/github/linux/docker \
-              --docker-build-args "--network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/usr/local/cuda/bin --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/usr --build-arg BUILD_UID=$( id -u ) --build-arg BUILD_UID=$( id -u )" \
+              --docker-build-args "--network=host --build-arg BASEIMAGE=nvidia/cuda:11.8.0-devel-ubi8 --build-arg INSTALL_CUDNN=true --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 --build-arg BUILD_UID=$( id -u )" \
               --container-registry onnxruntimebuildcache \
               --multiple_repos \
               --repository onnxruntimecuda118xtrt86build
-          displayName: "Get onnxruntimecuda118xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11_8_tensorrt8_6"
+          displayName: "Get onnxruntimecuda118xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda"
           workingDirectory: $(Build.SourcesDirectory)/onnxruntime
         ContainerRegistry: onnxruntimebuildcache
 
