@@ -16,7 +16,8 @@ namespace onnxruntime {
                                           KernelDefBuilder()                                           \
                                               .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
                                               .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
-                                          GridSample<T>);                                              \
+                                          GridSample<T>);
+#define REGISTER_KERNEL_TYPED20(T)                                                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(GridSample, kOnnxDomain, 20, T, kCpuExecutionProvider,                 \
                                 KernelDefBuilder()                                                     \
                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
@@ -24,6 +25,8 @@ namespace onnxruntime {
                                 GridSample<T>);
 
 REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED20(float)
+REGISTER_KERNEL_TYPED20(double)
 
 // Restore normalized location to actual image location
 //   When align_corners is true:
