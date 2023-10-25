@@ -441,10 +441,10 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_sessio
  *                    count of the eval model.
  * @returns ORT error code. If not zero, call OrtGetLastError() to get a detailed error message.
  */
-int EMSCRIPTEN_KEEPALIVE OrtTrainingGetInputOutputCount(ort_training_session_handle_t training_handle,
-                                                        size_t* input_count,
-                                                        size_t* output_count,
-                                                        bool isEvalModel);
+int EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputCount(ort_training_session_handle_t training_handle,
+                                                             size_t* input_count,
+                                                             size_t* output_count,
+                                                             bool isEvalModel);
 
 /**
  * Gets the input or output name at the specified index associated with the training or eval model from the
@@ -456,10 +456,10 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingGetInputOutputCount(ort_training_session_han
  *                    names of the eval model.
  * @returns a pointer to a buffer which contains C-style string. Caller must release the C style string after use by
  */
-char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetInputOutputName(ort_training_session_handle_t training_handle,
-                                                         size_t index,
-                                                         bool isInput,
-                                                         bool isEvalModel);
+char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputName(ort_training_session_handle_t training_handle,
+                                                              size_t index,
+                                                              bool isInput,
+                                                              bool isEvalModel);
 
 /**
  * @brief Release the specified ORT training session.
