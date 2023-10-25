@@ -260,10 +260,9 @@ TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodesPreservingAttrib
   for (const auto& node : session.GetGraph().Nodes()) {
     if (node.OpType() == "DequantizeLinear") {
       if (node.Name().find(axis_dq_name0) == 0 ||
-        node.Name().find(axis_dq_name1) == 0 ||
-        node.Name().find(axis_dq_name2) == 0 ||
-        node.Name().find(axis_dq_name3) == 0)
-      {
+          node.Name().find(axis_dq_name1) == 0 ||
+          node.Name().find(axis_dq_name2) == 0 ||
+          node.Name().find(axis_dq_name3) == 0) {
         const auto& attrs = node.GetAttributes();
         ASSERT_TRUE(attrs.find("axis") != attrs.end());
         const auto& axis_attr = attrs.at("axis");
