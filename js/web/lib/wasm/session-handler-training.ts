@@ -6,7 +6,7 @@ import {env, InferenceSession, OnnxValue, SessionHandler, Tensor, TrainingSessio
 import {SerializableModeldata, TensorMetadata} from './proxy-messages';
 import {decodeTensorMetadata, encodeTensorMetadata} from './session-handler-inference';
 import {createSessionAllocate, initRuntime, isOrtEnvInitialized} from './wasm-core-impl';
-import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getParametersSize, loadParametersBuffer, releaseTrainingSessionAndCheckpoint, runEvalStep, runOptimizerStep, runTrainStep} from './wasm-training-core-impl';
+import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getModelInputOutputNames, getParametersSize, loadParametersBuffer, releaseTrainingSessionAndCheckpoint, runEvalStep, runOptimizerStep, runTrainStep} from './wasm-training-core-impl';
 
 export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
   private sessionId: number;
@@ -17,6 +17,12 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
 
   inputEncodedNames: number[];
   outputEncodedNames: number[];
+
+  evalInputNames: string[] = [];
+  evalOutputNames: string[] = [];
+
+  evalInputEncodedNames: number[] = [];
+  evalOutputEncodedNames: number[] = [];
 
   async uriOrBufferToHeap(uriOrBuffer: string|Uint8Array): Promise<SerializableModeldata> {
     let buffer: Uint8Array;
@@ -51,8 +57,13 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     }
 
     this.checkpointId = createCheckpointHandle(checkpointData);
-    [[this.sessionId, this.inputNames, this.outputNames], this.inputEncodedNames, this.outputEncodedNames] =
+    this.sessionId =
         createTrainingSessionHandle(this.checkpointId, trainModelData, evalModelData, optimizerModelData, options);
+    [this.inputNames, this.inputEncodedNames, this.outputNames, this.outputEncodedNames] = getModelInputOutputNames(this.sessionId, false);
+    if (evalModelUriOrBuffer !== '') {
+    [this.evalInputNames, this.evalInputEncodedNames, this.evalOutputNames, this.evalOutputEncodedNames] =
+        getModelInputOutputNames(this.sessionId, true);
+    }
   }
 
   /**
@@ -126,14 +137,14 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
       feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
     const [, inputIndices, inputs] = this.convertMapIntoValuesArrayAndIndicesArray<Tensor, TensorMetadata>(
-        feeds, this.inputNames,
-        (t, i): TensorMetadata => encodeTensorMetadata(t, () => `input "${this.inputNames[inputIndices[i]]}"`));
+        feeds, this.evalInputNames,
+        (t, i): TensorMetadata => encodeTensorMetadata(t, () => `input "${this.evalInputNames[inputIndices[i]]}"`));
 
     const [outputArray, outputIndices, outputs] =
         this.convertMapIntoValuesArrayAndIndicesArray<Tensor|null, TensorMetadata|null>(
-            fetches, this.outputNames,
+            fetches, this.evalOutputNames,
             (t, i): TensorMetadata|null =>
-                t ? encodeTensorMetadata(t, () => `output "${this.outputNames[outputIndices[i]]}"`) : null);
+                t ? encodeTensorMetadata(t, () => `output "${this.evalOutputNames[outputIndices[i]]}"`) : null);
 
     const results = await runEvalStep(this.sessionId, inputIndices, inputs, outputIndices, outputs, options);
     return this.convertTensorMetadataToReturnType(results, outputArray, outputIndices);
@@ -152,6 +163,7 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
   }
 
   async dispose(): Promise<void> {
+    // TODO: add eval encoded names to release func
     return releaseTrainingSessionAndCheckpoint(
         this.checkpointId, this.sessionId, this.inputEncodedNames, this.outputEncodedNames);
   }

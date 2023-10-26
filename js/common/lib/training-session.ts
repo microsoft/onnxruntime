@@ -118,14 +118,24 @@ export interface TrainingSession {
   // #region metadata
 
   /**
-   * Get input names of the loaded model.
+   * Get input names of the loaded training model.
    */
-  readonly inputNames: readonly string[];
+  readonly trainingInputNames: readonly string[];
 
   /**
-   * Get output names of the loaded model.
+   * Get output names of the loaded training model.
    */
-  readonly outputNames: readonly string[];
+  readonly trainingOutputNames: readonly string[];
+
+  /**
+   * Get input names of the loaded eval model. Is an empty array if no eval model is loaded.
+   */
+  readonly evalInputNames: readonly string[];
+
+  /**
+   * Get output names of the loaded eval model. Is an empty array if no eval model is loaded.
+   */
+  readonly evalOutputNames: readonly string[];
   // #endregion
 }
 

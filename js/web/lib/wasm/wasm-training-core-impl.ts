@@ -3,7 +3,7 @@
 
 import {InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {SerializableModeldata, SerializableSessionMetadata, TensorMetadata} from './proxy-messages';
+import {SerializableModeldata, TensorMetadata} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
 import {dataLocationStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
@@ -102,30 +102,37 @@ const getModelInputOutputNamesLoop =
       return [names, namesUTF8Encoded];
     };
 
-const getTrainingModelInputOutputNames = (trainingSessionId: number): [string[], number[], string[], number[]] => {
-  const [inputCount, outputCount] = getModelInputOutputCount(trainingSessionId, false);
+export const getModelInputOutputNames =
+    (trainingSessionId: number, isEvalModel: boolean): [string[], number[], string[], number[]] => {
+      const wasm = getInstance();
+      let inputNames: string[] = [];
+      let outputNames: string[] = [];
 
-  const [inputNames, inputNamesUTF8Encoded] = getModelInputOutputNamesLoop(trainingSessionId, inputCount, true, false);
-  const [outputNames, outputNamesUTF8Encoded] =
-      getModelInputOutputNamesLoop(trainingSessionId, outputCount, false, false);
+      let inputNamesUTF8Encoded: number[] = [];
+      let outputNamesUTF8Encoded: number[] = [];
+      try {
+        const [inputCount, outputCount] = getModelInputOutputCount(trainingSessionId, isEvalModel);
 
-  return [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded];
-};
+        [inputNames, inputNamesUTF8Encoded] =
+            getModelInputOutputNamesLoop(trainingSessionId, inputCount, true, isEvalModel);
+        [outputNames, outputNamesUTF8Encoded] =
+            getModelInputOutputNamesLoop(trainingSessionId, outputCount, false, isEvalModel);
+
+        return [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded];
+      } finally {
+        inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+        outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+      }
+    };
 
 export const createTrainingSessionHandle =
     (checkpointHandle: number, trainModelData: SerializableModeldata, evalModelData: SerializableModeldata,
-     optimizerModelData: SerializableModeldata,
-     options: InferenceSession.SessionOptions): [SerializableSessionMetadata, number[], number[]] => {
+     optimizerModelData: SerializableModeldata, options: InferenceSession.SessionOptions): number => {
       const wasm = getInstance();
 
       let trainingSessionHandle = 0;
       let sessionOptionsHandle = 0;
       let allocs: number[] = [];
-      let inputNamesUTF8Encoded: number[] = [];
-      let outputNamesUTF8Encoded: number[] = [];
-
-      let inputNames: string[] = [];
-      let outputNames: string[] = [];
 
       try {
         [sessionOptionsHandle, allocs] = setSessionOptions(options);
@@ -138,11 +145,7 @@ export const createTrainingSessionHandle =
         }
 
         ifErrCodeCheckLastError(trainingSessionHandle, 'Error occurred when trying to create a TrainingSession', false);
-
-        [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded] =
-            getTrainingModelInputOutputNames(trainingSessionHandle);
-        return [[trainingSessionHandle, inputNames, outputNames], inputNamesUTF8Encoded, outputNamesUTF8Encoded];
-
+        return trainingSessionHandle;
       } catch (e) {
         if (wasm._OrtTrainingReleaseSession && trainingSessionHandle !== 0) {
           wasm._OrtTrainingReleaseSession(trainingSessionHandle);
@@ -157,8 +160,6 @@ export const createTrainingSessionHandle =
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
         allocs.forEach(alloc => wasm._free(alloc));
-        inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-        outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
       }
     };
 
