@@ -3507,7 +3507,7 @@ struct OrtApi {
                   _In_ OrtOpAttrType type,
                   _Outptr_ OrtOpAttr** op_attr);
 
-  /* \brief: Release op attribute
+  /** \brief: Release op attribute
    *
    * \param[in] opAttr Attribute created by OrtApi::CreateOpAttr
    *
@@ -3566,7 +3566,7 @@ struct OrtApi {
                   _Inout_ OrtValue* const* output_values,
                   _In_ int output_count);
 
-  /* \brief: Release an onnxruntime operator
+  /** \brief: Release an onnxruntime operator
    *
    * \param[in] Op Operator created by OrtApi::CreateOp
    *
@@ -3632,7 +3632,7 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
 
-  /* \brief: Get a copy of kernel info
+  /** \brief: Get a copy of kernel info
    *
    * \param[in] info Kernel info
    * \param[out] info_copy Copy of kernel info
@@ -3643,7 +3643,7 @@ struct OrtApi {
                   _In_ const OrtKernelInfo* info,
                   _Outptr_ OrtKernelInfo** info_copy);
 
-  /* \brief: Release kernel info
+  /** \brief: Release kernel info
    *
    * \param[in] KernelInfo A copy of kernel info returned by CopyKernelInfo
    *
@@ -3735,13 +3735,13 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseCANNProviderOptions)(_Frees_ptr_opt_ OrtCANNProviderOptions* input);
 
-  /*  \brief Get OrtDevice type from MemoryInfo
+  /** \brief Get OrtDevice type from MemoryInfo
    *
    *  \since Version 1.14
    */
   void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
 
-  /* \brief Update the OrtEnv instance with custom log severity level
+  /** \brief Update the OrtEnv instance with custom log severity level
    *
    * \param[in] ort_env The OrtEnv instance being used
    * \param[in] log_severity_level The log severity level.
@@ -3750,7 +3750,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggingLevel log_severity_level);
 
-  /*  \brief Set affinities for intra op threads
+  /** \brief Set affinities for intra op threads
    *
    * Affinity string follows format:
    * logical_processor_id,logical_processor_id;logical_processor_id,logical_processor_id
