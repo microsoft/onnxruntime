@@ -25,13 +25,16 @@ logger = logging.getLogger(__name__)
 class WhisperEncoder(torch.nn.Module):
     """Whisper encoder outputs only the last hidden state"""
 
-    def __init__(self, encoder, config: WhisperConfig):
+    def __init__(self, encoder, config: WhisperConfig, model_impl: str = 'hf'):
         super().__init__()
         self.encoder = encoder
         self.config = config
+        self.model_impl = model_impl
 
     def forward(self, input_features):
-        return self.encoder(input_features)#[0]
+        if self.model_impl == "openai":
+            return self.encoder(input_features)
+        return self.encoder.model.encoder(input_features)[0]
 
 
 class WhisperEncoderInputs:
@@ -40,7 +43,11 @@ class WhisperEncoderInputs:
 
     @staticmethod
     def create_dummy(
-        batch_size: int, sequence_length: int, feature_size: int, device: torch.device,
+        batch_size: int,
+        sequence_length: int,
+        feature_size: int,
+        device: torch.device,
+        use_int32_inputs: bool = False,
     ):
         """Create dummy inputs for Whisper encoder.
 
@@ -74,6 +81,7 @@ class WhisperEncoderHelper:
         onnx_model_path: str,
         verbose: bool = True,
         use_external_data_format: bool = False,
+        use_int32_inputs: bool = False,
     ):
         """Export encoder to ONNX
 
@@ -90,6 +98,7 @@ class WhisperEncoderHelper:
             sequence_length=3000,
             feature_size=config.num_mel_bins,
             device=device,
+            use_int32_inputs=use_int32_inputs,
         )
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)

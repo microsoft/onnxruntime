@@ -82,6 +82,7 @@ class WhisperDecoder(torch.nn.Module):
         encoder_outputs["last_hidden_state"] = dummy_encoder_hidden_states
         encoder_outputs["hidden_states"] = dummy_encoder_hidden_states
         encoder_outputs["attentions"] = None
+
         if self.model_impl == 'openai':
             dummy_encoder_hidden_states.unsqueeze(0)
             dec_out, present = self.whisper_decoder_openai_init(decoder_input_ids, dummy_encoder_hidden_states, past=past)

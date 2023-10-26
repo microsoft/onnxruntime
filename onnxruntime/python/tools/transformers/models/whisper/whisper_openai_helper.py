@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class WhisperDecoderInitOpenai(torch.nn.Module):
-    """WhisperDecoderInit."""
+    """WhisperDecoderInit for Openai."""
     def __init__(
         self,
         model: torch.nn.Module,
@@ -47,6 +47,7 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         # Create a kv_cache for past_values
         past_kv_cache = dict()
         if past is not None:
+            # Convert past values from 4D to 3D
             past = [torch.transpose(val, 1, 2) for val in past]
             past = [val.reshape(val.shape[:2] + (-1, )) for val in past]
             half_idx = len(past) // 2
@@ -61,27 +62,24 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
 
         logits = self.whisper_decoder(tokens, audio_features, kv_cache=past_kv_cache)
 
+        # Add concat node for past values
         if past is not None:
             for idx, block in enumerate(self.whisper_decoder.blocks):
                 self.kv_cache[block.attn.key] = torch.cat([past_kv_cache[block.attn.key], self.kv_cache[block.attn.key]], dim=1).detach()
                 self.kv_cache[block.attn.value] = torch.cat([past_kv_cache[block.attn.value], self.kv_cache[block.attn.value]], dim=1).detach()
 
         present_self, present_cross = [], []
+        # Group self and cross values
         for idx, block in enumerate(self.whisper_decoder.blocks):
-            present_self.append(self.kv_cache[block.attn.key].reshape(
-                self.kv_cache[block.attn.key].shape[:2] + (-1, 64)
-            ).transpose(1, 2))
-            present_self.append(self.kv_cache[block.attn.value].reshape(
-                self.kv_cache[block.attn.value].shape[:2] + (-1, 64)
-            ).transpose(1, 2))
+            present_self.append(self.kv_cache[block.attn.key])
+            present_self.append(self.kv_cache[block.attn.value])
             if past is None:
-                present_cross.append(self.kv_cache[block.cross_attn.key].reshape(
-                    self.kv_cache[block.cross_attn.key].shape[:2] + (-1, 64)
-                ).transpose(1, 2))
-                present_cross.append(self.kv_cache[block.cross_attn.value].reshape(
-                    self.kv_cache[block.cross_attn.value].shape[:2] + (-1, 64)
-                ).transpose(1, 2))
-        present_self = present_self + present_cross
+                present_cross.append(self.kv_cache[block.cross_attn.key])
+                present_cross.append(self.kv_cache[block.cross_attn.value])
 
-        #self.kv_cache.values()
+        present_self = present_self + present_cross
+        # Add reshape and transpose ops to convert from 3D to 4D
+        present_self = [present_val.reshape(
+                present_val.shape[:2] + (-1, 64)
+            ).transpose(1, 2) for present_val in present_self]
         return logits, present_self

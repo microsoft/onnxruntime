@@ -11,7 +11,7 @@ from onnx_model import OnnxModel
 logger = logging.getLogger(__name__)
 
 
-class FusionBartAttention(FusionAttention):
+class FusionBartAttentionOpenai(FusionAttention):
     """
     Fuse Bart Attention subgraph into one Attention node.
     """
@@ -75,14 +75,12 @@ class FusionBartAttention(FusionAttention):
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
         # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
-        print("\n")
         qkv_nodes = self.model.match_parent_path(
             normalize_node,
             ["Add", "MatMul", "Reshape", "Transpose", "MatMul"],
             [1, 1, 0, 0, 0],
         )
         if qkv_nodes is not None:
-            print("Reached qkv level")
             (
                 add_out,
                 matmul_out,
@@ -152,7 +150,6 @@ class FusionBartAttention(FusionAttention):
         past_v, present_v = "", ""
         reshape_v_2, add_v = None, None
         if v_nodes is not None:
-            print("reach v path")
             (transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes
             # For initial pass through encoder-decoder_with_past to get starting past values (beam search)
             #present_v = add_v.output[0]
@@ -176,7 +173,6 @@ class FusionBartAttention(FusionAttention):
                                 if reshape_child.op_type == "Transpose":
                                     if reshape_child.output[0] in graph_output_names:
                                         present_v = reshape_child.output[0]
-                            print("reach v path with past self attn")
                     concat_v_parents = self.model.get_parents(child)
                     for concat_parent in concat_v_parents:
                         if concat_parent.op_type == "Reshape":
@@ -185,7 +181,6 @@ class FusionBartAttention(FusionAttention):
                                 if reshape_parent.op_type == "Transpose":
                                     if reshape_parent.input[0] in graph_input_names:
                                         past_v = reshape_parent.input[0]
-                            print("reach v path with past self attn")
 
         elif v_nodes_with_past_self_attn is not None:
             (reshape_v_2, concat_v, transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes_with_past_self_attn
@@ -195,7 +190,6 @@ class FusionBartAttention(FusionAttention):
         elif (
             v_nodes_with_past_cross_attn is not None and v_nodes_with_past_cross_attn[-1].input[0] in graph_input_names
         ):
-            print("reach v path with past cross attn")
             v_nodes = v_nodes_with_past_cross_attn
             past_v = v_nodes[-1].input[0]
             present_v = v_nodes[-1].output[0]
@@ -215,11 +209,9 @@ class FusionBartAttention(FusionAttention):
             matmul_qkv, ["Softmax", "Add", "MatMul"], [0, 0, 0]
         )
         if qk_nodes_1 is not None:
-            print("reach qk type 1")
             _, matmul_qk = qk_nodes_1
             qk_nodes = qk_nodes_1
         elif qk_nodes_2 is not None:
-            print("reach qk type 2")
             _, add_qk, matmul_qk = qk_nodes_2
             qk_nodes = qk_nodes_2
         else:
@@ -231,7 +223,6 @@ class FusionBartAttention(FusionAttention):
             [0, 0, 0, 0, 1],
         )
         if q_nodes is not None:
-            print("reach q path")
             mul_q, transpose_q, reshape_q_1, add_q, matmul_q = q_nodes
         else:
             return
@@ -261,7 +252,6 @@ class FusionBartAttention(FusionAttention):
         past_k, present_k = "", ""
         reshape_k_2, reshape_k_1, matmul_k = None, None, None
         if k_nodes_with_bias is not None:
-            print("reach k path")
             mul_k, transpose_k_1, reshape_k_1, matmul_k = k_nodes_with_bias
             k_nodes = k_nodes_with_bias
             present_k = matmul_k.output[0]
@@ -287,7 +277,6 @@ class FusionBartAttention(FusionAttention):
                                 if reshape_child.op_type == "Transpose":
                                     if reshape_child.output[0] in graph_output_names:
                                         present_k = reshape_child.output[0]
-                            print("reach k path with past self attn")
                     concat_k_parents = self.model.get_parents(child)
                     for concat_parent in concat_k_parents:
                         if concat_parent.op_type == "Reshape":
@@ -296,8 +285,6 @@ class FusionBartAttention(FusionAttention):
                                 if reshape_parent.op_type == "Transpose":
                                     if reshape_parent.input[0] in graph_input_names:
                                         past_k = reshape_parent.input[0]
-                            print("reach v path with past self attn")
-                            print("reach k path with past self attn")
                 #else:
                 #    matmul_k.output[0] = mat_k_out_tmp
 
@@ -316,7 +303,6 @@ class FusionBartAttention(FusionAttention):
             k_nodes_no_bias_with_past_cross_attn is not None
             and k_nodes_no_bias_with_past_cross_attn[-1].input[0] in graph_input_names
         ):
-            print("reach k path with past cross attn")
             k_nodes = k_nodes_no_bias_with_past_cross_attn
             past_k = k_nodes[-1].input[0]
             present_k = k_nodes[-1].output[0]
@@ -361,14 +347,12 @@ class FusionBartAttention(FusionAttention):
             and matmul_q.input[0] == root_input
             and matmul_v.input[0] == root_input
         )
-        if one_root_input: print("one root input")
         two_root_inputs = (
             not three_root_inputs
             and matmul_q.input[0] == root_input
             and matmul_k.input[0] == matmul_v.input[0]
             and matmul_k.input[0] != matmul_q.input[0]
         )
-        if two_root_inputs: print("two root inputs")
 
         # There are 5 types of attention:
         # 1) Encoder attention with one_root_input=True and qk_nodes=qk_nodes_1
@@ -381,14 +365,6 @@ class FusionBartAttention(FusionAttention):
         decoder_attention_with_past = decoder_attention and past_k and past_v
         decoder_cross_attention = two_root_inputs and qk_nodes == qk_nodes_1
         decoder_cross_attention_with_past = three_root_inputs and qk_nodes == qk_nodes_1
-        print(three_root_inputs)
-        print(
-            encoder_attention,
-            decoder_attention,
-            decoder_attention_with_past,
-            decoder_cross_attention,
-            decoder_cross_attention_with_past,
-        )
 
         # For decoder_attention, the attention mask needs to be included in the attention node
         mask_index = None
@@ -404,7 +380,7 @@ class FusionBartAttention(FusionAttention):
                 [1, 0, 2, 0],
             )
             if mask_nodes_whisper is not None:
-                print("reach qk add")
+                pass
                 #mask_index = mask_nodes_whisper[0].output[-1]
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
