@@ -181,7 +181,7 @@ static void RunBatchNormQDQTest(const TestInputDef<float>& input_def,
 // Expected val: 1.7755576372146606
 // QNN QDQ val: 2.9963212013244629 (err 1.2207635641098022)
 // CPU QDQ val: 0.82064849138259888 (err 0.95490914583206177)
-TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm1D) {
+TEST_F(QnnHTPBackendTests, BatchNorm1D) {
   constexpr int64_t num_channels = 2;
 
   RunBatchNormQDQTest(TestInputDef<float>({1, num_channels, 3}, false, {-5.0f, -4.0f, -3.0f, 0.0f, 2.0f, 5.0f}),  // Input data
@@ -199,7 +199,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm1D) {
 // Expected val: 2.8554618358612061
 // QNN QDQ val: 5.3294687271118164 (err 2.4740068912506104)
 // CPU QDQ val: 1.6611330509185791 (err 1.194328784942627)
-TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm2D) {
+TEST_F(QnnHTPBackendTests, BatchNorm2D) {
   constexpr int64_t num_channels = 2;
   std::vector<float> input_data = {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
                                    -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f};
