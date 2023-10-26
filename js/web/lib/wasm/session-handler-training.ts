@@ -59,10 +59,11 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     this.checkpointId = createCheckpointHandle(checkpointData);
     this.sessionId =
         createTrainingSessionHandle(this.checkpointId, trainModelData, evalModelData, optimizerModelData, options);
-    [this.inputNames, this.inputEncodedNames, this.outputNames, this.outputEncodedNames] = getModelInputOutputNames(this.sessionId, false);
+    [this.inputNames, this.inputEncodedNames, this.outputNames, this.outputEncodedNames] =
+        getModelInputOutputNames(this.sessionId, false);
     if (evalModelUriOrBuffer !== '') {
-    [this.evalInputNames, this.evalInputEncodedNames, this.evalOutputNames, this.evalOutputEncodedNames] =
-        getModelInputOutputNames(this.sessionId, true);
+      [this.evalInputNames, this.evalInputEncodedNames, this.evalOutputNames, this.evalOutputEncodedNames] =
+          getModelInputOutputNames(this.sessionId, true);
     }
   }
 
@@ -163,8 +164,8 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
   }
 
   async dispose(): Promise<void> {
-    // TODO: add eval encoded names to release func
     return releaseTrainingSessionAndCheckpoint(
-        this.checkpointId, this.sessionId, this.inputEncodedNames, this.outputEncodedNames);
+        this.checkpointId, this.sessionId, this.inputEncodedNames, this.outputEncodedNames, this.evalInputEncodedNames,
+        this.evalOutputEncodedNames);
   }
 }

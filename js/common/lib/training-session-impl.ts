@@ -35,10 +35,18 @@ export class TrainingSession implements TrainingSessionInterface {
   }
 
   get evalInputNames(): readonly string[] {
-    return this.handler.evalInputNames;
+    if (this.hasEvalModel) {
+      return this.handler.evalInputNames;
+    } else {
+      throw new Error('This training session has no evalModel loaded.');
+    }
   }
   get evalOutputNames(): readonly string[] {
-    return this.handler.evalOutputNames;
+    if (this.hasEvalModel) {
+      return this.handler.evalOutputNames;
+    } else {
+      throw new Error('This training session has no evalModel loaded.');
+    }
   }
 
   static async create(trainingOptions: TrainingSessionCreateOptions, sessionOptions?: SessionOptions):

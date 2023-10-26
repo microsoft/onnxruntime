@@ -517,16 +517,18 @@ export const loadParametersBuffer =
 };
 
 export const releaseTrainingSessionAndCheckpoint =
-    (checkpointId: number, sessionId: number, inputNamesUTF8Encoded: number[], outputNamesUTF8Encoded: number[]):
-        void => {
-          const wasm = getInstance();
-          inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-          outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+    (checkpointId: number, sessionId: number, inputNamesUTF8Encoded: number[], outputNamesUTF8Encoded: number[],
+     evalInputEncodedNames: number[], evalOutputEncodedNames: number[]): void => {
+      const wasm = getInstance();
+      inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+      outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+      evalInputEncodedNames.forEach(buf => wasm._OrtFree(buf));
+      evalOutputEncodedNames.forEach(buf => wasm._OrtFree(buf));
 
-          if (wasm._OrtTrainingReleaseSession) {
-            wasm._OrtTrainingReleaseSession(sessionId);
-          }
-          if (wasm._OrtTrainingReleaseCheckpoint) {
-            wasm._OrtTrainingReleaseCheckpoint(checkpointId);
-          }
-        };
+      if (wasm._OrtTrainingReleaseSession) {
+        wasm._OrtTrainingReleaseSession(sessionId);
+      }
+      if (wasm._OrtTrainingReleaseCheckpoint) {
+        wasm._OrtTrainingReleaseCheckpoint(checkpointId);
+      }
+    };
