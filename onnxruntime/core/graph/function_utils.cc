@@ -37,10 +37,6 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
   op_schema->SetDoc(meta_def->doc_string);
   op_schema->SinceVersion(meta_def->since_version);
 
-  if (meta_def->type_and_shape_inference_function) {
-    op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
-  }
-
   if (allow_aggregated_tensor_type) {
     // The generated schema will use the same type constraint for all inputs and outputs,
     // and that type constraint will match all tensor types.

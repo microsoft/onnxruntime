@@ -3897,7 +3897,7 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
                              func_meta_def->doc_string,
                              input_args,
                              output_args,
-                             nullptr,
+                             &func_meta_def->attributes,
                              func_meta_def->domain);
 
   fused_node.SetNodeType(Node::Type::Fused);

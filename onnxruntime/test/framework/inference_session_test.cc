@@ -145,18 +145,6 @@ class FuseExecutionProvider : public IExecutionProvider {
     meta_def->outputs = {"M"};
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
-    meta_def->type_and_shape_inference_function = [](::onnx::InferenceContext& ctx) {
-      propagateElemTypeFromInputToOutput(ctx, 0, 0);
-      ::onnx::TensorShapeProto intermediary_shape;
-      bidirectionalBroadcastShapeInference(
-          ctx.getInputType(0)->tensor_type().shape(),
-          ctx.getInputType(1)->tensor_type().shape(),
-          intermediary_shape);
-      bidirectionalBroadcastShapeInference(
-          ctx.getInputType(1)->tensor_type().shape(),
-          intermediary_shape,
-          *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
-    };
     sub_graph->SetMetaDef(std::move(meta_def));
     result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
     return result;
