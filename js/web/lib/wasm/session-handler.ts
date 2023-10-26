@@ -5,10 +5,9 @@ import {readFile} from 'node:fs/promises';
 import {env, InferenceSession, InferenceSessionHandler, SessionHandler, Tensor} from 'onnxruntime-common';
 
 import {SerializableModeldata, TensorMetadata} from './proxy-messages';
-import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, releaseSession, run} from './proxy-wrapper';
+import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, isOrtEnvInitialized, releaseSession, run} from './proxy-wrapper';
 import {isGpuBufferSupportedType} from './wasm-common';
 
-let runtimeInitialized: boolean;
 let runtimeInitializationPromise: Promise<void>|undefined;
 
 const encodeTensorMetadata = (tensor: Tensor, getName: () => string): TensorMetadata => {
@@ -57,13 +56,12 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
   }
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
-    if (!runtimeInitialized) {
+    if (!(await isOrtEnvInitialized())) {
       if (!runtimeInitializationPromise) {
         runtimeInitializationPromise = initializeRuntime(env);
       }
       await runtimeInitializationPromise;
       runtimeInitializationPromise = undefined;
-      runtimeInitialized = true;
     }
 
     if (typeof pathOrBuffer === 'string') {
