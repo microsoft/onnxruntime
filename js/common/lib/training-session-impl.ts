@@ -1,11 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {resolveBackend} from './backend-impl.js';
 import {TrainingSessionHandler} from './backend.js';
 import {InferenceSession as InferenceSession} from './inference-session.js';
 import {TrainingSession as TrainingSessionInterface, TrainingSessionCreateOptions} from './training-session.js';
 
 type SessionOptions = InferenceSession.SessionOptions;
+const noBackendErrMsg: string = 'Training backend could not be resolved. ' +
+    'Make sure you\'re using the correct configuration & WebAssembly files.';
 
 export class TrainingSession implements TrainingSessionInterface {
   private constructor(handler: TrainingSessionHandler) {
@@ -20,9 +23,23 @@ export class TrainingSession implements TrainingSessionInterface {
     return this.handler.outputNames;
   }
 
-  static async create(_trainingOptions: TrainingSessionCreateOptions, _sessionOptions?: SessionOptions):
+  static async create(trainingOptions: TrainingSessionCreateOptions, sessionOptions?: SessionOptions):
       Promise<TrainingSession> {
-    throw new Error('Method not implemented');
+    const evalModel: string|Uint8Array = trainingOptions.evalModel || '';
+    const optimizerModel: string|Uint8Array = trainingOptions.optimizerModel || '';
+    const options: SessionOptions = sessionOptions || {};
+
+    // get backend hints
+    const eps = options.executionProviders || [];
+    const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
+    const backend = await resolveBackend(backendHints);
+    if (backend.createTrainingSessionHandler) {
+      const handler = await backend.createTrainingSessionHandler(
+          trainingOptions.checkpointState, trainingOptions.trainModel, evalModel, optimizerModel, options);
+      return new TrainingSession(handler);
+    } else {
+      throw new Error(noBackendErrMsg);
+    }
   }
 
   async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {

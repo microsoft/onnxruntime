@@ -10,6 +10,8 @@ import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType
 import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
 
+let ortEnvInitialized = false;
+
 /**
  * get the input/output count of the session.
  * @param sessionHandle the handle representing the session. should be non-zero.
@@ -57,6 +59,8 @@ export const initRuntime = async(env: Env): Promise<void> => {
     const initJsep = require('./jsep/init').init;
     await initJsep(getInstance(), env);
   }
+
+  ortEnvInitialized = true;
 };
 
 /**
@@ -92,6 +96,8 @@ type SessionMetadata = [
 ];
 
 const activeSessions = new Map<number, SessionMetadata>();
+
+export const isOrtEnvInitialized = (): boolean => ortEnvInitialized;
 
 /**
  * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.

@@ -24,6 +24,7 @@ const createSessionCallbacks: Array<PromiseCallbacks<SerializableSessionMetadata
 const releaseSessionCallbacks: Array<PromiseCallbacks<void>> = [];
 const runCallbacks: Array<PromiseCallbacks<SerializableTensorMetadata[]>> = [];
 const endProfilingCallbacks: Array<PromiseCallbacks<void>> = [];
+const isOrtEnvInitializedCallbacks: Array<PromiseCallbacks<boolean>> = [];
 
 const ensureWorker = (): void => {
   if (initializing || !initialized || aborted || !proxyWorker) {
@@ -90,6 +91,13 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         endProfilingCallbacks.shift()![1](ev.data.err);
       } else {
         endProfilingCallbacks.shift()![0]();
+      }
+      break;
+    case 'is-ort-env-initialized':
+      if (ev.data.err) {
+        isOrtEnvInitializedCallbacks.shift()![1](ev.data.err);
+      } else {
+        isOrtEnvInitializedCallbacks.shift()![0](ev.data.out!);
       }
       break;
     default:
@@ -249,5 +257,18 @@ export const endProfiling = async(sessionId: number): Promise<void> => {
     });
   } else {
     core.endProfiling(sessionId);
+  }
+};
+
+export const isOrtEnvInitialized = async(): Promise<boolean> => {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
+    ensureWorker();
+    return new Promise<boolean>((resolve, reject) => {
+      isOrtEnvInitializedCallbacks.push([resolve, reject]);
+      const message: OrtWasmMessage = {type: 'is-ort-env-initialized'};
+      proxyWorker!.postMessage(message);
+    });
+  } else {
+    return core.isOrtEnvInitialized();
   }
 };
