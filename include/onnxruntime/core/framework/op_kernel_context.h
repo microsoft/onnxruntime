@@ -10,7 +10,7 @@ namespace concurrency {
 class ThreadPool;
 }
 
-class OpKernelContext {
+class OpKernelContext : public interface::IKernelContext {
  public:
   using ArgMap = std::unordered_map<std::string, size_t>;
 
@@ -45,7 +45,15 @@ class OpKernelContext {
     }
   }
 
+  const void* InputData(int index) const override {
+    //todo - check tensor type
+    const auto* tensor = Input<onnxruntime::Tensor>(index);
+    return tensor->DataRaw();
+  }
+
   // Fetch a required input, enforcing that it is present.
+  // Fetch a required input, enforcing that it is present. Fetch a required input, enforcing that it is present.
+  // Fetch a required input, enforc Fetch a required input, enforcing that it is present.
   template <typename T>
   const T& RequiredInput(int index) const {
     const T* input_ptr = Input<T>(index);
@@ -69,6 +77,12 @@ class OpKernelContext {
   Tensor* Output(int index, const TensorShape& shape);
   Tensor* Output(int index, const std::vector<int64_t>& shape);
   Tensor* Output(int index, const std::initializer_list<int64_t>& shape);
+
+  void* AllocateOutput(int index, const TensorShape& shape) override {
+    auto* tensor = Output(index, shape);
+    ORT_ENFORCE(tensor);
+    return tensor->MutableDataRaw();
+  }
 
   // Fetch a required tensor output, enforcing that it is present.
   Tensor& RequiredOutput(int index, const TensorShape& shape) {

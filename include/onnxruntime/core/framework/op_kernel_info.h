@@ -9,6 +9,7 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/gsl.h"
+#include "interface/framework/kernel.h"
 
 namespace onnxruntime {
 
@@ -20,7 +21,7 @@ struct AllocPlanPerValue;
 // A very light-weight class, which works as an aggregated
 // view of all data needed for constructing a Kernel instance.
 // NOTE: it does not own/hold any objects.
-class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
+class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext>, public interface::IKernelInfo {
  public:
   explicit OpKernelInfo(const onnxruntime::Node& node,
                         const KernelDef& kernel_def,
