@@ -21,6 +21,7 @@ Abstract:
 #pragma once
 
 #include "mlas.h"
+#include "mlas_gemm_postprocessor.h"
 
 #include <math.h>
 #include <algorithm>
@@ -39,7 +40,7 @@ typedef enum {
  * @brief Computes the number of bytes required to pack and int4-quantize
  *        a weight matrix
  * @param QType  type of block quantization
- * @param N      the number of columns of matrix B. 
+ * @param N      the number of columns of matrix B.
  * @param K      the number of rows of matrix B.
  * @return size of the packing buffer, 0 if the operation is not yet supported.
 */
@@ -53,11 +54,11 @@ MlasQ4GemmPackBSize(
 
 /**
  * @brief Prepack and Quantize fp32 weight tensor to int4 blocks
- * 
+ *
  * @param QType      type of block quantization
  * @param PackedBuf  destination buffer
  * @param FpData     the pointer to fp32 matrix
- * @param N          the number of columns of matrix B. 
+ * @param N          the number of columns of matrix B.
  * @param K          the number of rows of matrix B.
  * @param ldb        leading dimension of B
 */
@@ -93,22 +94,6 @@ MlasQ4GemmUnPackB(
     size_t K,
     size_t ldb
     );
-
-
-template<typename T>
-class MLAS_GEMM_POSTPROCESSOR
-{
-   public:
-    virtual void Process(T*,         /**< the address of matrix to process */
-                         size_t,     /**< the start row index of matrix */
-                         size_t,     /**< the start col index of matrix */
-                         size_t,     /**< the element count per row to process */
-                         size_t,     /**< the element count per col to process */
-                         size_t      /**< the leading dimension of matrix */
-    ) const = 0;
-
-    virtual ~MLAS_GEMM_POSTPROCESSOR() {}
-};
 
 
 /**
