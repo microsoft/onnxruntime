@@ -90,6 +90,12 @@ class ONNXQuantizer:
         self.model = ONNXModel(model)
         if not static:
             self.model.replace_gemm_with_matmul()
+            # We need to update value_infos.
+            model = save_and_reload_model_with_shape_infer(self.model.model)
+            self.value_infos = {vi.name: vi for vi in model.graph.value_info}
+            self.value_infos.update({ot.name: ot for ot in model.graph.output})
+            self.value_infos.update({it.name: it for it in model.graph.input})
+            self.model = ONNXModel(model)
 
         self.per_channel = per_channel  # weight-pack per channel
         self.reduce_range = reduce_range
@@ -1125,7 +1131,9 @@ class ONNXQuantizer:
             )
             rmin_list.append(rmin)
             rmax_list.append(rmax)
-            zero_point_list.append(zero_point)
+            # Not all versions of onnx support numpy array types.
+            # zero_point is an int or 0 if float 8.
+            zero_point_list.append(int(zero_point))
             scale_list.append(float(scale))
             quantized_per_channel_data_list.append(quantized_per_channel_data)
 

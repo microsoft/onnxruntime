@@ -79,8 +79,8 @@ class QLinearSoftmax(QuantOperatorBase):
 class QDQSoftmax(QDQOperatorBase):
     def quantize(self):
         super().quantize()
-        qdq_info = self.quantizer.tensors_to_quantize[self.node.output[0]]
-        dtype = onnx.helper.tensor_dtype_to_np_dtype(qdq_info.data_type)
+        data_type = self.quantizer.get_tensor_type(self.node.output[0], mandatory=True)
+        dtype = onnx.helper.tensor_dtype_to_np_dtype(data_type)
         if self.quantizer.activation_qType not in (onnx.onnx_pb.TensorProto.UINT8, onnx.onnx_pb.TensorProto.INT8):
             raise RuntimeError(f"QDQSoftmax does not support quantization to type {self.quantizer.activation_qType}")
         if self.quantizer.activation_qType == onnx.onnx_pb.TensorProto.UINT8:
