@@ -13,6 +13,7 @@ struct IKernelContext {
   virtual void* AllocateOutput(size_t index, const TensorShape& shape) = 0;
 };
 
+/*
 struct IKernel {
   virtual ~IKernel() = default;
   virtual void Init(IKernelInfo&){};
@@ -71,7 +72,7 @@ struct IKernel {
     return std::tuple_cat(current, next);
   }
 };
+*/
+}  // namespace interface
 
-}
-
-}
+}  // namespace onnxruntime

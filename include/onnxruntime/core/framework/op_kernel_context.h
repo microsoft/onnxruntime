@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "interface/framework/kernel.h"
+
 namespace onnxruntime {
 class IExecutionFrame;
 class Stream;
