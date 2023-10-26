@@ -12,6 +12,8 @@
 #include <getopt.h>
 #include <thread>
 #endif
+
+#include "DisabledTests.h"
 #include "TestResultStat.h"
 #include "TestCase.h"
 #include "testenv.h"
@@ -777,11 +779,39 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
       all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
+
 #if !defined(__amd64__) && !defined(_M_AMD64)
     // out of memory
-    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("vgg19"), ORT_TSTR("coreml_VGG16_ImageNet")};
+    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("BERT_Squad"),
+                                                    ORT_TSTR("bvlc_alexnet"),
+                                                    ORT_TSTR("bvlc_reference_caffenet"),
+                                                    ORT_TSTR("coreml_VGG16_ImageNet"),
+                                                    ORT_TSTR("VGG 16-fp32"),
+                                                    ORT_TSTR("VGG 19-caffe2"),
+                                                    ORT_TSTR("VGG 19-bn"),
+                                                    ORT_TSTR("VGG 16-bn"),
+                                                    ORT_TSTR("VGG 19"),
+                                                    ORT_TSTR("VGG 16"),
+                                                    ORT_TSTR("faster_rcnn"),
+                                                    ORT_TSTR("GPT2"),
+                                                    ORT_TSTR("GPT2_LM_HEAD"),
+                                                    ORT_TSTR("keras_lotus_resnet3D"),
+                                                    ORT_TSTR("mlperf_ssd_resnet34_1200"),
+                                                    ORT_TSTR("mask_rcnn_keras"),
+                                                    ORT_TSTR("mask_rcnn"),
+                                                    ORT_TSTR("ssd"),
+                                                    ORT_TSTR("vgg19"),
+                                                    ORT_TSTR("zfnet512"),
+                                                    ORT_TSTR("ResNet101_DUC_HDC"),
+                                                    ORT_TSTR("ResNet101_DUC_HDC-12"),
+                                                    ORT_TSTR("FCN ResNet-101"),
+                                                    ORT_TSTR("SSD")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
+    // fp16 models have different outputs with different kinds of hardware. We need to disable all fp16 models
+    all_disabled_tests.insert(ORT_TSTR("fp16_shufflenet"));
+    all_disabled_tests.insert(ORT_TSTR("fp16_inception_v1"));
+    all_disabled_tests.insert(ORT_TSTR("fp16_tiny_yolov2"));
 
     auto broken_tests = GetBrokenTests(provider_name);
     auto broken_tests_keyword_set = GetBrokenTestsKeyWordSet(provider_name);

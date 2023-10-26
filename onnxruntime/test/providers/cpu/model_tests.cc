@@ -13,7 +13,7 @@
 #include "asserts.h"
 #include <core/platform/path_lib.h>
 #include "default_providers.h"
-#include "test/onnx/TestCase.h"
+#include "test/onnx/DisabledTests.h"
 #include <string>
 #include <codecvt>
 #include <locale>
@@ -359,48 +359,6 @@ TEST_P(ModelTest, Run) {
   }
 }
 
-using ORT_STRING_VIEW = std::basic_string_view<ORTCHAR_T>;
-static ORT_STRING_VIEW opset7 = ORT_TSTR("opset7");
-static ORT_STRING_VIEW opset8 = ORT_TSTR("opset8");
-static ORT_STRING_VIEW opset9 = ORT_TSTR("opset9");
-static ORT_STRING_VIEW opset10 = ORT_TSTR("opset10");
-static ORT_STRING_VIEW opset11 = ORT_TSTR("opset11");
-static ORT_STRING_VIEW opset12 = ORT_TSTR("opset12");
-static ORT_STRING_VIEW opset13 = ORT_TSTR("opset13");
-static ORT_STRING_VIEW opset14 = ORT_TSTR("opset14");
-static ORT_STRING_VIEW opset15 = ORT_TSTR("opset15");
-static ORT_STRING_VIEW opset16 = ORT_TSTR("opset16");
-static ORT_STRING_VIEW opset17 = ORT_TSTR("opset17");
-static ORT_STRING_VIEW opset18 = ORT_TSTR("opset18");
-// TODO: enable opset19 tests
-// static ORT_STRING_VIEW opset19 = ORT_TSTR("opset19");
-
-static ORT_STRING_VIEW provider_name_cpu = ORT_TSTR("cpu");
-static ORT_STRING_VIEW provider_name_tensorrt = ORT_TSTR("tensorrt");
-#ifdef USE_MIGRAPHX
-static ORT_STRING_VIEW provider_name_migraphx = ORT_TSTR("migraphx");
-#endif
-static ORT_STRING_VIEW provider_name_openvino = ORT_TSTR("openvino");
-static ORT_STRING_VIEW provider_name_cuda = ORT_TSTR("cuda");
-#ifdef USE_ROCM
-static ORT_STRING_VIEW provider_name_rocm = ORT_TSTR("rocm");
-#endif
-static ORT_STRING_VIEW provider_name_dnnl = ORT_TSTR("dnnl");
-// For any non-Android system, NNAPI will only be used for ort model converter
-#if defined(USE_NNAPI) && defined(__ANDROID__)
-static ORT_STRING_VIEW provider_name_nnapi = ORT_TSTR("nnapi");
-#endif
-#ifdef USE_RKNPU
-static ORT_STRING_VIEW provider_name_rknpu = ORT_TSTR("rknpu");
-#endif
-#ifdef USE_ACL
-static ORT_STRING_VIEW provider_name_acl = ORT_TSTR("acl");
-#endif
-#ifdef USE_ARMNN
-static ORT_STRING_VIEW provider_name_armnn = ORT_TSTR("armnn");
-#endif
-static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
-
 ::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
   // Map key is provider name(CPU, CUDA, etc). Value is the ONNX node tests' opsets to run.
   std::map<ORT_STRING_VIEW, std::vector<ORT_STRING_VIEW>> provider_names;
@@ -444,179 +402,7 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   provider_names[provider_name_dml] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
-  // Permanently exclude following tests because ORT support only opset starting from 7,
-  // Please make no more changes to the list
-  static const ORTCHAR_T* immutable_broken_tests[] = {
-      ORT_TSTR("AvgPool1d"),
-      ORT_TSTR("AvgPool1d_stride"),
-      ORT_TSTR("AvgPool2d"),
-      ORT_TSTR("AvgPool2d_stride"),
-      ORT_TSTR("AvgPool3d"),
-      ORT_TSTR("AvgPool3d_stride"),
-      ORT_TSTR("AvgPool3d_stride1_pad0_gpu_input"),
-      ORT_TSTR("BatchNorm1d_3d_input_eval"),
-      ORT_TSTR("BatchNorm2d_eval"),
-      ORT_TSTR("BatchNorm2d_momentum_eval"),
-      ORT_TSTR("BatchNorm3d_eval"),
-      ORT_TSTR("BatchNorm3d_momentum_eval"),
-      ORT_TSTR("GLU"),
-      ORT_TSTR("GLU_dim"),
-      ORT_TSTR("Linear"),
-      ORT_TSTR("PReLU_1d"),
-      ORT_TSTR("PReLU_1d_multiparam"),
-      ORT_TSTR("PReLU_2d"),
-      ORT_TSTR("PReLU_2d_multiparam"),
-      ORT_TSTR("PReLU_3d"),
-      ORT_TSTR("PReLU_3d_multiparam"),
-      ORT_TSTR("PoissonNLLLLoss_no_reduce"),
-      ORT_TSTR("Softsign"),
-      ORT_TSTR("operator_add_broadcast"),
-      ORT_TSTR("operator_add_size1_broadcast"),
-      ORT_TSTR("operator_add_size1_right_broadcast"),
-      ORT_TSTR("operator_add_size1_singleton_broadcast"),
-      ORT_TSTR("operator_addconstant"),
-      ORT_TSTR("operator_addmm"),
-      ORT_TSTR("operator_basic"),
-      ORT_TSTR("operator_mm"),
-      ORT_TSTR("operator_non_float_params"),
-      ORT_TSTR("operator_params"),
-      ORT_TSTR("operator_pow"),
-  };
 
-  static const ORTCHAR_T* cuda_flaky_tests[] = {ORT_TSTR("fp16_inception_v1"),
-                                                ORT_TSTR("fp16_shufflenet"),
-                                                ORT_TSTR("fp16_tiny_yolov2"),
-                                                ORT_TSTR("candy"),
-                                                ORT_TSTR("tinyyolov3"),
-                                                ORT_TSTR("mlperf_ssd_mobilenet_300"),
-                                                ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                ORT_TSTR("tf_inception_v1"),
-                                                ORT_TSTR("faster_rcnn"),
-                                                ORT_TSTR("split_zero_size_splits"),
-                                                ORT_TSTR("convtranspose_3d"),
-                                                ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
-                                                ORT_TSTR("fp16_coreml_FNS-Candy"),
-                                                ORT_TSTR("fp16_test_tiny_yolov2"),
-                                                ORT_TSTR("fp16_test_shufflenet"),
-                                                ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
-  static const ORTCHAR_T* openvino_disabled_tests[] = {
-      ORT_TSTR("tf_mobilenet_v1_1.0_224"),
-      ORT_TSTR("bertsquad"),
-      ORT_TSTR("yolov3"),
-      ORT_TSTR("LSTM_Seq_lens_unpacked"),
-      ORT_TSTR("tinyyolov3"),
-      ORT_TSTR("faster_rcnn"),
-      ORT_TSTR("mask_rcnn"),
-      ORT_TSTR("coreml_FNS-Candy_ImageNet"),
-      ORT_TSTR("tf_mobilenet_v2_1.0_224"),
-      ORT_TSTR("tf_mobilenet_v2_1.4_224"),
-      ORT_TSTR("operator_permute2"),
-      ORT_TSTR("operator_repeat"),
-      ORT_TSTR("operator_repeat_dim_overflow"),
-      ORT_TSTR("mlperf_ssd_resnet34_1200"),
-      ORT_TSTR("candy"),
-      ORT_TSTR("cntk_simple_seg"),
-      ORT_TSTR("GPT2_LM_HEAD"),
-      ORT_TSTR("mlperf_ssd_mobilenet_300"),
-      ORT_TSTR("fp16_coreml_FNS-Candy"),
-      ORT_TSTR("fp16_test_tiny_yolov2"),
-      ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight"),
-      ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded"),
-      ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
-      ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob_expanded"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded"),
-      // models from model zoo
-      ORT_TSTR("Tiny YOLOv3"),
-      ORT_TSTR("BERT-Squad"),
-      ORT_TSTR("YOLOv3"),
-      ORT_TSTR("Candy"),
-      ORT_TSTR("SSD"),
-      ORT_TSTR("ResNet101_DUC_HDC-12"),
-      ORT_TSTR("YOLOv3-12")};
-  static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                  ORT_TSTR("mlperf_ssd_mobilenet_300"),
-                                                  ORT_TSTR("mask_rcnn"),
-                                                  ORT_TSTR("faster_rcnn"),
-                                                  ORT_TSTR("tf_pnasnet_large"),
-                                                  ORT_TSTR("zfnet512"),
-                                                  ORT_TSTR("keras2coreml_Dense_ImageNet")};
-  static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("densenet121"),
-                                                   ORT_TSTR("resnet18v2"),
-                                                   ORT_TSTR("resnet34v2"),
-                                                   ORT_TSTR("resnet50v2"),
-                                                   ORT_TSTR("resnet101v2"),
-                                                   ORT_TSTR("resnet101v2"),
-                                                   ORT_TSTR("vgg19"),
-                                                   ORT_TSTR("tf_inception_resnet_v2"),
-                                                   ORT_TSTR("tf_inception_v1"),
-                                                   ORT_TSTR("tf_inception_v3"),
-                                                   ORT_TSTR("tf_inception_v4"),
-                                                   ORT_TSTR("tf_mobilenet_v1_1.0_224"),
-                                                   ORT_TSTR("tf_mobilenet_v2_1.0_224"),
-                                                   ORT_TSTR("tf_mobilenet_v2_1.4_224"),
-                                                   ORT_TSTR("tf_nasnet_large"),
-                                                   ORT_TSTR("tf_pnasnet_large"),
-                                                   ORT_TSTR("tf_resnet_v1_50"),
-                                                   ORT_TSTR("tf_resnet_v1_101"),
-                                                   ORT_TSTR("tf_resnet_v1_101"),
-                                                   ORT_TSTR("tf_resnet_v2_101"),
-                                                   ORT_TSTR("tf_resnet_v2_152"),
-                                                   ORT_TSTR("batchnorm_example_training_mode"),
-                                                   ORT_TSTR("batchnorm_epsilon_training_mode"),
-                                                   ORT_TSTR("mobilenetv2-1.0"),
-                                                   ORT_TSTR("shufflenet"),
-                                                   ORT_TSTR("candy"),
-                                                   ORT_TSTR("range_float_type_positive_delta_expanded"),
-                                                   ORT_TSTR("range_int32_type_negative_delta_expanded"),
-                                                   ORT_TSTR("averagepool_2d_ceil"),
-                                                   ORT_TSTR("maxpool_2d_ceil"),
-                                                   ORT_TSTR("maxpool_2d_dilations"),
-                                                   ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                   ORT_TSTR("convtranspose_1d"),
-                                                   ORT_TSTR("convtranspose_3d"),
-                                                   ORT_TSTR("maxpool_2d_uint8"),
-                                                   ORT_TSTR("mul_uint8"),
-                                                   ORT_TSTR("div_uint8")};
-  static const ORTCHAR_T* tensorrt_disabled_tests[] = {
-      ORT_TSTR("udnie"),
-      ORT_TSTR("rain_princess"),
-      ORT_TSTR("pointilism"),
-      ORT_TSTR("mosaic"),
-      ORT_TSTR("LSTM_Seq_lens_unpacked"),
-      ORT_TSTR("cgan"),
-      ORT_TSTR("candy"),
-      ORT_TSTR("tinyyolov3"),
-      ORT_TSTR("yolov3"),
-      ORT_TSTR("mlperf_ssd_resnet34_1200"),
-      ORT_TSTR("mlperf_ssd_mobilenet_300"),
-      ORT_TSTR("mask_rcnn"),
-      ORT_TSTR("faster_rcnn"),
-      ORT_TSTR("fp16_shufflenet"),
-      ORT_TSTR("fp16_inception_v1"),
-      ORT_TSTR("fp16_tiny_yolov2"),
-      ORT_TSTR("tf_inception_v3"),
-      ORT_TSTR("tf_mobilenet_v1_1.0_224"),
-      ORT_TSTR("tf_mobilenet_v2_1.0_224"),
-      ORT_TSTR("tf_mobilenet_v2_1.4_224"),
-      ORT_TSTR("tf_resnet_v1_101"),
-      ORT_TSTR("tf_resnet_v1_152"),
-      ORT_TSTR("tf_resnet_v1_50"),
-      ORT_TSTR("tf_resnet_v2_101"),
-      ORT_TSTR("tf_resnet_v2_152"),
-      ORT_TSTR("tf_resnet_v2_50"),
-      ORT_TSTR("convtranspose_1d"),
-      ORT_TSTR("convtranspose_3d"),
-      ORT_TSTR("conv_with_strides_and_asymmetric_padding"),
-      ORT_TSTR("conv_with_strides_padding"),
-      ORT_TSTR("size")  // INVALID_ARGUMENT: Cannot find binding of given name: x
-  };
   std::vector<std::basic_string<ORTCHAR_T>> paths;
 
   for (std::pair<ORT_STRING_VIEW, std::vector<ORT_STRING_VIEW>> kvp : provider_names) {
@@ -647,60 +433,9 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #endif
 
     ORT_STRING_VIEW provider_name = kvp.first;
-    std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
-                                                                        std::end(immutable_broken_tests));
-    if (provider_name == provider_name_cuda) {
-      all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
-    } else if (provider_name == provider_name_dml) {
-      all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
-    } else if (provider_name == provider_name_dnnl) {
-      // these models run but disabled tests to keep memory utilization low
-      // This will be removed after LRU implementation
-      all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
-    } else if (provider_name == provider_name_tensorrt) {
-      // these models run but disabled tests to keep memory utilization low
-      // This will be removed after LRU implementation
-      all_disabled_tests.insert(std::begin(tensorrt_disabled_tests), std::end(tensorrt_disabled_tests));
-    } else if (provider_name == provider_name_openvino) {
-      // these models run but disabled tests to keep memory utilization low
-      // This will be removed after LRU implementation
-      all_disabled_tests.insert(std::begin(openvino_disabled_tests), std::end(openvino_disabled_tests));
-    }
+    std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests = GetAllDisabledTests(provider_name)
 
-#if !defined(__amd64__) && !defined(_M_AMD64)
-    // out of memory
-    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("BERT_Squad"),
-                                                    ORT_TSTR("bvlc_alexnet"),
-                                                    ORT_TSTR("bvlc_reference_caffenet"),
-                                                    ORT_TSTR("coreml_VGG16_ImageNet"),
-                                                    ORT_TSTR("VGG 16-fp32"),
-                                                    ORT_TSTR("VGG 19-caffe2"),
-                                                    ORT_TSTR("VGG 19-bn"),
-                                                    ORT_TSTR("VGG 16-bn"),
-                                                    ORT_TSTR("VGG 19"),
-                                                    ORT_TSTR("VGG 16"),
-                                                    ORT_TSTR("faster_rcnn"),
-                                                    ORT_TSTR("GPT2"),
-                                                    ORT_TSTR("GPT2_LM_HEAD"),
-                                                    ORT_TSTR("keras_lotus_resnet3D"),
-                                                    ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                    ORT_TSTR("mask_rcnn_keras"),
-                                                    ORT_TSTR("mask_rcnn"),
-                                                    ORT_TSTR("ssd"),
-                                                    ORT_TSTR("vgg19"),
-                                                    ORT_TSTR("zfnet512"),
-                                                    ORT_TSTR("ResNet101_DUC_HDC"),
-                                                    ORT_TSTR("ResNet101_DUC_HDC-12"),
-                                                    ORT_TSTR("FCN ResNet-101"),
-                                                    ORT_TSTR("SSD")};
-    all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
-#endif
-    // fp16 models have different outputs with different kinds of hardware. We need to disable all fp16 models
-    all_disabled_tests.insert(ORT_TSTR("fp16_shufflenet"));
-    all_disabled_tests.insert(ORT_TSTR("fp16_inception_v1"));
-    all_disabled_tests.insert(ORT_TSTR("fp16_tiny_yolov2"));
-
-    while (!paths.empty()) {
+        while (!paths.empty()) {
       std::basic_string<ORTCHAR_T> node_data_root_path = paths.back();
       paths.pop_back();
       std::basic_string<ORTCHAR_T> my_dir_name = GetLastComponent(node_data_root_path);
