@@ -2,6 +2,7 @@
 	import Hero from './components/hero.svelte';
 	import Customers from './components/customers.svelte';
 	import CodeBlocks from './components/code-blocks.svelte';
+	import Videos from './components/videos.svelte';
 	import Performance from './components/performance.svelte';
 	import CrossPlatform from './components/cross-platform.svelte';
 	import GenerativeAi from './components/generative-ai-hero.svelte';
@@ -32,6 +33,10 @@
 <Hero />
 <Customers />
 <CodeBlocks />
+<div class="divider px-10" />
+<Saos once={true} animation={'slide-in-right 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
+	<Videos />
+</Saos>
 <Saos once={true} animation={'slide-in-left 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
 	<GenerativeAi />
 </Saos>

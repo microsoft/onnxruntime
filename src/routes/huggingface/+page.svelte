@@ -3,6 +3,7 @@
 	import ImagesHf1 from '../../images/undraw/image_HF1.svelte';
 	import ImageHf2 from '../../images/undraw/image_HF2.svelte';
 	import ImageHf3 from '../../images/undraw/image_HF3.svelte';
+	import OnnxLight from '../../images/ONNX-Light.svelte';
 	const title = 'Hugging Face + ONNX Runtime';
 	const description =
 		'ONNX Runtime can be used to accelerate well over 100,000 of the models available on Hugging Face.';
@@ -17,9 +18,29 @@
 	/>
 </svelte:head>
 
-<LandingHero {title} {description} {imgsrc} {imgalt} />
 <div class="container mx-auto px-10 my-10">
-	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+	<div class="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-10">
+		<div class="col-span-2">
+			<h1 class="text-4xl">{title}</h1>
+			<br /><br />
+			<p class="text-xl">
+				{description}
+			</p>
+			<br />
+			<br>
+			<a
+				href="https://cloudblogs.microsoft.com/opensource/2023/10/04/accelerating-over-130000-hugging-face-models-with-onnx-runtime/"
+				class="btn btn-primary mr-0 mb-4 md:mr-4">Recent blog with Hugging Face →</a
+			>
+		</div>
+		<div class="m-auto">
+			<OnnxLight height={250} width={250} />
+		</div>
+	</div>
+</div>
+
+<div class="container mx-auto px-10 my-10">
+	<div >
 		<div>
 			<h1 class="text-4xl pb-4">Supported Models</h1>
 			<p>
@@ -50,74 +71,6 @@
 				>Learn more about Transformers.js →</a
 			>
 		</div>
-		<div class="hidden md:grid">
-			<table class="table">
-				<thead>
-					<tr>
-						<th>Model Family</th>
-						<th>Approx. No. of Models</th>
-						<th>ORT Support</th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr>
-						<td>bert</td>
-						<td>24900</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>gpt2</td>
-						<td>12700</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>distilbert</td>
-						<td>10000</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>roberta</td>
-						<td>9400</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>t5</td>
-						<td>8800</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>wav2vec2</td>
-						<td>5800</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>stable-diffusion</td>
-						<td>4400</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>xlm-roberta</td>
-						<td>4300</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>bart</td>
-						<td>3200</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>whisper</td>
-						<td>2900</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>marian</td>
-						<td>2500</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-				</tbody>
-			</table>
-		</div>
 	</div>
 </div>
 
@@ -147,7 +100,7 @@
 </div>
 <div class="container mx-auto px-10 my-10">
 	<div class="divider" />
-	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+	<div >
 		<div class="col-span-1">
 			<div class="flex">
 				<h1 class="text-4xl pb-4">Large Language Models</h1>
@@ -173,49 +126,6 @@
 				>Hugging Face Open LLM Leaderboard →</a
 			>
 		</div>
-		<div class="overflow-x-auto hidden md:grid">
-			<table class="table">
-				<thead>
-					<tr>
-						<th>LLM Model Family</th>
-						<th>Approx. No. of Models</th>
-						<th>ORT Support</th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr>
-						<td>llama</td>
-						<td>3785</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>gpt_neo</td>
-						<td>892</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>bloom</td>
-						<td>552</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>opt</td>
-						<td>543</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>gpt-j</td>
-						<td>17</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-					<tr>
-						<td>flan-t5</td>
-						<td>4</td>
-						<td>Convertible to ONNX using Optimum API</td>
-					</tr>
-				</tbody>
-			</table>
-		</div>
 	</div>
 </div>
 <div class="container mx-auto px-10 my-10">
@@ -236,10 +146,4 @@
 		most popular models at the moment. Of the models on this list that are available on Hugging
 		Face, there is currently Optimum ONNX support for over 85%.
 	</p>
-	<br />
-	<a
-		class="btn btn-primary"
-		href="https://ml.azure.com/model/catalog?wsid=/subscriptions/48bbc269-ce89-4f6f-9a12-c6f91fcb772d/resourceGroups/aml1p-rg/providers/Microsoft.MachineLearningServices/workspaces/aml1p-ml-wus2&tid=72f988bf-86f1-41af-91ab-2d7cd011db47"
-		>Azure ML Curated Model List →</a
-	>
 </div>

@@ -12,7 +12,7 @@
 	});
 </script>
 
-<div class="navbar bg-base-100">
+<div class="navbar bg-base-100 sticky top-0 z-50">
 	<div class="navbar-start">
 		<div class="dropdown">
 			<button tabindex="0" class="btn btn-ghost lg:hidden">
@@ -34,6 +34,7 @@
 				tabindex="0"
 				class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
 			>
+				<li><a href={pathvar + '/getting-started'}>Get Started</a></li>
 				<li><a href={pathvar + '/blogs'}>Blogs</a></li>
 				<li><a rel="external" href={pathvar + '/docs'}>Docs</a></li>
 				<li>
@@ -74,6 +75,7 @@
 	</div>
 	<div class="navbar-center hidden lg:flex">
 		<ul class="menu menu-horizontal px-1">
+			<li><a href={pathvar + '/getting-started'}>Get Started</a></li>
 			<li><a href={pathvar + '/blogs'}>Blogs</a></li>
 			<li><a rel="external" href={pathvar + '/docs'}>Docs</a></li>
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->

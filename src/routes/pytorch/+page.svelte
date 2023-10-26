@@ -75,7 +75,7 @@
 						>
 					</div>
 				</div>
-				<pre class="md:col-span-1 col-span-2 order-first sm:order-last">
+				<pre class="md:col-span-1 col-span-2 order-first sm:order-last pr-5">
 					<Highlight language={python} code={pythonCode} />
 				</pre>
 			</article>
@@ -95,7 +95,7 @@
 						>
 					</div>
 				</div>
-				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
+				<figure class="md:col-span-1 col-span-2 order-first sm:order-last pr-5">
 					<img src={prodready} alt="" />
 				</figure>
 			</article>
@@ -130,7 +130,7 @@
 						>
 					</div>
 				</div>
-				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
+				<figure class="md:col-span-1 col-span-2 order-first sm:order-last pr-5">
 					<ImagePt4 />
 				</figure>
 			</article>
@@ -151,7 +151,7 @@
 						<a href="./testimonials" class="btn btn-primary md:hidden">Testimonials →</a>
 					</div>
 				</div>
-				<figure class="md:col-span-1 col-span-2 order-first sm:order-last">
+				<figure class="md:col-span-1 col-span-2 order-first sm:order-last pr-5">
 					<ImagePt5 />
 				</figure>
 			</article>

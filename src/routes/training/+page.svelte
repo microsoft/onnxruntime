@@ -43,8 +43,8 @@
 				class="btn btn-primary">Get started with large model training →</a
 			>
 		</div>
-		<div class="mx-auto">
-			<ImageLargemodeltraining widthscale={1.8} heightscale={1.8} />
+		<div class="mx-auto md:pt-10">
+			<ImageLargemodeltraining widthscale={1} heightscale={1} />
 		</div>
 	</div>
 </div>

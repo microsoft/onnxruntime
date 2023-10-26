@@ -40,7 +40,7 @@
 		interacted = true;
 		const tabText = e.target.textContent.trim();
 		if (tabText === 'More..') {
-			window.location.href = '/docs/get-started';
+			window.location.href = './docs/get-started';
 		}
 		activeTab = tabText;
 		activeTab = activeTab;

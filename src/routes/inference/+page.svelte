@@ -107,7 +107,7 @@
 	imgalt=""
 />
 <div class="container mx-auto px-10 my-10">
-	<div class="mx-auto bg-secondary rounded m-4 p-4">
+	<div class="mx-auto border border-solid border-primary rounded m-4 p-4">
 		<h1 class="text-3xl mb-2">Examples</h1>
 		<div class="grid gap-10 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
 			<div class="card bg-base-300">
@@ -178,7 +178,7 @@
 		</div>
 		<a
 			href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile"
-			class="text-2xl text-blue-200"
+			class="text-2xl text-blue-500"
 			>Check out more examples of ONNX Runtime Mobile in action on GitHub. →</a
 		>
 	</div>
@@ -201,7 +201,7 @@
 			<ImageInference2 />
 		</div>
 	</div>
-	<div class="mx-auto bg-secondary rounded m-4 p-4">
+	<div class="mx-auto border border-solid border-primary rounded m-4 p-4">
 		<h1 class="text-3xl">Examples</h1>
 		<div class="grid gap-10 grid-cols-1 md:grid-cols-2">
 			<div class="">

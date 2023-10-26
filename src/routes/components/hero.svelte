@@ -41,7 +41,7 @@
 </script>
 
 {#if copied}
-	<div class="toast toast-top">
+	<div class="toast toast-top top-14 z-50">
 		<div class="alert alert-info">
 			<svg
 				xmlns="http://www.w3.org/2000/svg"

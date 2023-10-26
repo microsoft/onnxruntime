@@ -1784,7 +1784,6 @@
 	</noscript>
 	<p class="pb-4">
 		Select the configuration you want to use and run the corresponding installation script.
-		<br />ONNX Runtime supports a variety of hardware and architectures to fit any need.
 	</p>
 	<div>
 		<div class="tabs">
