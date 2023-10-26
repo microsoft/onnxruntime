@@ -1111,11 +1111,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInlining) {
   ASSERT_STATUS_OK(session_object.Load(sstr));
   ASSERT_STATUS_OK(session_object.Initialize());
 
-
-  //const auto resulting_model_proto = session_object.GetModel().ToProto();
-  //std::string printed_model = ONNX_NAMESPACE::ProtoToString(resulting_model_proto);
-  //ASSERT_FALSE(printed_model.empty());
-  //std::cout << printed_model << std::endl;
+  // const auto resulting_model_proto = session_object.GetModel().ToProto();
+  // std::string printed_model = ONNX_NAMESPACE::ProtoToString(resulting_model_proto);
+  // ASSERT_FALSE(printed_model.empty());
+  // std::cout << printed_model << std::endl;
 
   // This is the resulting model proto.
   // The remaining If node is not constant foldable because Size() does not constant fold

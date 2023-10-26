@@ -113,7 +113,6 @@ static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Log
       proto_shape,
       std::make_shared<CPUAllocator>()};
 
-  // XXX: If we fail, we simply ignore this node. Should we bail out?
   Status status = utils::TensorProtoToTensor(Env::Default(), graph.ModelPath().ToPathString().c_str(), *initializer, tensor);
   if (!status.IsOK()) {
     LOGS(logger, WARNING) << "Unable to constant fold. Can't fetch constant value tensor for 'If' "

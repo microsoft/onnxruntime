@@ -4212,9 +4212,7 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
                       "Expecting to exist node_arg: ", input_name);
           new_node_input_defs.push_back(node_arg);
         } else {
-          auto new_name = GenerateNodeArgName(make_unique(input_name));
-          new_node_input_defs.push_back(&GetOrCreateNodeArg(new_name, input_def->TypeAsProto()));
-          ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(input_name, std::move(new_name)));
+          ORT_THROW("Node's: ", node->Name(), " input: ", input_name, " is not If node's input or previous node output in this subgraph");
         }
       }
     }
