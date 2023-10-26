@@ -13,43 +13,34 @@
 		easy to run AI/ML models from popular machine learning frameworks like PyTorch and TensorFlow.
 	</p>
 	<div class="divider" />
-	<div class="grid grid-cols-3">
+	<div class="grid grid-cols-3 gap-4">
 		<div class="md:col-span-2 col-span-3">
-			<h2 class="text-2xl mb-2">Get started on your Windows Dev Kit 2023 today</h2>
-			<p class="text-xl text-blue-500">
-				Follow these steps to setup your device to use ONNX Runtime (ORT) with the built in NPU:
-			</p>
+			<h2 class="text-xl text-blue-500">Get started on your Windows Dev Kit 2023 today</h2>
+			Follow these steps to setup your device to use ONNX Runtime (ORT) with the built in NPU:
 			<ol class="list-decimal ml-10">
 				<li>
-					Request access to the Neural Processing SDK for Windows on Snapdragon. Qualcomm may reach
-					out to you via email with further registration instructions for approval.
+					<a class="text-blue-500" href="https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct">Download</a> the Qualcomm AI Engine Direct SDK (QNN SDK)
 				</li>
-				<li>Once approved, you will receive an email with links to download SNPE.</li>
-				<li>Select the SNPE link which takes you to a Qualcomm login and download page.</li>
-				<li>Select the Snapdragon_NPE_SDK.WIN.1.0 Installer link, download and install.</li>
-				<li>Download and install the ONNX Runtime with SNPE package.</li>
+				<li><a class="text-blue-500" href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN">Download</a> and install the ONNX Runtime with QNN package</li>
 				<li>Start using the ONNX Runtime API in your application.</li>
 			</ol>
+			<br><br>
 			<p class="text-xl text-blue-500">Optimizing models for the NPU</p>
-
-			ONNX is a standard format for representing ML models authored in frameworks like PyTorch,
+			<a class="text-blue-500" href="https://onnx.ai/">ONNX</a> is a standard format for representing ML models authored in frameworks like PyTorch,
 			TensorFlow, and others. ONNX Runtime can run any ONNX model, however to make use of the NPU,
 			you currently need to use the following steps:
 			<ol class="list-disc ml-10">
 				<li>Run the tools provided in the SNPE SDK on your model to generate a binary file.</li>
 				<li>Include the contents of the binary file as a node in the ONNX graph.</li>
-				See our C# tutorial for an example of how this is done.
+				<br>
+				See our <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP/mobilenetv2_classification">C# tutorial</a> for an example of how this is done.
 			</ol>
 			<br />
 			Many models can be optimized for the NPU using this process. Even if a model cannot be optimized
 			for NPU by the SNPE SDK, it can still be run by ONNX Runtime on the CPU.
-			<p class="text-xl text-blue-500">Tutorials</p>
-			<ol class="list-disc ml-10">
-				<li>C# Image classification with VGG16 using ONNX Runtime with SNPE</li>
-				<li>C++ image classification with Inception v3 using ONNX Runtime with SNPE</li>
-			</ol>
+			<br><br>
 			<p class="text-xl text-blue-500">Getting Help</p>
-			For help with ONNX Runtime, you can start a discussion on GitHub or file an issue.
+			For help with ONNX Runtime, you can <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime/discussions">start a discussion</a> on GitHub or <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime/issues">file an issue</a>.
 		</div>
 		<div class="m-auto">
 			<img src={windowsdevkit} alt="Windows Dev kit" />
