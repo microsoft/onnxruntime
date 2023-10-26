@@ -105,7 +105,7 @@ public:
         matrixMultiplyIntergerToFloatOperatorDesc.BiasTensor = hasBias? &inputDescs[OnnxInputIndex::Bias] : nullptr;
         matrixMultiplyIntergerToFloatOperatorDesc.OutputTensor = &outputDescs[0];
 
-        const DML_OPERATOR_DESC opDesc2{ static_cast<DML_OPERATOR_TYPE>(DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT), &matrixMultiplyIntergerToFloatOperatorDesc};
+        const DML_OPERATOR_DESC opDesc2{ DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT, &matrixMultiplyIntergerToFloatOperatorDesc};
 
         MLOperatorGraphDesc operatorGraphDesc = {};
         std::vector<const DML_OPERATOR_DESC*> opDescs{&opDesc1, &opDesc2};
