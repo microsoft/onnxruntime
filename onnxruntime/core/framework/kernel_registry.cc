@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _WIN32
+#pragma warning(disable : 4702)
+#endif
+
 #include "core/framework/kernel_registry.h"
 
 #include <algorithm>

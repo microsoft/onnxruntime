@@ -4,6 +4,10 @@
 // The ONNX Runtime specific implementation of the generic transpose optimizer API.
 #pragma once
 
+#ifdef _WIN32
+#pragma warning(disable : 4250)
+#endif
+
 #include <deque>
 #include <iterator>
 #include <optional>

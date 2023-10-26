@@ -82,7 +82,12 @@ interface::ExecutionProvider* ProviderLibrary2::CreateExternalEPInstance(const s
 }
 
 Status Environment::LoadExternalExecutionProvider(const std::string& provider_type, const std::string& library_path) {
+#ifdef _WIN32
+  std::wstring wlibrary_path(library_path.begin(), library_path.end());
+  auto provider_lib = std::make_unique<ProviderLibrary2>(wlibrary_path.c_str());
+#else
   auto provider_lib = std::make_unique<ProviderLibrary2>(library_path.c_str());
+#endif
   provider_lib->Load();
   external_ep_libs_.insert({provider_type, std::move(provider_lib)});
   return Status::OK();
