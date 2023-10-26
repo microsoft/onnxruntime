@@ -48,10 +48,9 @@ Status CheckInputs(const Tensor* query,
   int head_size = static_cast<int>(q_hidden_size) / num_heads;
 
   int kv_sequence_length = static_cast<int>(key_dims[1]);
-  int kv_hidden_size = (key_dims.size() == 3)
-                           ? static_cast<int>(key_dims[2])
-                           : (kv_num_heads * static_cast<int>(key_dims[3]));
+  int kv_hidden_size = static_cast<int>(key_dims[2]);
 
+  int32_t past_sequence_length = 0;
   int max_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     const auto& past_key_dims = past_key->Shape().GetDims();
@@ -97,6 +96,7 @@ Status CheckInputs(const Tensor* query,
                                "Input 'past_value' shall have kv_num_heads");
       }
       // We assume all sequence in past kv are left-padded to max or past sequence length
+      past_sequence_length = static_cast<int>(past_key_dims[2]);
       max_sequence_length = static_cast<int>(past_key_dims[2]);
       // BSNH
     } else {
@@ -116,6 +116,7 @@ Status CheckInputs(const Tensor* query,
                                "Input 'past_value' shall have kv_num_heads");
       }
       // We assume all sequence in past kv are left-padded to max or past sequence length
+      past_sequence_length = static_cast<int>(past_key_dims[1]);
       max_sequence_length = static_cast<int>(past_key_dims[1]);
     }
 
@@ -135,7 +136,6 @@ Status CheckInputs(const Tensor* query,
   }
 
   // When kv-cache, we take past_seq_len as an argument... otherwise we use sequence length of past kv directly.
-  int32_t past_sequence_length = 0;
   int present_sequence_length = kv_sequence_length;
   if (past_seq_len != nullptr) {
     if (past_key == nullptr) {
@@ -155,11 +155,10 @@ Status CheckInputs(const Tensor* query,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "KV buffer too small... shall be that max_sequence_length >= past_sequence_length + kv_sequence_length");
     }
-    present_sequence_length = max_sequence_length;
-  } else if (past_key != nullptr) {
-    past_sequence_length = max_sequence_length;  // this is the length of past_key tensor
-    present_sequence_length = past_sequence_length + kv_sequence_length;
+  } else {
+    max_sequence_length = past_sequence_length + kv_sequence_length;
   }
+  present_sequence_length += past_sequence_length;
 
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);

@@ -1008,7 +1008,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "left_window_size for local attention (like Mistral). Default value is -1 meaning infinite. Must be used"
               "in conjunction with unidirectional (local attention is similar to causal but with a limited window).",
               AttributeProto::INT,
-              static_cast<int64_t>(1))
+              static_cast<int64_t>(-1))
         .Attr("is_past_bsnh",
               "Whether past kv uses BSNH, otherwise BNSH. Default value is 1 (BSNH).",
               AttributeProto::INT,
@@ -1134,7 +1134,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* RotaryEmbedding_ver1_doc = R"DOC(
-RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices 
+RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices
 that are multiplied to query and key before the inner product of query and key is taken.
 )DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(

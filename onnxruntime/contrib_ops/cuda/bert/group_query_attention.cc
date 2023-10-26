@@ -90,9 +90,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 is_past_bsnh_,
                                                                 scale_,
                                                                 device_prop.maxThreadsPerBlock));
-  if (!is_unidirectional_ && local_window_size_ > 0) {
+  if (local_window_size_ > 0 && !is_unidirectional_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "unidirectional must be true when using local (sliding window) attention.");
+                           "unidirectional must be true when using local (sliding window) attention.");
   }
   parameters.is_unidirectional = is_unidirectional_;
   parameters.local_window_size = local_window_size_;
@@ -162,7 +162,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t kv_buffer_bytes = 0;
   // need a buffer if we must ungroup kv or if kv-cache is present
   const bool needs_buff = ((parameters.num_heads != parameters.kv_num_heads) ||
-                           (past_key != nullptr && parameters.present_sequence_length != parameters.past_sequence_length + parameters.kv_sequence_length));
+                           (past_key != nullptr && parameters.present_sequence_length != parameters.max_sequence_length));
   if (use_memory_efficient_attention && needs_buff) {
     kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * (parameters.past_sequence_length + parameters.kv_sequence_length) * parameters.head_size);
   }
@@ -181,12 +181,13 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   std::vector<int64_t> present_dims;
+  int present_buff_seqlen = past_seq_len == nullptr ? parameters.present_sequence_length : parameters.max_sequence_length;
   if (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH) {
     present_dims = {
-        parameters.batch_size, parameters.present_sequence_length, parameters.kv_num_heads, parameters.head_size};
+        parameters.batch_size, present_buff_seqlen, parameters.kv_num_heads, parameters.head_size};
   } else {  // BNSH
     present_dims = {
-        parameters.batch_size, parameters.kv_num_heads, parameters.present_sequence_length, parameters.head_size};
+        parameters.batch_size, parameters.kv_num_heads, present_buff_seqlen, parameters.head_size};
   }
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(1, present_shape);
