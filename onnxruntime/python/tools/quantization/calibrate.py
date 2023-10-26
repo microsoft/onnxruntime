@@ -290,8 +290,12 @@ class MinMaxCalibrater(CalibraterBase):
             )
 
             self.model.graph.node.extend([reduce_node, reshape_node])
-            # This function assumes the output type is the same as the first input type.
-            onnx_type = self.model.graph.input[0].type.tensor_type.elem_type
+            io_dict = {o.name: o for o in self.model.graph.output}
+            io_dict.update({i.name: i for i in self.model.graph.input})
+            if tensor_name in io_dict:
+                onnx_type = io_dict[tensor_name].type.tensor_type.elem_type
+            else:
+                raise ValueError(f"Unable to guess tensor type for tensor {tensor_name!r}")
             self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, onnx_type, [1]))
 
         for tensor in tensors:
@@ -681,23 +685,35 @@ class HistogramCollector(CalibrationDataCollector):
         Collect histogram on absolute value
         """
         for tensor, data_arr in name_to_arr.items():
-            if not isinstance(data_arr, np.ndarray):
+            if isinstance(data_arr, list):
+                for arr in data_arr:
+                    if not isinstance(arr, np.ndarray):
+                        raise ValueError(f"Unexpected type {type(arr)} for tensor={tensor!r}")
+                dtypes = set(a.dtype for a in arr)
+                if len(dtypes) != 1:
+                    raise ValueError(
+                        f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
+                    )
+                data_arr_np = np.asarray(data_arr)
+            elif not isinstance(data_arr, np.ndarray):
                 raise ValueError(f"Unexpected type {type(data_arr)} for tensor={tensor!r}")
-            data_arr = data_arr.flatten()  # noqa: PLW2901
-            if data_arr.size > 0:
-                min_value = np.min(data_arr)
-                max_value = np.max(data_arr)
+            else:
+                data_arr_np = data_arr
+            data_arr_np = data_arr_np.flatten()
+            if data_arr_np.size > 0:
+                min_value = np.min(data_arr_np)
+                max_value = np.max(data_arr_np)
             else:
                 min_value = 0
                 max_value = 0
 
-            data_arr = np.absolute(data_arr)  # only consider absolute value  # noqa: PLW2901
+            data_arr_np = np.absolute(data_arr_np)  # only consider absolute value
 
             if tensor not in self.histogram_dict:
                 # first time it uses num_bins to compute histogram.
-                hist, hist_edges = np.histogram(data_arr, bins=self.num_bins)
-                hist_edges = hist_edges.astype(data_arr.dtype)
-                assert data_arr.dtype != np.float64
+                hist, hist_edges = np.histogram(data_arr_np, bins=self.num_bins)
+                hist_edges = hist_edges.astype(data_arr_np.dtype)
+                assert data_arr_np.dtype != np.float64
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
@@ -705,17 +721,17 @@ class HistogramCollector(CalibrationDataCollector):
                 old_max = old_histogram[3]
                 old_hist = old_histogram[0]
                 old_hist_edges = old_histogram[1]
-                temp_amax = np.max(data_arr)
+                temp_amax = np.max(data_arr_np)
                 if temp_amax > old_hist_edges[-1]:
                     # increase the number of bins
                     width = old_hist_edges[1] - old_hist_edges[0]
                     # NOTE: np.arange may create an extra bin after the one containing temp_amax
                     new_bin_edges = np.arange(old_hist_edges[-1] + width, temp_amax + width, width)
                     old_hist_edges = np.hstack((old_hist_edges, new_bin_edges))
-                hist, hist_edges = np.histogram(data_arr, bins=old_hist_edges)
-                hist_edges = hist_edges.astype(data_arr.dtype)
+                hist, hist_edges = np.histogram(data_arr_np, bins=old_hist_edges)
+                hist_edges = hist_edges.astype(data_arr_np.dtype)
                 hist[: len(old_hist)] += old_hist
-                assert data_arr.dtype != np.float64
+                assert data_arr_np.dtype != np.float64
                 self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):
@@ -730,8 +746,8 @@ class HistogramCollector(CalibrationDataCollector):
                 min_value = np.min(data_arr)
                 max_value = np.max(data_arr)
             else:
-                min_value = 0
-                max_value = 0
+                min_value = np.array(0, dtype=data_arr.dtype)
+                max_value = np.array(0, dtype=data_arr.dtype)
 
             threshold = max(abs(min_value), abs(max_value))
 
@@ -818,16 +834,16 @@ class HistogramCollector(CalibrationDataCollector):
                 idx_right = np.searchsorted(cdf, percentile / 100.0)
 
                 thresholds_dict[tensor] = (
-                    -float(hist_edges[idx_right]),
-                    float(hist_edges[idx_right]),
+                    -np.array(hist_edges[idx_right], dtype=hist_edges.dtype),
+                    np.array(hist_edges[idx_right], dtype=hist_edges.dtype),
                 )
             else:
                 percent_to_cut_one_side = (100.0 - percentile) / 200.0
                 idx_right = np.searchsorted(cdf, 1.0 - percent_to_cut_one_side)
                 idx_left = np.searchsorted(cdf, percent_to_cut_one_side)
                 thresholds_dict[tensor] = (
-                    float(hist_edges[idx_left]),
-                    float(hist_edges[idx_right]),
+                    np.array(hist_edges[idx_left], dtype=hist_edges.dtype),
+                    np.array(hist_edges[idx_right], dtype=hist_edges.dtype),
                 )
             min_value = histogram[2]
             max_value = histogram[3]

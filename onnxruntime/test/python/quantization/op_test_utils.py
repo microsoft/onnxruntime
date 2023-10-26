@@ -511,7 +511,9 @@ def check_qtype_by_node_type(testcase, model_to_check, check_list):
             for check_item in input_output_check_list:
                 tensor_name = node.input[check_item[1]] if check_item[0] == "i" else node.output[check_item[1]]
                 if tensor_name not in value_infos and tensor_name not in initializers:
-                    raise AssertionError(f"Unable to find tensor_name={tensor_name!r}\n{model}")
+                    raise AssertionError(
+                        f"Unable to find tensor_name={tensor_name!r} in {list(sorted(value_infos))}\n{model}"
+                    )
                 if tensor_name in value_infos:
                     vi = value_infos[tensor_name]
                     testcase.assertTrue(vi.type.HasField("tensor_type"))

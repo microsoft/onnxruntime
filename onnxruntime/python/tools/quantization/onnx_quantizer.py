@@ -724,9 +724,6 @@ class ONNXQuantizer:
                     [output_name, scale_name, zp_name],
                     ql_node_name,
                 )
-                self.quantized_value_map[input_name] = QuantizedValue(
-                    input_name, output_name, scale_name, zp_name, qType
-                )
             else:
                 (
                     scale_name,
@@ -740,10 +737,8 @@ class ONNXQuantizer:
                     [output_name],
                     ql_node_name,
                 )
-                self.quantized_value_map[input_name] = QuantizedValue(
-                    input_name, output_name, scale_name, zp_name, qType
-                )
 
+        self.quantized_value_map[input_name] = QuantizedValue(input_name, output_name, scale_name, zp_name, qType)
         return [*nodes, qlinear_node]
 
     def set_quant_scale_zp(self, tensor_name, value):
