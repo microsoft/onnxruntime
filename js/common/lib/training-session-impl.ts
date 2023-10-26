@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {resolveBackend} from './backend-impl.js';
-import {TrainingSessionHandler, SessionHandler} from './backend.js';
+import {SessionHandler, TrainingSessionHandler} from './backend.js';
 import {InferenceSession as InferenceSession} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
 import {Tensor} from './tensor.js';
@@ -55,7 +55,8 @@ export class TrainingSession implements TrainingSessionInterface {
    * the inputs are correct.
    *
    * @param feeds the required input -- checked in this function for correctness.
-   * @param arg1 narrowed & converted into the SessionHandler.FetchesType or RunOptions object. Also checked for correctness.
+   * @param arg1 narrowed & converted into the SessionHandler.FetchesType or RunOptions object. Also checked for
+   * correctness.
    * @param arg2 optional RunOptions object.
    * @returns
    */

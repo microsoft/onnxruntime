@@ -61,7 +61,7 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
         createTrainingSessionHandle(this.checkpointId, trainModelData, evalModelData, optimizerModelData, options);
   }
 
-    /**
+  /**
    * Helper method that converts a feeds or fetches datatype to two arrays, one of values and one that stores the
    * corresponding name as a number referring to the index in the list of names provided.
    *
