@@ -19,7 +19,7 @@ def init_dist():
         rank = 0
         world_size = 1
 
-    dist.init_process_group("nccl", init_method="tcp://127.0.0.1:7651", world_size=world_size, rank=rank)
+    dist.init_process_group("nccl", init_method="tcp://127.0.0.1:7650", world_size=world_size, rank=rank)
     device = torch.device(local_rank)
     return device
 
@@ -32,7 +32,8 @@ def get_rank():
 
 
 def get_size():
-    return comm.Get_size()
+    return 4
+    #return comm.Get_size()
 
 
 def barrier():
