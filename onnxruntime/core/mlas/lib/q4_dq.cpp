@@ -456,7 +456,8 @@ struct BlockwiseQuantizer {
         MlasTryBatchParallel(
             thread_pool, total_thrd_blks,
             [&](ptrdiff_t block_idx) {
-                uint8_t zp_bytes[BitsTraits<qbits>::kPackSize]{0,0};
+                uint8_t zp_bytes[BitsTraits<qbits>::kPackSize];
+                std::fill_n(zp_bytes, BitsTraits<qbits>::kPackSize, (uint8_t)8);
 
                 const int32_t r_blk_idx = static_cast<int32_t>(block_idx / thrd_col_blks);
                 const int32_t c_blk_idx = static_cast<int32_t>(block_idx % thrd_col_blks);
@@ -470,51 +471,29 @@ struct BlockwiseQuantizer {
                 const int meta_row = r / QuantBlk::kRow;
                 const int meta_col = c / QuantBlk::kColumn;
 
-                if constexpr (Columnwise) {
-                    static_assert(ThreadBlk::kColumn == 1, "Internal computation error!");
-                    int row_idx = r;
-                    for (int kpack = 0; kpack < BitsTraits<qbits>::kPackSize && row_idx < r_end;
-                         kpack++) {
-                        float min = std::numeric_limits<float>::max();
-                        float max = -min;
-                        for (int idx = 0; idx < QuantBlk::kRow && row_idx < r_end;
-                             idx++, row_idx++) {
-                            const float v = static_cast<float>(src[row_idx * leadingDimension + c]);
-                            if (v < min) min = v;
-                            if (v > max) max = v;
-                        }
+                // compute scale and zero point
+                for (int kpack = 0; kpack < BitsTraits<qbits>::kPackSize; kpack++) {
 
-                        // store scale and zero point at matrix position
-                        const int32_t meta_idx = meta_col * row_blks + meta_row + kpack;
-                        if (zero_points == nullptr) {
-                            range2scale<ElementT, qbits>(min, max, scales[meta_idx]);
-                        } else {
-                            range2scalezp<ElementT, qbits>(min, max, scales[meta_idx],
-                                                           zp_bytes[kpack]);
-                        }
-                    }
-
-                } else {  // Row-wise
-                    static_assert(ThreadBlk::kRow == BitsTraits<qbits>::kPackSize,
-                                  "Internal computation error!");
-                    for (int32_t i = r; i < r_end; ++i) {
-                        float min = std::numeric_limits<float>::max();
-                        float max = -min;
-                        for (int32_t j = c; j < c_end; ++j) {
+                    // scan a single block to extract range [min, max]
+                    float min = std::numeric_limits<float>::max();
+                    float max = -min;
+                    const int row_start = r + kpack * QuantBlk::kRow;
+                    const int row_end = std::min(row_start + QuantBlk::kRow, r_end);
+                    for (int i = row_start; i < row_end; ++i) {
+                        for (int j = c; j < c_end; ++j) {
                             const float v = static_cast<float>(src[i * leadingDimension + j]);
                             if (v < min) min = v;
                             if (v > max) max = v;
                         }
-                        // store scale and zero point at matrix position (i/QuantBlk::kRow,
-                        // j/QuantBlk::kColumn) it's packed as column major, so the index is (column
-                        // * row_blks + row) over all it's (j/QuantBlk::kColumn) * row_blks +
-                        // (i/QuantBlk::kRow)
-                        const int32_t meta_idx = meta_col * row_blks + (i / QuantBlk::kRow);
+                    }
+
+                    // store scale and zero point at quant parameter matrix position
+                    if (row_start < row_end) {
+                        const int32_t meta_idx = meta_col * row_blks + meta_row + kpack;
                         if (zero_points == nullptr) {
                             range2scale<ElementT, qbits>(min, max, scales[meta_idx]);
                         } else {
-                            range2scalezp<ElementT, qbits>(min, max, scales[meta_idx],
-                                                           zp_bytes[i-r]);
+                            range2scalezp<ElementT, qbits>(min, max, scales[meta_idx], zp_bytes[kpack]);
                         }
                     }
                 }
@@ -531,32 +510,27 @@ struct BlockwiseQuantizer {
                         const int32_t meta_r = i / QuantBlk::kRow;
                         const float scale = static_cast<float>(scales[meta_c * row_blks + meta_r]);
                         const float reciprocal_scale = scale ? 1.0f / scale : 0.0f;
-                        const int zp_pair =
-                            (zero_points == nullptr)
-                                ? 0x88
-                                : zero_points[meta_c * ((row_blks + 1) / 2) + meta_r / 2];
-                        const int zp = (meta_r & 1) ? (zp_pair >> 4) : (zp_pair & 0xf);
+                        const int8_t zp = zp_bytes[meta_r & 1];
+                        const int8_t zp1 = zp_bytes[((i + 1) / QuantBlk::kRow) & 1];
 
                         const float v0 = static_cast<float>(src[i * leadingDimension + j]);
                         const uint8_t vi0 =
                             (uint8_t)std::min(BitsTraits<qbits>::kMaxFp,
                                               std::max(0.0f, roundf(v0 * reciprocal_scale + zp)));
 
-                        uint8_t vi1 = 0;
+                        uint8_t vi1 = (uint8_t)zp;
                         if (i + 1 < r_end) {
                             float reciprocal_scale1 = reciprocal_scale;
-                            int zp1 = zp;
                             if constexpr (QuantBlk::kRow == 1) {
                                 const float scale1 =
 									static_cast<float>(scales[meta_c * row_blks + meta_r + 1]);
 								reciprocal_scale1 = scale1 ? 1.0f / scale1 : 0.0f;
-								zp1 = (zp_pair >> 4) & 0xf;
                             }
 							const float v1 = static_cast<float>(src[(i + 1) * leadingDimension + j]);
                             vi1 = (uint8_t)std::min(
                                 BitsTraits<qbits>::kMaxFp,
                                 std::max(0.0f, roundf(v1 * reciprocal_scale1 + zp1)));
-						}
+                        }
 
                         // !! 4b specific code
                         dst[j * q_rows + i / 2] = (vi0 & 0xf) | (vi1 << 4);
@@ -570,10 +544,9 @@ struct BlockwiseQuantizer {
      * matrix for use in GEMM
      * @param[out] dst           pointer to the dequantized matrix, column major: [columns, rows]
      * @param[in]  weights       pointer to the quantized weights, column major: [columns, rows]
-     * @param[in]  scales        pointer to the scales of quantized blocks, column major:
-     * [columns/QuantBlk::kColumn, rows/QuantBlk::kRow]
-     * @param[in]  zero_points   pointer to the zero points of quantized blocks, same shape as
-     * scales
+     * @param[in]  scales        pointer to the scales of quantized blocks, column major layout
+     * @param[in]  zero_points   pointer to the zero points of quantized blocks, packed column major
+     *                           scales
      * @param[in]  rows
      * @param[in]  columns
      */
