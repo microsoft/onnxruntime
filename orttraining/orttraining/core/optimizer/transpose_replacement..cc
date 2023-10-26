@@ -11,22 +11,29 @@
 
 namespace onnxruntime {
 
-Status TransposeReplacement::Apply(Graph& graph, Node& transpose_node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const {
+Status TransposeReplacement::Apply(Graph& graph,
+                                   Node& transpose_node,
+                                   RewriteRuleEffect& rule_effect,
+                                   const logging::Logger& logger) const {
   auto& transpose_inputs = transpose_node.MutableInputDefs();
   auto& transpose_outputs = transpose_node.MutableOutputDefs();
   NodeArg* input = transpose_inputs[0];
   auto input_shape = input->Shape();
+  if (!input_shape) {
+    LOG_DEBUG_INFO(logger, "Exit TransposeReplacement optimization for input shape is None.");
+    return Status::OK();
+  }
   auto perm = graph_utils::onnx_repeated_values::RetrieveValues<int64_t>(transpose_node.GetAttributes().at("perm"));
   InlinedVector<int64_t> new_shape;
   new_shape.reserve(perm.size());
   int64_t last_permuted_axis = 0;
   for (int i = 0; i < static_cast<int>(perm.size()); ++i) {
-    if (!input_shape->dim(perm[i]).has_dim_value()) {
+    if (!input_shape->dim(static_cast<int>(perm[i])).has_dim_value()) {
       LOG_DEBUG_INFO(logger, "Exit TransposeReplacement optimization for not supporting symbolic shape.");
       return Status::OK();
     }
-    new_shape.push_back(input_shape->dim(perm[i]).dim_value());
-    if (input_shape->dim(perm[i]).dim_value() == 1)
+    new_shape.push_back(input_shape->dim(static_cast<int>(perm[i])).dim_value());
+    if (input_shape->dim(static_cast<int>(perm[i])).dim_value() == 1)
       continue;
     if (perm[i] < last_permuted_axis) {
       LOG_DEBUG_INFO(logger, "Exit TransposeReplacement optimization for not supporting shape.");

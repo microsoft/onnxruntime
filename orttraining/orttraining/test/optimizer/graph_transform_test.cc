@@ -590,7 +590,6 @@ TEST_F(GraphTransformationTests, TransposeReplacement) {
     ASSERT_EQ(op_to_count["Transpose"], 1);
     ASSERT_EQ(op_to_count["Reshape"], 0);
   }
-
 }
 
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {

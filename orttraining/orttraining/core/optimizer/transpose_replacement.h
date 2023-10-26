@@ -12,7 +12,7 @@ namespace onnxruntime {
 @Class TransposeReplacement
 
 Transpose is equivalent to a Reshape if:
- empty dimensions can change place, not empty dimensions must be in
+ empty dimensions (which dim_value=1) can change place, not empty dimensions must be in
  the same order in the permuted tenosr.
  Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
 
