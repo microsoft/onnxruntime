@@ -3,7 +3,7 @@
 
 import {env, InferenceSession, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
 
-import {SerializableModeldata} from './proxy-messages';
+import {SerializableModeldata, TensorMetadata} from './proxy-messages';
 import {decodeTensorMetadata, encodeTensorMetadata} from './session-handler-inference';
 import {createSessionAllocate, initRuntime, isOrtEnvInitialized} from './wasm-core-impl';
 import {createCheckpointHandle, createTrainingSessionHandle, releaseTrainingSessionAndCheckpoint, runTrainStep} from './wasm-training-core-impl';
@@ -61,47 +61,67 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
         createTrainingSessionHandle(this.checkpointId, trainModelData, evalModelData, optimizerModelData, options);
   }
 
-  async runTrainStep(
-      feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
-      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
-    const inputArray: Tensor[] = [];
-    const inputIndices: number[] = [];
+    /**
+   * Helper method that converts a feeds or fetches datatype to two arrays, one of values and one that stores the
+   * corresponding name as a number referring to the index in the list of names provided.
+   *
+   * @param feeds meant to match either SessionHandler.FeedsType or SessionHandler.FetchesType
+   * @param names either inputNames or outputNames
+   * @returns a tuple of a list of values and a list of indices.
+   */
+  convertMapIntoValuesArrayAndIndicesArray<T, U>(
+      feeds: {[name: string]: T}, names: string[], mapFunc: (val: T, index: number) => U): [T[], number[], U[]] {
+    const values: T[] = [];
+    const indices: number[] = [];
     Object.entries(feeds).forEach(kvp => {
       const name = kvp[0];
       const tensor = kvp[1];
-      const index = this.inputNames.indexOf(name);
+      const index = names.indexOf(name);
       if (index === -1) {
-        throw new Error(`invalid input '${name}'`);
+        throw new Error(`invalid input '${name}`);
       }
-      inputArray.push(tensor);
-      inputIndices.push(index);
+      values.push(tensor);
+      indices.push(index);
     });
 
-    const outputArray: Array<Tensor|null> = [];
-    const outputIndices: number[] = [];
-    Object.entries(fetches).forEach(kvp => {
-      const name = kvp[0];
-      const tensor = kvp[1];
-      const index = this.outputNames.indexOf(name);
-      if (index === -1) {
-        throw new Error(`invalid output '${name}'`);
-      }
-      outputArray.push(tensor);
-      outputIndices.push(index);
-    });
+    const uList = values.map(mapFunc);
+    return [values, indices, uList];
+  }
 
-    const inputs =
-        inputArray.map((t, i) => encodeTensorMetadata(t, () => `input "${this.inputNames[inputIndices[i]]}"`));
-    const outputs = outputArray.map(
-        (t, i) => t ? encodeTensorMetadata(t, () => `output "${this.outputNames[outputIndices[i]]}"`) : null);
-
-    const results = await runTrainStep(this.sessionId, inputIndices, inputs, outputIndices, outputs, options);
-
+  /**
+   * Helper method that converts the TensorMetadata that the wasm-core functions return to the
+   * SessionHandler.ReturnType. Any outputs in the provided outputArray that are falsy will be populated with the
+   * corresponding result.
+   *
+   * @param results used to populate the resultMap if there is no value for that outputName already
+   * @param outputArray used to populate the resultMap. If null or undefined, use the corresponding result from results
+   * @param outputIndices specifies which outputName the corresponding value for outputArray refers to.
+   * @returns a map of output names and OnnxValues.
+   */
+  convertTensorMetadataToReturnType(
+      results: TensorMetadata[], outputArray: Array<Tensor|null>, outputIndices: number[]): SessionHandler.ReturnType {
     const resultMap: SessionHandler.ReturnType = {};
     for (let i = 0; i < results.length; i++) {
       resultMap[this.outputNames[outputIndices[i]]] = outputArray[i] ?? decodeTensorMetadata(results[i]);
     }
     return resultMap;
+  }
+
+  async runTrainStep(
+      feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
+      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
+    const [, inputIndices, inputs] = this.convertMapIntoValuesArrayAndIndicesArray<Tensor, TensorMetadata>(
+        feeds, this.inputNames,
+        (t, i): TensorMetadata => encodeTensorMetadata(t, () => `input "${this.inputNames[inputIndices[i]]}"`));
+
+    const [outputArray, outputIndices, outputs] =
+        this.convertMapIntoValuesArrayAndIndicesArray<Tensor|null, TensorMetadata|null>(
+            fetches, this.outputNames,
+            (t, i): TensorMetadata|null =>
+                t ? encodeTensorMetadata(t, () => `output "${this.outputNames[outputIndices[i]]}"`) : null);
+
+    const results = await runTrainStep(this.sessionId, inputIndices, inputs, outputIndices, outputs, options);
+    return this.convertTensorMetadataToReturnType(results, outputArray, outputIndices);
   }
 
   async dispose(): Promise<void> {

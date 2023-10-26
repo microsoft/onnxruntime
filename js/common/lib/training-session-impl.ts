@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {resolveBackend} from './backend-impl.js';
-import {TrainingSessionHandler} from './backend.js';
+import {TrainingSessionHandler, SessionHandler} from './backend.js';
 import {InferenceSession as InferenceSession} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
 import {Tensor} from './tensor.js';
@@ -49,9 +49,18 @@ export class TrainingSession implements TrainingSessionInterface {
     }
   }
 
-  runTrainStep(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
-  runTrainStep(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
-  async runTrainStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
+  /**
+   * Helper function for runTrainStep and future runStep methods that handles the type-narrowing conversion from
+   * the given parameters to SessionHandler.FetchesType and RunOptions. Also handles type-checking to ensure that
+   * the inputs are correct.
+   *
+   * @param feeds the required input -- checked in this function for correctness.
+   * @param arg1 narrowed & converted into the SessionHandler.FetchesType or RunOptions object. Also checked for correctness.
+   * @param arg2 optional RunOptions object.
+   * @returns
+   */
+  typeNarrowingForRunStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions):
+      [SessionHandler.FetchesType, RunOptions] {
     const fetches: {[name: string]: OnnxValue|null} = {};
     let options: RunOptions = {};
     // check inputs
@@ -135,7 +144,17 @@ export class TrainingSession implements TrainingSessionInterface {
       }
     }
 
-    const results = await this.handler.runTrainStep(feeds, fetches, options);
+    return [fetches, options];
+  }
+
+  /**
+   * Helper method for runTrainStep and any other runStep methods. Takes the ReturnType result from the SessionHandler
+   * and changes it into a map of Tensors.
+   *
+   * @param results
+   * @returns
+   */
+  processHandlerReturnToSessionReturn(results: SessionHandler.ReturnType): ReturnType {
     const returnValue: {[name: string]: OnnxValue} = {};
     for (const key in results) {
       if (Object.hasOwnProperty.call(results, key)) {
@@ -148,6 +167,14 @@ export class TrainingSession implements TrainingSessionInterface {
       }
     }
     return returnValue;
+  }
+
+  runTrainStep(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
+  runTrainStep(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
+  async runTrainStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
+    const [fetches, options] = this.typeNarrowingForRunStep(feeds, arg1, arg2);
+    const results = await this.handler.runTrainStep(feeds, fetches, options);
+    return this.processHandlerReturnToSessionReturn(results);
   }
 
   async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {
