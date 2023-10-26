@@ -7,6 +7,7 @@ stages:
       PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
       BuildStaticLib: true
       ExtraBuildArgs: ''
+      UseWebPoolName: true
 
 # This stage is to test if the combined build works on
 # o Windows ARM64

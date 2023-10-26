@@ -44,8 +44,7 @@ stages:
     PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
     PackageName: 'onnxruntime-web'
     ExtraBuildArgs: ''
-    WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
-    WebCpuPoolName: 'onnxruntime-Win-CPU-2022-web'
+    UseWebPoolName: true
 
 - template: templates/react-native-ci.yml
   parameters:
