@@ -3357,6 +3357,41 @@ Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features);
       });
 
+  static const char* MatMulBnb4_ver1_doc = R"DOC(
+MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4 data type (https://arxiv.org/pdf/2305.14314.pdf). It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
+  1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
+  2. Input B is quantized with 4 bits with quantization data type specified by attribute 'quant_type'. It is transposed, flattened and quantized blockwisely with block size specified by attribute 'block_size'.
+     And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
+  3. Input B's quantization constants or scales are specified by input 'absmax'.
+
+Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
+Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
+
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulBnb4)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(MatMulBnb4_ver1_doc)
+      .Attr("K", "size of each input feature", AttributeProto::INT)
+      .Attr("N", "size of each output feature", AttributeProto::INT)
+      .Attr("block_size", "number of groupsize used for weight quantization. It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
+      .Attr("quant_type", "quantization data type. 0 for FP4, 1 for NF4.", AttributeProto::INT)
+      .Input(0, "A", "The input tensor, not quantized", "T1")
+      .Input(1, "B", "1-dimensional quantized data for weight", "T2")
+      .Input(2, "absmax", "quantization constants", "T1")
+      .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference
+        int64_t in_features = getAttribute(ctx, "K", -1);
+        int64_t out_features = getAttribute(ctx, "N", -1);
+        MatmulWithQuantWeightShapeInference(ctx, in_features, out_features);
+      });
+
 #ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
       .SetDomain(kPytorchAtenDomain)
