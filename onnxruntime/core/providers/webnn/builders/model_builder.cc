@@ -425,6 +425,36 @@ void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& op
   wnn_operands_.insert(std::make_pair(name, operand));
 }
 
+// Get the zero scalar constant.
+// Workaround for builer.constant(value, type) method since it has not been implemented now.
+// https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-value-type
+const emscripten::val& ModelBuilder::GetZeroConstant(const std::string& data_type) {
+  std::string name = "webnn_zero_constant_" + data_type;
+  // If the operand does not exist, create it.
+  if (wnn_operands_.find(name) == wnn_operands_.end()) {
+    emscripten::val desc = emscripten::val::object();
+    emscripten::val dims = emscripten::val::array();
+    desc.set("dimensions", dims);
+    emscripten::val zero_buffer = emscripten::val::undefined();
+    if (data_type == "uint8") {
+      if (!SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
+        ORT_THROW("Unsupported data type: " + data_type);
+      }
+      zero_buffer = emscripten::val::global("Uint8Array").new_(1);
+    } else if (data_type == "float32") {
+      if (!SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+        ORT_THROW("Unsupported data type: " + data_type);
+      }
+      zero_buffer = emscripten::val::global("Float32Array").new_(1);
+    } else {
+      ORT_THROW("Unsupported data type: " + data_type);
+    }
+    emscripten::val zero_constant = wnn_builder_.call<emscripten::val>("constant", desc, zero_buffer);
+    wnn_operands_.insert(std::make_pair(name, zero_constant));
+  }
+  return wnn_operands_.at(name);
+}
+
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
   skipped_initializers_.insert(tensor_name);
 }

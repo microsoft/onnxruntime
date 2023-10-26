@@ -285,14 +285,15 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       if (input_defs.size() >= 3) {
         x_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
       } else {
-        x_zero_point = model_builder.GetBuilder().call<emscripten::val>("constant", emscripten::val("float32"), 0);
+        x_zero_point = model_builder.GetZeroConstant("uint8");
       }
       if (input_defs.size() >= 4) {
         w_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
       } else {
-        w_zero_point = model_builder.GetBuilder().call<emscripten::val>("constant", emscripten::val("float32"), 0);
+        w_zero_point = model_builder.GetZeroConstant("uint8");
       }
-      output = model_builder.GetBuilder().call<emscripten::val>("conv2dInteger", input, x_zero_point, filter, w_zero_point, options);
+      output = model_builder.GetBuilder().call<emscripten::val>("conv2dInteger",
+                                                                input, x_zero_point, filter, w_zero_point, options);
     }
 
   } else {

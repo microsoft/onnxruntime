@@ -32,13 +32,28 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   if (input_defs.size() == 3) {
     zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
   } else {
-    zero_point = model_builder.GetBuilder().call<emscripten::val>("constant", emscripten::val("float32"), 0);
+    zero_point = model_builder.GetZeroConstant("uint8");
   }
   emscripten::val output;
   std::vector<int64_t> input_shape;
-  ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
-  emscripten::val options = emscripten::val::object();
-  // TODO: Handle attribute axis (The axis of the dequantizing dimension of the input tensor).
+  std::vector<int64_t> scale_shape;
+  ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input shape");
+  ORT_RETURN_IF_NOT(GetShape(*input_defs[1], scale_shape, logger), "Cannot get scale shape");
+  NodeAttrHelper helper(node);
+  int32_t axis = helper.Get("axis", 1);
+  // axis is valid for input shape greater than 1D.
+  if (input_shape.size() > 1) {
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
+  }
+  // Insert ones before and after the axis dimension for broadcasting of 1D scale tensor.
+  if (1 == scale_shape.size() && input_shape.size() > 1) {
+    std::vector<int32_t> target_shape{static_cast<int>(input_shape[axis])};
+    target_shape.insert(target_shape.begin(), axis, 1);
+    target_shape.insert(target_shape.end(), input_shape.size() - axis - 1, 1);
+    scale = model_builder.GetBuilder().call<emscripten::val>("reshape", scale, emscripten::val::array(target_shape));
+    zero_point = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                  zero_point, emscripten::val::array(target_shape));
+  }
   output = model_builder.GetBuilder().call<emscripten::val>("dequantizeLinear", input, scale, zero_point);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));

@@ -45,12 +45,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (input_defs.size() >= 3) {
       a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
     } else {
-      a_zero_point = model_builder.GetBuilder().call<emscripten::val>("constant", emscripten::val("float32"), 0);
+      a_zero_point = model_builder.GetZeroConstant("uint8");
     }
     if (input_defs.size() >= 4) {
       b_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
     } else {
-      b_zero_point = model_builder.GetBuilder().call<emscripten::val>("constant", emscripten::val("float32"), 0);
+      b_zero_point = model_builder.GetZeroConstant("uint8");
     }
     output = model_builder.GetBuilder().call<emscripten::val>("matmulInteger", a, a_zero_point, b, b_zero_point);
   } else {  // Gemm
