@@ -9,7 +9,7 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- stage: Python_Packaging_Linux_Trainin_CPU
+- stage: Python_Packaging_Linux_Training_CPU
 
   jobs:
     - job: Linux_Training_CPU_Wheels
