@@ -2,7 +2,7 @@
   "license": "MIT",
   "type": "module",
   "name": "onnxruntime-common",
-  "version": "1.16.1",
+  "version": "1.16.2",
   "repository": {
     "url": "https://github.com/Microsoft/onnxruntime.git",
     "type": "git"
