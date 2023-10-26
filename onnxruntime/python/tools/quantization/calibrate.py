@@ -290,10 +290,11 @@ class MinMaxCalibrater(CalibraterBase):
             )
 
             self.model.graph.node.extend([reduce_node, reshape_node])
-            io_dict = {o.name: o for o in self.model.graph.output}
-            io_dict.update({i.name: i for i in self.model.graph.input})
-            if tensor_name in io_dict:
-                onnx_type = io_dict[tensor_name].type.tensor_type.elem_type
+            value_infos = {vi.name: vi for vi in self.model.graph.value_info}
+            value_infos.update({o.name: o for o in self.model.graph.output})
+            value_infos.update({i.name: i for i in self.model.graph.input})
+            if tensor_name in value_infos:
+                onnx_type = value_infos[tensor_name].type.tensor_type.elem_type
             else:
                 raise ValueError(f"Unable to guess tensor type for tensor {tensor_name!r}")
             self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, onnx_type, [1]))
