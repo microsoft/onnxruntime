@@ -204,6 +204,7 @@ def _get_all_zero_stage3_params(module: torch.nn.Module) -> Dict[str, torch.nn.p
     return all_offloaed_params
 
 
+# Used to cache the map avoid repeated loop up (X us) overhead during training.
 _ModuleToParametersRefs: Dict[torch.nn.Module, List[torch.nn.parameter.Parameter]] = OrderedDict()
 
 
@@ -237,9 +238,6 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         """
         torch_nvtx_range_push("ORTZeROOffloadPreForwardFunction::forward")
 
-        # args_tensors = tensor_list[:args_tensor_count]
-        # kwargs_tensors = tensor_list[args_tensor_count : args_tensor_count + kwargs_tensor_count]
-
         # For PyTorch runs, the sizes are all 0, it does not need a gradient because
         # param._detach().requires_grad_(False) is called.
         # But for ORT runs, the sizes are all [1], as output of weight retrieval function.
@@ -260,16 +258,12 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
             _ModuleToParametersRefs[module] = _get_params_for_current_module(module)
         partitioned_params = _ModuleToParametersRefs[module]
         ctx.partitioned_params = partitioned_params
-
         assert len(partitioned_params) == len(passed_in_param_tensors)
-
         pre_forward_with_kwargs_function(module)
-
         ctx.module = module
-
         rets = tuple(tensor_list[: args_tensor_count + kwargs_tensor_count])
-
         rets += tuple([p.detach().requires_grad_(p.requires_grad) for p in partitioned_params])
+
         # PyTorch exporter does not support an empty list of tensors, so we have this check.
         assert len(rets) != 0
 
@@ -307,7 +301,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         zero_grads = updated_grads[:input_count] + tuple(passed_in_param_grad)
 
         torch_nvtx_range_pop()
-        return (None, None, None, None, None, None, None, None, *zero_grads)
+        return (None, None, None, None, None, None, *zero_grads)
 
     @staticmethod
     def infer_shape(

@@ -17,9 +17,6 @@
 #include <nvtx3/nvToolsExt.h>
 #endif
 
-// #include <chrono>
-// #include <iostream>
-
 static void clear_grad_fns_for_next_edges(at::Tensor& target,
                                           std::vector<at::Tensor>& saved_tensors) {
   // For leaf tensor, there will be a AccumulateGrad (gradient function) created, which owns a
@@ -177,7 +174,6 @@ py::object finalize_training_mode_forward(
 
     static std::once_flag log_warning;
     std::call_once(log_warning, []() {
-      // Use TORCH_WARN with caution because frequently using it may introduce perf regression.
       std::cerr << "First time run initialize kernel info including materialize_grads and materialize_grads_config."
                 << std::endl;
     });
@@ -213,7 +209,6 @@ py::object finalize_training_mode_forward(
 
       static std::once_flag log_warning;
       std::call_once(log_warning, []() {
-        // Use TORCH_WARN with caution because frequently using it may introduce perf regression.
         std::cerr << "First time run initialize kernel info including saved_for_forward, and mark_dirty infos." << std::endl;
       });
     }
@@ -260,8 +255,7 @@ std::vector<PyObject*> custom_function_forward_runner(const char* func_name_char
     std::string log_prefix = func_name + " -> " + (is_backward ? "Backward " : "Forward ");
 
 #ifdef NVTX3_ENABLED
-    std::string tag1 = func_name + ".fw";
-    nvtxRangePushA(tag1.c_str());
+    nvtxRangePushA(std::string(func_name + ".fw").c_str());
 #endif
 
     auto it = KernelInfoStore::GetInstance().GetKernelInfoMap().find(kernel_invoke_id);
@@ -346,8 +340,7 @@ std::vector<PyObject*> custom_function_forward_runner(const char* func_name_char
     }
 
 #ifdef NVTX3_ENABLED
-    std::string tag2 = func_name + ".call_func";
-    nvtxRangePushA(tag2.c_str());
+    nvtxRangePushA(std::string(func_name + ".call_func").c_str());
 #endif
 
     py::tuple call_args = py::cast(raii_call_args);
@@ -361,16 +354,15 @@ std::vector<PyObject*> custom_function_forward_runner(const char* func_name_char
     nvtxRangePop();
 #endif
 
+    if (PyErr_Occurred()) {
+      PyErr_Print();
+    }
+
     if (!result_pyobj) {
       throw std::runtime_error("Get null result");
     }
 
     py::object ret = py::reinterpret_steal<py::object>(result_pyobj);
-
-    if (PyErr_Occurred()) {
-      PyErr_Print();
-      throw std::runtime_error("Python function execution fails with the above information.");
-    }
 
     py::tuple forward_outputs;
     if (THPVariable_Check(ret.ptr())) {  // Don't check be tensor?

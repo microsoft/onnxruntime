@@ -90,16 +90,22 @@ std::vector<PyObject*> custom_function_backward_runner(const char* func_name_cha
     }
 
     py::tuple call_args = py::cast(raii_call_args);
-    py::object ret;
+    PyObject* result_pyobj;
     {
       at::AutoGradMode enable_grad(false);
-      ret = py::reinterpret_steal<py::object>(PyObject_CallObject(reinterpret_cast<PyObject*>(callback),
-                                                                  call_args.ptr()));
+      result_pyobj = PyObject_CallObject(reinterpret_cast<PyObject*>(callback), call_args.ptr());
     }
+
     if (PyErr_Occurred()) {
       PyErr_Print();
       throw std::runtime_error("Python function execution fails with the above information.");
     }
+
+    if (!result_pyobj) {
+      throw std::runtime_error("Get null result");
+    }
+
+    py::object ret = py::reinterpret_steal<py::object>(result_pyobj);
 
     std::vector<py::object> all_outputs_of_kernel_run;
     if (THPVariable_Check(ret.ptr())) {
