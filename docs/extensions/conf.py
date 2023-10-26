@@ -6,9 +6,6 @@
 #
 # Configuration file for the Sphinx documentation builder.
 
-import os
-import shutil  # noqa: F401
-import sys
 from datetime import datetime
 
 # import recommonmark
@@ -46,9 +43,7 @@ source_suffix = [".rst"]  # , '.md']
 master_doc = "index"
 language = "en"
 exclude_patterns = []
-pygments_style = "default"
 autoclass_content = "both"
-master_doc = "index"
 pygments_style = "sphinx"
 
 # -- Options for HTML output -------------------------------------------------
