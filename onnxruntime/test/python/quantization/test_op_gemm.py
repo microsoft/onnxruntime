@@ -777,5 +777,5 @@ class TestOpGemm(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestOpGemm().test_quantize_gemm()
+    TestOpGemm().test_quantize_gemm_e4m3fn_p3()
     unittest.main(verbosity=2)
