@@ -176,7 +176,7 @@ def parse_arguments(argv=None):
         action="store_true",
         help="Produce beam search model with chained encdecinit and decoder.",
     )
-    parser.set_defaults(chain_model=False)
+    parser.set_defaults(chain_model=True)
 
     parser.add_argument(
         "--use_whisper_beamsearch",
@@ -333,7 +333,7 @@ def export_onnx_models(
     models = WhisperHelper.load_model(
         model_name_or_path, model_impl, cache_dir, device, merge_encoder_and_decoder_init, state_dict_path
     )
-    config = models["encoder_decoder_init"].config
+    config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_hidden_layers > 24):
         logger.info("Try use_external_data_format when model size > 2GB")
@@ -390,6 +390,7 @@ def export_onnx_models(
                         auto_mixed_precision=not disable_auto_mixed_precision,
                         use_gpu=use_gpu,
                         provider=provider,
+                        model_impl=model_impl,
                     )
                     onnx_path = output_path
 

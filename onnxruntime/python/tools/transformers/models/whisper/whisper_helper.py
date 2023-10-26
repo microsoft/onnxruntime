@@ -292,12 +292,14 @@ class WhisperHelper:
         auto_mixed_precision: bool = True,
         use_gpu: bool = False,
         provider: str = "cpu",
+        model_impl: str = "hf",
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
         from fusion_options import FusionOptions
 
         optimization_options = FusionOptions("bart")
+        optimization_options.model_impl = model_impl
         optimization_options.use_multi_head_attention = True
         optimization_options.disable_multi_head_attention_bias = provider == "rocm"
 
@@ -349,76 +351,71 @@ class WhisperHelper:
         from datasets import load_dataset
 
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
-        for d in ds:
-            input_features = processor([d["audio"]["array"]], return_tensors="pt").input_features
+        input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
 
-            batch_size, max_length, min_length, num_beams, num_return_sequences = 1, 26, 0, 5, 1
-            length_penalty, repetition_penalty = 1.0, 1.0
-            inputs = {
-                "input_features": input_features.to(device),
-                "max_length": max_length,
-                "min_length": min_length,
-                "num_beams": num_beams,
-                "num_return_sequences": num_return_sequences,
-                "length_penalty": length_penalty,
-                "repetition_penalty": repetition_penalty,
-                "early_stopping": True,
-                "use_cache": True,
-            }
-            pt_outputs = pt_model.generate(**inputs).detach().cpu().numpy()
+        batch_size, max_length, min_length, num_beams, num_return_sequences = 1, 26, 0, 5, 1
+        length_penalty, repetition_penalty = 1.0, 1.0
+        inputs = {
+            "input_features": input_features.to(device),
+            "max_length": max_length,
+            "min_length": min_length,
+            "num_beams": num_beams,
+            "num_return_sequences": num_return_sequences,
+            "length_penalty": length_penalty,
+            "repetition_penalty": repetition_penalty,
+            "early_stopping": True,
+            "use_cache": True,
+        }
+        pt_outputs = pt_model.generate(**inputs).detach().cpu().numpy()
 
-            del inputs["early_stopping"]
-            del inputs["use_cache"]
-            ort_names = list(map(lambda entry: entry.name, ort_session.get_inputs()))
-            ort_dtypes = list(map(lambda entry: entry.type, ort_session.get_inputs()))
-            ort_to_np = {
-                "tensor(float)": np.float32,
-                "tensor(float16)": np.float16,
-                "tensor(int64)": np.int64,
-                "tensor(int32)": np.int32,
-                "tensor(int8)": np.int8,
-                "tensor(uint8)": np.uint8,
-            }
+        del inputs["early_stopping"]
+        del inputs["use_cache"]
+        ort_names = list(map(lambda entry: entry.name, ort_session.get_inputs()))
+        ort_dtypes = list(map(lambda entry: entry.type, ort_session.get_inputs()))
+        ort_to_np = {
+            "tensor(float)": np.float32,
+            "tensor(float16)": np.float16,
+            "tensor(int64)": np.int64,
+            "tensor(int32)": np.int32,
+            "tensor(int8)": np.int8,
+            "tensor(uint8)": np.uint8,
+        }
 
-            for name, dtype in zip(ort_names, ort_dtypes):
-                if name == "input_features":
-                    inputs[name] = inputs[name].detach().cpu().numpy()
-                elif name == "vocab_mask":
-                    inputs[name] = np.ones(config.vocab_size, dtype=ort_to_np[dtype])
-                elif name == "prefix_vocab_mask":
-                    inputs[name] = np.ones((batch_size, config.vocab_size), dtype=ort_to_np[dtype])
-                elif name == "decoder_input_ids":
-                    inputs[name] = np.array([[config.decoder_start_token_id, 50259, 50359, 50363]], dtype=ort_to_np[dtype])
-                elif name == "logits_processor":
-                    inputs[name] = np.array([1], dtype=ort_to_np[dtype])
-                else:
-                    inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
-            ort_outputs = ort_session.run(None, inputs)[0][0]
+        for name, dtype in zip(ort_names, ort_dtypes):
+            if name == "input_features":
+                inputs[name] = inputs[name].detach().cpu().numpy()
+            elif name == "vocab_mask":
+                inputs[name] = np.ones(config.vocab_size, dtype=ort_to_np[dtype])
+            elif name == "prefix_vocab_mask":
+                inputs[name] = np.ones((batch_size, config.vocab_size), dtype=ort_to_np[dtype])
+            elif name == "decoder_input_ids":
+                inputs[name] = np.array([[config.decoder_start_token_id, 50259, 50359, 50363]], dtype=ort_to_np[dtype])
+            elif name == "logits_processor":
+                inputs[name] = np.array([1], dtype=ort_to_np[dtype])
+            else:
+                inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
+        ort_outputs = ort_session.run(None, inputs)[0][0]
 
-            if pt_outputs.shape != ort_outputs.shape:
-                logger.warning("PyTorch and ONNX Runtime outputs do not have the same shape")
+        if pt_outputs.shape != ort_outputs.shape:
+            logger.warning("PyTorch and ONNX Runtime outputs do not have the same shape")
 
-            #diff = pt_outputs - ort_outputs
-            #max_diff = max(diff.min(), diff.max(), key=abs)
-            #print(max_diff)
+        diff = pt_outputs - ort_outputs
+        max_diff = max(diff.min(), diff.max(), key=abs)
 
-            if max_diff == 0:
-                # For ONNX Runtime INT8 model
-                pt_expected_transcription = (
-                    " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
-                )
-                pt_transcription = processor.batch_decode(pt_outputs, skip_special_tokens=True)
-                print(pt_transcription)
-                ort_expected_transcription = (
-                    " Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel."
-                )
-                ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)
-                print(ort_transcription)
+        if max_diff == 0:
+            # For ONNX Runtime INT8 model
+            pt_expected_transcription = (
+                " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
+            )
+            pt_transcription = processor.batch_decode(pt_outputs, skip_special_tokens=True)
+            ort_expected_transcription = (
+                " Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel."
+            )
+            ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)
 
-                parity = (
-                    pt_expected_transcription == pt_transcription[0] and ort_expected_transcription == ort_transcription[0]
-                )
-                if parity:
-                    max_diff = 0
-
+            parity = (
+                pt_expected_transcription == pt_transcription[0] and ort_expected_transcription == ort_transcription[0]
+            )
+            if parity:
+                max_diff = 0
         return max_diff
