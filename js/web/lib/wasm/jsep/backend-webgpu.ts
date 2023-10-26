@@ -202,6 +202,7 @@ export class WebGpuBackend {
     if (typeof this.querySet !== 'undefined') {
       this.querySet.destroy();
     }
+    this.gpuDataManager.dispose();
   }
 
   getCommandEncoder(): GPUCommandEncoder {
