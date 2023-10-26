@@ -413,14 +413,14 @@ struct BlockwiseQuantizer {
     static
     MLAS_FORCEINLINE
     void quantizedShape(int rows, int columns, int& q_rows, int& q_cols) {
-		int meta_rows;
-		int meta_cols;
+        int meta_rows;
+        int meta_cols;
         quantizeMetaShape(rows, columns, meta_rows, meta_cols);
 
         // quantized matrix is stored in column major, packed by column
         q_rows = (meta_rows * QuantBlk::kRow * qbits + 7) / 8;
         q_cols = meta_cols * QuantBlk::kColumn;
-	}
+    }
 
     /**
      * @brief Quantized a Matrix shape [rows, columns], resulting quantized
@@ -502,7 +502,7 @@ struct BlockwiseQuantizer {
                 if (zero_points != nullptr) {
                     const int32_t meta_idx = meta_col * ((row_blks + 1) / 2) + meta_row / 2;
                     zero_points[meta_idx] = (zp_bytes[0] & 0xf) | (zp_bytes[1] << 4);
-				}
+                }
 
                 for (int32_t j = c; j < c_end; ++j) {
                     const int32_t meta_c = j / QuantBlk::kColumn;
@@ -523,10 +523,10 @@ struct BlockwiseQuantizer {
                             float reciprocal_scale1 = reciprocal_scale;
                             if constexpr (QuantBlk::kRow == 1) {
                                 const float scale1 =
-									static_cast<float>(scales[meta_c * row_blks + meta_r + 1]);
-								reciprocal_scale1 = scale1 ? 1.0f / scale1 : 0.0f;
+                                    static_cast<float>(scales[meta_c * row_blks + meta_r + 1]);
+                                reciprocal_scale1 = scale1 ? 1.0f / scale1 : 0.0f;
                             }
-							const float v1 = static_cast<float>(src[(i + 1) * leadingDimension + j]);
+                            const float v1 = static_cast<float>(src[(i + 1) * leadingDimension + j]);
                             vi1 = (uint8_t)std::min(
                                 BitsTraits<qbits>::kMaxFp,
                                 std::max(0.0f, roundf(v1 * reciprocal_scale1 + zp1)));
@@ -637,10 +637,10 @@ MlasBlockwiseQuantMetaShape(
     switch (block_size) {
         case 16: {
             if (columnwise) {
-				BlockwiseQuantizer<T, 16, 4, true>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
-			} else {
-				BlockwiseQuantizer<T, 16, 4, false>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
-			}
+                BlockwiseQuantizer<T, 16, 4, true>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
+            } else {
+                BlockwiseQuantizer<T, 16, 4, false>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
+            }
             break;
         }
         case 32: {
@@ -705,10 +705,10 @@ MlasBlockwiseQuantizedShape(
     switch (block_size) {
         case 16: {
             if (columnwise) {
-				BlockwiseQuantizer<T, 16, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
-			} else {
-				BlockwiseQuantizer<T, 16, 4, false>::quantizedShape(rows, columns, q_rows, q_cols);
-			}
+                BlockwiseQuantizer<T, 16, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+            } else {
+                BlockwiseQuantizer<T, 16, 4, false>::quantizedShape(rows, columns, q_rows, q_cols);
+            }
             break;
         }
         case 32: {
@@ -914,18 +914,18 @@ MlasDequantizeBlockwise(
                                                                  rows, columns, thread_pool);
             }
             break;
-		case 256:
+        case 256:
             if (columnwise) {
                 BlockwiseQuantizer<T, 256, 4, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
-			} else {
+            } else {
                 BlockwiseQuantizer<T, 256, 4, false>::dequantize(dst, src, scales, zero_points,
                                                                  rows, columns, thread_pool);
-			}
-			break;
-		default:
-			// Only block size 16, 32, 64, 128, 256 are supported.
-			break;
+            }
+            break;
+        default:
+            // Only block size 16, 32, 64, 128, 256 are supported.
+            break;
     }
 }
 

@@ -65,8 +65,9 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
             v = (v + 5) % 16;
           }
         }
+
         elements[idx] = (v1 << 4) | v0;
-        }
+      }
     }
 
     float* scales = InputScales.GetBuffer(meta_rows * meta_cols);
@@ -86,15 +87,14 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
             v1 = static_cast<uint8_t>(v);
             v = (v + 5) % 16;
             if (v == 11 || v == 7 || v == 3) {
-                // making the cycle 13 instead of 16, avoiding same values in a row
-                v = (v + 5) % 16;
+              // making the cycle 13 instead of 16, avoiding same values in a row
+              v = (v + 5) % 16;
             }
           }
           zp[idx] = (v1 << 4) | v0;
         }
       }
     }
-
 
     MlasDequantizeBlockwise(dequant_buf, elements, scales, zp, block_size, columnwise, rows, columns, threadpool_ptr);
 
@@ -124,25 +124,25 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
     for (int c = 0; c < meta_cols; c++) {
       for (int r = 0; r < meta_rows; r++) {
         int idx = c * meta_rows + r;
-        ASSERT_EQ(o_scales[idx], scales[idx]) 
+        ASSERT_EQ(o_scales[idx], scales[idx])
             << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
             << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
       }
     }
 
     if (symmetric) return;
-      for (int c = 0; c < meta_cols; c++) {
-        for (int r = 0; r < meta_rows; r += 2) {
-          int idx = c * ((meta_rows + 1) / 2) + r / 2;
-          ASSERT_EQ(o_zp[idx] & 0xf, zp[idx] & 0xf)
-              << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
+    for (int c = 0; c < meta_cols; c++) {
+      for (int r = 0; r < meta_rows; r += 2) {
+        int idx = c * ((meta_rows + 1) / 2) + r / 2;
+        ASSERT_EQ(o_zp[idx] & 0xf, zp[idx] & 0xf)
+            << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
+            << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+        if (r + 1 < meta_rows) {
+          ASSERT_EQ(o_zp[idx] >> 4, zp[idx] >> 4)
+              << ", index=" << r + 1 << "x" << c << ", shape=[" << rows << "x" << columns
               << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
-          if (r + 1 < meta_rows) {
-              ASSERT_EQ(o_zp[idx] >> 4, zp[idx] >> 4)
-                << ", index=" << r + 1 << "x" << c << ", shape=[" << rows << "x" << columns
-                << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
-          }
         }
+      }
     }
 
   }
