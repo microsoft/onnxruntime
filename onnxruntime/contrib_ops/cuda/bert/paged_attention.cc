@@ -147,6 +147,7 @@ template <typename T>
 SelectResult AttentionSelector<T>::Select(PackedAttentionParameters parameters, const cudaDeviceProp& device_prop) const {
   SelectResult result;
   result.use_flash_attention = false;
+#if USE_FLASH_ATTENTION
   if (!disable_flash_attention_) {
     result.use_flash_attention = !parameters.has_relative_position_bias &&
                                  parameters.head_size == parameters.v_head_size &&
@@ -155,7 +156,7 @@ SelectResult AttentionSelector<T>::Select(PackedAttentionParameters parameters, 
                                                                   parameters.num_heads,
                                                                   parameters.num_kv_heads);
   }
-
+#endif
   const bool is_unidirectional_ = true;
   result.fused_runner = (result.use_flash_attention ||
                          disable_TRT_flash_attention_ ||
@@ -506,9 +507,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* positions = context->Input<Tensor>(6);
   const Tensor* cos_sin_cache = context->Input<Tensor>(7);
   const Tensor* kv_quant_param = (context->InputCount() > 8) ? context->Input<Tensor>(8) : nullptr;
-  ORT_UNUSED_PARAMETER(kv_quant_param);
+
   const auto& query_shape = query->Shape();
-  int seq_len = query_shape[1] * query_shape[0];
+  int seq_len = query->Shape().NumDimensions() == 3 ? query->Shape()[1] : query->Shape()[0];
+
   auto meta_data_space = this->template GetScratchBuffer<int8_t>(std::max(1024, seq_len * 3) * sizeof(int32_t), context->GetComputeStream());
   InputMetadata self_build_input_metadata;
   InputMetadata* input_metadata = GetOrCreateMedataFromInput(context, &self_build_input_metadata, meta_data_space.get());
@@ -526,7 +528,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t num_valid_tokens = input_metadata->num_valid_tokens;
   TensorShape output_shape = query_shape;
   if (gemm_buffer.get() == nullptr) {
-    ORT_ENFORCE(query_shape[output_shape.NumDimensions() - 1] == num_heads_ * head_size_, "invlaid query shape");
+    ORT_ENFORCE(query_shape[query_shape.NumDimensions() - 1] == num_heads_ * head_size_, "invlaid query shape");
   } else {
     output_shape[output_shape.NumDimensions() - 1] = num_heads_ * head_size_;
     TensorShapeVector new_shape(2);
@@ -548,8 +550,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     int64_t rot_dim = cos_sin_cache->Shape()[1];
     ORT_ENFORCE(rot_dim == head_size_, "RoPE mask requires position input with shape [seq_len, head_size]");
     rotary_embedding_neox(Stream(context), positions->Data<int64_t>(), static_cast<void*>(query_data),
-                          static_cast<void*>(key_data), head_size_, cos_sin_cache->DataRaw(),
-                          query_shape.Size()/head_size_/num_heads_,
+                          static_cast<void*>(key_data), head_size_, cos_sin_cache->DataRaw(), num_valid_tokens,
                           rot_dim, num_heads_, num_kv_heads_, 1);
     CHECK_CUDA_ERROR();
   }
@@ -560,6 +561,20 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     CHECK_CUDA_ERROR();
   }
 
+  int kv_quant_chunk_size = 0;
+  int kv_quant_param_dtype = 0;  // fp32
+  if (kv_quant_param != nullptr && kv_quant_param->Shape().Size() > 0) {
+    ORT_ENFORCE(key_cache && key_cache->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8);
+    ORT_ENFORCE(value_cache && value_cache->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8);
+    ORT_ENFORCE(query->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, "Current only support fp16 with quant kv cache");
+    if (kv_quant_param->GetElementType() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      kv_quant_param_dtype = 1;  // fp16
+    }
+    auto kv_quant_param_shape = kv_quant_param->Shape();  // [num_blocks, 2, num_kv_heads, head_size / kv_quant_chunk_size, block_size]
+    ORT_ENFORCE(kv_quant_param_shape.NumDimensions() == 5 && kv_quant_param_shape[3] > 0 && head_size_ % kv_quant_param_shape[3] == 0);
+    kv_quant_chunk_size = head_size_ / kv_quant_param_shape[3];
+    ORT_ENFORCE(kv_quant_chunk_size > 0 && kv_quant_chunk_size % 4 == 0);
+  }
   auto key_cache_shape = key_cache->Shape();
   if (num_valid_tokens > 0 && key_cache_shape.Size() > 3) {
     int64_t key_shape_r[3] = {num_valid_tokens, num_kv_heads_, head_size_};
@@ -568,14 +583,17 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     reshape_and_cache(Stream(context),
                       key_data,
                       value_data,
-                      key_cache->Data<MLFloat16>(),
-                      value_cache->Data<MLFloat16>(),
+                      key_cache->DataRaw(),
+                      value_cache->DataRaw(),
                       reinterpret_cast<const int32_t*>(input_metadata->slot_mapping),
                       key_shape_r,
                       value_shape_r,
                       block_size,
                       key_cache_shape[4],
-                      1);
+                      1,
+                      (kv_quant_param != nullptr) ? (void*)kv_quant_param->DataRaw() : (void*)nullptr,
+                      kv_quant_chunk_size,
+                      kv_quant_param_dtype);
     CHECK_CUDA_ERROR();
   }
 
@@ -588,7 +606,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     constexpr int PARTITION_SIZE = 512;
     int max_num_partitions = ((input_metadata->max_context_len + PARTITION_SIZE - 1)  / PARTITION_SIZE);
     //TODO : Tune this heuristic.
-    bool use_v1 = max_num_partitions == 1 || (query_shape[0] * query_shape[1]) > PARTITION_SIZE;
+    bool use_v1 = max_num_partitions == 1 || (query_shape[0] * query_shape[1]) > PARTITION_SIZE ||
+    (kv_quant_param != nullptr && kv_quant_param->Shape().Size() > 0);
     int64_t generation_qeury_shape[3] = {num_valid_tokens - num_prompt_tokens, num_heads_, head_size_};
     if (use_v1){
       paged_attention_v1(Stream(context),
@@ -605,7 +624,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                          nullptr,
                          input_metadata->max_num_blocks_per_seq,
                          generation_qeury_shape,
-                         num_queries_per_kv_, 1);
+                         num_queries_per_kv_, 1,
+                         kv_quant_param ? kv_quant_param->DataRaw() : nullptr,
+                         kv_quant_chunk_size,
+                         kv_quant_param_dtype);
     } else {
       auto tmp_output = this->template GetScratchBuffer<T>(query_shape.Size() * max_num_partitions * sizeof(T), context->GetComputeStream());
       auto exp_sums = this->template GetScratchBuffer<T>(query_shape[0] * query_shape [1]* max_num_partitions * sizeof(T), context->GetComputeStream());
