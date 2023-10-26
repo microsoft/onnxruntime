@@ -11,7 +11,7 @@ from onnx_model import OnnxModel
 logger = logging.getLogger(__name__)
 
 
-class FusionBartAttentionOpenai(FusionAttention):
+class FusionBartAttention(FusionAttention):
     """
     Fuse Bart Attention subgraph into one Attention node.
     """
@@ -75,18 +75,19 @@ class FusionBartAttentionOpenai(FusionAttention):
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
         # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
+        print("\n")
         qkv_nodes = self.model.match_parent_path(
             normalize_node,
-            ["Add", "MatMul", "Reshape", "Transpose", "Reshape", "MatMul"],
-            [1, 1, 0, 0, 0, 0],
+            ["Add", "MatMul", "Reshape", "Transpose", "MatMul"],
+            [1, 1, 0, 0, 0],
         )
         if qkv_nodes is not None:
+            print("Reached qkv level")
             (
                 add_out,
                 matmul_out,
-                reshape_qkv_2,
-                transpose_qkv,
                 reshape_qkv_1,
+                transpose_qkv,
                 matmul_qkv,
             ) = qkv_nodes
         else:
@@ -128,13 +129,13 @@ class FusionBartAttentionOpenai(FusionAttention):
                 root_input = output
                 break
 
-        graph_input_names = set([node.name for node in self.model.graph().input])
-        graph_output_names = set([node.name for node in self.model.graph().output])
+        graph_input_names = set([node.name  for node in self.model.graph().input])
+        graph_output_names = set([node.name  for node in self.model.graph().output])
 
         v_nodes = self.model.match_parent_path(
             matmul_qkv,
-            ["Reshape", "Transpose", "Reshape", "Add", "MatMul"],
-            [1, 0, 0, 0, None],
+            ["Transpose", "Reshape", "Add", "MatMul"],
+            [1, 0, 0, None],
         )
         v_nodes_with_past_self_attn = self.model.match_parent_path(
             # Decoder attention with past value concatenated before MatMul
@@ -145,15 +146,47 @@ class FusionBartAttentionOpenai(FusionAttention):
         v_nodes_with_past_cross_attn = self.model.match_parent_path(
             # Decoder attention with past value directly used in MatMul
             matmul_qkv,
-            ["Reshape"],
-            [1],
+            ["Transpose", "Reshape", "Reshape", "Transpose"],
+            [1, 0, 0, 0],
         )
         past_v, present_v = "", ""
         reshape_v_2, add_v = None, None
         if v_nodes is not None:
-            (reshape_v_2, transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes
+            print("reach v path")
+            (transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes
             # For initial pass through encoder-decoder_with_past to get starting past values (beam search)
-            present_v = transpose_v.output[0]
+            #present_v = add_v.output[0]
+
+            add_v_children = self.model.get_children(add_v)
+            for child in add_v_children:
+                if child.op_type == "Reshape":
+                    #if child.output[0] in graph_output_names:
+                    #present_v = child.output[0]
+                    reshape_v_children = self.model.get_children(child)
+                    for reshape_child in reshape_v_children:
+                        if reshape_child.op_type == "Transpose":
+                            if reshape_child.output[0] in graph_output_names:
+                                present_v = reshape_child.output[0]
+                if child.op_type == "Concat":
+                    concat_v_children = self.model.get_children(child)
+                    for concat_child in concat_v_children:
+                        if concat_child.op_type == "Reshape":
+                            reshape_v_children = self.model.get_children(concat_child)
+                            for reshape_child in reshape_v_children:
+                                if reshape_child.op_type == "Transpose":
+                                    if reshape_child.output[0] in graph_output_names:
+                                        present_v = reshape_child.output[0]
+                            print("reach v path with past self attn")
+                    concat_v_parents = self.model.get_parents(child)
+                    for concat_parent in concat_v_parents:
+                        if concat_parent.op_type == "Reshape":
+                            reshape_v_parents = self.model.get_parents(concat_parent)
+                            for reshape_parent in reshape_v_parents:
+                                if reshape_parent.op_type == "Transpose":
+                                    if reshape_parent.input[0] in graph_input_names:
+                                        past_v = reshape_parent.input[0]
+                            print("reach v path with past self attn")
+
         elif v_nodes_with_past_self_attn is not None:
             (reshape_v_2, concat_v, transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes_with_past_self_attn
             v_nodes = v_nodes_with_past_self_attn
@@ -162,6 +195,7 @@ class FusionBartAttentionOpenai(FusionAttention):
         elif (
             v_nodes_with_past_cross_attn is not None and v_nodes_with_past_cross_attn[-1].input[0] in graph_input_names
         ):
+            print("reach v path with past cross attn")
             v_nodes = v_nodes_with_past_cross_attn
             past_v = v_nodes[-1].input[0]
             present_v = v_nodes[-1].output[0]
@@ -178,31 +212,34 @@ class FusionBartAttentionOpenai(FusionAttention):
 
         qk_nodes_1 = self.model.match_parent_path(matmul_qkv, ["Softmax", "MatMul"], [0, 0])
         qk_nodes_2 = self.model.match_parent_path(
-            matmul_qkv, ["Softmax", "Reshape", "Add", "Reshape", "MatMul"], [0, 0, 0, 0, 0]
+            matmul_qkv, ["Softmax", "Add", "MatMul"], [0, 0, 0]
         )
         if qk_nodes_1 is not None:
+            print("reach qk type 1")
             _, matmul_qk = qk_nodes_1
             qk_nodes = qk_nodes_1
         elif qk_nodes_2 is not None:
-            _, _, add_qk, _, matmul_qk = qk_nodes_2
+            print("reach qk type 2")
+            _, add_qk, matmul_qk = qk_nodes_2
             qk_nodes = qk_nodes_2
         else:
             return
 
         q_nodes = self.model.match_parent_path(
             matmul_qk,
-            ["Reshape", "Transpose", "Reshape", "Mul", "Add", "MatMul"],
-            [0, 0, 0, 0, 0, 1],
+            ["Mul", "Transpose", "Reshape", "Add", "MatMul"],
+            [0, 0, 0, 0, 1],
         )
         if q_nodes is not None:
-            reshape_q_2, transpose_q, reshape_q_1, mul_q, add_q, matmul_q = q_nodes
+            print("reach q path")
+            mul_q, transpose_q, reshape_q_1, add_q, matmul_q = q_nodes
         else:
             return
 
         k_nodes_with_bias = self.model.match_parent_path(
             matmul_qk,
-            ["Transpose", "Reshape", "Transpose", "Reshape", "Add", "MatMul"],
-            [1, 0, 0, 0, 0, 1],
+            ["Mul", "Transpose", "Reshape", "MatMul"],
+            [1, 0, 0, 0],
         )
         k_nodes_no_bias = self.model.match_parent_path(
             matmul_qk,
@@ -218,14 +255,53 @@ class FusionBartAttentionOpenai(FusionAttention):
         k_nodes_no_bias_with_past_cross_attn = self.model.match_parent_path(
             # Decoder attention with past key directly used in MatMul
             matmul_qk,
-            ["Transpose", "Reshape"],
-            [1, 0],
+            ["Mul", "Transpose", "Reshape", "Reshape", "Transpose"],
+            [1, 0, 0, 0, 0],
         )
         past_k, present_k = "", ""
         reshape_k_2, reshape_k_1, matmul_k = None, None, None
         if k_nodes_with_bias is not None:
-            _, reshape_k_2, transpose_k_1, reshape_k_1, add_k, matmul_k = k_nodes_with_bias
+            print("reach k path")
+            mul_k, transpose_k_1, reshape_k_1, matmul_k = k_nodes_with_bias
             k_nodes = k_nodes_with_bias
+            present_k = matmul_k.output[0]
+            mat_k_out_tmp = matmul_k.output[0] + "_temp"
+            #matmul_k.output[0] = matmul_k.output[0] + "_temp"
+
+            matmul_k_children = self.model.get_children(matmul_k)
+            for child in matmul_k_children:
+                if child.op_type == "Reshape":
+                    #if child.output[0] in graph_output_names:
+                    #    present_k = child.output[0]
+                    reshape_k_children = self.model.get_children(child)
+                    for reshape_child in reshape_k_children:
+                        if reshape_child.op_type == "Transpose":
+                            if reshape_child.output[0] in graph_output_names:
+                                present_k = reshape_child.output[0]
+                if child.op_type == "Concat":
+                    concat_k_children = self.model.get_children(child)
+                    for concat_child in concat_k_children:
+                        if concat_child.op_type == "Reshape":
+                            reshape_k_children = self.model.get_children(concat_child)
+                            for reshape_child in reshape_k_children:
+                                if reshape_child.op_type == "Transpose":
+                                    if reshape_child.output[0] in graph_output_names:
+                                        present_k = reshape_child.output[0]
+                            print("reach k path with past self attn")
+                    concat_k_parents = self.model.get_parents(child)
+                    for concat_parent in concat_k_parents:
+                        if concat_parent.op_type == "Reshape":
+                            reshape_k_parents = self.model.get_parents(concat_parent)
+                            for reshape_parent in reshape_k_parents:
+                                if reshape_parent.op_type == "Transpose":
+                                    if reshape_parent.input[0] in graph_input_names:
+                                        past_k = reshape_parent.input[0]
+                            print("reach v path with past self attn")
+                            print("reach k path with past self attn")
+                #else:
+                #    matmul_k.output[0] = mat_k_out_tmp
+
+
         elif k_nodes_no_bias is not None:
             _, reshape_k_2, transpose_k_1, reshape_k_1, matmul_k = k_nodes_no_bias
             k_nodes = k_nodes_no_bias
@@ -240,6 +316,7 @@ class FusionBartAttentionOpenai(FusionAttention):
             k_nodes_no_bias_with_past_cross_attn is not None
             and k_nodes_no_bias_with_past_cross_attn[-1].input[0] in graph_input_names
         ):
+            print("reach k path with past cross attn")
             k_nodes = k_nodes_no_bias_with_past_cross_attn
             past_k = k_nodes[-1].input[0]
             present_k = k_nodes[-1].output[0]
@@ -253,7 +330,7 @@ class FusionBartAttentionOpenai(FusionAttention):
         past_k = past_k if past_k in graph_input_names else ""
         present_k = present_k if present_k in graph_output_names else ""
 
-        if k_nodes in (k_nodes_no_bias, k_nodes_no_bias_with_past_self_attn):
+        if k_nodes in (k_nodes_with_bias, k_nodes_no_bias, k_nodes_no_bias_with_past_self_attn):
             # Create empty Add node for attention graph
             bias_dim = self.model.get_initializer(add_v.input[0]).dims[0]
             empty_bias_name = "empty_bias"
@@ -265,6 +342,7 @@ class FusionBartAttentionOpenai(FusionAttention):
             add_name = self.model.create_node_name("Add")
             add_k = helper.make_node("Add", [empty_bias_name, matmul_k.output[0]], [reshape_k_1.name], add_name)
 
+        '''
         if not past_k and not self.check_runtime_shape_path(
             reshape_qkv_2,
             reshape_qkv_1,
@@ -274,6 +352,7 @@ class FusionBartAttentionOpenai(FusionAttention):
             root_input,
         ):
             return
+        '''
 
         three_root_inputs = past_k and past_v and matmul_k is None and "matmul_v" not in locals()
         one_root_input = (
@@ -282,12 +361,14 @@ class FusionBartAttentionOpenai(FusionAttention):
             and matmul_q.input[0] == root_input
             and matmul_v.input[0] == root_input
         )
+        if one_root_input: print("one root input")
         two_root_inputs = (
             not three_root_inputs
             and matmul_q.input[0] == root_input
             and matmul_k.input[0] == matmul_v.input[0]
             and matmul_k.input[0] != matmul_q.input[0]
         )
+        if two_root_inputs: print("two root inputs")
 
         # There are 5 types of attention:
         # 1) Encoder attention with one_root_input=True and qk_nodes=qk_nodes_1
@@ -297,9 +378,17 @@ class FusionBartAttentionOpenai(FusionAttention):
         # 5) Decoder cross attention with past with three_root_inputs=True and qk_nodes=qk_nodes_1
         encoder_attention = one_root_input and qk_nodes == qk_nodes_1
         decoder_attention = one_root_input and qk_nodes == qk_nodes_2
-        decoder_attention_with_past = encoder_attention and past_k and past_v
+        decoder_attention_with_past = decoder_attention and past_k and past_v
         decoder_cross_attention = two_root_inputs and qk_nodes == qk_nodes_1
         decoder_cross_attention_with_past = three_root_inputs and qk_nodes == qk_nodes_1
+        print(three_root_inputs)
+        print(
+            encoder_attention,
+            decoder_attention,
+            decoder_attention_with_past,
+            decoder_cross_attention,
+            decoder_cross_attention_with_past,
+        )
 
         # For decoder_attention, the attention mask needs to be included in the attention node
         mask_index = None
@@ -311,11 +400,12 @@ class FusionBartAttentionOpenai(FusionAttention):
             )
             mask_nodes_whisper = self.model.match_parent_path(
                 add_qk,
-                ["Expand", "Unsqueeze", "Unsqueeze", "Where"],
-                [1, 0, 0, 0],
+                ["Slice", "Slice", "Unsqueeze", "Gather"],
+                [1, 0, 2, 0],
             )
             if mask_nodes_whisper is not None:
-                mask_index = mask_nodes_whisper[0].output[-1]
+                print("reach qk add")
+                #mask_index = mask_nodes_whisper[0].output[-1]
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
 
@@ -326,7 +416,7 @@ class FusionBartAttentionOpenai(FusionAttention):
             or decoder_cross_attention
             or decoder_cross_attention_with_past
         ):
-            attention_last_node = reshape_qkv_2
+            attention_last_node = reshape_qkv_1
             num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q_1)
 
             if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:

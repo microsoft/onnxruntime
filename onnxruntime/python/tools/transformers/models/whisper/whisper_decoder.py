@@ -85,7 +85,7 @@ class WhisperDecoder(torch.nn.Module):
         if self.model_impl == 'openai':
             dummy_encoder_hidden_states.unsqueeze(0)
             dec_out, present = self.whisper_decoder_openai_init(decoder_input_ids, dummy_encoder_hidden_states, past=past)
-            return dec_out[0], present
+            return dec_out, present
 
         if len(past) == 0:
             past_key_values = None
@@ -161,12 +161,14 @@ class WhisperDecoderInputs:
             self_attention_past_shape = [
                 batch_size,
                 num_attention_heads,
-                past_decode_sequence_length * head_size,
+                past_decode_sequence_length,
+                head_size,
             ]
             cross_attention_past_shape = [
                 batch_size,
                 num_attention_heads,
-                past_decode_sequence_length * head_size,
+                past_decode_sequence_length,
+                head_size,
             ]
 
             past = []

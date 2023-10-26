@@ -57,6 +57,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         if self.model_impl == 'openai':
             encoder_hidden_states.unsqueeze(0)
             decinit_out, present = self.whisper_decoder_openai_init(decoder_input_ids, encoder_hidden_states)
+            return decinit_out, encoder_hidden_states, present
             #present_self, present_cross = PastKeyValuesHelper.group_by_self_and_cross(present)
             #present = present_self + present_cross
         else:

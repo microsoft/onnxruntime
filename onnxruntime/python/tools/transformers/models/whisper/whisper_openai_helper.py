@@ -47,14 +47,14 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         # Create a kv_cache for past_values
         past_kv_cache = dict()
         if past is not None:
+            past = [torch.transpose(val, 1, 2) for val in past]
+            past = [val.reshape(val.shape[:2] + (-1, )) for val in past]
+            half_idx = len(past) // 2
             for idx, block in enumerate(self.whisper_decoder.blocks):
-                past_kv_cache[block.attn.key] = past[4 * idx]
-                past_kv_cache[block.attn.value] = past[4 * idx + 1]
-                past_kv_cache[block.cross_attn.key] = past[4 * idx + 2]
-                past_kv_cache[block.cross_attn.value] = past[4 * idx + 3]
-
-        for key in past_kv_cache.values():
-            print(key.shape)
+                past_kv_cache[block.attn.key] = past[2 * idx]
+                past_kv_cache[block.attn.value] = past[2 * idx + 1]
+                past_kv_cache[block.cross_attn.key] = past[2 * idx + half_idx]
+                past_kv_cache[block.cross_attn.value] = past[2 * idx + half_idx + 1]
 
         if not self.kv_cache:
             self.kv_cache, _ = self.whisper_model.install_kv_cache_hooks()
@@ -66,10 +66,22 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
                 self.kv_cache[block.attn.key] = torch.cat([past_kv_cache[block.attn.key], self.kv_cache[block.attn.key]], dim=1).detach()
                 self.kv_cache[block.attn.value] = torch.cat([past_kv_cache[block.attn.value], self.kv_cache[block.attn.value]], dim=1).detach()
 
-        present_self = []
+        present_self, present_cross = [], []
         for idx, block in enumerate(self.whisper_decoder.blocks):
-            present_self.append(self.kv_cache[block.attn.key])
-            present_self.append(self.kv_cache[block.attn.value])
+            present_self.append(self.kv_cache[block.attn.key].reshape(
+                self.kv_cache[block.attn.key].shape[:2] + (-1, 64)
+            ).transpose(1, 2))
+            present_self.append(self.kv_cache[block.attn.value].reshape(
+                self.kv_cache[block.attn.value].shape[:2] + (-1, 64)
+            ).transpose(1, 2))
+            if past is None:
+                present_cross.append(self.kv_cache[block.cross_attn.key].reshape(
+                    self.kv_cache[block.cross_attn.key].shape[:2] + (-1, 64)
+                ).transpose(1, 2))
+                present_cross.append(self.kv_cache[block.cross_attn.value].reshape(
+                    self.kv_cache[block.cross_attn.value].shape[:2] + (-1, 64)
+                ).transpose(1, 2))
+        present_self = present_self + present_cross
 
         #self.kv_cache.values()
         return logits, present_self

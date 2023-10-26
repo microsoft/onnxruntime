@@ -8,7 +8,8 @@ from typing import List, Optional
 
 from convert_to_packing_mode import PackingMode
 from fusion_attention import AttentionMask, FusionAttention
-from fusion_bart_attention import FusionBartAttention
+#from fusion_bart_attention import FusionBartAttention
+from fusion_bart_attention_openai import FusionBartAttention
 from fusion_biasgelu import FusionBiasGelu
 from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
