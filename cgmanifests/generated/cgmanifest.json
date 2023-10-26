@@ -6,6 +6,36 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "a896e3d066448b3530dbcaa48869fafefd738f57",
+          "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
+        },
+        "comments": "git submodule at cmake/external/emsdk"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7a2ed51a6b682a83e345ff49fc4cfd7ca47550db",
+          "repositoryUrl": "https://github.com/google/libprotobuf-mutator.git"
+        },
+        "comments": "git submodule at cmake/external/libprotobuf-mutator"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "e2525550194ce3d8a2c4a3af451c9d9b3ae6650e",
+          "repositoryUrl": "https://github.com/onnx/onnx.git"
+        },
+        "comments": "git submodule at cmake/external/onnx"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "29bf8085f3bf17b84d30e34b3d7ff8248fda404e",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
@@ -166,7 +196,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "fdefbe85ed9c362b95b9b401cd19db068a76141f",
+          "commitHash": "14303de049144035dfd94ace5f7a3b44773b1aad",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "onnx"
@@ -176,8 +206,8 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0462dc31ae78f48744b6141ae376df1f96d3f459",
-          "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
+          "commitHash": "65f89347f1236b80725bcbb4db760eda600fbe20",
+          "repositoryUrl": "https://github.com/yf711/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
       }

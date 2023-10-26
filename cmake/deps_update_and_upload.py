@@ -2,7 +2,7 @@
 # Before running the script, increase the version number found at:
 # https://aiinfra.visualstudio.com/Lotus/_artifacts/feed/Lotus/UPack/onnxruntime_build_dependencies/versions
 # Run without --do-upload once to verify downloading. Use --do-upload when you are ready to publish.
-# python cmake/deps_update_and_upload.py --root-path C:/temp/onnxruntime_deps --version 1.0.82 --do-upload
+# python cmake/deps_update_and_upload.py --root-path C:/temp/onnxruntime_deps --version 1.0.99 --do-upload
 # update version number in tools\ci_build\github\azure-pipelines\templates\download-deps.yml
 import re
 import subprocess
@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(description="Update dependencies and publish to
 parser.add_argument(
     "--root-path", type=str, default=tempfile.gettempdir(), help="Target root path for downloaded files"
 )
-parser.add_argument("--version", type=str, default="1.0.82", help="Package version to publish")
+parser.add_argument("--version", type=str, default="1.0.99", help="Package version to publish")
 parser.add_argument("--do-upload", action="store_true", help="Upload the package to Azure Artifacts")
 args = parser.parse_args()
 
