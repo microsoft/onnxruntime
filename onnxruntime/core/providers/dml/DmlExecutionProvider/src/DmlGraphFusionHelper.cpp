@@ -140,7 +140,9 @@ namespace DmlGraphFusionHelper
             inputsUsed[edge->GraphInputIndex] = true;
         }
 
+#ifdef DML_ENABLE_SERIALIZATION
         const std::wstring modelName = GetModelName(graph.ModelPath());
+#endif // DML_ENABLE_SERIALIZATION
         for (uint32_t i = 0; i < initInputBindings.size(); i++)
         {
             bool isInitializerAlreadyRemoved = false;
@@ -204,7 +206,9 @@ namespace DmlGraphFusionHelper
 
                 // Tensor sizes in DML must be a multiple of 4 bytes large.
                 tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
+#ifdef DML_ENABLE_SERIALIZATION				  
                 WriteToFile(modelName, ConvertToWString(iter->first) + L".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
+#endif // DML_ENABLE_SERIALIZATION
 
                 if (inputRawData)
                 {
@@ -506,6 +510,7 @@ namespace DmlGraphFusionHelper
             serializedGraphConstantNameToMainGraphInputIndex,
             smallConstantData);
 
+#ifdef DML_ENABLE_SERIALIZATION
         const std::wstring modelName = GetModelName(graph.ModelPath());
         auto buffer = SerializeDmlGraph(serializedDmlGraphDesc);
 
@@ -515,16 +520,19 @@ namespace DmlGraphFusionHelper
             L".bin";
         WriteToFile(modelName, partitionName, buffer.data(), buffer.size());
 
+#ifdef DML_ENABLE_SERIALIZATION_DEBUG
         std::vector<std::unique_ptr<std::byte[]>> rawData;
         DmlSerializedGraphDesc serializedDesc = DeserializeDmlGraph(buffer.data(), rawData);
-        GraphDescBuilder::GraphDesc castedSerialzedDesc = {};
-        castedSerialzedDesc.InputCount = serializedDesc.InputCount;
-        castedSerialzedDesc.InputEdges = std::move(serializedDesc.InputEdges);
-        castedSerialzedDesc.IntermediateEdges = std::move(serializedDesc.IntermediateEdges);
-        castedSerialzedDesc.Nodes = std::move(serializedDesc.Nodes);
-        castedSerialzedDesc.OutputCount = serializedDesc.OutputCount;
-        castedSerialzedDesc.OutputEdges = std::move(serializedDesc.OutputEdges);
-        castedSerialzedDesc.reuseCommandList = serializedDmlGraphDesc.reuseCommandList;
+        GraphDescBuilder::GraphDesc deserializedDesc = {};
+        deserializedDesc.InputCount = serializedDesc.InputCount;
+        deserializedDesc.InputEdges = std::move(serializedDesc.InputEdges);
+        deserializedDesc.IntermediateEdges = std::move(serializedDesc.IntermediateEdges);
+        deserializedDesc.Nodes = std::move(serializedDesc.Nodes);
+        deserializedDesc.OutputCount = serializedDesc.OutputCount;
+        deserializedDesc.OutputEdges = std::move(serializedDesc.OutputEdges);
+        deserializedDesc.reuseCommandList = serializedDmlGraphDesc.reuseCommandList;
+#endif // DML_ENABLE_SERIALIZATION_DEBUG
+#endif // DML_ENABLE_SERIALIZATION
 
         // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
         StackAllocator<1024> allocator; // Used for converting DmlSerializedGraphDesc to DML_GRAPH_DESC
@@ -535,7 +543,11 @@ namespace DmlGraphFusionHelper
         std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges;
         std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges;
         ConvertGraphDesc<1024>(
-            castedSerialzedDesc,
+#if defined(DML_ENABLE_SERIALIZATION) && defined(DML_ENABLE_SERIALIZATION_DEBUG)
+            deserializedDesc,
+#else
+            serializedDmlGraphDesc,
+#endif // DML_ENABLE_SERIALIZATION && DML_ENABLE_SERIALIZATION_DEBUG
             fusedNodeInputCount,
             dmlGraphDesc,
             device.Get(),

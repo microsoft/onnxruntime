@@ -406,7 +406,7 @@ namespace Dml::GraphDescBuilder
                         edge.FromNodeOutputIndex = inputNodeAndIndex.targetIndex;
                         edge.ToNodeIndex = mainDmlGraphNodeIndex;
                         edge.ToNodeInputIndex = operatorDmlGraphInputEdge.ToNodeInputIndex;
-                                                edge.Name = arg->Name();
+                        edge.Name = arg->Name();
                         dmlGraphIntermediateEdges.push_back(edge);
                     }
                 }

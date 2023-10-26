@@ -51,6 +51,7 @@ namespace Dml
 
         // Create a map between each initialized tensor and the partition(s) it is part of.
         auto initializerPartitionMap = DmlGraphFusionHelper::GetInitializerToPartitionMap(graphViewer, partitions);
+        uint32_t sequentialPartitionIndex = 0;
 
         for (uint32_t partitionIndex = 0; partitionIndex < partitions.size(); ++partitionIndex)
         {
@@ -119,7 +120,7 @@ namespace Dml
 
                 DmlGraphFusionHelper::FusePartitionAndRegisterKernel(
                     partition.get(), 
-                    partitionIndex, 
+                    sequentialPartitionIndex, 
                     graph, 
                     graphNodePropertyMap,
                     m_providerImpl->GetKernelRegistry().get(),
@@ -127,6 +128,8 @@ namespace Dml
                     isInitializerTransferable,
                     m_providerImpl
                 );
+
+                sequentialPartitionIndex++;
             }
         }
 
