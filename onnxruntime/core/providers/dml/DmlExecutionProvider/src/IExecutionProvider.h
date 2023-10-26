@@ -2,7 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <d3d12.h>
+
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+
+interface IDMLCompiledOperator;
+struct DML_BUFFER_BINDING;
+struct DML_BINDING_DESC;
 
 namespace Dml
 {

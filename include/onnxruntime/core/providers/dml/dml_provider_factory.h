@@ -128,7 +128,7 @@ struct OrtDmlApi {
   /**
    * SessionOptionsAppendExecutionProvider_DML2
    * Creates a DirectML Execution Provider given the supplied device options that contain a performance preference
-   * (high power, low power, or defult) and a device filter (None, GPU, or NPU).
+   * (high power, low power, or default) and a device filter (None, GPU, or NPU).
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
 };

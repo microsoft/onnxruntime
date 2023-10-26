@@ -52,8 +52,10 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlRuntimeGraphFusionTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #include "core/providers/dml/dml_session_options_config_keys.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/user_logging_sink.h"
@@ -1598,7 +1600,9 @@ common::Status InferenceSession::Initialize() {
                                                                record_runtime_optimization_produced_op_schema));
 
 #ifdef USE_DML
-      if (execution_providers_.Get(kDmlExecutionProvider)) {
+      const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);
+
+      if (dmlExecutionProvider) {
         // DML graph fusion is an important runtime optimization that cannot be done ahead of time; it must be disabled
         // when running in "offline mode" and saving an optimized model to disk. To support users that want to optimize
         // models offline, and then disable graph optimizations when running "online", this transformer ignores the ORT
@@ -1608,11 +1612,20 @@ common::Status InferenceSession::Initialize() {
 
         if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
-                                                                                                                                      execution_providers_.Get(kDmlExecutionProvider));
+                                                                                                                                      dmlExecutionProvider);
           if (dmlGraphFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
           }
           ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
+
+          if (static_cast<const Dml::ExecutionProvider*>(dmlExecutionProvider)->DynamicGraphFusionEnabled()) {
+            std::unique_ptr<onnxruntime::GraphTransformer> dmlRuntimeGraphFusionTransformer = std::make_unique<Dml::DmlRuntimeGraphFusionTransformer>("DmlRuntimeGraphFusionTransformer",
+                                                                                                                                                      dmlExecutionProvider);
+            if (dmlRuntimeGraphFusionTransformer == nullptr) {
+              return Status(common::ONNXRUNTIME, common::FAIL, "DmlRuntimeGraphFusionTransformer is nullptr");
+            }
+            ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlRuntimeGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
+          }
         }
 
         // This transformer applies DML-specific fusions that go beyond what ORT offers by default
