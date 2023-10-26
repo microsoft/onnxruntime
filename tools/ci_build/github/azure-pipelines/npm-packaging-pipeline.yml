@@ -41,7 +41,7 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
-    PoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
     PackageName: 'onnxruntime-web'
     ExtraBuildArgs: ''
 

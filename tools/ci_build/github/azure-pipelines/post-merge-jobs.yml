@@ -4,7 +4,7 @@ stages:
     parameters:
       NpmPackagingMode: 'dev'
       IsReleasePipeline: true
-      PoolName: 'aiinfra-Win-CPU-2022-web-beta'
+      PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
       BuildStaticLib: true
       ExtraBuildArgs: ''
 

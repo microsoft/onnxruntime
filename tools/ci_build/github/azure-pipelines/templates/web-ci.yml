@@ -26,7 +26,7 @@ parameters:
 
 - name: WASMTemplate
   type: string
-  default: win-wasm-ci.yml
+  default: linux-wasm-ci.yml
 # parameter couldn't be compared by string, so add one boolean parameter.
 - name: UseWebPoolName
   type: boolean
