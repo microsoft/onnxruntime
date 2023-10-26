@@ -742,7 +742,7 @@ class ONNXQuantizer:
 
     def set_quant_scale_zp(self, tensor_name, value):
         assert isinstance(value, tuple) and len(value) == 2, "value must be scale(float or float16) and zeropoint"
-        assert hasattr(value, "dtype")
+        assert hasattr(value[0], "dtype")
         assert tensor_name not in self.used_scale_zp_map, f"{tensor_name} has been setted before"
         self.used_scale_zp_map[tensor_name] = value
 

@@ -1,4 +1,6 @@
+import numpy as np
 import onnx
+import onnx.helper
 
 from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
@@ -77,15 +79,19 @@ class QLinearSoftmax(QuantOperatorBase):
 class QDQSoftmax(QDQOperatorBase):
     def quantize(self):
         super().quantize()
+        qdq_info = self.quantizer.tensors_to_quantize[self.node.output[0]]
+        dtype = onnx.helper.tensor_dtype_to_np_dtype(qdq_info.data_type)
+        if self.quantizer.activation_qType not in (onnx.onnx_pb.TensorProto.UINT8, onnx.onnx_pb.TensorProto.INT8):
+            raise RuntimeError(f"QDQSoftmax does not support quantization to type {self.quantizer.activation_qType}")
         if self.quantizer.activation_qType == onnx.onnx_pb.TensorProto.UINT8:
-            out_scale = 1 / 256.0
-            out_zero_point = 0
+            out_scale = np.array(1 / 256.0, dtype=dtype)
+            out_zero_point = np.array(0, dtype=np.uint8)
         elif self.quantizer.is_activation_symmetric:
             # results are all greater or equal to 0, so we can only use
             # half of the range
-            out_scale = 1 / 127.0
-            out_zero_point = 0
+            out_scale = np.array(1 / 127.0, dtype=dtype)
+            out_zero_point = np.array(0, dtype=np.int8)
         else:
-            out_scale = 1 / 256.0
-            out_zero_point = -128
+            out_scale = np.array(1 / 256.0, dtype=dtype)
+            out_zero_point = np.array(-128, dtype=np.uint8)
         self.quantizer.set_quant_scale_zp(self.node.output[0], (out_scale, out_zero_point))
