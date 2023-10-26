@@ -119,9 +119,3 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
                std::unique_ptr<std::set<BrokenTest>> broken_test_list,
                std::unique_ptr<std::set<std::string>> broken_tests_keyword_set,
                const std::function<void(std::unique_ptr<ITestCase>)>& process_function);
-
-std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider_name);
-
-std::unique_ptr<std::set<std::string>> GetBrokenTestsKeyWordSet(const std::string& provider_name);
-
-std::unique_ptr<std::set<std::string>> GetBrokenTestsKeyWordSet(const std::string& provider_name);

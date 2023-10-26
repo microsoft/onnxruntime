@@ -433,7 +433,7 @@ TEST_P(ModelTest, Run) {
 #endif
 
     ORT_STRING_VIEW provider_name = kvp.first;
-    std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests = GetAllDisabledTests(provider_name)
+    std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests = GetAllDisabledTests(provider_name);
 
         while (!paths.empty()) {
       std::basic_string<ORTCHAR_T> node_data_root_path = paths.back();
