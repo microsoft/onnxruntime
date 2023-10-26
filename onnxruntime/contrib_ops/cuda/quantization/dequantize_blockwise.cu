@@ -61,15 +61,19 @@ __global__ void Dequantize4BitsKernel(
     const T* scale_data,
     const uint8_t* zero_points,
     int block_size,
+    int blocks_per_K,
     int blocks_per_threadblock,
     int shift) {
   int block_id = blockIdx.x * blocks_per_threadblock + ((threadIdx.x * 8) >> shift);
+  int n_idx = block_id / blocks_per_K;
+  int kb_idx = block_id % blocks_per_K;
   int element_offset = block_id * block_size + ((threadIdx.x * 8) & ((1 << shift) - 1));
   uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
   T scale = *(scale_data + block_id);
   uint8_t zp = 8;
   if (zero_points) {
-    zp = (block_id & 0x01) ? (zero_points[block_id / 2] >> 4) : (zero_points[block_id / 2] & 0x0f);
+    zp = zero_points[n_idx * ((blocks_per_K + 1)/2) + kb_idx / 2];
+    zp = (kb_idx & 0x01) ? (zp >> 4) : (zp & 0x0f);
   }
 
   output = output + element_offset;
@@ -100,6 +104,7 @@ Status Dequantize4Bits(
       scales_data,
       zero_points,
       block_size,
+      blocks_per_K,
       blocks_per_threadblock,
       shift);
 

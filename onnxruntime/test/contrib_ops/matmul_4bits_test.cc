@@ -25,6 +25,8 @@
 namespace onnxruntime {
 namespace test {
 
+static constexpr int QBits = 4;
+
 void QuantizeDequantize(std::vector<float>& raw_vals,
                         std::vector<uint8_t>& quant_vals,
                         std::vector<float>& scales,
@@ -35,27 +37,29 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
   OrtThreadPoolParams to;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
                                           concurrency::ThreadPoolType::INTRA_OP);
-  contrib::QuantizeBlockwise<float>(
+
+  MlasQuantizeBlockwise<float>(
       quant_vals.data(),
-      raw_vals.data(),
       scales.data(),
       zp != nullptr ? zp->data() : nullptr,
+      raw_vals.data(),
       block_size,
-      4,
-      N,
+      true,
       K,
+      N,
+      N,
       tp.get());
 
   // Note that input1_f_vals is NxK after dequant
-  contrib::DequantizeBlockwise<float>(
-      raw_vals.data(),
-      quant_vals.data(),
-      scales.data(),
-      zp != nullptr ? zp->data() : nullptr,
-      block_size,
-      4,
-      N,
-      K,
+  MlasDequantizeBlockwise<float>(
+      raw_vals.data(),                       // dequantized output
+      quant_vals.data(),                     // quantized input
+      scales.data(),                         // quantization scales
+      zp != nullptr ? zp->data() : nullptr,  // quantization zero points
+      block_size,                            // quantization block size
+      true,                                  // columnwise quantization
+      K,                                     // number of rows
+      N,                                     // number of columns
       tp.get());
 }
 
@@ -69,13 +73,21 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   MlasTranspose(input1_f_vals.data(), input1_f_vals_trans.data(), K, N);
 #endif
 
-  int64_t block_per_k = (K + block_size - 1) / block_size;
-  int64_t number_of_block = block_per_k * N;
-  int64_t block_blob_size = block_size * 4 / 8;
-  int64_t buf_size = number_of_block * (block_size * 4 / 8);
-  std::vector<uint8_t> input1_vals(buf_size);
-  std::vector<float> scales(number_of_block);
-  std::vector<uint8_t> zp((N * block_per_k + 1) / 2);
+  int meta_rows;
+  int meta_cols;
+  MlasBlockwiseQuantMetaShape<float>(block_size, true, (int)K, (int)N, meta_rows, meta_cols);
+
+  int q_rows;
+  int q_cols;
+  MlasBlockwiseQuantizedShape<float>(block_size, true, (int)K, (int)N, q_rows, q_cols);
+
+  std::vector<uint8_t> input1_vals(q_rows * q_cols);
+  std::vector<float> scales(meta_rows * meta_cols);
+
+  // TODO!! THIS SHOULD BE PROVIDED BY MLAS
+  // sub 8b packing always happen on the column dimension
+  const int packed_meta_rows = (meta_rows * QBits + 7) / 8;
+  std::vector<uint8_t> zp(packed_meta_rows * meta_cols);
 
   QuantizeDequantize(input1_f_vals,
                      input1_vals,
@@ -100,13 +112,13 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   test.AddAttribute<int64_t>("K", K);
   test.AddAttribute<int64_t>("N", N);
   test.AddAttribute<int64_t>("block_size", block_size);
-  test.AddAttribute<int64_t>("bits", 4);
+  test.AddAttribute<int64_t>("bits", QBits);
   if (use_float16) {
     test.AddInput<MLFloat16>("A", {M, K}, ToFloat16(input0_vals), false);
-    test.AddInput<uint8_t>("B", {N, block_per_k, block_blob_size}, input1_vals, true);
-    test.AddInput<MLFloat16>("scales", {N * block_per_k}, ToFloat16(scales), true);
+    test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
+    test.AddInput<MLFloat16>("scales", {meta_cols * meta_rows}, ToFloat16(scales), true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {(N * block_per_k + 1) / 2}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {meta_cols * packed_meta_rows}, zp, true);
     }
 
     test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(expected_vals));
@@ -117,10 +129,10 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else {
     test.AddInput<float>("A", {M, K}, input0_vals, false);
-    test.AddInput<uint8_t>("B", {N, block_per_k, block_blob_size}, input1_vals, true);
-    test.AddInput<float>("scales", {N * block_per_k}, scales, true);
+    test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
+    test.AddInput<float>("scales", {meta_cols * meta_rows}, scales, true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {(N * block_per_k + 1) / 2}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {meta_cols * packed_meta_rows}, zp, true);
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_vals);

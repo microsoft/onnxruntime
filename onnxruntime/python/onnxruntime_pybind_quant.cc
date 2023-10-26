@@ -5,8 +5,7 @@
 #include <pybind11/numpy.h>
 #include <pybind11/functional.h>
 
-#include "contrib_ops/cpu/quantization/dequantize_blockwise.h"
-#include "contrib_ops/cpu/quantization/dequantize_blockwise_bnb4.h"
+#include "core/mlas/inc/mlas_q4.h"
 #include "core/util/thread_utils.h"
 
 namespace pybind11 {
@@ -53,15 +52,16 @@ void QuantizeMatMul4BitsBlockwise(
   py::buffer_info scale_buf = scale.request();
   py::buffer_info zp_buf = zero_points.request();
 
-  contrib::QuantizeBlockwise<T>(
-      static_cast<uint8_t*>(dst_buf.ptr),
-      static_cast<const T*>(src_buf.ptr),
-      static_cast<T*>(scale_buf.ptr),
-      is_symmetric ? nullptr : static_cast<uint8_t*>(zp_buf.ptr),
+  MlasQuantizeBlockwise<float>(
+      dst_buf.ptr,
+      scale_buf.ptr,
+      is_symmetric ? nullptr : zp_buf.ptr,
+      src_buf.ptr,
       block_size,
-      4,
-      N,
+      true,
       K,
+      N,
+      N,
       tp.get());
 }
 
