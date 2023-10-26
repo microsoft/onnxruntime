@@ -37,6 +37,7 @@ class OptimizerModifierTypeRegistry:
         "megatron.fp16.fp16.FP16_Optimizer": LegacyMegatronLMModifier,
         "deepspeed.runtime.zero.stage2.FP16_DeepSpeedZeroOptimizer": DeepSpeedZeROModifier,
         "deepspeed.runtime.zero.stage_1_and_2.DeepSpeedZeroOptimizer": DeepSpeedZeROModifier,
+        "deepspeed.runtime.zero.stage3.DeepSpeedZeroOptimizer_Stage3": DeepSpeedZeROModifier,
         "apex.amp.optimizer.unique_name_as_id": ApexAMPModifier,
     }
 
