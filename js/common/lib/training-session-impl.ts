@@ -155,7 +155,7 @@ export class TrainingSession implements TrainingSessionInterface {
    * @param results
    * @returns
    */
-  processHandlerReturnToSessionReturn(results: SessionHandler.ReturnType): ReturnType {
+  convertHandlerReturnTypeToMapOfTensors(results: SessionHandler.ReturnType): ReturnType {
     const returnValue: {[name: string]: OnnxValue} = {};
     for (const key in results) {
       if (Object.hasOwnProperty.call(results, key)) {
@@ -175,7 +175,7 @@ export class TrainingSession implements TrainingSessionInterface {
   async runTrainStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
     const [fetches, options] = this.typeNarrowingForRunStep(feeds, arg1, arg2);
     const results = await this.handler.runTrainStep(feeds, fetches, options);
-    return this.processHandlerReturnToSessionReturn(results);
+    return this.convertHandlerReturnTypeToMapOfTensors(results);
   }
 
   async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {
