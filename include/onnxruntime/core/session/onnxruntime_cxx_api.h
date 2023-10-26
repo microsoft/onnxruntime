@@ -2228,7 +2228,7 @@ struct ShapeInferContext {
 
 using ShapeInferFn = Ort::Status (*)(Ort::ShapeInferContext&);
 
-#define MAX_CUSTOM_OP_END_VER (1UL<<31)-1
+#define MAX_CUSTOM_OP_END_VER (1UL << 31) - 1
 
 template <typename TOp, typename TKernel, bool WithStatus = false>
 struct CustomOpBase : OrtCustomOp {

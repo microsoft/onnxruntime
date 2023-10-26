@@ -833,7 +833,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
   }
   schema.SetDomain(domain);
   if (op->version >= min_ort_version_with_custom_version && op->GetStartVersion) {
-      schema.SinceVersion(op->GetStartVersion(op));
+    schema.SinceVersion(op->GetStartVersion(op));
   } else {
     schema.SinceVersion(1);
   }
