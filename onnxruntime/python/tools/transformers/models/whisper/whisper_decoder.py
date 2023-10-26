@@ -164,7 +164,8 @@ class WhisperDecoderInputs:
             self_attention_past_shape = [
                 batch_size,
                 num_attention_heads,
-                past_decode_sequence_length * head_size,
+                past_decode_sequence_length,
+                head_size,
             ]
             cross_attention_past_shape = [
                 batch_size,
