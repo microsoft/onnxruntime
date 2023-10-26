@@ -314,6 +314,9 @@ class TensorPartitionSpec {
   }
 };
 
+// Parse "[0, 1, 2, 3]" as std::vector<int64_t>{0, 1, 2, 3}.
+std::vector<int64_t> ParseStringAsInt64Vector(const std::string& str);
+
 DeviceMesh CreateDeviceMesh(
     std::vector<int64_t> device_mesh_shape,
     std::vector<int64_t> device_mesh_elements);
