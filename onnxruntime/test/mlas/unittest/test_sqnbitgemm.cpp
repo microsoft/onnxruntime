@@ -38,7 +38,7 @@ constexpr size_t ZeroPointsForBlksSizeInBytes(size_t BlkCount) {
   }
 }
 
-template <size_t BlkLen, size_t BlkBitWidth>
+template <size_t BlkBitWidth, size_t BlkLen>
 struct ReferenceQNBitPacking {
   static_assert(BlkBitWidth == 4, "Only implemented for BlkBitWidth == 4.");
 
@@ -49,7 +49,7 @@ struct ReferenceQNBitPacking {
     const size_t BlockCountK = DivRoundUp(CountK, BlkLen);
     const size_t TotalBlockCount = CountN * BlockCountK;
 
-    PackedBDataSizeInBytes = TotalBlockCount * BlkDataSizeInBytes(BlkLen, BlkBitWidth);
+    PackedBDataSizeInBytes = TotalBlockCount * BlkDataSizeInBytes(BlkBitWidth, BlkLen);
     PackedBScaleElementCount = TotalBlockCount;
     if (PackedBZeroPointSizeInBytes) {
       *PackedBZeroPointSizeInBytes = CountN * ZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
@@ -71,7 +71,7 @@ struct ReferenceQNBitPacking {
       for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
         size_t kklen = std::min(BlkLen, CountK - k);
 
-        uint8_t* PackedBBlkDataPtr = PackedBDataColPtr + k_blk_idx * BlkDataSizeInBytes(BlkLen, BlkBitWidth);
+        uint8_t* PackedBBlkDataPtr = PackedBDataColPtr + k_blk_idx * BlkDataSizeInBytes(BlkBitWidth, BlkLen);
 
         if (PackedBZeroPointColPtr) {
           float scale_block;
@@ -93,7 +93,7 @@ struct ReferenceQNBitPacking {
         }
       }
 
-      PackedBDataColPtr += BlockCountK * BlkDataSizeInBytes(BlkLen, BlkBitWidth);
+      PackedBDataColPtr += BlockCountK * BlkDataSizeInBytes(BlkBitWidth, BlkLen);
       PackedBScaleColPtr += BlockCountK;
       if (PackedBZeroPointColPtr != nullptr) {
         PackedBZeroPointColPtr += ZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
@@ -114,7 +114,7 @@ struct ReferenceQNBitPacking {
       for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
         size_t kklen = std::min(BlkLen, CountK - k);
 
-        const uint8_t* PackedBBlkDataPtr = PackedBDataColPtr + k_blk_idx * BlkDataSizeInBytes(BlkLen, BlkBitWidth);
+        const uint8_t* PackedBBlkDataPtr = PackedBDataColPtr + k_blk_idx * BlkDataSizeInBytes(BlkBitWidth, BlkLen);
         const float scale_block = PackedBScaleColPtr[k_blk_idx];
 
         if (PackedBZeroPointColPtr) {
@@ -128,7 +128,7 @@ struct ReferenceQNBitPacking {
         }
       }
 
-      PackedBDataColPtr += BlockCountK * BlkDataSizeInBytes(BlkLen, BlkBitWidth);
+      PackedBDataColPtr += BlockCountK * BlkDataSizeInBytes(BlkBitWidth, BlkLen);
       PackedBScaleColPtr += BlockCountK;
       if (PackedBZeroPointColPtr != nullptr) {
         PackedBZeroPointColPtr += ZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
@@ -228,7 +228,7 @@ struct ReferenceQNBitPacking {
  * @brief Test class for n-bit int block quantized GEMM
  *        Note: only 2-D matmul supported for now
  */
-template <size_t BlkLen, size_t BlkBitWidth>
+template <size_t BlkBitWidth, size_t BlkLen>
 class MlasSQNBitGemmTest : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> BufferA;
@@ -264,7 +264,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.PackedBZeroPoint = PackedBZeroPoint;
     params.PostProcessor = nullptr;
 
-    MlasSQNBitGemmBatch(M, N, K, 1, BlkLen, BlkBitWidth, &params, Threadpool);
+    MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, &params, Threadpool);
   }
 
   void CallReferenceGemm(size_t M,
@@ -277,7 +277,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                          const float* Bias,
                          float* C) {
     float* UnpackedBData = BufferUnpackedBReference.GetBuffer(K * N);
-    ReferenceQNBitPacking<BlkLen, BlkBitWidth>::UnpackB(
+    ReferenceQNBitPacking<BlkBitWidth, BlkLen>::UnpackB(
         N, K, PackedBData, PackedBScale, PackedBZeroPoint, UnpackedBData, N);
 
     for (size_t m = 0; m < M; m++) {
@@ -336,7 +336,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     uint8_t* PackedBZeroPoint = nullptr;
     {
       size_t PackedBDataSize, PackedBScaleSize, PackedBZeroPointSize;
-      ReferenceQNBitPacking<BlkLen, BlkBitWidth>::GetPackedBSizes(
+      ReferenceQNBitPacking<BlkBitWidth, BlkLen>::GetPackedBSizes(
           N, K, PackedBDataSize, PackedBScaleSize, &PackedBZeroPointSize);
 
       PackedBData = BufferPackedBData.GetBuffer(PackedBDataSize);
@@ -345,7 +345,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
         PackedBZeroPoint = BufferPackedBZeroPoint.GetBuffer(PackedBZeroPointSize);
       }
 
-      ReferenceQNBitPacking<BlkLen, BlkBitWidth>::PackB(N, K, B, /* ldb */ N,
+      ReferenceQNBitPacking<BlkBitWidth, BlkLen>::PackB(N, K, B, /* ldb */ N,
                                                         PackedBData, PackedBScale, PackedBZeroPoint);
     }
 
@@ -365,8 +365,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
  public:
   static const char* GetTestSuiteName() {
     static std::string suite_name = std::string("SQNBitGemm") +
-                                    "BlkLen" + std::to_string(BlkLen) +
-                                    "BlkBitWidth" + std::to_string(BlkBitWidth);
+                                    "BlkBitWidth" + std::to_string(BlkBitWidth) +
+                                    "BlkLen" + std::to_string(BlkLen);
     return suite_name.c_str();
   }
 };
@@ -374,8 +374,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
 //
 // Short Execute() test helper to register each test separately by all parameters.
 //
-template <size_t BlkLen, size_t BlkBitWidth>
-class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<BlkLen, BlkBitWidth>> {
+template <size_t BlkBitWidth, size_t BlkLen>
+class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>> {
  public:
   explicit SQNBitGemmShortExecuteTest(size_t M, size_t N, size_t K,
                                       bool WithThreadpool, bool WithZeroPoint, bool WithBias)
@@ -415,27 +415,29 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   static size_t RegisterShortExecuteTests() {
     size_t test_registered = 0;
 
-    for (bool WithThreadpool : {false, true}) {
-      for (bool WithZeroPoint : {false, true}) {
-        for (size_t b = 1; b < 16; b++) {
-          test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, false);
-          test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, true);
-        }
-        for (size_t b = 16; b <= 256; b <<= 1) {
-          test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, false);
-          test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, true);
-        }
-        for (size_t b = 256; b < 320; b += 32) {
-          test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, true);
-        }
-        for (size_t b = 1; b < 96; b++) {
-          test_registered += RegisterSingleTest(1, b, 32, WithThreadpool, WithZeroPoint, false);
-          test_registered += RegisterSingleTest(1, 32, b, WithThreadpool, WithZeroPoint, true);
-          test_registered += RegisterSingleTest(1, b, b, WithThreadpool, WithZeroPoint, false);
-        }
-        test_registered += RegisterSingleTest(43, 500, 401, WithThreadpool, WithZeroPoint, true);
+    if (MlasIsSQNBitGemmAvailable(BlkBitWidth, BlkLen)) {
+      for (bool WithThreadpool : {false, true}) {
+        for (bool WithZeroPoint : {false, true}) {
+          for (size_t b = 1; b < 16; b++) {
+            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, false);
+            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, true);
+          }
+          for (size_t b = 16; b <= 256; b <<= 1) {
+            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, false);
+            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, true);
+          }
+          for (size_t b = 256; b < 320; b += 32) {
+            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, true);
+          }
+          for (size_t b = 1; b < 96; b++) {
+            test_registered += RegisterSingleTest(1, b, 32, WithThreadpool, WithZeroPoint, false);
+            test_registered += RegisterSingleTest(1, 32, b, WithThreadpool, WithZeroPoint, true);
+            test_registered += RegisterSingleTest(1, b, b, WithThreadpool, WithZeroPoint, false);
+          }
+          test_registered += RegisterSingleTest(43, 500, 401, WithThreadpool, WithZeroPoint, true);
 
-        // test_registered += RegisterSingleTest(1001, 1027, 1031, WithThreadpool, WithZeroPoint, false);
+          // test_registered += RegisterSingleTest(1001, 1027, 1031, WithThreadpool, WithZeroPoint, false);
+        }
       }
     }
 
@@ -447,13 +449,22 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   bool WithThreadpool_, WithZeroPoint_, WithBias_;
 };
 
-template <>
-MlasSQNBitGemmTest<32, 4>* MlasTestFixture<MlasSQNBitGemmTest<32, 4>>::mlas_tester(nullptr);
+#define DEFINE_MLAS_TESTER(BlkBitWidth, BlkLen) \
+template <> \
+MlasSQNBitGemmTest<BlkBitWidth, BlkLen>* MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>>::mlas_tester(nullptr)
+
+DEFINE_MLAS_TESTER(4, 16);
+DEFINE_MLAS_TESTER(4, 32);
+DEFINE_MLAS_TESTER(4, 64);
+
+#undef DEFINE_MLAS_TESTER
 
 static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
 
-  count += SQNBitGemmShortExecuteTest<32, 4>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<4, 16>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<4, 32>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<4, 64>::RegisterShortExecuteTests();
 
   return count;
 }

@@ -28,7 +28,7 @@ Abstract:
  */
 struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
     const float* A = nullptr;                ///< address of A (float32 matrix)
-    const void* PackedBData = nullptr;           ///< address of B (quantized and packed n-bit int values)
+    const void* PackedBData = nullptr;       ///< address of B (quantized and packed n-bit int values)
     const float* PackedBScale = nullptr;     ///< address of scale values of quantized B, one per block
     const void* PackedBZeroPoint = nullptr;  ///< optional address of zero point values of quantized B, one per block
     bool IsBPacked = false;                  ///< whether B values are packed in the optimal format for the computation
@@ -46,23 +46,34 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
  *        A must be a float32 matrix
  *        B must be a quantized and packed n-bit int matrix
  *
- * @param[in]  M                row size of matrix A and C
- * @param[in]  N                column size of matrix B and C
- * @param[in]  K                column size of matrix A and row size of matrix B
- * @param[in]  BatchN           number of batches
- * @param[in]  BlkBitWidth      quantized value bit width (e.g., 4 means 4 bit ints)
- * @param[in]  BlkSize          number of quantized values per block
- * @param[inout]  DataParams    An array (size BatchN) of parameter blocks
- * @param[in]  ThreadPool       optional thread pool to use
+ * @param[in]       M               row size of matrix A and C
+ * @param[in]       N               column size of matrix B and C
+ * @param[in]       K               column size of matrix A and row size of matrix B
+ * @param[in]       BatchN          number of batches
+ * @param[in]       BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]       BlkLen          number of quantized values per block
+ * @param[inout]    DataParams      An array (size BatchN) of parameter blocks
+ * @param[in]       ThreadPool      optional thread pool to use
  */
 void MLASCALL
 MlasSQNBitGemmBatch(
-    const size_t M,
-    const size_t N,
-    const size_t K,
-    const size_t BatchN,
-    const size_t BlkBitWidth,
-    const size_t BlkSize,
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkBitWidth,
+    size_t BlkLen,
     const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
     MLAS_THREADPOOL* ThreadPool = nullptr
+);
+
+/**
+ * @brief Determines whether a float32/quantized n-bit int GEMM implementation is available on the current platform.
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ */
+bool MLASCALL
+MlasIsSQNBitGemmAvailable(
+    size_t BlkBitWidth,
+    size_t BlkLen
 );

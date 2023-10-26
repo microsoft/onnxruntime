@@ -35,27 +35,28 @@ Abstract:
 // Kernel implementation template declarations
 //
 
-/// <summary>
-/// Multiply float matrix A with quantized n-bit integer matrix B.
-/// </summary>
-/// <typeparam name="KernelType">Hardware-specific kernel type.</typeparam>
-/// <typeparam name="BlkLen">Number of values in a block.</typeparam>
-/// <typeparam name="BlkBitWidth">Bit width of each value in a block.</typeparam>
-/// <param name="A">Supplies the A matrix.</param>
-/// <param name="PackedBData">Supplies the packed B matrix block data.</param>
-/// <param name="PackedBScale">Supplies the packed B matrix block scale values.</param>
-/// <param name="PackedBZeroPoint">Supplies the packed B matrix block zero point values. Optional.</param>
-/// <param name="C">Supplies the output C matrix.</param>
-/// <param name="CountM">Number of rows of A and C.</param>
-/// <param name="CountN">Number of columns of B and C.</param>
-/// <param name="CountK">Number of columns of A and rows of B.</param>
-/// <param name="lda">Leading dimension of A.</param>
-/// <param name="BlockStridePackedB">
-/// Number of blocks between adjacent columns of B (packed B values are transposed).
-/// </param>
-/// <param name="ldc">Leading dimension of C.</param>
-/// <param name="Bias">Bias vector of length N. Optional.</param>
-/// <returns>Number of rows of A handled.</returns>
+/**
+ * @brief Multiply float matrix A with quantized n-bit integer matrix B.
+ *
+ * @tparam BlkBitWidth  Bit width of each value in a block.
+ * @tparam BlkLen       Number of values in a block.
+ * @tparam KernelType   Hardware-specific kernel type.
+ *
+ * @param       A                   Supplies the A matrix.
+ * @param       PackedBData         Supplies the packed B matrix block data.
+ * @param       PackedBScale        Supplies the packed B matrix block scale values.
+ * @param       PackedBZeroPoint    Supplies the packed B matrix block zero point values. Optional.
+ * @param[out]  C                   Supplies the output C matrix.
+ * @param       CountM              Number of rows of A and C.
+ * @param       CountN              Number of columns of B and C.
+ * @param       CountK              Number of columns of A and rows of B.
+ * @param       lda                 Leading dimension of A.
+ * @param       BlockStridePackedB  Number of blocks between adjacent columns of B (packed B values are transposed).
+ * @param       ldc                 Leading dimension of C.
+ * @param       Bias                Bias vector of length N.
+ *
+ * @return  Number of rows of A handled.
+ */
 template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
 MLAS_FORCEINLINE size_t
 MlasSQNBitGemmKernel(
@@ -73,7 +74,23 @@ MlasSQNBitGemmKernel(
     const float* Bias
 );
 
-// dequantize B into the format expected by MlasSgemmKernelZero
+/**
+ * @brief Dequantize B into the format expected by the Sgemm kernel.
+ *        This is equivalent to unpacking and dequantizing B and then running
+ *        MlasSgemmCopyPackB.
+ *
+ * @tparam BlkBitWidth  Bit width of each value in a block.
+ * @tparam BlkLen       Number of values in a block.
+ * @tparam KernelType   Hardware-specific kernel type.
+ *
+ * @param[out]  FpData              Supplies the output buffer for the B float data.
+ * @param       PackedBData         Supplies the packed B matrix block data.
+ * @param       PackedBScale        Supplies the packed B matrix block scale values.
+ * @param       PackedBZeroPoint    Supplies the packed B matrix block zero point values. Optional.
+ * @param       CountN              Number of columns of B.
+ * @param       CountK              Number of rows of B.
+ * @param       BlockStridePackedB  Number of blocks between adjacent columns of B (packed B values are transposed).
+ */
 template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
 MLAS_FORCEINLINE void
 MlasQNBitBlkDequantBForSgemm(
@@ -96,7 +113,7 @@ MlasQNBitBlkDataSizeInBytes(size_t BlkBitWidth, size_t BlkLen)
     return BlkLen * BlkBitWidth / 8;
 }
 
-template<size_t BlkBitWidth>
+template <size_t BlkBitWidth>
 constexpr MLAS_FORCEINLINE size_t
 MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
 {
@@ -267,6 +284,7 @@ typedef void(MLASCALL MLAS_SQNBIT_GEMM_OPERATION)(
 enum QuantVariant {
     QuantVariant_BitWidth4_BlockSize16,
     QuantVariant_BitWidth4_BlockSize32,
+    QuantVariant_BitWidth4_BlockSize64,
     QuantVariantCount,  // keep this element last
 };
 

@@ -29,6 +29,8 @@ GetDispatchQuantVariant(size_t BlkBitWidth, size_t BlkLen)
         type = QuantVariant_BitWidth4_BlockSize16;
     } else if (BlkBitWidth == 4 && BlkLen == 32) {
         type = QuantVariant_BitWidth4_BlockSize32;
+    } else if (BlkBitWidth == 4 && BlkLen == 64) {
+        type = QuantVariant_BitWidth4_BlockSize64;
     }
 
     return type;
@@ -48,17 +50,8 @@ MlasSQNBitGemmBatch(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    const int32_t QuantVariant = GetDispatchQuantVariant(BlkLen, BlkBitWidth);
-    if (QuantVariant == -1) {
-        MLAS_THROW_EX(std::invalid_argument, "Unsupported quantization block size / bit width.");
-    }
-
-    MLAS_SQNBIT_GEMM_OPERATION* const Operation =
-        GetMlasPlatform().SQNBitGemmDispatch->Operations[QuantVariant];
-
-    if (Operation == nullptr) {
-        MLAS_THROW_EX(std::invalid_argument, "FpQNBitGemm is not implemented on this platform.");
-    }
+    const int32_t QuantVariant = GetDispatchQuantVariant(BlkBitWidth, BlkLen);
+    MLAS_SQNBIT_GEMM_OPERATION* const Operation = GetMlasPlatform().SQNBitGemmDispatch->Operations[QuantVariant];
 
     if (ThreadPool == nullptr) {
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
@@ -125,4 +118,23 @@ MlasSQNBitGemmBatch(
 
         Operation(K, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
     });
+}
+
+bool MLASCALL
+MlasIsSQNBitGemmAvailable(
+    size_t BlkBitWidth,
+    size_t BlkLen
+)
+{
+    const int32_t QuantVariant = GetDispatchQuantVariant(BlkBitWidth, BlkLen);
+    if (QuantVariant == -1) {
+        return false;
+    }
+
+    if (GetMlasPlatform().SQNBitGemmDispatch == nullptr ||
+        GetMlasPlatform().SQNBitGemmDispatch->Operations[QuantVariant] == nullptr) {
+        return false;
+    }
+
+    return true;
 }
