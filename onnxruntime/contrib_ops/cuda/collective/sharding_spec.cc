@@ -27,6 +27,28 @@ void ValidateAxisIndex(const int64_t axis, const int64_t rank) {
   ORT_ENFORCE(adjusted_axis >= 0 && adjusted_axis < rank, "axis,", axis, ", should be in [", -rank, ",", rank, ").");
 }
 
+std::vector<int64_t> ParseStringAsInt64Vector(const std::string& str) {
+  if (str.empty() || str.front() != '[' || str.back() != ']') {
+    throw std::invalid_argument("Invalid input string format");
+  }
+  // Parsed vector.
+  // If input is "[0, 1, 2]", result should be {0, 1, 2}.
+  std::vector<int64_t> result;
+  // Skip '[' and ']'
+  std::istringstream iss(str.substr(1, str.size() - 2));
+
+  // Extract integers separated by ',' or whitespaces.
+  int64_t num = -1;
+  while (/* Read one number at a time */ iss >> num) {
+    result.push_back(num);
+    // Skip the comma
+    if (iss.peek() == ',') {
+      iss.ignore();
+    }
+  }
+  return result;
+}
+
 DeviceMesh CreateDeviceMesh(
     std::vector<int64_t> device_mesh_shape,
     std::vector<int64_t> device_mesh_elements) {

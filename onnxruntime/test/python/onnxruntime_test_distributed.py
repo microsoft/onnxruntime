@@ -20,15 +20,22 @@ def shard_tensor(X, rank, axis, num_shards):
 
 class TestDistributed(unittest.TestCase):
     def test_matmul_rs_sr_rr(self):
+        # It means 1-D tensor with single element: [2].
+        device_mesh_shape = "[2]"
+        # It means 1-D tensor with two elements: [0, 1].
+        device_mesh_elements = "[0,1]"
+
         @onnxscript.script()
         def matmul_rs_sr_rr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
             return MICROSOFT_OPSET.DistributedMatMul(
                 tensor_x,
                 tensor_w,
-                device_mesh_shape=[2],
-                device_mesh_elements=[0, 1],
                 input_shard_specs=["RS[0]", "S[0]R"],
                 output_shard_specs=["RR"],
+                input_device_mesh_shapes=[device_mesh_shape, device_mesh_shape],
+                input_device_mesh_elements=[device_mesh_elements, device_mesh_elements],
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
             )
 
         rank = comm.Get_rank()
@@ -55,15 +62,20 @@ class TestDistributed(unittest.TestCase):
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
     def test_matmul2d_rs_rs_rr(self):
+        device_mesh_shape = "[2]"
+        device_mesh_elements = "[0, 1]"
+
         @onnxscript.script()
         def matmul_rs_rs_rr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
             return MICROSOFT_OPSET.DistributedMatMul(
                 tensor_x,
                 tensor_w,
-                device_mesh_shape=[2],
-                device_mesh_elements=[0, 1],
                 input_shard_specs=["RS[0]", "RS[0]"],
                 output_shard_specs=["RR"],
+                input_device_mesh_shapes=[device_mesh_shape, device_mesh_shape],
+                input_device_mesh_elements=[device_mesh_elements, device_mesh_elements],
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
             )
 
         rank = comm.Get_rank()
@@ -93,15 +105,20 @@ class TestDistributed(unittest.TestCase):
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
     def test_matmul2d_rs_rs_rs(self):
+        device_mesh_shape = "[2]"
+        device_mesh_elements = "[0, 1]"
+
         @onnxscript.script()
         def matmul2d_rs_rs_rs(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
             return MICROSOFT_OPSET.DistributedMatMul(
                 tensor_x,
                 tensor_w,
-                device_mesh_shape=[2],
-                device_mesh_elements=[0, 1],
                 input_shard_specs=["RS[0]", "RS[0]"],
                 output_shard_specs=["RS[0]"],
+                input_device_mesh_shapes=[device_mesh_shape, device_mesh_shape],
+                input_device_mesh_elements=[device_mesh_elements, device_mesh_elements],
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
             )
 
         rank = comm.Get_rank()
@@ -128,15 +145,20 @@ class TestDistributed(unittest.TestCase):
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
     def test_matmul_srr_rr_srr(self):
+        device_mesh_shape = "[2]"
+        device_mesh_elements = "[0, 1]"
+
         @onnxscript.script()
         def matmul_srr_rr_srr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
             return MICROSOFT_OPSET.DistributedMatMul(
                 tensor_x,
                 tensor_w,
-                device_mesh_shape=[2],
-                device_mesh_elements=[0, 1],
                 input_shard_specs=["S[0]RR", "RR"],
                 output_shard_specs=["S[0]RR"],
+                input_device_mesh_shapes=[device_mesh_shape, device_mesh_shape],
+                input_device_mesh_elements=[device_mesh_elements, device_mesh_elements],
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
             )
 
         rank = comm.Get_rank()
@@ -165,15 +187,20 @@ class TestDistributed(unittest.TestCase):
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
     def test_matmul_srr_rrrr_rsrr(self):
+        device_mesh_shape = "[2]"
+        device_mesh_elements = "[0, 1]"
+
         @onnxscript.script()
         def matmul_srr_rrrr_rsrr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
             return MICROSOFT_OPSET.DistributedMatMul(
                 tensor_x,
                 tensor_w,
-                device_mesh_shape=[2],
-                device_mesh_elements=[0, 1],
                 input_shard_specs=["S[0]RR", "RRRR"],
                 output_shard_specs=["RS[0]RR"],
+                input_device_mesh_shapes=[device_mesh_shape, device_mesh_shape],
+                input_device_mesh_elements=[device_mesh_elements, device_mesh_elements],
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
             )
 
         rank = comm.Get_rank()
@@ -202,15 +229,20 @@ class TestDistributed(unittest.TestCase):
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
     def test_matmul_sr_rs_rr(self):
+        device_mesh_shape = "[2]"
+        device_mesh_elements = "[0, 1]"
+
         @onnxscript.script()
         def matmul_sr_rs_rr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
             return MICROSOFT_OPSET.DistributedMatMul(
                 tensor_x,
                 tensor_w,
-                device_mesh_shape=[2],
-                device_mesh_elements=[0, 1],
                 input_shard_specs=["S[0]R", "RS[0]"],
                 output_shard_specs=["RR"],
+                input_device_mesh_shapes=[device_mesh_shape, device_mesh_shape],
+                input_device_mesh_elements=[device_mesh_elements, device_mesh_elements],
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
             )
 
         rank = comm.Get_rank()
@@ -239,15 +271,20 @@ class TestDistributed(unittest.TestCase):
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
     def test_matmul_rr_rs_rs(self):
+        device_mesh_shape = "[2]"
+        device_mesh_elements = "[0, 1]"
+
         @onnxscript.script()
         def matmul_rr_rs_rs(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
             return MICROSOFT_OPSET.DistributedMatMul(
                 tensor_x,
                 tensor_w,
-                device_mesh_shape=[2],
-                device_mesh_elements=[0, 1],
                 input_shard_specs=["RR", "RS[0]"],
                 output_shard_specs=["RS[0]"],
+                input_device_mesh_shapes=[device_mesh_shape, device_mesh_shape],
+                input_device_mesh_elements=[device_mesh_elements, device_mesh_elements],
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
             )
 
         rank = comm.Get_rank()
@@ -276,15 +313,20 @@ class TestDistributed(unittest.TestCase):
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
     def test_matmul_rr_sr_rr(self):
+        device_mesh_shape = "[2]"
+        device_mesh_elements = "[0, 1]"
+
         @onnxscript.script()
         def matmul_rr_sr_rr(tensor_x: FLOAT, tensor_w: FLOAT) -> FLOAT:
             return MICROSOFT_OPSET.DistributedMatMul(
                 tensor_x,
                 tensor_w,
-                device_mesh_shape=[2],
-                device_mesh_elements=[0, 1],
                 input_shard_specs=["RR", "S[0]R"],
                 output_shard_specs=["RR"],
+                input_device_mesh_shapes=[device_mesh_shape, device_mesh_shape],
+                input_device_mesh_elements=[device_mesh_elements, device_mesh_elements],
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
             )
 
         rank = comm.Get_rank()
@@ -313,6 +355,9 @@ class TestDistributed(unittest.TestCase):
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
     def test_slice_sr_axis1(self):
+        device_mesh_shape = "[2]"
+        device_mesh_elements = "[0, 1]"
+
         @onnxscript.script()
         def slice_sr_axis1(tensor_x: FLOAT, tensor_starts: INT64, tensor_ends: INT64, tensor_axes: INT64) -> FLOAT:
             return MICROSOFT_OPSET.DistributedSlice(
@@ -320,10 +365,12 @@ class TestDistributed(unittest.TestCase):
                 tensor_starts,
                 tensor_ends,
                 tensor_axes,
-                device_mesh_shape=[2],
-                device_mesh_elements=[0, 1],
                 input_shard_specs=["S[0]R", "R", "R", "R", "R"],
                 output_shard_specs=["S[0]R"],
+                input_device_mesh_shapes=[device_mesh_shape] * 5,
+                input_device_mesh_elements=[device_mesh_elements] * 5,
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
             )
 
         rank = comm.Get_rank()
@@ -360,6 +407,9 @@ class TestDistributed(unittest.TestCase):
         np.testing.assert_allclose(result[0], expected, rtol=1e-5, atol=1e-8)
 
     def test_slice_rs_axis1(self):
+        device_mesh_shape = "[2]"
+        device_mesh_elements = "[0, 1]"
+
         @onnxscript.script()
         def slice_sr_axis1(tensor_x: FLOAT, tensor_starts: INT64, tensor_ends: INT64, tensor_axes: INT64) -> FLOAT:
             return MICROSOFT_OPSET.DistributedSlice(
@@ -367,10 +417,12 @@ class TestDistributed(unittest.TestCase):
                 tensor_starts,
                 tensor_ends,
                 tensor_axes,
-                device_mesh_shape=[2],
-                device_mesh_elements=[0, 1],
                 input_shard_specs=["RS[0]", "R", "R", "R", "R"],
                 output_shard_specs=["RS[0]"],
+                input_device_mesh_shapes=[device_mesh_shape] * 5,
+                input_device_mesh_elements=[device_mesh_elements] * 5,
+                output_device_mesh_shapes=[device_mesh_shape],
+                output_device_mesh_elements=[device_mesh_elements],
             )
 
         rank = comm.Get_rank()

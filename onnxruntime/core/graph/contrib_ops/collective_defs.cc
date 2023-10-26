@@ -83,17 +83,26 @@ void RegisterCollectiveOps() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(DistributedMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("device_mesh_elements",
-            "",
-            AttributeProto::INTS)
-      .Attr("device_mesh_shape",
-            "",
-            AttributeProto::INTS)
+      .Attr("input_device_mesh_elements",
+            "device_mesh_elements[i] defines the device mesh's value for the i-th input. "
+            "E.g., device_mesh_elements=[\"[0, 1]\", \"[0, 1]\"] means the 1st and the 2nd "
+            " inputs are stored on the 0-th and the 1st devices, respectively.",
+            AttributeProto::STRINGS)
+      .Attr("input_device_mesh_shapes",
+            "device_mesh_shape[i] defines the device mesh's shape for the i-th input.",
+            AttributeProto::STRINGS)
       .Attr("input_shard_specs",
-            "The sharding spec of \"Y\"; e.g., \"RRR\" if Y is not sharded.",
+            "The sharding spec of inputs. "
+            "E.g., if input_shard_specs[i] is \"RRR\", the i-th input is a unsharded 3-D tensor.",
+            AttributeProto::STRINGS)
+      .Attr("output_device_mesh_elements",
+            "Similar to input_device_mesh_elments but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("output_device_mesh_shapes",
+            "Similar to input_device_mesh_shapes but for outputs.",
             AttributeProto::STRINGS)
       .Attr("output_shard_specs",
-            "The sharding spec of \"Y\"; e.g., \"RRR\" if Y is not sharded.",
+            "Similar to input_shard_specs but for outputs.",
             AttributeProto::STRINGS)
       .Input(0, "A", "N-dimensional matrix A", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
       .Input(1, "B", "N-dimensional matrix B", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
@@ -109,17 +118,26 @@ void RegisterCollectiveOps() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(DistributedSlice)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("device_mesh_elements",
-            "",
-            AttributeProto::INTS)
-      .Attr("device_mesh_shape",
-            "",
-            AttributeProto::INTS)
+      .Attr("input_device_mesh_elements",
+            "device_mesh_elements[i] defines the device mesh's value for the i-th input. "
+            "E.g., device_mesh_elements=[\"[0, 1]\", \"[0, 1]\"] means the 1st and the 2nd "
+            " inputs are stored on the 0-th and the 1st devices, respectively.",
+            AttributeProto::STRINGS)
+      .Attr("input_device_mesh_shapes",
+            "device_mesh_shape[i] defines the device mesh's shape for the i-th input.",
+            AttributeProto::STRINGS)
       .Attr("input_shard_specs",
-            "The sharding spec of \"Y\"; e.g., \"RRR\" if Y is not sharded.",
+            "The sharding spec of inputs. "
+            "E.g., if input_shard_specs[i] is \"RRR\", the i-th input is a unsharded 3-D tensor.",
+            AttributeProto::STRINGS)
+      .Attr("output_device_mesh_elements",
+            "Similar to input_device_mesh_elments but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("output_device_mesh_shapes",
+            "Similar to input_device_mesh_shapes but for outputs.",
             AttributeProto::STRINGS)
       .Attr("output_shard_specs",
-            "The sharding spec of \"Y\"; e.g., \"RRR\" if Y is not sharded.",
+            "Similar to input_shard_specs but for outputs.",
             AttributeProto::STRINGS)
       .Input(
           0,
