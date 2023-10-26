@@ -132,7 +132,7 @@ stages:
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: x86_release
