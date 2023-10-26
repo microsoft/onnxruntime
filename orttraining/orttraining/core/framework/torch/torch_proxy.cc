@@ -83,6 +83,7 @@ std::vector<int64_t> CreateTensorFlags(const size_t len, const std::vector<int64
 
 void ProcessReturnValues(std::vector<PyObject*>& results,
                          bool is_training_mode,
+                         bool safe_run_mode_enabled,
                          void** diff_ctx,
                          std::vector<OrtValue>& returned_ortvalues) {
   size_t i = 0;
@@ -96,15 +97,26 @@ void ProcessReturnValues(std::vector<PyObject*>& results,
         LOGS_DEFAULT(VERBOSE) << "Under training mode, autograd context found to be Py_None.";
       } else {
         GilGuard guard;
+
         const auto refcnt = Py_REFCNT(py_obj);
-        // We don't need do ref increase here because, python returns tensor.grad_fn as part of
-        // tuple, who increased the refcnt already (and tensor persist until the backward kernels completed).
-        // Pytorch also increases refcnt before apply() return, so we should expect refcount >= 2.
-        // We say "at least" 2 because user could increase the context refcnt as well in their autograd forward()
-        // and backward() functions.
-        ORT_ENFORCE(refcnt >= 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
-        if (refcnt > 2) {
-          LOGS_DEFAULT(VERBOSE) << "Autograd context refcnt > 2, refcnt: " << refcnt;
+        if (safe_run_mode_enabled) {
+          // For safe_run_mode_enabled, we expect refcnt >= 2.
+          // 1. shared_ptr<PyNode> is maintained in torch_interop_utils::PyNodeSharedPointerPool. PyNode is owing
+          //   the context, e.g. THPFunction*.
+          // 2. results own another reference to the context, while the ownership will be ended after `Invoke` completed.
+          ORT_ENFORCE(refcnt >= 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
+
+          // Own one reference!!!
+          Py_INCREF(py_obj);
+
+          if (refcnt > 2) {
+            LOGS_DEFAULT(VERBOSE) << "Autograd context refcnt > 2, refcnt: " << refcnt;
+          }
+        } else {
+          ORT_ENFORCE(refcnt == 1, "Ref count of context should be 1, but actually it's ", refcnt, ".");
+
+          // Own one reference!!!
+          Py_INCREF(py_obj);
         }
       }
     } else {
@@ -210,7 +222,7 @@ void Invoke(
     raii_results.emplace_back(arg, PythonObjectDeleter);
   }
 
-  ProcessReturnValues(results, is_training_mode, diff_ctx, returned_ortvalues);
+  ProcessReturnValues(results, is_training_mode, safe_run_mode_enabled, diff_ctx, returned_ortvalues);
 }
 
 void TorchProxy::Forward(

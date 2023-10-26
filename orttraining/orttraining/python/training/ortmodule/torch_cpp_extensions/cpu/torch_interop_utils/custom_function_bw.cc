@@ -145,9 +145,9 @@ std::vector<PyObject*> custom_function_backward_runner(const char* func_name_cha
                               is_backward /*is_backward*/,
                               log_prefix,
                               all_outputs_of_kernel_run /*all_outputs_of_kernel_run*/);
-    }
 
-    unregister_grad_fn(ctx);
+      unregister_grad_fn(ctx);
+    }
 
     std::vector<PyObject*> rets;
     for (auto& py_obj : all_outputs_of_kernel_run) {

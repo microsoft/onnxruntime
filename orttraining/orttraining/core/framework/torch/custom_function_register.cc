@@ -193,10 +193,9 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* autograd_context) {
                                                autograd_context, "autograd_context_register");
 
   ORT_ENFORCE(autograd_context, "Cannot register NULL autograd context.");
-  Py_INCREF(autograd_context);
 
   func_context_pool_.insert({index_, PythonObjectPtr(autograd_context, PythonObjectDeleter)});
-  // We don't need increase the context refcnt because PyTorch already did it during .apply().
+
   return index_;
 }
 

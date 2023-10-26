@@ -121,6 +121,28 @@ std::optional<at::Tensor> try_to_get_tensor_owning_context(const py::tuple& forw
   return first_tensor_output;
 }
 
+void get_materialize_grads_once(const py::tuple& forward_output_tensors,
+                                bool need_materialize_grads,
+                                CustomFuncOpKernelInfo& kernel_info) {
+  if (need_materialize_grads) {
+    kernel_info.materialize_grads = need_materialize_grads;
+    for (size_t i = 0; i < forward_output_tensors.size(); ++i) {
+      PyObject* obj = forward_output_tensors[i].ptr();
+      if (!THPVariable_Check(obj)) {
+        continue;
+      }
+      at::Tensor t = THPVariable_Unpack(obj);
+      kernel_info.materialize_grads_config.insert({i, {t.sizes().vec(), t.options()}});
+    }
+  }
+
+  static std::once_flag log_warning;
+  std::call_once(log_warning, []() {
+    std::cerr << "First time run initialize kernel info including materialize_grads and materialize_grads_config."
+              << std::endl;
+  });
+}
+
 py::object finalize_training_mode_forward(
     const std::unordered_map<int, at::Tensor>& input_tensors_used_for_fw_run,
     const py::tuple& forward_output_tensors,
@@ -132,16 +154,15 @@ py::object finalize_training_mode_forward(
     return py::none();
   }
 
-  py::object ret = py::reinterpret_steal<py::object>(
-      torch::autograd::functionToPyObject(tensor_owning_ctx.value().grad_fn()));
+  const std::shared_ptr<torch::autograd::Node>& cdata = tensor_owning_ctx.value().grad_fn();
+  auto py_node_fn = dynamic_cast<torch::autograd::PyNode*>(cdata.get());
+  TORCH_CHECK(py_node_fn != nullptr, "cdata is not PyNode type.");
 
-  torch::autograd::AutogradMeta* autograd_meta =
-      torch::autograd::impl::get_autograd_meta(tensor_owning_ctx.value());
-  const auto& grad_fn = autograd_meta->grad_fn_;
-  auto py_node_fn = dynamic_cast<torch::autograd::PyNode*>(grad_fn.get());
-  TORCH_CHECK(py_node_fn != nullptr, "grad_fn is not PyNode type.");
+  // ret is THPFunction
   THPFunction* py_fn = (THPFunction*)py_node_fn->obj;
-  TORCH_CHECK(py_fn != nullptr, "grad_fn is not THPFunction type.");
+  py::object ret = py::reinterpret_steal<py::object>(torch::autograd::functionToPyObject(cdata));
+
+  TORCH_CHECK(py_fn != nullptr, "cdata is not THPFunction type.");
 
   // The way we find saved tensor is aligned with
   // "THPFunction_saved_tensors" and "unpack_saved_variables" in PyTorch.
@@ -160,23 +181,7 @@ py::object finalize_training_mode_forward(
   }
 
   if (kernel_info.is_first_run) {
-    kernel_info.materialize_grads = py_fn->materialize_grads;
-    if (kernel_info.materialize_grads) {
-      for (size_t i = 0; i < forward_output_tensors.size(); ++i) {
-        PyObject* obj = forward_output_tensors[i].ptr();
-        if (!THPVariable_Check(obj)) {
-          continue;
-        }
-        at::Tensor t = THPVariable_Unpack(obj);
-        kernel_info.materialize_grads_config.insert({i, {t.sizes().vec(), t.options()}});
-      }
-    }
-
-    static std::once_flag log_warning;
-    std::call_once(log_warning, []() {
-      std::cerr << "First time run initialize kernel info including materialize_grads and materialize_grads_config."
-                << std::endl;
-    });
+    get_materialize_grads_once(forward_output_tensors, py_fn->materialize_grads, kernel_info);
 
     if (kernel_info.safe_run_enabled) {
       for (auto& pair : input_tensors_used_for_fw_run) {
@@ -237,6 +242,30 @@ py::object finalize_training_mode_forward(
   return ret;
 }
 
+static py::object get_mockup_context_class() {
+  static py::object kclass_obj;
+
+  if (!kclass_obj.ptr()) {
+    // Load the module object
+    auto module =
+        py::reinterpret_steal<py::object>(
+            PyImport_ImportModule("onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils.fake_ctx"));
+    if (!module.ptr()) {
+      PyErr_Print();
+      throw std::runtime_error("Fails to import the module.");
+    }
+
+    auto python_class = py::reinterpret_steal<py::object>(PyObject_GetAttrString(module, "FakeContext"));
+    if (!PyCallable_Check(python_class.ptr())) {
+      throw std::runtime_error("Cannot instantiate the Python class");
+    }
+
+    kclass_obj = py::reinterpret_borrow<py::object>(python_class.ptr());
+  }
+
+  return kclass_obj;
+}
+
 std::vector<PyObject*> custom_function_forward_runner(const char* func_name_char,
                                                       void* callback,
                                                       const std::vector<int64_t>& requires_grad_flags,
@@ -272,7 +301,16 @@ std::vector<PyObject*> custom_function_forward_runner(const char* func_name_char
 
     int tensor_input_index = 0;
     std::vector<py::object> raii_call_args;
-    raii_call_args.reserve(args.size());
+    if (kernel_info.safe_run_enabled) {
+      raii_call_args.reserve(args.size());
+    } else {
+      auto python_class = get_mockup_context_class();
+      // Creates an instance of the class
+      PyObject* object = PyObject_CallObject(python_class.ptr(), nullptr);
+      raii_call_args.reserve(args.size() + 1);
+      raii_call_args.push_back(py::reinterpret_steal<py::object>(object));
+    }
+
     for (size_t arg_index = 0; arg_index < args.size(); ++arg_index) {
       bool is_tensor = (tensor_type_flags[arg_index] == 1);
       if (!is_tensor) {
@@ -346,7 +384,7 @@ std::vector<PyObject*> custom_function_forward_runner(const char* func_name_char
     py::tuple call_args = py::cast(raii_call_args);
     PyObject* result_pyobj;
     {
-      at::AutoGradMode enable_grad(is_training_mode);
+      at::AutoGradMode enable_grad(is_training_mode && kernel_info.safe_run_enabled);
       result_pyobj = PyObject_CallObject(reinterpret_cast<PyObject*>(callback), call_args.ptr());
     }
 
@@ -378,9 +416,18 @@ std::vector<PyObject*> custom_function_forward_runner(const char* func_name_char
       std::string tag3 = func_name + ".ctx";
       nvtxRangePushA(tag3.c_str());
 #endif
+      if (kernel_info.safe_run_enabled) {
+        ctx = finalize_training_mode_forward(input_tensors_used_for_fw_run, forward_outputs, kernel_info);
+        if (!ctx.is_none()) {
+          PyObject_SetAttrString(ctx.ptr(), "fw_kernel_invoke_id", py::cast(kernel_invoke_id).ptr());
+        }
+      } else {
+        if (kernel_info.is_first_run) {
+          bool need_materialize_grads = true;
+          get_materialize_grads_once(forward_outputs, need_materialize_grads, kernel_info);
+        }
 
-      ctx = finalize_training_mode_forward(input_tensors_used_for_fw_run, forward_outputs, kernel_info);
-      if (!ctx.is_none()) {
+        ctx = call_args[0];
         PyObject_SetAttrString(ctx.ptr(), "fw_kernel_invoke_id", py::cast(kernel_invoke_id).ptr());
       }
 
