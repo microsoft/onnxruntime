@@ -1,4 +1,3 @@
-<!-- TODO: Make logo centered & accurate -->
 <script lang="ts">
 	export let width: number = 175;
 	export let height: number = 175;

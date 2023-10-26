@@ -53,7 +53,7 @@
 	};
 </script>
 
-<div class="container mx-auto md:px-10 px-4 lg:my-20">
+<div class="container mx-auto md:px-10 px-4 lg:my-5">
 	<h1 class="text-3xl my-5 text-center">Trusted By</h1>
 	<div class="divider" />
 	<div
@@ -62,51 +62,51 @@
 		<button
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
-			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded w-full w-full"
 		>
-			<img src={amdLogo} alt="AMD" />
+			<img class="h-20 mx-auto"src={amdLogo} alt="AMD" />
 		</button>
 		<button
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
-			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded w-full w-full"
 		>
-			<img src={huggingfaceLogo} alt="HuggingFace" />
+			<img class="h-20 mx-auto"src={huggingfaceLogo} alt="HuggingFace" />
 		</button>
 		<button
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
-			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded w-full"
 		>
-			<img src={intelLogo} alt="Intel" />
+			<img class="h-20 mx-auto"src={intelLogo} alt="Intel" />
 		</button>
 		<button
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
-			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded w-full"
 		>
-			<img src={nvidiaLogo} alt="Nvidia" />
+			<img class="h-20 mx-auto"src={nvidiaLogo} alt="Nvidia" />
 		</button>
 		<button
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
-			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded w-full"
 		>
-			<img src={adobeLogo} alt="Adobe" />
+			<img class="h-20 mx-auto"src={adobeLogo} alt="Adobe" />
 		</button>
 		<button
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
-			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded w-full"
 		>
-			<img src={unrealEngineLogo} alt="Unreal Engine" />
+			<img class="h-20 mx-auto"src={unrealEngineLogo} alt="Unreal Engine" />
 		</button>
 		<button
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
-			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded"
+			class="partner cursor-default bg-slate-300 border-solid border-2 border-secondary rounded w-full"
 		>
-			<img src={oracleLogo} alt="Oracle" />
+			<img class="h-20 mx-auto"src={oracleLogo} alt="Oracle" />
 		</button>
 		<a
 			on:mouseenter={handleEnter}
