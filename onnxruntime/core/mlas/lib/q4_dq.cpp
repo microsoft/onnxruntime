@@ -402,10 +402,25 @@ struct BlockwiseQuantizer {
     using QuantBlk = std::conditional_t<Columnwise, Shape2D<block_size, 1>, Shape2D<1, block_size>>;
     using ThreadBlk = Shape2D<QuantBlk::kRow * BitsTraits<qbits>::kPackSize, QuantBlk::kColumn>;
 
-    static void quantizeMetaShape(int rows, int columns, int& meta_rows, int& meta_cols) {
+    static
+    MLAS_FORCEINLINE
+    void quantizeMetaShape(int rows, int columns, int& meta_rows, int& meta_cols)
+    {
         meta_rows = (rows + QuantBlk::kRow - 1) / QuantBlk::kRow;
         meta_cols = (columns + QuantBlk::kColumn - 1) / QuantBlk::kColumn;
     }
+
+    static
+    MLAS_FORCEINLINE
+    void quantizedShape(int rows, int columns, int& q_rows, int& q_cols) {
+		int meta_rows;
+		int meta_cols;
+        quantizeMetaShape(rows, columns, meta_rows, meta_cols);
+
+        // quantized matrix is stored in column major, packed by column
+        q_rows = (meta_rows * QuantBlk::kRow * qbits + 7) / 8;
+        q_cols = meta_cols * QuantBlk::kColumn;
+	}
 
     /**
      * @brief Quantized a Matrix shape [rows, columns], resulting quantized
@@ -434,6 +449,9 @@ struct BlockwiseQuantizer {
         const auto total_thrd_blks = thrd_row_blks * thrd_col_blks;
 
         const auto row_blks = (rows + QuantBlk::kRow - 1) / QuantBlk::kRow;
+
+        int q_rows, q_cols;
+        quantizedShape(rows, columns, q_rows, q_cols);
 
         MlasTryBatchParallel(
             thread_pool, total_thrd_blks,
@@ -541,7 +559,7 @@ struct BlockwiseQuantizer {
 						}
 
                         // !! 4b specific code
-                        dst[j * ((rows + 1) / 2) + i / 2] = (vi0 & 0xf) | (vi1 << 4);
+                        dst[j * q_rows + i / 2] = (vi0 & 0xf) | (vi1 << 4);
                     }
                 }
             });
@@ -575,6 +593,9 @@ struct BlockwiseQuantizer {
 
         const auto row_blks = (rows + QuantBlk::kRow - 1) / QuantBlk::kRow;
 
+        int q_rows, q_cols;
+        quantizedShape(rows, columns, q_rows, q_cols);
+
         MlasTryBatchParallel(
             thread_pool, total_thrd_blks,
             [&](ptrdiff_t block_idx) {
@@ -606,7 +627,7 @@ struct BlockwiseQuantizer {
                                 : zero_points[meta_col * ((row_blks + 1) / 2) + meta_row / 2];
                         const int zp0 = (meta_row & 1) ? (zp_pair >> 4) : (zp_pair & 0xf);
 
-                        const uint8_t vi0 = weights[j * ((rows + 1) / 2) + i / 2] & 0xf;
+                        const uint8_t vi0 = weights[j * q_rows + i / 2] & 0xf;
                         const float v0 = (static_cast<float>(vi0) - zp0) * scale0;
 
                         dst[j * rows + i] = static_cast<ElementT>(v0);
@@ -618,7 +639,7 @@ struct BlockwiseQuantizer {
                                     static_cast<float>(scales[meta_col * row_blks + meta_row + 1]);
                                 zp1 = (zp_pair >> 4) & 0xf;
                             }
-                            const uint8_t vi1 = weights[j * ((rows + 1) / 2) + i / 2] >> 4;
+                            const uint8_t vi1 = weights[j * q_rows + i / 2] >> 4;
                             const float v1 = (static_cast<float>(vi1) - zp1) * scale1;
                             dst[j * rows + (i + 1)] = static_cast<ElementT>(v1);
                         }
@@ -696,6 +717,68 @@ MlasBlockwiseQuantMetaShape(
 }
 
 
+
+template <typename T>
+void
+MlasBlockwiseQuantizedShape(
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int& q_rows,
+    int& q_cols
+    )
+{
+    switch (block_size) {
+        case 16: {
+            if (columnwise) {
+				BlockwiseQuantizer<T, 16, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+			} else {
+				BlockwiseQuantizer<T, 16, 4, false>::quantizedShape(rows, columns, q_rows, q_cols);
+			}
+            break;
+        }
+        case 32: {
+            if (columnwise) {
+                BlockwiseQuantizer<T, 32, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+            } else {
+                BlockwiseQuantizer<T, 32, 4, false>::quantizedShape(
+                                    rows, columns, q_rows, q_cols);
+            }
+            break;
+        }
+        case 64: {
+            if (columnwise) {
+                BlockwiseQuantizer<T, 64, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+            } else {
+                BlockwiseQuantizer<T, 64, 4, false>::quantizedShape(rows, columns, q_rows, q_cols);
+            }
+            break;
+        }
+        case 128: {
+            if (columnwise) {
+                BlockwiseQuantizer<T, 128, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+            } else {
+                BlockwiseQuantizer<T, 128, 4, false>::quantizedShape(rows, columns, q_rows, q_cols);
+            }
+            break;
+        }
+        case 256: {
+            if (columnwise) {
+                BlockwiseQuantizer<T, 256, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+            } else {
+                BlockwiseQuantizer<T, 256, 4, false>::quantizedShape(rows, columns, q_rows, q_cols);
+            }
+            break;
+        }
+        default:
+            q_rows = 0;
+            q_cols = 0;
+            break;
+    }
+}
+
+
 template
 void
 MlasBlockwiseQuantMetaShape<float>(
@@ -705,6 +788,17 @@ MlasBlockwiseQuantMetaShape<float>(
     int columns,
     int& meta_rows,
     int& meta_cols
+    );
+
+template
+void
+MlasBlockwiseQuantizedShape<float>(
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int& q_rows,
+    int& q_cols
     );
 
 

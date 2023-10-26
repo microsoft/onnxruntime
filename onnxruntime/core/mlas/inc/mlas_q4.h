@@ -252,6 +252,31 @@ MlasBlockwiseQuantMetaShape(
     int& meta_cols
     );
 
+/**
+ * @brief For quantization type <T, block_size, columnwise>, and
+ * matrix shape [rows, columns], compute the shape of the
+ * quantized matrix [q_rows, q_cols]. The quantized matrix
+ * is in column major layout, with bits packed on the column.
+ * 
+ * @tparam T 
+ * @param block_size 
+ * @param columnwise 
+ * @param rows 
+ * @param columns 
+ * @param q_rows 
+ * @param q_cols 
+*/
+template <typename T>
+void
+MlasBlockwiseQuantizedShape(
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int& q_rows,
+    int& q_cols
+    );
+
 
 /**
  * @brief Blockwise 4 bits quantization, resulting elements and quantization
