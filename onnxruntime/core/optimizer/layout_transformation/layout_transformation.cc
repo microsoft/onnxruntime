@@ -84,6 +84,9 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
       // leave Resize as-is pending bugfix for NHWC implementation. this means the node will remain in the ONNX domain
       // with the original input layout.
       return false;
+    } else if (node.OpType() == "InstanceNormalization") {
+      // Don't convert layout for InstanceNormalization for better performance.
+      return false;
     }
   }
 #endif
