@@ -255,7 +255,7 @@ static py::object get_mockup_context_class() {
       throw std::runtime_error("Fails to import the module.");
     }
 
-    auto python_class = py::reinterpret_steal<py::object>(PyObject_GetAttrString(module, "FakeContext"));
+    auto python_class = py::reinterpret_steal<py::object>(PyObject_GetAttrString(module.ptr(), "FakeContext"));
     if (!PyCallable_Check(python_class.ptr())) {
       throw std::runtime_error("Cannot instantiate the Python class");
     }
