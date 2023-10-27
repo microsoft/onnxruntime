@@ -290,10 +290,10 @@ class TestOpMatMul(unittest.TestCase):
             op_matmul=True,
         )
 
-    def quantize_matmul_u8u8(self, tt):
+    def quantize_matmul_u8u8(self, tt, opset, ir_version):
         np.random.seed(1)
         model_fp_path = "matmul_fp.onnx"
-        self.construct_model_matmul(model_fp_path, tensor_type=tt)
+        self.construct_model_matmul(model_fp_path, tensor_type=tt, opset=opset, ir_version=ir_version)
         data_reader = self.input_feeds(
             1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
         )
@@ -318,15 +318,16 @@ class TestOpMatMul(unittest.TestCase):
         )
 
     def test_quantize_matmul_u8u8(self):
-        self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT)
+        self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT, 18, 8)
 
+    @unittest.skipIf(onnx.defs.onnx_opset_version() < 19, reason="QDQ ops do not supported float16")
     def test_quantize_matmul_u8u8_f16(self):
-        self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT16)
+        self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT16, 19, 9)
 
-    def quantize_matmul_s8s8(self, tt):
+    def quantize_matmul_s8s8(self, tt, opset, ir_version):
         np.random.seed(1)
         model_fp_path = "matmul_fp.onnx"
-        self.construct_model_matmul(model_fp_path, tensor_type=tt)
+        self.construct_model_matmul(model_fp_path, tensor_type=tt, opset=opset, ir_version=ir_version)
         data_reader = self.input_feeds(
             1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
         )
@@ -351,15 +352,16 @@ class TestOpMatMul(unittest.TestCase):
         #                        extra_options={'ActivationSymmetric': True})
 
     def test_quantize_matmul_s8s8(self):
-        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT)
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT, 18, 8)
 
+    @unittest.skipIf(onnx.defs.onnx_opset_version() < 19, reason="QDQ ops do not supported float16")
     def test_quantize_matmul_s8s8_f16(self):
-        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16)
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 19, 9)
 
-    def quantize_matmul_e4m3fn_same(self, tt):
+    def quantize_matmul_e4m3fn_same(self, tt, opset, ir_version):
         np.random.seed(1)
         model_fp_path = "matmul_fp.onnx"
-        self.construct_model_matmul(model_fp_path, add_clip=False, tensor_type=tt)
+        self.construct_model_matmul(model_fp_path, add_clip=False, tensor_type=tt, opset=opset, ir_version=ir_version)
         data_reader = self.input_feeds(
             1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
         )
@@ -382,15 +384,16 @@ class TestOpMatMul(unittest.TestCase):
         )
 
     def test_quantize_matmul_e4m3fn_same(self):
-        self.quantize_matmul_e4m3fn_same(onnx.TensorProto.FLOAT)
+        self.quantize_matmul_e4m3fn_same(onnx.TensorProto.FLOAT, 18, 8)
 
+    @unittest.skipIf(onnx.defs.onnx_opset_version() < 19, reason="QDQ ops do not supported float16")
     def test_quantize_matmul_e4m3fn_same_f16(self):
-        self.quantize_matmul_e4m3fn_same(onnx.TensorProto.FLOAT16)
+        self.quantize_matmul_e4m3fn_same(onnx.TensorProto.FLOAT16, 19, 9)
 
-    def quantize_matmul_e4m3fn_p3(self, tt):
+    def quantize_matmul_e4m3fn_p3(self, tt, opset, ir_version):
         np.random.seed(1)
         model_fp_path = "matmul_fp.onnx"
-        self.construct_model_matmul(model_fp_path, add_clip=False, tensor_type=tt)
+        self.construct_model_matmul(model_fp_path, add_clip=False, tensor_type=tt, opset=opset, ir_version=ir_version)
         data_reader = self.input_feeds(
             1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
         )
@@ -413,10 +416,11 @@ class TestOpMatMul(unittest.TestCase):
         )
 
     def test_quantize_matmul_e4m3fn_p3(self):
-        self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT)
+        self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT, 18, 8)
 
+    @unittest.skipIf(onnx.defs.onnx_opset_version() < 19, reason="QDQ ops do not supported float16")
     def test_quantize_matmul_e4m3fn_p3_f16(self):
-        self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT16)
+        self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT16, 19, 9)
 
 
 if __name__ == "__main__":
