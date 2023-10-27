@@ -26,10 +26,6 @@ using Microsoft::WRL::ComPtr;
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
 
-#include "core/session/inference_session.h"
-#include "DmlExecutionProvider/src/IExecutionProvider.h"
-#include "DmlExecutionProvider/src/ExecutionProvider.h"
-
 namespace onnxruntime {
 
 struct DMLProviderFactory : IExecutionProviderFactory {

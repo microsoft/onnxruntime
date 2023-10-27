@@ -292,7 +292,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
       }
       case 'k': {
         if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
-          test_config.run_config.native_bindings= false;
+          test_config.run_config.native_bindings = false;
         } else if (!CompareCString(optarg, ORT_TSTR("native"))) {
           test_config.run_config.native_bindings = true;
         }

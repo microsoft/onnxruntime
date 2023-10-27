@@ -230,17 +230,13 @@ ORT_API_STATUS(
   CreateThreadPool, _In_ ThreadPoolType type, _In_ OrtThreadPoolOptions* params, _Outptr_ OrtThreadPool** out
 );
 
-
 /**
   * GetCommandQueueForSessionInput
   * Get the obtain the command queue for a given model input.
   * The queue returned will be nullptr when the input should be created on CPU.
   */
 ORT_API_STATUS(
-  GetCommandQueueForSessionInput,
-  _In_ OrtSession* session,
-  _In_ const char* input,
-  _Out_ ID3D12CommandQueue** queue
+  GetCommandQueueForSessionInput, _In_ OrtSession* session, _In_ const char* input, _Out_ ID3D12CommandQueue** queue
 );
 
 /**
@@ -249,10 +245,7 @@ ORT_API_STATUS(
   * The queue returned will be nullptr when the output should be created on CPU.
   */
 ORT_API_STATUS(
-  GetCommandQueueForSessionOutput,
-  _In_ OrtSession* session,
-  _In_ const char* output,
-  _Out_ ID3D12CommandQueue** queue
+  GetCommandQueueForSessionOutput, _In_ OrtSession* session, _In_ const char* output, _Out_ ID3D12CommandQueue** queue
 );
 
 // maps and sequences???

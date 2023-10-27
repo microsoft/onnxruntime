@@ -713,7 +713,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       auto value = token.substr(pos + 1);
 
       if (key == "device_filter") {
-        std::set<std::string> ov_supported_device_types = { "gpu", "npu" };
+        std::set<std::string> ov_supported_device_types = {"gpu", "npu"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           dml_options[key] = value;
         } else {
@@ -722,7 +722,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               "Select from 'gpu', or 'npu' \n");
         }
       } else if (key == "performance_preference") {
-        std::set<std::string> ov_supported_device_types = { "default", "high_performance", "minimal_power" };
+        std::set<std::string> ov_supported_device_types = {"default", "high_performance", "minimal_power"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           dml_options[key] = value;
         } else {
@@ -1044,10 +1044,10 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool u
 #ifdef USE_DML
     else if (is_dml) {
       auto value =
-        CreateDmlValueFromCpuValue(
-          std::move(input_tensor),
-          session_,
-          input_name.get());
+          CreateDmlValueFromCpuValue(
+              std::move(input_tensor),
+              session_,
+              input_name.get());
 
       native_test_bindings_.emplace_back(std::move(value.second));
       PreLoadTestData(0, i, std::move(value.first));

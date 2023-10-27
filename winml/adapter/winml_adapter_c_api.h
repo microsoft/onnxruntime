@@ -579,9 +579,8 @@ struct WinmlAdapterApi {
    * The queue returned will be nullptr when the input should be created on CPU.
    */
   OrtStatus*(ORT_API_CALL* GetCommandQueueForSessionInput)(
-    _In_ OrtSession* session,
-    _In_ const char* input,
-    _Out_ ID3D12CommandQueue** queue) NO_EXCEPTION;
+    _In_ OrtSession* session, _In_ const char* input, _Out_ ID3D12CommandQueue** queue
+  )NO_EXCEPTION;
 
   /**
    * GetCommandQueueForSessionOutput
@@ -589,9 +588,8 @@ struct WinmlAdapterApi {
    * The queue returned will be nullptr when the output should be created on CPU.
    */
   OrtStatus*(ORT_API_CALL* GetCommandQueueForSessionOutput)(
-    _In_ OrtSession* session,
-    _In_ const char* output,
-    _Out_ ID3D12CommandQueue** queue) NO_EXCEPTION;
+    _In_ OrtSession* session, _In_ const char* output, _Out_ ID3D12CommandQueue** queue
+  )NO_EXCEPTION;
 
   ORT_CLASS_RELEASE(Model);
   ORT_CLASS_RELEASE(ThreadPool);
