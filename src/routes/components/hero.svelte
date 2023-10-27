@@ -69,7 +69,7 @@
 	<div class="hero-content md:my-20">
 		<div class="grid grid-cols-2 md:grid-cols-5 gap-4">
 			<div class="col-span-4 self-center md:mr-20">
-				<h1 class="text-5xl">
+				<h1 class="text-5xl">Accelerated&nbsp; 
 				{#key activeWord}
 					<span
 						class="text-5xl"
@@ -79,7 +79,7 @@
 					</span>
 				{/key}
 				</h1>
-				<h1 class="text-5xl">accelerated machine learning</h1>
+				<h1 class="text-5xl">Machine Learning</h1>
 				<p class="py-3">
 					Production-grade AI engine to speed up training and inferencing in your existing technology
 					stack.
