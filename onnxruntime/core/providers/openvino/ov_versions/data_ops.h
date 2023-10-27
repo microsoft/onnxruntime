@@ -3,6 +3,11 @@
 
 #pragma once
 #include <unordered_set>
+#include <utility>
+#include <map>
+#include <set>
+#include <vector>
+#include <string>
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -64,14 +69,16 @@ class DataOps {
                          const NodeIndex node_idx);
 
  public:
-  DataOps(const GraphViewer& graph_viewer_param, VersionNum ver, std::string dev_id) : graph_viewer_(graph_viewer_param), version_id_(ver), device_id_(dev_id) {
+  DataOps(const GraphViewer& graph_viewer_param, VersionNum ver, std::string dev_id)
+      : graph_viewer_(graph_viewer_param), version_id_(ver), device_id_(dev_id) {
     populate_op_mode_supported();
     populate_types_supported();
   }
 
   virtual std::vector<NodeIndex> GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers);
   virtual bool IsOpSupportedOnlyInModel(std::string name);
-  virtual bool SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node);
+  virtual bool SpecialConditionForClusterSizeOne(
+      std::unordered_set<std::string>& ng_required_initializers, const Node* node);
   virtual bool DoNotOmitSubGraph(const std::string& name);
   virtual bool InsertNode(const std::string& name);
   VersionNum GetVersion() const { return version_id_; }

@@ -17,7 +17,7 @@ using WaitMode = InferenceEngine::IInferRequest::WaitMode;
 namespace onnxruntime {
 namespace openvino_ep {
 
-const std::string log_tag = "[OpenVINO-EP] ";
+const char log_tag[] = "[OpenVINO-EP] ";
 std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model) const {
   try {
     OVTensor weights;
@@ -29,7 +29,10 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model) const {
   }
 }
 
-OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
+OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network,
+                                 std::string& hw_target,
+                                 ov::AnyMap& device_config,
+                                 std::string name) {
   ov::CompiledModel obj;
   try {
     obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
@@ -43,7 +46,10 @@ OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std
 }
 
 #if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
-OVExeNetwork OVCore::LoadNetwork(const std::string& model, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
+OVExeNetwork OVCore::LoadNetwork(const std::string& model,
+                                 std::string& hw_target,
+                                 ov::AnyMap& device_config,
+                                 std::string name) {
   ov::CompiledModel obj;
   try {
     obj = oe.compile_model(model, ov::Tensor(), hw_target, device_config);

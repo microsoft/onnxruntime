@@ -6,15 +6,16 @@
 #include <memory>
 
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/openvino/contexts.h"
-#include "core/providers/openvino/ibackend.h"
-#include "core/providers/openvino/ov_interface.h"
 #include <vector>
 #include <iostream>
 #include <string>
 #include <condition_variable>
 #include <mutex>
+
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/ibackend.h"
+#include "core/providers/openvino/ov_interface.h"
 
 namespace onnxruntime {
 namespace openvino_ep {

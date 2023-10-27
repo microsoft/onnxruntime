@@ -2,11 +2,15 @@
 // Licensed under the MIT License
 
 #include <unordered_set>
+#include <string>
+#include <vector>
+#include <utility>
+#include <map>
+#include <set>
+
 #include "core/providers/shared_library/provider_api.h"
 #include "../backend_utils.h"
 #include "../backend_manager.h"
-#include <string>
-#include <vector>
 #include "data_ops.h"
 #include "capabilities.h"
 #include "utils.h"
@@ -358,39 +362,69 @@ std::vector<SupportedOp> supported_op_mode = {
 };
 
 void DataOps::populate_types_supported() {
-  supported_types_initializer_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
-  supported_types_initializer_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
-  supported_types_initializer_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
-  supported_types_initializer_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
-  supported_types_initializer_.insert(std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
-  supported_types_initializer_.insert(std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
-  supported_types_initializer_.insert(std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
 
-  supported_types_npu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
-  supported_types_npu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
-  supported_types_npu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
-  supported_types_npu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
-  supported_types_npu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16));
-  supported_types_npu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
-  supported_types_npu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
-  supported_types_npu_.insert(std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
+  supported_types_npu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
+  supported_types_npu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+  supported_types_npu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
+  supported_types_npu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
+  supported_types_npu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16));
+  supported_types_npu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
+  supported_types_npu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
+  supported_types_npu_.insert(
+      std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
 
-  supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
-  supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
-  supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
-  supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16));
-  supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
-  supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
-  supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
-  supported_types_cpu_.insert(std::make_pair(V_2022_2, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2022_2, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
 
-  supported_types_gpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
-  supported_types_gpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
-  supported_types_gpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
-  supported_types_gpu_.insert(std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
-  supported_types_gpu_.insert(std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
-  supported_types_gpu_.insert(std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
-  supported_types_gpu_.insert(std::make_pair(V_2022_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2022_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
 }
 
 void DataOps::populate_op_mode_supported() {
@@ -442,8 +476,10 @@ void DataOps::populate_op_mode_supported() {
                                if ((device_id_.find("GPU") != std::string::npos) ||
                                    (device_id_.find("NPU") != std::string::npos)) {
                                  for (size_t i = 0; i < node->InputDefs().size(); i++) {
-                                   if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
-                                       node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
+                                   if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
+                                           ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
+                                       node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
+                                           ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
                                      return true;
                                  }
                                }
@@ -456,11 +492,14 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // tensor type does not support select last index
                                auto& attributes = node->GetAttributes();
-                               auto last_index_arg = attributes.count("select_last_index") > 0 ? attributes.at("select_last_index").i() : 0;
+                               auto last_index_arg =
+                                   attributes.count("select_last_index") > 0 ? attributes.at("select_last_index").i()
+                                                                             : 0;
                                if (last_index_arg != 0)
                                  return true;
                                // tensor type supports float as input for argmax and argmin
-                               if (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
+                               if (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() !=
+                                   ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
                                  return true;
                                return false;
                              }};
@@ -472,7 +511,8 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  // int64 data type is not supported on GPU
-                                 const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
+                                 const bool data_is_int64 =
+                                     node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
                                  return data_is_int64;
                                }
                                return false;
@@ -563,9 +603,12 @@ void DataOps::populate_op_mode_supported() {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
                                  auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-                                 // currently both inputs with int32 are not supported and also both input datatypes should be same
-                                 const bool A_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
-                                 const bool B_is_int32 = node->InputDefs()[1]->Type()->find("int32") != std::string::npos;
+                                 // currently both inputs with int32 are not supported
+                                 // and also both input datatypes should be same
+                                 const bool A_is_int32 =
+                                     node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
+                                 const bool B_is_int32 =
+                                     node->InputDefs()[1]->Type()->find("int32") != std::string::npos;
                                  if ((A_is_int32 && B_is_int32) || (x_data_type != y_data_type))
                                    return true;
                                }
@@ -646,11 +689,13 @@ void DataOps::populate_op_mode_supported() {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  auto slope = node->InputDefs()[1];
                                  // PRelu slope has to be an initializer or needs to come from a constant node
-                                 if (initializers.count(slope->Name()))
+                                 if (initializers.count(slope->Name())) {
                                    return false;
-                                 else {
-                                   for (auto input_node = node->InputNodesBegin(); input_node != node->InputNodesEnd(); ++input_node) {
-                                     if (GetInputCount(this->graph_viewer_.GetNode((*input_node).Index()), initializers) == 0)
+                                 } else {
+                                   for (auto input_node = node->InputNodesBegin();
+                                        input_node != node->InputNodesEnd(); ++input_node) {
+                                     if (GetInputCount(
+                                             this->graph_viewer_.GetNode((*input_node).Index()), initializers) == 0)
                                        return false;
                                    }
                                  }
@@ -665,7 +710,7 @@ void DataOps::populate_op_mode_supported() {
                                const auto& input_arg = node->InputDefs()[1];
                                auto shape = input_arg->Shape();
                                // Reshape op with empty dim is Rejected for Myriad
-                               //[TODO] Is this condition required anymore with Myriad removed?
+                               // [TODO] Is this condition required anymore with Myriad removed?
                                if (shape != nullptr) {
                                  for (const auto& dim : input_arg->Shape()->dim()) {
                                    if (utils::HasDimValue(dim) && dim.dim_value() == 0)
@@ -695,7 +740,8 @@ void DataOps::populate_op_mode_supported() {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  // INT32 dataype is not supported as input
                                  for (size_t i = 0; i < node->InputDefs().size(); i++) {
-                                   if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
+                                   if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
+                                       ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
                                      return true;
                                  }
                                }
@@ -707,9 +753,11 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+                                 auto output_data_type =
+                                     node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
                                  // If the output of ScatterND op is BOOL, it is rejected for GPU.
-                                 if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL)
+                                 if (output_data_type ==
+                                     ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL)
                                    return true;
                                }
                                return false;
@@ -723,7 +771,8 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the Input of Shrink op is UINT8, it is rejected (Due to output mismatch)
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
-                                 if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
+                                 if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
+                                     ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
                                    return true;
                                }
                                return false;
@@ -774,7 +823,8 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0, V_2023_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
-                               // If axes is an input, then we cannot produce a static graph. Conversion fails in convert_function_to_cnn_network.
+                               // If axes is an input, then we cannot produce a static graph.
+                               // Conversion fails in convert_function_to_cnn_network.
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                  if (node->InputDefs()[i]->Name() == "axes") {
                                    return true;
@@ -792,7 +842,8 @@ void DataOps::populate_op_mode_supported() {
                                if (upsample_attr.count("scales") > 0) {
                                  auto& upsample_arg = upsample_attr.at("scales");
                                  auto float_size = upsample_arg.floats_size();
-                                 if (float_size > 2 && (upsample_arg.floats(0) != 1.f || upsample_arg.floats(1) != 1.f)) {
+                                 if (float_size > 2 &&
+                                     (upsample_arg.floats(0) != 1.f || upsample_arg.floats(1) != 1.f)) {
                                    return true;
                                  }
                                }
@@ -807,9 +858,12 @@ void DataOps::populate_op_mode_supported() {
                                  }
                                }
                                // x_arg supports only float, int8 and float16 type
-                               if ((x_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
-                                   (x_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) ||
-                                   (x_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)) {
+                               if ((x_arg->TypeAsProto()->tensor_type().elem_type() ==
+                                    ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
+                                   (x_arg->TypeAsProto()->tensor_type().elem_type() ==
+                                    ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) ||
+                                   (x_arg->TypeAsProto()->tensor_type().elem_type() ==
+                                    ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)) {
                                  return false;
                                } else {
                                  return true;
@@ -1136,7 +1190,9 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
   if (opset->second.find(optype) == opset->second.end() && op_fun == ops_supported_as_function.end()) {
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "The operator is not available in OpenVINO ngraph operators list nor the operator is a special ONNX function" << std::endl;
+      std::cout << "The operator is not available in OpenVINO ngraph operators list
+                << "nor the operator is a special ONNX function"
+                << std::endl;
     }
 #endif
     return false;
@@ -1152,10 +1208,12 @@ std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std
   for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
     if (node_is_supported(ng_supported_ops, node_idx)) {
       // Collect inputs that are initializers
-      graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg, bool is_input) {
-            if(is_input && this->graph_viewer_.GetAllInitializedTensors().count(node_arg.Name())) {
+      graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg,
+                                                                                    bool is_input) {
+            if (is_input && this->graph_viewer_.GetAllInitializedTensors().count(node_arg.Name())) {
                 ng_required_initializers.insert(node_arg.Name());
-              } }, true);
+              } },
+                                                  true);
     } else {
       unsupported_nodes_idx.push_back(node_idx);
     }
@@ -1167,7 +1225,8 @@ bool DataOps::IsOpSupportedOnlyInModel(std::string name) {
   return ops_supported_only_in_model.find(name) != ops_supported_only_in_model.end();
 }
 
-bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const Node* node) {
+bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers,
+                                                const Node* node) {
   if (node->OpType() == "Reshape") {
     const auto& shape_arg = node->InputDefs()[1];
     if (ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end()) {
@@ -1176,15 +1235,20 @@ bool DataOps::SpecialConditionForClusterSizeOne(std::unordered_set<std::string>&
   } else if (node->OpType() == "Expand") {
     // nGraph only supports constant shape input values
     const auto& output = node->OutputDefs()[0];
-    if (output->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
+    if (output->TypeAsProto()->tensor_type().elem_type() !=
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
       return true;
   } else if (node->OpType() == "RoiAlign") {
     using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
 
-    onnx_dtype input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    onnx_dtype input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-    onnx_dtype input_2_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[2]->TypeAsProto()->tensor_type().elem_type();
-    onnx_dtype output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    onnx_dtype input_0_data_type =
+        (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    onnx_dtype input_1_data_type =
+        (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    onnx_dtype input_2_data_type =
+        (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[2]->TypeAsProto()->tensor_type().elem_type();
+    onnx_dtype output_data_type =
+        (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
     if ((input_0_data_type != onnx_dtype::TensorProto_DataType_FLOAT16) ||
         (input_1_data_type != onnx_dtype::TensorProto_DataType_FLOAT16) ||

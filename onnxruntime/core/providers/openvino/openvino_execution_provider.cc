@@ -24,10 +24,11 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().enable_opencl_throttling = info.enable_opencl_throttling_;
   openvino_ep::BackendManager::GetGlobalContext().enable_dynamic_shapes = info.enable_dynamic_shapes_;
 
-  if ((int)info.num_of_threads_ <= 0) {
+  if (static_cast<int>(info.num_of_threads_) <= 0) {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
-  } else if ((int)info.num_of_threads_ > 8) {
-    std::string err_msg = std::string("\n [ERROR] num_of_threads configured during runtime is: ") + std::to_string(info.num_of_threads_) + "\nnum_of_threads configured should be >0 and <=8.\n";
+  } else if (static_cast<int>(info.num_of_threads_) > 8) {
+    std::string err_msg = std::string("\n [ERROR] num_of_threads configured during runtime is: ") +
+                          std::to_string(info.num_of_threads_) + "\nnum_of_threads configured should be >0 and <=8.\n";
     ORT_THROW(err_msg);
   } else {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
@@ -56,7 +57,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
               device_found = true;
               break;
             }
-            if (info.device_type_.find("NPU") != std::string::npos && (info.precision_ == "FP16" || info.precision_ == "U8")) {
+            if ((info.device_type_.find("NPU") != std::string::npos) &&
+                (info.precision_ == "FP16" || info.precision_ == "U8")) {
               device_found = true;
               break;
             }
@@ -109,11 +111,14 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   openvino_ep::BackendManager::GetGlobalContext().onnx_model_name = graph_viewer.Name();
 #ifdef _WIN32
   std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();
-  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = std::string(onnx_path.begin(), onnx_path.end());
+  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name =
+      std::string(onnx_path.begin(), onnx_path.end());
 #else
-  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = graph_viewer.ModelPath().ToPathString();
+  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name =
+      graph_viewer.ModelPath().ToPathString();
 #endif
-  openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
+  openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version =
+      graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
 #if defined(OPENVINO_2022_1)
   openvino_ep::GetCapability obj(graph_viewer,
@@ -151,7 +156,8 @@ common::Status OpenVINOExecutionProvider::Compile(
 
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
 
-    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
+    std::shared_ptr<openvino_ep::BackendManager> backend_manager =
+        std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
 
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {

@@ -12,7 +12,12 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
                           const char* device_id, size_t num_of_threads,
                           const char* cache_dir, int num_streams, void* context,
                           bool enable_opencl_throttling, bool enable_dynamic_shapes)
-      : enable_npu_fast_compile_(enable_npu_fast_compile), num_of_threads_(num_of_threads), num_streams_(num_streams), context_(context), enable_opencl_throttling_(enable_opencl_throttling), enable_dynamic_shapes_(enable_dynamic_shapes) {
+      : enable_npu_fast_compile_(enable_npu_fast_compile),
+        num_of_threads_(num_of_threads),
+        num_streams_(num_streams),
+        context_(context),
+        enable_opencl_throttling_(enable_opencl_throttling),
+        enable_dynamic_shapes_(enable_dynamic_shapes) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     device_id_ = (device_id == nullptr) ? "" : device_id;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
@@ -69,7 +74,8 @@ struct OpenVINO_Provider : Provider {
                                             // feature. If blob files are already present, it will be directly loaded.
     int num_streams = 1;                    // [num_streams]: Option that specifies the number of parallel inference
                                             // requests to be processed on a given `device_type`. Overrides the
-                                            // accelerator default value of number of streams with this value at runtime.
+                                            // accelerator default value of number of streams
+                                            // with this value at runtime.
     bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
                                             // device (Reduces CPU Utilization when using GPU)
     bool enable_dynamic_shapes = false;     // [enable_dynamic_shapes]: Enables Dynamic Shapes feature for CPU device)
@@ -82,7 +88,9 @@ struct OpenVINO_Provider : Provider {
                                                          "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
                                                          "GPU.0_FP16", "GPU.1_FP16"};
       if (!((ov_supported_device_types.find(device_type) != ov_supported_device_types.end()) ||
-            (device_type.find("HETERO:") == 0) || (device_type.find("MULTI:") == 0) || (device_type.find("AUTO:") == 0))) {
+            (device_type.find("HETERO:") == 0) ||
+            (device_type.find("MULTI:") == 0) ||
+            (device_type.find("AUTO:") == 0))) {
         ORT_THROW(
             "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
             "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
@@ -99,7 +107,7 @@ struct OpenVINO_Provider : Provider {
 
     if (provider_options_map.find("context") != provider_options_map.end()) {
       std::string str = provider_options_map.at("context");
-      unsigned long long int number = std::strtoull(str.c_str(), nullptr, 16);
+      unsigned int64_t number = std::strtoull(str.c_str(), nullptr, 16);
       context = reinterpret_cast<void*>(number);
     }
 
@@ -163,7 +171,6 @@ struct OpenVINO_Provider : Provider {
   void Shutdown() override {
     openvino_ep::BackendManager::ReleaseGlobalContext();
   }
-
 } g_provider;
 
 }  // namespace onnxruntime

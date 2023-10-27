@@ -4,9 +4,15 @@
 #pragma once
 
 #define ORT_API_MANUAL_INIT
+#include <iomanip>
+#include <unordered_map>
+#include <map>
+#include <memory>
+#include <vector>
+#include <string>
+
 #include "core/session/onnxruntime_cxx_api.h"
 #include "contexts.h"
-#include <iomanip>
 #include "ov_interface.h"
 #ifdef _WIN32
 #include <direct.h>
@@ -21,7 +27,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
-const std::string log_tag = "[OpenVINO-EP] ";
+const char log_tag[] = "[OpenVINO-EP] ";
 
 #ifndef NDEBUG
 bool IsDebugEnabled();
@@ -57,7 +63,9 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
                     size_t batch_slice_idx);
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context,
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto,
+              const GlobalContext& global_context,
+              const SubGraphContext& subgraph_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
