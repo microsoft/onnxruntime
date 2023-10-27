@@ -320,7 +320,7 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_u8u8(self):
         self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT, 18, 8)
 
-    @unittest.skipIf(onnx.defs.onnx_opset_version() < 19, reason="QDQ ops do not supported float16")
+    @unittest.skipIf(onnx.defs.onnx_opset_version() < 20, reason="Shape inference bug, see onnx PR #5709")
     def test_quantize_matmul_u8u8_f16(self):
         self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT16, 19, 9)
 
@@ -354,7 +354,7 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_s8s8(self):
         self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT, 18, 8)
 
-    @unittest.skipIf(onnx.defs.onnx_opset_version() < 19, reason="QDQ ops do not supported float16")
+    @unittest.skipIf(onnx.defs.onnx_opset_version() < 20, reason="Shape inference bug, see onnx PR #5709")
     def test_quantize_matmul_s8s8_f16(self):
         self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 19, 9)
 
@@ -386,7 +386,7 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_e4m3fn_same(self):
         self.quantize_matmul_e4m3fn_same(onnx.TensorProto.FLOAT, 18, 8)
 
-    @unittest.skipIf(onnx.defs.onnx_opset_version() < 19, reason="QDQ ops do not supported float16")
+    @unittest.skipIf(onnx.defs.onnx_opset_version() < 20, reason="Shape inference bug, see onnx PR #5709")
     def test_quantize_matmul_e4m3fn_same_f16(self):
         self.quantize_matmul_e4m3fn_same(onnx.TensorProto.FLOAT16, 19, 9)
 
@@ -418,7 +418,7 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_e4m3fn_p3(self):
         self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT, 18, 8)
 
-    @unittest.skipIf(onnx.defs.onnx_opset_version() < 19, reason="QDQ ops do not supported float16")
+    @unittest.skipIf(onnx.defs.onnx_opset_version() < 20, reason="Shape inference bug, see onnx PR #5709")
     def test_quantize_matmul_e4m3fn_p3_f16(self):
         self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT16, 19, 9)
 
