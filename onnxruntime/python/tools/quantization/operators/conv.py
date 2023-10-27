@@ -89,13 +89,14 @@ class ConvInteger(QuantOperatorBase):
         nodes.append(conv_integer_node)
 
         # Add cast operation to cast convInteger output to float.
+        onnx_type = self.quantizer.get_tensor_type(node.output[0], mandatory=True)
         cast_op_output = conv_integer_output + "_cast_output"
         cast_node = onnx.helper.make_node(
             "Cast",
             [conv_integer_output],
             [cast_op_output],
             conv_integer_output + "_cast",
-            to=onnx_proto.TensorProto.FLOAT,  # TODO: FLOAT ot FLOAT16
+            to=onnx_type,  # TODO: FLOAT ot FLOAT16
         )
         nodes.append(cast_node)
 
