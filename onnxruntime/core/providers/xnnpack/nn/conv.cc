@@ -93,6 +93,8 @@ Status Conv::Compute(OpKernelContext* context) const {
                            "returned ", status);
   }
 
+  workspace.reset(allocator->aligned_allocate(allocator->context, workspace_size, XNN_ALLOCATION_ALIGNMENT));
+
   if (conv_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_convolution2d_nhwc_f32(op0_.get(), workspace.get(), X.Data<float>(),
                                               Y->MutableData<float>());
@@ -119,6 +121,10 @@ Status Conv::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  Conv);
 
 ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),

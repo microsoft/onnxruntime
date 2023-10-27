@@ -41,8 +41,7 @@ bool MaxPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
   const onnxruntime::Node& node = node_unit.GetNode();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
-    // Internal NHWC domain starts at opset 11
-    if (node_unit.SinceVersion() < 11) {
+    if (node_unit.SinceVersion() < 8) {
       break;
     }
 
@@ -263,12 +262,24 @@ Status MaxPool::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    MaxPool, kMSInternalNHWCDomain, 11, 11, kXnnpackExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<uint8_t>(),
-                                            DataTypeImpl::GetTensorType<int8_t>()}),
-    MaxPool);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 8, 9, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<uint8_t>(),
+                                                                          DataTypeImpl::GetTensorType<int8_t>()}),
+                                  MaxPool);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 10, 10, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<uint8_t>(),
+                                                                          DataTypeImpl::GetTensorType<int8_t>()}),
+                                  MaxPool);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 11, 11, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<uint8_t>(),
+                                                                          DataTypeImpl::GetTensorType<int8_t>()}),
+                                  MaxPool);
+
 ONNX_OPERATOR_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 12, kXnnpackExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),

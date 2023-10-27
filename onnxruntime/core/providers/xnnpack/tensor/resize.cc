@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/xnnpack/nn/resize.h"
+#include "core/providers/xnnpack/tensor/resize.h"
 
 #include <algorithm>
 #include <utility>
@@ -19,8 +19,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
                                  const GraphViewer& graph_viewer) {
   bool supported = false;
   do {
-    // Internal NHWC domain starts at opset 11
-    if (node_unit.SinceVersion() < 11) {
+    if (node_unit.SinceVersion() < 10) {
       break;
     }
 
@@ -29,18 +28,56 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     const auto& x_arg = inputs[0].node_arg;
 
     const auto* x_type = x_arg.TypeAsProto();
-    if (x_type == nullptr ||
-        (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+    if (x_type == nullptr || (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+                              x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
+                              x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
       break;
     }
 
     const auto* x_shape = x_arg.Shape();
-    //'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1 (NCHW)
-    // but we just support 4-d tensor for now, and the channel must be known.
+
+    // 'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1 (NCHW) can be supported.
+    // we only support 4-d tensor for now, and the channel must be known.
+    // we assume the input in NCHW for this test.
     if (!x_shape || x_shape->dim_size() != 4 || x_shape->dim(1).dim_value() <= 0) {
       break;
+    }
+
+    // validate it is in fact NCHW
+    //
+    // opset 10 had `scales` as input 1 and no sizes. later opsets added roi as input 1 followed by scales and sizes.
+    auto opset_version = node_unit.SinceVersion();
+    size_t scale_idx = opset_version == 10 ? 1 : 2;
+    size_t size_idx = 3;
+
+    // onnx shape inferencing validates that one and not both of sizes and scales are provided
+    const auto* scale_tensor = inputs.size() >= scale_idx + 1
+                                   ? graph_viewer.GetConstantInitializer(inputs[scale_idx].node_arg.Name(), true)
+                                   : nullptr;
+    const auto* size_tensor = opset_version > 10 && inputs.size() >= size_idx + 1
+                                  ? graph_viewer.GetConstantInitializer(inputs[size_idx].node_arg.Name(), true)
+                                  : nullptr;
+
+    // if both scales and sizes are nullptr the one that was provided was not a constant initializer
+    if (!scale_tensor && !size_tensor) {
+      break;
+    }
+
+    // check the scale for the second dim is 1 or the size of the second dim matches the input shape.
+    // if not, it is not the C dim as a Resize will not change the number of channels.
+    InlinedVector<float> scale(4, 1.0F);
+    if (scale_tensor) {
+      const Initializer scale_val(*scale_tensor, node_unit.ModelPath());
+      if (scale_val.DataAsSpan<float>()[1] != 1.0F) {
+        break;
+      }
+    }
+
+    if (size_tensor) {
+      const Initializer size_val(*size_tensor, node_unit.ModelPath());
+      if (size_val.DataAsSpan<int64_t>()[1] != x_shape->dim(1).dim_value()) {
+        break;
+      }
     }
 
     const auto* output_shape = node_unit.Outputs()[0].node_arg.Shape();
@@ -56,14 +93,6 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     if (output_shape->dim(2).dim_value() <= 1 || output_shape->dim(3).dim_value() <= 1) {
       // we don't know the output H or W so we don't know if it will be compatible
       length_resized_compatible_pytorch_half_pixel = false;
-    }
-
-    // Refer to onnxruntime/core/providers/cpu/tensor/upsamplebase.h,
-    size_t scale_idx = 2;
-    size_t size_idx = 3;
-    auto opset_version = node_unit.SinceVersion();
-    if (opset_version == 10) {
-      scale_idx = 1;
     }
 
     ProtoHelperNodeContext nc(node_unit.GetNode());
@@ -105,6 +134,8 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
         opset_version > 10 ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
                            : "asymmetric";
 
+    // TODO: Opset 19 added half_pixel_symmetric. Need to see if that can be supported.
+
     if (coordinate_transform_mode_name != "asymmetric" &&
         coordinate_transform_mode_name != "half_pixel" &&
         coordinate_transform_mode_name != "align_corners" &&
@@ -113,19 +144,6 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     }
 
     if (info.GetAttrOrDefault<int64_t>("exclude_outside", 0) != 0) {
-      break;
-    }
-
-    // onnx shape inferencing validates that one and not both of sizes and scales are provided
-    const auto* scale_tensor = inputs.size() >= scale_idx + 1
-                                   ? graph_viewer.GetConstantInitializer(inputs[scale_idx].node_arg.Name(), true)
-                                   : nullptr;
-    const auto* size_tensor = inputs.size() >= size_idx + 1
-                                  ? graph_viewer.GetConstantInitializer(inputs[size_idx].node_arg.Name(), true)
-                                  : nullptr;
-
-    // if both scales and sizes are nullptr the one that was provided was not a constant initializer
-    if (!scale_tensor && !size_tensor) {
       break;
     }
 
@@ -235,6 +253,8 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_resize_bilinear2d_nhwc_", OpTypeToString(op_type_),
                            " returned ", status);
   }
+
+  workspace.reset(allocator->aligned_allocate(allocator->context, workspace_size, XNN_ALLOCATION_ALIGNMENT));
 
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_resize_bilinear2d_nhwc_f32(op0_.get(), workspace.get(), input->Data<float>(),

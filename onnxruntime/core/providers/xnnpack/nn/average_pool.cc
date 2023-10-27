@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 #include "core/providers/xnnpack/nn/average_pool.h"
 
+#include <memory>
+
 #include "core/common/status.h"
 #include "core/graph/graph.h"
 #include "core/providers/utils.h"
@@ -91,8 +93,7 @@ bool AveragePool::IsOnnxNodeSupported(const NodeUnit& node_unit,
   const auto& inputs = node_unit.Inputs();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
-    // Internal NHWC domain starts at opset 11
-    if (node_unit.SinceVersion() < 11) {
+    if (node_unit.SinceVersion() < 7) {
       break;
     }
 
@@ -144,6 +145,11 @@ bool AveragePool::IsOnnxNodeSupported(const NodeUnit& node_unit,
     // while quant should have count_include_pad true
     bool cp_in_op = pool_attrs.count_include_pad ^ IsQuantizedAvgPool(qtype);
     if (cp_in_op) {
+      break;
+    }
+
+    // need dilations to all be 1
+    if (!pool_attrs.default_dilations) {
       break;
     }
 
@@ -252,8 +258,6 @@ Status AveragePool::Compute(OpKernelContext* context) const {
   }
 
   workspace.reset(allocator->aligned_allocate(allocator->context, workspace_size, XNN_ALLOCATION_ALIGNMENT));
-  status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), workspace.get(),
-                                                X.Data<float>(), Y.MutableData<float>());
 
   if (avgpool_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), workspace.get(),
@@ -277,8 +281,26 @@ Status AveragePool::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    AveragePool, kMSInternalNHWCDomain, 7, 9,
+    kXnnpackExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    AveragePool);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    AveragePool, kMSInternalNHWCDomain, 10, 10,
+    kXnnpackExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    AveragePool);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    AveragePool, kMSInternalNHWCDomain, 11, 18,
+    kXnnpackExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    AveragePool);
+
 ONNX_OPERATOR_KERNEL_EX(
-    AveragePool, kMSInternalNHWCDomain, 11,
+    AveragePool, kMSInternalNHWCDomain, 19,
     kXnnpackExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     AveragePool);

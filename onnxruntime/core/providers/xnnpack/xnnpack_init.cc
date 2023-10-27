@@ -26,6 +26,9 @@ void xnn_deallocate(void* context, void* pointer) {
 }
 
 void* xnn_aligned_allocate(void* context, size_t alignment, size_t size) {
+  if (size == 0)
+    return nullptr;
+
 #if defined(__wasm__) && !defined(__wasm_relaxed_simd__) && !defined(__wasm_simd128__)
   ORT_ENFORCE(alignment <= 2 * sizeof(void*));
   return xnn_allocate(context, size);
