@@ -286,31 +286,50 @@ def time_fn(args, fn, inputs):
         outputs = fn(inputs)
         logger.info(outputs)
 
+    input_sync = (  # noqa: E731
+        lambda *kwargs: args.io_binding.synchronize_inputs()
+        if args.device != "cpu" and args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}  # ORT synchronize
+        else lambda *kwargs: torch.cuda.synchronize()
+        if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
+        else lambda *kwargs: None  # no-op function
+    )
+
+    output_sync = (  # noqa: E731
+        lambda *kwargs: args.io_binding.synchronize_outputs()
+        if args.device != "cpu" and args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}  # ORT synchronize
+        else lambda *kwargs: torch.cuda.synchronize()
+        if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
+        else lambda *kwargs: None  # no-op function
+    )
+
     for _ in warmup_range:
+        input_sync()
         fn(inputs)
+        output_sync()
 
     # Benchmark
-    if args.device != "cpu":
-        torch.cuda.synchronize()
-    start_time = time.time()
-
+    total_time = 0
     bench_range = (
         range(args.num_runs)
         if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}
         else trange(args.num_runs, file=sys.stdout, desc="Benchmark")
     )
     for _ in bench_range:
+        input_sync()
+        start_time = time.time()
+
         fn(inputs)
 
-    if args.device != "cpu":
-        torch.cuda.synchronize()
-    end_time = time.time()
+        output_sync()
+        end_time = time.time()
+
+        total_time += end_time - start_time
 
     # Newline print after trange in order to print metrics on new lines without progress bar on same line
     if args.benchmark_type not in {"ort-msft", "ort-convert-to-onnx"}:
         logger.info("")
 
-    latency = (end_time - start_time) / args.num_runs
+    latency = total_time / args.num_runs
     throughput = args.batch_size / latency
 
     logger.info(f"Batch Size: {args.batch_size}")
@@ -467,6 +486,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
                 else:
                     io_binding.bind_output(name, device_type=args.device, device_id=args.device_id)
 
+            setattr(args, "io_binding", io_binding)  # noqa: B010
             return io_binding
 
         return inputs
