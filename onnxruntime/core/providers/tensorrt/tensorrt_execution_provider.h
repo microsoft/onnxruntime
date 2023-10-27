@@ -157,8 +157,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
 
-  nvinfer1::IBuilder& GetBuilder() const;
-
   cublasHandle_t PerThreadDefaultCublasHandle() {
     return GetPerThreadContext().CublasHandle();
   }
@@ -457,5 +455,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   void CaptureBegin();
   void CaptureEnd();
   void IncrementRegularRunCountBeforeGraphCapture();
+
+  /**
+   * Get the IBuilder instance. It only builds the instance for the first time it's being referenced." 
+   */
+  nvinfer1::IBuilder& GetBuilder() const;
 };
 }  // namespace onnxruntime
