@@ -506,20 +506,17 @@ Status EfficientAttention(
   const void* query = reinterpret_cast<const void*>(data.query);
   const void* key = reinterpret_cast<const void*>(data.key);
   const void* value = reinterpret_cast<const void*>(data.value);
-  int final_kv_seqlen = kv_sequence_length;
   if (data.past_key != nullptr) {
     // Past key case
     // concatenate new kv to past kv
     if (data.past_key == data.present_key) {
       ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(parameters, data, stream, max_threads_per_block));
-      final_kv_seqlen = past_sequence_length + kv_sequence_length;
     } else {
       ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block));
-      final_kv_seqlen = present_sequence_length;
     }
     const bool is_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
-    if (num_heads == kv_num_heads && present_sequence_length == past_sequence_length + kv_sequence_length) {
-      // Use present kv directly under specific conditions
+    if (num_heads == kv_num_heads) {
+      // Use present kv directly if not grouped
       key = reinterpret_cast<const void*>(data.present_key);
       value = reinterpret_cast<const void*>(data.present_value);
     } else {
@@ -528,25 +525,26 @@ Status EfficientAttention(
       float2* v_buff = reinterpret_cast<float2*>(data.v);
       const float2* k_og = reinterpret_cast<const float2*>(data.present_key);
       const float2* v_og = reinterpret_cast<const float2*>(data.present_value);
-      ORT_RETURN_IF_ERROR(LaunchUngroup(parameters, k_buff, v_buff, k_og, v_og, final_kv_seqlen,
+      ORT_RETURN_IF_ERROR(LaunchUngroup(parameters, k_buff, v_buff, k_og, v_og, past_sequence_length + kv_sequence_length,
                                         present_sequence_length, is_bsnh, stream, max_threads_per_block));
       key = reinterpret_cast<const void*>(data.k);
       value = reinterpret_cast<const void*>(data.v);
     }
   } else if (num_heads == kv_num_heads) {
-    // no past or present and no need to ungroup... still copy kv into present
+    // no past or present and no need to ungroup... still copy kv into present buffer
     ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block));
-    key = reinterpret_cast<const void*>(data.key);
-    value = reinterpret_cast<const void*>(data.value);
+    key = reinterpret_cast<const void*>(data.present_key);
+    value = reinterpret_cast<const void*>(data.present_value);
   } else {
-    // intermediate buffer so q and kv have same num heads... still copy kv into present
+    // intermediate buffer so q and kv have same num heads... still copy kv into present buffer
     ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block));
     float2* k_buff = reinterpret_cast<float2*>(data.k);
     float2* v_buff = reinterpret_cast<float2*>(data.v);
-    const float2* k_og = reinterpret_cast<const float2*>(data.key);
-    const float2* v_og = reinterpret_cast<const float2*>(data.value);
-    ORT_RETURN_IF_ERROR(LaunchUngroup(parameters, k_buff, v_buff, k_og, v_og, final_kv_seqlen,
-                                      kv_sequence_length, true, stream, max_threads_per_block));
+    const float2* k_og = reinterpret_cast<const float2*>(data.present_key);
+    const float2* v_og = reinterpret_cast<const float2*>(data.present_value);
+    ORT_RETURN_IF_ERROR(LaunchUngroup(parameters, k_buff, v_buff, k_og, v_og, kv_sequence_length,
+                                      kv_sequence_length, past_kv_format == AttentionQkvFormat::Q_K_V_BSNH, stream,
+                                      max_threads_per_block));
     key = reinterpret_cast<const void*>(data.k);
     value = reinterpret_cast<const void*>(data.v);
   }
@@ -557,7 +555,8 @@ Status EfficientAttention(
   p.batch_size = batch_size;
   p.num_heads = num_heads;
   p.sequence_length = sequence_length;
-  p.kv_sequence_length = final_kv_seqlen;
+  p.kv_sequence_length = past_sequence_length + kv_sequence_length;
+  p.max_sequence_length = (num_heads == kv_num_heads) ? present_sequence_length : past_sequence_length + kv_sequence_length;
   p.qk_head_size = head_size;
   p.v_head_size = head_size;
   p.causal = parameters.is_unidirectional;

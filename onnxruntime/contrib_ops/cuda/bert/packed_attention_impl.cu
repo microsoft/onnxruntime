@@ -512,6 +512,7 @@ Status FusedScaledDotProductAttentionCutlass(
   p.num_heads = parameters.num_heads;
   p.sequence_length = parameters.sequence_length;
   p.kv_sequence_length = parameters.sequence_length;
+  p.max_sequence_length = parameters.sequence_length;
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
   p.causal = false;

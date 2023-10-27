@@ -154,9 +154,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       has_memory_efficient_attention(sm, sizeof(T) == 2);
   // allocate buffers
   size_t kv_buffer_bytes = 0;
-  // need a buffer if we must ungroup kv or if kv-cache is present
-  const bool needs_buff = ((parameters.num_heads != parameters.kv_num_heads) ||
-                           (past_key != nullptr && parameters.present_sequence_length != parameters.past_sequence_length + parameters.kv_sequence_length));
+  // need a buffer if we must ungroup kv
+  const bool needs_buff = (parameters.num_heads != parameters.kv_num_heads);
   if (use_memory_efficient_attention && needs_buff) {
     kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * (parameters.past_sequence_length + parameters.kv_sequence_length) * parameters.head_size);
   }
