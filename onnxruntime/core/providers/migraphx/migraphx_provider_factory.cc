@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
+#include <atomic>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
@@ -8,7 +9,6 @@
 #include "hip_allocator.h"
 #include "gpu_data_transfer.h"
 #include "core/framework/provider_options.h"
-#include <atomic>
 
 #include "core/session/onnxruntime_c_api.h"
 
@@ -48,7 +48,8 @@ struct MIGraphX_Provider : Provider {
     info.target_device = "gpu";
     info.fp16_enable = options.migraphx_fp16_enable;
     info.int8_enable = options.migraphx_int8_enable;
-    info.int8_calibration_table_name = options.migraphx_int8_calibration_table_name == nullptr ? "" : options.migraphx_int8_calibration_table_name;
+    info.int8_calibration_table_name = options.migraphx_int8_calibration_table_name == nullptr ? "" :
+                                                               options.migraphx_int8_calibration_table_name;
     info.int8_use_native_calibration_table = options.migraphx_use_native_calibration_table != 0;
     return std::make_shared<MIGraphXProviderFactory>(info);
   }

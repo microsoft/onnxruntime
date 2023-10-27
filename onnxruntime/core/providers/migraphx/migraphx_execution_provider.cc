@@ -1,5 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
+#include <fstream>
+#include <algorithm>
+#include <iterator>
+#include <unordered_map>
+#include <set>
 
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
@@ -12,13 +17,9 @@
 #include "gpu_data_transfer.h"
 #include "migraphx_inc.h"
 
-#include <fstream>
-#include <algorithm>
-#include <iterator>
-#include <unordered_map>
-
 // TODO: find a better way to share this
 #include "core/providers/rocm/rocm_stream_handle.h"
+
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)

@@ -3,18 +3,18 @@
 
 #pragma once
 
+#include <map>
+#include <unordered_map>
+#include <miopen/miopen.h>
+#include <rocblas/rocblas.h>
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 #include "migraphx_execution_provider_info.h"
-
-#include <map>
-#include <unordered_map>
 #include "migraphx_inc.h"
 // TODO: find a better way to share this
 // #include "core/providers/cuda/rocm_stream_handle.h"
-#include <miopen/miopen.h>
-#include <rocblas/rocblas.h>
+
 
 namespace onnxruntime {
 

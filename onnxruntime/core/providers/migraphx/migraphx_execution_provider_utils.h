@@ -152,7 +152,7 @@ bool canEvalNodeArgument(const GraphViewer& graph,
   return true;
 }
 
-float ConvertSinglePrecisionIEEE754ToFloat(uint32_t input) {
+float ConvertSinglePrecisionIEEE754ToFloat(unisgned long input) {
   int s = (input >> 31) & 0x01;
   int e = ((input & 0x7f800000) >> 23) - 127;
   int p = -1;
@@ -224,7 +224,7 @@ bool ReadDynamicRange(const std::string file_name,
     size_t length = infile.tellg();
     infile.seekg(0, std::ios::beg);
     std::unique_ptr<char[]> data{new char[length]};
-    infile.read((char*)data.get(), length);
+    infile.read(reinterpret_cast<char*>(data.get()), length);
     infile.close();
     auto flat_table = flatbuffers::GetRoot<CalTableFlatBuffers::TrtTable>(reinterpret_cast<char*>(data.get()));
     auto flat_dict = flat_table->dict();
