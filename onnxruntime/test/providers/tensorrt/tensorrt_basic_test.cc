@@ -590,6 +590,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     // uint64_t compilation_without_cache_ms, compilation_with_cache_ms;
 
     // First session is created with TRT EP with timing cache enabled
+    // Not specifying a trt_timing_cache_path will result in using the working directory
     params.trt_timing_cache_enable = 1;
     {
       // auto start = chrono::steady_clock::now();
