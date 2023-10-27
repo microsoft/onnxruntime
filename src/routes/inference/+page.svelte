@@ -130,10 +130,10 @@
 					<h2 class="card-title">Speech Recognition</h2>
 					The example app uses speech recognition to transcribe speech from audio recorded by the device.
 					<div class="card-actions mt-auto mb-2 justify-center">
-						<a
+						<!-- <a
 							href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/mobile/examples/speech_recognition/android"
 							class="btn btn-primary">Android Speech Recognition →</a
-						>
+						> -->
 						<a
 							href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/mobile/examples/speech_recognition/ios"
 							class="btn btn-primary">iOS Speech Recognition →</a
