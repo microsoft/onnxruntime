@@ -38,27 +38,34 @@ struct NodeSelector {
 // class to manage a set of selector and associated actions
 class SelectorActionRegistry {
  public:
+  // The key is a string representing the op, optionally specifying the domain using ':' as the
+  // seperator with domain as the first part and oprator as the second part, "<domain>:<operator>".
+  // Ex: "Conv", "com.microsoft:Conv", "com.ms.internal.nhwc:Conv"
   using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
 
   struct Entry {
     Entry(const std::string& name_in,
-          const std::string& domain_in,
 #if !defined(ORT_MINIMAL_BUILD)
           const OpVersionsMap& ops_and_versions_in,
           std::unique_ptr<NodeSelector> selector_in,
 #endif  // !defined(ORT_MINIMAL_BUILD)
           std::unique_ptr<Action> action_in)
         : name{name_in},
-          domain{domain_in},
 #if !defined(ORT_MINIMAL_BUILD)
-          ops_and_versions{ops_and_versions_in},
           selector{std::move(selector_in)},
 #endif  // !defined(ORT_MINIMAL_BUILD)
           action{std::move(action_in)} {
+#if !defined(ORT_MINIMAL_BUILD)
+      // Copy ops_and_versions
+      const std::string default_prefix = std::string(kOnnxDomain) + ":";
+      for (const auto& [op, versions] : ops_and_versions_in) {
+        // Use the default, kOnnxDomain, if the domain is not specified.
+        ops_and_versions.emplace(op.find(":") == std::string::npos ? default_prefix + op : op, versions);
+      }
+#endif  // !defined(ORT_MINIMAL_BUILD)
     }
 
-    std::string name;
-    std::string domain;
+    std::string name; // Name of the entry, same as the registered name of the corresponding selector-action pair.
 #if !defined(ORT_MINIMAL_BUILD)
     OpVersionsMap ops_and_versions;
     std::unique_ptr<NodeSelector> selector;
@@ -83,8 +90,7 @@ class SelectorActionRegistry {
   void RegisterSelectorAndAction(const std::string& name,
                                  const OpVersionsMap& ops_and_versions,
                                  std::unique_ptr<NodeSelector> selector,
-                                 std::unique_ptr<Action> action,
-                                 const std::string& domain = kOnnxDomain);
+                                 std::unique_ptr<Action> action);
 
 #else  // !defined(ORT_MINIMAL_BUILD)
 
@@ -105,7 +111,7 @@ class SelectorActionRegistry {
   std::unordered_map<std::string, const Entry> name_to_entry_;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // auxiliary mapping to enable lookup by op type
+  // auxiliary mapping to enable lookup by "domain:op" type
   std::unordered_multimap<std::string, const Entry*> op_type_to_entry_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };

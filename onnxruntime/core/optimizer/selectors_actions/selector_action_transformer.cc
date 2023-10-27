@@ -15,16 +15,15 @@ namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,
+void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name, // Name of the selector-acion instance.
                                                        const OpVersionsMap& ops_and_versions_in,
                                                        std::unique_ptr<NodeSelector> selector_in,
-                                                       std::unique_ptr<Action> action_in,
-                                                       const std::string& domain) {
+                                                       std::unique_ptr<Action> action_in) {
   // currently all registrations are done from internal code with no external inputs,
   // so throw for invalid usage as it should only happen during development.
   const auto [name_to_entry_it, inserted_in_name_to_entry] =
       name_to_entry_.emplace(name,
-                             Entry{name, domain,
+                             Entry{name,
                                    ops_and_versions_in,
                                    std::move(selector_in),
                                    std::move(action_in)});
@@ -33,7 +32,7 @@ void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,
   const Entry& entry = name_to_entry_it->second;
   for (const auto& [op_type, versions] : entry.ops_and_versions) {
     ORT_UNUSED_PARAMETER(versions);
-    op_type_to_entry_.emplace(op_type + ":" + domain, &entry);
+    op_type_to_entry_.emplace(op_type, &entry);
   }
 }
 
@@ -60,7 +59,7 @@ const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::s
 #if !defined(ORT_MINIMAL_BUILD)
 auto SelectorActionRegistry::LookUpByOpTypeAndDomain(const std::string& op_type, const std::string& domain) const
     -> std::vector<gsl::not_null<const Entry*>> {
-  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(op_type + ":" + domain);
+  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(domain + ":" + op_type);
   std::vector<gsl::not_null<const Entry*>> result{};
   result.reserve(std::distance(range_begin, range_end));
   std::transform(range_begin, range_end, std::back_inserter(result),
@@ -99,9 +98,10 @@ static Status MatchAndProcess(
     const SelectorActionRegistry::Entry* selector_action_entry_ptr = nullptr;
 
     const auto selector_action_entries = selector_action_registry.LookUpByOpTypeAndDomain(node.OpType(), node.Domain());
+    std::string domain_optype = node.Domain() + ":" + node.OpType();
     for (const auto& entry : selector_action_entries) {
       // check the supported versions if specified
-      const auto& versions = entry->ops_and_versions.find(node.OpType())->second;
+      const auto& versions = entry->ops_and_versions.find(domain_optype)->second;
       if (!versions.empty()) {
         if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
           continue;
