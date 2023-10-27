@@ -24,7 +24,7 @@ class TestOpConvTranspose(unittest.TestCase):
     Class with test_* methods that test quantization of the ConvTranspose operator.
     """
 
-    def input_feeds(self, num_test_inputs, name2shape):
+    def input_feeds(self, num_test_inputs, name2shape, dtype):
         """
         Returns a data reader of input test data.
 
@@ -37,7 +37,7 @@ class TestOpConvTranspose(unittest.TestCase):
         for _ in range(num_test_inputs):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+                inputs.update({name: np.random.randint(-1, 2, shape).astype(dtype)})
             input_data_list.extend([inputs])
         data_reader = TestDataFeeds(input_data_list)
         return data_reader
@@ -135,7 +135,7 @@ class TestOpConvTranspose(unittest.TestCase):
 
         np.random.seed(1)
         model_fp32_path = "conv_transpose_fp32.onnx"
-        self.construct_model(model_fp32_path)
+        self.construct_model(model_fp32_path, onnx_type, opset, ir_version)
         data_reader = self.input_feeds(1, {"input": [1, 1, 7, 7]})
 
         self.static_quant_test_qdq(

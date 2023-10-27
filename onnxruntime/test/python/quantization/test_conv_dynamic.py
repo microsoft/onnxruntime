@@ -62,11 +62,13 @@ class TestONNXModel(unittest.TestCase):
         onnx.save(model, model_path)
 
     def dynamic_quant_conv_test(
-        self, onnx_type, opset, ir_version, weight_type, extra_options={}, use_quant_config=False
-    ):  # noqa: B006
+        self, onnx_type, opset, ir_version, weight_type, extra_options=None, use_quant_config=False
+    ):
+        if extra_options is None:
+            extra_options = {}
         np.random.seed(1)
         model_fp32_path = "conv_bias.fp32.onnx"
-        self.construct_model(model_fp32_path)
+        self.construct_model(model_fp32_path, onnx_type, opset, ir_version)
 
         activation_proto_qtype = TensorProto.UINT8
         activation_type_str = "u8"
@@ -87,11 +89,12 @@ class TestONNXModel(unittest.TestCase):
         check_op_type_count(self, model_int8_path, **quant_nodes)
         qnode_io_qtypes = {"ConvInteger": [["i", 2, activation_proto_qtype]]}
         check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
+        dtype = onnx.helper.tensor_dtype_to_np_dtype(onnx_type)
         check_model_correctness(
             self,
             model_fp32_path,
             model_int8_path,
-            {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
+            {"input": np.random.rand(4, 2, 8, 8).astype(dtype)},
         )
 
     def test_quant_conv(self):
