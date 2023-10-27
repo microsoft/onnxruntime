@@ -192,10 +192,6 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       bool folded = false;
       ORT_RETURN_IF_ERROR(ConstantFoldIfNode(graph, *node, logger, folded));
       if (folded) {
-        // We do not remove any of the upstream nodes, because we actually
-        // do not know whether any of the upstream nodes provide constant implicit inputs
-        // We let the next round of constant folding check of that.
-        // Remove the output edges of the constant node and then remove the node itself.
         graph_utils::RemoveNodeOutputEdges(graph, *node);
         graph.RemoveNode(node->Index());
         modified = true;
@@ -364,7 +360,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
       // Remove the output edges of the constant node and then remove the node itself.
       graph_utils::RemoveNodeOutputEdges(graph, *node);
-      graph.RemoveNode(node->Index());
+      graph.RemoveNodeAndProto(node->Index());
       modified = true;
       have_updated_nodes = true;
     }

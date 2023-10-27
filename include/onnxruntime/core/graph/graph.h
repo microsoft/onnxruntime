@@ -982,6 +982,14 @@ class Graph {
   */
   bool RemoveNode(NodeIndex node_index);
 
+  /** Remove a Node from this Graph and free it. The function in addition
+  removes a corresponding NodeProto in the graph_proto if there is a match.
+  The function calls RemoveNode() internally, and all the requirements for RemoveNode()
+  must be met. In addition, the node must not produce any Graph outputs.
+  @returns true if the node_index was valid
+  */
+  bool RemoveNodeAndProto(NodeIndex node_index);
+
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.

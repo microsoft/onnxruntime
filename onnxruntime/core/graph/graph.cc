@@ -1308,8 +1308,17 @@ Graph::Graph(const Model& owning_model,
     }
   }
 
-  for (const auto& node_proto : graph_proto_->node()) {
-    AddNode(node_proto, name_to_type_map);
+  {
+    static const std::string node_base_name{"proto_based_node"};
+    auto& nodes = *graph_proto_->mutable_node();
+    for (auto it = nodes.begin(), end = nodes.end(); it != end; ++it) {
+      // generate a name so the node_proto can be found by name in case it
+      // needs to be removed.
+      if (it->name().empty()) {
+        it->set_name(GenerateNodeName(node_base_name));
+      }
+      AddNode(*it, name_to_type_map);
+    }
   }
 
   if (is_loaded_from_model_file_) {
@@ -3303,6 +3312,36 @@ bool Graph::RemoveNode(NodeIndex p_index) {
 
   return ReleaseNode(p_index);
 }
+
+bool Graph::RemoveNodeAndProto(NodeIndex node_index) {
+  auto* node = GetNode(node_index);
+  if (nullptr == node) {
+    return false;
+  }
+
+  const std::string node_name = node->Name();
+  bool result = RemoveNode(node_index);
+
+  if (result && !node_name.empty()) {
+    // Remove node's proto from graph_proto to prevent constant folded Node re-creation
+    // in subgraphs.
+    // E.g. when a node is constant folded and removed from a subgraph, but then re-created
+    // because a parent node that owns the subgraph being copied/inlined. The constant folded Node
+    // is then re-created based on the subgraph proto. This creates a duplicate name and invalidates the subgraph.
+    // This fixes the asymmetry of adding a new initializer to the graph proto, but not removing
+    // the node's proto with a node_arg with a name of the initializer.
+    auto& node_list = *graph_proto_->mutable_node();
+    for (auto it = node_list.begin(), end = node_list.end(); it != end; ++it) {
+      if (it->name() == node_name) {
+        ORT_IGNORE_RETURN_VALUE(node_list.erase(it));
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -4046,7 +4085,7 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   return Status::OK();
 }
 
-static void RenameSubgraphDependentNames(const InlinedHashMap<std::string, std::string>& name_mapping,
+static void RenameSubgraphDependentNames(const std::unordered_map<std::string, std::string>& name_mapping,
                                          ONNX_NAMESPACE::GraphProto& graph_proto) {
   for (auto& node : *graph_proto.mutable_node()) {
     for (auto& attr : *node.mutable_attribute()) {
@@ -4065,18 +4104,10 @@ static void RenameSubgraphDependentNames(const InlinedHashMap<std::string, std::
         input = hit->second;
       }
     }
-
-    // XXX: Can output names depend on the outer scope?
-    // for (auto& output : *node.mutable_output()) {
-    //  auto hit = name_mapping.find(output);
-    //  if (hit != name_mapping.cend()) {
-    //    output = hit->second;
-    //  }
-    //}
   }
 }
 
-static void RenameNodeAttributesSubgraphDependentNames(const InlinedHashMap<std::string, std::string>& name_mapping,
+static void RenameNodeAttributesSubgraphDependentNames(const std::unordered_map<std::string, std::string>& name_mapping,
                                                        NodeAttributes& attributes) {
   for (auto& attribute : attributes) {
     auto& attr_proto = attribute.second;
@@ -4102,7 +4133,7 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
 
   // Check if the name is an input or implicit input.
   // These are not renamed.
-  InlinedHashSet<std::string_view> if_all_inputs;
+  std::unordered_set<std::string_view> if_all_inputs;
   const auto if_inputs = if_node.InputDefs();
   const auto if_implicit_inputs = if_node.ImplicitInputDefs();
   if_all_inputs.reserve(if_inputs.size() + if_implicit_inputs.size());
@@ -4118,7 +4149,7 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
 
   // Name mapping from the graph to inline to the graph we are inlining into
   // we also use this to process any subgraphs in the graph we are inlining
-  InlinedHashMap<std::string, std::string> name_mapping;
+  std::unordered_map<std::string, std::string> name_mapping;
 
   // We are going to map the outputs of the graph to inline to the outputs of the If node.
   // They are assumed to be in the same order.
