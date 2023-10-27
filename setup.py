@@ -203,19 +203,22 @@ try:
                     "libcurand.so.10",
                 ]
                 rocm_dependencies = [
-                    "librccl.so.1",
-                    "libnuma.so.1",
                     "libamd_comgr.so.2",
-                    "libdrm.so.2",
-                    "librocblas.so.3",
-                    "libdrm_amdgpu.so.1",
                     "libamdhip64.so.5",
-                    "libroctracer64.so.4",
-                    "libMIOpen.so.1",
-                    "libtinfo.so.6",
+                    "libdrm.so.2",
+                    "libdrm_amdgpu.so.1",
                     "libelf.so.1",
-                    "librocm_smi64.so.5",
+                    "libhipfft.so.0",
+                    "libhiprtc.so.5",
                     "libhsa-runtime64.so.1",
+                    "libMIOpen.so.1",
+                    "libnuma.so.1",
+                    "librccl.so.1",
+                    "librocblas.so.3",
+                    "librocfft.so.0",
+                    "librocm_smi64.so.5",
+                    "libroctracer64.so.4",
+                    "libtinfo.so.6",
                 ]
 
                 tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
