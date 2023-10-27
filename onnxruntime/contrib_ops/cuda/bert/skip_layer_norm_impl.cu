@@ -83,7 +83,7 @@ bool CanVectorized(T* output, T* sum_output, const T* input, const T* skip, cons
 }
 }  // namespace
 
-template <typename T, unsigned TPB, bool Simplified>
+template <typename T, unsigned TPB, int ILP, bool Simplified>
 __global__ void SkipLayerNormKernel(
     T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta, T epsilon,
     const int ld, int skip_size) {
@@ -95,23 +95,41 @@ __global__ void SkipLayerNormKernel(
   KeyValuePairSum pair_sum;
   cub::KeyValuePair<T, T> thread_data(0, 0);
 
-  for (int i = threadIdx.x; i < ld; i += TPB) {
-    const int idx = offset + i;
+  using VecT = aligned_vector<T, ILP>;
+  T sum_v[ILP];
+  T skip_v[ILP];
+  T bias_v[ILP];
 
-    T val = input[idx];
+  for (int idx_ld = threadIdx.x * ILP; idx_ld < ld; idx_ld += TPB * ILP) {  // ld % ILP == 0
+    int idx = idx_ld + offset;
+    VecT* sum_v_ptr = reinterpret_cast<VecT*>(&sum_v);
+    *sum_v_ptr = *reinterpret_cast<const VecT*>(&input[idx]);
+
+    VecT* skip_v_ptr = reinterpret_cast<VecT*>(&skip_v);
+    *skip_v_ptr = *reinterpret_cast<const VecT*>(&skip[idx % skip_size]);
+
     if (has_bias) {
-      val += bias[i];
+      VecT* bias_v_ptr = reinterpret_cast<VecT*>(&bias_v);
+      *bias_v_ptr = *reinterpret_cast<const VecT*>(&bias[idx_ld]);
     }
-    val += skip[idx % skip_size];
 
-    const T rldval = reverse_ld * val;
-    thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
+    T rldval = 0;
+
+#pragma unroll
+    for (int i = 0; i < ILP; i++) {
+      if (has_bias) {
+        sum_v[i] += bias_v[i];
+      }
+      sum_v[i] += skip_v[i];
+
+      const T rldval = reverse_ld * sum_v[i];
+      thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * sum_v[i]));
+    }
 
     if (sum_output != nullptr) {
-      sum_output[idx] = val;
+      *(reinterpret_cast<VecT*>(&sum_output[idx])) = *reinterpret_cast<VecT*>(&sum_v);
     }
-
-    output[idx] = val;
+    *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&sum_v);
   }
 
   if (Simplified) {
@@ -194,8 +212,8 @@ void LaunchSkipLayerNormKernel(
   SkipLayerNormKernelSmall<T, block_size, num_unroll, Simplified><<<grid_size, block_size, 0, stream>>>( \
       output, sum_output, input, skip, bias, gamma, beta, maybe2half<T>(epsilon), ld, skip_size)
 
-#define LAUNCH_SKIP_LAYER_NORM_KERNEL()                                                 \
-  SkipLayerNormKernel<T, block_size, Simplified><<<grid_size, block_size, 0, stream>>>( \
+#define LAUNCH_SKIP_LAYER_NORM_KERNEL(num_unroll)                                                   \
+  SkipLayerNormKernel<T, block_size, num_unroll, Simplified><<<grid_size, block_size, 0, stream>>>( \
       output, sum_output, input, skip, bias, gamma, beta, maybe2half<T>(epsilon), ld, skip_size)
 
 #define CASE_NEXT_SIZE(next_size_value)                                       \
@@ -213,7 +231,7 @@ void LaunchSkipLayerNormKernel(
         LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(1);                               \
       } else {                                                                \
         constexpr int block_size = 256;                                       \
-        LAUNCH_SKIP_LAYER_NORM_KERNEL();                                      \
+        LAUNCH_SKIP_LAYER_NORM_KERNEL(1);                                     \
       }                                                                       \
     }                                                                         \
   } break
@@ -225,15 +243,15 @@ void LaunchSkipLayerNormKernel(
       LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(1);
       break;
     }
-    CASE_NEXT_SIZE(kSizes[1]);
-    CASE_NEXT_SIZE(kSizes[2]);
-    CASE_NEXT_SIZE(kSizes[3]);
-    CASE_NEXT_SIZE(kSizes[4]);
-    CASE_NEXT_SIZE(kSizes[5]);
+      CASE_NEXT_SIZE(kSizes[1]);
+      CASE_NEXT_SIZE(kSizes[2]);
+      CASE_NEXT_SIZE(kSizes[3]);
+      CASE_NEXT_SIZE(kSizes[4]);
+      CASE_NEXT_SIZE(kSizes[5]);
     // kMaxSize shall not run vectorized kernel since ld might be larger than kMaxSize.
     default: {
-      constexpr int block_size = 256;
-      LAUNCH_SKIP_LAYER_NORM_KERNEL();
+      constexpr int block_size = 512;
+      LAUNCH_SKIP_LAYER_NORM_KERNEL(4);
       break;
     }
   }
