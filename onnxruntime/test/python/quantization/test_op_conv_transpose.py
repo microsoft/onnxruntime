@@ -136,7 +136,8 @@ class TestOpConvTranspose(unittest.TestCase):
         np.random.seed(1)
         model_fp32_path = "conv_transpose_fp32.onnx"
         self.construct_model(model_fp32_path, onnx_type, opset, ir_version)
-        data_reader = self.input_feeds(1, {"input": [1, 1, 7, 7]})
+        dtype = onnx.helper.tensor_dtype_to_np_dtype(onnx_type)
+        data_reader = self.input_feeds(1, {"input": [1, 1, 7, 7]}, dtype)
 
         self.static_quant_test_qdq(
             model_fp32_path,
@@ -160,7 +161,8 @@ class TestOpConvTranspose(unittest.TestCase):
         np.random.seed(1)
         model_fp32_path = "conv_transpose_fp32.onnx"
         self.construct_model(model_fp32_path)
-        data_reader = self.input_feeds(1, {"input": [1, 1, 7, 7]})
+        dtype = onnx.helper.tensor_dtype_to_np_dtype(onnx_type)
+        data_reader = self.input_feeds(1, {"input": [1, 1, 7, 7]}, dtype)
 
         self.static_quant_test_qdq(
             model_fp32_path,
