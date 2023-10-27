@@ -376,7 +376,7 @@ stages:
     - task: BatchScript@1
       displayName: 'setup env'
       inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda_11.bat'
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda.bat'
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
 
@@ -490,7 +490,7 @@ stages:
             tools/ci_build/get_docker_image.py \
               --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda \
               --context tools/ci_build/github/linux/docker \
-              --docker-build-args "--network=host --build-arg BASEIMAGE=nvidia/cuda:11.8.0-devel-ubi8 --build-arg INSTALL_CUDNN=true --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 --build-arg BUILD_UID=$( id -u )" \
+              --docker-build-args "--network=host --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8 --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 --build-arg BUILD_UID=$( id -u )" \
               --container-registry onnxruntimebuildcache \
               --multiple_repos \
               --repository onnxruntimecuda118xtrt86build
