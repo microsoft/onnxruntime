@@ -117,7 +117,7 @@ class AxisPartitionSpec {
   // A normal ctor.
   // TODO(wechi): Consider to hide it and revise the `public` members/functions
   // exposed to the user.
-  AxisPartitionSpec(Condition cond_, int device_mesh_axis_) : device_mesh_axis(device_mesh_axis_), cond(cond_) {}
+  AxisPartitionSpec(Condition cond_, int device_mesh_axis_) : cond(cond_), device_mesh_axis(device_mesh_axis_) {}
 
   // Helper to debug and generate error message; e.g.,
   // "RS[0]".
