@@ -1,6 +1,7 @@
 <script>
 	import TestimonialCard from './testimonial-card.svelte';
 	import ImageTestimonials from '../../images/undraw/image_testimonials.svelte';
+	import adobelogo from '../../images/logos/adobe-logo.png';
 	import amdlogo from '../../images/logos/amd-logo.png';
 	import antgrouplogo from '../../images/logos/antgroup-logo.png';
 	import atlaslogo from '../../images/logos/ATLAS-logo.png';
@@ -32,6 +33,15 @@
 	import xilinxlogo from '../../images/logos/xilinx-logo.png';
 
 	const quotes = [
+		{
+			title: 'Adobe',
+			quote:
+				"With ONNX Runtime, Adobe Target got flexibility and standardization in one package: flexibility for our customers to train ML models in the frameworks of their choice, and standardization to robustly deploy those models at scale for fast inference, to deliver true, real-time personalized experiences.”,
+			author:
+				'Georgiana Copil, Senior Computer Scientist, Adobe',
+			imgsrc: adobelogo,
+			imgalt: 'Adobe logo'
+		},
 		{
 			title: 'AMD',
 			quote:
