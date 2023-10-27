@@ -60,7 +60,7 @@
 		class="grid lg:grid-cols-8 md:grid-cols-4 grid-cols-2 gap-4 mx-auto justify-items-center pt-10"
 	>
 		<a
-			href="./testimonials"
+			href="./testimonials#amd"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full w-full"
@@ -68,7 +68,7 @@
 			<img class="h-20 mx-auto"src={amdLogo} alt="AMD" />
 		</a>
 		<a
-			href="./testimonials"
+			href="./testimonials#huggingface"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full w-full"
@@ -76,7 +76,7 @@
 			<img class="h-20 mx-auto"src={huggingfaceLogo} alt="HuggingFace" />
 		</a>
 		<a
-			href="./testimonials"
+			href="./testimonials#intel"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full"
@@ -84,7 +84,7 @@
 			<img class="h-20 mx-auto"src={intelLogo} alt="Intel" />
 		</a>
 		<a
-			href="./testimonials"
+			href="./testimonials#nvidia"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full"
@@ -92,7 +92,7 @@
 			<img class="h-20 mx-auto"src={nvidiaLogo} alt="Nvidia" />
 		</a>
 		<a
-			href="./testimonials"
+			href="./testimonials#adobe"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full"
@@ -100,7 +100,7 @@
 			<img class="h-20 mx-auto"src={adobeLogo} alt="Adobe" />
 		</a>
 		<a
-			href="./testimonials"
+			href="./testimonials#unreal"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full"
@@ -108,7 +108,7 @@
 			<img class="h-20 mx-auto"src={unrealEngineLogo} alt="Unreal Engine" />
 		</a>
 		<a
-			href="./testimonials"
+			href="./testimonials#oracle"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full"
