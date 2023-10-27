@@ -3,7 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from __future__ import annotations
+
 import sys
+from typing import ClassVar
 
 import torch
 import torch.utils.checkpoint
@@ -18,11 +21,53 @@ from onnxruntime.capi._pybind_state import (
     register_torch_autograd_function,
 )
 from onnxruntime.training import ortmodule
-from onnxruntime.training.utils import pytorch_dtype_to_onnx
+from onnxruntime.training.utils import pytorch_scalar_type_to_pytorch_dtype, pytorch_type_to_onnx_dtype
 
 from ._custom_op_symbolic_registry import wrap_custom_export_function
 from ._fallback import ORTModuleONNXModelException, wrap_exception
 from ._utils import get_fully_qualified_class_name, get_runtime_pytorch_version
+
+
+class _HighPriorityExporter:
+    """A class to handle high priority export of torch.autograd.Function.
+    `register_high_prioriry_handler` can be used as function decorator to register a handler for a torch.autograd.Function.
+    """
+
+    _HIGH_PRIORITY_EXPORT_HANDLER_MAP: ClassVar[dict[str, callable]] = {}
+
+    @staticmethod
+    def add_handler(func_name: str, handler: callable) -> None:
+        """Add a handler for a function name.
+
+        Args:
+            func_name (str): The function name.
+            handler (callable): The handler.
+
+        """
+        _HighPriorityExporter._HIGH_PRIORITY_EXPORT_HANDLER_MAP[func_name] = handler
+
+    @staticmethod
+    def get_handler(func_name: str) -> callable | None:
+        """Get the handler for a function name.
+
+        Args:
+            func_name (str): The function name.
+
+        Returns:
+            callable | None: The handler.
+
+        """
+        return _HighPriorityExporter._HIGH_PRIORITY_EXPORT_HANDLER_MAP.get(func_name, None)
+
+
+def register_high_prioriry_handler(func_name):
+    """Register a handler for a torch.autograd.Function using its full qualified class name."""
+
+    def symbolic_wrapper(fn):
+        _HighPriorityExporter.add_handler(func_name, fn)
+        return fn
+
+    return symbolic_wrapper
 
 
 def register_custom_function_schema_supplementary(kclass: torch.autograd.Function) -> None:
@@ -114,6 +159,15 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         func_class = n.pyobj().__self__
         func_full_qual_name = get_fully_qualified_class_name(func_class)
 
+        # Check if the function is handled by high priority exporter.
+        hi_pri_handler = _HighPriorityExporter.get_handler(func_full_qual_name)
+        if hi_pri_handler:
+            try_export = hi_pri_handler(g, n, *args, **kwargs)
+            if try_export is not None:
+                return try_export
+
+        # Fall back to common exporter if not handled by high priority exporter.
+
         # Check if the checkpointing activation is allowed.
         is_ckpt_activation_allowed = ortmodule._defined_from_envvar("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", 0) == 1
         if is_ckpt_activation_allowed is False and func_full_qual_name in _UNSUPPORTED_CKPT_FUNC_NAMES:
@@ -179,7 +233,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = pytorch_dtype_to_onnx(arg.type().scalarType())
+                scalar_type = pytorch_type_to_onnx_dtype(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
                 continue
@@ -258,7 +312,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = pytorch_dtype_to_onnx(arg.type().scalarType())
+            scalar_type = pytorch_type_to_onnx_dtype(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 
@@ -336,3 +390,50 @@ def post_process_enabling_autograd_function(exported_model: ModelProto) -> Model
         index += 1
 
     return exported_model
+
+
+@register_high_prioriry_handler("bitsandbytes.autograd._functions.MatMul4Bit")
+def _matmul4bit_export(g, n, *args, **kwargs):
+    cconv = n.cconv()
+    can_converted = cconv[0] == "d" and cconv[1] == "d" and cconv[2] == "c" and cconv[3] == "c" and cconv[4] == "c"
+    can_converted = can_converted and (args[2] is None and args[3] is None and args[4] is not None)
+    if not can_converted:
+        return None
+
+    quant_state = args[4]
+    absmax, shape, dtype, blocksize, compressed_stats, quant_type, data_type = quant_state
+
+    # MatMulBnb4's blocksize needs to be a power of 2 and not smaller than 16
+    if blocksize < 16 or blocksize & (blocksize - 1) != 0:
+        return None
+
+    # The PyTorch linear weight shape is [out_feature, in_feature]
+    in_feature = shape[1]
+    out_feature = shape[0]
+    if quant_type == "fp4":
+        quant_type = 0
+    elif quant_type == "nf4":
+        quant_type = 1
+    else:
+        return None
+    attrs = {
+        "K_i": in_feature,
+        "N_i": out_feature,
+        "block_size_i": blocksize,
+        "quant_type_i": quant_type,
+    }
+
+    # Make sure the quant weight can be flatten to 1D tensor safely, which com.microsoft::MatMulBnb4 requires.
+    found_dim1 = any(v == 1 for v in args[1].type().sizes())
+    if not found_dim1:
+        return None
+
+    absmax = g.op(
+        "Constant",
+        value_t=torch.tensor(absmax, dtype=pytorch_scalar_type_to_pytorch_dtype(args[0].type().scalarType())),
+    )
+    quant_weight = g.op(
+        "Reshape", args[1], g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64))
+    )  # flatten to 1D
+    tensor_args = [args[0], quant_weight, absmax]
+    return g.op("com.microsoft::MatMulBnb4", *tensor_args, **attrs)
