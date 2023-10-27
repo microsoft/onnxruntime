@@ -1212,7 +1212,10 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
 nvinfer1::IBuilder& TensorrtExecutionProvider::GetBuilder() const {
   if (!builder_) {
     TensorrtLogger& trt_logger = GetTensorrtLogger();
-    builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    {
+      auto lock = GetApiLock();
+      builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    }
   }
   return *builder_;
 }
