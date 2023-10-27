@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "interface/common/data_types.h"
 #include "interface/framework/tensor.h"
 
 namespace onnxruntime {
@@ -93,28 +94,9 @@ struct IKernel {
 
   // inputs
   template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
-  static typename std::enable_if<std::is_same<T, const Tensor<float>&>::value, std::tuple<T, Ts...>>::type
+  static typename std::enable_if<std::is_same<T, TensorView<float>&>::value, std::tuple<T, Ts...>>::type
   CreateTuple(IKernelContext* context, ArgPtrs& args) {
-    args.push_back(std::make_unique<Tensor<float>>(context, ith_input, true));
-    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
-    auto next = CreateTuple<ith_input + 1, ith_output, Ts...>(context, args);
-    return std::tuple_cat(current, next);
-  }
-
-  /*
-  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
-  static typename std::enable_if<std::is_same<T, const TensorT<float>&>::value, std::tuple<T, Ts...>>::type
-  CreateTuple(IKernelContext* context, ArgPtrs& args) {
-    args.push_back(std::make_unique<TensorT<float>>(context, ith_input));
-    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
-    auto next = CreateTuple<ith_input + 1, ith_output, Ts...>(context, args);
-    return std::tuple_cat(current, next);
-  }
-
-  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
-  static typename std::enable_if<std::is_same<T, const TensorV<float>&>::value, std::tuple<T, Ts...>>::type
-  CreateTuple(IKernelContext* context, ArgPtrs& args) {
-    args.push_back(std::make_unique<TensorV<float>>(context, ith_input));
+    args.push_back(std::make_unique<TensorView<float>>(context, ith_input));
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
     auto next = CreateTuple<ith_input + 1, ith_output, Ts...>(context, args);
     return std::tuple_cat(current, next);
@@ -122,24 +104,109 @@ struct IKernel {
 
   // outputs
   template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
-  static typename std::enable_if<std::is_same<T, Reused<float>&>::value, std::tuple<T, Ts...>>::type
+  static typename std::enable_if<std::is_same<T, Tensor<float>&>::value, std::tuple<T, Ts...>>::type
   CreateTuple(IKernelContext* context, ArgPtrs& args) {
-    args.push_back(std::make_unique<Reused<float>>(context, ith_output));
+    args.push_back(std::make_unique<Tensor<float>>(context, ith_output));
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
     auto next = CreateTuple<ith_input, ith_output + 1, Ts...>(context, args);
     return std::tuple_cat(current, next);
   }
-
-  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
-  static typename std::enable_if<std::is_same<T, Aliased<float>&>::value, std::tuple<T, Ts...>>::type
-  CreateTuple(IKernelContext* context, ArgPtrs& args) {
-    args.push_back(std::make_unique<Aliased<float>>(context, ith_output));
-    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
-    auto next = CreateTuple<ith_input, ith_output + 1, Ts...>(context, args);
-    return std::tuple_cat(current, next);
-  }*/
 };
 
+template <typename... Args>
+struct FnKernel : public IKernel {
+  using ComputeFn = onnxruntime::Status (*)(Args...);
+  FnKernel(ComputeFn compute_fn) : compute_fn_(compute_fn) {}
+
+  onnxruntime::Status Compute(IKernelContext* context) const override {
+    ArgPtrs args;
+    auto t = CreateTuple<0, 0, Args...>(context, args);
+    return std::apply([this](Args const&... t_args) { return compute_fn_(t_args...); }, t);
+  }
+
+ private:
+  ComputeFn compute_fn_;
+};
+
+template <typename K>
+struct StructKernel : public IKernel {
+  template <typename... Args>
+  using ComputeFn = onnxruntime::Status (K::*)(Args...);
+  void Init(IKernelInfo& info) override {
+    kernel_ = std::make_unique<K>(info);
+  }
+  onnxruntime::Status Compute(IKernelContext* context) const override {
+    return InvokeCompute(&K::Compute, context);
+  }
+
+  template <typename... Args>
+  onnxruntime::Status InvokeCompute(ComputeFn<Args...>, IKernelContext* context) const {
+    ArgPtrs args;
+    auto t = CreateTuple<0, 0, Args...>(context, args);
+    return std::apply([this](Args const&... t_args) { return kernel_->Compute(t_args...); }, t);
+  }
+  std::unique_ptr<K> kernel_;
+};
+
+struct IKernelBuilder {
+  // IKernelBuilder() = default;
+  // IKernelBuilder(const IKernelBuilder&) = delete;
+  explicit IKernelBuilder() = default;
+  IKernelBuilder(const IKernelBuilder&) = delete;
+
+  virtual ~IKernelBuilder() = default;
+  virtual IKernelBuilder& Provider(const char*) = 0;
+  virtual IKernelBuilder& SetDomain(const char*) = 0;
+  virtual IKernelBuilder& SetName(const char*) = 0;
+  virtual IKernelBuilder& SinceVersion(int, int) = 0;
+  virtual IKernelBuilder& Alias(int, int) = 0;
+  virtual IKernelBuilder& TypeConstraint(const char*, TensorDataType) = 0;
+
+  template <size_t, size_t, typename... Ts>
+  typename std::enable_if<sizeof...(Ts) >= 0, IKernelBuilder&>::type
+  ParseArgs() {
+    //todo - generate constraints by args...
+    return *this;
+  }
+
+  template <typename... Args>
+  IKernelBuilder& ParseFn(onnxruntime::Status (*compute_fn)(Args...)) {
+    using KernelType = FnKernel<Args...>;
+    kernel_ = std::make_unique<KernelType>(compute_fn);
+    return ParseArgs<0, 0, Args...>();
+  }
+
+  template <typename K, typename... Args>
+  IKernelBuilder& ParseStruct(onnxruntime::Status (K::*compute_fn)(Args...)) {
+    using KernelType = StructKernel<K>;
+    kernel_ = std::make_unique<KernelType>();
+    return ParseArgs<0, 0, Args...>();
+  }
+
+  std::unique_ptr<IKernel> kernel_;
+};
+
+struct IKernelRegistry {
+  virtual ~IKernelRegistry() = default;
+  virtual IKernelBuilder& CreateBuilder() = 0;
+  template <typename... Args>
+  IKernelBuilder& RegisterKernel(const char* ep,
+                                 const char* domain,
+                                 const char* op,
+                                 int since_ver,
+                                 int end_ver,
+                                 onnxruntime::Status (*compute_fn)(Args...)) {
+    return CreateBuilder().Provider(ep).SetDomain(domain).SetName(op).SinceVersion(since_ver, end_ver).ParseFn<Args...>(compute_fn);
+  }
+  template <typename K, typename... Args>
+  IKernelBuilder& RegisterKernel(const char* ep,
+                                 const char* domain,
+                                 const char* op,
+                                 int since_ver,
+                                 int end_ver) {
+    return CreateBuilder().Provider(ep).SetDomain(domain).SetName(op).SinceVersion(since_ver, end_ver).ParseStruct<K, Args...>(&K::Compute);
+  }
+};
 
 }  // namespace interface
 }  // namespace onnxruntime
