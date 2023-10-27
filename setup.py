@@ -207,7 +207,7 @@ try:
                     "libnuma.so.1",
                     "libamd_comgr.so.2",
                     "libdrm.so.2",
-                    "librocblas.so.0",
+                    "librocblas.so.3",
                     "libdrm_amdgpu.so.1",
                     "libamdhip64.so.5",
                     "libroctracer64.so.4",
