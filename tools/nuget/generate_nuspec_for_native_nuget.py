@@ -829,7 +829,7 @@ def generate_files(line_list, args):
 
         # Some tools to be packaged in nightly debug build only, should not be released
         # These are copied to the runtimes folder for convenience of loading with the dlls
-        # NOTE: nuget gives a spurious error on linux if these aren't in a separate directory to the library so 
+        # NOTE: nuget gives a spurious error on linux if these aren't in a separate directory to the library so
         #       we add them to a tools folder for that reason.
         if (
             args.is_release_build.lower() != "true"

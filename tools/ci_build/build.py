@@ -2098,15 +2098,16 @@ def build_nuget_package(
     elif any(map(lambda x: "OrtPackageId=" in x, msbuild_extra_options)):
         pass
     else:
-        if have_exclude_mobile_targets_option is False:
-            # we currently only allow building with mobile targets on Windows.
-            # it should be possible to allow building with android targets on Linux but that requires updating the
-            # csproj to separate the inclusion of ios and android targets.
-            if is_windows():
-                # use the sln that include the mobile targets
-                sln = "OnnxRuntime.CSharp.sln"
-            else:
-                msbuild_extra_options.append("IncludeMobileTargets=false")
+        # we currently only allow building with mobile targets on Windows.
+        # it should be possible to allow building with android targets on Linux but that requires updating the
+        # csproj to separate the inclusion of ios and android targets.
+        if is_windows() and have_exclude_mobile_targets_option is False:
+            # use the sln that include the mobile targets
+            sln = "OnnxRuntime.CSharp.sln"
+
+    # explicitly exclude mobile targets in this case
+    if sln != "OnnxRuntime.CSharp.sln" and have_exclude_mobile_targets_option is False:
+        msbuild_extra_options.append("IncludeMobileTargets=false")
 
     # expand extra_options to add prefix
     extra_options = ["/p:" + option for option in msbuild_extra_options]
@@ -2137,7 +2138,7 @@ def build_nuget_package(
                 package_name,
                 ort_build_dir,
                 enable_training_tests,
-                *extra_options
+                *extra_options,
             ]
 
             run_subprocess(cmd_args, cwd=csharp_build_dir)
@@ -2179,7 +2180,7 @@ def build_nuget_package(
             execution_provider,
             ort_build_dir,
             nuget_exe_arg,
-            *extra_options
+            *extra_options,
         ]
 
         run_subprocess(cmd_args, cwd=csharp_build_dir)
