@@ -1,25 +1,31 @@
 #include "dml_interop.h"
-#include <algorithm>
-#include <limits>
-#include <set>
-#include <type_traits>
+#include <numeric>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
 #include "core/providers/dml/dml_provider_factory.h"
+#include "core/providers/winml/winml_provider_factory.h"
 #include <assert.h>
-#include "providers.h"
-
 
 #include <core/session/onnxruntime_cxx_api.h>
-#include "test_configuration.h"
-#include "test_session.h"
-
 #include <wrl/client.h>
 #include <d3d12.h>
+#include "core/common/common.h"
+
+#ifdef USE_WINML
+#include "winml_adapter_c_api.h"
+#endif
 
 using UniqueNativePtr = std::unique_ptr<void, void (*)(void*)>;
+
+static const WinmlAdapterApi* GetVersionedWinmlAdapterApi() {
+#ifdef USE_WINML
+  return OrtGetWinMLAdapter(ORT_API_VERSION);
+#else
+  return nullptr;
+#endif
+}
 
 size_t GetSizeFromType(ONNXTensorElementDataType type) {
 #define CASE_FOR_TYPE(T)                         \
@@ -107,16 +113,45 @@ Microsoft::WRL::ComPtr<ID3D12Resource> CreateD3D12Resource(
   return resource;
 }
 
+
+static D3D12_COMMAND_LIST_TYPE CalculateCommandListType(ID3D12Device* d3d12_device) {
+  D3D12_FEATURE_DATA_FEATURE_LEVELS feature_levels = {};
+
+  D3D_FEATURE_LEVEL feature_levels_list[] = {
+      D3D_FEATURE_LEVEL_1_0_CORE,
+      D3D_FEATURE_LEVEL_11_0,
+      D3D_FEATURE_LEVEL_11_1,
+      D3D_FEATURE_LEVEL_12_0,
+      D3D_FEATURE_LEVEL_12_1};
+
+  feature_levels.NumFeatureLevels = ARRAYSIZE(feature_levels_list);
+  feature_levels.pFeatureLevelsRequested = feature_levels_list;
+  d3d12_device->CheckFeatureSupport(
+      D3D12_FEATURE_FEATURE_LEVELS,
+      &feature_levels,
+      sizeof(feature_levels));
+
+  auto is_feature_level_1_0_core = (feature_levels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE);
+  if (is_feature_level_1_0_core) {
+    return D3D12_COMMAND_LIST_TYPE_COMPUTE;
+  }
+
+  return D3D12_COMMAND_LIST_TYPE_DIRECT;
+}
+
 static void InitializeDmlValueFromCpuValue(
     const Ort::Session& session,
     const Ort::Value& cpu_value,
     const char* name,
     Ort::Value& dml_value) {
+#ifdef USE_WINML
   auto& ort_api = Ort::GetApi();
   const OrtDmlApi* ort_dml_api;
   Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue = nullptr;
-  Ort::ThrowOnError(ort_dml_api->GetCommandQueueForSessionInput(session, name, &queue));
+
+  auto winml_api = GetVersionedWinmlAdapterApi();
+  Ort::ThrowOnError(winml_api->GetCommandQueueForSessionInput(session, name, &queue));
   Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
   queue->GetDevice(IID_PPV_ARGS(&device));
 
@@ -143,10 +178,11 @@ static void InitializeDmlValueFromCpuValue(
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list;
   Microsoft::WRL::ComPtr<ID3D12CommandAllocator> command_allocator;
 
-  device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&command_allocator));
+  auto command_list_type = CalculateCommandListType(device.Get());
+  device->CreateCommandAllocator(command_list_type, IID_PPV_ARGS(&command_allocator));
   device->CreateCommandList(
       0,
-      D3D12_COMMAND_LIST_TYPE_DIRECT,
+      command_list_type,
       command_allocator.Get(),
       nullptr,
       IID_PPV_ARGS(&command_list)
@@ -180,6 +216,9 @@ static void InitializeDmlValueFromCpuValue(
   auto fence_event = CreateEventEx(NULL, false, false, EVENT_ALL_ACCESS);
   fence->SetEventOnCompletion(1, fence_event);
   WaitForSingleObject(fence_event, INFINITE);
+#else
+  throw;
+#endif
 }
 
 std::pair<Ort::Value, UniqueNativePtr> CreateDmlValue(
@@ -188,15 +227,17 @@ std::pair<Ort::Value, UniqueNativePtr> CreateDmlValue(
     Ort::Value&& default_value,
     const char* name,
     bool is_input) {
-
+#ifdef USE_WINML
   auto& ort_api = Ort::GetApi();
   const OrtDmlApi* ort_dml_api;
   Ort::ThrowOnError(ort_api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+  auto winml_api = GetVersionedWinmlAdapterApi();
+
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue = nullptr;
   if (is_input) {
-    Ort::ThrowOnError(ort_dml_api->GetCommandQueueForSessionInput(session, name, &queue));
+    Ort::ThrowOnError(winml_api->GetCommandQueueForSessionInput(session, name, &queue));
   } else {
-    Ort::ThrowOnError(ort_dml_api->GetCommandQueueForSessionOutput(session, name, &queue));
+    Ort::ThrowOnError(winml_api->GetCommandQueueForSessionOutput(session, name, &queue));
   }
   Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
   queue->GetDevice(IID_PPV_ARGS(&device));
@@ -232,6 +273,9 @@ std::pair<Ort::Value, UniqueNativePtr> CreateDmlValue(
   Ort::Value dml_value(dml_value_ptr);
 
   return {std::move(dml_value), std::move(unique_dml_allocator_resource)};
+#else
+  throw; // not supported
+#endif
 }
 
 std::pair<Ort::Value, UniqueNativePtr> CreateDmlValueFromCpuValue(

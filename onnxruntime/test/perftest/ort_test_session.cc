@@ -11,7 +11,10 @@
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
-#include "dml_interop.h"
+
+#ifdef USE_DML
+#include "dml/dml_interop.h"
+#endif
 
 #ifdef _WIN32
 #define strdup _strdup
@@ -975,27 +978,32 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
 
 bool OnnxRuntimeTestSession::PopulateOutputs(bool use_native_bindings) {
   if (use_native_bindings) {
-    for (size_t i = 0; i < static_cast<size_t>(output_names_.size()); i++) {
-      Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
-      if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
-        continue;
-      }
-
-      auto& output_name = output_names_[i];
-      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      std::vector<int64_t> input_node_dim = tensor_info.GetShape();
-
-      // free dimensions are treated as 1 if not overriden
-      for (int64_t& dim : input_node_dim) {
-        if (dim == -1) {
-          dim = 1;
+    constexpr bool is_dml = true;
+#ifdef USE_DML
+    if (is_dml) {
+      for (size_t i = 0; i < static_cast<size_t>(output_names_.size()); i++) {
+        Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
+        if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
+          continue;
         }
-      }
 
-      auto dml_value_pair = CreateDmlValue(tensor_info, session_, Ort::Value(nullptr), output_name.c_str(), false);
-      native_test_bindings_.emplace_back(std::move(dml_value_pair.second));
-      test_outputs_.push_back(std::move(dml_value_pair.first));
+        auto& output_name = output_names_[i];
+        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+
+        // free dimensions are treated as 1 if not overriden
+        for (int64_t& dim : input_node_dim) {
+          if (dim == -1) {
+            dim = 1;
+          }
+        }
+
+        auto dml_value_pair = CreateDmlValue(tensor_info, session_, Ort::Value(nullptr), output_name.c_str(), false);
+        native_test_bindings_.emplace_back(std::move(dml_value_pair.second));
+        test_outputs_.push_back(std::move(dml_value_pair.first));
+      }
     }
+#endif
   }
   return true;
 }
@@ -1032,7 +1040,9 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool u
     constexpr bool is_dml = true;
     if (!use_native_bindings) {
       PreLoadTestData(0, i, std::move(input_tensor));
-    } else if (is_dml) {
+    }
+#ifdef USE_DML
+    else if (is_dml) {
       auto value =
         CreateDmlValueFromCpuValue(
           std::move(input_tensor),
@@ -1042,6 +1052,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool u
       native_test_bindings_.emplace_back(std::move(value.second));
       PreLoadTestData(0, i, std::move(value.first));
     }
+#endif
   }
   return true;
 }

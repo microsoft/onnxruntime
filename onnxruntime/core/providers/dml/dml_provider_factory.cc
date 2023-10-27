@@ -546,32 +546,6 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtGetCommandQueueForSessionInput, _In_ OrtSession* session, _In_ const char* /*input*/, _Out_ ID3D12CommandQueue** queue) {
-  API_IMPL_BEGIN
-  *queue = nullptr;
-#ifdef USE_DML
-  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
-  const auto& session_state = inference_session->GetSessionState();
-  auto& provider_id = session_state.GetExecutionProviders().GetIds().at(0);
-  const auto& provider = session_state.GetExecutionProviders().Get(provider_id);
-  auto dml_execution_provider = static_cast<const Dml::ExecutionProvider*>(provider);
-  dml_execution_provider->GetImpl()->GetCommandQueue(queue);
-#endif
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtGetCommandQueueForSessionOutput, _In_ OrtSession* session, _In_ const char* /*output*/, _Out_ ID3D12CommandQueue** queue) {
-  API_IMPL_BEGIN
-  *queue = nullptr;
-#ifdef USE_DML
-  return OrtGetCommandQueueForSessionInput(session, nullptr, queue);
-#endif
-  return nullptr;
-  API_IMPL_END
-}
-
-
 static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProvider_DML,
   &OrtSessionOptionsAppendExecutionProviderEx_DML,
@@ -579,8 +553,6 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &FreeGPUAllocation,
   &GetD3D12ResourceFromAllocation,
   &OrtSessionOptionsAppendExecutionProvider_DML2,
-  &OrtGetCommandQueueForSessionInput,
-  &OrtGetCommandQueueForSessionOutput,
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {

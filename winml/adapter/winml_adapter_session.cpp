@@ -20,6 +20,9 @@
 #include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
 #include "abi_custom_registry_impl.h"
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
+#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/IExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.h"
 #endif USE_DML
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
@@ -317,6 +320,41 @@ ORT_API_STATUS_IMPL(
     }
   }
   named_dimension_overrides = override_map.GetView();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(
+  winmla::GetCommandQueueForSessionInput,
+  _In_ OrtSession* session,
+  _In_ const char* /*input*/,
+  _Out_ ID3D12CommandQueue** queue
+) {
+  API_IMPL_BEGIN
+  *queue = nullptr;
+#ifdef USE_DML
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  const auto& session_state = inference_session->GetSessionState();
+  auto& provider_id = session_state.GetExecutionProviders().GetIds().at(0);
+  const auto& provider = session_state.GetExecutionProviders().Get(provider_id);
+  auto dml_execution_provider = static_cast<const Dml::ExecutionProvider*>(provider);
+  dml_execution_provider->GetImpl()->GetCommandQueue(queue);
+#endif
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(
+  winmla::GetCommandQueueForSessionOutput,
+  _In_ OrtSession* session,
+  _In_ const char* /*output*/,
+  _Out_ ID3D12CommandQueue** queue
+) {
+  API_IMPL_BEGIN
+  *queue = nullptr;
+#ifdef USE_DML
+  return winmla::GetCommandQueueForSessionInput(session, nullptr, queue);
+#endif
   return nullptr;
   API_IMPL_END
 }
