@@ -702,7 +702,7 @@ Status FusedAttentionCutlass(
   p.attn_bias = data.relative_position_bias;
   p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
   p.output = data.output;
-  p.is_bsnh = true;
+  p.is_kv_bsnh = true;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float))
                     ? (data.workspace + (data.no_qkv_workspace ? 0 : (elements_qk + elements_qk + elements_v)))
                     : nullptr;

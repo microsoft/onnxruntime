@@ -54,8 +54,8 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
       p.custom_mask_type = Attention::CausalFromBottomRight;
     }
 
-    if (params.is_bsnh) {
-      // Input format is BxSxNxH, output is BxSxNxH
+    if (params.is_kv_bsnh) {
+      // Input Q, K, V format is BxSxNxH, output is BxSxNxH
       p.q_strideH = params.qk_head_size;
       p.k_strideH = params.qk_head_size;
       p.v_strideH = params.v_head_size;
@@ -72,7 +72,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
       p.v_strideB = static_cast<int64_t>(p.v_strideM) * params.kv_sequence_length;
       p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
     } else {
-      // Input format is BxNxSxH, output is BxNxSxH
+      // Input K, V format is BxNxSxH, Input Q is BxSxNxH, output is BxSxNxH
       p.q_strideH = params.qk_head_size;
       p.k_strideH = params.kv_sequence_length * params.qk_head_size;
       p.v_strideH = params.kv_sequence_length * params.v_head_size;

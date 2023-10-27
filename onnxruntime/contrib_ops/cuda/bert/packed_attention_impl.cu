@@ -507,7 +507,7 @@ Status FusedScaledDotProductAttentionCutlass(
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
   p.is_half = sizeof(T) == 2;
-  p.is_bsnh = true;
+  p.is_kv_bsnh = true;
   p.batch_size = parameters.batch_size;
   p.num_heads = parameters.num_heads;
   p.sequence_length = parameters.sequence_length;
