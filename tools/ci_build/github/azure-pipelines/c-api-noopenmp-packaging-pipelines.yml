@@ -715,6 +715,14 @@ stages:
       inputs:
         versionSpec: 6.2.1
 
+    - task: PowerShell@2
+      displayName: Install mobile workloads
+      inputs:
+        targetType: 'inline'
+        script: |
+          dotnet workload install android ios
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
     - task: MSBuild@1
       displayName: 'Restore NuGet Packages and create project.assets.json'
       inputs:
