@@ -151,6 +151,8 @@ namespace Dml
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap,
         _Inout_ std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& dmlNodePropertyMap,
         _Inout_ std::unordered_set<std::string>& requiredInitializerMap,
+        _Inout_ std::unordered_set<std::string>& dynamicCpuInputMap,
+        bool allowDmlGraphDynamicShapes,
         _Out_ bool* isDmlGraphNode
         )
     {
@@ -172,36 +174,68 @@ namespace Dml
 
             if (internalRegInfo && internalRegInfo->graphNodeFactoryRegistration)
             {
-                bool requiredCpuInputsConstant = true;
-                for (uint32_t inputIndex : internalRegInfo->requiredConstantCpuInputs)
+                if (allowDmlGraphDynamicShapes)
                 {
-                    if (inputIndex >= node.InputDefs().size() || !node.InputDefs()[inputIndex]->Exists())
+                    for (uint32_t inputIndex : internalRegInfo->requiredConstantCpuInputs)
                     {
-                        continue;
+                        if (inputIndex >= node.InputDefs().size() || !node.InputDefs()[inputIndex]->Exists())
+                        {
+                            continue;
+                        }
+
+                        const onnx::TensorProto* tensor = nullptr;
+                        const std::string& inputName = node.InputDefs()[inputIndex]->Name();
+
+                        if (graph.GetInitializedTensor(inputName, tensor))
+                        {
+                            requiredInitializerMap.insert(inputName);
+                        }
+                        else
+                        {
+                            dynamicCpuInputMap.insert(inputName);
+                        }
                     }
 
-                    const onnx::TensorProto* tensor = nullptr;
-                    const std::string& inputName = node.InputDefs()[inputIndex]->Name();
-
-                    if (!graph.GetInitializedTensor(inputName, tensor))
+                    std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
+                    if (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size())
                     {
-                        requiredCpuInputsConstant = false;
-                        break;
+                        *isDmlGraphNode = true;
+                        graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
                     }
-
-                    requiredInitializerMap.insert(inputName);
                 }
-
-                std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
-                if (requiredCpuInputsConstant &&
-                    TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
-                    !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes, internalRegInfo->requiredConstantCpuInputs) &&
-                    TryGetStaticOutputShapes(node, graphNodeProperty.first->second.outputShapes) &&
-                    !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
-                    (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
+                else
                 {
-                    *isDmlGraphNode = true;
-                    graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
+                    bool requiredCpuInputsConstant = true;
+                    for (uint32_t inputIndex : internalRegInfo->requiredConstantCpuInputs)
+                    {
+                        if (inputIndex >= node.InputDefs().size() || !node.InputDefs()[inputIndex]->Exists())
+                        {
+                            continue;
+                        }
+
+                        const onnx::TensorProto* tensor = nullptr;
+                        const std::string& inputName = node.InputDefs()[inputIndex]->Name();
+
+                        if (!graph.GetInitializedTensor(inputName, tensor))
+                        {
+                            requiredCpuInputsConstant = false;
+                            break;
+                        }
+
+                        requiredInitializerMap.insert(inputName);
+                    }
+
+                    std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
+                    if (requiredCpuInputsConstant &&
+                        TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
+                        !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes, internalRegInfo->requiredConstantCpuInputs) &&
+                        TryGetStaticOutputShapes(node, graphNodeProperty.first->second.outputShapes) &&
+                        !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
+                        (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
+                    {
+                        *isDmlGraphNode = true;
+                        graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
+                    }
                 }
             }
         }
@@ -379,8 +413,10 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
+        std::unordered_set<std::string>& dynamicCpuInputMap,
         gsl::span<const onnxruntime::NodeIndex> additionalSplittingNodes,
-        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputs)
+        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputs,
+        bool allowDmlGraphDynamicShapes)
     {
         // Nodes are uniquely identified by the name of their first output argument
         std::vector<std::unique_ptr<GraphPartition>> partitions;
@@ -443,6 +479,8 @@ namespace Dml
                     &nodeNameToPartitionMap,
                     graphNodePropertyMap,
                     requiredInitializerMap,
+                    dynamicCpuInputMap,
+                    allowDmlGraphDynamicShapes,
                     /*out*/ &isDmlGraphNode
                 );
             }
