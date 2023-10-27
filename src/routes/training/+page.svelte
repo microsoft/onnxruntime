@@ -151,7 +151,11 @@
 			<p class="text-xl">
 				On-Device Training refers to the process of training a model on an edge device, such as
 				mobile phones, embedded devices, gaming consoles, web browsers, etc. This is in contrast to
-				training a model on a server or a cloud. On-Device Training extends the Inference ecosystem to leverage data on the device for providing customized user experiences on the edge. It also preserves user privacy by training on the device.
+				training a model on a server or a cloud. On-Device Training extends the Inference ecosystem
+				 to leverage data on the device for providing customized user experiences on the edge. Once the model 
+				 is trained on the device, it can be used to get an Inference model for deployment, update 
+				 global weights for federated learning or create a checkpoint for future use. It 
+				 also preserves user privacy by training on the device.
 			</p>
 			<br />
 			<a
