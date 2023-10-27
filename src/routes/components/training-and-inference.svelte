@@ -16,10 +16,9 @@
 		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid xl:grid-cols-4 place-items-center">
 				<div class="col-span-3 text-black">
-					<h1 class="text-2xl pb-2">ONNX Runtime Web</h1>
+					<h1 class="text-2xl pb-2">Web Browsers</h1>
 					<p class="text-lg">
-						ONNX Runtime Web allows JavaScript developers to run and deploy machine learning models
-						in web browsers.
+						Run PyTorch and other ML models locally in the web browser with the cross-platform ONNX Runtime Web.
 					</p>
 				</div>
 				<div class="hidden xl:grid">
@@ -30,9 +29,9 @@
 		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid md:grid-cols-4 place-items-center">
 				<div class="col-span-3 text-black">
-					<h1 class="text-2xl pb-2">ONNX Runtime Mobile</h1>
+					<h1 class="text-2xl pb-2">Mobile Devices</h1>
 					<p class="text-lg">
-						ONNX Runtime Mobile allows you to run model inferencing on Android and iOS mobile devices.
+						Infuse your Android and iOS mobile apps with AI and take advantage of ML accelerator hardware with ONNX Runtime Mobile.
 					</p>
 				</div>
 				<div class="hidden xl:grid">
@@ -68,7 +67,7 @@
 				<div class="col-span-3 text-black">
 					<h1 class="text-2xl pb-2">On-Device Training</h1>
 					<p class="text-lg">
-						On-device training with ONNX Runtime lets developers take an inference model and train it locally on-device to deliver a more personalized and privacy-respecting experience for customers.
+						On-device training with ONNX Runtime lets developers take an inference model and train it locally to deliver a more personalized and privacy-respecting experience for customers.
 					</p>
 				</div>
 				<div class="hidden xl:grid">
