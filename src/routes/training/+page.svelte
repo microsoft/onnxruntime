@@ -26,7 +26,7 @@
 			<h1 class="text-3xl">Large Model Training</h1>
 			<br /><br />
 			<p class="text-xl">
-				ORTModule accelerates training of large transformer PyTorch models. The training time and
+				ORTModule accelerates training of large transformer based PyTorch models. The training time and
 				cost are reduced with a single line code change. It is built on top of highly successful and
 				proven technologies of ONNX Runtime and ONNX format.
 			</p>
