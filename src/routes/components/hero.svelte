@@ -69,7 +69,7 @@
 	<div class="hero-content md:my-20">
 		<div class="grid grid-cols-2 md:grid-cols-5 gap-4">
 			<div class="col-span-4 self-center md:mr-20">
-				<h1 class="text-5xl">Accelerated&nbsp; 
+				<h1 class="text-5xl">Accelerated
 				{#key activeWord}
 					<span
 						class="text-5xl"
