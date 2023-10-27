@@ -9,8 +9,7 @@
 			<h1 class="text-4xl">Generative AI</h1>
 			<br /><br />
 			<p class="text-xl">
-				Integrate the power of generative AI in your apps and services with ONNX Runtime. Broad
-				platform support and deep optimizations enable you to benefit from state of the art models
+				Integrate the power of Generative AI and Large language Models (LLMs) in your apps and services with ONNX Runtime. No matter what language you develop in or what platform you need to run on, you can make use of state-of-the-art models
 				for image synthesis, text generation, and more.
 			</p>
 			<br />
