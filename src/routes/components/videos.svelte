@@ -36,15 +36,15 @@
 		<div>
 			<iframe
 				class="w-full h-64 pb-2"
-				src="https://www.youtube.com/embed/waIeC3OIn70?si=jFs5SztQx4v9KBNj"
+				src="https://www.youtube.com/embed/lC7d_7waHLM?si=U4252VEd1t5ioZUN"
 				title="YouTube video player"
 				frameborder="0"
 				allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
 				allowfullscreen
 			/>
             <div class="text-center">
-                <a class="text-xl" href="https://www.youtube.com/watch?v=waIeC3OIn70">
-                    v1.14 ONNX Runtime - Release Review
+                <a class="text-xl" href="https://www.youtube.com/watch?v=lC7d_7waHLM">
+                    Optimize Training and Inference with ONNX Runtime (ORT/ACPT/DeepSpeed)
                 </a>
             </div>
 		</div>

@@ -6,7 +6,7 @@
 
 	const title = 'ONNX Runtime for Inferencing';
 	const description =
-		'ONNX Runtime Inference powers machine learning models in key Microsoft products and services across Office, Azure, Bing, as well as thousands of community projects.';
+		'ONNX Runtime powers machine learning models in key Microsoft products and services across Office, Azure, Bing, as well as thousands of community projects.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
 </script>
@@ -28,7 +28,7 @@
 			</p>
 			<br />
 			<a href="https://onnxruntime.ai/docs/build/inferencing.html" class="btn btn-primary"
-				>Learn how to build ONNX Runtime for inferencing →</a
+				>Learn how to install ONNX Runtime for inferencing →</a
 			>
 		</div>
 		<div class="m-auto">
@@ -295,7 +295,7 @@
 		<div class="col-span-2">
 			<h1 class="text-4xl">On-Device Training</h1>
 			<br /><br />
-			<p class="text-xl">ONNX Runtime on-device training is an extension of ORT Inferencing.</p>
+			<p class="text-xl">ONNX Runtime on-device training enables training models on edge devices without data ever leaving the device.</p>
 			<br />
 			<a href="https://www.youtube.com/watch?v=vYzWrT3A7wQ" class="btn btn-primary"
 				>Learn more about on-device training →</a
