@@ -12,6 +12,7 @@ namespace interface {
 struct IKernelContext {
   virtual ~IKernelContext() = default;
   virtual const void* InputData(int index) const = 0;
+  virtual const int64_t* InputShape(int index, size_t* num_dims) const = 0;
   virtual void* AllocateOutput(int index, const TensorShape& shape) = 0;
 };
 
@@ -21,50 +22,56 @@ struct IArg {
 
 using ArgPtr = std::unique_ptr<IArg>;
 using ArgPtrs = std::vector<ArgPtr>;
+using TensorShape = std::vector<int64_t>;
 
 template <typename T>
-struct Tensor : public IArg {
-  using MyType = Tensor<T>;
-  Tensor(IKernelContext* ctx, size_t index, bool is_input) : ctx_(ctx), index_(index), is_input_(is_input){};
-  Tensor(T* mutable_data, const TensorShape& shape) : mutable_data_(mutable_data), shape_(shape){};
-  Tensor(const T* readonly_data, const TensorShape& shape) : readonly_data_(readonly_data), shape_(shape){};
+struct ITensor : public IArg {
+  //using MyType = ITensor<T>;
+  ITensor(IKernelContext* ctx, int index) : ctx_(ctx), index_(index){};
+  const TensorShape& Shape() { return shape_; }
 
-  const TensorShape& Shape() const {
-    if (shape_.empty()) {
-      size_t num_dims = 0;
-      auto dims = ctx_->InputShape(index_, &num_dims);
-      if (dims) {
-        for (size_t i = 0; i < num_dims; ++i) {
-          shape_.push_back(dims[i]);
-        }
-      }  // else throw ...
-    }
-    return shape_;
-  }
-  size_t NumberOfElements() const {
-    const auto& shape = Shape();
-    return std::accumulate(shape.begin(), shape.end(), 1ULL, std::multiplies<size_t>{});
-  };
-  const T* Data() const {
-    if (!readonly_data_ && ctx_) {
-      readonly_data_ = reinterpret_cast<const T*>(ctx_->InputData(index_));
-    }
-    return readonly_data_;
-  }
-  T* Allocate(const TensorShape& shape) {
-    if (!mutable_data_ && ctx_) {
-      mutable_data_ = reinterpret_cast<T*>(ctx_->AllocateOutput(index_, shape));
-    }
-    return mutable_data_;
-  }
-
- private:
+ protected:
   IKernelContext* ctx_ = {};
-  size_t index_ = {};
-  bool is_input_ = {};
-  T* mutable_data_ = {};
-  mutable const T* readonly_data_ = {};
-  mutable TensorShape shape_;
+  int index_ = {};
+  TensorShape shape_;
+};
+
+template <typename T>
+struct TensorView : public ITensor<T> {
+  TensorView(IKernelContext* ctx, int index) : ITensor<T>(ctx, index) {
+    // assert ctx
+    data_ = ctx->InputData(index);
+    size_t num_dims = 0;
+    const auto* dims = ctx->InputShape(index, num_dims);
+    // assert dims
+    shape_ = TensorShape{dims, dims + num_dims};
+  }
+  TensorView(const T* data, const TensorShape& shape) : data_(data), shape_(shape){};
+  const void* Data() const {
+    return data_;
+  }
+
+ protected:
+  const T* data_ = {};
+};
+
+template <typename T>
+struct Tensor : public ITensor<T> {
+  Tensor(IKernelContext* ctx, size_t index) : ITensor<T>(ctx, index) {}
+  Tensor(T* data, const TensorShape& shape) : data_(data), shape_(shape){};
+  void* Allocate(const TensorShape shape) {
+    if (data_) {
+      return data_;
+    } else {
+      // assert ctx
+      shape_ = shape;
+      data_ = ctx->AllocateOutput(index_, shape_);
+      return data_;
+    }
+  }
+
+ protected:
+  T* data_ = {};
 };
 
 struct IKernelInfo {
@@ -72,8 +79,10 @@ struct IKernelInfo {
 };
 
 struct IKernel {
+  //explicit IKernel(const IKernelInfo&){};
+  //IKernel(const IKernel&) = delete;
   virtual ~IKernel() = default;
-  virtual void Init(IKernelInfo&){};
+  virtual void Init(IKernelInfo&) {}; //todo - as constructor
   virtual onnxruntime::Status Compute(IKernelContext*) const = 0;
 
   template <size_t ith_input, size_t ith_output, typename... Ts>

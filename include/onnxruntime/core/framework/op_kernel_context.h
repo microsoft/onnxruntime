@@ -84,6 +84,14 @@ class OpKernelContext : public interface::IKernelContext {
     return tensor->MutableDataRaw();
   }
 
+  const int64_t* InputShape(int index, size_t* num_dims) const override {
+    const auto* tensor = Input<onnxruntime::Tensor>(index);
+    const auto& shape = tensor->Shape();
+    auto dims = shape.GetDims();
+    *num_dims = dims.size();
+    return dims.data();
+  };
+
   // Fetch a required tensor output, enforcing that it is present.
   Tensor& RequiredOutput(int index, const TensorShape& shape) {
     Tensor* output_ptr = Output(index, shape);

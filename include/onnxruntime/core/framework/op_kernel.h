@@ -26,10 +26,14 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/common/gsl.h"
+
 namespace onnxruntime {
 class OpKernelContext;
 }
 #endif
+
+#include "interface/framework/kernel.h"
+
 
 namespace onnxruntime {
 
@@ -39,7 +43,7 @@ class OpKernel {
  public:
   using DoneCallback = std::function<void()>;
 
-  explicit OpKernel(const OpKernelInfo& info) : op_kernel_info_(CopyOpKernelInfo(info)) {}
+  explicit OpKernel(const OpKernelInfo& info): op_kernel_info_(CopyOpKernelInfo(info)) {}
   virtual ~OpKernel() = default;
 
   const onnxruntime::Node& Node() const;
