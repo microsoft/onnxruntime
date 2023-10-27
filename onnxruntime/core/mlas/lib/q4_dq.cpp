@@ -514,9 +514,8 @@ struct BlockwiseQuantizer {
                         const int8_t zp1 = zp_bytes[((i + 1) / QuantBlk::kRow) & 1];
 
                         const float v0 = static_cast<float>(src[i * leadingDimension + j]);
-                        const uint8_t vi0 =
-                            (uint8_t)std::min(BitsTraits<qbits>::kMaxFp,
-                                              std::max(0.0f, roundf(v0 * reciprocal_scale + zp)));
+                        const uint8_t vi0 = (uint8_t)std::clamp(roundf(v0 * reciprocal_scale + zp),
+                                                                0.0f, BitsTraits<qbits>::kMaxFp);
 
                         uint8_t vi1 = (uint8_t)zp;
                         if (i + 1 < r_end) {
@@ -527,9 +526,8 @@ struct BlockwiseQuantizer {
                                 reciprocal_scale1 = scale1 ? 1.0f / scale1 : 0.0f;
                             }
                             const float v1 = static_cast<float>(src[(i + 1) * leadingDimension + j]);
-                            vi1 = (uint8_t)std::min(
-                                BitsTraits<qbits>::kMaxFp,
-                                std::max(0.0f, roundf(v1 * reciprocal_scale1 + zp1)));
+                            vi1 = (uint8_t)std::clamp(roundf(v1 * reciprocal_scale1 + zp1), 0.0f,
+                                                      BitsTraits<qbits>::kMaxFp);
                         }
 
                         // !! 4b specific code
@@ -782,11 +780,11 @@ MlasQuantizeBlockwise(
     T* scales,
     uint8_t* zero_points,
     const T* src,
-    int32_t block_size,
+    int block_size,
     bool columnwise,
-    int32_t rows,
-    int32_t columns,
-    int32_t leading_dimension,
+    int rows,
+    int columns,
+    int leading_dimension,
     MLAS_THREADPOOL* thread_pool
     )
 {
@@ -854,11 +852,11 @@ MlasQuantizeBlockwise<float>(
     float* scales,
     uint8_t* zero_points,
     const float* src,
-    int32_t block_size,
+    int block_size,
     bool columnwise,
-    int32_t rows,
-    int32_t columns,
-    int32_t leading_dimension,
+    int rows,
+    int columns,
+    int leading_dimension,
     MLAS_THREADPOOL* thread_pool
     );
 
@@ -870,10 +868,10 @@ MlasDequantizeBlockwise(
     const uint8_t* src,
     const T* scales,
     const uint8_t* zero_points,
-    int32_t block_size,
+    int block_size,
     bool columnwise,
-    int32_t rows,
-    int32_t columns,
+    int rows,
+    int columns,
     MLAS_THREADPOOL* thread_pool
     )
 {
@@ -936,9 +934,9 @@ MlasDequantizeBlockwise<float>(
     const uint8_t* src,
     const float* scales,
     const uint8_t* zero_points,
-    int32_t block_size,
+    int block_size,
     bool columnwise,
-    int32_t rows,
-    int32_t columns,
+    int rows,
+    int columns,
     MLAS_THREADPOOL* thread_pool
     );
