@@ -104,7 +104,6 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
     float* o_scales = OutputScales.GetBuffer(meta_rows * meta_cols);
     uint8_t* o_zp = symmetric ? nullptr : OutputOffsets.GetBuffer(((meta_rows + 1) / 2) * meta_cols, true);
 
-
     MlasQuantizeBlockwise(o_elements, o_scales, o_zp, transposed, block_size, columnwise, rows, columns, columns, threadpool_ptr);
 
     for (int c = 0; c < columns; c++) {
@@ -119,7 +118,7 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
               << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
         }
       }
-	}
+    }
 
     for (int c = 0; c < meta_cols; c++) {
       for (int r = 0; r < meta_rows; r++) {
@@ -144,7 +143,6 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
         }
       }
     }
-
   }
 
  public:
