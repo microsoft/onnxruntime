@@ -60,7 +60,7 @@
 		class="grid lg:grid-cols-8 md:grid-cols-4 grid-cols-2 gap-4 mx-auto justify-items-center pt-10"
 	>
 		<a
-			href="./testimonials#amd"
+			href="./testimonials#AMD"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full w-full"
@@ -68,7 +68,7 @@
 			<img class="h-20 mx-auto"src={amdLogo} alt="AMD" />
 		</a>
 		<a
-			href="./testimonials#huggingface"
+			href="./testimonials#Hugging%20Face"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full w-full"
@@ -76,7 +76,7 @@
 			<img class="h-20 mx-auto"src={huggingfaceLogo} alt="HuggingFace" />
 		</a>
 		<a
-			href="./testimonials#intel"
+			href="./testimonials#Intel"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full"
@@ -84,7 +84,7 @@
 			<img class="h-20 mx-auto"src={intelLogo} alt="Intel" />
 		</a>
 		<a
-			href="./testimonials#nvidia"
+			href="./testimonials#NVIDIA"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full"
@@ -92,7 +92,7 @@
 			<img class="h-20 mx-auto"src={nvidiaLogo} alt="Nvidia" />
 		</a>
 		<a
-			href="./testimonials#adobe"
+			href="./testimonials#Adobe"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full"
@@ -100,7 +100,7 @@
 			<img class="h-20 mx-auto"src={adobeLogo} alt="Adobe" />
 		</a>
 		<a
-			href="./testimonials#unreal"
+			href="./testimonials#Unreal%20Engine"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full"
@@ -108,7 +108,7 @@
 			<img class="h-20 mx-auto"src={unrealEngineLogo} alt="Unreal Engine" />
 		</a>
 		<a
-			href="./testimonials#oracle"
+			href="./testimonials#Oracle"
 			on:mouseenter={handleEnter}
 			on:mouseleave={handleLeave}
 			class="partner bg-slate-300 border-solid border-2 border-secondary rounded w-full"
