@@ -163,6 +163,6 @@
 <style>
 	.tab-container {
 		min-width: 675px;
-		min-height: 525px;
+		min-height: 400px;
 	}
 </style>
