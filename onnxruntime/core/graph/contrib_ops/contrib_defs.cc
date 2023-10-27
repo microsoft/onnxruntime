@@ -2573,6 +2573,124 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC"));
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+#define GEMM_FLOAT8_TYPES \
+  { "tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
+#else
+#define GEMM_FLOAT8_TYPES \
+  { "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
+#endif
+
+ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(Generic Gemm for float and float 8.)DOC")
+                                .Attr(
+                                    "transA",
+                                    "Whether A should be transposed. Float 8 only supprted transA=0.",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(0))
+                                .Attr(
+                                    "transB",
+                                    "Whether B should be transposed. Float 8 only supprted transB=1.",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(0))
+                                .Attr(
+                                    "alpha",
+                                    "Scalar multiplier for the product of input tensors A * B.",
+                                    AttributeProto::FLOAT,
+                                    1.0f)
+                                .Attr(
+                                    "beta",
+                                    "Scalar multiplier for the product of input bias C.",
+                                    AttributeProto::FLOAT,
+                                    0.0f)
+                                .Attr(
+                                    "dtype",
+                                    "Output Type. Same definition as attribute 'to' for operator Cast.",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(1))
+                                .Attr(
+                                    "activation",
+                                    "Activation function, RELU or GELU or NONE (default).",
+                                    AttributeProto::STRING,
+                                    OPTIONAL_VALUE)
+                                .Input(
+                                    0,
+                                    "A",
+                                    "Input tensor A. "
+                                    "The shape of A should be (M, K) if transA is 0, "
+                                    "or (K, M) if transA is non-zero.",
+                                    "TA")
+                                .Input(
+                                    1,
+                                    "B",
+                                    "Input tensor B. "
+                                    "The shape of B should be (K, N) if transB is 0, "
+                                    "or (N, K) if transB is non-zero.",
+                                    "TB")
+                                .Input(
+                                    2,
+                                    "C",
+                                    "Input tensor C.",
+                                    "TC",
+                                    OpSchema::Optional)
+                                .Input(
+                                    3,
+                                    "scaleA",
+                                    "Scale of tensor A if A is float 8 tensor",
+                                    "TS",
+                                    OpSchema::Optional)
+                                .Input(
+                                    4,
+                                    "scaleB",
+                                    "Scale of tensor B if B is float 8 tensor",
+                                    "TS",
+                                    OpSchema::Optional)
+                                .Input(
+                                    5,
+                                    "scaleY",
+                                    "Scale of the output tensor if A or B is float 8.",
+                                    "TS",
+                                    OpSchema::Optional)
+                                .Output(0, "Y", "Output tensor of shape (M, N).", "TR")
+                                .TypeConstraint(
+                                    "TA",
+                                    GEMM_FLOAT8_TYPES,
+                                    "Constrain type to input A.")
+                                .TypeConstraint(
+                                    "TB",
+                                    GEMM_FLOAT8_TYPES,
+                                    "Constrain type to input B.")
+                                .TypeConstraint(
+                                    "TC",
+                                    {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                                    "Constrain type to input C.")
+                                .TypeConstraint(
+                                    "TR",
+                                    GEMM_FLOAT8_TYPES,
+                                    "Constrain type to result type.")
+                                .TypeConstraint("TS", {"tensor(float)"},
+                                                "Constrain type for all input scales (scaleA, scaleB, scaleY).")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0, TensorProto::FLOAT);
+                                  if (!hasNInputShapes(ctx, 2)) {
+                                    return;
+                                  }
+                                  auto transAAttr = ctx.getAttribute("transA");
+                                  bool transA = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+                                  auto transBAttr = ctx.getAttribute("transB");
+                                  bool transB = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+                                  auto& first_input_shape = getInputShape(ctx, 0);
+                                  auto& second_input_shape = getInputShape(ctx, 1);
+                                  if (first_input_shape.dim_size() != 2) {
+                                    fail_shape_inference("First input does not have rank 2");
+                                  }
+                                  if (second_input_shape.dim_size() != 2) {
+                                    fail_shape_inference("Second input does not have rank 2");
+                                  }
+                                  updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
+                                }));
+
 static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                 int64_t K,
                                                 int64_t N) {
