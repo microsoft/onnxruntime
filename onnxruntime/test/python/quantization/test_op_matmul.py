@@ -290,117 +290,133 @@ class TestOpMatMul(unittest.TestCase):
             op_matmul=True,
         )
 
-    def test_quantize_matmul_u8u8(self):
-        for tt in [onnx.TensorProto.FLOAT, onnx.TensorProto.FLOAT16]:
-            with self.subTest(type=tt):
-                np.random.seed(1)
-                model_fp_path = "matmul_fp.onnx"
-                self.construct_model_matmul(model_fp_path, tensor_type=tt)
-                data_reader = self.input_feeds(
-                    1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
-                )
+    def quantize_matmul_u8u8(self, tt):
+        np.random.seed(1)
+        model_fp_path = "matmul_fp.onnx"
+        self.construct_model_matmul(model_fp_path, tensor_type=tt)
+        data_reader = self.input_feeds(
+            1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
+        )
 
-                self.static_quant_test(
-                    model_fp_path,
-                    data_reader,
-                    activation_type=QuantType.QUInt8,
-                    weight_type=QuantType.QUInt8,
-                )
-                self.static_quant_test_qdq(
-                    model_fp_path,
-                    data_reader,
-                    activation_type=QuantType.QUInt8,
-                    weight_type=QuantType.QUInt8,
-                )
-                self.dynamic_quant_test(
-                    model_fp_path,
-                    data_reader,
-                    activation_type=QuantType.QUInt8,
-                    weight_type=QuantType.QUInt8,
-                )
+        self.static_quant_test(
+            model_fp_path,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QUInt8,
+        )
+        self.static_quant_test_qdq(
+            model_fp_path,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QUInt8,
+        )
+        self.dynamic_quant_test(
+            model_fp_path,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QUInt8,
+        )
+
+    def test_quantize_matmul_u8u8(self):
+        self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT)
+
+    def test_quantize_matmul_u8u8_f16(self):
+        self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT16)
+
+    def quantize_matmul_s8s8(self, tt):
+        np.random.seed(1)
+        model_fp_path = "matmul_fp.onnx"
+        self.construct_model_matmul(model_fp_path, tensor_type=tt)
+        data_reader = self.input_feeds(
+            1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
+        )
+
+        self.static_quant_test(
+            model_fp_path,
+            data_reader,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+            extra_options={"ActivationSymmetric": True},
+        )
+        self.static_quant_test_qdq(
+            model_fp_path,
+            data_reader,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+            extra_options={"ActivationSymmetric": True},
+        )
+
+        # dynamic quantization doesn't support activation:int8
+        # self.dynamic_quant_test(model_fp_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
+        #                        extra_options={'ActivationSymmetric': True})
 
     def test_quantize_matmul_s8s8(self):
-        for tt in [onnx.TensorProto.FLOAT, onnx.TensorProto.FLOAT16]:
-            with self.subTest(type=tt):
-                np.random.seed(1)
-                model_fp_path = "matmul_fp.onnx"
-                self.construct_model_matmul(model_fp_path, tensor_type=tt)
-                data_reader = self.input_feeds(
-                    1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
-                )
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT)
 
-                self.static_quant_test(
-                    model_fp_path,
-                    data_reader,
-                    activation_type=QuantType.QInt8,
-                    weight_type=QuantType.QInt8,
-                    extra_options={"ActivationSymmetric": True},
-                )
-                self.static_quant_test_qdq(
-                    model_fp_path,
-                    data_reader,
-                    activation_type=QuantType.QInt8,
-                    weight_type=QuantType.QInt8,
-                    extra_options={"ActivationSymmetric": True},
-                )
+    def test_quantize_matmul_s8s8_f16(self):
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16)
 
-                # dynamic quantization doesn't support activation:int8
-                # self.dynamic_quant_test(model_fp_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
-                #                        extra_options={'ActivationSymmetric': True})
+    def quantize_matmul_e4m3fn_same(self, tt):
+        np.random.seed(1)
+        model_fp_path = "matmul_fp.onnx"
+        self.construct_model_matmul(model_fp_path, add_clip=False, tensor_type=tt)
+        data_reader = self.input_feeds(
+            1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
+        )
+
+        self.static_quant_test_qdq(
+            model_fp_path,
+            data_reader,
+            activation_type=QuantType.QFLOAT8E4M3FN,
+            weight_type=QuantType.QFLOAT8E4M3FN,
+            extra_options={"scenario": "same"},
+            calibrate_method=CalibrationMethod.Distribution,
+        )
+        self.static_quant_test(
+            model_fp_path,
+            data_reader,
+            activation_type=QuantType.QFLOAT8E4M3FN,
+            weight_type=QuantType.QFLOAT8E4M3FN,
+            extra_options={"scenario": "same"},
+            calibrate_method=CalibrationMethod.Distribution,
+        )
 
     def test_quantize_matmul_e4m3fn_same(self):
-        for tt in [onnx.TensorProto.FLOAT, onnx.TensorProto.FLOAT16]:
-            with self.subTest(type=tt):
-                np.random.seed(1)
-                model_fp_path = "matmul_fp.onnx"
-                self.construct_model_matmul(model_fp_path, add_clip=False, tensor_type=tt)
-                data_reader = self.input_feeds(
-                    1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
-                )
+        self.quantize_matmul_e4m3fn_same(onnx.TensorProto.FLOAT)
 
-                self.static_quant_test_qdq(
-                    model_fp_path,
-                    data_reader,
-                    activation_type=QuantType.QFLOAT8E4M3FN,
-                    weight_type=QuantType.QFLOAT8E4M3FN,
-                    extra_options={"scenario": "same"},
-                    calibrate_method=CalibrationMethod.Distribution,
-                )
-                self.static_quant_test(
-                    model_fp_path,
-                    data_reader,
-                    activation_type=QuantType.QFLOAT8E4M3FN,
-                    weight_type=QuantType.QFLOAT8E4M3FN,
-                    extra_options={"scenario": "same"},
-                    calibrate_method=CalibrationMethod.Distribution,
-                )
+    def test_quantize_matmul_e4m3fn_same_f16(self):
+        self.quantize_matmul_e4m3fn_same(onnx.TensorProto.FLOAT16)
+
+    def quantize_matmul_e4m3fn_p3(self, tt):
+        np.random.seed(1)
+        model_fp_path = "matmul_fp.onnx"
+        self.construct_model_matmul(model_fp_path, add_clip=False, tensor_type=tt)
+        data_reader = self.input_feeds(
+            1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
+        )
+
+        self.static_quant_test_qdq(
+            model_fp_path,
+            data_reader,
+            activation_type=QuantType.QFLOAT8E4M3FN,
+            weight_type=QuantType.QFLOAT8E4M3FN,
+            extra_options={"scenario": "p3"},
+            calibrate_method=CalibrationMethod.Distribution,
+        )
+        self.static_quant_test(
+            model_fp_path,
+            data_reader,
+            activation_type=QuantType.QFLOAT8E4M3FN,
+            weight_type=QuantType.QFLOAT8E4M3FN,
+            extra_options={"scenario": "p3"},
+            calibrate_method=CalibrationMethod.Distribution,
+        )
 
     def test_quantize_matmul_e4m3fn_p3(self):
-        for tt in [onnx.TensorProto.FLOAT, onnx.TensorProto.FLOAT16]:
-            with self.subTest(type=tt):
-                np.random.seed(1)
-                model_fp_path = "matmul_fp.onnx"
-                self.construct_model_matmul(model_fp_path, add_clip=False, tensor_type=tt)
-                data_reader = self.input_feeds(
-                    1, {"input": [5, 10]}, np.float32 if tt == onnx.TensorProto.FLOAT else np.float16
-                )
+        self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT)
 
-                self.static_quant_test_qdq(
-                    model_fp_path,
-                    data_reader,
-                    activation_type=QuantType.QFLOAT8E4M3FN,
-                    weight_type=QuantType.QFLOAT8E4M3FN,
-                    extra_options={"scenario": "p3"},
-                    calibrate_method=CalibrationMethod.Distribution,
-                )
-                self.static_quant_test(
-                    model_fp_path,
-                    data_reader,
-                    activation_type=QuantType.QFLOAT8E4M3FN,
-                    weight_type=QuantType.QFLOAT8E4M3FN,
-                    extra_options={"scenario": "p3"},
-                    calibrate_method=CalibrationMethod.Distribution,
-                )
+    def test_quantize_matmul_e4m3fn_p3_f16(self):
+        self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT16)
 
 
 if __name__ == "__main__":
