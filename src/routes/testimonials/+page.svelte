@@ -245,10 +245,10 @@
 			imgalt: 'USDA logo'
 		},
 		{
-			title: 'Vespa.ai, Verizon Media',
+			title: 'Vespa.ai',
 			quote:
 				"ONNX Runtime has vastly increased Vespa.ai's capacity for evaluating large models, both in performance and model types we support.",
-			author: 'Lester Solbakken, Principal Engineer, Vespa.ai, Verizon Media',
+			author: 'Lester Solbakken, Principal Engineer, Vespa.ai',
 			imgsrc: vespalogo,
 			imgalt: 'Vespa logo'
 		},
