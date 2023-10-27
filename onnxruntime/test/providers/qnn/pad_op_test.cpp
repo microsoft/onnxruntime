@@ -301,8 +301,6 @@ TEST_F(QnnHTPBackendTests, Pad4dReflectMode) {
                            has_constant_value_input);
 }
 
-
-
 TEST_F(QnnHTPBackendTests, PadEdgeMode) {
   bool has_constant_value_input = false;
   RunQDQPadOpTest<uint8_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
