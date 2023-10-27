@@ -32,8 +32,8 @@ def get_rank():
 
 
 def get_size():
-    return 4
-    #return comm.Get_size()
+    #return 4
+    return comm.Get_size()
 
 
 def barrier():

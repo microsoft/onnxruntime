@@ -88,7 +88,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     start_time = time.time()
-    #pt_outputs = pt_model(**inputs).logits.detach().cpu().numpy()
+    pt_outputs = pt_model(**inputs).logits.detach().cpu().numpy()
     if args.execution_provider != "cpu":
         torch.cuda.synchronize()
     end_time = time.time()
