@@ -41,6 +41,7 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
     return false;
   }
 
+  // Since opset 11, pad constant value becomes part of input instead of attribute.
   if (node.InputDefs().size() > 2) {
     const auto* pad_constant_value_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[2]->Name());
     Initializer pad_constant_value{*pad_constant_value_proto, graph.ModelPath()};
