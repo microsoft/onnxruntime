@@ -2113,7 +2113,7 @@ def build_nuget_package(
     extra_options = ["/p:" + option for option in msbuild_extra_options]
 
     # we have to use msbuild directly if including Xamarin targets as dotnet only supports MAUI (.net6)
-    use_dotnet = not (is_windows() and sln == "OnnxRuntime.CSharp.sln")
+    use_dotnet = sln != "OnnxRuntime.CSharp.sln"
 
     if use_dotnet:
         cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config", *extra_options]
