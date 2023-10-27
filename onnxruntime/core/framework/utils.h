@@ -121,6 +121,7 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                bool sync_subgraph_fetches = false);
 
 bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
+bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 
 template <typename T>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() {

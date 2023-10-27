@@ -249,7 +249,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
       if (!arg->Exists())
         continue;
 
-      if (kci && kci->kernel_def->IsOutputOnCpu(i))
+      if (utils::IsOutputOnCpu(node, kci, i))
         non_provider_output_defs_.insert(arg);
       else
         provider_output_defs_.insert(arg);
@@ -308,7 +308,7 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, co
         if (!kci || !utils::IsInputOnCpu(it, kci, arg_input_index)) provider_input_nodes_[arg].insert(&it);
       }
       if (arg_output_index != -1) {
-        if (!kci || !kci->kernel_def->IsOutputOnCpu(arg_output_index)) provider_output_nodes_[arg].insert(&it);
+        if (!kci || !utils::IsOutputOnCpu(it, kci, arg_output_index)) provider_output_nodes_[arg].insert(&it);
       }
     }
   }
@@ -404,8 +404,8 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
     // normally initializers are only inputs, but things may change with ops like assign
     ORT_THROW_IF_ERROR(Node::ForEachWithIndex(
         p_node->OutputDefs(),
-        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
-          if (kci->kernel_def->IsOutputOnCpu(index)) {
+        [kci, &p_node, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+          if (utils::IsOutputOnCpu(*p_node, kci, index)) {
             ORT_ENFORCE(dup_replacements.find(&arg) == dup_replacements.end());
           }
           return Status::OK();
