@@ -11,7 +11,7 @@
 	import { fade, fly, blur } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 
-	let words = ['Cross-Platform', 'Python', 'C#', 'JavaScript', 'Java', 'C++'];
+	let words = ['Cross-Platform', 'GPU', 'Python', 'CPU', 'Mobile', 'C#', 'Edge', 'JavaScript', 'Java', 'C++', 'Browser'];
 	let activeWord = 'Cross-Platform';
 	let currentWord = 0;
 	let cycleWord = () => {
