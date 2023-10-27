@@ -154,7 +154,7 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
 
   assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
-  const int H = head_size / 4; // divide by 4 so kernel can operate on 4 float16 elements at a time.
+  const int H = head_size / 4;  // divide by 4 so kernel can operate on 4 float16 elements at a time.
   if (H * kv_num_heads <= max_threads_per_block) {
     const dim3 grid(present_sequence_length, batch_size, 1);
     const dim3 block(H, kv_num_heads, 1);

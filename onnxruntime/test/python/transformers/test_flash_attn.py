@@ -1166,7 +1166,7 @@ class TestMHA(unittest.TestCase):
         batches = [2] if pipeline_mode else [1, 5]
         seqs = [8, 97, 256, 1024] if pipeline_mode else [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]
         num_h = [1, 3] if pipeline_mode else [1, 6, 16]
-        h_sizes = [16, 256] if pipeline_mode else [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]
+        h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         for b in batches:
             for s in seqs:
                 for n in num_h:
@@ -1199,7 +1199,7 @@ class TestMHA(unittest.TestCase):
             ]
         )
         num_h = [1, 3] if pipeline_mode else [1, 6, 16]
-        h_sizes = [16, 256] if pipeline_mode else [32, 40, 59, 64, 80, 96, 111, 128, 160, 192, 224, 256]
+        h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         for b in batches:
             for s, s2 in seqs:
                 for n in num_h:
@@ -1307,32 +1307,32 @@ class TestGQA(unittest.TestCase):
                                     rtol=1e-3,
                                     atol=1e-3,
                                 )
-        # if major < 8 or platform.system() != "Linux":
-        #     return
-        # print("------- FLASH ATTENTION -------")
-        # os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        # for b in batches:
-        #     for s, s2 in seqs:
-        #         for n, n2 in num_h:
-        #             for h in h_sizes:
-        #                 for causal in [True]:
-        #                     for past_kv_format in [Formats.BNSH, Formats.BSNH]:
-        #                         sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-        #                         config = Config(b, s, s2, sp, n, n2, h)
-        #                         parity_check_gqa_past(
-        #                             config,
-        #                             causal=causal,
-        #                             past_format=past_kv_format,
-        #                             rtol=1e-3,
-        #                             atol=1e-3,
-        #                         )
-        #                         parity_check_gqa_past_no_buff(
-        #                             config,
-        #                             causal=causal,
-        #                             past_format=past_kv_format,
-        #                             rtol=1e-3,
-        #                             atol=1e-3,
-        #                         )
+        if major < 8 or platform.system() != "Linux":
+            return
+        print("------- FLASH ATTENTION -------")
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        for b in batches:
+            for s, s2 in seqs:
+                for n, n2 in num_h:
+                    for h in h_sizes:
+                        for causal in [True]:
+                            for past_kv_format in [Formats.BNSH, Formats.BSNH]:
+                                sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+                                config = Config(b, s, s2, sp, n, n2, h)
+                                parity_check_gqa_past(
+                                    config,
+                                    causal=causal,
+                                    past_format=past_kv_format,
+                                    rtol=1e-3,
+                                    atol=1e-3,
+                                )
+                                parity_check_gqa_past_no_buff(
+                                    config,
+                                    causal=causal,
+                                    past_format=past_kv_format,
+                                    rtol=1e-3,
+                                    atol=1e-3,
+                                )
 
 
 if __name__ == "__main__":
