@@ -304,11 +304,11 @@ MlasQuantizeBlockwise(
     ElementT* scales,
     uint8_t* zero_points,
     const ElementT* src,
-    int32_t block_size,
+    int block_size,
     bool columnwise,
-    int32_t rows,
-    int32_t columns,
-    int32_t leading_dimension,
+    int rows,
+    int columns,
+    int leading_dimension,
     MLAS_THREADPOOL* thread_pool
     );
 
@@ -337,9 +337,9 @@ MlasDequantizeBlockwise(
     const uint8_t* src,
     const ElementT* scales,
     const uint8_t* zero_points,
-    int32_t block_size,
+    int block_size,
     bool columnwise,
-    int32_t rows,
-    int32_t columns,
+    int rows,
+    int columns,
     MLAS_THREADPOOL* thread_pool
     );
