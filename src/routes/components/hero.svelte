@@ -69,17 +69,19 @@
 	<div class="hero-content md:my-20">
 		<div class="grid grid-cols-2 md:grid-cols-5 gap-4">
 			<div class="col-span-4 self-center md:mr-20">
+				<h1 class="text-5xl">
 				{#key activeWord}
-					<h1
+					<span
 						class="text-5xl"
 						in:fly={{ delay: 0, duration: 300, x: 200, y: 0, opacity: 1, easing: quintOut }}
 					>
 						{activeWord}
-					</h1>
+					</span>
 				{/key}
+				</h1>
 				<h1 class="text-5xl">accelerated machine learning</h1>
 				<p class="py-3">
-					Built-in optimizations speed up training and inferencing with your existing technology
+					Production-grade AI engine to speed up training and inferencing in your existing technology
 					stack.
 				</p>
 				<p class="text-xl my-4">In a rush? Get started easily:</p>
