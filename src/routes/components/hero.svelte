@@ -15,7 +15,7 @@
 	let activeWord = 'Cross-Platform';
 	let currentWord = 0;
 	let cycleWord = () => {
-		currentWord = (currentWord + 1) % 6;
+		currentWord = (currentWord + 1) % words.length;
 		activeWord = words[currentWord];
 		if (currentWord == 0) {
 			setTimeout(cycleWord, 5000);
