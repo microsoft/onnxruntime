@@ -5,10 +5,13 @@
 
 #include "interface/common/data_types.h"
 #include "interface/framework/tensor.h"
+#include "core/common/status.h"
 
 namespace onnxruntime {
 
 namespace interface {
+
+using TensorShape = std::vector<int64_t>;
 
 struct IKernelContext {
   virtual ~IKernelContext() = default;
@@ -23,14 +26,19 @@ struct IArg {
 
 using ArgPtr = std::unique_ptr<IArg>;
 using ArgPtrs = std::vector<ArgPtr>;
-using TensorShape = std::vector<int64_t>;
 
 template <typename T>
 struct ITensor : public IArg {
   //using MyType = ITensor<T>;
-  ITensor(IKernelContext* ctx, int index) : ctx_(ctx), index_(index){};
+  ITensor(IKernelContext* ctx = {}, int index = -1) : ctx_(ctx), index_(index){};
   const TensorShape& Shape() { return shape_; }
-
+  size_t NumberOfElements() const {
+    if (shape_.empty()) {
+      return 0;
+    } else {
+      return std::accumulate(shape_.begin(), shape_.end(), 1ULL, std::multiplies<size_t>{});
+    }
+  }
  protected:
   IKernelContext* ctx_ = {};
   int index_ = {};
@@ -40,15 +48,15 @@ struct ITensor : public IArg {
 template <typename T>
 struct TensorView : public ITensor<T> {
   TensorView(IKernelContext* ctx, int index) : ITensor<T>(ctx, index) {
-    // assert ctx
-    data_ = ctx->InputData(index);
+    data_ = reinterpret_cast<const T*>(ctx->InputData(index));
     size_t num_dims = 0;
-    const auto* dims = ctx->InputShape(index, num_dims);
-    // assert dims
+    const auto* dims = ctx->InputShape(index, &num_dims);
     shape_ = TensorShape{dims, dims + num_dims};
   }
-  TensorView(const T* data, const TensorShape& shape) : data_(data), shape_(shape){};
-  const void* Data() const {
+  TensorView(const T* data, const TensorShape& shape) : data_(data) {
+    shape_ = shape;
+  };
+  const T* Data() const {
     return data_;
   }
 
@@ -59,14 +67,16 @@ struct TensorView : public ITensor<T> {
 template <typename T>
 struct Tensor : public ITensor<T> {
   Tensor(IKernelContext* ctx, size_t index) : ITensor<T>(ctx, index) {}
-  Tensor(T* data, const TensorShape& shape) : data_(data), shape_(shape){};
-  void* Allocate(const TensorShape shape) {
+  Tensor(T* data, const TensorShape& shape) : data_(data) {
+    shape_ = shape;
+  };
+  T* Allocate(const TensorShape& shape) {
     if (data_) {
       return data_;
     } else {
       // assert ctx
       shape_ = shape;
-      data_ = ctx->AllocateOutput(index_, shape_);
+      data_ = reinterpret_cast<T*>(ctx_->AllocateOutput(index_, shape_));
       return data_;
     }
   }
@@ -80,20 +90,19 @@ struct IKernelInfo {
 };
 
 struct IKernel {
-  //explicit IKernel(const IKernelInfo&){};
-  //IKernel(const IKernel&) = delete;
+  explicit IKernel() = default;
+  explicit IKernel(const IKernelInfo&){};
   virtual ~IKernel() = default;
-  virtual void Init(IKernelInfo&) {}; //todo - as constructor
   virtual onnxruntime::Status Compute(IKernelContext*) const = 0;
 
-  template <size_t ith_input, size_t ith_output, typename... Ts>
+  template <int ith_input, int ith_output, typename... Ts>
   static typename std::enable_if<sizeof...(Ts) == 0, std::tuple<>>::type
   CreateTuple(IKernelContext*, ArgPtrs&) {
     return std::make_tuple();
   }
 
   // inputs
-  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  template <int ith_input, int ith_output, typename T, typename... Ts>
   static typename std::enable_if<std::is_same<T, TensorView<float>&>::value, std::tuple<T, Ts...>>::type
   CreateTuple(IKernelContext* context, ArgPtrs& args) {
     args.push_back(std::make_unique<TensorView<float>>(context, ith_input));
@@ -103,7 +112,7 @@ struct IKernel {
   }
 
   // outputs
-  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  template <int ith_input, int ith_output, typename T, typename... Ts>
   static typename std::enable_if<std::is_same<T, Tensor<float>&>::value, std::tuple<T, Ts...>>::type
   CreateTuple(IKernelContext* context, ArgPtrs& args) {
     args.push_back(std::make_unique<Tensor<float>>(context, ith_output));
@@ -132,7 +141,8 @@ template <typename K>
 struct StructKernel : public IKernel {
   template <typename... Args>
   using ComputeFn = onnxruntime::Status (K::*)(Args...);
-  void Init(IKernelInfo& info) override {
+
+  explicit StructKernel(const IKernelInfo& info) {
     kernel_ = std::make_unique<K>(info);
   }
   onnxruntime::Status Compute(IKernelContext* context) const override {
@@ -172,18 +182,23 @@ struct IKernelBuilder {
   template <typename... Args>
   IKernelBuilder& ParseFn(onnxruntime::Status (*compute_fn)(Args...)) {
     using KernelType = FnKernel<Args...>;
-    kernel_ = std::make_unique<KernelType>(compute_fn);
+    create_kernel_fn_ = [&](const IKernelInfo&) {
+      return std::make_unique<KernelType>(compute_fn);
+    };
     return ParseArgs<0, 0, Args...>();
   }
 
   template <typename K, typename... Args>
   IKernelBuilder& ParseStruct(onnxruntime::Status (K::*compute_fn)(Args...)) {
     using KernelType = StructKernel<K>;
-    kernel_ = std::make_unique<KernelType>();
+    create_kernel_fn_ = [&](const IKernelInfo& info) {
+      return std::make_unique<KernelType>(info);
+    };
     return ParseArgs<0, 0, Args...>();
   }
 
-  std::unique_ptr<IKernel> kernel_;
+  std::function<std::unique_ptr<IKernel>(const IKernelInfo&)> create_kernel_fn_ =
+      [](const IKernelInfo&) -> std::unique_ptr<IKernel> { return {}; };
 };
 
 struct IKernelRegistry {

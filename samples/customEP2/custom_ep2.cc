@@ -8,46 +8,46 @@
 #include "core/framework/ortmemoryinfo.h"
 
 namespace onnxruntime {
-void KernelTwo(const Ort::Custom::Tensor<float>& X,
-               Ort::Custom::Tensor<int32_t>& Y) {
-  const auto& shape = X.Shape();
-  auto X_raw = X.Data();
-  auto Y_raw = Y.Allocate(shape);
-  auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
-  for (int64_t i = 0; i < total; i++) {
-    Y_raw[i] = static_cast<int32_t>(round(X_raw[i]));
-  }
-  std::cout<<"In KernelTwo()\n";
-}
 
-void MyRelu(const Ort::Custom::Tensor<float>& X, Ort::Custom::Tensor<float>& Y) {
-  const auto& shape = X.Shape();
-  auto X_raw = X.Data();
-  auto Y_raw = Y.Allocate(shape);
-  auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
-  for (int64_t i = 0; i < total; i++) {
-    Y_raw[i] = X_raw[i] > 0 ? X_raw[i] : 0;
+/////////////////////////////////////// POC Kernels ////////////////////////////////////////////
+onnxruntime::Status Identity(onnxruntime::interface::TensorView<float>& input,
+                             onnxruntime::interface::Tensor<float>& output) {
+  const auto& shape = input.Shape();
+  const float* input_data = input.Data();
+  float* output_data = output.Allocate(shape);
+  size_t number_of_elements = input.NumberOfElements();
+  for (size_t i = 0; i < number_of_elements; ++i) {
+      output_data[i] = input_data[i];
   }
-  std::cout<<"In MyRelu()\n";
+  return onnxruntime::Status::OK();
 }
+struct Celu {
+  Celu(const interface::IKernelInfo&) {}
+  onnxruntime::Status Compute(onnxruntime::interface::TensorView<float>& input,
+                              onnxruntime::interface::Tensor<float>& output) {
+      const auto& shape = input.Shape();
+      const float* input_data = input.Data();
+      float* output_data = output.Allocate(shape);
+      size_t number_of_elements = input.NumberOfElements();
 
-void MyMax(const Ort::Custom::Variadic& inputs, Ort::Custom::Tensor<float>& output) {
-  const auto& shape = inputs[0]->Shape();
-  const float* raw_input0 = reinterpret_cast<const float*>(inputs[0]->DataRaw());
-  auto raw = output.Allocate(shape);
-  auto num_elements = inputs[0]->NumberOfElement();
-  for (int64_t i = 0; i < num_elements; i++) raw[i] = raw_input0[i];
+      onnxruntime::interface::TensorView<float> identity_input(input_data, shape);
+      onnxruntime::interface::Tensor<float> identity_output(output_data, shape);
+      auto status = Identity(identity_input, identity_output);
+      if (!status.IsOK()) {
+        return status;
+      }
 
-  for (size_t ith_input = 1; ith_input < inputs.Size(); ++ith_input) {
-    const auto& input = inputs[ith_input];
-    const float* raw_input = reinterpret_cast<const float*>(input->DataRaw());
-    num_elements = input->NumberOfElement();
-    for (int64_t jth_elem = 0; jth_elem < num_elements; ++jth_elem) {
-      raw[jth_elem] = std::max(raw[jth_elem], raw_input[jth_elem]);
-    }
+      for (size_t i = 0; i < number_of_elements; ++i) {
+        if (input_data[i] < 0) {
+          output_data[i] = 0.f;
+        }
+      }
+
+      return onnxruntime::Status::OK();
   }
-  std::cout<<"In MyMax()\n";
-}
+  float alpha = 0.f;
+};
+/////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct CustomCPUAllocator : public OrtAllocator {
   CustomCPUAllocator() {
@@ -77,11 +77,12 @@ private:
 
 CustomEp2::CustomEp2(const CustomEp2Info& info) : info_{info} {
     type_ = "customEp2";
+    /*
     std::unique_ptr<Ort::Custom::ExternalKernelDef> p(Ort::Custom::CreateExternalKernelDef("Relu", type_.c_str(), MyRelu, "ai.onnx", 14));
     std::unique_ptr<Ort::Custom::ExternalKernelDef> pp(Ort::Custom::CreateExternalKernelDef("Max", type_.c_str(), MyMax, "ai.onnx", 13));
     kernel_definitions_.push_back(std::move(p));
     kernel_definitions_.push_back(std::move(pp));
-
+    */
     allocators_.push_back(std::make_unique<CustomCPUAllocator>().release());  // TODO: release resource
 }
 
@@ -102,6 +103,11 @@ std::vector<std::unique_ptr<SubGraphDef>> CustomEp2::GetCapability(interface::Gr
 
 common::Status CustomEp2::Compile(std::vector<std::unique_ptr<interface::GraphViewRef>>&, std::vector<std::unique_ptr<interface::NodeViewRef>>&, std::vector<NodeComputeInfo>&) {
   return common::Status::OK();
+}
+
+void CustomEp2::RegisterKernels(interface::IKernelRegistry& kernel_registry) {
+  interface::IKernelBuilder& identity_builder = kernel_registry.RegisterKernel("customEp2", "ai.onnx", "Identity", 10, 19, Identity);
+  interface::IKernelBuilder& celu_builder = kernel_registry.RegisterKernel<Celu>("customEp2", "ai.onnx", "Celu", 10, 19);
 }
 
 CustomEp2Info ProviderOption2CustomEpInfo(std::unordered_map<std::string, std::string>& provider_option) {

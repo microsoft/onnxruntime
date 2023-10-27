@@ -15,6 +15,7 @@ public:
     bool CanCopy(const OrtDevice& src, const OrtDevice& dest) override;
     void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) override;
     std::vector<std::unique_ptr<SubGraphDef>> GetCapability(interface::GraphViewRef*) override;
+    void RegisterKernels(interface::IKernelRegistry&) override;
     common::Status Compile(std::vector<std::unique_ptr<interface::GraphViewRef>>&, std::vector<std::unique_ptr<interface::NodeViewRef>>&, std::vector<NodeComputeInfo>&) override;
 private:
     CustomEp2Info info_;

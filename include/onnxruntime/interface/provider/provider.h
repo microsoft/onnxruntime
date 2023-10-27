@@ -6,6 +6,7 @@
 #include <functional>
 
 #include "interface/graph/graph.h"
+#include "interface/framework/kernel.h"
 #include "core/session/onnxruntime_lite_custom_op.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
@@ -80,6 +81,9 @@ namespace interface {
         virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry&, std::map<OrtDevice, OrtAllocator*>&) const {}
         virtual std::vector<std::unique_ptr<SubGraphDef>> GetCapability(GraphViewRef*) { return std::vector<std::unique_ptr<SubGraphDef>>(); }
         virtual common::Status Compile(std::vector<std::unique_ptr<GraphViewRef>>&, std::vector<std::unique_ptr<NodeViewRef>>&, std::vector<NodeComputeInfo>&) { return common::Status::OK(); }
+
+        // latest kernel inteface
+        virtual void RegisterKernels(interface::IKernelRegistry& kernel_registry) = 0;
 
         protected:
         std::vector<OrtAllocator*> allocators_;

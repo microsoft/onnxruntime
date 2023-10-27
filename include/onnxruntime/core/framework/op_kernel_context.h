@@ -78,7 +78,7 @@ class OpKernelContext : public interface::IKernelContext {
   Tensor* Output(int index, const std::vector<int64_t>& shape);
   Tensor* Output(int index, const std::initializer_list<int64_t>& shape);
 
-  void* AllocateOutput(int index, const TensorShape& shape) override {
+  void* AllocateOutput(int index, const interface::TensorShape& shape) override {
     auto* tensor = Output(index, shape);
     ORT_ENFORCE(tensor);
     return tensor->MutableDataRaw();
