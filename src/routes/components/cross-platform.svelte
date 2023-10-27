@@ -12,7 +12,7 @@
 			<br /><br />
 			<p class="text-xl">
 				Take advantage of ONNX Runtime without changing your technology stack. Support for Linux,
-				Windows, Mac, iOS, Android, and web allows you to build and deploy applications consistently
+				Windows, Mac, iOS, Android, and browsers allows you to build and deploy applications consistently
 				across a variety of devices.
 			</p>
 		</div>
