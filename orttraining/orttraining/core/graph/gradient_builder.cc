@@ -524,8 +524,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatmulBnb4Gradient) {
                              attrs));
   }
 
-  ORT_ENFORCE(!IsGradientRequiredForSrcNodeInput(1), "Gradient propogation to B is not supported yet.");
-  ORT_ENFORCE(!IsGradientRequiredForSrcNodeInput(2), "Gradient propogation to bias is not supported yet.");
+  ORT_ENFORCE(!IsGradientRequiredForSrcNodeInput(1), "Gradient propagation to B is not supported yet.");
+  ORT_ENFORCE(!IsGradientRequiredForSrcNodeInput(2), "Gradient propagation to absmax is not supported yet.");
 
   return result;
 }

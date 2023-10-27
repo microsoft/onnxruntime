@@ -3275,7 +3275,7 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
 
   2. transB=False (Majorly used for backward pass)
     Shape of A: [D0, D1, ..., Dn, N]
-    Shape of Dequanted B: [N, K], this is aligned with how PyTorch defined the linear weight, .e.g [in_features, out_features].
+    Shape of Dequanted B: [N, K], this is aligned with how PyTorch defined the linear weight, .e.g [out_features, in_features].
 
     The computation math:
       dequant_B = dequant(B, absmax, quant_type, block_size)
@@ -3303,7 +3303,7 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
             "Indicate if the ops run in training_mode, by default, False.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
-      .Attr("transB", "Whether B should be transposed on the last two dimensions before doing multiplication",
+      .Attr("transB", "Whether B should be transposed on the last two dimensions before doing multiplication. Default to be 1.",
             AttributeProto::INT, static_cast<int64_t>(1))
       .Input(0, "A", "The input tensor, not quantized", "T1")
       .Input(1, "B", "1-dimensional quantized data for weight", "T2")
@@ -3317,7 +3317,7 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
         // Shape inference
         int64_t in_features = getAttribute(ctx, "K", -1);
         int64_t out_features = getAttribute(ctx, "N", -1);
-        bool transB = getAttribute(ctx, "transB", 0) != 0;
+        bool transB = getAttribute(ctx, "transB", 1) != 0;
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, transB);
       });
 

@@ -141,6 +141,30 @@ _UNSUPPORTED_CKPT_FUNC_NAMES = frozenset(
 )
 
 
+def _get_training_mode() -> bool:
+    # TODO move to public API once the exporter team exposes that
+    training_mode = None
+    if get_runtime_pytorch_version() >= version.parse("1.12"):
+        # FIXME: using private modules
+        from torch.onnx import _globals
+
+        # before https://github.com/pytorch/pytorch/commit/c8b9b6266b505328e503b12f6a42fd88c56374f9,
+        # training_mode is still a bool type
+        if isinstance(_globals.GLOBALS.training_mode, bool):
+            training_mode = _globals.GLOBALS.training_mode
+        else:
+            if _globals.GLOBALS.training_mode not in [
+                torch.onnx.TrainingMode.EVAL,
+                torch.onnx.TrainingMode.TRAINING,
+            ]:
+                raise Exception(f"Unexpected training mode {_globals.GLOBALS.training_mode}")
+            training_mode = _globals.GLOBALS.training_mode == torch.onnx.TrainingMode.TRAINING
+    else:
+        training_mode = symbolic_helper._training_mode
+
+    return bool(training_mode)
+
+
 def _export_pt_1_10(g, n, *args, **kwargs):
     """Export torch.autograd.Function in ORT PythonOp.
 
@@ -176,26 +200,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 "Please replace ORTModule with HierarchalORTModule to only"
                 "wrap exportable sub-nn.Module's as ORTModule."
             )
-
-        # TODO move to public API once the exporter team exposes that
-        training_mode = None
-        if get_runtime_pytorch_version() >= version.parse("1.12"):
-            # FIXME: using private modules
-            from torch.onnx import _globals
-
-            # before https://github.com/pytorch/pytorch/commit/c8b9b6266b505328e503b12f6a42fd88c56374f9,
-            # training_mode is still a bool type
-            if isinstance(_globals.GLOBALS.training_mode, bool):
-                training_mode = _globals.GLOBALS.training_mode
-            else:
-                if _globals.GLOBALS.training_mode not in [
-                    torch.onnx.TrainingMode.EVAL,
-                    torch.onnx.TrainingMode.TRAINING,
-                ]:
-                    raise Exception(f"Unexpected training mode {_globals.GLOBALS.training_mode}")
-                training_mode = _globals.GLOBALS.training_mode == torch.onnx.TrainingMode.TRAINING
-        else:
-            training_mode = symbolic_helper._training_mode
 
         cconv = n.cconv()
 
@@ -324,7 +328,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             "input_tensor_ranks_i": input_tensor_ranks,
             "output_tensor_types_i": output_tensor_types,
             "output_tensor_ranks_i": output_tensor_ranks,
-            "training_mode_i": 1 if training_mode else 0,
+            "training_mode_i": 1 if _get_training_mode() else 0,
             "comment_s": debug_comment,
         }
 
@@ -421,6 +425,7 @@ def _matmul4bit_export(g, n, *args, **kwargs):
         "N_i": out_feature,
         "block_size_i": blocksize,
         "quant_type_i": quant_type,
+        "training_mode_i": 1 if _get_training_mode() else 0,
     }
 
     # Make sure the quant weight can be flatten to 1D tensor safely, which com.microsoft::MatMulBnb4 requires.
