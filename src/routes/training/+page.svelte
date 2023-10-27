@@ -27,8 +27,10 @@
 			<br /><br />
 			<p class="text-xl">
 				ORTModule accelerates training of large transformer based PyTorch models. The training time and
-				cost is reduced with a few lines of code change. It is built on top of highly successful and
-				proven technologies of ONNX Runtime and ONNX format.
+				training cost is reduced with a few lines of code change. It is built on top of highly successful and
+				proven technologies of ONNX Runtime and ONNX format. It is composable with technologies like DeepSpeed and 
+				accelerates pre-training and finetuning for state of the art LLMs. It is integrated in the Hugging Face Optimum
+				library which provides an ORTTrainer API to use ONNX Runtime as the backend for training acceleration. 
 			</p>
 			<br />
 			<div class="bg-white w-100 md:w-1/2 p-4">
