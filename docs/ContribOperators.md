@@ -40,6 +40,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
   * <a href="#com.microsoft.GemmFastGelu">com.microsoft.GemmFastGelu</a>
+  * <a href="#com.microsoft.GemmFloat8">com.microsoft.GemmFloat8</a>
   * <a href="#com.microsoft.GreedySearch">com.microsoft.GreedySearch</a>
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.GroupNorm">com.microsoft.GroupNorm</a>
@@ -2134,6 +2135,71 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.GemmFloat8"></a><a name="com.microsoft.gemmfloat8">**com.microsoft.GemmFloat8**</a>
+
+  Generic Gemm for float and float 8.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Activation function, RELU or GELU or NONE (default).</dd>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Scalar multiplier for the product of input tensors A * B.</dd>
+<dt><tt>beta</tt> : float</dt>
+<dd>Scalar multiplier for the product of input bias C.</dd>
+<dt><tt>dtype</tt> : int</dt>
+<dd>Output Type. Same definition as attribute 'to' for operator Cast.</dd>
+<dt><tt>transA</tt> : int</dt>
+<dd>Whether A should be transposed. Float 8 only supprted transA=0.</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed. Float 8 only supprted transB=1.</dd>
+</dl>
+
+#### Inputs (2 - 6)
+
+<dl>
+<dt><tt>A</tt> : TA</dt>
+<dd>Input tensor A. The shape of A should be (M, K) if transA is 0, or (K, M) if transA is non-zero.</dd>
+<dt><tt>B</tt> : TB</dt>
+<dd>Input tensor B. The shape of B should be (K, N) if transB is 0, or (N, K) if transB is non-zero.</dd>
+<dt><tt>C</tt> (optional) : TC</dt>
+<dd>Input tensor C.</dd>
+<dt><tt>scaleA</tt> (optional) : TS</dt>
+<dd>Scale of tensor A if A is float 8 tensor</dd>
+<dt><tt>scaleB</tt> (optional) : TS</dt>
+<dd>Scale of tensor B if B is float 8 tensor</dd>
+<dt><tt>scaleY</tt> (optional) : TS</dt>
+<dd>Scale of the output tensor if A or B is float 8.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : TR</dt>
+<dd>Output tensor of shape (M, N).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>TA</tt> : tensor(float8e4m3fn), tensor(float8e5m2), tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain type to input A.</dd>
+<dt><tt>TB</tt> : tensor(float8e4m3fn), tensor(float8e5m2), tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain type to input B.</dd>
+<dt><tt>TC</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain type to input C.</dd>
+<dt><tt>TR</tt> : tensor(float8e4m3fn), tensor(float8e5m2), tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain type to result type.</dd>
+<dt><tt>TS</tt> : tensor(float)</dt>
+<dd>Constrain type for all input scales (scaleA, scaleB, scaleY).</dd>
 </dl>
 
 
