@@ -260,9 +260,16 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAct";
   auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
+  SelectorActionRegistry::OpVersionsMap op_versions_map;
+  std::string kMSInternalNHWCDomainConv = std::string(kMSInternalNHWCDomain) + ":Conv";
+  std::string kMSInternalNHWCDomainConvTranspose = std::string(kMSInternalNHWCDomain) + ":ConvTranspose";
   auto selector = std::make_unique<selectors::ConvActivationSelector>();
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
-                                     std::move(selector), std::move(action));
+  op_versions_map.emplace("Conv", std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
+  op_versions_map.emplace("ConvTranspose", std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
+  op_versions_map.emplace(kMSInternalNHWCDomainConv, std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
+  op_versions_map.emplace(kMSInternalNHWCDomainConvTranspose, std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
+
+  registry.RegisterSelectorAndAction(name, op_versions_map, std::move(selector), std::move(action));
 #else
   registry.RegisterAction(name, std::move(action));
 #endif
