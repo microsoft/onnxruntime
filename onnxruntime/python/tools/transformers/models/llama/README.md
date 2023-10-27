@@ -1,5 +1,18 @@
 # LLaMA-2
 
+## Prerequisites
+
+Please note the package versions needed for using LLaMA-2 in the `requirements.txt` file that fits your scenario.
+- `requirements-cpu.txt`
+  - For running LLaMA-2 on CPU
+- `requirements-cuda.txt`
+  - For running LLaMA-2 on CUDA
+  - Note that `torch` with CUDA enabled is not installed automatically. This is because `torch` should be installed with the CUDA version used on your machine. Please visit [the PyTorch website](https://pytorch.org/get-started/locally/) to download the `torch` version that is used with the CUDA version installed on your machine and satisfies the requirement listed in the file.
+- `requirements-quant.txt`
+  - For running the SmoothQuant algorithm using [Intel's Neural Compressor](https://github.com/intel/neural-compressor)
+- `requirements.txt`
+  - Package versions needed in each of the above files
+
 ## Exporting LLaMA-2
 
 There are several ways to export LLaMA-2 models (using LLaMA-2 7B as an example).
@@ -40,7 +53,7 @@ Please follow the [README instructions](https://github.com/microsoft/Llama-2-Onn
 
 ### Option 3: from [Hugging Face Optimum](https://github.com/huggingface/optimum)
 
-Note that this will produce two ONNX models whereas the above two options produce one ONNX model. 
+Note that this may produce two ONNX models with older Optimum versions. The above two options produce one ONNX model and installing Optimum from source will now produce one ONNX model.
 
 First, log into the Hugging Face CLI in your terminal:
 
@@ -81,7 +94,7 @@ Export for FP32 CUDA
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp32 --precision fp32 --execution_provider cuda
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda
 ```
 
 Export for FP32 CPU
@@ -90,7 +103,7 @@ Export for FP32 CPU
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp32-cpu --precision fp32 --execution_provider cpu
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp32 --precision fp32 --execution_provider cpu
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp32-cpu --precision fp32 --execution_provider cpu
 ```
 
 Export for FP16 CUDA
@@ -105,10 +118,10 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 Export for INT8 CPU (SmoothQuant)
 ```
 # From source:
-$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant --execution_provider cpu
+$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant --execution_provider cpu --no_merged
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant --execution_provider cpu
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int8 --precision int8 --quantization_method smooth_quant --execution_provider cpu --no_merged
 ```
 
 Note: [Intel's Neural Compressor](https://github.com/intel/neural-compressor) takes time to run the SmoothQuant quantization algorithm on LLMs. On an [Azure Standard_NC24s_v3 VM](https://learn.microsoft.com/en-us/azure/virtual-machines/ncv3-series), it takes about ~30-45 min for each of the exported ONNX models.
@@ -128,7 +141,7 @@ Export for INT4 CUDA
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-gpu --precision int4 --quantization_method blockwise --execution_provider cuda
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4 --precision int4 --quantization_method blockwise --execution_provider cuda
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-gpu --precision int4 --quantization_method blockwise --execution_provider cuda
 ```
 
 Export for INT4 CPU
@@ -137,7 +150,7 @@ Export for INT4 CPU
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-cpu --precision int4 --quantization_method blockwise --execution_provider cpu
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4 --precision int4 --quantization_method blockwise --execution_provider cpu
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-cpu --precision int4 --quantization_method blockwise --execution_provider cpu
 ```
 
 ## Benchmark LLaMA-2
@@ -183,20 +196,7 @@ python3 -m models.llama.benchmark \
     --auth
 ```
 
-4. Optimum + ONNX Runtime, FP16, export via convert_to_onnx
-```
-python3 -m models.llama.benchmark \
-    --benchmark-type hf-ort \
-    --hf-ort-dir-path ./llama2-7b-fp16/ \
-    --model-name meta-llama/Llama-2-7b-hf \
-    --precision fp16 \
-    --batch-sizes "1 2" \
-    --sequence-lengths "8 16" \
-    --device cuda \
-    --auth
-```
-
-5. ONNX Runtime, FP32, Microsoft custom export
+4. ONNX Runtime, FP32, Microsoft custom export
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type ort-msft \
@@ -208,7 +208,7 @@ python3 -m models.llama.benchmark \
     --device cpu
 ```
 
-6. ONNX Runtime, FP16, Microsoft custom export
+5. ONNX Runtime, FP16, Microsoft custom export
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type ort-msft \
@@ -220,7 +220,7 @@ python3 -m models.llama.benchmark \
     --device cuda
 ```
 
-7. ONNX Runtime, FP32, convert_to_onnx
+6. ONNX Runtime, FP32, convert_to_onnx
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type ort-convert-to-onnx \
@@ -232,7 +232,7 @@ python3 -m models.llama.benchmark \
     --device cpu
 ```
 
-8. ONNX Runtime, FP16, convert_to_onnx
+7. ONNX Runtime, FP16, convert_to_onnx
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type ort-convert-to-onnx \

@@ -817,7 +817,8 @@ def main():
     # Use FP32 precision for FP32, INT8, INT4 CPU models, use FP16 precision for FP16 and INT4 GPU models
     args.precision = (
         "fp32"
-        if args.precision in {"int8", "fp32"} or (args.precision == Precision.INT4 and args.execution_provider == "cpu")
+        if args.precision in {Precision.INT8, Precision.FLOAT32}
+        or (args.precision == Precision.INT4 and args.execution_provider == "cpu")
         else "fp16"
     )
 

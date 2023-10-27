@@ -1275,7 +1275,7 @@ def find_past_seq_len_usage(subg: GraphProto):
 def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads: int = 0):
     past_seq_len = past_seq_len_input
     if past_seq_len not in model.get_graphs_input_names():
-        # Replace model input for past sequence length
+        # Add model input for past sequence length
         new_input = onnx.helper.make_tensor_value_info(past_seq_len, onnx.TensorProto.INT64, shape=[1])
         model.model.graph.input.append(new_input)
 
