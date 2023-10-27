@@ -174,6 +174,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool set_denormal_as_zero = false;
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
   std::string provider_name = "cpu";
+  ORT_STRING_VIEW provider_name_view = ORT_TSTR("cpu");
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
@@ -220,6 +221,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           break;
         case 'e':
           provider_name = ToUTF8String(optarg);
+          provider_name_view = ORT_STRING_VIEW(optarg);
           if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
             // do nothing
           } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
@@ -636,8 +638,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
-    std::basic_string_view<ORTCHAR_T> provider_name_v(std::wstring(provider_name.begin(), provider_name.end()));
-    auto all_disabled_tests = GetAllDisabledTests(provider_name_v);
+    auto all_disabled_tests = GetAllDisabledTests(provider_name_view);
 
     auto broken_tests = GetBrokenTests(provider_name);
     auto broken_tests_keyword_set = GetBrokenTestsKeyWordSet(provider_name);
