@@ -148,7 +148,6 @@ Status FuncExpand(
     const Tensor* input_data_tensor,
     const Tensor* /*input_shape_tensor*/,
     Tensor* output_tensor) {
-
   TensorShape output_shape = output_tensor->Shape();
 
 #ifdef ENABLE_STRIDED_TENSORS
@@ -203,10 +202,11 @@ std::unique_ptr<Tensor> FuncExpand(
   TensorShape output_shape(output_dims);
 
   ORT_ENFORCE(
-    ComputeOutputShape(
-      cuda_kernel->Node().Name(),
-      input_data_tensor->Shape(),
-      output_dims, output_shape).IsOK());
+      ComputeOutputShape(
+          cuda_kernel->Node().Name(),
+          input_data_tensor->Shape(),
+          output_dims, output_shape)
+          .IsOK());
 
   // Pre-allocate output.
   AllocatorPtr alloc;

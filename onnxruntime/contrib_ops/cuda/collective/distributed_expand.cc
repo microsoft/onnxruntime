@@ -51,10 +51,11 @@ Status DistributedExpand<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector original_output_dims{p_shape, p_shape + shape_tensor->Shape().Size()};
   TensorShape original_output_shape(original_output_dims);
   ORT_ENFORCE(
-    onnxruntime::cuda::ComputeOutputShape(
-      Node().Name(),
-      original_input_shape,
-      original_output_dims, original_output_shape).IsOK());
+      onnxruntime::cuda::ComputeOutputShape(
+          Node().Name(),
+          original_input_shape,
+          original_output_dims, original_output_shape)
+          .IsOK());
 
   // Compute local output shape.
   const auto local_output_shape = ComputeShardShape(original_output_shape, output_sharding_spec);
@@ -62,11 +63,11 @@ Status DistributedExpand<T>::ComputeInternal(OpKernelContext* context) const {
   auto output_tensor = context->Output(0, local_output_shape);
 
   return FuncExpand(
-    this,
-    context,
-    input_tensor,
-    shape_tensor,
-    output_tensor);
+      this,
+      context,
+      input_tensor,
+      shape_tensor,
+      output_tensor);
 }
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
