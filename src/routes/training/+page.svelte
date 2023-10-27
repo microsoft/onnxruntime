@@ -27,7 +27,7 @@
 			<br /><br />
 			<p class="text-xl">
 				ORTModule accelerates training of large transformer based PyTorch models. The training time and
-				cost are reduced with a single line code change. It is built on top of highly successful and
+				cost is reduced with a few lines of code change. It is built on top of highly successful and
 				proven technologies of ONNX Runtime and ONNX format.
 			</p>
 			<br />
@@ -149,7 +149,7 @@
 			<p class="text-xl">
 				On-Device Training refers to the process of training a model on an edge device, such as
 				mobile phones, embedded devices, gaming consoles, web browsers, etc. This is in contrast to
-				training a model on a server or a cloud.
+				training a model on a server or a cloud. On-Device Training extends the Inference ecosystem to leverage data on the device for providing customized user experiences on the edge. It also preserves user privacy by training on the device.
 			</p>
 			<br />
 			<a
