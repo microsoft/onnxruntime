@@ -457,7 +457,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   void IncrementRegularRunCountBeforeGraphCapture();
 
   /**
-   * Get the IBuilder instance. It only builds the instance for the first time it's being referenced." 
+   * Get the IBuilder instance.
+   * This function only creates the instance on the first time it's being called."
    */
   nvinfer1::IBuilder& GetBuilder() const;
 };
