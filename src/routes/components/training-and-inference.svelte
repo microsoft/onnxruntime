@@ -11,7 +11,7 @@
 	<p class="text-xl pb-4">
 		ONNX Runtime is the same tech that powers AI in Microsoft products like Office, Azure, and Bing, as well as in thousands of other projects across the world.
 	</p>
-	<a href="./inference" class="btn btn-primary">Learn more about ONNX Runtime Inferencing →</a>
+	<!-- <a href="./inference" class="btn btn-primary">Learn more about ONNX Runtime Inferencing →</a> -->
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-10 my-4 md:mx-10">
 		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid xl:grid-cols-4 place-items-center">

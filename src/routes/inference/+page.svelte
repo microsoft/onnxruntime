@@ -6,7 +6,7 @@
 
 	const title = 'ONNX Runtime for Inferencing';
 	const description =
-		'ONNX Runtime powers machine learning models in key Microsoft products and services across Office, Azure, Bing, as well as thousands of community projects.';
+		'ONNX Runtime mobile runs models on mobile devices using the same API used for cloud-based inferencing. Developers can use their mobile language and development environment of choice to add AI to Android, iOS, react-native, MAUI/Xamarin applications in Swift, Objective-C, Java, Kotlin, JavaScript, C, and C++.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
 </script>
@@ -36,8 +36,36 @@
 		</div>
 	</div>
 </div>
+
 <div class="container mx-auto px-10 my-10">
 	<h1 class="text-4xl pb-4">Benefits</h1>
+	<div class="grid gap-10 grid-cols-1 md:grid-cols-2 lg:grid-cols-4 mx-auto">
+		<div class="card bg-base-300">
+			<div class="card-body items-center text-center">
+				<h2 class="card-title">Improve inference performance for a wide variety of ML models</h2>
+			</div>
+		</div>
+		<div class="card bg-base-300">
+			<div class="card-body items-center text-center">
+				<h2 class="card-title">Run on different hardware and operating systems</h2>
+			</div>
+		</div>
+		<div class="card bg-base-300">
+			<div class="card-body items-center text-center">
+				<h2 class="card-title">Train in Python but deploy into a C#/C++/Java app</h2>
+			</div>
+		</div>
+		<div class="card bg-base-300">
+			<div class="card-body items-center text-center">
+				<h2 class="card-title">
+					Train and perform inference with models created in different frameworks
+				</h2>
+			</div>
+		</div>
+	</div>
+</div>
+<div class="container mx-auto px-10 my-10">
+	<h1 class="text-2xl pb-4">Interested in inferencing on edge? Additional benefits include:</h1>
 	<div class="grid gap-10 grid-cols-1 md:grid-cols-3 pb-10">
 		<div class="card bg-base-300">
 			<div class="card-body items-center text-center">
@@ -68,33 +96,6 @@
 				<h2 class="card-title">
 					Simplify the distribution experience without needing any additional libraries and driver
 					installations
-				</h2>
-			</div>
-		</div>
-	</div>
-</div>
-<div class="container mx-auto px-10 my-10">
-	<h1 class="text-4xl pb-4">Use Cases</h1>
-	<div class="grid gap-10 grid-cols-1 md:grid-cols-2 lg:grid-cols-4 mx-auto">
-		<div class="card bg-base-300">
-			<div class="card-body items-center text-center">
-				<h2 class="card-title">Improve inference performance for a wide variety of ML models</h2>
-			</div>
-		</div>
-		<div class="card bg-base-300">
-			<div class="card-body items-center text-center">
-				<h2 class="card-title">Run on different hardware and operating systems</h2>
-			</div>
-		</div>
-		<div class="card bg-base-300">
-			<div class="card-body items-center text-center">
-				<h2 class="card-title">Train in Python but deploy into a C#/C++/Java app</h2>
-			</div>
-		</div>
-		<div class="card bg-base-300">
-			<div class="card-body items-center text-center">
-				<h2 class="card-title">
-					Train and perform inference with models created in different frameworks
 				</h2>
 			</div>
 		</div>
