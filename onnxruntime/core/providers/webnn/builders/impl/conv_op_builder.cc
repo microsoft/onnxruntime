@@ -49,9 +49,8 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   const auto group = helper.Get("group", static_cast<int32_t>(1));
   const auto& input_defs = node.InputDefs();
-  const auto& weight_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
-  const auto& weight_shape = weight_tensor.dims();
-
+  std::vector<int64_t> weight_shape;
+  ORT_RETURN_IF_NOT(GetShape(*input_defs[1], weight_shape, logger), "Cannot get weight shape");
   options.set("strides", emscripten::val::array(strides));
   options.set("dilations", emscripten::val::array(dilations));
   options.set("groups", group);
@@ -278,25 +277,28 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                       const Node& node,
-                                      const WebnnDeviceType /* device_type */,
+                                      const WebnnDeviceType device_type,
                                       const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
 
   const auto& weight_name = input_defs[1]->Name();
-  if (Contains(initializers, weight_name)) {
-    const auto& tensor = *initializers.at(weight_name);
-    if (tensor.dims().size() != 4) {
-      LOGS(logger, VERBOSE) << op_type << " [" << name << "] dimension: " << tensor.dims().size()
-                            << " Only conv 2d is supported.";
+  // WebNN CPU backend (XNNPACK) requires the filter operand to be a constant.
+  // https://github.com/google/XNNPACK/blob/master/src/subgraph/convolution-2d.c#L739
+  if (device_type == WebnnDeviceType::CPU) {
+    if (Contains(initializers, weight_name)) {
+      const auto& tensor = *initializers.at(weight_name);
+      if (tensor.dims().size() != 4) {
+        LOGS(logger, VERBOSE) << op_type << " [" << name << "] dimension: " << tensor.dims().size()
+                              << " Only conv 2d is supported.";
+        return false;
+      }
+    } else {
+      LOGS(logger, VERBOSE) << "The weight of " << op_type << " [" << name << "] must be known";
       return false;
     }
-  } else {
-    LOGS(logger, VERBOSE) << "The weight of " << op_type << " [" << name << "] must be known";
-    return false;
   }
-
   return true;
 }
 
