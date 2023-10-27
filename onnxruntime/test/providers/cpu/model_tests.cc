@@ -433,9 +433,9 @@ TEST_P(ModelTest, Run) {
 #endif
 
     ORT_STRING_VIEW provider_name = kvp.first;
-    std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests = GetAllDisabledTests(provider_name);
+    auto all_disabled_tests = GetAllDisabledTests(provider_name);
 
-        while (!paths.empty()) {
+    while (!paths.empty()) {
       std::basic_string<ORTCHAR_T> node_data_root_path = paths.back();
       paths.pop_back();
       std::basic_string<ORTCHAR_T> my_dir_name = GetLastComponent(node_data_root_path);
@@ -454,7 +454,7 @@ TEST_P(ModelTest, Run) {
           std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
           if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
             test_case_name = test_case_name.substr(5);
-          if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
+          if (all_disabled_tests->find(test_case_name) != all_disabled_tests->end())
             return true;
 
 #ifdef DISABLE_ML_OPS
