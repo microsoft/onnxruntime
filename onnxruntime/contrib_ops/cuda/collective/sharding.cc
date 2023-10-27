@@ -30,7 +30,7 @@ void GatherTensor(
     const Tensor* tensor,
     Tensor* gathered) {
   const int64_t shard_axis = spec.GetPartitionAxis();
-  const int64_t shard_count = spec.GetPartitionCount(shard_axis);
+  const int64_t shard_count = spec.GetUniqueDeviceCount(shard_axis);
 
   FuncAllGather(
       nccl_kernel,
@@ -51,7 +51,7 @@ std::unique_ptr<Tensor> GatherTensor(
     const TensorPartitionSpec& spec,
     const Tensor* tensor) {
   const int64_t shard_axis = spec.GetPartitionAxis();
-  const int64_t shard_count = spec.GetPartitionCount(shard_axis);
+  const int64_t shard_count = spec.GetUniqueDeviceCount(shard_axis);
   TensorShape gathered_shape(tensor->Shape());
   gathered_shape[shard_axis] *= shard_count;
 
@@ -82,7 +82,7 @@ void ShardTensor(
     const Tensor* tensor,
     Tensor* shard_tensor) {
   const int64_t shard_axis = spec.GetPartitionAxis();
-  const int64_t shard_count = spec.GetPartitionCount(shard_axis);
+  const int64_t shard_count = spec.GetUniqueDeviceCount(shard_axis);
   TensorShape shard_shape = ComputeShardShape(
       tensor->Shape(),
       shard_axis,
@@ -118,7 +118,7 @@ std::unique_ptr<Tensor> ShardTensor(
   TensorShape shard_shape = ComputeShardShape(
       tensor->Shape(),
       spec.GetPartitionAxis(),
-      spec.GetPartitionCount(spec.GetPartitionAxis()));
+      spec.GetUniqueDeviceCount(spec.GetPartitionAxis()));
   auto shard_buffer = Tensor::Create(tensor->DataType(), shard_shape, alloc);
 
   // Shard with pre-allocated buffer.
