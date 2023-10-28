@@ -15,7 +15,7 @@ namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name, // Name of the selector-acion instance.
+void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,  // Name of the selector-acion instance.
                                                        const OpVersionsMap& ops_and_versions_in,
                                                        std::unique_ptr<NodeSelector> selector_in,
                                                        std::unique_ptr<Action> action_in) {

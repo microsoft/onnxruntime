@@ -65,7 +65,7 @@ class SelectorActionRegistry {
 #endif  // !defined(ORT_MINIMAL_BUILD)
     }
 
-    std::string name; // Name of the entry, same as the registered name of the corresponding selector-action pair.
+    std::string name;  // Name of the entry, same as the registered name of the corresponding selector-action pair.
 #if !defined(ORT_MINIMAL_BUILD)
     OpVersionsMap ops_and_versions;
     std::unique_ptr<NodeSelector> selector;
