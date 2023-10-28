@@ -14,8 +14,6 @@ Abstract:
 
 --*/
 
-#pragma once
-
 #include "test_util.h"
 #include "mlas_qnbit.h"
 
