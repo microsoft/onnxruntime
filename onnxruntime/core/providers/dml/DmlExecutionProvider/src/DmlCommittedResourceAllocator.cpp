@@ -34,7 +34,7 @@ namespace Dml
 
     DmlCommittedResourceAllocator::~DmlCommittedResourceAllocator()
     {
-        for (auto& item : m_resources)
+        for (auto item : m_resources)
         {
             item->Release();
         }
