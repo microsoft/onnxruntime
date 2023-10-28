@@ -8,7 +8,7 @@ import pytest
 import torch
 
 from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.utils.hooks import GlobalSubscriberManager, StatisticsSubscriber, _InspectActivation
+from onnxruntime.training.utils.hooks import GlobalSubscriberManager, StatisticsSubscriber, inspect_activation
 
 
 class NeuralNetSingleOutput(torch.nn.Module):
@@ -147,9 +147,9 @@ class NeuralNetUserAnnotateIntermediateTensor(torch.nn.Module):
     def forward(self, input1, input2):
         model_input = input1 + input2
         out = self.fc1(model_input)
-        out = _InspectActivation.apply("fc1_out", None, GlobalSubscriberManager.get_run_context(), out)
+        out = inspect_activation("fc1_out", out)
         out = self.relu(out)
-        out = _InspectActivation.apply("relu_out", None, GlobalSubscriberManager.get_run_context(), out)
+        out = inspect_activation("relu_out", out)
         out = self.fc2(out)
         return out
 

@@ -33,8 +33,10 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
     data_ops_ = new DataOps(graph_viewer_, V_2022_3, device_type_);
   } else if (version_param == "V_2023_0") {
     data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_);
+  } else if (version_param == "V_2023_1") {
+    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
   }
 }
 
@@ -76,11 +78,15 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
     const auto& nodes = graph_viewer_.GetNodesInTopologicalOrder();
 
+    const auto& node = graph_viewer_.GetNode(nodes[0]);
+
     // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
     // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
-    const auto& node = graph_viewer_.GetNode(nodes[0]);
-    if (data_ops_->IsOpSupportedOnlyInModel(node->OpType()))
-      return result;
+    if (nodes.size() <= 3) {
+      if (data_ops_->IsOpSupportedOnlyInModel(node->OpType())) {
+        return result;
+      }
+    }
 
     // Nodes that work well in models but not as a single node
     if (nodes.size() == 1) {

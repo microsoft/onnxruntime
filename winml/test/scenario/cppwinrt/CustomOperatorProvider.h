@@ -41,10 +41,10 @@ struct CustomOperatorProvider
   void RegisterSchemas() { NoisyReluOperatorFactory::RegisterNoisyReluSchema(m_registry); }
 
   void RegisterKernels() {
-        // Replace the Relu operator kernel
+    // Replace the Relu operator kernel
     ReluOperatorFactory::RegisterReluKernel(m_registry);
 
-        // Add a new operator kernel for Relu
+    // Add a new operator kernel for Relu
     NoisyReluOperatorFactory::RegisterNoisyReluKernel(m_registry);
   }
 

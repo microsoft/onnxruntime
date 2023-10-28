@@ -134,7 +134,7 @@ HRESULT IsFloat16Blocked(ID3D12Device& device, bool* isBlocked) {
   *isBlocked = CheckAdapterFP16Blocked(isMcdmAdapter, vendorId, majorVersion, minorVersion);
   return S_OK;
 }
-}// namespace
+}  // namespace
 
 namespace CommonDeviceHelpers {
 constexpr uint32_t c_intelVendorId = 0x8086;

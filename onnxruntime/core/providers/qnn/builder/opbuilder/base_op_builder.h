@@ -23,13 +23,11 @@ class BaseOpBuilder : public IOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       bool is_quantized_model) const override ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
                            const NodeUnit& node_unit,
                            const logging::Logger& logger,
-                           bool is_quantized_model,
                            bool do_op_validation) const override final ORT_MUST_USE_RESULT;
 
   std::string GetOpBuilderType() const override;
@@ -43,7 +41,6 @@ class BaseOpBuilder : public IOpBuilder {
   virtual Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
                                const logging::Logger& logger,
-                               bool is_quantized_model,
                                std::vector<std::string>& input_names,
                                bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
@@ -51,7 +48,6 @@ class BaseOpBuilder : public IOpBuilder {
                                              const NodeUnit& node_unit,
                                              std::vector<std::string>&& input_names,
                                              const logging::Logger& logger,
-                                             bool is_quantized_model,
                                              bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
   virtual Status ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -59,14 +55,12 @@ class BaseOpBuilder : public IOpBuilder {
                                 std::vector<std::string>&& input_names,
                                 std::vector<std::string>&& param_tensor_names,
                                 const logging::Logger& logger,
-                                bool is_quantized_model,
                                 bool do_op_validation,
                                 const std::string& qnn_op_type) const ORT_MUST_USE_RESULT;
 
   Status ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                       const NodeUnitIODef& input,
                       const logging::Logger& logger,
-                      bool is_quantized_model,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
   const std::string& GetNodeName(const NodeUnit& node_unit) const {
@@ -126,6 +120,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Sub", QNN_OP_ELEMENT_WISE_SUBTRACT},
         {"Tanh", QNN_OP_TANH},
         {"Transpose", QNN_OP_TRANSPOSE},
+        {"GridSample", QNN_OP_GRID_SAMPLE},
 
         {"DequantizeLinear", QNN_OP_DEQUANTIZE},
         {"QuantizeLinear", QNN_OP_QUANTIZE},
@@ -135,9 +130,10 @@ class BaseOpBuilder : public IOpBuilder {
         {"Elu", QNN_OP_ELU},
         {"Relu", QNN_OP_RELU},
         {"Gelu", QNN_OP_GELU},
-        {"Sigmoid", QNN_OP_SIGMOID},
 
         {"HardSwish", QNN_OP_HARD_SWISH},
+        {"DepthToSpace", QNN_OP_DEPTH_TO_SPACE},
+        {"SpaceToDepth", QNN_OP_SPACE_TO_DEPTH},
 
         {"Conv", QNN_OP_CONV_2D},
         {"ConvTranspose", QNN_OP_TRANSPOSE_CONV_2D},
@@ -145,6 +141,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"GlobalAveragePool", QNN_OP_POOL_AVG_2D},
         {"AveragePool", QNN_OP_POOL_AVG_2D},
         {"MaxPool", QNN_OP_POOL_MAX_2D},
+        {"GlobalMaxPool", QNN_OP_POOL_MAX_2D},
 
         {"Reshape", QNN_OP_RESHAPE},
         {"Resize", QNN_OP_RESIZE},
@@ -165,7 +162,9 @@ class BaseOpBuilder : public IOpBuilder {
         {"BatchNormalization", QNN_OP_BATCHNORM},
         {"LayerNormalization", QNN_OP_LAYER_NORM},
 
-        {"LRN", QNN_OP_LRN}};
+        {"LRN", QNN_OP_LRN},
+
+        {"Pad", QNN_OP_PAD}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;
@@ -294,6 +293,10 @@ template <typename ValType>
 inline ValType GetOnnxAttr(const NodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
   return node_helper.Get(attr_info.name, attr_info.default_val);
 }
+
+// Layout sensitive op can't use Qnn Op validation API to verify Op support before layout transformation
+// Need to check this explicitly
+Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper, ONNX_NAMESPACE::DataType onnx_tensor_data_type);
 
 }  // namespace qnn
 }  // namespace onnxruntime

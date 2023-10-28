@@ -27,7 +27,7 @@ jobs:
       ${{ if eq(parameters.BuildConfig, 'Release') }}:
         value: 'onnxruntime_rocm'
       ${{ else }}:
-        value: 'onnxruntime_rocm_enable_profiling'
+        value: 'onnxruntime_rocm_Debug'
 
   steps:
   - task: CmdLine@2
@@ -45,16 +45,16 @@ jobs:
   - template: set-python-manylinux-variables-step.yml
   - template: get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: >-
         --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
         --build-arg BUILD_UID=$(id -u)
-        --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
+        --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
+        --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
+        --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin:
+        --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
         --build-arg ROCM_VERSION=${{ parameters.RocmVersion }}
-        --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
-        --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
-        --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
       Repository: onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }}
 
   - task: CmdLine@2
@@ -66,13 +66,14 @@ jobs:
           --network=host \
           --cap-add=SYS_PTRACE \
           --security-opt seccomp=unconfined \
-          -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+          -e CC=/opt/rh/gcc-toolset-12/root/usr/bin/cc -e CXX=/opt/rh/gcc-toolset-12/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /onnxruntime_src \
           --entrypoint $(PythonManylinuxDir)/bin/python3 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
+          -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
           --user onnxruntimedev \
           onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }} \
             /onnxruntime_src/tools/ci_build/build.py \
@@ -90,7 +91,7 @@ jobs:
               --enable_training \
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
-                onnxruntime_BUILD_UNIT_TESTS=OFF \
+                onnxruntime_BUILD_UNIT_TESTS=OFF FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER \
               ${{ variables['EnableProfiling'] }}
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime (in container)'
@@ -131,7 +132,7 @@ jobs:
       python3 tools/ci_build/upload_python_package_to_azure_storage.py \
           --python_wheel_path ${files[0]} \
           --final_storage
-    condition: and(succeeded(), eq(variables['DRY_RUN'], '0'))
+    condition: and(ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true'), and(succeeded(), eq(variables['DRY_RUN'], '0')))
     displayName: 'Upload Rocm wheel to release repository'
 
   - template: component-governance-component-detection-steps.yml

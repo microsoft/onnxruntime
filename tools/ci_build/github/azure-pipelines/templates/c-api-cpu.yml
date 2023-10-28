@@ -106,6 +106,8 @@ stages:
     steps:
     - template: set-version-number-variables-step.yml
 
+    - template: use-xcode-version.yml
+
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
           $(Build.SourcesDirectory) \
@@ -493,7 +495,7 @@ stages:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
         PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
-        PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx.10.14-x64'
+        PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
         VerifyNugetSigning: false
 
     - task: PublishPipelineArtifact@0
@@ -802,7 +804,7 @@ stages:
 
 - template: ../nodejs/templates/test_linux.yml
   parameters:
-    AgentPool : 'onnxruntime-Ubuntu2004-AMD-CPU'
+    AgentPool : 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
     StageSuffix : 'Linux_CPU_x64'
 
 - template: ../nodejs/templates/test_macos.yml

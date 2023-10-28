@@ -17,7 +17,6 @@
 
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
-using namespace google::protobuf::util;
 using namespace onnxruntime::path_utils;
 using namespace onnxruntime::test::training_session_test_utils;
 

@@ -9,6 +9,8 @@
 #include "core/graph/contrib_ops/nhwc_inference_context.h"
 #include "core/graph/contrib_ops/ms_schema.h"  // contrib::GetOpSchema
 
+#ifndef ORT_MINIMAL_BUILD
+
 namespace onnxruntime {
 namespace contrib {
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearAveragePool);
@@ -92,7 +94,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   // so supporting older opsets is unnecessary.
 
   // NOTE: This should be in sync with GetLayoutSensitiveOps in
-  // /onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc
+  // /onnxruntime/core/optimizer/transpose_optimization/transpose_optimizer.cc
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 11);
 
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 9);
@@ -144,6 +146,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 11);
   REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 13);
   REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 18);
+  REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 19);
 
   // internal QLinear ops
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);
@@ -156,3 +159,5 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
 
 }  // namespace internal_nhwc_onnx
 }  // namespace onnxruntime
+
+#endif  // !ORT_MINIMAL_BUILD

@@ -17,8 +17,8 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#include <ngraph/ngraph.hpp>
-#include <ngraph/frontend/onnx_import/onnx.hpp>
+// #include <ngraph/ngraph.hpp>
+// #include <ngraph/frontend/onnx_import/onnx.hpp>
 #if defined(_MSC_VER)
 #pragma warning(default : 4244 4245)
 #elif __GNUC__
@@ -36,6 +36,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "ConstantOfShape",
     "DequantizeLinear",
     "Dropout",
+    "Einsum",
     "Exp",
     "Expand",
     "EyeLike",
@@ -127,6 +128,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Dropout", V_2023_0, {"VPUX"}},
     {"Elu", V_2020_4, {"CPU", "GPU"}},
     {"Elu", V_2023_0, {"VPUX"}},
+    // {"Einsum", V_2023_0, {"CPU", "GPU"}},
     {"Equal", V_2020_4, {"CPU", "GPU"}},
     {"Equal", V_2023_0, {"VPUX"}},  // Added for whisper decoder model.
     {"Erf", V_2020_4, {"CPU", "GPU"}},
@@ -155,6 +157,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"GreaterOrEqual", V_2022_1, {"CPU", "GPU"}},
     {"GreaterOrEqual", V_2023_0, {"VPUX"}},
     {"GridSample", V_2022_3, {"CPU"}},
+    {"GridSample", V_2023_0, {"GPU"}},
     {"Identity", V_2020_4, {"CPU", "GPU"}},
     {"Identity", V_2023_0, {"VPUX"}},  // NoOP
     {"If", V_2022_3, {"CPU", "GPU"}},
@@ -196,6 +199,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Neg", V_2023_0, {"VPUX"}},
     {"NonMaxSuppression", V_2021_1, {"CPU", "GPU"}},
     {"NonZero", V_2021_1, {"CPU"}},
+    {"NonZero", V_2023_0, {"GPU"}},
     {"Not", V_2021_1, {"CPU", "GPU"}},
     {"Not", V_2020_4, {"CPU", "GPU"}},
     {"OneHot", V_2020_4, {"CPU", "GPU"}},
@@ -210,6 +214,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"QuantizeLinear", V_2023_0, {"VPUX"}},
     {"RandomNormalLike", V_2023_0, {"CPU", "GPU"}},
+    {"RandomNormal", V_2023_0, {"CPU", "GPU"}},
     {"Range", V_2022_1, {"CPU", "GPU"}},
     {"Range", V_2023_0, {"VPUX"}},
     {"Reciprocal", V_2020_4, {"CPU", "GPU"}},
@@ -341,6 +346,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Div", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Equal", V_2022_1, {"CPU"}});
+  no_dimension_supported_.push_back({"Equal", V_2023_0, {"GPU"}});
   no_dimension_supported_.push_back({"Floor", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Gather", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Greater", V_2023_0, {"VPUX"}});
@@ -356,6 +362,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
+  no_dimension_supported_.push_back({"Shape", V_2023_0, {"CPU"}});
   no_dimension_supported_.push_back({"Squeeze", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Sub", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
@@ -1022,8 +1029,10 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
         // Zero dimension check
         for (const auto& dim : shape->dim()) {
           if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
-            if ((device_id_.find("GPU") != std::string::npos) && ((optype == "Expand") ||
-                                                                  (optype == "Slice") || (optype == "Concat") || (optype == "Shape"))) {
+            if (((device_id_.find("CPU") != std::string::npos) || (device_id_.find("GPU") != std::string::npos)) &&
+                ((optype == "Expand") || (optype == "Equal") ||
+                 (optype == "Slice") || (optype == "Concat") ||
+                 (optype == "Shape"))) {
               return;
             }
             has_unsupported_dimension = true;
