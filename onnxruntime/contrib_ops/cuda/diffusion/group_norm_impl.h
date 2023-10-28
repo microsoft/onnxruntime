@@ -35,7 +35,7 @@ Status LaunchGroupNormKernel(
     int width,           // W
     int num_groups,      // number of groups
     bool use_silu,       // Whether there is Sigmoid Linear Unit (SiLU) activation after group normalization
-    bool broadcast_skip  // Whether skip need broadcast. For exmaple, its shape is (N, C) or (N, 1, 1, C).
+    bool broadcast_skip  // Whether skip need broadcast. When skip has shape (n, c) or (n, 1, 1, c), it need broadcast.
 );
 
 }  // namespace cuda

@@ -93,8 +93,8 @@ class GroupNormConfig:
                 fp16=fp16,
                 activation=activation,
                 op_type=GroupNormOpType.SKIP_GROUP_NORM,
-                has_bias=True,
-                has_add_out=True,
+                has_bias=False,
+                has_add_out=False,
                 broadcast_skip=2,
                 num_groups=num_groups,
             )
@@ -109,7 +109,7 @@ class GroupNormConfig:
                 activation=activation,
                 op_type=GroupNormOpType.SKIP_GROUP_NORM,
                 has_bias=True,
-                has_add_out=True,
+                has_add_out=False,
                 broadcast_skip=4,
                 num_groups=num_groups,
             )
@@ -143,6 +143,8 @@ class GroupNormConfig:
                 broadcast_skip=0,
                 num_groups=num_groups,
             )
+
+        return None
 
 
 def create_group_norm_graph(config: GroupNormConfig) -> bytes:
@@ -299,7 +301,19 @@ def group_norm_torch(
     return output, add_out
 
 
-def run_parity(config, measure_latency=True):
+def print_tensor(name, tensor):
+    # Print in the format that could be directly added to unit tests in C++.
+    torch.set_printoptions(precision=6, sci_mode=False, linewidth=100, profile="full", threshold=1000)
+    print(name)
+    if tensor is not None:
+        print("shape", tensor.shape)
+        text = str(tensor.clone().flatten())
+        print(text.replace("[", "[\n").replace("]", ",\n]").replace(",", "f,"))
+    else:
+        print(tensor)
+
+
+def run_parity(config, measure_latency=True, verbose=False):
     float_type = torch.float16 if config.fp16 else torch.float32
 
     input_tensor = torch.randn(
@@ -343,11 +357,27 @@ def run_parity(config, measure_latency=True):
                 requires_grad=False,
             )
 
+    if verbose:
+        print(config)
+        print_tensor("input", input_tensor)
+        print_tensor("gamma", gamma)
+        print_tensor("beta", beta)
+        print_tensor("skip", skip)
+        print_tensor("bias", bias)
+
     out_ort, ort_add_out, latency = group_norm_ort(
         input_tensor, gamma, beta, skip, bias, config, measure_latency=measure_latency
     )
 
+    if verbose:
+        print_tensor("out_ort", out_ort)
+        print_tensor("ort_add_out", ort_add_out)
+
     torch_out, torch_add_out = group_norm_torch(input_tensor, gamma, beta, skip, bias, config)
+
+    if verbose:
+        print_tensor("torch_out", torch_out)
+        print_tensor("torch_add_out", torch_add_out)
 
     average_diff = numpy.mean(numpy.abs(out_ort.detach().cpu().numpy() - torch_out.detach().cpu().numpy()))
 
@@ -456,7 +486,7 @@ def run_odd_channels(template: int, fp16, measure_latency=False):
 
 
 def run_small_inputs(template: int, fp16):
-    config = GroupNormConfig.create(1, 2, 2, 16, fp16=fp16, activation=False, num_groups=4, template=template)
+    config = GroupNormConfig.create(2, 2, 2, 16, fp16=fp16, activation=False, num_groups=4, template=template)
     run_parity(config, measure_latency=False)
 
     config = GroupNormConfig.create(1, 1, 1, 64, fp16=fp16, activation=False, num_groups=8, template=template)
