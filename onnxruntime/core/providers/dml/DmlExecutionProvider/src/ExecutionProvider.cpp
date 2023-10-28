@@ -212,6 +212,20 @@ namespace Dml
         return std::vector<onnxruntime::AllocatorPtr>{m_allocator, m_cpuInputAllocator,};
     }
 
+    void ExecutionProviderImpl::Evict()
+    {
+      //m_allocator->SetResidency(false);
+      m_allocator->SetResidency2(false);
+      //m_allocator->PageOutAll(m_readbackHeap.get());
+    }
+
+    void ExecutionProviderImpl::MakeResident()
+    {
+      //m_allocator->SetResidency(true);
+      m_allocator->SetResidency2(true);
+      //m_allocator->PageInAll(m_uploadHeap.get());
+    }
+
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
     {
         m_d3d12Device.CopyTo(d3dDevice);

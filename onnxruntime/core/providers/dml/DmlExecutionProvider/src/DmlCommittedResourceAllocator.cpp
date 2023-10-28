@@ -21,8 +21,56 @@ namespace Dml
             IID_GRAPHICS_PPV_ARGS(resource.GetAddressOf())
         ));
 
+        ID3D12Pageable* pageable;
+        resource->QueryInterface(&pageable);
+
+        m_resources.push_back(pageable);
+
         ComPtr<DmlResourceWrapper> resourceWrapper;
         wil::MakeOrThrow<DmlCommittedResourceWrapper>(std::move(resource)).As(&resourceWrapper);
+
+        resourceWrapper->AddReleaseCallback(&DmlCommittedResourceAllocator::OnResourceRelease, this);
+
         return resourceWrapper;
+    }
+
+    DmlCommittedResourceAllocator::~DmlCommittedResourceAllocator()
+    {
+      for (auto& item : m_resources)
+      {
+        item->Release();
+      }
+    }
+
+    void DmlCommittedResourceAllocator::SetResidency(bool value)
+    {
+      if (value)
+      {
+        m_device->MakeResident(UINT(m_resources.size()), m_resources.data());
+      }
+      else
+      {
+        m_device->Evict(UINT(m_resources.size()), m_resources.data());
+      }
+    }
+
+    void DmlCommittedResourceAllocator::OnResourceRelease(void * context, ID3D12Resource * resource)
+    {
+      auto that = static_cast<DmlCommittedResourceAllocator*>(context);
+
+      ComPtr<ID3D12Pageable> pageable;
+      resource->QueryInterface(pageable.GetAddressOf());
+
+      for (auto& item : that->m_resources)
+      {
+        if (item == resource)
+        {
+          item->Release();
+
+          std::swap(item, that->m_resources.back());
+          that->m_resources.pop_back();
+          break;
+        }
+      }
     }
 }

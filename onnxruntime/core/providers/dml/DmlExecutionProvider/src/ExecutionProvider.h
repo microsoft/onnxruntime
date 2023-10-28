@@ -169,6 +169,9 @@ namespace Dml
         onnxruntime::common::Status OnSessionInitializationEnd();
         std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators();
 
+        void Evict();
+        void MakeResident();
+
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
 
@@ -308,6 +311,20 @@ namespace Dml
         {
             return m_impl->CreatePreferredAllocators();
         }
+
+        virtual Status MakeResident()
+        {
+          m_impl->MakeResident();
+          m_impl->WaitForOutstandingWork();
+          return Status::OK(); 
+        };
+
+        virtual Status Evict()
+        {
+          m_impl->WaitForOutstandingWork();
+          m_impl->Evict();
+          return Status::OK(); 
+        };
 
     private:
         ComPtr<ExecutionProviderImpl> m_impl;

@@ -741,20 +741,8 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
                                         _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr) {
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
-  std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
-  if (options) {
-    for (auto& factory : options->provider_factories) {
-      auto provider = factory->CreateProvider();
-      provider_list.push_back(std::move(provider));
-    }
-  }
-
   // register the providers
-  for (auto& provider : provider_list) {
-    if (provider) {
-      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
-    }
-  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProviderFactories(options->provider_factories));
 
   if (prepacked_weights_container != nullptr) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddPrePackedWeightsContainer(
@@ -762,6 +750,13 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
   }
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Initialize());
+
+  return nullptr;
+}
+
+static ORT_STATUS_PTR UninitializeSession(_In_ onnxruntime::InferenceSession* session) {
+  
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->Uninitialize());
 
   return nullptr;
 }
@@ -803,6 +798,24 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EvictSession, _In_ OrtSession* session) {
+  API_IMPL_BEGIN
+  
+  OrtStatus* status = nullptr;
+
+  ORT_TRY {
+    ORT_API_RETURN_IF_ERROR(UninitializeSession(reinterpret_cast<onnxruntime::InferenceSession*>(session)));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -2721,6 +2734,7 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::ShapeInferContext_SetOutputTypeShape,
     &OrtApis::SetSymbolicDimensions,
     &OrtApis::ReadOpAttr,
+    &OrtApis::EvictSession,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

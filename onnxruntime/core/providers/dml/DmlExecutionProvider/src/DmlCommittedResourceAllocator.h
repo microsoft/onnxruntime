@@ -15,7 +15,14 @@ namespace Dml
         DmlCommittedResourceAllocator(ID3D12Device* device) : m_device(device) {}
         Microsoft::WRL::ComPtr<DmlResourceWrapper> Alloc(size_t size) final;
 
+        ~DmlCommittedResourceAllocator();
+
+        void SetResidency(bool value) final;
+
     private:
         ID3D12Device* m_device = nullptr;
+        std::vector<ID3D12Pageable*> m_resources;
+
+        static void OnResourceRelease(void* context, ID3D12Resource* resource);
     };
 }

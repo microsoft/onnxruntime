@@ -4512,6 +4512,16 @@ struct OrtApi {
    * \since Version 1.17.
    */
   ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
+
+  /** \brief Evict execution provider resources of the session
+   * \note Call this to release memory while a session is unused.
+   * This allows to reduce memory use (e.g. VRAM) when a session is not in used, without requiring lengthy session recreation.
+   *
+   * \param[in] session
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(EvictSession, _In_ OrtSession* session);
 };
 
 /*

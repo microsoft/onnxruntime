@@ -11,6 +11,8 @@
 namespace Dml
 {
     class DmlSubAllocator;
+    class ReadbackHeap;
+    class PooledUploadHeap;
 
     class CPUAllocator : public onnxruntime::IAllocator
     {
@@ -46,6 +48,11 @@ namespace Dml
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
+        void SetResidency(bool value);
+        void SetResidency2(bool value);
+        void PageOutAll(ReadbackHeap* readbackHeap);
+        void PageInAll(PooledUploadHeap* uploadHeap);
+
     public: // onnxruntime::IAllocator
         void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size) final;
@@ -61,6 +68,7 @@ namespace Dml
         {
             ComPtr<DmlResourceWrapper> resource;
             uint64_t resourceId;
+            std::vector<std::byte> resourceBackup;
         };
 
         struct Bucket
@@ -83,6 +91,7 @@ namespace Dml
         std::vector<Bucket> m_pool;
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
+        bool m_isResident = true;
 
         // Unless specifically requested, allocation sizes are not rounded to enable pooling
         // until SetDefaultRoundingMode is called.  This should be done at completion of session
