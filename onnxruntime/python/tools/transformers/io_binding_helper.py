@@ -1,6 +1,6 @@
 import logging
 from collections import OrderedDict
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 
 import numpy
 import torch
@@ -112,7 +112,7 @@ class IOBindingHelper:
         input_ids: torch.Tensor,
         position_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        past: list[torch.Tensor],
+        past: List[torch.Tensor],
         output_buffers,
         output_shapes,
         name_to_np_type=None,
@@ -229,7 +229,7 @@ class CudaSession:
         del self.io_binding
         del self.ort_session
 
-    def allocate_buffers(self, shape_dict: Dict[str, tuple[int] | list[int]]):
+    def allocate_buffers(self, shape_dict: Dict[str, Tuple[int] | List[int]]):
         """Allocate tensors for I/O Binding"""
         if self.enable_cuda_graph:
             for name, shape in shape_dict.items():

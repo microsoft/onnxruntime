@@ -110,11 +110,11 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
                            "input is expected to have 4 dimensions, got ", input_dims.size());
   }
 
-  // Input and output format is NHWC
+  // Only support NHWC format right now.
   int batch_size = static_cast<int>(input_dims[0]);
-  int num_channels = static_cast<int>(input_dims[3]);
   int height = static_cast<int>(input_dims[1]);
   int width = static_cast<int>(input_dims[2]);
+  int num_channels = static_cast<int>(input_dims[3]);
 
   if (num_channels % num_groups_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

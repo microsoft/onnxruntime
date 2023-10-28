@@ -198,8 +198,8 @@ inline __device__ void AddSkipBias(half* add_out, const half* src, const half* s
   __half2 h2 = *reinterpret_cast<__half2 const*>(&src[offset]);
   __half2 s = *reinterpret_cast<__half2 const*>(&skip[skip_offset]);
   __half2 b = *reinterpret_cast<__half2 const*>(&bias[bias_offset]);
-  h2 += s;
-  h2 += b;
+  h2 = h2 + b;
+  h2 = h2 + s;
 
   *reinterpret_cast<__half2*>(&add_out[offset]) = h2;
 
@@ -233,7 +233,7 @@ inline __device__ void AddSkip(half* add_out, const half* src, const half* skip,
                                int64_t offset, int64_t skip_offset, float& sum, float& sumSq) {
   __half2 h2 = *reinterpret_cast<__half2 const*>(&src[offset]);
   __half2 s = *reinterpret_cast<__half2 const*>(&skip[skip_offset]);
-  h2 += s;
+  h2 = h2 + s;
 
   *reinterpret_cast<__half2*>(&add_out[offset]) = h2;
 
@@ -332,7 +332,7 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   BlockScan(tempStorage).InclusiveScan(inp, out, GroupSumsOp());
 
   // Store the results for the groups in shared memory (to produce coalesced stores later).
-  // For each group, only the last thread of that group is picked to save sum to shared memory and update red buffer.
+  // For each group, only the last thread of that group is picked to save sum to shared memory.
   if (cj == params.cPerGroup - CHANNELS_PER_THREAD) {
     smem[gi] = make_float2(out.sum, out.sumSq);
   }
@@ -346,7 +346,9 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   }
 
   // The global group index.
+  // Use neighboring threads for coalesced write.
   int32_t gj = blockIdx.x * params.groupsPerBlock + threadIdx.x;
+
   if (gj < params.groups) {
     float2 sums = smem[threadIdx.x];
     const int index = (2 * ni) * params.groups + gj;
