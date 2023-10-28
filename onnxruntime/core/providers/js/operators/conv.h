@@ -9,7 +9,6 @@
 namespace onnxruntime {
 namespace js {
 
-
 class ConvBase : public JsKernel {
  public:
   ConvBase(const OpKernelInfo& info, bool is_channels_last, bool is_fused_conv) : JsKernel(info), conv_attrs_(info), w_is_const_(false) {
@@ -115,11 +114,12 @@ class ConvBase : public JsKernel {
   std::vector<float> activation_params_;
   // Tensor w_transposed_;
 };
+
 template <bool is_channels_last, bool is_fused_conv = false>
 class Conv : public ConvBase {
-public:
-   Conv(const OpKernelInfo& info) : ConvBase(info, is_channels_last, is_fused_conv) {
-   }
+ public:
+  Conv(const OpKernelInfo& info) : ConvBase(info, is_channels_last, is_fused_conv) {
+  }
 };
 
 }  // namespace js
