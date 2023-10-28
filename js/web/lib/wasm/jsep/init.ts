@@ -132,7 +132,8 @@ class ComputeContextImpl implements ComputeContext {
 
 export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
   const init = module.jsepInit;
-  if (init && navigator.gpu) {
+  const hasGpu = !!(navigator.gpu && await navigator.gpu.requestAdapter())
+  if (init && hasGpu) {
     if (!env.wasm.simd) {
       throw new Error(
           'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using WebGPU EP');
