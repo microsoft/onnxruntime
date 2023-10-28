@@ -108,6 +108,7 @@ if (NOT onnxruntime_USE_NCCL)
   list(APPEND contrib_ops_excluded_files "collective/distributed_matmul.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_slice.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_reshape.cc")
+  list(APPEND contrib_ops_excluded_files "collective/distributed_expand.cc")
 endif()
 
 set(provider_excluded_files
