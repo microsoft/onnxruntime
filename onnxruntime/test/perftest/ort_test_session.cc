@@ -487,6 +487,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     std::unordered_map<std::string, std::string> dml_options;
     dml_options["performance_preference"] = "high_performance";
     dml_options["device_filter"] = "gpu";
+    dml_options["disable_metacommands"] = "false";
+    dml_options["enable_dynamic_graph_fusion"] = "false";
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
@@ -516,13 +518,31 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               "Select from 'gpu', or 'npu' \n");
         }
       } else if (key == "performance_preference") {
-        std::set<std::string> ov_supported_device_types = {"default", "high_performance", "minimal_power"};
-        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+        std::set<std::string> ov_supported_values = {"default", "high_performance", "minimal_power"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
           dml_options[key] = value;
         } else {
           ORT_THROW(
               "[ERROR] [DML] You have selcted wrong configuration value for the key 'performance_preference'. "
               "Select from 'default', 'high_performance' or 'minimal_power' \n");
+        }
+      } else if (key == "disable_metacommands") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong value for the key 'disable_metacommands'. "
+              "Select from 'true' or 'false' \n");
+        }
+      } else if (key == "enable_dynamic_graph_fusion") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong value for the key 'enable_dynamic_graph_fusion'. "
+              "Select from 'true' or 'false' \n");
         }
       }
     }
