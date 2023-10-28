@@ -4176,7 +4176,7 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
         new_name = hit->second;
       } else {
         new_name = GenerateNodeArgName(make_unique(constant_name));
-        name_mapping.emplace(constant_name, std::move(new_name));
+        name_mapping.emplace(constant_name, new_name);
       }
 
       ORT_RETURN_IF_ERROR(AddConstantProtoAsInitializer(constant_node_proto, new_name));
