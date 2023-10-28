@@ -48,12 +48,20 @@ set(contrib_ops_excluded_files
   "diffusion/group_norm_impl.cu"
   "diffusion/group_norm_impl.h"
   "diffusion/nhwc_conv.cc"
+  "math/gemm_float8.cc"
+  "math/gemm_float8.cu"
+  "math/gemm_float8.h"
   "quantization/attention_quantization.cc"
   "quantization/attention_quantization.h"
   "quantization/attention_quantization_impl.cu"
   "quantization/attention_quantization_impl.cuh"
   "quantization/dequantize_blockwise.cuh"
   "quantization/dequantize_blockwise.cu"
+  "quantization/dequantize_blockwise_bnb4.cuh"
+  "quantization/dequantize_blockwise_bnb4.cu"
+  "quantization/matmul_bnb4.cc"
+  "quantization/matmul_bnb4.cuh"
+  "quantization/matmul_bnb4.cu"
   "quantization/matmul_nbits.cc"
   "quantization/matmul_nbits.cuh"
   "quantization/matmul_nbits.cu"
@@ -98,6 +106,8 @@ if (NOT onnxruntime_USE_NCCL)
   list(APPEND contrib_ops_excluded_files "collective/sharding.cc")
   list(APPEND contrib_ops_excluded_files "collective/sharding_spec.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_matmul.cc")
+  list(APPEND contrib_ops_excluded_files "collective/distributed_slice.cc")
+  list(APPEND contrib_ops_excluded_files "collective/distributed_reshape.cc")
 endif()
 
 set(provider_excluded_files

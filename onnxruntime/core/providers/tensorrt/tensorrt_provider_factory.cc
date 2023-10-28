@@ -75,11 +75,6 @@ struct Tensorrt_Provider : Provider {
     info.device_id = device_id;
     info.has_trt_options = false;
 
-    common::Status status = CreateTensorRTCustomOpDomainList(info);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
-    }
-
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -108,6 +103,7 @@ struct Tensorrt_Provider : Provider {
     info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
     info.layer_norm_fp32_fallback = options.trt_layer_norm_fp32_fallback != 0;
     info.timing_cache_enable = options.trt_timing_cache_enable != 0;
+    info.timing_cache_path = options.trt_timing_cache_path == nullptr ? "" : options.trt_timing_cache_path;
     info.force_timing_cache = options.trt_force_timing_cache != 0;
     info.detailed_build_log = options.trt_detailed_build_log != 0;
     info.build_heuristics_enable = options.trt_build_heuristics_enable != 0;
@@ -120,11 +116,6 @@ struct Tensorrt_Provider : Provider {
     info.profile_max_shapes = options.trt_profile_max_shapes == nullptr ? "" : options.trt_profile_max_shapes;
     info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
     info.cuda_graph_enable = options.trt_cuda_graph_enable != 0;
-
-    common::Status status = CreateTensorRTCustomOpDomainList(info);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
-    }
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }
