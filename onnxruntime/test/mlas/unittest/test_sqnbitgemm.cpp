@@ -17,211 +17,6 @@ Abstract:
 #include "test_util.h"
 #include "mlas_qnbit.h"
 
-namespace {
-
-constexpr size_t DivRoundUp(size_t a, size_t b) {
-  return (a + b - 1) / b;
-}
-
-constexpr size_t BlkDataSizeInBytes(size_t BlkBitWidth, size_t BlkLen) {
-  return BlkLen * BlkBitWidth / 8;
-}
-
-template <size_t BlkBitWidth>
-constexpr size_t ZeroPointsForBlksSizeInBytes(size_t BlkCount) {
-  if constexpr (BlkBitWidth <= 4) {
-    return DivRoundUp(BlkCount, 2);
-  } else {
-    return BlkCount;
-  }
-}
-
-template <size_t BlkBitWidth, size_t BlkLen>
-struct ReferenceQNBitPacking {
-  static_assert(BlkBitWidth == 4, "Only implemented for BlkBitWidth == 4.");
-
-  static void GetPackedBSizes(size_t CountN, size_t CountK,
-                              size_t& PackedBDataSizeInBytes,
-                              size_t& PackedBScaleElementCount,
-                              size_t* PackedBZeroPointSizeInBytes) {
-    const size_t BlockCountK = DivRoundUp(CountK, BlkLen);
-    const size_t TotalBlockCount = CountN * BlockCountK;
-
-    PackedBDataSizeInBytes = TotalBlockCount * BlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    PackedBScaleElementCount = TotalBlockCount;
-    if (PackedBZeroPointSizeInBytes) {
-      *PackedBZeroPointSizeInBytes = CountN * ZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
-    }
-  }
-
-  static void PackB(size_t CountN, size_t CountK,
-                    const float* BDataPtr, size_t ldb,
-                    uint8_t* PackedBDataPtr,
-                    float* PackedBScalePtr,
-                    uint8_t* PackedBZeroPointPtr) {
-    const size_t BlockCountK = DivRoundUp(CountK, BlkLen);
-
-    uint8_t* PackedBDataColPtr = PackedBDataPtr;
-    float* PackedBScaleColPtr = PackedBScalePtr;
-    uint8_t* PackedBZeroPointColPtr = PackedBZeroPointPtr;
-
-    for (size_t n = 0; n < CountN; ++n) {
-      for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
-        size_t kklen = std::min(BlkLen, CountK - k);
-
-        uint8_t* PackedBBlkDataPtr = PackedBDataColPtr + k_blk_idx * BlkDataSizeInBytes(BlkBitWidth, BlkLen);
-
-        if (PackedBZeroPointColPtr) {
-          float scale_block;
-          uint8_t zp_block;
-          QuantizeBlock(BDataPtr + k * ldb + n, ldb, kklen, PackedBBlkDataPtr, scale_block, zp_block);
-
-          if ((k_blk_idx & 1) == 0) {
-            PackedBZeroPointColPtr[k_blk_idx / 2] = zp_block & 0x0F;
-          } else {
-            PackedBZeroPointColPtr[k_blk_idx / 2] |= zp_block << 4;
-          }
-
-          PackedBScaleColPtr[k_blk_idx] = scale_block;
-        } else {
-          float scale_block;
-          QuantizeBlock(BDataPtr + k * ldb + n, ldb, kklen, PackedBBlkDataPtr, scale_block);
-
-          PackedBScaleColPtr[k_blk_idx] = scale_block;
-        }
-      }
-
-      PackedBDataColPtr += BlockCountK * BlkDataSizeInBytes(BlkBitWidth, BlkLen);
-      PackedBScaleColPtr += BlockCountK;
-      if (PackedBZeroPointColPtr != nullptr) {
-        PackedBZeroPointColPtr += ZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
-      }
-    }
-  }
-
-  static void UnpackB(size_t CountN, size_t CountK,
-                      const uint8_t* PackedBDataPtr, const float* PackedBScalePtr, const uint8_t* PackedBZeroPointPtr,
-                      float* BDataPtr, size_t ldb) {
-    const size_t BlockCountK = DivRoundUp(CountK, BlkLen);
-
-    const uint8_t* PackedBDataColPtr = PackedBDataPtr;
-    const float* PackedBScaleColPtr = PackedBScalePtr;
-    const uint8_t* PackedBZeroPointColPtr = PackedBZeroPointPtr;
-
-    for (size_t n = 0; n < CountN; ++n) {
-      for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
-        size_t kklen = std::min(BlkLen, CountK - k);
-
-        const uint8_t* PackedBBlkDataPtr = PackedBDataColPtr + k_blk_idx * BlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        const float scale_block = PackedBScaleColPtr[k_blk_idx];
-
-        if (PackedBZeroPointColPtr) {
-          const uint8_t zp_block = ((k_blk_idx & 1) == 1)
-                                       ? (PackedBZeroPointColPtr[k_blk_idx / 2] >> 4)
-                                       : (PackedBZeroPointColPtr[k_blk_idx / 2] & 0x0F);
-
-          DequantizeBlock(BDataPtr + k * ldb + n, ldb, kklen, PackedBBlkDataPtr, scale_block, zp_block);
-        } else {
-          DequantizeBlock(BDataPtr + k * ldb + n, ldb, kklen, PackedBBlkDataPtr, scale_block);
-        }
-      }
-
-      PackedBDataColPtr += BlockCountK * BlkDataSizeInBytes(BlkBitWidth, BlkLen);
-      PackedBScaleColPtr += BlockCountK;
-      if (PackedBZeroPointColPtr != nullptr) {
-        PackedBZeroPointColPtr += ZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
-      }
-    }
-  }
-
-  static void QuantizeBlock(const float* b_begin, size_t ldb, size_t actual_block_size,
-                            uint8_t* data_block, float& scale_block, uint8_t& zp_block) {
-    float min = *b_begin;
-    float max = *b_begin;
-    for (int32_t kk = 0; kk < actual_block_size; kk++) {
-      const float v = b_begin[ldb * kk];
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
-    min = std::min(min, 0.0f);
-    max = std::max(max, 0.0f);
-
-    scale_block = (max - min) / ((1 << 4) - 1);
-
-    const float reciprocal_scale = scale_block ? 1.0f / scale_block : 0.0f;
-    float zero_point_fp = min;
-    if (scale_block != 0.0f) {
-      zero_point_fp = 0.f - min / scale_block;
-    }
-
-    // Handle any clamping
-    if (zero_point_fp < 0.0f) {
-      zp_block = 0;
-    } else if (zero_point_fp > 15.0f) {
-      zp_block = 15;
-    } else {
-      zp_block = (uint8_t)roundf(zero_point_fp);
-    }
-
-    for (int32_t kk = 0; kk < actual_block_size; kk += 2) {
-      const float v0 = b_begin[ldb * kk];
-      const uint8_t vi0 = (uint8_t)std::min(15.0f, std::max(0.0f, roundf(v0 * reciprocal_scale + zp_block)));
-
-      const float v1 = (kk + 1 < actual_block_size) ? b_begin[ldb * (kk + 1)] : 0.f;
-      const uint8_t vi1 = (uint8_t)std::min(15.0f, std::max(0.0f, roundf(v1 * reciprocal_scale + zp_block)));
-
-      data_block[kk / 2] = vi0 | (vi1 << 4);
-    }
-  }
-
-  static void QuantizeBlock(const float* b_begin, size_t ldb, size_t actual_block_size,
-                            uint8_t* data_block, float& scale_block) {
-    float amax = 0.0f;  // abs(max)
-    float max = 0.0f;
-
-    for (int32_t kk = 0; kk < actual_block_size; kk++) {
-      const float v = b_begin[ldb * kk];
-      if (amax < fabsf(v)) {
-        amax = fabsf(v);
-        max = v;
-      }
-    }
-
-    scale_block = max / (-8.f);
-    const float reciprocal_scale = scale_block ? 1.0f / scale_block : 0.0f;
-
-    for (int32_t kk = 0; kk < actual_block_size; kk += 2) {
-      const float v0 = b_begin[ldb * kk] * reciprocal_scale;
-      const uint8_t vi0 = (uint8_t)std::min(15.0f, std::max(0.0f, roundf(v0 + 8.f)));
-
-      const float v1 = (kk + 1 < actual_block_size) ? b_begin[ldb * (kk + 1)] * reciprocal_scale : 0;
-      const uint8_t vi1 = (uint8_t)std::min(15.0f, std::max(0.0f, roundf(v1 + 8.f)));
-
-      data_block[kk / 2] = vi0 | (vi1 << 4);
-    }
-  }
-
-  static void DequantizeBlock(float* b_begin, size_t ldb, size_t actual_block_size,
-                              const uint8_t* data_block, float scale_block, uint8_t zp_block) {
-    for (size_t kk = 0; kk < actual_block_size; kk += 2) {
-      float x0 = static_cast<float>(data_block[kk / 2] & 0x0F);
-      b_begin[ldb * kk] = scale_block * (x0 - zp_block);
-
-      if (kk + 1 < actual_block_size) {
-        float x1 = static_cast<float>(data_block[kk / 2] >> 4);
-        b_begin[ldb * (kk + 1)] = scale_block * (x1 - zp_block);
-      }
-    }
-  }
-
-  static void DequantizeBlock(float* b_begin, size_t ldb, size_t actual_block_size,
-                              const uint8_t* data_block, float scale_block) {
-    DequantizeBlock(b_begin, ldb, actual_block_size, data_block, scale_block, uint8_t{8});
-  }
-};
-
-}  // namespace
-
 /**
  * @brief Test class for n-bit int block quantized GEMM
  *        Note: only 2-D matmul supported for now
@@ -275,7 +70,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                          const float* Bias,
                          float* C) {
     float* UnpackedBData = BufferUnpackedBReference.GetBuffer(K * N);
-    ReferenceQNBitPacking<BlkBitWidth, BlkLen>::UnpackB(
+    MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::UnpackB(
         N, K, PackedBData, PackedBScale, PackedBZeroPoint, UnpackedBData, N);
 
     for (size_t m = 0; m < M; m++) {
@@ -297,7 +92,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
 
  public:
   void Test(size_t M, size_t N, size_t K,
-            bool WithBias, bool WithZeroPoint, bool WithThreadpool) {
+            bool WithBias, bool Symmetric, bool WithThreadpool) {
     MLAS_THREADPOOL* Threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
     const float* A = BufferA.GetBuffer(K * M);
@@ -334,17 +129,17 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     uint8_t* PackedBZeroPoint = nullptr;
     {
       size_t PackedBDataSize, PackedBScaleSize, PackedBZeroPointSize;
-      ReferenceQNBitPacking<BlkBitWidth, BlkLen>::GetPackedBSizes(
+      MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::GetPackedBSizes(
           N, K, PackedBDataSize, PackedBScaleSize, &PackedBZeroPointSize);
 
       PackedBData = BufferPackedBData.GetBuffer(PackedBDataSize);
       PackedBScale = BufferPackedBScale.GetBuffer(PackedBScaleSize);
-      if (WithZeroPoint) {
+      if (Symmetric) {
         PackedBZeroPoint = BufferPackedBZeroPoint.GetBuffer(PackedBZeroPointSize);
       }
 
-      ReferenceQNBitPacking<BlkBitWidth, BlkLen>::PackB(N, K, B, /* ldb */ N,
-                                                        PackedBData, PackedBScale, PackedBZeroPoint);
+      MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::PackB(N, K, B, /* ldb */ N,
+                                                            PackedBData, PackedBScale, PackedBZeroPoint);
     }
 
     CallGemm(M, N, K, A, /* lda */ K, PackedBData, PackedBScale, PackedBZeroPoint, Bias, C, /* ldc */ N, Threadpool);
@@ -376,20 +171,20 @@ template <size_t BlkBitWidth, size_t BlkLen>
 class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>> {
  public:
   explicit SQNBitGemmShortExecuteTest(size_t M, size_t N, size_t K,
-                                      bool WithThreadpool, bool WithZeroPoint, bool WithBias)
-      : M_(M), N_(N), K_(K), WithThreadpool_(WithThreadpool), WithZeroPoint_(WithZeroPoint), WithBias_(WithBias) {
+                                      bool WithThreadpool, bool Symmetric, bool WithBias)
+      : M_(M), N_(N), K_(K), WithThreadpool_(WithThreadpool), Symmetric_(Symmetric), WithBias_(WithBias) {
   }
 
   void TestBody() override {
     MlasTestFixture<MlasTesterType>::mlas_tester->Test(
-        M_, N_, K_, WithThreadpool_, WithZeroPoint_, WithBias_);
+        M_, N_, K_, WithThreadpool_, Symmetric_, WithBias_);
   }
 
   static size_t RegisterSingleTest(size_t M, size_t N, size_t K,
-                                   bool WithThreadpool, bool WithZeroPoint, bool WithBias) {
+                                   bool WithThreadpool, bool Symmetric, bool WithBias) {
     std::stringstream ss;
     ss << (WithThreadpool ? "SingleThread" : "Threaded")
-       << "/hasZeroPoint" << WithZeroPoint
+       << "/isSymmetric" << Symmetric
        << "/M" << M << "xN" << N << "xK" << K
        << "/hasBias" << WithBias;
     auto test_name = ss.str();
@@ -404,7 +199,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
         // Important to use the fixture type as the return type here.
         [=]() -> MlasTestFixture<MlasTesterType>* {
           return new SQNBitGemmShortExecuteTest(
-              M, N, K, WithThreadpool, WithZeroPoint, WithBias);
+              M, N, K, WithThreadpool, Symmetric, WithBias);
         });
 
     return 1;
@@ -415,26 +210,26 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 
     if (MlasIsSQNBitGemmAvailable(BlkBitWidth, BlkLen)) {
       for (bool WithThreadpool : {false, true}) {
-        for (bool WithZeroPoint : {false, true}) {
+        for (bool Symmetric : {false, true}) {
           for (size_t b = 1; b < 16; b++) {
-            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, false);
-            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, true);
+            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, false);
+            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, true);
           }
           for (size_t b = 16; b <= 256; b <<= 1) {
-            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, false);
-            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, true);
+            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, false);
+            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, true);
           }
           for (size_t b = 256; b < 320; b += 32) {
-            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, WithZeroPoint, true);
+            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, true);
           }
           for (size_t b = 1; b < 96; b++) {
-            test_registered += RegisterSingleTest(1, b, 32, WithThreadpool, WithZeroPoint, false);
-            test_registered += RegisterSingleTest(1, 32, b, WithThreadpool, WithZeroPoint, true);
-            test_registered += RegisterSingleTest(1, b, b, WithThreadpool, WithZeroPoint, false);
+            test_registered += RegisterSingleTest(1, b, 32, WithThreadpool, Symmetric, false);
+            test_registered += RegisterSingleTest(1, 32, b, WithThreadpool, Symmetric, true);
+            test_registered += RegisterSingleTest(1, b, b, WithThreadpool, Symmetric, false);
           }
-          test_registered += RegisterSingleTest(43, 500, 401, WithThreadpool, WithZeroPoint, true);
+          test_registered += RegisterSingleTest(43, 500, 401, WithThreadpool, Symmetric, true);
 
-          // test_registered += RegisterSingleTest(1001, 1027, 1031, WithThreadpool, WithZeroPoint, false);
+          // test_registered += RegisterSingleTest(1001, 1027, 1031, WithThreadpool, Symmetric, false);
         }
       }
     }
@@ -444,12 +239,12 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 
  private:
   size_t M_, N_, K_;
-  bool WithThreadpool_, WithZeroPoint_, WithBias_;
+  bool WithThreadpool_, Symmetric_, WithBias_;
 };
 
 #define DEFINE_MLAS_TESTER(BlkBitWidth, BlkLen) \
-template <> \
-MlasSQNBitGemmTest<BlkBitWidth, BlkLen>* MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>>::mlas_tester(nullptr)
+  template <>                                   \
+  MlasSQNBitGemmTest<BlkBitWidth, BlkLen>* MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>>::mlas_tester(nullptr)
 
 DEFINE_MLAS_TESTER(4, 16);
 DEFINE_MLAS_TESTER(4, 32);
