@@ -8,8 +8,14 @@ import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule> =
-    BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
+let ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule>;
+
+if (!BUILD_DEFS.DISABLE_TRAINING) {
+  ortWasmFactory = require('./binding/ort-training-wasm-simd.js');
+} else {
+  ortWasmFactory =
+      BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
+}
 
 const ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> = !BUILD_DEFS.DISABLE_WASM_THREAD ?
     (BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm-threaded.js') :
@@ -72,10 +78,13 @@ const isSimdSupported = (): boolean => {
 };
 
 const getWasmFileName = (useSimd: boolean, useThreads: boolean) => {
-  if (useThreads) {
-    return useSimd ? 'ort-wasm-simd-threaded.wasm' : 'ort-wasm-threaded.wasm';
+  if (useSimd) {
+    if (!BUILD_DEFS.DISABLE_TRAINING) {
+      return 'ort-training-wasm-simd.wasm';
+    }
+    return useThreads ? 'ort-wasm-simd-threaded.wasm' : 'ort-wasm-simd.wasm';
   } else {
-    return useSimd ? 'ort-wasm-simd.wasm' : 'ort-wasm.wasm';
+    return useThreads ? 'ort-wasm-threaded.wasm' : 'ort-wasm.wasm';
   }
 };
 

@@ -47,6 +47,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
+  'BUILD_DEFS.DISABLE_TRAINING': 'true',
 };
 
 const COPYRIGHT_HEADER = `/*!
@@ -407,13 +408,23 @@ async function main() {
     });
     // ort.wasm-core[.min].js
     await addAllWebBuildTasks({
-      outputBundleName: 'ort.wasm-core.min',
+      outputBundleName: 'ort.wasm-core',
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
         'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
+      },
+    });
+    // ort.training.wasm[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.training.wasm',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_TRAINING': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
       },
     });
   }

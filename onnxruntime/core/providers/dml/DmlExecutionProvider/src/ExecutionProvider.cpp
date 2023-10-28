@@ -67,7 +67,8 @@ namespace Dml
     ExecutionProvider::ExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands) :
+        bool enableMetacommands,
+        bool enableDynamicGraphFusion) :
             IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
@@ -80,7 +81,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableDynamicGraphFusion);
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -147,12 +148,12 @@ namespace Dml
 // Task 24384515: Update ORT AIInfra release agent pool to install 19H1 SDK on VM bootstrap
 #define D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE ((D3D_FEATURE_LEVEL)0x1000)
 
-    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands)
+    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands, bool enableDynamicGraphFusion)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
-          m_areMetacommandsEnabled(enableMetacommands)
+          m_areMetacommandsEnabled(enableMetacommands),
+          m_dynamicGraphFusionEnabled(enableDynamicGraphFusion)
     {
-
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
         D3D_FEATURE_LEVEL featureLevelsList[] = {
@@ -1098,6 +1099,11 @@ namespace Dml
         return m_areMetacommandsEnabled;
     }
 
+    bool ExecutionProviderImpl::DynamicGraphFusionEnabled() const noexcept
+    {
+        return m_dynamicGraphFusionEnabled;
+    }
+
     std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
     ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
     {
@@ -1134,9 +1140,10 @@ namespace Dml
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands)
+        bool enableMetacommands,
+        bool enableDynamicGraphFusion)
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, enableDynamicGraphFusion);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)

@@ -4180,6 +4180,7 @@ Return true if all elements are true and false otherwise.
       .Attr("func_name", "Function name of the Python Triton kernel.", AttributeProto::STRING, std::string(""))
       .Attr("onnx_key", "The hash key for the ONNX graph.", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("onnx_string", "The onnx string of the triton kernel.", AttributeProto::STRING, std::string(""))
+      .AllowUncheckedAttributes()
       .Input(0, "inputs",
              "Input tensors. If to call an existing Python Triton kernel, "
              "the input count and order should match the arguments of the function. If to compute an ONNX graph, "
@@ -5001,6 +5002,26 @@ Return true if all elements are true and false otherwise.
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ResizeGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "Gradient of output Y.", "T")
+      .Input(1, "X", "Input tensor to the Resize operator.", "T")
+      .Input(2, "roi", "The roi input to the Resize operator.", "T", OpSchema::Optional)
+      .Input(3, "scales", "The scales input to the Resize operator.", "tensor(float)", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of the input X.", "T")
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (hasInputShape(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 1, 0);
+        }
+      });
 }
 
 }  // namespace training
