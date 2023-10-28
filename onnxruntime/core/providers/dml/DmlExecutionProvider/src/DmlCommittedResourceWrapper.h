@@ -13,15 +13,15 @@ namespace Dml
 
         void AddReleaseCallback(ResourceCallback callback, void* context = nullptr) final
         {
-          m_releaseCallbacks.push_back(std::pair{callback, context});
+            m_releaseCallbacks.push_back(std::pair{callback, context});
         }
 
         ~DmlCommittedResourceWrapper()
-        { 
-          for(auto [callback, context] : m_releaseCallbacks)
-          {
-            callback(context, m_d3d12Resource.Get());
-          }
+        {
+            for(auto [callback, context] : m_releaseCallbacks)
+            {
+                callback(context, m_d3d12Resource.Get());
+            }
         }
 
     private:

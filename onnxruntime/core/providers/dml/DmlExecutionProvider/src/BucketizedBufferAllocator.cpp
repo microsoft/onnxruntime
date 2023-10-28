@@ -7,8 +7,6 @@
 
 #include "BucketizedBufferAllocator.h"
 #include "DmlSubAllocator.h"
-#include "ReadbackHeap.h"
-#include "PooledUploadHeap.h"
 // #define PRINT_OUTSTANDING_ALLOCATIONS
 
 namespace Dml
@@ -224,117 +222,7 @@ namespace Dml
 
     void BucketizedBufferAllocator::SetResidency(bool value)
     {
-      //Check if we need to change residency
-      if (m_isResident == value) return;
-      m_isResident = value;
-
-      //Collect all pageables
-      std::vector<ID3D12Pageable*> pageables;
-      std::vector<D3D12_RESIDENCY_PRIORITY> priorities;
-
-      pageables.reserve(m_pool.size());
-      priorities.reserve(m_pool.size());
-
-      for (auto& bucket : m_pool)
-      {
-        for (auto& resource : bucket.resources)
-        {
-          auto d3d12Resource = resource.resource.Get()->GetD3D12Resource();
-
-          ID3D12Pageable* d3d12Pageable = nullptr;
-          d3d12Resource->QueryInterface<ID3D12Pageable>(&d3d12Pageable);
-
-          if (d3d12Pageable)
-          {
-            pageables.push_back(d3d12Pageable);
-            priorities.push_back(value ? D3D12_RESIDENCY_PRIORITY_MAXIMUM : D3D12_RESIDENCY_PRIORITY_MINIMUM);
-          }
-        }
-      }
-
-      //Set residency
-      if (value)
-      {
-        ORT_THROW_IF_FAILED(m_device->MakeResident(uint32_t(pageables.size()), pageables.data()));
-      }
-      else
-      {
-        ORT_THROW_IF_FAILED(m_device->Evict(uint32_t(pageables.size()), pageables.data()));
-      }
-
-      //Set residency priority      
-      ID3D12Device1* d3d12Device1 = nullptr;
-      if(m_device->QueryInterface<ID3D12Device1>(&d3d12Device1))
-      {
-        ORT_THROW_IF_FAILED(d3d12Device1->SetResidencyPriority(uint32_t(pageables.size()), pageables.data(), priorities.data()));
-      }
-
-      //Release handles
-      for (auto pageable : pageables)
-      {
-        pageable->Release();
-      }
-    }
-
-    void BucketizedBufferAllocator::SetResidency2(bool value)
-    {
-      m_subAllocator->SetResidency(value);
-    }
-
-    void BucketizedBufferAllocator::PageOutAll(ReadbackHeap * readbackHeap)
-    {
-      //Enumerate all buckets
-      for (auto& bucket : m_pool)
-      {
-        //Enumerate resources in bucket
-        for (auto& item : bucket.resources)
-        {
-          //Get resource
-          auto resource = item.resource->GetD3D12Resource();
-
-          //Determine size
-          auto resourceDesc = resource->GetDesc();
-          item.resourceBackup.resize(resourceDesc.Width);
-
-          //Copy data from GPU to CPU
-          readbackHeap->ReadbackFromGpu(
-            item.resourceBackup,
-            resource,
-            0,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-          //Release GPU memory
-          //m_context->QueueReference(resource);
-          item.resource.Reset();
-        }
-      }
-    }
-
-    void BucketizedBufferAllocator::PageInAll(PooledUploadHeap * uploadHeap)
-    {
-      //Enumerate all buckets
-      for (auto& bucket : m_pool)
-      {
-        //Enumerate resources in bucket
-        for (auto& item : bucket.resources)
-        {
-          //Allocate GPU memory
-          item.resource = m_subAllocator->Alloc(item.resourceBackup.size());
-
-          //Get resource
-          auto resource = item.resource->GetD3D12Resource();
-
-          //Copy data from CPU to GPU
-          uploadHeap->BeginUploadToGpu(
-            resource,
-            0,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            item.resourceBackup);
-          
-          //Release CPU memory
-          item.resourceBackup.clear();
-        }
-      }
+        m_subAllocator->SetResidency(value);
     }
 
     CPUAllocator::CPUAllocator(OrtMemType memType)

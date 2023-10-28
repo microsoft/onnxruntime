@@ -22,13 +22,11 @@ namespace Dml
         ));
 
         ID3D12Pageable* pageable;
-        resource->QueryInterface(&pageable);
-
+        ORT_THROW_IF_FAILED(resource->QueryInterface(&pageable));
         m_resources.push_back(pageable);
 
         ComPtr<DmlResourceWrapper> resourceWrapper;
         wil::MakeOrThrow<DmlCommittedResourceWrapper>(std::move(resource)).As(&resourceWrapper);
-
         resourceWrapper->AddReleaseCallback(&DmlCommittedResourceAllocator::OnResourceRelease, this);
 
         return resourceWrapper;
@@ -36,41 +34,45 @@ namespace Dml
 
     DmlCommittedResourceAllocator::~DmlCommittedResourceAllocator()
     {
-      for (auto& item : m_resources)
-      {
-        item->Release();
-      }
+        for (auto& item : m_resources)
+        {
+            item->Release();
+        }
     }
 
     void DmlCommittedResourceAllocator::SetResidency(bool value)
     {
-      if (value)
-      {
-        m_device->MakeResident(UINT(m_resources.size()), m_resources.data());
-      }
-      else
-      {
-        m_device->Evict(UINT(m_resources.size()), m_resources.data());
-      }
+        if (m_isResident == value) return;
+
+        if (value)
+        {
+            ORT_THROW_IF_FAILED(m_device->MakeResident(UINT(m_resources.size()), m_resources.data()));
+        }
+        else
+        {
+            ORT_THROW_IF_FAILED(m_device->Evict(UINT(m_resources.size()), m_resources.data()));
+        }
+
+        m_isResident = value;
     }
 
     void DmlCommittedResourceAllocator::OnResourceRelease(void * context, ID3D12Resource * resource)
     {
-      auto that = static_cast<DmlCommittedResourceAllocator*>(context);
+        auto that = static_cast<DmlCommittedResourceAllocator*>(context);
 
-      ComPtr<ID3D12Pageable> pageable;
-      resource->QueryInterface(pageable.GetAddressOf());
+        ComPtr<ID3D12Pageable> pageable;
+        ORT_THROW_IF_FAILED(resource->QueryInterface(pageable.GetAddressOf()));
 
-      for (auto& item : that->m_resources)
-      {
-        if (item == resource)
+        for (auto& item : that->m_resources)
         {
-          item->Release();
+            if (item == resource)
+            {
+                item->Release();
 
-          std::swap(item, that->m_resources.back());
-          that->m_resources.pop_back();
-          break;
+                std::swap(item, that->m_resources.back());
+                that->m_resources.pop_back();
+                break;
+            }
         }
-      }
     }
 }

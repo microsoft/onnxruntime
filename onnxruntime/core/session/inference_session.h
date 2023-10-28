@@ -26,7 +26,6 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/session_options.h"
-#include "core/providers/providers.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -216,11 +215,6 @@ class InferenceSession {
    */
   [[nodiscard]] common::Status RegisterExecutionProvider(const std::shared_ptr<IExecutionProvider>& p_exec_provider);
 
-  /*
-   * Register execution provider factories, similar to RegisterExecutionProvider, but these will be reused after eviction.
-   */
-  [[nodiscard]] common::Status RegisterExecutionProviderFactories(const std::vector<std::shared_ptr<IExecutionProviderFactory>>& p_exec_provider_factories);
-
 #if !defined(ORT_MINIMAL_BUILD)
   /**
     * Register a graph transformer. If you've one to register, call this before invoking Initialize().
@@ -322,7 +316,19 @@ class InferenceSession {
    * @return OK if success
    */
   [[nodiscard]] common::Status Initialize();
-  [[nodiscard]] common::Status Uninitialize();
+
+  /**
+   * Notifies the execution provider that the current session will be not used for a while,
+   * so it may reclaim some of the allocated memory if it is required for another purpose.
+   *
+   * This API can be best used when running multiple large models in a sequence repeatedly,
+   * as the data can be moved between system and video memory significantly faster than recreating the session.
+   *
+   * Running the session again will cancel the effect of this call.
+   *
+   * @return OK if success
+   */
+  [[nodiscard]] common::Status Evict();
 
   [[nodiscard]] common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
                                    gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
@@ -599,11 +605,6 @@ class InferenceSession {
 
   // The list of execution providers.
   ExecutionProviders execution_providers_;
-
-  // The list of execution provider factories.
-  std::vector<std::shared_ptr<IExecutionProviderFactory>> execution_provider_factories_;
-
-  bool is_graph_optimized_ = false;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);

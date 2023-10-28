@@ -314,16 +314,16 @@ namespace Dml
 
         virtual Status MakeResident()
         {
-          m_impl->MakeResident();
-          m_impl->WaitForOutstandingWork();
-          return Status::OK(); 
+            m_impl->MakeResident();
+            m_impl->WaitForOutstandingWork();
+            return Status::OK();
         };
 
         virtual Status Evict()
         {
-          m_impl->WaitForOutstandingWork();
-          m_impl->Evict();
-          return Status::OK(); 
+            m_impl->WaitForOutstandingWork();
+            m_impl->Evict();
+            return Status::OK();
         };
 
     private:

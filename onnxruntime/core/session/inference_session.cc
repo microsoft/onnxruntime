@@ -652,15 +652,6 @@ common::Status InferenceSession::AddCustomOpDomains(gsl::span<OrtCustomOpDomain*
   return Status::OK();
 }
 
-common::Status InferenceSession::RegisterExecutionProviderFactories(const std::vector<std::shared_ptr<IExecutionProviderFactory>>& p_exec_provider_factories) {
-  execution_provider_factories_.insert(
-    execution_provider_factories_.end(), 
-    p_exec_provider_factories.begin(), 
-    p_exec_provider_factories.end());
-
-  return Status::OK();
-}
-
 common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) {
   if (custom_registry == nullptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
@@ -1459,24 +1450,8 @@ common::Status InferenceSession::Initialize() {
       have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
     }
 
-    //Register execution providers
-    if (!execution_provider_factories_.empty())
-    {
-      LOGS(*session_logger_, INFO) << "instantiating execution providers";
-
-      for (auto& factory : execution_provider_factories_) {
-        if (!factory) continue;
-
-        auto provider = factory->CreateProvider();
-        if (provider) {
-          ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(provider)));
-        }
-      }
-    }
-
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
-    
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
     for (const auto& it : initializers) {
@@ -1616,15 +1591,11 @@ common::Status InferenceSession::Initialize() {
       }
 #endif
 
-      if (!is_graph_optimized_) {
-        // apply any transformations to the main graph and any subgraphs
-        ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, saving_ort_format));
+      // apply any transformations to the main graph and any subgraphs
+      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, saving_ort_format));
 
-        // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
-        ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
-
-        //is_graph_optimized_ = true;
-      }
+      // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
       // Currently CUDA graph is only considered by CUDA EP and TRT EP.
       //
@@ -1865,42 +1836,29 @@ common::Status InferenceSession::Initialize() {
 
   return status;
 }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
-common::Status InferenceSession::Uninitialize() {
+common::Status InferenceSession::Evict() {
   Status status = Status::OK();
 
   ORT_TRY {
-    LOGS(*session_logger_, INFO) << "Uninitializing session.";
+    LOGS(*session_logger_, INFO) << "Evicting session.";
     std::lock_guard<onnxruntime::OrtMutex> lock(session_mutex_);
-
-    /*is_inited_ = false;
-    session_state_.reset();
-
-    delete &execution_providers_;
-    new (&execution_providers_) ExecutionProviders;
-
-    delete &kernel_registry_manager_;
-    new (&kernel_registry_manager_) KernelRegistryManager;
-
-    delete &graph_transformer_mgr_;
-    new (&graph_transformer_mgr_) onnxruntime::GraphTransformerManager(session_options_.max_num_graph_transformation_steps);*/
 
     for (auto& provider : execution_providers_)
     {
-      auto x = provider->Evict();
+      ORT_THROW_IF_ERROR(provider->Evict());
     }
   }
   ORT_CATCH(...) {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Uninitialize()");
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Evict()");
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   }
 
   return status;
 }
-
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
 
 int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
@@ -2269,12 +2227,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
     InlinedVector<AllocatorPtr> arenas_to_shrink;
 
     ORT_TRY {
-      for (auto& provider : execution_providers_) {
-        auto x = provider->MakeResident();
+      if (!is_inited_) {
+        LOGS(*session_logger_, ERROR) << "Session was not initialized";
+        return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
       }
 
-      if (!is_inited_) {
-        ORT_RETURN_IF_ERROR_SESSIONID_(Initialize());
+      for (auto& provider : execution_providers_) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(provider->MakeResident());
       }
 
       // log evaluation start to trace logging provider
@@ -2611,15 +2570,13 @@ std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutput
 }
 
 common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
-  bool is_inited = false;
 
   {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-    is_inited = is_inited_;
-  }
-
-  if (!is_inited) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(Initialize());
+    if (!is_inited_) {
+      LOGS(*session_logger_, ERROR) << "Session was not initialized";
+      return common::Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+    }
   }
 
   *io_binding = std::make_unique<IOBinding>(*session_state_);

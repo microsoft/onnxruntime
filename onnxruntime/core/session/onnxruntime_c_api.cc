@@ -741,8 +741,20 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
                                         _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr) {
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
+  std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
+  if (options) {
+    for (auto& factory : options->provider_factories) {
+      auto provider = factory->CreateProvider();
+      provider_list.push_back(std::move(provider));
+    }
+  }
+
   // register the providers
-  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProviderFactories(options->provider_factories));
+  for (auto& provider : provider_list) {
+    if (provider) {
+      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
+    }
+  }
 
   if (prepacked_weights_container != nullptr) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddPrePackedWeightsContainer(
@@ -754,10 +766,8 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
   return nullptr;
 }
 
-static ORT_STATUS_PTR UninitializeSession(_In_ onnxruntime::InferenceSession* session) {
-  
-  ORT_API_RETURN_IF_STATUS_NOT_OK(session->Uninitialize());
-
+static ORT_STATUS_PTR EvictSession(_In_ onnxruntime::InferenceSession* session) {
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->Evict());
   return nullptr;
 }
 
@@ -811,11 +821,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
 
 ORT_API_STATUS_IMPL(OrtApis::EvictSession, _In_ OrtSession* session) {
   API_IMPL_BEGIN
-  
+
   OrtStatus* status = nullptr;
 
   ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(UninitializeSession(reinterpret_cast<onnxruntime::InferenceSession*>(session)));
+    ORT_API_RETURN_IF_ERROR(::EvictSession(reinterpret_cast<onnxruntime::InferenceSession*>(session)));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

@@ -22,6 +22,7 @@ namespace Dml
     private:
         ID3D12Device* m_device = nullptr;
         std::vector<ID3D12Pageable*> m_resources;
+        bool m_isResident = true;
 
         static void OnResourceRelease(void* context, ID3D12Resource* resource);
     };
