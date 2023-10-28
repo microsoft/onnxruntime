@@ -16,7 +16,7 @@
  */
 
 // The CUDA kernel is modified from GroupNorm plugin of TensorRT 8.5
-// Modifications: support more cPerBlock
+// Modifications: heuristic cPerBlock; support epsilon; support skip and bias etc.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -24,15 +24,18 @@
 #include <cuda_runtime_api.h>
 #include <cub/cub.cuh>
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/diffusion/group_norm_impl.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 namespace {
-constexpr static int32_t CHANNELS_PER_THREAD = 2;  // 2 channels per thread
+constexpr static int32_t CHANNELS_PER_THREAD = 2;
 
 constexpr static int kSizes[] = {64, 128, 256, 320, 384, 512};
 constexpr static size_t kNumOfSizes = sizeof(kSizes) / sizeof(kSizes[0]);
@@ -80,52 +83,78 @@ struct GroupSumsOp {
 
 template <typename T>
 struct GroupNormNHWCParams {
-  // The output buffer. Layout NHWC.
+  // The output buffer. Shape is (n, h, w, c).
   T* dst;
-  // The input buffer. Layout NHWC.
+
+  // Optional output of element-wise add result of src, skip and bias. Shape is (n, h, w, c).
+  T* add_out;
+
+  // The input buffer. Shape is (n, h, w, c).
   T const* src;
+
+  // Optional input buffer for skip tensor. Shape is (n, h, w, c) or (n, 1, 1, c) or (n, c).
+  T const* skip;
+
+  // Optional input buffer for bias tensor. Shape is (c).
+  T const* bias;
+
   // The gamma scaling factor.
   float const* gamma;
+
   // The beta term to add in GN.
   float const* beta;
-  // The temporary buffer to do the global parallel reduction. Size:
-  // BLOCKS_PER_BATCH x C x 2.
+
+  // The temporary buffer to do the global parallel reduction. Shape is (n, 2, g), where g is number of groups.
   float* redBuffer;
 
   // The number of instances in the batch.
   int32_t n;
+
   // The height and width of each activation map.
   int32_t h;
   int32_t w;
-  // The number of channels.
+
+  // Number of channels.
   int32_t c;
-  // The number of groups.
+
+  // Number of groups.
   int32_t groups;
-  // Do we apply the Swish activation function?
-  bool withSwish;
+
+  // Do we apply the SiLU activation function?
+  bool withSilu;
 
   // Precomputed values and parameters to control the execution of the kernels.
 
-  // The number of activations per instance (h * w) and the number of
-  // activations per block.
+  // Number of activations per instance (h * w)
   int32_t hw;
+
+  // Number of activations per block
   int32_t hwPerBlock;
-  // The number of channels per group and blocks per activation in the C
-  // dimension.
+
+  // Number of channels per block in the C dimension.
   int32_t cPerBlock;
+
+  // Number of channels per group in the C dimension.
   int32_t cPerGroup;
 
   // The precomputed stride between instances.
   int32_t hwc;
-  // The inverse of hwc in floats (to compute mean/var).
+  // The inverse of hw*cPerGroup to compute mean of a group.
   float invHWC;
   // The precomputed number of groups per block.
   int32_t groupsPerBlock;
 
   // Number of threads per block
-  int32_t threads_per_block;
+  int32_t threadsPerBlock;
 
+  // Epsilon to get stable variance in normalization.
   float epsilon;
+
+  // Whether skip need broadcast. True if shape of skip is (N, C) or (N, 1, 1, C); False otherwise.
+  bool broadcast_skip;
+
+  // For SkipGroupNorm, it points to the intermediate result of adding skip and bias.
+  T* skip_workspace;
 };
 
 template <typename T>
@@ -154,6 +183,74 @@ inline __device__ void UpdateSum(const float* src, int64_t offset, float& sum, f
   sum += f2.x + f2.y;
 
   // Update the sum of squares.
+  sumSq += f2.x * f2.x + f2.y * f2.y;
+}
+
+// Sum for SkipGroupNorm: add_out[offset] = src[offset] + skip[skip_offset] + bias[bias_offset]
+template <typename T>
+inline __device__ void AddSkipBias(T* add_out, const T* src, const T* skip, const T* bias,
+                                   int64_t offset, int64_t skip_offset, int64_t bias_offset, float& sum, float& sumSq);
+
+template <>
+inline __device__ void AddSkipBias(half* add_out, const half* src, const half* skip, const half* bias,
+                                   int64_t offset, int64_t skip_offset, int64_t bias_offset, float& sum, float& sumSq) {
+  // Fetch two channels per thread.
+  __half2 h2 = *reinterpret_cast<__half2 const*>(&src[offset]);
+  __half2 s = *reinterpret_cast<__half2 const*>(&skip[skip_offset]);
+  __half2 b = *reinterpret_cast<__half2 const*>(&bias[bias_offset]);
+  h2 += s;
+  h2 += b;
+
+  *reinterpret_cast<__half2*>(&add_out[offset]) = h2;
+
+  float2 f2 = __half22float2(h2);
+  sum += f2.x + f2.y;
+  sumSq += f2.x * f2.x + f2.y * f2.y;
+}
+
+template <>
+inline __device__ void AddSkipBias(float* add_out, const float* src, const float* skip, const float* bias,
+                                   int64_t offset, int64_t skip_offset, int64_t bias_offset, float& sum, float& sumSq) {
+  float2 f2 = *reinterpret_cast<float2 const*>(&src[offset]);
+  float2 s = *reinterpret_cast<float2 const*>(&skip[skip_offset]);
+  float2 b = *reinterpret_cast<float2 const*>(&bias[bias_offset]);
+  f2.x += s.x + b.x;
+  f2.y += s.y + b.y;
+
+  *reinterpret_cast<float2*>(&add_out[offset]) = f2;
+
+  sum += f2.x + f2.y;
+  sumSq += f2.x * f2.x + f2.y * f2.y;
+}
+
+// Sum for SkipGroupNorm without bias: add_out[offset] = src[offset] + skip[skip_offset]
+template <typename T>
+inline __device__ void AddSkip(T* add_out, const T* src, const T* skip,
+                               int64_t offset, int64_t skip_offset, float& sum, float& sumSq);
+
+template <>
+inline __device__ void AddSkip(half* add_out, const half* src, const half* skip,
+                               int64_t offset, int64_t skip_offset, float& sum, float& sumSq) {
+  __half2 h2 = *reinterpret_cast<__half2 const*>(&src[offset]);
+  __half2 s = *reinterpret_cast<__half2 const*>(&skip[skip_offset]);
+  h2 += s;
+
+  *reinterpret_cast<__half2*>(&add_out[offset]) = h2;
+
+  float2 f2 = __half22float2(h2);
+  sum += f2.x + f2.y;
+  sumSq += f2.x * f2.x + f2.y * f2.y;
+}
+
+template <>
+inline __device__ void AddSkip(float* add_out, const float* src, const float* skip,
+                               int64_t offset, int64_t skip_offset, float& sum, float& sumSq) {
+  float2 f2 = *reinterpret_cast<float2 const*>(&src[offset]);
+  float2 s = *reinterpret_cast<float2 const*>(&skip[skip_offset]);
+  f2.x += s.x;
+  f2.y += s.y;
+  *reinterpret_cast<float2*>(&add_out[offset]) = f2;
+  sum += f2.x + f2.y;
   sumSq += f2.x * f2.x + f2.y * f2.y;
 }
 
@@ -188,13 +285,43 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   float sumSq = 0.F;
 
   // Iterate over the activations to compute the sums.
-  for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi) {
-    int64_t offset = static_cast<int64_t>(ni) * params.hwc + static_cast<int64_t>(hwi) * params.c + ci;
-    UpdateSum(params.src, offset, sum, sumSq);
+  int64_t offset = static_cast<int64_t>(ni) * params.hwc + static_cast<int64_t>(hwBegin) * params.c + ci;
+  if (params.skip != nullptr) {
+    // SkipGroupNorm: skip is (n, h, w, c) or (n, 1, 1, c) or (n, c),  bias is (c), and add_out is (n, h, w, c)
+    const int64_t bias_offset = static_cast<int64_t>(ci);
+    T* add_out = params.skip_workspace;
+    if (params.broadcast_skip) {
+      const int64_t skip_offset = static_cast<int64_t>(ni) * params.c + ci;
+
+      if (params.bias != nullptr) {
+        for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi, offset += params.c) {
+          AddSkipBias(add_out, params.src, params.skip, params.bias, offset, skip_offset, bias_offset, sum, sumSq);
+        }
+      } else {
+        for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi, offset += params.c) {
+          AddSkip(add_out, params.src, params.skip, offset, skip_offset, sum, sumSq);
+        }
+      }
+    } else {
+      if (params.bias != nullptr) {
+        for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi, offset += params.c) {
+          AddSkipBias(add_out, params.src, params.skip, params.bias, offset, offset, bias_offset, sum, sumSq);
+        }
+      } else {
+        for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi, offset += params.c) {
+          AddSkip(add_out, params.src, params.skip, offset, offset, sum, sumSq);
+        }
+      }
+    }
+  } else {  // GroupNorm
+    for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi, offset += params.c) {
+      UpdateSum(params.src, offset, sum, sumSq);
+    }
   }
 
-  // The group that thread works on and the channel in the group (modulus).
+  // The group index relative to the first group within the same block.
   int32_t gi = threadIdx.x * CHANNELS_PER_THREAD / params.cPerGroup;
+  // The channel in the group.
   int32_t cj = ci % params.cPerGroup;
 
   // The data for the summations.
@@ -205,6 +332,7 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   BlockScan(tempStorage).InclusiveScan(inp, out, GroupSumsOp());
 
   // Store the results for the groups in shared memory (to produce coalesced stores later).
+  // For each group, only the last thread of that group is picked to save sum to shared memory and update red buffer.
   if (cj == params.cPerGroup - CHANNELS_PER_THREAD) {
     smem[gi] = make_float2(out.sum, out.sumSq);
   }
@@ -212,20 +340,19 @@ __global__ void groupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   // Make sure the data is in shared memory.
   __syncthreads();
 
-  // The global group index.
-  int32_t gj = blockIdx.x * params.groupsPerBlock + threadIdx.x;
-
   // Threads that have nothing left to do, exit.
-  if (threadIdx.x >= params.groupsPerBlock || gj >= params.groups) {
+  if (threadIdx.x >= params.groupsPerBlock) {
     return;
   }
 
-  // The first threads (those storing to global memory, load the values).
-  float2 sums = smem[threadIdx.x];
-
-  // Store to global memory.
-  atomicAdd(&params.redBuffer[(2 * ni + 0) * params.groups + gj], sums.x);
-  atomicAdd(&params.redBuffer[(2 * ni + 1) * params.groups + gj], sums.y);
+  // The global group index.
+  int32_t gj = blockIdx.x * params.groupsPerBlock + threadIdx.x;
+  if (gj < params.groups) {
+    float2 sums = smem[threadIdx.x];
+    const int index = (2 * ni) * params.groups + gj;
+    atomicAdd(&params.redBuffer[index], sums.x);
+    atomicAdd(&params.redBuffer[index + params.groups], sums.y);
+  }
 }
 
 template <typename T>
@@ -233,7 +360,7 @@ void groupNormNHWCSum(GroupNormNHWCParams<T> const& params, cudaStream_t stream)
   dim3 grid;
 
   // The number of blocks to compute all the channels.
-  grid.x = divUp(params.c, params.cPerBlock);
+  grid.x = params.c / params.cPerBlock;
 
   // The number of blocks to compute all the activations in a given instance.
   grid.y = divUp(params.hw, params.hwPerBlock);
@@ -242,7 +369,7 @@ void groupNormNHWCSum(GroupNormNHWCParams<T> const& params, cudaStream_t stream)
   grid.z = params.n;
 
   // Threads_per_block is half of values in kSizes since CHANNELS_PER_THREAD = 2.
-  switch (params.threads_per_block) {
+  switch (params.threadsPerBlock) {
     case 256:
       groupNormNHWCSumKernel<T, 256><<<grid, 256, 0, stream>>>(params);
       break;
@@ -265,11 +392,12 @@ void groupNormNHWCSum(GroupNormNHWCParams<T> const& params, cudaStream_t stream)
 }
 
 template <typename T>
-__device__ void computeGroupNorm(const T* src, T* dst, int64_t offset, float mean, float invStdDev, float2& gammaF2, float2& betaF2, bool swish);
+__device__ void computeGroupNorm(const T* src, T* dst, int64_t offset, float mean, float invStdDev,
+                                 float2& gammaF2, float2& betaF2, bool silu);
 
 template <>
 __device__ void computeGroupNorm(const half* src, half* dst, int64_t offset, float mean, float invStdDev,
-                                 float2& gammaF2, float2& betaF2, bool swish) {
+                                 float2& gammaF2, float2& betaF2, bool silu) {
   // Fetch two channels per thread.
   __half2 h2 = *reinterpret_cast<__half2 const*>(&src[offset]);
 
@@ -284,8 +412,8 @@ __device__ void computeGroupNorm(const half* src, half* dst, int64_t offset, flo
   f2.x = gammaF2.x * f2.x + betaF2.x;
   f2.y = gammaF2.y * f2.y + betaF2.y;
 
-  // Apply Swish if needed.
-  if (swish) {
+  // Apply SiLU activation if needed.
+  if (silu) {
     f2.x = f2.x * sigmoid(f2.x);
     f2.y = f2.y * sigmoid(f2.y);
   }
@@ -295,7 +423,7 @@ __device__ void computeGroupNorm(const half* src, half* dst, int64_t offset, flo
 
 template <>
 __device__ void computeGroupNorm(const float* src, float* dst, int64_t offset, float mean, float invStdDev,
-                                 float2& gammaF2, float2& betaF2, bool swish) {
+                                 float2& gammaF2, float2& betaF2, bool silu) {
   // Fetch two channels per thread.
   float2 f2 = *reinterpret_cast<float2 const*>(&src[offset]);
 
@@ -307,8 +435,8 @@ __device__ void computeGroupNorm(const float* src, float* dst, int64_t offset, f
   f2.x = gammaF2.x * f2.x + betaF2.x;
   f2.y = gammaF2.y * f2.y + betaF2.y;
 
-  // Apply Swish if needed.
-  if (swish) {
+  // Apply SiLU activation if needed.
+  if (silu) {
     f2.x = f2.x * sigmoid(f2.x);
     f2.y = f2.y * sigmoid(f2.y);
   }
@@ -320,24 +448,25 @@ template <typename T>
 __global__ void groupNormNHWCScaleKernel(GroupNormNHWCParams<T> params) {
   // The channel loaded by that thread.
   int32_t ci = blockIdx.x * params.cPerBlock + threadIdx.x * CHANNELS_PER_THREAD;
-  if (ci >= params.c) {
+  if (ci >= params.c || threadIdx.x * CHANNELS_PER_THREAD >= params.cPerBlock) {
     return;
   }
 
   // The instance in the batch.
   int32_t ni = blockIdx.z;
 
-  // The group that thread works on and the channel in the group (modulus).
+  // The group that thread works on.
   int32_t gi = ci / params.cPerGroup;
 
   // Load the sum and sum of squares for the group.
   float sum = 0.F, sumSq = 0.F;
   if (gi < params.groups) {
-    sum = params.redBuffer[(2 * ni + 0) * params.groups + gi];
-    sumSq = params.redBuffer[(2 * ni + 1) * params.groups + gi];
+    const int index = (2 * ni) * params.groups + gi;
+    sum = params.redBuffer[index];
+    sumSq = params.redBuffer[index + params.groups];
   }
 
-  // Load gamma/beta.
+  // Load gamma/beta. Fetch two per thread.
   float2 gammaF2 = *reinterpret_cast<float2 const*>(&params.gamma[ci]);
   float2 betaF2 = *reinterpret_cast<float2 const*>(&params.beta[ci]);
 
@@ -346,20 +475,15 @@ __global__ void groupNormNHWCScaleKernel(GroupNormNHWCParams<T> params) {
   // Compute the variance.
   float var = sumSq * params.invHWC - (mean * mean);
   // Compute the inverse of the stddev.
-  float invStdDev = var <= 0.F ? 1.F : rsqrtf(var + params.epsilon);
+  float invStdDev = rsqrtf(var + params.epsilon);
 
-  // The first activation loaded by that block.
   int32_t hwBegin = blockIdx.y * params.hwPerBlock;
-  // The last activation loaded by that block.
   int32_t hwEnd = min(hwBegin + params.hwPerBlock, params.hw);
 
-  // Iterate over the activations to compute the sums.
-  for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi) {
-    // The src/dst offset.
-    int64_t offset = (int64_t)ni * params.hwc + hwi * params.c + ci;
-
-    // Fetch two channels per thread.
-    computeGroupNorm<T>(params.src, params.dst, offset, mean, invStdDev, gammaF2, betaF2, params.withSwish);
+  const T* input = (params.skip != nullptr) ? params.skip_workspace : params.src;
+  int64_t offset = static_cast<int64_t>(ni) * params.hwc + static_cast<int64_t>(hwBegin) * params.c + ci;
+  for (int32_t hwi = hwBegin; hwi < hwEnd; ++hwi, offset += params.c) {
+    computeGroupNorm<T>(input, params.dst, offset, mean, invStdDev, gammaF2, betaF2, params.withSilu);
   }
 }
 
@@ -368,13 +492,14 @@ void groupNormNHWCScale(GroupNormNHWCParams<T> const& params, cudaStream_t strea
   dim3 grid;
 
   // The number of blocks to compute all the channels.
-  grid.x = divUp(params.c, params.cPerBlock);
+  grid.x = params.c / params.cPerBlock;
   // The number of blocks to compute all the activations in a given instance.
   grid.y = divUp(params.hw, params.hwPerBlock);
   // The number of instances.
   grid.z = params.n;
 
-  switch (params.threads_per_block) {
+  // Threads_per_block is half of values in kSizes since CHANNELS_PER_THREAD = 2.
+  switch (params.threadsPerBlock) {
     case 256:
       groupNormNHWCScaleKernel<T><<<grid, 256, 0, stream>>>(params);
       break;
@@ -418,7 +543,10 @@ template <typename T>
 Status LaunchGroupNormKernel(
     cudaStream_t stream,
     T* output,
+    T* add_out,
     const T* input,
+    const T* skip,
+    const T* bias,
     const float* gamma,
     const float* beta,
     void* workspace,
@@ -428,24 +556,18 @@ Status LaunchGroupNormKernel(
     int height,
     int width,
     int num_groups,
-    bool use_swish_activation) {
-  if (batch_size > static_cast<int>(kMaxGroupNormBatchSize)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
-                           "only support batch_size <= 32. Got", batch_size);
-  }
-
-  if (num_groups > static_cast<int>(kGroupNormNumberOfGroups)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
-                           "only support num_groups <= 32. Got", num_groups);
-  }
-
+    bool use_silu,
+    bool broadcast_skip) {
   GroupNormNHWCParams<T> params;
+
+  int32_t cPerGroup = num_channels / num_groups;
 
   int32_t cPerBlock;
   switch (num_channels) {
     case 2560:
     case 2048:
     case 1024:
+    case 512:
       cPerBlock = 512;
       break;
     case 1920:
@@ -458,7 +580,6 @@ Status LaunchGroupNormKernel(
     case 384:
       cPerBlock = 384;
       break;
-    case 512:
     case 256:
       cPerBlock = 256;
       break;
@@ -473,16 +594,18 @@ Status LaunchGroupNormKernel(
       cPerBlock = 320;
   }
 
-  // Find a maximum cPerBlock that num_channels could be divisible by it.
-  // Try to be close to 512 since we have multiple kSizes values are within [256, 512] range that could act as fallback.
-  int32_t cPerGroup = num_channels / num_groups;
-  if (cPerBlock % cPerGroup != 0) {
+  if (num_channels % cPerBlock != 0 || cPerBlock % cPerGroup != 0) {
+    // Find a maximum cPerBlock that num_channels could be divisible by it.
+    // Try to be close to 512 since multiple kSizes values within [256, 512) range could act as fallback.
     cPerBlock = findMaxDivisor(num_groups, kMaxSize / cPerGroup) * cPerGroup;
   }
 
-  params.withSwish = use_swish_activation;
+  params.withSilu = use_silu;
   params.dst = output;
+  params.add_out = add_out;
   params.src = input;
+  params.skip = skip;
+  params.bias = bias;
   params.gamma = gamma;
   params.beta = beta;
   params.redBuffer = reinterpret_cast<float*>(workspace);
@@ -493,6 +616,7 @@ Status LaunchGroupNormKernel(
   params.groups = num_groups;
   params.hw = params.h * params.w;
 
+  // This will allocate as many blocks as possible to partition HW.
   constexpr int32_t maxBlocksPerHW = 1024;
   const int32_t blocksPerHW = findMaxDivisor(params.hw, maxBlocksPerHW);
   params.hwPerBlock = divUp(params.hw, blocksPerHW);
@@ -502,27 +626,35 @@ Status LaunchGroupNormKernel(
   params.hwc = params.hw * params.c;
   params.invHWC = 1.F / (float)(params.hw * params.cPerGroup);
   params.groupsPerBlock = cPerBlock / params.cPerGroup;
+  params.epsilon = epsilon;
+  params.broadcast_skip = broadcast_skip;
 
-  // TODO: Update the kernel to support CHANNELS_PER_THREAD==1
-  if (cPerBlock > 512 || (params.cPerGroup % CHANNELS_PER_THREAD != 0)) {
-    printf("n=%d h=%d w=%d c=%d groups=%d hw=%d hwPerBlock=%d cPerBlock=%d cPerGroup=%d\n",
-           params.n, params.h, params.w, params.c, params.groups, params.hw, params.hwPerBlock,
-           params.cPerBlock, params.cPerGroup);
-    ORT_NOT_IMPLEMENTED("Not implemented");
+  // Workspace for SkipGroupNorm to store intermediate results of src+skip+bias.
+  params.skip_workspace = (params.add_out != nullptr) ? params.add_out : params.dst;
+
+  // TODO: Update the kernel to support CHANNELS_PER_THREAD==1 and other corner cases
+  if (params.c % params.cPerBlock != 0 ||
+      params.cPerBlock % params.cPerGroup != 0 ||
+      cPerBlock > kMaxSize ||
+      (params.cPerGroup % CHANNELS_PER_THREAD != 0)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "GroupNorm in CUDA does not support the input: n=", params.n,
+                           " h=", params.h,
+                           " w=", params.w,
+                           " c=", params.c,
+                           " groups=", params.groups);
   }
 
-  params.threads_per_block = nextSize(cPerBlock) / CHANNELS_PER_THREAD;
+  params.threadsPerBlock = nextSize(cPerBlock) / CHANNELS_PER_THREAD;
 
-  cudaMemsetAsync(params.redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), stream);
-
-  // Make sure the values are as we expect.
-  ORT_ENFORCE(params.c % params.cPerBlock == 0);
-
-  // Make sure a group does not span multiple blocks.
-  ORT_ENFORCE(params.cPerBlock % params.cPerGroup == 0);
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
+      params.redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(batch_size, num_groups), stream));
 
   groupNormNHWCSum<T>(params, stream);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("workspace", params.redBuffer, batch_size, 2, num_groups);
 
   groupNormNHWCScale<T>(params, stream);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -530,15 +662,17 @@ Status LaunchGroupNormKernel(
   return Status::OK();
 }
 
-template Status LaunchGroupNormKernel<half>(cudaStream_t stream, half* output,
-                                            const half* input, const float* gamma, const float* beta, void* workspace,
+template Status LaunchGroupNormKernel<half>(cudaStream_t stream, half* output, half* add_out,
+                                            const half* input, const half* skip, const half* bias,
+                                            const float* gamma, const float* beta, void* workspace,
                                             float epsilon, int batch_size, int num_channels,
-                                            int height, int width, int num_groups, bool swish);
+                                            int height, int width, int num_groups, bool silu, bool broadcast_skip);
 
-template Status LaunchGroupNormKernel<float>(cudaStream_t stream, float* output,
-                                             const float* input, const float* gamma, const float* beta, void* workspace,
+template Status LaunchGroupNormKernel<float>(cudaStream_t stream, float* output, float* add_out,
+                                             const float* input, const float* skip, const float* bias,
+                                             const float* gamma, const float* beta, void* workspace,
                                              float epsilon, int batch_size, int num_channels,
-                                             int height, int width, int num_groups, bool swish);
+                                             int height, int width, int num_groups, bool silu, bool broadcast_skip);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

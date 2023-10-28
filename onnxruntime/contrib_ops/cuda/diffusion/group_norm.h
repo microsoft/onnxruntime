@@ -17,10 +17,11 @@ class GroupNorm final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  bool use_swish_activation_;
+  bool use_swish_activation_;  // use SiLU (also known as Swish) activation after group normalization?
   float epsilon_;
   int num_groups_;
   bool channels_last_;
+  bool has_skip_;  // true for SkipGroupNorm operator; false for GroupNorm
 };
 
 }  // namespace cuda
