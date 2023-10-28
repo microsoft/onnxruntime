@@ -345,13 +345,6 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
     ortmodule.forward = pytorch_module.forward
 
 
-def warn_of_constant_inputs(data, logger: logging.Logger):
-    logger.info(
-        f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
-        " Please consider moving constant arguments to the model constructor."
-    )
-
-
 def patch_torch_module_ort_forward_method(torch_module_ort):
     def _forward(self, *inputs, **kwargs):
         """Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -424,6 +417,14 @@ def get_runtime_pytorch_version():
 
 def check_function_has_param(function: Callable, param_name: str) -> bool:
     return param_name in inspect.signature(function).parameters
+
+
+def get_fully_qualified_class_name(cls: type) -> str:
+    """Returns the fully qualified class name of the given class."""
+    module = cls.__module__
+    if module == "builtins":
+        return cls.__qualname__  # avoid outputs like 'builtins.str'
+    return module + "." + cls.__qualname__
 
 
 def save_tuning_results(session, is_training, tuning_results_path):

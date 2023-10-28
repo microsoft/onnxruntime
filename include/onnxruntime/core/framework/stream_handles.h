@@ -96,6 +96,10 @@ class Stream {
     }
   }
 
+  virtual void* GetResource(int /*version*/, int /*id*/) const {
+    return nullptr;
+  }
+
  private:
   StreamHandle handle_;
   const OrtDevice& device_;

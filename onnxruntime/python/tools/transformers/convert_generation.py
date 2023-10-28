@@ -45,7 +45,6 @@ import argparse
 import logging
 import math
 import os
-import sys
 import time
 from enum import Enum
 from pathlib import Path
@@ -54,9 +53,14 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import onnx
 import torch
-from benchmark_helper import Precision
+from benchmark_helper import Precision, setup_logger
 from fusion_utils import NumpyHelper
+from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx
+from models.gpt2.gpt2_helper import PRETRAINED_GPT2_MODELS
+from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
+from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS
 from onnx import GraphProto, ModelProto, TensorProto
+from onnx_model import OnnxModel
 from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
@@ -69,16 +73,6 @@ from transformers import (
 )
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
-from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E402
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
-from benchmark_helper import setup_logger  # noqa: E402
-from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models  # noqa: E402
-from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -889,7 +883,8 @@ def remove_shared_initializers(
     graph2: GraphProto,
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
-    require_raw_data: bool = False,
+    signature_cache1: Optional[dict] = None,
+    signature_cache2: Optional[dict] = None,
 ):
     """Remove initializers with same value from two graphs.
 
@@ -898,7 +893,8 @@ def remove_shared_initializers(
         graph2 (GraphProto): the second graph to process
         shared_prefix (str): add prefix to the shared initializers among two graphs
         min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
-        require_raw_data (bool, optional): Only remove tensors with raw_data field to speed up method
+        signature_cache1 (dict): Optional dictionary to store data signatures of tensors in graph1 in order to speed up comparison
+        signature_cache2 (dict): Optional dictionary to store data signatures of tensors in graph2 in order to speed up comparison
     """
 
     mapping_initializers_1 = {}
@@ -915,7 +911,7 @@ def remove_shared_initializers(
             if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
                 continue
 
-            if OnnxModel.has_same_value(initializer1, initializer2, require_raw_data=True):
+            if OnnxModel.has_same_value(initializer1, initializer2, signature_cache1, signature_cache2):
                 mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
                 shared_initializers_1.append(initializer1)
 
@@ -988,14 +984,21 @@ def remove_shared_initializers(
     return shared_initializers_2
 
 
-def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto, require_raw_data: bool = False):
+def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto):
     encoder = OnnxModel(encoder_model)
     decoder = OnnxModel(decoder_model)
     encoder.add_prefix_to_names("e_")
     decoder.add_prefix_to_names("d_")
-    encoder.remove_duplicated_initializer(require_raw_data)
-    decoder.remove_duplicated_initializer(require_raw_data)
-    initializers = remove_shared_initializers(decoder.model.graph, encoder.model.graph, "s_", require_raw_data)
+    signature_cache1, signature_cache2 = {}, {}
+    encoder.remove_duplicated_initializer(signature_cache1)
+    decoder.remove_duplicated_initializer(signature_cache2)
+    initializers = remove_shared_initializers(
+        decoder.model.graph,
+        encoder.model.graph,
+        shared_prefix="s_",
+        signature_cache1=signature_cache1,
+        signature_cache2=signature_cache2,
+    )
     return initializers
 
 
@@ -1269,7 +1272,78 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
-def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: GraphProto):
+def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads: int = 0):
+    past_seq_len = past_seq_len_input
+    if past_seq_len not in model.get_graphs_input_names():
+        # Add model input for past sequence length
+        new_input = onnx.helper.make_tensor_value_info(past_seq_len, onnx.TensorProto.INT64, shape=[1])
+        model.model.graph.input.append(new_input)
+
+    # Replace MultiHeadAttention with GroupQueryAttention
+    for node in model.model.graph.node:
+        if node.op_type == "MultiHeadAttention":
+            gqa_node = onnx.helper.make_node(
+                "GroupQueryAttention",
+                inputs=[
+                    node.input[0],  # query
+                    node.input[1],  # key
+                    node.input[2],  # value
+                    node.input[6],  # past_key
+                    node.input[7],  # past_value
+                    past_seq_len,  # past_sequence_length
+                ],
+                outputs=node.output,
+                name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
+                domain="com.microsoft",
+                num_heads=node.attribute[0].i,
+                kv_num_heads=node.attribute[0].i if kv_num_heads == 0 else kv_num_heads,
+                is_past_bsnh=0,
+            )
+            model.model.graph.node.remove(node)
+            model.model.graph.node.extend([gqa_node])
+    return model
+
+
+def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
+    input_self_past_0 = 1
+    # w/wo attention mask, w/wo hidden_state
+    graph_input_names = [gi.name for gi in subg.input]
+    while input_self_past_0 < 3 and not graph_input_names[input_self_past_0].startswith("past"):
+        input_self_past_0 += 1
+    output_self_present_0 = 1
+
+    num_layers = (len(subg.output) - output_self_present_0) // 2
+    input_cross_past_0 = 2 * num_layers + input_self_past_0
+    past_key_cross_inputs = {subg.input[layer * 2 + input_cross_past_0].name: layer for layer in range(num_layers)}
+    print(f"    --past_key_cross_inputs={past_key_cross_inputs}")
+
+    input_past_key_cross_0_shape = shape_of(subg.input[input_cross_past_0])
+    print(f"past_key_cross_0_shape is {input_past_key_cross_0_shape}")
+    batch_size_dim = input_past_key_cross_0_shape[0]
+    num_heads_dim = input_past_key_cross_0_shape[1]
+    cross_seq_len_dim = input_past_key_cross_0_shape[2]
+
+    num_layer_output_qk = 0
+    for node in subg.node:
+        if (node.op_type == "DecoderMaskedMultiHeadAttention") and (node.input[1] in past_key_cross_inputs):
+            print(f"    -- add cross QK output from: node: {node.name} with output: {node.output}")
+            num_layer_output_qk += 1
+            layer = past_key_cross_inputs[node.input[1]]
+            cross_attention_out_name = f"output_cross_qk_{layer}"
+            appended_names = [""] * (3 - len(node.output))
+            appended_names.append(cross_attention_out_name)
+            node.output.extend(appended_names)
+            node.attribute.extend([onnx.helper.make_attribute("output_qk", 1)])
+
+            cross_attention = onnx.helper.make_tensor_value_info(
+                cross_attention_out_name, TensorProto.FLOAT, [batch_size_dim, num_heads_dim, 1, cross_seq_len_dim]
+            )
+            subg.output.extend([cross_attention])
+    if num_layer_output_qk != num_layers:
+        raise ValueError(f"Did not add cross QK for all layers{num_layers} vs {num_layer_output_qk}")
+
+
+def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelProto):
     input_self_past_0 = 1
     # w/wo attention mask, w/wo hidden_state
     graph_input_names = [gi.name for gi in subg.input]

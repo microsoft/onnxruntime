@@ -4,6 +4,7 @@
 
 import argparse
 import contextlib
+import json
 import os
 import platform
 import re
@@ -95,7 +96,7 @@ def _openvino_verify_device_type(device_read):
                 break
 
     def invalid_hetero_build():
-        print("\nIf trying to build Hetero/Multi/Auto, specifiy the supported devices along with it.\n")
+        print("\nIf trying to build Hetero/Multi/Auto, specify the supported devices along with it.\n")
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
@@ -106,7 +107,7 @@ def _openvino_verify_device_type(device_read):
         sys.exit("Wrong Build Type selected")
 
     if res is False:
-        print("\nYou have selcted wrong configuration for the build.")
+        print("\nYou have selected wrong configuration for the build.")
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
@@ -165,6 +166,15 @@ def parse_arguments():
         help="Use parallel build. The optional value specifies the maximum number of parallel jobs. "
         "If the optional value is 0 or unspecified, it is interpreted as the number of CPUs.",
     )
+    parser.add_argument(
+        "--nvcc_threads",
+        nargs="?",
+        default=-1,
+        type=int,
+        help="Maximum number of NVCC threads in each parallel job."
+        "If the value is unspecified, it will be computed based on available memory and number of parallel jobs.",
+    )
+
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
     parser.add_argument("--skip_tests", action="store_true", help="Skip all tests.")
     parser.add_argument(
@@ -237,6 +247,7 @@ def parse_arguments():
         "--cudnn_home is not specified.",
     )
     parser.add_argument("--enable_cuda_line_info", action="store_true", help="Enable CUDA line info.")
+    parser.add_argument("--enable_cuda_nhwc_ops", action="store_true", help="Enable CUDA NHWC ops in build.")
 
     # Python bindings
     parser.add_argument("--enable_pybind", action="store_true", help="Enable Python Bindings.")
@@ -329,6 +340,7 @@ def parse_arguments():
         "CMake setup. Delete CMakeCache.txt if needed",
     )
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
+    parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
     parser.add_argument(
         "--android_abi",
@@ -400,7 +412,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.37", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.44", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -420,7 +432,7 @@ def parse_arguments():
     parser.add_argument("--wasm_run_tests_in_browser", action="store_true", help="Run WebAssembly tests in browser")
 
     parser.add_argument(
-        "--enable_wasm_profiling", action="store_true", help="Enable WebAsselby profiling and preserve function names"
+        "--enable_wasm_profiling", action="store_true", help="Enable WebAssembly profiling and preserve function names"
     )
     parser.add_argument(
         "--enable_wasm_debug_info", action="store_true", help="Build WebAssembly with DWARF format debug info"
@@ -517,7 +529,7 @@ def parse_arguments():
         "--llvm_config",
         type=str,
         default="",
-        help="Path to llvm-config.exe for LLVM buit from sources. It is strongly needed for build on Windows",
+        help="Path to llvm-config.exe for LLVM built from sources. It is strongly needed for build on Windows",
     )
     parser.add_argument(
         "--skip_onnx_tests",
@@ -542,17 +554,11 @@ def parse_arguments():
             "Ninja",
             "NMake Makefiles",
             "Unix Makefiles",
-            "Visual Studio 16 2019",
             "Visual Studio 17 2022",
             "Xcode",
         ],
         default=None,
         help="Specify the generator that CMake invokes.",
-    )
-    parser.add_argument(
-        "--enable_multi_device_test",
-        action="store_true",
-        help="Test with multi-device. Mostly used for multi-device GPU",
     )
     parser.add_argument("--use_dml", action="store_true", help="Build with DirectML.")
     parser.add_argument(
@@ -630,6 +636,13 @@ def parse_arguments():
     )
     # Please note in our CMakeLists.txt this is already default on. But in this file we reverse it to default OFF.
     parser.add_argument("--disable_rtti", action="store_true", help="Disable RTTI (reduces binary size)")
+    parser.add_argument(
+        "--disable_types",
+        nargs="+",
+        default=[],
+        choices=["float8", "optional", "sparsetensor"],
+        help="Disable selected data types (reduces binary size)",
+    )
     parser.add_argument(
         "--disable_exceptions",
         action="store_true",
@@ -863,6 +876,43 @@ def normalize_arg_list(nested_list):
     return [i for j in nested_list for i in j] if nested_list else []
 
 
+def number_of_parallel_jobs(args):
+    return os.cpu_count() if args.parallel == 0 else args.parallel
+
+
+def number_of_nvcc_threads(args):
+    if args.nvcc_threads >= 0:
+        return args.nvcc_threads
+
+    nvcc_threads = 1
+    try:
+        import psutil
+
+        available_memory = psutil.virtual_memory().available
+        if isinstance(available_memory, int) and available_memory > 0:
+            if available_memory > 60 * 1024 * 1024 * 1024:
+                # When available memory is large enough, chance of OOM is small.
+                nvcc_threads = 4
+            else:
+                # NVCC need a lot of memory to compile 8 flash attention cu files in Linux or 4 cutlass fmha cu files in Windows.
+                # Here we select number of threads to ensure each thread has enough memory (>= 4 GB). For example,
+                # Standard_NC4as_T4_v3 has 4 CPUs and 28 GB memory. When parallel=4 and nvcc_threads=2,
+                # total nvcc threads is 4 * 2, which is barely able to build in 28 GB memory so we will use nvcc_threads=1.
+                memory_per_thread = 4 * 1024 * 1024 * 1024
+                fmha_cu_files = 4 if is_windows() else 16
+                fmha_parallel_jobs = min(fmha_cu_files, number_of_parallel_jobs(args))
+                nvcc_threads = max(1, int(available_memory / (memory_per_thread * fmha_parallel_jobs)))
+                print(
+                    f"nvcc_threads={nvcc_threads} to ensure memory per thread >= 4GB for available_memory={available_memory} and fmha_parallel_jobs={fmha_parallel_jobs}"
+                )
+    except ImportError:
+        print(
+            "Failed to import psutil. Please `pip install psutil` for better estimation of nvcc threads. Use nvcc_threads=1"
+        )
+
+    return nvcc_threads
+
+
 def generate_build_tree(
     cmake_path,
     source_dir,
@@ -893,8 +943,11 @@ def generate_build_tree(
     if not use_dev_mode(args):
         cmake_args += ["--compile-no-warning-as-error"]
 
+    types_to_disable = args.disable_types
     # enable/disable float 8 types
-    disable_float8_types = args.use_rocm or args.android or args.minimal_build
+    disable_float8_types = args.use_rocm or args.android or ("float8" in types_to_disable)
+    disable_optional_type = "optional" in types_to_disable
+    disable_sparse_tensors = "sparsetensor" in types_to_disable
 
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
@@ -973,6 +1026,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
+        "-Donnxruntime_USE_CUDA_NHWC_OPS=" + ("ON" if args.enable_cuda_nhwc_ops else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING="
         + ("OFF" if args.disable_wasm_exception_catching else "ON"),
@@ -994,6 +1048,8 @@ def generate_build_tree(
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
         "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
+        "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
+        "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
@@ -1027,7 +1083,8 @@ def generate_build_tree(
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
     if args.use_cuda:
-        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(args.parallel))
+        nvcc_threads = number_of_nvcc_threads(args)
+        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
@@ -1216,8 +1273,8 @@ def generate_build_tree(
             args.apple_deploy_target,
         ]
         arg_names = [
-            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",  # noqa: ISC003
-            "--apple_deploy_target  " + "<the minimum version of the target platform>",  # noqa: ISC003
+            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",
+            "--apple_deploy_target  " + "<the minimum version of the target platform>",
         ]
         if not all(needed_args):
             raise BuildError(
@@ -1618,6 +1675,10 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             adb_shell(f"chmod +x {device_dir}/onnx_test_runner")
             run_adb_shell(f"{device_dir}/onnxruntime_test_all")
 
+            # remove onnxruntime_test_all as it takes up a _lot_ of space and can cause insufficient storage errors
+            # when we try to copy the java app to the device.
+            adb_shell(f"rm {device_dir}/onnxruntime_test_all")
+
             if args.build_java:
                 # use the gradle wrapper under <repo root>/java
                 gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
@@ -1636,7 +1697,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             if args.use_nnapi:
                 run_adb_shell("{0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
             else:
-                run_adb_shell("{0}/onnx_test_runner {0}/test".format(device_dir))
+                run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
 
             # run shared_lib_test if necessary
             if args.build_shared_lib:
@@ -1654,10 +1715,16 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    simulator_device_name = subprocess.check_output(
-        ["bash", os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh")],
+    simulator_device_info = subprocess.check_output(
+        [
+            sys.executable,
+            os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_info.py"),
+        ],
         text=True,
     ).strip()
+    log.debug(f"Simulator device info:\n{simulator_device_info}")
+
+    simulator_device_info = json.loads(simulator_device_info)
 
     xc_test_schemes = [
         "onnxruntime_test_all_xc",
@@ -1681,7 +1748,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
+                f"platform=iOS Simulator,id={simulator_device_info['device_udid']}",
             ],
             cwd=cwd,
         )
@@ -1775,13 +1842,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     [sys.executable, "onnxruntime_test_python_symbolic_shape_infer.py"], cwd=cwd, dll_path=dll_path
                 )
 
-            # For CUDA enabled builds test IOBinding feature
-            if args.use_cuda:
-                # We need to have Torch installed to test the IOBinding feature
-                # which currently uses Torch's allocator to allocate GPU memory for testing
+            # For CUDA or DML enabled builds test IOBinding feature
+            if args.use_cuda or args.use_dml:
                 log.info("Testing IOBinding feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
+            if args.use_cuda:
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
 
@@ -1991,7 +2057,7 @@ def build_nuget_package(
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
-            "Currently csharp builds and nuget package creation is only supportted on Windows and Linux platforms."
+            "Currently csharp builds and nuget package creation is only supported on Windows and Linux platforms."
         )
 
     csharp_build_dir = os.path.join(source_dir, "csharp")
@@ -2205,7 +2271,9 @@ def generate_documentation(source_dir, build_dir, configs, validate):
             have_diff = False
 
             def diff_file(path, regenerate_qualifiers=""):
-                diff = subprocess.check_output(["git", "diff", path], cwd=source_dir).decode("utf-8")
+                diff = subprocess.check_output(["git", "diff", "--ignore-blank-lines", path], cwd=source_dir).decode(
+                    "utf-8"
+                )
                 if diff:
                     nonlocal have_diff
                     have_diff = True
@@ -2232,6 +2300,8 @@ def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
+
+    print(args)
 
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
@@ -2267,7 +2337,7 @@ def main():
     if args.use_migraphx:
         args.use_rocm = True
 
-    if args.build_wheel or args.gen_doc or args.use_tvm:
+    if args.build_wheel or args.gen_doc or args.use_tvm or args.enable_training:
         args.enable_pybind = True
 
     if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
@@ -2441,6 +2511,8 @@ def main():
                     toolset += ",cuda=" + args.cuda_version
                 elif args.cuda_home:
                     toolset += ",cuda=" + args.cuda_home
+                if args.windows_sdk_version:
+                    target_arch += ",version=" + args.windows_sdk_version
                 cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
@@ -2516,7 +2588,7 @@ def main():
     if args.build:
         if args.parallel < 0:
             raise BuildError(f"Invalid parallel job count: {args.parallel}")
-        num_parallel_jobs = os.cpu_count() if args.parallel == 0 else args.parallel
+        num_parallel_jobs = number_of_parallel_jobs(args)
         build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.target)
 
     if args.test:

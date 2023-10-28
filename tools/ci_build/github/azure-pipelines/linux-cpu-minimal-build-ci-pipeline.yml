@@ -20,7 +20,32 @@
 #        in an extended minimal build.
 # 7. Build extended minimal ORT with NNAPI, with exceptions/RTTI/ml_ops disabled, for Android(arm64-v8a),
 #    this safe-guards the extended minimal build with NNAPI EP.
-
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 resources:
   repositories:
   - repository: manylinux
@@ -51,7 +76,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
@@ -222,11 +247,9 @@ jobs:
               --parallel \
               --skip_tests \
               --disable_ml_ops \
+              --disable_types sparsetensor float8 optional \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
-                                    onnxruntime_DISABLE_FLOAT8_TYPES=ON \
-                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -253,10 +276,9 @@ jobs:
               --disable_ml_ops \
               --skip_tests \
               --enable_reduced_operator_type_support \
+              --disable_types sparsetensor optional float8 \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
-                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -283,10 +305,9 @@ jobs:
               --disable_ml_ops \
               --skip_tests \
               --enable_reduced_operator_type_support \
+              --disable_types sparsetensor optional float8 \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
-                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2

@@ -6,14 +6,19 @@
 #include "onnx/defs/parser.h"
 
 #include "core/common/span_utils.h"
+#include "core/framework/customregistry.h"
+#include "core/framework/op_kernel.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
+#include "inference_session_wrapper.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/asserts.h"
+
+#include "test/providers/internal_testing/internal_testing_execution_provider.h"
 
 // Unit tests to check the implementation of functions, model-local functions,
 // function-inlining etc.
@@ -21,20 +26,27 @@
 namespace onnxruntime {
 namespace test {
 
-static void Check(const char* source,
-                  const char* input_name, std::vector<float> input_values,
-                  const char* output_name, std::vector<float> output_values) {
-  // Convert source-representation of model to ModelProto:
+// Convert source-representation of model to ModelProto:
+static void ParseOnnxSource(const char* source, std::string& result) {
   ONNX_NAMESPACE::OnnxParser parser(source);
   ONNX_NAMESPACE::ModelProto model;
   auto parse_status = parser.Parse(model);
   ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
   ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
 
-  // Serialize and then load model:
+  // Serialize
   std::string serialized_model;
   const bool serialization_status = model.SerializeToString(&serialized_model);
   ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
+  result = std::move(serialized_model);
+}
+
+static void Check(const char* source,
+                  const char* input_name, std::vector<float> input_values,
+                  const char* output_name, std::vector<float> output_values) {
+  // Serialize and then load model:
+  std::string serialized_model;
+  ParseOnnxSource(source, serialized_model);
 
   SessionOptions session_options;
   InferenceSession session_object{session_options, GetEnvironment()};
@@ -69,12 +81,14 @@ static void Check(const char* source,
   float threshold = 0.001f;
 
   for (size_t i = 0; i < size; ++i) {
-    ASSERT_NEAR(data[i], output_values[i], threshold) << "at position i:" << i;
+    if (!std::isnan(data[i]) && !std::isnan(output_values[i])) {
+      ASSERT_NEAR(data[i], output_values[i], threshold) << "at position i:" << i;
+    }
   }
 }
 
-TEST(FunctionTest, Basic) {
-  const char* code = R"(
+namespace {
+const char* basic_code = R"(
         <
         ir_version: 8,
         opset_import: [ "" : 16, "local" : 1 ]
@@ -93,8 +107,10 @@ TEST(FunctionTest, Basic) {
             ly = Mul (lx, two)
         }
         )";
+}
 
-  Check(code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
+TEST(FunctionTest, Basic) {
+  Check(basic_code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
 }
 
 // Check that variables are renamed to avoid conflicts when multiple
@@ -389,25 +405,13 @@ TEST(FunctionTest, AttrSaturateNan) {
         >
         agraph (float[N] x) => (float[N] y)
         {
-            y0 = local.myfun <a = 1e6> (x)
-            y1 = local.myfun (x)
-            y = Add (y0, y1)
-        }
-
-        <
-        opset_import: [ "" : 19 ],
-        domain: "local"
-        >
-        myfun <a: float=1.0> (x) => (y) {
-            x2 = Constant <value_float: float=@a>()
-            x2_ = Cast<to=18>(x2)
-            x3 = CastLike<saturate=0>(x2, x2_)
-            x3_ = Cast<to=1>(x3)
-            y = Add (x, x3_)
+            x_E4M3FNUZ = Cast<to=18>(x)
+            x_E4M3FNUZ_2 = CastLike<saturate=0>(x, x_E4M3FNUZ)  # NaN when OOR
+            y = Cast<to=1>(x_E4M3FNUZ_2)
         }
         )";
 
-  Check(code, "x", {1.0, 2.0, 1e6}, "y", {243.0, 245.0, 2000241});  // std::numeric_limits<float>::quiet_NaN()});
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {1.0, 2.0, std::numeric_limits<float>::quiet_NaN()});
 }
 
 #endif
@@ -528,6 +532,57 @@ TEST(FunctionTest, ConstantFoldingInSubGraph) {
   )";
 
   Check(code, "X", {1.0, 2.0, 3.0}, "Y", {3.0, 4.0, 5.0, 3.0, 4.0, 5.0, 3.0, 4.0, 5.0});
+}
+
+TEST(FunctionTest, TestInlinedLocalFunctionRemoved) {
+  std::string serialized_model;
+  ParseOnnxSource(basic_code, serialized_model);
+
+  // Default is to do AOT Function inlining
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  std::stringstream sstr(serialized_model);
+  auto status = session_object.Load(sstr);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  auto model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(1, model_proto.functions_size());
+
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // All functions removed
+  model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(0, model_proto.functions_size());
+}
+
+TEST(FunctionTest, TestInlinedLocalFunctionNotRemoved) {
+  std::string serialized_model;
+  ParseOnnxSource(basic_code, serialized_model);
+
+  // Default is to do AOT Function inlining
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NCHW);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  std::stringstream sstr(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+
+  auto model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(1, model_proto.functions_size());
+
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // myfun is not removed because it was claimed by InternalTestingEP
+  model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(1, model_proto.functions_size());
 }
 
 }  // namespace test

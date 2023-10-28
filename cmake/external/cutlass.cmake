@@ -1,4 +1,4 @@
-if (onnxruntime_USE_FLASH_ATTENTION)
+if (onnxruntime_USE_FLASH_ATTENTION OR onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
   include(FetchContent)
   FetchContent_Declare(
     cutlass

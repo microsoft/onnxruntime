@@ -74,4 +74,4 @@ bool CompareSequenceOfMapsStringToFloat(
   return true;
 }
 
-}// namespace CompareFeatureValuesHelper
+}  // namespace CompareFeatureValuesHelper

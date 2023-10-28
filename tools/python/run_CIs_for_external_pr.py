@@ -71,6 +71,7 @@ def main():
     pipelines = [
         # windows
         "Windows ARM64 QNN CI Pipeline",
+        "Windows x64 QNN CI Pipeline",
         "Windows CPU CI Pipeline",
         "Windows GPU CI Pipeline",
         "Windows GPU TensorRT CI Pipeline",

@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Load onnxruntime-web and testdata-config.
+// Load onnxruntime-common and testdata-config.
 // NOTE: this need to be called before import any other library.
-const ort = require('..');
+import * as ort from 'onnxruntime-common';
+
 const ORT_WEB_TEST_CONFIG = require('./testdata-config.json') as Test.Config;
 
 import * as platform from 'platform';
@@ -57,6 +58,9 @@ if (options.globalEnvFlags) {
   if (flags.webgpu?.profilingMode !== undefined) {
     ort.env.webgpu.profilingMode = flags.webgpu.profilingMode;
   }
+  if (flags.webgpu?.validateInputContent !== undefined) {
+    ort.env.webgpu.validateInputContent = flags.webgpu.validateInputContent;
+  }
 }
 
 // Set logging configuration
@@ -86,14 +90,14 @@ function shouldSkipTest(test: Test.ModelTest|Test.OperatorTest) {
   if (!test.cases || test.cases.length === 0) {
     return true;
   }
-  if (!test.condition) {
+  if (!test.platformCondition) {
     return false;
   }
 
   if (!platform.description) {
     throw new Error('failed to check current platform');
   }
-  const regex = new RegExp(test.condition);
+  const regex = new RegExp(test.platformCondition);
   return !regex.test(platform.description);
 }
 
@@ -110,9 +114,9 @@ for (const group of ORT_WEB_TEST_CONFIG.model) {
               test, ORT_WEB_TEST_CONFIG.profile, ORT_WEB_TEST_CONFIG.options.sessionOptions);
         });
 
-        after('release session', () => {
+        after('release session', async () => {
           if (context) {
-            context.release();
+            await context.release();
           }
         });
 
@@ -137,7 +141,8 @@ for (const group of ORT_WEB_TEST_CONFIG.op) {
         let context: ProtoOpTestContext|OpTestContext;
 
         before('Initialize Context', async () => {
-          context = useProtoOpTest ? new ProtoOpTestContext(test) : new OpTestContext(test);
+          context = useProtoOpTest ? new ProtoOpTestContext(test, ORT_WEB_TEST_CONFIG.options.sessionOptions) :
+                                     new OpTestContext(test);
           await context.init();
           if (ORT_WEB_TEST_CONFIG.profile) {
             if (context instanceof ProtoOpTestContext) {
@@ -149,14 +154,16 @@ for (const group of ORT_WEB_TEST_CONFIG.op) {
         });
 
         after('Dispose Context', async () => {
-          if (ORT_WEB_TEST_CONFIG.profile) {
-            if (context instanceof ProtoOpTestContext) {
-              context.session.endProfiling();
-            } else {
-              OpTestContext.profiler.stop();
+          if (context) {
+            if (ORT_WEB_TEST_CONFIG.profile) {
+              if (context instanceof ProtoOpTestContext) {
+                context.session.endProfiling();
+              } else {
+                OpTestContext.profiler.stop();
+              }
             }
+            await context.dispose();
           }
-          await context.dispose();
         });
 
         for (const testCase of test.cases) {

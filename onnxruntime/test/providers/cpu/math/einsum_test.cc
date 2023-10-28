@@ -22,7 +22,7 @@ TEST(Einsum, ExplicitEinsumAsIdentity_1D_input) {
   test.AddAttribute<std::string>("equation", "i->i");
   test.AddInput<float>("x", {5}, {0.9f, 2.5f, 2.3f, 1.5f, -4.5f});
   test.AddOutput<float>("y", {5}, {0.9f, 2.5f, 2.3f, 1.5f, -4.5f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 // Implicit
@@ -31,7 +31,7 @@ TEST(Einsum, ImplicitEinsumAsIdentity_1D_input) {
   test.AddAttribute<std::string>("equation", "i");
   test.AddInput<float>("x", {5}, {0.9f, 2.5f, 2.3f, 1.5f, -4.5f});
   test.AddOutput<float>("y", {5}, {0.9f, 2.5f, 2.3f, 1.5f, -4.5f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 // Theme: Transpose/Permutation

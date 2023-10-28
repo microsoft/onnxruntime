@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata, TensorInfo} from '../types';
+import {ComputeContext, ProgramInfo, TensorInfo} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface SliceAttributes extends AttributeWithCacheKey {
   readonly starts: number[];
@@ -38,7 +38,7 @@ const readInput = (inputs: readonly TensorView[], idx: number): number[] => {
   if (inputs.length > idx) {
     if (inputs[idx].dataType === DataType.int64) {
       inputs[idx].getBigInt64Array().forEach(v => input.push(Number(v)));
-    } else if (inputs[1].dataType === DataType.int32) {
+    } else if (inputs[idx].dataType === DataType.int32) {
       inputs[idx].getInt32Array().forEach(v => input.push(Number(v)));
     } else {
       throw new Error(`Input ${idx} must be an array of int32 or int64`);
@@ -76,12 +76,10 @@ const fixStartEndValues =
           }
         };
 
-const calculateInputIndicesImpl = (inputShape: readonly number[], outputShape: readonly number[]): string => {
-  const outputIndicesHelper = createIndicesHelper('output', outputShape);
-  const inputIndicesHelper = createIndicesHelper('input', inputShape);
-
-  return `fn calculateInputIndices(outputIndices: ${outputIndicesHelper.iType}) -> ${inputIndicesHelper.iType} {
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')};
+const calculateInputIndicesImpl =
+    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[]):
+        string => `fn calculateInputIndices(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
+          var inputIndices: ${input.type.indices};
           var carry = 0u;
           for (var i = ${inputShape.length}; i >= 0; i--) {
             var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
@@ -95,107 +93,97 @@ const calculateInputIndicesImpl = (inputShape: readonly number[], outputShape: r
           }
           return inputIndices;
       }`;
-};
 
-const createSliceProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfo => {
-      const inputShape = inputs[0].dims;
-      const inputSize = ShapeUtil.size(inputShape);
-      const axes = (attributes.axes.length > 0) ? ShapeUtil.normalizeAxes(attributes.axes, inputShape.length) :
-                                                  [...Array(inputShape.length).keys()];
-      const dataType = 'f32';  // TODO: support other data type
-      let steps = readInput(inputs, 4);
-      steps.forEach((step) => step !== 0 || (() => {
-                                throw new Error('step cannot be 0');
-                              }));
-      if (steps.length === 0) {
-        steps = Array(axes.length).fill(1);
+const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfo => {
+  const inputShape = inputs[0].dims;
+  const inputSize = ShapeUtil.size(inputShape);
+  const axes = (attributes.axes.length > 0) ? ShapeUtil.normalizeAxes(attributes.axes, inputShape.length) :
+                                              [...Array(inputShape.length).keys()];
+  let steps = readInput(inputs, 4);
+  steps.forEach((step) => step !== 0 || (() => {
+                            throw new Error('step cannot be 0');
+                          }));
+  if (steps.length === 0) {
+    steps = Array(axes.length).fill(1);
+  }
+  const starts = attributes.starts.map((start, i) => fixStartEndValues(start, i, inputShape, axes, steps));
+
+  const ends = attributes.ends.map((end, i) => fixStartEndValues(end, i, inputShape, axes, steps));
+
+  if (axes.length !== inputShape.length) {
+    for (let i = 0; i < inputShape.length; ++i) {
+      if (!axes.includes(i)) {
+        starts.splice(i, 0, 0);
+        ends.splice(i, 0, inputShape[i]);
+        steps.splice(i, 0, 1);
       }
-      const starts = attributes.starts.map((start, i) => fixStartEndValues(start, i, inputShape, axes, steps));
+    }
+  }
+  const signs = steps.map(step => Math.sign(step));
+  // Convert negative steps to positive steps and reverse starts and ends
+  steps.forEach((step, i, array) => {
+    if (step < 0) {
+      const numSteps = (ends[i] - starts[i]) / step;
+      const newEnd = starts[i];
+      const newStart = newEnd + numSteps * steps[i];
+      starts[i] = newStart;
+      ends[i] = newEnd;
+      array[i] = -step;
+    }
+  });
 
-      const ends = attributes.ends.map((end, i) => fixStartEndValues(end, i, inputShape, axes, steps));
+  const outputShape = inputShape.slice(0);
+  axes.forEach((axis, _) => {
+    outputShape[axis] = Math.ceil((ends[axis] - starts[axis]) / steps[axis]);
+  });
 
-      if (axes.length !== inputShape.length) {
-        for (let i = 0; i < inputShape.length; ++i) {
-          if (!axes.includes(i)) {
-            starts.splice(i, 0, 0);
-            ends.splice(i, 0, inputShape[i]);
-            steps.splice(i, 0, 1);
-          }
-        }
-      }
-      const signs = steps.map(step => Math.sign(step));
-      // Convert negative steps to positive steps and reverse starts and ends
-      steps.forEach((step, i, array) => {
-        if (step < 0) {
-          const numSteps = (ends[i] - starts[i]) / step;
-          const newEnd = starts[i];
-          const newStart = newEnd + numSteps * steps[i];
-          starts[i] = newStart;
-          ends[i] = newEnd;
-          array[i] = -step;
-        }
-      });
+  const outputTensorInfo: TensorInfo = {dims: outputShape, dataType: inputs[0].dataType};
 
-      const outputShape = inputShape.slice(0);
-      axes.forEach((axis, _) => {
-        outputShape[axis] = Math.ceil((ends[axis] - starts[axis]) / steps[axis]);
-      });
+  const output = outputVariable('output', inputs[0].dataType, outputShape);
+  const input = inputVariable('input', inputs[0].dataType, inputShape);
+  const outputSize = ShapeUtil.size(outputShape);
 
-      const output: TensorInfo = {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default};
-
-      const outputIndicesHelper = createIndicesHelper('output', outputShape);
-      const inputIndicesHelper = createIndicesHelper('input', inputShape);
-      const outputSize = ShapeUtil.size(outputShape);
-
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
-        @group(0) @binding(0) var<storage, read> input: array<${dataType}>;
-        @group(0) @binding(1) var<storage, read_write> output: array<${dataType}>;
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
+      ${shaderHelper.declareVariables(input, output)}
         const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});
         const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});
         const ends = array<u32, ${ends.length}>(${ends.map(i => `${i}u`).join(',')});
         const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});
         const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
 
-        ${outputIndicesHelper.o2iImpl}
-        ${inputIndicesHelper.i2oImpl}
-        ${calculateInputIndicesImpl(inputShape, outputShape)}
+        ${calculateInputIndicesImpl(input, output, inputShape, outputShape)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-          ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-          ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
-          inputIndices = calculateInputIndices(outputIndices);
-          output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
+          let outputIndices = ${output.offsetToIndices('global_idx')};
+          let inputIndices = calculateInputIndices(outputIndices);
+          ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
       }`;
-      return {
-        ...metadata,
-        getShaderSource,
-        outputs: [output],
-        dispatchGroup: () => ({x: Math.ceil(inputSize / 64 /* workgroup size */)})
-      };
-    };
-
-const createSliceProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfoLoader => {
-      const updatedAttributes = createSliceAttributesFromInputs(inputs, attributes);
-      const metadata: ProgramMetadata = {
-        name: 'Slice',
-        inputTypes: [GpuDataType.default],
-        cacheHint: updatedAttributes.cacheKey + (inputs.length > 4 ? 'steps_' + inputs[4].dims.toString() : '')
-      };
-      return {...metadata, get: () => createSliceProgramInfo(metadata, inputs, updatedAttributes)};
-    };
+  return {
+    name: 'Slice',
+    shaderCache: {hint: `${attributes.cacheKey}|${inputs[4]?.dims ?? ''}`},
+    getShaderSource,
+    getRunData: () => ({
+      outputs: [outputTensorInfo],
+      dispatchGroup: {x: Math.ceil(inputSize / 64 /* workgroup size */)},
+    })
+  };
+};
 
 export const slice = (context: ComputeContext, attributes: SliceAttributes): void => {
   validateInputs(context.inputs, attributes);
-  context.compute(createSliceProgramInfoLoader(context.inputs, attributes), {inputs: [0]});
+  const updatedAttributes = createSliceAttributesFromInputs(context.inputs, attributes);
+  context.compute(createSliceProgramInfo(context.inputs, updatedAttributes), {inputs: [0]});
+  // if (ShapeUtil.size(program.outputs[0].dims) > 0) {
+  //   context.compute(programInfoLoader, {inputs: [0]});
+  // } else {
+  //   // TODO: support empty output
+  //   throw new Error('slice: output size is 0');
+  // }
 };
 
 export const parseSliceAttributes = (attributes: Record<string, unknown>): SliceAttributes => {
   const starts = attributes.starts as number[];
   const ends = attributes.ends as number[];
   const axes = attributes.axes as number[];
-  const steps: number[] = [];
-  return createAttributeWithCacheKey({starts, ends, axes, steps});
+  return createAttributeWithCacheKey({starts, ends, axes});
 };

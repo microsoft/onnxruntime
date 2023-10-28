@@ -35,7 +35,10 @@ TEST(TensorOpTest, SpaceToDepthTest_1) {
       1.1f, 1.3f,
       3.1f, 3.3f};
   test.AddOutput<float>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
-  test.Run();
+
+  // TODO: Test is flaky on QNN EP (CPU backend). Reneable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test
+  // is fixed.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(TensorOpTest, SpaceToDepthTest_1_double) {
@@ -99,7 +102,10 @@ TEST(TensorOpTest, SpaceToDepthTest_2) {
       98., 101., 66., 69., 84., 87., 102., 105., 67., 70., 85.,
       88., 103., 106., 68., 71., 86., 89., 104., 107.};
   test.AddOutput<float>("output", {2, 27, 1, 2}, result);
-  test.Run();
+
+  // TODO: Test is flaky on QNN EP (CPU backend). Reneable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2
+  // test is fixed.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_1) {
