@@ -11,7 +11,7 @@ import numpy as np
 import onnx
 import psutil
 import torch
-from benchmark_helper import setup_logger
+from onnxruntime.transformers.benchmark_helper import setup_logger
 from llama_inputs import (
     convert_inputs_for_ort,
     get_merged_sample_with_past_kv_inputs,
@@ -26,6 +26,8 @@ from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
 
 import onnxruntime as ort
 from onnxruntime.transformers.benchmark_helper import measure_memory
+
+from dist_settings import init_dist, get_rank, get_size, barrier, print_out
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +120,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=0,
             use_fp16=args.use_fp16,
             return_dict=True,
+            world_size = args.world_size,
         )
         iter_inputs = get_merged_sample_with_past_kv_inputs(
             args.config,
@@ -127,6 +130,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=args.sequence_length,
             use_fp16=args.use_fp16,
             return_dict=True,
+            world_size = args.world_size,
         )
         init_inputs = convert_inputs_for_ort(
             init_inputs,
@@ -135,7 +139,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=0,
             max_seq_len=max_seq_len,
             device=args.device,
-            device_id=args.device_id,
+            device_id=args.rank,
         )
         iter_inputs = convert_inputs_for_ort(
             iter_inputs,
@@ -144,7 +148,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=args.sequence_length,
             max_seq_len=max_seq_len,
             device=args.device,
-            device_id=args.device_id,
+            device_id=args.rank,
         )
 
     elif args.benchmark_type == "ort-msft":
@@ -174,7 +178,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=0,
             max_seq_len=max_seq_len,
             device=args.device,
-            device_id=args.device_id,
+            device_id=args.rank,
         )
         iter_inputs = convert_inputs_for_ort(
             iter_inputs,
@@ -183,7 +187,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=args.sequence_length,
             max_seq_len=max_seq_len,
             device=args.device,
-            device_id=args.device_id,
+            device_id=args.rank,
         )
 
     else:
@@ -261,10 +265,10 @@ def get_model(args: argparse.Namespace):
 
     if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}:
         # Ex: Microsoft export from https://github.com/microsoft/Llama-2-Onnx
-        logger.info(f"Loading model from {args.ort_model_path}")
+        logger.info(f"Loading model from {args.ort_model_path.format(args.rank)}")
         start_time = time.time()
         model = ort.InferenceSession(
-            args.ort_model_path,
+            args.ort_model_path.format(args.rank),
             sess_options,
             providers=[args.execution_provider],
         )
@@ -313,10 +317,11 @@ def time_fn(args, fn, inputs):
     latency = (end_time - start_time) / args.num_runs
     throughput = args.batch_size / latency
 
-    logger.info(f"Batch Size: {args.batch_size}")
-    logger.info(f"Sequence Length: {args.sequence_length}")
-    logger.info(f"Latency: {latency} s")
-    logger.info(f"Throughput: {throughput} tps")
+    if args.rank == 0:
+        logger.info(f"Batch Size: {args.batch_size}")
+        logger.info(f"Sequence Length: {args.sequence_length}")
+        logger.info(f"Latency: {latency:.4f} s")
+        logger.info(f"Throughput: {throughput:.4f} tps")
     return
 
 
@@ -356,7 +361,8 @@ def measure_fn(args, fn, inputs):
     process.cpu_percent(interval=0.1)
 
     fn(inputs)
-    logger.info(f"CPU usage: {process.cpu_percent(interval=None)}%")
+    if args.rank == 0:
+        logger.info(f"CPU usage: {process.cpu_percent(interval=None) / psutil.cpu_count(logical=False)}%")
 
     # Measure memory usage
     gc.collect()
@@ -465,7 +471,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
                         name, inputs[name.replace("out", "cache").replace("present", "past_key_values")]
                     )
                 else:
-                    io_binding.bind_output(name, device_type=args.device, device_id=args.device_id)
+                    io_binding.bind_output(name, device_type=args.device, device_id=args.rank)
 
             return io_binding
 
@@ -503,12 +509,14 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
         return
 
     # ORT evaluations
-    logger.info("\nEvaluating `model(inputs)` step to get past_key_values")
+    if args.rank == 0:
+        logger.info("\nEvaluating `model(inputs)` step to get past_key_values")
     ort_init_inputs = prepare_ort_inputs(init_inputs)
     time_fn(args, generate_fn, ort_init_inputs)
     measure_fn(args, generate_fn, ort_init_inputs)
 
-    logger.info("\nEvaluating `model(inputs)` step with past_key_values")
+    if args.rank == 0:
+        logger.info("\nEvaluating `model(inputs)` step with past_key_values")
     ort_iter_inputs = prepare_ort_inputs(iter_inputs)
     time_fn(args, generate_fn, ort_iter_inputs)
     measure_fn(args, generate_fn, ort_iter_inputs)
@@ -523,7 +531,7 @@ def run_inference(args, init_inputs, iter_inputs, model):
         raise Exception(f"Cannot recognize {args.benchmark_type}")
 
 
-def get_args():
+def get_args(rank = 0):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-bt",
@@ -576,12 +584,12 @@ def get_args():
     parser.add_argument(
         "-b",
         "--batch-sizes",
-        default="1 2",
+        default="1 2 4 8 16 32 64",
     )
     parser.add_argument(
         "-s",
         "--sequence-lengths",
-        default="8 16 32 64 128 256 512",
+        default="32 64 128 256 512 1024 2048",
     )
     parser.add_argument(
         "-d",
@@ -618,9 +626,9 @@ def get_args():
     if "ort" in args.benchmark_type:
         setattr(args, "execution_provider", f"{args.device.upper()}ExecutionProvider")  # noqa: B010
         if args.execution_provider == "CUDAExecutionProvider":
-            args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
+            args.execution_provider = (args.execution_provider, {"device_id": rank})
         elif args.execution_provider == "ROCMExecutionProvider":
-            args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
+            args.execution_provider = (args.execution_provider, {"device_id": rank})
             args.device = "cuda"
 
     # Check that paths have been specified for any benchmarking with ORT
@@ -647,14 +655,19 @@ def get_args():
 
 
 def main():
-    args = get_args()
+    rank = get_rank()
+    world_size = get_size()
+
+    args = get_args(rank)
     setup_logger(args.verbose)
     logger.info(args.__dict__)
     torch.backends.cudnn.benchmark = True
 
+    setattr(args, "rank", rank)
+    setattr(args, "world_size", world_size)
     tokenizer = LlamaTokenizer.from_pretrained(args.model_name)
     config = LlamaConfig.from_pretrained(args.model_name)
-    target_device = f"cuda:{args.device_id}" if args.device != "cpu" else args.device
+    target_device = f"cuda:{args.rank}" if args.device != "cpu" else args.device
     use_fp16 = args.precision == "fp16"
 
     setattr(args, "tokenizer", tokenizer)  # noqa: B010
@@ -668,7 +681,7 @@ def main():
 
     # Check if past_present_share_buffer can be enabled (only for FP16 models with GQA)
     if args.benchmark_type in {"ort-convert-to-onnx", "ort-msft"}:
-        onnx_model = onnx.load_model(args.ort_model_path, load_external_data=False)
+        onnx_model = onnx.load_model(args.ort_model_path.format(args.rank), load_external_data=False)
         gqa_nodes = list(filter(lambda node: node.op_type == "GroupQueryAttention", onnx_model.graph.node))
 
         use_buffer_share = use_fp16 and len(gqa_nodes) > 0 and args.device != "cpu"
@@ -678,7 +691,8 @@ def main():
 
     # Measure prompt cost (init_inputs) and generated token cost (iter_inputs)
     for batch_size, sequence_length in itertools.product(args.batch_sizes, args.sequence_lengths):
-        logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")
+        if args.rank == 0:
+            logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")
         setattr(args, "batch_size", int(batch_size))  # noqa: B010
         setattr(args, "sequence_length", int(sequence_length))  # noqa: B010
 

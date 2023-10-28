@@ -865,8 +865,6 @@ def main():
             os.path.join(args.output, filename),
             "-ep",
             args.execution_provider,
-            "-id",
-            args.device_id,
             "-fp",
             args.precision,
             "--cache_dir",

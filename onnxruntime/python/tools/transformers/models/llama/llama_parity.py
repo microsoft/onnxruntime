@@ -93,6 +93,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
         torch.cuda.synchronize()
     end_time = time.time()
     logger.info(f"PyTorch took {end_time - start_time} s")
+    del pt_model
 
     # Run inference with ORT
     past_sequence_length, _, max_sequence_length = get_sequence_lengths(args)
@@ -128,6 +129,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
         end_time = time.time()
 
         ort_outputs = io_binding.copy_outputs_to_cpu()[0]  # Get logits
+        del ort_model
 
     else:
         start_time = time.time()
@@ -185,15 +187,6 @@ def get_args(argv: List[str]):
         default="cpu",
         choices=["cpu", "cuda", "rocm"],
         help="Execution provider to verify parity with",
-    )
-
-    parser.add_argument(
-        "-id",
-        "--device-id",
-        required=False,
-        type=str,
-        default="0",
-        help="Device ID for GPUs",
     )
 
     parser.add_argument(
