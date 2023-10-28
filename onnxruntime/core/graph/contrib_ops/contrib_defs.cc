@@ -43,7 +43,6 @@ void matmulShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     int input1Idx,
     int input2Idx);
-void convTransposeShapeInference(InferenceContext& ctx);
 
 void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1592,84 +1591,6 @@ activation.)DOC")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
                                   ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
-                                }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(FusedConvTranspose, 1,
-                            OpSchema()
-                                .SetDoc(R"DOC(
-The fused convolution transpose operator schema is the same as ConvTranspose with the addition of an attribute
-for the activation.)DOC")
-                                .Attr(
-                                    "auto_pad",
-                                    "",
-                                    AttributeProto::STRING,
-                                    std::string("NOTSET"))
-                                .Attr(
-                                    "kernel_shape",
-                                    "",
-                                    AttributeProto::INTS,
-                                    OPTIONAL_VALUE)
-                                .Attr(
-                                    "dilations",
-                                    "",
-                                    AttributeProto::INTS,
-                                    OPTIONAL_VALUE)
-                                .Attr(
-                                    "strides",
-                                    "",
-                                    AttributeProto::INTS,
-                                    OPTIONAL_VALUE)
-                                .Attr(
-                                    "pads",
-                                    "",
-                                    AttributeProto::INTS,
-                                    OPTIONAL_VALUE)
-                                .Attr(
-                                    "group",
-                                    "",
-                                    AttributeProto::INT,
-                                    static_cast<int64_t>(1))
-                                .Attr(
-                                    "activation",
-                                    "",
-                                    AttributeProto::STRING,
-                                    OPTIONAL_VALUE)
-                                .Attr(
-                                    "activation_params",
-                                    "",
-                                    AttributeProto::FLOATS,
-                                    OPTIONAL_VALUE)
-                                .Input(
-                                    0,
-                                    "X",
-                                    "",
-                                    "T")
-                                .Input(
-                                    1,
-                                    "W",
-                                    "",
-                                    "T")
-                                .Input(
-                                    2,
-                                    "B",
-                                    "",
-                                    "T",
-                                    OpSchema::Optional)
-                                .Input(
-                                    3,
-                                    "Z",
-                                    "",
-                                    "T",
-                                    OpSchema::Optional)
-                                .Output(
-                                    0,
-                                    "Y",
-                                    "",
-                                    "T")
-                                .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
-                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-                                  ONNX_NAMESPACE::convTransposeShapeInference(ctx);
                                 }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(FusedGemm, 1,

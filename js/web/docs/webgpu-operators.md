@@ -41,7 +41,6 @@ Do not modify directly.*
 | Flatten | ai.onnx(1-8,9-10,11-12,13+) |  |
 | Floor | ai.onnx(6-12,13+) |  |
 | FusedConv | com.microsoft(1+) |  |
-| FusedConvTranspose | com.microsoft(1+) |  |
 | Gather | ai.onnx(1-10,11-12,13+) |  |
 | GatherElements | ai.onnx(11-12,13+) |  |
 | Gelu | com.microsoft(1+) |  |

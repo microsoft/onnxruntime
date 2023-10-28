@@ -218,8 +218,6 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
     if (domain == kMSDomain) {
       if (op_type == "Conv") {
         return "FusedConv";
-      } else if (op_type == "ConvTranspose") {
-        return "FusedConvTranspose";
       } else if (op_type == "NhwcConv") {
         return "NhwcFusedConv";
       } else {
