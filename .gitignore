@@ -12,3 +12,13 @@ _site
 
 /build
 /cmake
+
+.DS_Store
+node_modules
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+package-lock.json

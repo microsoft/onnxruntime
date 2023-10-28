@@ -4,7 +4,7 @@ name: Publish site
 on:
   # Runs on pushes targeting the branch where the website sources live
   push:
-    branches: ["gh-pages"]
+    branches: ['gh-pages']
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -18,7 +18,7 @@ permissions:
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: "pages"
+  group: 'pages'
   cancel-in-progress: false
 
 jobs:
@@ -31,6 +31,14 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 19.x
+
+      - name: Install dependencies
+        run: npm install
 
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
@@ -101,6 +109,12 @@ jobs:
           sudo rm -rf _site/docs/api/js
           sudo mv apidocs/docs/api/js _site/docs/api
 
+      - name: Generate build
+        run: npm run build
+
+      - name: Move site into place
+        run: |
+          sudo mv ./build/* ./_site
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v1
