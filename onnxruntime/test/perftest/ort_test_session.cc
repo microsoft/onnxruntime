@@ -70,8 +70,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                                const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
-  const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
-  if (provider_name == onnxruntime::kDnnlExecutionProvider) {
+  provider_name_ = performance_test_config.machine_config.provider_type_name;
+  if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     // Generate provider options
     OrtDnnlProviderOptions dnnl_options;
@@ -124,7 +124,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
     const auto& api = Ort::GetApi();
     OrtCUDAProviderOptionsV2* cuda_options;
@@ -189,7 +189,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     const auto& api = Ort::GetApi();
     OrtTensorRTProviderOptionsV2* tensorrt_options;
@@ -243,7 +243,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -334,7 +334,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kQnnExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -396,7 +396,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("QNN is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kSnpeExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kSnpeExecutionProvider) {
 #ifdef USE_SNPE
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -448,7 +448,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("SNPE is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
     uint32_t nnapi_flags = 0;
 #ifdef _MSC_VER
@@ -476,13 +476,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kCoreMLExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kCoreMLExecutionProvider) {
 #ifdef USE_COREML
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, 0));
 #else
     ORT_THROW("COREML is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kDmlExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
 #ifdef USE_DML
     std::unordered_map<std::string, std::string> dml_options;
     dml_options["performance_preference"] = "high_performance";
@@ -550,7 +550,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("DML is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kAclExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kAclExecutionProvider) {
 #ifdef USE_ACL
     Ort::ThrowOnError(
         OrtSessionOptionsAppendExecutionProvider_ACL(session_options,
@@ -558,14 +558,14 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Acl is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kArmNNExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
                                                                      performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kRocmExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kRocmExecutionProvider) {
 #ifdef USE_ROCM
     OrtROCMProviderOptions rocm_options;
     rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
@@ -575,7 +575,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("ROCM is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kMIGraphXExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
     OrtROCMProviderOptions rocm_options;
@@ -585,7 +585,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("MIGraphX is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kXnnpackExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kXnnpackExecutionProvider) {
 #ifdef USE_XNNPACK
     session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
     session_options.AppendExecutionProvider(
@@ -593,7 +593,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kVitisAIExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -621,7 +621,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
 #endif
-  } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
+  } else if (!provider_name_.empty() && provider_name_ != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
 
@@ -791,35 +791,38 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
 }
 
 bool OnnxRuntimeTestSession::PopulateOutputs(bool use_native_bindings) {
-  if (use_native_bindings) {
-    constexpr bool is_dml = true;
-#ifdef USE_DML
-    if (is_dml) {
-      for (size_t i = 0; i < static_cast<size_t>(output_names_.size()); i++) {
-        Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
-        if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
-          continue;
-        }
-
-        auto& output_name = output_names_[i];
-        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-        std::vector<int64_t> input_node_dim = tensor_info.GetShape();
-
-        // free dimensions are treated as 1 if not overriden
-        for (int64_t& dim : input_node_dim) {
-          if (dim == -1) {
-            dim = 1;
-          }
-        }
-
-        auto dml_value_pair = CreateDmlValue(tensor_info, session_, Ort::Value(nullptr), output_name.c_str(), false);
-        native_test_bindings_.emplace_back(std::move(dml_value_pair.second));
-        test_outputs_.push_back(std::move(dml_value_pair.first));
-      }
-    }
-#endif
+  if (!use_native_bindings) {
+    return true;
   }
-  return true;
+
+#ifdef USE_DML
+  if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
+    for (size_t i = 0; i < static_cast<size_t>(output_names_.size()); i++) {
+      Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
+      if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
+        continue;
+      }
+
+      auto& output_name = output_names_[i];
+      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+      std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+
+      // free dimensions are treated as 1 if not overriden
+      for (int64_t& dim : input_node_dim) {
+        if (dim == -1) {
+          dim = 1;
+        }
+      }
+
+      auto dml_value_pair = CreateDmlValue(tensor_info, session_, Ort::Value(nullptr), output_name.c_str(), false);
+      native_test_bindings_.emplace_back(std::move(dml_value_pair.second));
+      test_outputs_.push_back(std::move(dml_value_pair.first));
+    }
+    return true;
+  }
+#endif
+
+  return false;
 }
 
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool use_native_bindings) {
@@ -851,12 +854,11 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool u
     // Initialize the tensor with data
     InitializeTensorWithSeed(seed, input_tensor);
 
-    constexpr bool is_dml = true;
     if (!use_native_bindings) {
       PreLoadTestData(0, i, std::move(input_tensor));
     }
 #ifdef USE_DML
-    else if (is_dml) {
+    else if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
       auto value =
           CreateDmlValueFromCpuValue(
               std::move(input_tensor),
