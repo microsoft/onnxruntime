@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <limits>
 
 #include "onnxruntime_c_api.h"
 #include "core/framework/arena_extend_strategy.h"
@@ -32,4 +35,6 @@ struct OrtCUDAProviderOptionsV2 {
   int tunable_op_max_tuning_duration_ms = 0;                                                                   // Max tuning duration time limit for TunableOp.
   int enable_skip_layer_norm_strict_mode = 0;                                                                  // flag specifying if SkipLayerNorm is in strict mode. If true, use LayerNormalization kernel.
                                                                                                                // The strict mode has better accuracy but lower performance.
+  int prefer_nhwc = 0;                                                                                         // make the CUDA EP NHWC preferred
+  int use_ep_level_unified_stream = 0;                                                                         // flag specifying if ep level stream is used or not
 };

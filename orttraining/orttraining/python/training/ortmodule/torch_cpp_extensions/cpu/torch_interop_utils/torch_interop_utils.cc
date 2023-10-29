@@ -150,6 +150,34 @@ bool get_materialize_grads(at::Tensor target) {
   return py_fn->materialize_grads;
 }
 
+std::vector<bool> are_tensors_marked_as_dirty(at::Tensor target, std::vector<at::Tensor> tensors_to_check) {
+  torch::autograd::AutogradMeta* autograd_meta = torch::autograd::impl::get_autograd_meta(target);
+  const auto& grad_fn = autograd_meta->grad_fn_;
+  auto py_node_fn = dynamic_cast<torch::autograd::PyNode*>(grad_fn.get());
+  TORCH_CHECK(py_node_fn != nullptr, "grad_fn is not PyNode type.");
+  THPFunction* py_fn = (THPFunction*)py_node_fn->obj;
+  std::vector<bool> are_tensors_marked_dirty(tensors_to_check.size(), false);
+  if (!py_fn->dirty_tensors)
+    return are_tensors_marked_dirty;
+
+  Py_ssize_t num_dirty = PyTuple_GET_SIZE(py_fn->dirty_tensors);
+  for (const auto j : c10::irange(tensors_to_check.size())) {
+    bool is_tensor_marked_dirty = false;
+    for (const auto i : c10::irange(num_dirty)) {
+      PyObject* obj = PyTuple_GET_ITEM(py_fn->dirty_tensors, i);
+      const auto& tensor = THPVariable_Unpack(obj);
+      if (tensor.is_same(tensors_to_check[j])) {
+        is_tensor_marked_dirty = true;
+        break;
+      }
+    }
+
+    are_tensors_marked_dirty[j] = is_tensor_marked_dirty;
+  }
+
+  return are_tensors_marked_dirty;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("register_grad_fn_and_remove_from_autograd", &register_grad_fn_and_remove_from_autograd,
         "Increase grad_fn shared pointer reference.");
@@ -158,4 +186,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("clear_grad_fns_for_next_edges", &clear_grad_fns_for_next_edges,
         "Remove reference on next edges' gradient functions.");
   m.def("get_materialize_grads", &get_materialize_grads, "Return whether materialize_grads is enabled or not.");
+  m.def("are_tensors_marked_as_dirty", &are_tensors_marked_as_dirty, "Return whether the tensors are marked dirty or not.");
 }

@@ -159,6 +159,9 @@ class InferenceManager(GraphExecutionManager):
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
+            if self._runtime_options.enable_zero_stage3_support:
+                self._append_pull_weight_trigger_as_input(kwargs, self._device)
+
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
@@ -168,6 +171,7 @@ class InferenceManager(GraphExecutionManager):
                 kwargs,
                 self._device,
                 self._runtime_inspector,
+                self._zero_stage3_param_map,
             )
 
             user_outputs, _ = InferenceManager.execution_session_run_forward(

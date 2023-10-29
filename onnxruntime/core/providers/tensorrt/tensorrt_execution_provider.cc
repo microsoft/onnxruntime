@@ -793,6 +793,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream_)));
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream_)));
   }
 
   std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
@@ -819,6 +823,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     detailed_build_log_ = info.detailed_build_log;
     if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
+    }
+    // use a more global cache if given
+    if (timing_cache_enable_) {
+      if (!info.timing_cache_path.empty()) {
+        global_cache_path_ = info.timing_cache_path;
+      } else {
+        global_cache_path_ = cache_path_;
+      }
     }
     engine_decryption_enable_ = info.engine_decryption_enable;
     if (engine_decryption_enable_) {
@@ -924,6 +936,15 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
           LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
         }
       }
+      if (timing_cache_enable_) {
+        std::string timing_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCachePath);
+        // use a more global cache if given
+        if (!timing_cache_path.empty()) {
+          global_cache_path_ = timing_cache_path;
+        } else {
+          global_cache_path_ = cache_path_;
+        }
+      }
 
       const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionEnable);
       if (!engine_decryption_enable_env.empty()) {
@@ -1015,6 +1036,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         throw std::runtime_error("Failed to create directory " + cache_path_);
       }
     }
+    if (!global_cache_path_.empty() && !fs::is_directory(global_cache_path_)) {
+      if (!fs::create_directory(global_cache_path_)) {
+        throw std::runtime_error("Failed to create directory " + global_cache_path_);
+      }
+    }
     {
       auto lock = GetApiLock();
       runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
@@ -1100,6 +1126,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_dump_subgraphs: " << dump_subgraphs_
                         << ", trt_engine_cache_enable: " << engine_cache_enable_
                         << ", trt_cache_path: " << cache_path_
+                        << ", trt_global_cache_path: " << global_cache_path_
                         << ", trt_engine_decryption_enable: " << engine_decryption_enable_
                         << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
                         << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
@@ -1143,46 +1170,35 @@ bool TensorrtExecutionProvider::IsGraphCaptureEnabled() const {
   return cuda_graph_enable_;
 }
 
-bool TensorrtExecutionProvider::IsGraphCaptured() const {
-  return GetPerThreadContext().IsGraphCaptured();
-}
-
-Status TensorrtExecutionProvider::ReplayGraph() {
-  return GetPerThreadContext().ReplayGraph();
-}
-
-void TensorrtExecutionProvider::PerThreadContext::SetGraphStream(cudaStream_t stream) {
-  cuda_graph_.SetStream(stream);
-}
-
-bool TensorrtExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
+bool TensorrtExecutionProvider::IsGraphCaptureAllowed() const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
 }
 
-void TensorrtExecutionProvider::PerThreadContext::CaptureBegin() {
+void TensorrtExecutionProvider::CaptureBegin() {
   cuda_graph_.Reset();
   cuda_graph_.CaptureBegin();
 }
 
-void TensorrtExecutionProvider::PerThreadContext::CaptureEnd() {
+void TensorrtExecutionProvider::CaptureEnd() {
   cuda_graph_.CaptureEnd();
   is_graph_captured_ = true;
 }
 
-bool TensorrtExecutionProvider::PerThreadContext::IsGraphCaptured() const {
+bool TensorrtExecutionProvider::IsGraphCaptured() const {
   return is_graph_captured_;
 }
 
-Status TensorrtExecutionProvider::PerThreadContext::ReplayGraph() {
+Status TensorrtExecutionProvider::ReplayGraph() {
   ORT_ENFORCE(IsGraphCaptured());
   // Please note that CUDAGraph::Replay() is not thread safe.
-  // The cuda graph object is maintained by a per thread basis,
+  // ORT TRT calls ReplayGraph() in compute_func() where synchromization is enforced due to lock_guard(),
   // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
   return cuda_graph_.Replay();
 }
 
-void TensorrtExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
-  // The cuda graph object is maintained by a per thread basis,
+void TensorrtExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
+  // Please note that this function is not thread safe.
+  // ORT TRT calls this function in compute_func() where synchronization is enforced due to lock_guard(),
   // therefore following increment is guaranteed to be thread safe.
   ++regular_run_count_before_graph_capture_;
 }
@@ -1213,22 +1229,16 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
   if (sync_stream && external_stream_) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
-
-  // The reason of !IsGraphCaptureEnabled():
-  //  If cuda graph is enabled, the per thread context will not be released
-  //  because the per thread cuda graph needs to be maintained and replayed for
-  //  the next run.
-  // The reason of PerThreadContextCache()->find(this) != PerThreadContextCache()->end():
-  //  In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
-  //  PerThreadContext won't be created and there is nothing to release.
-  if (!IsGraphCaptureEnabled() &&
-      PerThreadContextCache()->find(this) != PerThreadContextCache()->end()) {
-    ReleasePerThreadContext();
-  }
   return Status::OK();
 }
 
 void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
+  if (info_.custom_op_domain_list.empty()) {
+    common::Status status = CreateTensorRTCustomOpDomainList(info_);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+    }
+  }
   custom_op_domain_list = info_.custom_op_domain_list;
 }
 
@@ -1888,6 +1898,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   } else if (number_of_trt_nodes == number_of_ort_nodes) {
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
   } else {
+    sync_stream_after_enqueue_ = true;
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
   }
 
@@ -2211,7 +2222,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::string timing_cache_path = "";
       bool engine_update = false;
       if (timing_cache_enable_) {
-        timing_cache_path = GetTimingCachePath(cache_path_, prop);
+        timing_cache_path = GetTimingCachePath(global_cache_path_, prop);
       }
       {
         // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
@@ -2384,6 +2395,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // Save TRT engine, other TRT objects and input/output info to map
     parsers_.emplace(fused_node.Name(), std::move(trt_parser));
     engines_.emplace(fused_node.Name(), std::move(trt_engine));
+    contexts_.emplace(fused_node.Name(), std::move(trt_context));
     builders_.emplace(fused_node.Name(), std::move(trt_builder));
     networks_.emplace(fused_node.Name(), std::move(trt_network));
     input_info_[fused_node.Name()].push_back(input_indexes);
@@ -2391,14 +2403,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     output_info_[fused_node.Name()].push_back(output_types);
     input_shape_ranges_[fused_node.Name()] = input_implicit_shape_ranges;
     profiles_.emplace(fused_node.Name(), std::move(trt_profiles));
-
-    // Save TRT context to PerThreadContext map since maintaining execution context in a per thread basis is suggested by TRT doc to avoid synchronization issue
-    if (trt_context) {
-      auto context_status = GetPerThreadContext().UpdateTensorRTContext(fused_node.Name(), std::move(trt_context));
-      if (!context_status) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
-      }
-    }
 
     // Create function state
     // TODO: remove default capture
@@ -2411,13 +2415,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         tactics = GetTacticSourceFromString(tactic_sources_);
       }
       *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name,
-            &parsers_[context->node_name], &engines_[context->node_name], &builders_[context->node_name],
+            &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+            input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
-            force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
+            global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
             builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics};
       *state = p.release();
       return 0;
@@ -2441,10 +2445,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
       const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
       const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
+      bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
       auto trt_builder = trt_state->builder->get();
       auto trt_engine = trt_state->engine->get();
+      auto trt_context = trt_state->context->get();
       auto trt_profiles = trt_state->profiles;
       auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
       int num_inputs = static_cast<int>(input_indexes.size());
@@ -2477,7 +2483,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
       if (timing_cache_enable_) {
-        timing_cache_path = GetTimingCachePath(cache_path_, prop);
+        timing_cache_path = GetTimingCachePath(global_cache_path_, prop);
       }
 
       // Load serialized engine
@@ -2502,7 +2508,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           trt_state->engine->reset();
           *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
               trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (*(trt_state->engine) == nullptr) {
+          if (!(*(trt_state->engine))) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
           }
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
@@ -2527,7 +2533,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
           trt_state->engine->reset();
           *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (*(trt_state->engine) == nullptr) {
+          if (!(*(trt_state->engine))) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
           }
@@ -2556,10 +2562,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Regenerate engine
       if (engine_update) {
         // Destroy the IExecutionContext objects before destroying an engine object, otherwise it will lead to undefined behavior.
-        if (GetPerThreadContext().IsTensorRTContextInMap(fused_node_name)) {
-          GetPerThreadContext().ResetTensorRTContext(fused_node_name);
-        }
-
+        trt_state->context->reset();
         trt_state->engine->reset();
         auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
@@ -2660,7 +2663,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
           }
         }
-        if (*(trt_state->engine) == nullptr) {
+        if (!(*(trt_state->engine))) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
         }
         trt_engine = trt_state->engine->get();
@@ -2706,31 +2709,19 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         context_update = true;
       }
 
-      // Build execution context if either of the following conditions is true:
-      // (1) The engine is built or updated by this thread.
-      // (2) The first inference run for this thread where there is no IExecutionContext object yet.
-      // (3) The engine is updated by another thread. (We compare the profile shapes maintained by the PerThreadContext to the profile shapes maintained by TRT EP)
-      //
-      // Note: Creating an execution context from an engine is thread safe per TRT doc
-      // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-      if (context_update ||
-          !GetPerThreadContext().IsTensorRTContextInMap(fused_node_name) ||
-          GetPerThreadContext().CompareProfileShapes(fused_node_name, shape_ranges)) {
-        std::unique_ptr<nvinfer1::IExecutionContext> new_context;
+      if (context_update) {
         if (trt_state->context_memory_sharing_enable) {
-          new_context.reset(trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+          *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
+              trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
         } else {
-          new_context.reset(trt_state->engine->get()->createExecutionContext());
+          *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
+              trt_state->engine->get()->createExecutionContext());
         }
-        auto context_status = GetPerThreadContext().UpdateTensorRTContext(fused_node_name, std::move(new_context));
-        if (!context_status) {
+        if (!(*(trt_state->context))) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
-        GetPerThreadContext().UpdateProfileShapes(fused_node_name, shape_ranges);
+        trt_context = trt_state->context->get();
       }
-
-      // Get the reference to the IExecutionContext object that is maintained on a per thread basis.
-      nvinfer1::IExecutionContext& trt_context = GetPerThreadContext().GetTensorRTContext(fused_node_name);
 
       // Get input and output binding names
       int total_bindings = trt_engine->getNbBindings();
@@ -2767,12 +2758,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         int nb_dims = dimensions.nbDims;
         if (input_names.count(input_name) == 1) {
           if (trt_engine->isShapeBinding(binding_index)) {
-            trt_context.setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
+            trt_context->setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
           } else {
             for (int j = 0, end = nb_dims; j < end; ++j) {
               dimensions.d[j] = static_cast<int32_t>(tensor_shapes[j]);
             }
-            const bool status = trt_context.setBindingDimensions(binding_index, dimensions);
+            const bool status = trt_context->setBindingDimensions(binding_index, dimensions);
             if (!status) {
               ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                                  "TensorRT EP cannot set the dynamic dimensions of a binding"));
@@ -2911,7 +2902,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        nvinfer1::Dims dimensions = trt_context.getBindingDimensions(static_cast<int>(binding_index));
+        nvinfer1::Dims dimensions = trt_context->getBindingDimensions(static_cast<int>(binding_index));
         int nb_dims = dimensions.nbDims;
         std::vector<int64_t> output_shapes(nb_dims);
         for (int j = 0, end = nb_dims; j < end; ++j) {
@@ -3045,21 +3036,25 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (mem_size > *max_context_mem_size_ptr) {
           *max_context_mem_size_ptr = mem_size;
         }
-        trt_context.setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+        trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
       }
 
       // Start CUDA graph capture.
       // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
       // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
-      if (cuda_graph_enable_ && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
+      if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
         LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
-        GetPerThreadContext().SetGraphStream(stream);
-        GetPerThreadContext().CaptureBegin();
+        cuda_graph_.SetStream(stream);
+        CaptureBegin();
       }
 
       // Run TRT inference
-      if (!trt_context.enqueueV2(&buffers[0], stream, nullptr)) {
+      if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
+      }
+
+      if (sync_stream_after_enqueue) {
+        cudaStreamSynchronize(stream);
       }
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
@@ -3089,14 +3084,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
       // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc.
       // It's safe to start/end CUDA graph capture in compute_func() here since cuda graph object is maintained by a per thread basis.
-      if (cuda_graph_enable_ && !GetPerThreadContext().IsGraphCaptured()) {
-        if (GetPerThreadContext().IsGraphCaptureAllowed()) {
-          GetPerThreadContext().CaptureEnd();
+      if (cuda_graph_enable_ && !IsGraphCaptured()) {
+        if (IsGraphCaptureAllowed()) {
+          CaptureEnd();
           // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
           // so run the captured graph here to actually execute the work.
-          ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph());
+          ORT_RETURN_IF_ERROR(ReplayGraph());
         } else {
-          GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
+          IncrementRegularRunCountBeforeGraphCapture();
         }
       }
 
@@ -3116,8 +3111,8 @@ void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
                             true /* release_cpu_buffer_on_cuda_stream */,
                             stream_,
                             external_stream_ /* use_existing_stream */,
-                            GetPerThreadContext().CudnnHandle(),
-                            GetPerThreadContext().CublasHandle());
+                            external_cudnn_handle_,
+                            external_cublas_handle_);
 }
 
 OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {

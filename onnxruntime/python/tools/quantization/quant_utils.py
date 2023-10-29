@@ -72,6 +72,8 @@ class QuantType(Enum):
     QInt8 = 0
     QUInt8 = 1
     QFLOAT8E4M3FN = 2
+    QInt16 = 3
+    QUInt16 = 4
 
     def __str__(self):
         return self.name
@@ -89,6 +91,10 @@ class QuantType(Enum):
             return TensorProto.INT8
         if self == QuantType.QUInt8:
             return TensorProto.UINT8
+        if self == QuantType.QUInt16:
+            return TensorProto.UINT16
+        if self == QuantType.QInt16:
+            return TensorProto.INT16
         if self == QuantType.QFLOAT8E4M3FN:
             return TensorProto.FLOAT8E4M3FN
         raise ValueError(f"Unexpected value qtype={self!r}.")
@@ -112,12 +118,35 @@ class QuantFormat(Enum):
 ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.INT8: numpy.dtype("int8"),
     onnx_proto.TensorProto.UINT8: numpy.dtype("uint8"),
+    onnx_proto.TensorProto.INT16: numpy.dtype("int16"),
+    onnx_proto.TensorProto.UINT16: numpy.dtype("uint16"),
     onnx_proto.TensorProto.FLOAT8E4M3FN: float8e4m3fn,
+}
+
+ONNX_INT_TYPE_RANGE = {
+    onnx_proto.TensorProto.UINT8: (0, 255),
+    onnx_proto.TensorProto.INT8: (-128, 127),
+    onnx_proto.TensorProto.UINT16: (0, 65535),
+    onnx_proto.TensorProto.INT16: (-32768, 32767),
+}
+
+ONNX_INT_TYPE_SYMMETRIC_RANGE = {
+    onnx_proto.TensorProto.INT8: (-127, 127),
+    onnx_proto.TensorProto.INT16: (-32767, 32767),
+}
+
+ONNX_INT_TYPE_REDUCED_RANGE = {
+    onnx_proto.TensorProto.UINT8: (0, 127),
+    onnx_proto.TensorProto.INT8: (-64, 64),
+    onnx_proto.TensorProto.UINT16: (0, 32767),
+    onnx_proto.TensorProto.INT16: (-16384, 16384),
 }
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert qType in ONNX_TYPE_TO_NP_TYPE, f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
+    assert (
+        qType in ONNX_TYPE_TO_NP_TYPE
+    ), f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
     if qType in (
         onnx_proto.TensorProto.FLOAT8E4M3FN,
         onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
@@ -146,8 +175,10 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         return ref.run(None, {"X": arr.astype(numpy.float32), "scale": scale.astype(numpy.float32)})[0]
     else:
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
-        cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
-        cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
+        (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
+
+        cliplow = max(qmin, low) if low is not None else qmin
+        cliphigh = min(qmax, high) if high is not None else qmax
         arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
         numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
         return arr_fp32.astype(dtype)
@@ -267,7 +298,7 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
             )
         return rmin, rmax, zero_point, scale, quantized_data
 
-    if qType in (TensorProto.INT8, TensorProto.UINT8):
+    if qType in (TensorProto.INT8, TensorProto.UINT8, TensorProto.INT16, TensorProto.UINT16):
         if len(data):
             qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
             zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
@@ -283,18 +314,22 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
     :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
     :return: qmin, qmax
     """
-    if qType == onnx_proto.TensorProto.UINT8:
-        (qmin, qmax) = (0, 127) if reduce_range else (0, 255)
-    elif qType == onnx_proto.TensorProto.INT8:
-        if symmetric:
-            (qmin, qmax) = (-64, 64) if reduce_range else (-127, 127)
-        else:
-            (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
-    elif qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+    if qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
         raise NotImplementedError("This function is not implemented for float 8 as not needed.")
+
+    qrange = None
+
+    if reduce_range:
+        qrange = ONNX_INT_TYPE_REDUCED_RANGE.get(qType)
+    elif symmetric and qType in ONNX_INT_TYPE_SYMMETRIC_RANGE:
+        qrange = ONNX_INT_TYPE_SYMMETRIC_RANGE[qType]
     else:
-        raise ValueError(f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported.")
-    return qmin, qmax
+        qrange = ONNX_INT_TYPE_RANGE.get(qType)
+
+    if not qrange:
+        raise ValueError(f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported.")
+
+    return qrange
 
 
 def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
@@ -470,7 +505,7 @@ def apply_plot(hist, hist_edges):
     plt.show()
 
 
-def write_calibration_table(calibration_cache):
+def write_calibration_table(calibration_cache, dir="."):
     """
     Helper function to write calibration table to files.
     """
@@ -484,7 +519,7 @@ def write_calibration_table(calibration_cache):
 
     logging.info(f"calibration cache: {calibration_cache}")
 
-    with open("calibration.json", "w") as file:
+    with open(os.path.join(dir, "calibration.json"), "w") as file:
         file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
 
     # Serialize data using FlatBuffers
@@ -516,7 +551,7 @@ def write_calibration_table(calibration_cache):
     builder.Finish(cal_table)
     buf = builder.Output()
 
-    with open("calibration.flatbuffers", "wb") as file:
+    with open(os.path.join(dir, "calibration.flatbuffers"), "wb") as file:
         file.write(buf)
 
     # Deserialize data (for validation)
@@ -529,7 +564,7 @@ def write_calibration_table(calibration_cache):
             logging.info(key_value.Value())
 
     # write plain text
-    with open("calibration.cache", "w") as file:
+    with open(os.path.join(dir, "calibration.cache"), "w") as file:
         for key in sorted(calibration_cache.keys()):
             value = calibration_cache[key]
             s = key + " " + str(max(abs(value[0]), abs(value[1])))

@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cuda_fp16.h>
-#include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
@@ -406,22 +405,25 @@ Status PrepareQkv_MHA_NotPacked(contrib::AttentionParameters& parameters,
 
     // Query (BxSxNxH) => Q (BxNxSxH)
     constexpr int format = 0;
-    LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
-                              batch_size, sequence_length, num_heads, qk_head_size,
-                              data.query, data.bias, q,
-                              true, -1);
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, sequence_length, num_heads, qk_head_size,
+        data.query, data.bias, q,
+        true, -1);
 
     // Key (BxLxNxH) => K (BxNxLxH)
-    LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
-                              batch_size, kv_sequence_length, num_heads, qk_head_size,
-                              data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, k,
-                              true, -1);
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, kv_sequence_length, num_heads, qk_head_size,
+        data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, k,
+        true, -1);
 
     // Value (BxLxNxH_v) => K (BxNxLxH_v)
-    LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
-                              batch_size, kv_sequence_length, num_heads, v_head_size,
-                              data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, v,
-                              true, -1);
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, kv_sequence_length, num_heads, v_head_size,
+        data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, v,
+        true, -1);
 
     DUMP_TENSOR_D("q(BNSH)", q, batch_size, num_heads, sequence_length, qk_head_size);
     DUMP_TENSOR_D("k(BNSH)", k, batch_size, num_heads, kv_sequence_length, qk_head_size);
@@ -435,8 +437,8 @@ template <typename T>
 Status PrepareQkv(contrib::AttentionParameters& parameters,
                   AttentionData<T>& data,
                   cudaStream_t stream,
-                  int max_threads_per_block,
-                  QkvData<T>& qkv) {
+                  int max_threads_per_block) {
+  data.scratch = data.workspace;
   if (data.has_qkv_workspace) {
     const int size_per_batch_q = parameters.sequence_length * parameters.head_size;
     const int size_per_batch_k = parameters.kv_sequence_length * parameters.head_size;
@@ -445,27 +447,27 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
     const size_t elements_q = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_q);
     const size_t elements_k = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_k);
     const size_t elements_v = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_v);
-    qkv.q = data.workspace;
-    qkv.k = data.workspace + elements_q;
-    qkv.v = qkv.k + elements_k;
-    qkv.after_v = qkv.v + elements_v;
+    data.q = data.workspace;
+    data.k = data.workspace + elements_q;
+    data.v = data.k + elements_k;
+    data.scratch = data.v + elements_v;
   }
 
   if (nullptr != data.gemm_buffer) {  // Attention operator
     ORT_RETURN_IF_ERROR(PrepareQkv_Attention<T>(parameters, data, stream, max_threads_per_block,
-                                                qkv.format));
+                                                data.qkv_format));
   } else if (data.past_key != nullptr || data.present_key != nullptr) {  // mha operator with past/present state
     ORT_RETURN_IF_ERROR(PrepareQkv_MHA_WithPast(parameters, data, stream, max_threads_per_block,
-                                                qkv.q, qkv.k, qkv.v, qkv.format));
+                                                data.q, data.k, data.v, data.qkv_format));
   } else if (data.key == nullptr) {  // multihead attention operator, no past, packed qkv
     ORT_RETURN_IF_ERROR(PrepareQkv_MHA_PackedQKV(parameters, data, stream, max_threads_per_block,
-                                                 qkv.q, qkv.k, qkv.v, qkv.format));
+                                                 data.q, data.k, data.v, data.qkv_format));
   } else if (data.value == nullptr) {  // multihead attention operator, no past, packed kv
     ORT_RETURN_IF_ERROR(PrepareQkv_MHA_PackedKV(parameters, data, stream, max_threads_per_block,
-                                                qkv.q, qkv.k, qkv.v, qkv.format));
+                                                data.q, data.k, data.v, data.qkv_format));
   } else {  // multihead attention operator, no past, separated Q/K/V inputs
     ORT_RETURN_IF_ERROR(PrepareQkv_MHA_NotPacked(parameters, data, stream, max_threads_per_block,
-                                                 qkv.q, qkv.k, qkv.v, qkv.format));
+                                                 data.q, data.k, data.v, data.qkv_format));
   }
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -477,15 +479,13 @@ template Status PrepareQkv<float>(
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data,
     cudaStream_t stream,
-    int max_threads_per_block,
-    QkvData<float>& qkv);
+    int max_threads_per_block);
 
 template Status PrepareQkv<half>(
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data,
     cudaStream_t stream,
-    int max_threads_per_block,
-    QkvData<half>& qkv);
+    int max_threads_per_block);
 
 }  // namespace cuda
 }  // namespace contrib

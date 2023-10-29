@@ -95,7 +95,8 @@ class ApiNode final : public api::NodeRef {
   void ClearAttribute(std::string_view name) override;
   void SetInput(size_t i, std::string_view name) override;
   std::string_view GetExecutionProviderType() const override;
-  virtual int SinceVersion() const override;
+  int SinceVersion() const override;
+  int64_t Id() const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
@@ -415,6 +416,10 @@ std::string_view ApiNode::GetExecutionProviderType() const {
 
 int ApiNode::SinceVersion() const {
   return node_.SinceVersion();
+}
+
+int64_t ApiNode::Id() const {
+  return node_.Index();
 }
 
 // </ApiNode>

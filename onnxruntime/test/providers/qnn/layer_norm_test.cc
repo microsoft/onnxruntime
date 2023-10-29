@@ -29,7 +29,7 @@ static void RunLayerNormCpuTest(const TestInputDef<float>& input_def,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, attrs),
+  RunQnnModelTest(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, {}, attrs),
                   provider_options,
                   17,
                   expected_ep_assignment);
@@ -114,7 +114,7 @@ static void RunLayerNormQDQTest(const TestInputDef<float>& input_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, attrs),
+  TestQDQModelAccuracy(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, {}, attrs),
                        BuildQDQLayerNormTestCase<InputQType, ScaleQType>(input_def, scale_def, attrs),
                        provider_options,
                        17,  // opset

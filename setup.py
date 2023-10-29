@@ -192,11 +192,15 @@ try:
 
                 cuda_dependencies = [
                     "libcublas.so.11",
+                    "libcublas.so.12",
                     "libcublasLt.so.11",
-                    "libcudnn.so.8",
+                    "libcublasLt.so.12",
                     "libcudart.so.11.0",
-                    "libcurand.so.10",
+                    "libcudart.so.12.0",
+                    "libcudnn.so.8",
                     "libcufft.so.10",
+                    "libcufft.so.11",
+                    "libcurand.so.10",
                 ]
                 rocm_dependencies = [
                     "librccl.so.1",
@@ -462,6 +466,7 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils",
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
+                "onnxruntime.training.ortmodule.graph_optimizers",
                 "onnxruntime.training.ort_triton",
                 "onnxruntime.training.ort_triton.kernel",
                 "onnxruntime.training.utils",
@@ -519,6 +524,10 @@ if enable_training or enable_training_apis:
             if not (cuda_version or rocm_version):
                 # Training CPU package for ADO feeds is called onnxruntime-training-cpu
                 package_name = "onnxruntime-training-cpu"
+
+            if rocm_version:
+                # Training ROCM package for ADO feeds is called onnxruntime-training-rocm
+                package_name = "onnxruntime-training-rocm"
 
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]

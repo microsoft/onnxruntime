@@ -12,6 +12,10 @@ parameters:
   type: string
   default: "$(Agent.TempDirectory)/ort_ccache"
 
+- name: DebugCache
+  type: boolean
+  default: false
+
 - name: AdditionalKey
   type: string
   default: ""
@@ -45,6 +49,18 @@ parameters:
 
 steps:
   - ${{ if eq(parameters.WithCache, true) }}:
+    - powershell: |
+        if ([string]::IsNullOrEmpty((Get-Command ccache -errorAction SilentlyContinue)))
+        {
+          choco install ccache -y --version 4.7.4
+          $ccache_path = (Get-Command ccache).Source
+          $ccache_parent_dir = (Split-Path -parent $ccache_path)
+          Copy-Item "C:\ProgramData\chocolatey\lib\ccache\tools\ccache-4.7.4-windows-x86_64\ccache.exe" -Destination "C:\ProgramData\chocolatey\bin\cl.exe"
+          Get-ChildItem $ccache_parent_dir
+          ccache --version
+        }
+      displayName: Install ccache
+
     - task: Cache@2
       inputs:
         ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
@@ -83,6 +99,11 @@ steps:
       createLogFile: true
     env:
       CCACHE_DIR: ${{parameters.CacheDir}}
+      CCACHE_SLOPPINESS: file_macro,time_macros,include_file_mtime,include_file_ctime
+      CCACHE_COMPILERCHECK: content
+      ${{if eq(parameters.DebugCache, true)}}:
+        CCACHE_DEBUG: 1
+        CCACHE_DEBUGDIR: $(Agent.TempDirectory)/cache_debug
 
   - ${{ if eq(parameters.WithCache, true) }}:
     - powershell: |
@@ -91,3 +112,10 @@ steps:
       displayName: cache stat
       env:
         CCACHE_DIR: ${{parameters.CacheDir}}
+
+    - ${{if eq(parameters.DebugCache, true)}}:
+      - task: PublishPipelineArtifact@0
+        displayName: 'publish cache log'
+        inputs:
+          artifactName: 'cache-log'
+          targetPath: $(Agent.TempDirectory)/cache_debug
