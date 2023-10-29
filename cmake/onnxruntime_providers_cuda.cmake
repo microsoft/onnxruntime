@@ -37,6 +37,9 @@
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding_spec.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_matmul.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_slice.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_reshape.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_expand.cc"
       )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
@@ -122,6 +125,7 @@
     # CUDA 11.3+ supports parallel compilation
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
+      option(onnxruntime_NVCC_THREADS "Number of threads that NVCC can use for compilation." 1)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
     endif()
     if (UNIX)

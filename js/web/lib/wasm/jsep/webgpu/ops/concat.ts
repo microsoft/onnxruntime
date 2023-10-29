@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -122,10 +122,9 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
   }`;
   return {
     name: 'Concat',
-    inputTypes: Array(inputs.length).fill(GpuDataType.default),
     shaderCache: {hint: `${axis}`},
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
     }),
     getShaderSource,

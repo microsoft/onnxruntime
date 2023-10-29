@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
@@ -45,12 +45,11 @@ const createElementwiseProgramInfo =
     (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
      cacheKey?: string, outputDataType: number = input.dataType): ProgramInfo => ({
       name,
-      inputTypes: [GpuDataType.default],
       shaderCache: {hint: cacheKey},
       getShaderSource: shaderHelper => createElementwiseProgramShader(
           shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall, additionalImplementation),
       getRunData: (inputTensors) => ({
-        outputs: [{dims: input.dims, dataType: outputDataType, gpuDataType: GpuDataType.default}],
+        outputs: [{dims: input.dims, dataType: outputDataType}],
         dispatchGroup:
             {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)}
       })

@@ -67,7 +67,7 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_cuda_11.bat
+        EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
         additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64

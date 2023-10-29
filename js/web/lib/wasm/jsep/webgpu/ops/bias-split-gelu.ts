@@ -3,7 +3,7 @@
 
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 import {erfImpl} from './unary-op';
@@ -58,9 +58,8 @@ const createBiasSplitGeluProgramInfo = (inputs: readonly TensorView[]): ProgramI
 
   return {
     name: 'BiasSplitGelu',
-    inputTypes: [GpuDataType.default, GpuDataType.default],
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
     }),
     getShaderSource,

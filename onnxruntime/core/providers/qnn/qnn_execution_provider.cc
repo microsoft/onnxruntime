@@ -238,22 +238,36 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 initializer_input_lookup,
                                                 qnn_backend_manager_->GetQnnBackendType());
 
-  for (const auto& node : graph_viewer.Nodes()) {
-    const NodeUnit* node_unit = node_unit_map.at(&node);
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
+
+    // Get the node_unit associated with the node. Note that the node may not be the node_unit's target node.
+    const NodeUnit* node_unit = node_unit_map.at(node);
+
+    // Visiting 'nodes' in topological order does not guarantee that 'node_units' are
+    // also visited in topological order. Skip this node if it is not the node_unit's target node
+    // to ensure 'node_units' are visited in topological order.
+    if (node != &node_unit->GetNode()) {
+      continue;
+    }
     const bool supported = IsNodeSupported(qnn_model_wrapper,
                                            *node_unit,
                                            node_unit_supported_result,
                                            logger);
     LOGS(logger, VERBOSE) << "Node supported: [" << supported
-                          << "] index: [" << node.Index()
-                          << "] name: [" << node.Name()
-                          << "] Operator type: [" << node.OpType()
+                          << "] index: [" << node->Index()
+                          << "] name: [" << node->Name()
+                          << "] Operator type: [" << node->OpType()
                           << "] as part of the NodeUnit type: [" << node_unit->OpType()
                           << "] index: [" << node_unit->Index()
                           << "] name: [" << node_unit->Name()
                           << "]";
     if (supported) {
-      supported_nodes.insert(&node);
+      // If the node_unit is supported, add all of its nodes to the supported list.
+      for (const auto* node_in_group : node_unit->GetAllNodesInGroup()) {
+        supported_nodes.insert(node_in_group);
+      }
     }
   }
 
@@ -469,33 +483,28 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
   bool is_qnn_ctx_model = false;
   ORT_RETURN_IF_ERROR(qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs, is_qnn_ctx_model));
 
-  if (context_cache_enabled_ || is_qnn_ctx_model) {
+  bool is_ctx_file_exist = qnn_cache_model_handler_->GetIsContextCacheFileExists();
+  if (is_qnn_ctx_model || (context_cache_enabled_ && is_ctx_file_exist)) {
     ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support single partition for context cache feature.");
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager_.get());
-    bool loaded_from_cache = false;
-    std::string ep_engine_cache;
-    ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->GetEpContext(graph_viewer,
-                                                               context_cache_path_,
-                                                               is_qnn_ctx_model,
-                                                               qnn_cache_model_handler_->GetIsContextCacheFileExists(),
-                                                               ep_engine_cache,
-                                                               logger));
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnCtxFromOnnxModel(ep_engine_cache,
-                                                                            *(qnn_model.get()),
-                                                                            loaded_from_cache));
     // Load and execute from cached context if exist
-    if (loaded_from_cache) {
-      ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
-      ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
+    ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->LoadQnnCtxFromOnnxModel(graph_viewer,
+                                                                          context_cache_path_,
+                                                                          is_qnn_ctx_model,
+                                                                          is_ctx_file_exist,
+                                                                          qnn_backend_manager_.get(),
+                                                                          *(qnn_model.get()),
+                                                                          logger));
+    ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
+    ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
-      // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
-      // the name here should be same with context->node_name in compute_info
-      LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
-      qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
+    // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
+    // the name here should be same with context->node_name in compute_info
+    LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
+    qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
 
-      ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
-      return Status::OK();
-    }
+    ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+    return Status::OK();
   }
 
   ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
@@ -510,8 +519,6 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                             qnn_models_,
                                                                             logger));
   }
-  qnn_cache_model_handler_.reset();
-
   return Status::OK();
 }
 }  // namespace onnxruntime

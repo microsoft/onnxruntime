@@ -4,7 +4,7 @@
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -175,13 +175,12 @@ const createBinaryOpProgramInfo =
 
       return {
         name,
-        inputTypes: [GpuDataType.default, GpuDataType.default],
         shaderCache: {hint: cacheKey},
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
             shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, a.dataType, b.dataType,
             outputDataType, additionalImplementation),
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
+          outputs: [{dims: outputShape, dataType: outputDataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)}
         }),
       };

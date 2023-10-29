@@ -4,7 +4,7 @@
 import {env} from 'onnxruntime-common';
 
 import {DataType} from '../../../wasm-common';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {outputVariable, ShaderHelper} from './common';
 
@@ -34,13 +34,11 @@ const createRangeProgramInfo = (start: number, limit: number, delta: number, dat
       }`;
   return {
     name: 'Range',
-    inputTypes: [],
     shaderCache: {hint: [start, limit, delta].map(x => x.toString()).join('_')},
     getShaderSource,
-    getRunData: () => ({
-      outputs: [{dims: outputShape, dataType, gpuDataType: GpuDataType.default}],
-      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
-    })
+    getRunData: () => (
+        {outputs: [{dims: outputShape, dataType}],
+         dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}})
   };
 };
 

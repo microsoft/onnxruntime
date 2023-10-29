@@ -4,9 +4,9 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
-import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, enableShapesUniforms, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface TransposeAttributes extends AttributeWithCacheKey {
   readonly perm: number[];
@@ -35,13 +35,18 @@ const permFunctionBody = (perm: number[], rank: number, input: IndicesHelper, ou
   return reverseFunc.join('\n');
 };
 
-export const createTransposeProgramInfo =
-    (inputDataType: number, inputRank: number, permAttr: number[]): ProgramInfo => {
-      const perm = getAdjustedPerm(inputRank, permAttr);
-      const output = outputVariable('output', inputDataType, (permAttr && permAttr.length) || inputRank);
-      const input = inputVariable('a', inputDataType, inputRank);
+export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: number[]): ProgramInfo => {
+  const inputDataType = inputTensor.dataType;
+  const inputRank = inputTensor.dims.length;
+  const perm = getAdjustedPerm(inputRank, permAttr);
+  const useShapesUniforms = enableShapesUniforms(inputRank);
+  const outputShape = getOutputShape(inputTensor.dims, perm);
+  const outShapeOrRank = useShapesUniforms ? outputShape.length : outputShape;
+  const inShapeOrRank = useShapesUniforms ? inputRank : inputTensor.dims;
+  const output = outputVariable('output', inputDataType, outShapeOrRank);
+  const input = inputVariable('a', inputDataType, inShapeOrRank);
 
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(input, output)}
 
   ${permFunctionBody(perm, inputRank, input, output)}
@@ -54,31 +59,32 @@ export const createTransposeProgramInfo =
 
     ${output.setByOffset('global_idx', input.getByIndices('aIndices'))}
   }`;
+  return {
+    name: 'Transpose',
+    shaderCache: {hint: `${permAttr}`, inputDependencies: useShapesUniforms ? ['rank'] : ['dims']},
+    getRunData: (inputs) => {
+      const outputSize = ShapeUtil.size(outputShape);
       return {
-        name: 'Transpose',
-        inputTypes: [GpuDataType.default],
-        shaderCache: {hint: `${permAttr}`, inputDependencies: ['rank']},
-        getRunData: (inputs) => {
-          const outputShape = getOutputShape(inputs[0].dims, perm);
-          const outputSize = ShapeUtil.size(outputShape);
-          return {
-            outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-            dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-            variables: [
+        outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+        dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+        programUniforms: useShapesUniforms ?
+            [
               {type: 'uint32', data: outputSize},
               ...createTensorShapeVariables(inputs[0].dims),
               ...createTensorShapeVariables(outputShape),
+            ] :
+            [
+              {type: 'uint32', data: outputSize},
             ],
-          };
-        },
-        getShaderSource,
       };
-    };
+    },
+    getShaderSource,
+  };
+};
 
 export const transpose = (context: ComputeContext, attributes: TransposeAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(
-      createTransposeProgramInfo(context.inputs[0].dataType, context.inputs[0].dims.length, attributes.perm));
+  context.compute(createTransposeProgramInfo(context.inputs[0], attributes.perm));
 };
 
 export const parseTransposeAttributes = (attributes: Record<string, unknown>): TransposeAttributes =>

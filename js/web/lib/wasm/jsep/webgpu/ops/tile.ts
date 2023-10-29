@@ -4,7 +4,7 @@
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -74,10 +74,9 @@ export const createTileProgramInfo = (inputs: readonly TensorView[]): ProgramInf
 
   return {
     name: 'Tile',
-    inputTypes: [GpuDataType.default],
     shaderCache: {hint: `${repeats}`},
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
     }),
     getShaderSource,

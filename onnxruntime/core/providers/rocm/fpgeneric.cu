@@ -68,7 +68,7 @@ rocblas_status rocblasTransposeHelper(hipStream_t stream, rocblas_handle, rocbla
 rocblas_status rocblasCopyHelper(hipStream_t stream, rocblas_handle, int n, const half* x, int incx, half* y, int incy) {
   dim3 dimGrid((unsigned int)(n + COPY_BLOCK_DIM - 1) / COPY_BLOCK_DIM, 1, 1);
   dim3 dimBlock(COPY_BLOCK_DIM, 1, 1);
-  CopyVectorHalf<<<dim3(dimGrid), dim3(dimBlock), 0, stream>>>(x, incx, y, incy, n);
+  CopyVectorHalf<<<dimGrid, dimBlock, 0, stream>>>(x, incx, y, incy, n);
   return rocblas_status_success;
 }
 
@@ -76,6 +76,6 @@ rocblas_status rocblasCopyHelper(hipStream_t stream, rocblas_handle, int n, cons
                                 onnxruntime::BFloat16* y, int incy) {
   dim3 dimGrid((unsigned int)(n + COPY_BLOCK_DIM - 1) / COPY_BLOCK_DIM, 1, 1);
   dim3 dimBlock(COPY_BLOCK_DIM, 1, 1);
-  CopyVectorBFloat16<<<dim3(dimGrid), dim3(dimBlock), 0, stream>>>(x, incx, y, incy, n);
+  CopyVectorBFloat16<<<dimGrid, dimBlock, 0, stream>>>(x, incx, y, incy, n);
   return rocblas_status_success;
 }

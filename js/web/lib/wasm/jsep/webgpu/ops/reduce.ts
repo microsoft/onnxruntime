@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramShaderCacheInfo} from '../types';
+import {ComputeContext, ProgramInfo, ProgramShaderCacheInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -97,11 +97,10 @@ export const createReduceProgramInfo =
 
       return {
         name,
-        inputTypes: [GpuDataType.default],
         shaderCache,
         getShaderSource,
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
+          outputs: [{dims: outputShape, dataType: outputDataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
         }),
       };

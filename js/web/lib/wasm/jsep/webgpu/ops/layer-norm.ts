@@ -5,9 +5,9 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
-import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
+import {castToF32, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType,} from './common';
 
 export interface LayerNormAttributes extends AttributeWithCacheKey {
   axis: number;
@@ -18,10 +18,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length < 2) {
     throw new Error('layerNorm requires at least 2 inputs.');
   }
-
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('inputs should be float type');
-  }
 };
 
 const createLayerNormProgramInfo =
@@ -31,7 +27,6 @@ const createLayerNormProgramInfo =
       const bias = inputs[2];
 
       const outputShape = xShape;
-      const outputSize = ShapeUtil.size(outputShape);
       const axis = ShapeUtil.normalizeAxis(attributes.axis, xShape.length);
       const normCount = ShapeUtil.sizeToDimension(xShape, axis);
       const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
@@ -53,65 +48,69 @@ const createLayerNormProgramInfo =
         }
       }
 
+      const components = getMaxComponents(normSize);
       const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+      const variables = [
+        inputVariable('x', inputs[0].dataType, inputs[0].dims, components),
+        inputVariable('scale', scale.dataType, scale.dims, components),
+      ];
+      if (bias) {
+        variables.push(inputVariable('bias', bias.dataType, bias.dims, components));
+      }
+      variables.push(outputVariable('output', inputs[0].dataType, outputShape, components));
 
       const hasMeanDataOutput = outputCount > 1;
       const hasInvStdOutput = outputCount > 2;
-      let bindingIndex = 0;
+
+      if (hasMeanDataOutput) {
+        variables.push(outputVariable('meanDataOutput', DataType.float, meanInvStdDevDim));
+      }
+      if (hasInvStdOutput) {
+        variables.push(outputVariable('invStdOutput', DataType.float, meanInvStdDevDim));
+      }
+
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const normSize: u32 = ${normSize};
-  const normSizeTyped: ${dataType} = ${normSize};
+  const normSize: f32 = ${normSize};
+  const normSizeVectorized: u32 = ${normSize / components};
   const epsilon: f32 = ${attributes.epsilon};
 
-  @group(0) @binding(${bindingIndex++}) var<storage, read> x : array<${dataType}>;
-  @group(0) @binding(${bindingIndex++}) var<storage, read> scale : array<${dataType}>;
-  ${bias ? `@group(0) @binding(${bindingIndex++}) var<storage, read> bias : array<${dataType}>;` : ''}
-  @group(0) @binding(${bindingIndex++}) var<storage, read_write> output : array<${dataType}>;
-  ${
-          hasMeanDataOutput ?
-              `@group(0) @binding(${bindingIndex++}) var<storage, read_write> meanDataOutput : array<${dataType}>` :
-              ''};
-  ${
-          hasInvStdOutput ?
-              `@group(0) @binding(${bindingIndex++}) var<storage, read_write> invStdOutput : array<${dataType}>` :
-              ''};
-
+  ${shaderHelper.declareVariables(...variables)}
   ${shaderHelper.mainStart()}
-    let offset = global_idx * normSize;
-    if (offset >= ${outputSize}) { return; }
-    var mean: ${dataType} = 0;
-    var meanSquare: ${dataType} = 0;
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(normCount)}
+    let offset = global_idx * normSizeVectorized;
+    var meanVector = ${fillVector('f32', components)};
+    var meanSquareVector = ${fillVector('f32', components)};
 
-    for (var h: u32 = 0u; h < normSize; h++) {
-      mean = mean + x[h + offset];
-      meanSquare = meanSquare + x[h + offset] * x[h + offset];
+    for (var h: u32 = 0u; h < normSizeVectorized; h++) {
+      let value = ${castToF32(dataType, components, 'x[h + offset]')};
+      meanVector += value;
+      meanSquareVector += value * value;
     }
-    mean = mean / normSizeTyped;
-    meanSquare = sqrt(meanSquare / normSizeTyped - mean * mean + epsilon);
+    let mean = ${sumVector('meanVector', components)} / normSize;
+    let meanSquare = sqrt(${sumVector('meanSquareVector', components)} 
+      / normSize - mean * mean + epsilon);
 
-    for (var j: u32 = 0; j < normSize; j++) {
-      output[j + offset] = (x[j + offset] - mean) / meanSquare * scale[j] ${bias ? '+ bias[j]' : ''};
+    for (var j: u32 = 0; j < normSizeVectorized; j++) {
+      let f32input = ${castToF32(dataType, components, 'x[j + offset]')};
+      let f32scale = ${castToF32(dataType, components, 'scale[j]')};
+      output[j + offset] = ${variables[0].type.value}((f32input - mean) / meanSquare * f32scale
+        ${bias ? `+ ${castToF32(dataType, components, 'bias[j]')}` : ''}
+      );
     }
 
     ${hasMeanDataOutput ? 'meanDataOutput[global_idx] = mean' : ''};
     ${hasInvStdOutput ? 'invStdOutput[global_idx] = 1 / meanSquare' : ''};
   }`;
-      const outputs = [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}];
+      const outputs = [{dims: outputShape, dataType: inputs[0].dataType}];
       if (hasMeanDataOutput) {
-        outputs.push(
-            {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-        );
+        outputs.push({dims: meanInvStdDevDim, dataType: DataType.float});
       }
       if (hasInvStdOutput) {
-        outputs.push(
-            {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-        );
+        outputs.push({dims: meanInvStdDevDim, dataType: DataType.float});
       }
 
       return {
         name: 'LayerNormalization',
-        inputTypes: inputs.length === 2 ? [GpuDataType.default, GpuDataType.default] :
-                                          [GpuDataType.default, GpuDataType.default, GpuDataType.default],
         shaderCache: {hint: `${attributes.cacheKey}|${outputCount}|${inputs.length}`},
         getRunData: () => ({outputs, dispatchGroup: {x: Math.ceil(normCount / 64 /* workgroup size */)}}),
         getShaderSource,

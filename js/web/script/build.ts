@@ -47,6 +47,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
+  'BUILD_DEFS.DISABLE_TRAINING': 'true',
 };
 
 const COPYRIGHT_HEADER = `/*!
@@ -58,7 +59,7 @@ const COPYRIGHT_HEADER = `/*!
 interface OrtBuildOptions {
   isProduction?: boolean;
   isNode?: boolean;
-  isEsm?: boolean;
+  format: 'iife'|'cjs'|'esm';
   outputBundleName: string;
   define?: Record<string, string>;
 }
@@ -94,7 +95,7 @@ async function minifyCode(sourceCode: string): Promise<string> {
 async function buildOrt({
   isProduction = false,
   isNode = false,
-  isEsm = false,
+  format,
   outputBundleName,
   define = DEFAULT_DEFINE,
 }: OrtBuildOptions) {
@@ -238,7 +239,7 @@ async function buildOrt({
     entryPoints: ['web/lib/index.ts'],
     outfile: `web/dist/${outputBundleName}.js`,
     platform: isNode ? 'node' : 'browser',
-    format: isEsm ? 'esm' : (isNode ? 'cjs' : 'iife'),
+    format,
     globalName: 'ort',
     plugins: isNode ? undefined :
                       [excludeNodejsImports, proxyWorkerHandler, wasmThreadedHandler, emscriptenThreadedJsHandler],
@@ -286,6 +287,9 @@ async function buildTest() {
 async function main() {
   // tasks for each esbuild bundle
   const buildTasks: Array<Promise<void>> = [];
+  /**
+   * add one build task
+   */
   const addBuildTask = async (task: Promise<void>) => {
     if (DEBUG) {
       // in DEBUG mode, build sequentially
@@ -294,12 +298,62 @@ async function main() {
       buildTasks.push(task);
     }
   };
+  /**
+   * add all 6 build tasks for web bundles. Includes:
+   * - IIFE, debug:                [name].js
+   * - IIFE, production:           [name].min.js
+   * - CJS, debug:                 cjs/[name].js
+   * - CJS, production:            cjs/[name].min.js
+   * - ESM, debug:                 esm/[name].js
+   * - ESM, production:            esm/[name].min.js
+   */
+  const addAllWebBuildTasks = async (options: Omit<OrtBuildOptions, 'format'>) => {
+    // [name].js
+    await addBuildTask(buildOrt({
+      ...options,
+      format: 'iife',
+    }));
+    // [name].min.js
+    await addBuildTask(buildOrt({
+      ...options,
+      outputBundleName: options.outputBundleName + '.min',
+      format: 'iife',
+      isProduction: true,
+    }));
+    // cjs/[name].js
+    await addBuildTask(buildOrt({
+      ...options,
+      outputBundleName: 'cjs/' + options.outputBundleName,
+      format: 'cjs',
+    }));
+    // cjs/[name].min.js
+    await addBuildTask(buildOrt({
+      ...options,
+      outputBundleName: 'cjs/' + options.outputBundleName + '.min',
+      format: 'cjs',
+      isProduction: true,
+    }));
+    // esm/[name].js
+    await addBuildTask(buildOrt({
+      ...options,
+      outputBundleName: 'esm/' + options.outputBundleName,
+      format: 'esm',
+    }));
+    // esm/[name].min.js
+    await addBuildTask(buildOrt({
+      ...options,
+      outputBundleName: 'esm/' + options.outputBundleName + '.min',
+      format: 'esm',
+      isProduction: true,
+    }));
+  };
 
   if (BUNDLE_MODE === 'node' || BUNDLE_MODE === 'prod') {
     // ort.node.min.js
     await addBuildTask(buildOrt({
       isProduction: true,
       isNode: true,
+      format: 'cjs',
       outputBundleName: 'ort.node.min',
       define: {
         ...DEFAULT_DEFINE,
@@ -311,60 +365,50 @@ async function main() {
     }));
   }
 
-  if (BUNDLE_MODE === 'dev' || BUNDLE_MODE === 'prod') {
+  if (BUNDLE_MODE === 'dev') {
     // ort.all.js
     await addBuildTask(buildOrt({
       outputBundleName: 'ort.all',
+      format: 'iife',
     }));
   }
 
-  if (BUNDLE_MODE === 'perf' || BUNDLE_MODE === 'prod') {
+  if (BUNDLE_MODE === 'perf') {
     // ort.all.min.js
     await addBuildTask(buildOrt({
       isProduction: true,
       outputBundleName: 'ort.all.min',
+      format: 'iife',
     }));
   }
 
   if (BUNDLE_MODE === 'prod') {
-    // ort.js
-    await addBuildTask(buildOrt({
+    // ort.all[.min].js
+    await addAllWebBuildTasks({outputBundleName: 'ort.all'});
+
+    // ort[.min].js
+    await addAllWebBuildTasks({
       outputBundleName: 'ort',
       define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true'},
-    }));
-    // ort.webgpu.js
-    await addBuildTask(buildOrt({
+    });
+    // ort.webgpu[.min].js
+    await addAllWebBuildTasks({
       outputBundleName: 'ort.webgpu',
       define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
-    }));
-    // ort.min.js
-    await addBuildTask(buildOrt({
-      isProduction: true,
-      outputBundleName: 'ort.min',
-      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true'},
-    }));
-    // ort.webgpu.min.js
-    await addBuildTask(buildOrt({
-      isProduction: true,
-      outputBundleName: 'ort.webgpu.min',
-      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
-    }));
-    // ort.wasm.min.js
-    await addBuildTask(buildOrt({
-      isProduction: true,
-      outputBundleName: 'ort.wasm.min',
+    });
+    // ort.wasm[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.wasm',
       define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
-    }));
-    // ort.webgl.min.js
-    await addBuildTask(buildOrt({
-      isProduction: true,
-      outputBundleName: 'ort.webgl.min',
+    });
+    // ort.webgl[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.webgl',
       define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true', 'BUILD_DEFS.DISABLE_WASM': 'true'},
-    }));
-    // ort.wasm-core.min.js
-    await addBuildTask(buildOrt({
-      isProduction: true,
-      outputBundleName: 'ort.wasm-core.min',
+    });
+    // ort.wasm-core[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.wasm-core',
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_WEBGPU': 'true',
@@ -372,7 +416,17 @@ async function main() {
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
         'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
       },
-    }));
+    });
+    // ort.training.wasm[.min].js
+    await addAllWebBuildTasks({
+      outputBundleName: 'ort.training.wasm',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_TRAINING': 'false',
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+      },
+    });
   }
 
   if (BUNDLE_MODE === 'dev' || BUNDLE_MODE === 'perf') {
@@ -380,6 +434,14 @@ async function main() {
   }
 
   await Promise.all(buildTasks);
+
+  if (BUNDLE_MODE === 'prod') {
+    // generate package.json files under each of the dist folders for commonJS and ESModule
+    // this trick allows typescript to import this package as different module type
+    // see also: https://evertpot.com/universal-commonjs-esm-typescript-packages/
+    await fs.writeFile(path.resolve(__dirname, '../dist/cjs', 'package.json'), '{"type": "commonjs"}');
+    await fs.writeFile(path.resolve(__dirname, '../dist/esm', 'package.json'), '{"type": "module"}');
+  }
 }
 
 void main();

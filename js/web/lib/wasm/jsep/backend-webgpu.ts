@@ -126,14 +126,14 @@ export class WebGpuBackend {
    */
   kernels: Map<number, [string, string, RunFunction, [((attribute: unknown) => unknown) | undefined, unknown]]>;
 
-  commandEncoder: GPUCommandEncoder|null = null;
-  computePassEncoder: GPUComputePassEncoder|null = null;
+  private commandEncoder: GPUCommandEncoder|null = null;
+  private computePassEncoder: GPUComputePassEncoder|null = null;
   pendingDispatchNumber = 0;
 
-  supportTimestampQuery = false;
-  profilingQuerySet: GPUQuerySet;
-  profilingQueryData: GpuData;
-  profilingTimeBase?: bigint;
+  queryData?: GpuData;
+  querySet?: GPUQuerySet;
+  querySetCount = 2;
+  queryTimeBase?: bigint;
 
   env: Env;
 
@@ -168,11 +168,9 @@ export class WebGpuBackend {
       },
       requiredFeatures,
     };
-    // WebGPU Spec: Timestamp Queries Inside Passes
-    // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
-    if (adapter.features.has('timestamp-query-inside-passes')) {
-      this.supportTimestampQuery = true;
-      requiredFeatures.push('timestamp-query-inside-passes' as GPUFeatureName);
+
+    if (adapter.features.has('timestamp-query')) {
+      requiredFeatures.push('timestamp-query');
     }
     if (adapter.features.has('shader-f16')) {
       requiredFeatures.push('shader-f16');
@@ -197,21 +195,14 @@ export class WebGpuBackend {
       }
     };
 
-    if (this.supportTimestampQuery) {
-      this.profilingQuerySet = this.device.createQuerySet({
-        type: 'timestamp',
-        count: 2,
-      });
-    }
-
     Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
   }
 
   dispose(): void {
-    // currently, we do not do anything in this function. In all known use cases, we don't have the requirement to
-    // actually dispose the WebGpuBackend instance, because it's always used as a singleton.
-    //
-    // revisit this place if we get real requirement to dispose the instance.
+    if (typeof this.querySet !== 'undefined') {
+      this.querySet.destroy();
+    }
+    this.gpuDataManager.dispose();
   }
 
   getCommandEncoder(): GPUCommandEncoder {
@@ -223,7 +214,22 @@ export class WebGpuBackend {
 
   getComputePassEncoder(): GPUComputePassEncoder {
     if (!this.computePassEncoder) {
-      this.computePassEncoder = this.getCommandEncoder().beginComputePass();
+      const computePassDescriptor: GPUComputePassDescriptor = {};
+      if (this.isQueryEnabled()) {
+        if (typeof this.querySet === 'undefined') {
+          this.querySet = this.device.createQuerySet({
+            type: 'timestamp',
+            count: this.querySetCount,
+          });
+        }
+        computePassDescriptor.timestampWrites = {
+          querySet: this.querySet,
+          beginningOfPassWriteIndex: 0,
+          endOfPassWriteIndex: 1,
+        };
+      }
+
+      this.computePassEncoder = this.getCommandEncoder().beginComputePass(computePassDescriptor);
     }
     return this.computePassEncoder;
   }
@@ -245,6 +251,14 @@ export class WebGpuBackend {
     }
   }
 
+  isQueryEnabled(): boolean {
+    if (this.device.features.has('timestamp-query') && this.env.webgpu.profilingMode === 'default') {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
   /**
    * run a WebGPU program.
    * @param program a ProgramInfo instance
@@ -259,10 +273,6 @@ export class WebGpuBackend {
   run(program: ProgramInfo, inputTensorViews: readonly TensorView[], outputIndices: readonly number[],
       createKernelOutput: (index: number, dataType: number, dims: readonly number[]) => TensorView,
       createIntermediateOutput: (dataType: number, dims: readonly number[]) => TensorView): TensorView[] {
-    if (inputTensorViews.length !== program.inputTypes.length) {
-      throw new Error(`Input size must be equal to ${program.inputTypes.length}.`);
-    }
-
     // create info for inputs
     const inputDatas: GpuData[] = [];
     for (let i = 0; i < inputTensorViews.length; ++i) {
@@ -277,7 +287,7 @@ export class WebGpuBackend {
     const key = getProgramInfoUniqueKey(program, inputTensorViews);
     let artifact = this.programManager.getArtifact(key);
 
-    const {outputs, dispatchGroup, variables} = program.getRunData(inputTensorViews);
+    const {outputs, dispatchGroup, programUniforms} = program.getRunData(inputTensorViews);
 
     // check output indices
     const validatedOutputIndices = outputIndices.length === 0 ? outputs.map((_, i) => i) : outputIndices;
@@ -328,12 +338,12 @@ export class WebGpuBackend {
     // TODO: add cache for uniform (is it necessary?)
     //
     let uniformBufferBinding: GPUBindingResource|undefined;
-    if (variables) {
+    if (programUniforms) {
       let currentOffset = 0;
       let preLength = 0;
       const offsets: number[] = [];
       let maxAlignmentOfField = 1;
-      variables.forEach(v => {
+      programUniforms.forEach(v => {
         const data = typeof v.data === 'number' ? [v.data] : v.data;
         // https://www.w3.org/TR/WGSL/#alignof
         let baseAlignment: number;
@@ -374,7 +384,7 @@ export class WebGpuBackend {
 
       currentOffset = Math.ceil(currentOffset / maxAlignmentOfField) * maxAlignmentOfField;
       const arrayBuffer = new ArrayBuffer(currentOffset);
-      variables.forEach((v, i) => {
+      programUniforms.forEach((v, i) => {
         const offset = offsets[i];
         const data = typeof v.data === 'number' ? [v.data] : v.data;
         if (v.type === 'int32') {

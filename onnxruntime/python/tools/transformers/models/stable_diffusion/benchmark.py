@@ -865,7 +865,7 @@ def run_tensorrt_static_xl(
     base_pipeline_info = PipelineInfo(version)
     demo_base = init_pipeline(Txt2ImgXLPipeline, base_pipeline_info)
 
-    refiner_pipeline_info = PipelineInfo(version, is_sd_xl_refiner=True)
+    refiner_pipeline_info = PipelineInfo(version, is_refiner=True)
     demo_refiner = init_pipeline(Img2ImgXLPipeline, refiner_pipeline_info)
 
     max_device_memory = max(demo_base.backend.max_device_memory(), demo_refiner.backend.max_device_memory())
@@ -888,7 +888,7 @@ def run_tensorrt_static_xl(
             guidance=5.0,
             warmup=warmup,
             seed=seed,
-            return_type="latents",
+            return_type="latent",
         )
 
         images, time_refiner = demo_refiner.run(
@@ -1038,7 +1038,7 @@ def run_ort_trt_xl(
     base_pipeline_info = PipelineInfo(version)
     demo_base = init_pipeline(Txt2ImgXLPipeline, base_pipeline_info)
 
-    refiner_pipeline_info = PipelineInfo(version, is_sd_xl_refiner=True)
+    refiner_pipeline_info = PipelineInfo(version, is_refiner=True)
     demo_refiner = init_pipeline(Img2ImgXLPipeline, refiner_pipeline_info)
 
     demo_base.load_resources(image_height, image_width, batch_size)
@@ -1054,7 +1054,7 @@ def run_ort_trt_xl(
             guidance=5.0,
             warmup=warmup,
             seed=seed,
-            return_type="latents",
+            return_type="latent",
         )
         images, time_refiner = demo_refiner.run(
             prompt,

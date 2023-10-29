@@ -761,6 +761,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_none_weights_expanded")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
+
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     }
@@ -783,10 +784,14 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
+    auto broken_tests = GetBrokenTests(provider_name);
+    auto broken_tests_keyword_set = GetBrokenTestsKeyWordSet(provider_name);
     std::vector<ITestCase*> tests;
     LoadTests(data_dirs, whitelisted_test_cases,
               LoadTestTolerances(enable_cuda, enable_openvino, override_tolerance, atol, rtol),
               all_disabled_tests,
+              std::move(broken_tests),
+              std::move(broken_tests_keyword_set),
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
                 tests.push_back(l.get());
                 owned_tests.push_back(std::move(l));
@@ -803,18 +808,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     fwrite(res.c_str(), 1, res.size(), stdout);
   }
 
-  auto broken_tests = GetBrokenTests(provider_name);
   int result = 0;
   for (const auto& p : stat.GetFailedTest()) {
-    BrokenTest t = {p.first, ""};
-    auto iter = broken_tests->find(t);
-    if (iter == broken_tests->end() || (p.second != TestModelInfo::unknown_version && !iter->broken_opset_versions_.empty() &&
-                                        iter->broken_opset_versions_.find(p.second) == iter->broken_opset_versions_.end())) {
-      fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
-      result = -1;
-    } else {
-      fprintf(stderr, "test %s failed, but it is a known broken test, so we ignore it\n", p.first.c_str());
-    }
+    fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
+    result = -1;
   }
   return result;
 }

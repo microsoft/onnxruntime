@@ -5,7 +5,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -513,14 +513,13 @@ const createResizeProgramInfo =
 
       return {
         name: 'Resize',
-        inputTypes: [GpuDataType.default],
         shaderCache: {
           hint: `${attributes.cacheKey}|${opsetVersion}|${scales.length > 0 ? scales : ''}|${
               sizes.length > 0 ? sizes : ''}`
         },
         getShaderSource,
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputTensor.dataType, gpuDataType: GpuDataType.default}],
+          outputs: [{dims: outputShape, dataType: inputTensor.dataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
         })
       };

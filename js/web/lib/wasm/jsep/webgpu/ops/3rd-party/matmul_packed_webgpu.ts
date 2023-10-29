@@ -21,7 +21,7 @@
 
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
-import {GpuDataType, ProgramInfo} from '../../types';
+import {ProgramInfo} from '../../types';
 import {getBroadcastDims, IndicesHelper, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
 import {getActicationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
@@ -481,11 +481,9 @@ export const createMatmulProgramInfo =
                    ${batchDims.impl()}`;
       return {
         name: 'MatMul',
-        inputTypes: hasBias ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
-                              [GpuDataType.default, GpuDataType.default],
         shaderCache: {hint: activationAttributes.activationCacheKey},
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]}
         }),
         getShaderSource,

@@ -6,6 +6,7 @@
 #include "TestCase.h"
 
 #include <cctype>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -185,7 +186,7 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
   bool clean_eof = false;
-  int item_id = 1;
+  [[maybe_unused]] int item_id = 1;
   for (proto::TraditionalMLData data;
        ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof);
        ++item_id, data.Clear()) {
@@ -731,6 +732,8 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
                const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
                const TestTolerances& tolerances,
                const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
+               std::unique_ptr<std::set<BrokenTest>> broken_tests,
+               std::unique_ptr<std::set<std::string>> broken_tests_keyword_set,
                const std::function<void(std::unique_ptr<ITestCase>)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
@@ -783,11 +786,60 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
         ORT_NOT_IMPLEMENTED(ToUTF8String(filename_str), " is not supported");
       }
 
+      auto test_case_dir = model_info->GetDir();
+      auto test_case_name_in_log = test_case_name + ORT_TSTR(" in ") + test_case_dir;
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_QNN)
+      // to skip some models like *-int8 or *-qdq
+      if ((reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
+          (reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
+        fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " as it has training domain");
+        return true;
+      }
+#endif
+
+      bool has_test_data = false;
+      LoopDir(test_case_dir, [&](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
+        if (filename[0] == '.') return true;
+        if (f_type == OrtFileType::TYPE_DIR) {
+          has_test_data = true;
+          return false;
+        }
+        return true;
+      });
+      if (!has_test_data) {
+        fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " due to no test data");
+        return true;
+      }
+
+      if (broken_tests) {
+        BrokenTest t = {ToUTF8String(test_case_name), ""};
+        auto iter = broken_tests->find(t);
+        auto opset_version = model_info->GetNominalOpsetVersion();
+        if (iter != broken_tests->end() &&
+            (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
+             iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end())) {
+          fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " due to broken_tests");
+          return true;
+        }
+      }
+
+      if (broken_tests_keyword_set) {
+        for (auto iter2 = broken_tests_keyword_set->begin(); iter2 != broken_tests_keyword_set->end(); ++iter2) {
+          std::string keyword = *iter2;
+          if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
+            fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " as it is in broken test keywords");
+            return true;
+          }
+        }
+      }
+
       const auto tolerance_key = ToUTF8String(my_dir_name);
 
       std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                         tolerances.absolute(tolerance_key),
                                                         tolerances.relative(tolerance_key));
+      fprintf(stdout, "Load Test Case: %s\n", ToUTF8String(test_case_name_in_log).c_str());
       process_function(std::move(l));
       return true;
     });
@@ -892,6 +944,20 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
       {"col2im_pads", "result mismatch", {"opset18"}},
+      {"gridsample_volumetric_nearest_align_corners_0", "result differs", {}},
+      {"gridsample_volumetric_nearest_align_corners_1", "result differs", {}},
+      {"reduce_l1_empty_set", "unknown version", {}},
+      {"reduce_l1_empty_set_expanded", "unknown version", {}},
+      {"reduce_l2_empty_set", "unknown version", {}},
+      {"reduce_l2_empty_set_expanded", "unknown version", {}},
+      {"reduce_log_sum_empty_set", "unknown version", {}},
+      {"reduce_log_sum_empty_set_expanded", "unknown version", {}},
+      {"reduce_log_sum_exp_empty_set", "unknown version", {}},
+      {"reduce_log_sum_exp_empty_set_expanded", "unknown version", {}},
+      {"reduce_prod_empty_set", "unknown version", {}},
+      {"reduce_sum_empty_set", "unknown version", {}},
+      {"reduce_sum_square_empty_set", "unknown version", {}},
+      {"reduce_sum_square_empty_set_expanded", "unknown version", {}},
 #ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -1178,6 +1244,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests->insert({"BERT_Squad", "Temporarily disabled pending investigation"});
     broken_tests->insert({"LSTM_Seq_lens_unpacked", "The parameter is incorrect"});
+    broken_tests->insert({"mlperf_ssd_resnet34_1200", "The parameter is incorrect"});
 
     broken_tests->insert({"resize_downsample_scales_linear",
                           "DML uses half_pixel and this test assumed \"asymmetric\" but does not include \"mode\""});
@@ -1286,6 +1353,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"gridsample_reflection_padding", "result differs"});
     broken_tests->insert({"spacetodepth", "result differs"});
   }
+
 #ifdef DISABLE_CONTRIB_OPS
   broken_tests->insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
   broken_tests->insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});

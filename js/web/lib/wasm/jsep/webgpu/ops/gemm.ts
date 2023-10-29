@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {GemmUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
@@ -112,11 +112,9 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
   }`;
   return {
     name: 'Gemm',
-    inputTypes: inputs.length === 3 ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
-                                      [GpuDataType.default, GpuDataType.default],
     shaderCache: {hint: attributes.cacheKey},
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
     }),
     getShaderSource,
