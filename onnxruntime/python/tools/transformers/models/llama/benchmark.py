@@ -584,12 +584,12 @@ def get_args(rank = 0):
     parser.add_argument(
         "-b",
         "--batch-sizes",
-        default="1 2 4 8 16 32 64",
+        default="1 2",
     )
     parser.add_argument(
         "-s",
         "--sequence-lengths",
-        default="32 64 128 256 512 1024 2048",
+        default="32 64 128 256 512",
     )
     parser.add_argument(
         "-d",

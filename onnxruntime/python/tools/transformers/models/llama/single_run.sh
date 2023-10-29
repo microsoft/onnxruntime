@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CMD="python benchmark.py ${@}"
+CMD="python convert_to_onnx.py ${@}"
 
 
 $CMD

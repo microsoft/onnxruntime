@@ -440,7 +440,7 @@ class FusionRotaryAttention(FusionAttention):
             transpose_v, reshape_v, matmul_v = v_nodes_3
             v_nodes = v_nodes_3
             present_v = transpose_v.output[0]
-        elif v_nodes_4 is not None and len(v_nodes_4) > 0:
+        elif v_nodes_4 is not None and len(v_nodes_4) == 9:
             logger.debug(f'fuse_rotary_attention: v_nodes_4')
             logger.debug('*' * 30)
             for temp_path in v_nodes_4:
@@ -602,7 +602,7 @@ class FusionRotaryAttention(FusionAttention):
             k_nodes = k_nodes_3
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
-        elif k_nodes_4 is not None and len(k_nodes_4) > 0:
+        elif k_nodes_4 is not None and len(k_nodes_4) == 9:
             logger.debug(f'fuse_rotary_attention: k_nodes_4')
             logger.debug('*' * 30)
             for temp_path in k_nodes_4:

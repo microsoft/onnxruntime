@@ -21,7 +21,6 @@ def setup_torch_model(args, location, use_auth_token, torch_dtype=torch.float32,
         if i == rank:
             l_config = LlamaConfig.from_pretrained(location, use_auth_token=use_auth_token, cache_dir=args.cache_dir)
             l_config.use_cache = True
-            #l_config.num_hidden_layers = 2
             llama = LlamaForCausalLM.from_pretrained(location, use_auth_token=use_auth_token, config=l_config, 
                                                      torch_dtype=torch_dtype, cache_dir=args.cache_dir)
             if world_size > 1:

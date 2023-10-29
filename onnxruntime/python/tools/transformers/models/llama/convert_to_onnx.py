@@ -17,8 +17,7 @@ from packaging import version
 from transformers import LlamaConfig, LlamaForCausalLM
 
 from onnxruntime import quantization as ort_quantization
-#TODO: import 4-bits quantizer failed
-#from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
+from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
 from dist_settings import init_dist, get_rank, get_size, barrier, print_out
 from llama_torch import setup_torch_model
@@ -485,7 +484,7 @@ def smooth_quant(
 def remove_existing_model(model_path: str):
     # Remove ONNX model and its external data
     data_path = os.path.join(model_path + ".data")
-    #os.remove(model_path)
+    os.remove(model_path)
     os.remove(data_path)
     logger.warning(f"Removed {model_path} and {data_path}")
 
