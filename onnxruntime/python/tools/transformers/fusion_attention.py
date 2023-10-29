@@ -224,23 +224,31 @@ class FusionAttention(Fusion):
         # B = batch size, N = num heads, S = source sequence length, T = target sequence length
         mask_output_name = add_qk + "_mask"
 
-        # Check if concat node for (B,1,S,T) --> (B,N,S,T) already exists
-        concat_node = list(filter(lambda node: node.output[0] == mask_output_name, self.nodes_to_add))
-        if len(concat_node) == 1:
+        # Check if expand node for (B,1,S,T) --> (B,N,S,T) already exists
+        expand_node = list(filter(lambda node: node.output[0] == mask_output_name, self.nodes_to_add))
+        if len(expand_node) == 1:
             return mask_output_name
 
-        assert len(concat_node) == 0
-        concat_node_name = self.model.create_node_name("Concat")
-        concat_add_qk_fp32 = helper.make_node(
-            "Concat",
-            inputs=[add_qk for _ in range(self.num_heads)],
+        assert len(expand_node) == 0
+        expand_node_name = self.model.create_node_name("Expand")
+
+        expand_add_qk_shape = self.add_initializer(
+            name="expand_add_qk_shape",
+            data_type=TensorProto.INT64,
+            dims=[4],
+            vals=[1, self.num_heads, 1, 1],
+            raw=False,
+        )
+
+        expand_add_qk_fp32 = helper.make_node(
+            "Expand",
+            inputs=[add_qk, expand_add_qk_shape.name],
             outputs=[mask_output_name],
-            name=concat_node_name,
-            axis=1,
+            name=expand_node_name,
         )
         # Add new node to graph
-        self.nodes_to_add.append(concat_add_qk_fp32)
-        self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
+        self.nodes_to_add.append(expand_add_qk_fp32)
+        self.node_name_to_graph_name[expand_node_name] = self.this_graph_name
 
         return mask_output_name
 
