@@ -233,7 +233,7 @@ class FusionAttention(Fusion):
         expand_node_name = self.model.create_node_name("Expand")
 
         expand_add_qk_shape = self.add_initializer(
-            name="expand_add_qk_shape",
+            name=mask_output_name + "_shape",
             data_type=TensorProto.INT64,
             dims=[4],
             vals=[1, self.num_heads, 1, 1],
