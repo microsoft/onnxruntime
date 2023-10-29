@@ -233,7 +233,7 @@ MlasQ8Q4GemmBatch(
 
 ////////////////////////////////////////////////////////////
 // Blockwise quantization and dequantization where quantization
-// parameters are packed into seperate buffers.
+// parameters are packed into separate buffers.
 //
 
 /**
@@ -280,7 +280,7 @@ MlasBlockwiseQuantizedShape(
 
 /**
  * @brief Blockwise 4 bits quantization, resulting elements and quantization
- *        parameters (scales, zero points) are packed into seperate matrices
+ *        parameters (scales, zero points) are packed into separate matrices
  *        all in column major layout for faster access during subsequent matrix
  *        multiplication.
  * 
@@ -315,7 +315,7 @@ MlasQuantizeBlockwise(
 
 /**
  * @brief Blockwise 4 bits dequantization, quantized elements and quantization
- *        parameters (scales, zero points) are from seperate matrices packed
+ *        parameters (scales, zero points) are from separate matrices packed
  *        in column major layout.  Output is a floating point matrix in column
  *        major layout for faster access during subsequent matrix multiplication.
  * 
