@@ -121,7 +121,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     buffer.emplace_back("do_copy_in_default_stream");
     option_keys.push_back(buffer.back().c_str());
-    buffer.emplace_back(performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0");
+    buffer.emplace_back(!performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0");
     option_values.push_back(buffer.back().c_str());
 
 #ifdef _MSC_VER
