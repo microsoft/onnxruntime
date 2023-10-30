@@ -195,7 +195,7 @@ std::tuple<int, int, int> get_num_splits_and_buffer_sizes(int batch_size, int se
   int max_splits = 128;
   // split kv buffers
   int num_splits = num_splits_heuristic(batch_size, seqlen_q, seqlen_k, num_heads, head_size,
-                                                            num_SMs, max_splits);
+                                        num_SMs, max_splits);
   if (num_splits > 1) {
     // softmax_lse_accum buffer
     int softmax_lse_accum_bytes = get_softmax_lse_accum_size(num_splits, batch_size, num_heads, seqlen_q);
