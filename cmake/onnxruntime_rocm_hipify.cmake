@@ -48,6 +48,9 @@ set(contrib_ops_excluded_files
   "diffusion/group_norm_impl.cu"
   "diffusion/group_norm_impl.h"
   "diffusion/nhwc_conv.cc"
+  "math/gemm_float8.cc"
+  "math/gemm_float8.cu"
+  "math/gemm_float8.h"
   "quantization/attention_quantization.cc"
   "quantization/attention_quantization.h"
   "quantization/attention_quantization_impl.cu"
@@ -105,6 +108,7 @@ if (NOT onnxruntime_USE_NCCL)
   list(APPEND contrib_ops_excluded_files "collective/distributed_matmul.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_slice.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_reshape.cc")
+  list(APPEND contrib_ops_excluded_files "collective/distributed_expand.cc")
 endif()
 
 set(provider_excluded_files
