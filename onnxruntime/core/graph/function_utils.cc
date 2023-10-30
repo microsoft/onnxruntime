@@ -432,7 +432,7 @@ class Inliner {
   // Process a node:
   void transform(NodeProto& n) {
     if (!n.name().empty())
-      n.set_name(prefix_ + "/" + n.name());
+      n.set_name(prefix_ + "_" + n.name());
 
     for (auto& x : *n.mutable_input()) {
       rename(x, false);

@@ -44,6 +44,8 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
+static const std::string kProtoBasedNodeNameBase{"proto_based_node"};
+
 #if !defined(ORT_MINIMAL_BUILD)
 #define NO_CHANGE_ON_SYNC_FLAG(...)                  \
   do {                                               \
@@ -1309,13 +1311,12 @@ Graph::Graph(const Model& owning_model,
   }
 
   {
-    static const std::string node_base_name{"proto_based_node"};
     auto& nodes = *graph_proto_->mutable_node();
     for (auto it = nodes.begin(), end = nodes.end(); it != end; ++it) {
       // generate a name so the node_proto can be found by name in case it
       // needs to be removed.
       if (it->name().empty()) {
-        it->set_name(GenerateNodeName(node_base_name));
+        it->set_name(GenerateNodeName(kProtoBasedNodeNameBase));
       }
       AddNode(*it, name_to_type_map);
     }
@@ -3330,6 +3331,8 @@ bool Graph::RemoveNodeAndProto(NodeIndex node_index) {
     // is then re-created based on the subgraph proto. This creates a duplicate name and invalidates the subgraph.
     // This fixes the asymmetry of adding a new initializer to the graph proto, but not removing
     // the node's proto with a node_arg with a name of the initializer.
+    // If the node does not have a name or a corresponding proto, then it was not created from a proto
+    // and it should be fine.
     auto& node_list = *graph_proto_->mutable_node();
     for (auto it = node_list.begin(), end = node_list.end(); it != end; ++it) {
       if (it->name() == node_name) {
@@ -4085,7 +4088,7 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   return Status::OK();
 }
 
-static void RenameSubgraphDependentNames(const std::unordered_map<std::string, std::string>& name_mapping,
+static void RenameSubgraphDependentNames(const InlinedHashMap<std::string, std::string>& name_mapping,
                                          ONNX_NAMESPACE::GraphProto& graph_proto) {
   for (auto& node : *graph_proto.mutable_node()) {
     for (auto& attr : *node.mutable_attribute()) {
@@ -4107,7 +4110,7 @@ static void RenameSubgraphDependentNames(const std::unordered_map<std::string, s
   }
 }
 
-static void RenameNodeAttributesSubgraphDependentNames(const std::unordered_map<std::string, std::string>& name_mapping,
+static void RenameNodeAttributesSubgraphDependentNames(const InlinedHashMap<std::string, std::string>& name_mapping,
                                                        NodeAttributes& attributes) {
   for (auto& attribute : attributes) {
     auto& attr_proto = attribute.second;
@@ -4133,7 +4136,7 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
 
   // Check if the name is an input or implicit input.
   // These are not renamed.
-  std::unordered_set<std::string_view> if_all_inputs;
+  InlinedHashSet<std::string_view> if_all_inputs;
   const auto if_inputs = if_node.InputDefs();
   const auto if_implicit_inputs = if_node.ImplicitInputDefs();
   if_all_inputs.reserve(if_inputs.size() + if_implicit_inputs.size());
@@ -4149,7 +4152,7 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
 
   // Name mapping from the graph to inline to the graph we are inlining into
   // we also use this to process any subgraphs in the graph we are inlining
-  std::unordered_map<std::string, std::string> name_mapping;
+  InlinedHashMap<std::string, std::string> name_mapping;
 
   // We are going to map the outputs of the graph to inline to the outputs of the If node.
   // They are assumed to be in the same order.
@@ -4178,7 +4181,6 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
         new_name = GenerateNodeArgName(make_unique(constant_name));
         name_mapping.emplace(constant_name, new_name);
       }
-
       ORT_RETURN_IF_ERROR(AddConstantProtoAsInitializer(constant_node_proto, new_name));
     }
   }
@@ -4272,19 +4274,40 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
       // Make a copy
       auto attributes = node->GetAttributes();
       RenameNodeAttributesSubgraphDependentNames(name_mapping, attributes);
-      ORT_IGNORE_RETURN_VALUE(AddNode(new_node_name, node->OpType(), node->Description(),
-                                      new_node_input_defs,
-                                      new_node_output_defs,
-                                      &attributes,
-                                      node->Domain()));
+      AddNode(new_node_name, node->OpType(), node->Description(),
+              new_node_input_defs,
+              new_node_output_defs,
+              &attributes,
+              node->Domain());
     } else {
       // we simply copy the attributes to the new node
-      ORT_IGNORE_RETURN_VALUE(AddNode(new_node_name, node->OpType(), node->Description(),
-                                      new_node_input_defs,
-                                      new_node_output_defs,
-                                      &node->GetAttributes(),
-                                      node->Domain()));
+      AddNode(new_node_name, node->OpType(), node->Description(),
+              new_node_input_defs,
+              new_node_output_defs,
+              &node->GetAttributes(),
+              node->Domain());
     }
+  }
+
+  // Regenerate the target graph protos in a topological order
+  // we only need this for subgraphs that have nodes that potentially can be inlined
+  // to avoid ConstantFolded nodes duplicates re-created from NodeProtos in CreateSubgraph().
+  // Or and a entire If nodes that just been inlined.
+  // If the inlined node does not have a name, then it was not created on top of the corresponding NodeProto
+  // as we ensure that graph nodes have names at load time.
+  if (ParentGraph() != nullptr && !if_node.Name().empty()) {
+    ONNX_NAMESPACE::NodeList replacement_nodes;
+    GraphViewer graph_viewer(*this);
+    for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
+      if (node_idx != if_node.Index()) {
+        auto* node = GetNode(node_idx);
+        if (node != nullptr) {
+          auto* node_proto = replacement_nodes.Add();
+          node->ToProto(*node_proto);
+        }
+      }
+    }
+    graph_proto_->mutable_node()->Swap(&replacement_nodes);
   }
 
   return Status::OK();
