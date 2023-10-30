@@ -6,10 +6,10 @@
 # --------------------------------------------------------------------------
 
 import unittest
-import packaging.version as pv
 
 import numpy as np
 import onnx
+import packaging.version as pv
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
