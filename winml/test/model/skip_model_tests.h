@@ -121,6 +121,8 @@ std::unordered_map<std::string, std::string> disabledTests({
    "Bug 31005388: mask_rcnn opset 10 onnx zoo model fails to evaluate on DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005388"                                                        },
   {                                                        "faster_rcnn_opset10_GPU",
    "Bug 31005511: Failed to extract tensor data from evaluate result of faster_rcnn opset 10 model in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005511"                           },
+  {                                                       "mlperf_ssd_resnet34_1200",                                                                                           disabledTestDefaultReason},
+
  // ONNX model zoo's int8/qdq models generally do not work on CPUs that lack 8-bit instructions.
   {                                                         "YOLOv3_12_int8_opset12",                                                                                           disabledTestDefaultReason},
   {                                                            "VGG_16_int8_opset12",                                                                                           disabledTestDefaultReason},
