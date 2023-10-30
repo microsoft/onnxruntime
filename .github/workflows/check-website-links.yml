@@ -36,7 +36,7 @@ jobs:
       - name: Move site into place
         run: |
           sudo mv ./build/* ./_site
-          ls ./_site/src
+          rm -rf ./_site/src
 
       - name: Check for broken links
         run: |
