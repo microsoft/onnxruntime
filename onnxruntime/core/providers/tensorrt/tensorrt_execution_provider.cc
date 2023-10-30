@@ -649,6 +649,72 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
   return Status::OK();
 }
 
+/*
+ * Set ORT kernel context Output.
+ * 
+ * Note: In the case of DDS (data-dependent shape) output, TRT requires a provided allocator to allocate memory during runtime.
+ * Once the output has been put in the allocation buffer, ORT calls this function to bind the allocation to ORT kernel context output.
+ */
+Status BindKernelOutput(Ort::KernelContext ctx,
+                   OrtMemoryInfo* mem_info,
+                   DDSOutputAllocatorMap& allocator_map,
+                   char const* output_name,
+                   size_t output_index,
+                   size_t output_type) {
+  auto allocator = allocator_map[output_name];
+  auto& shape = allocator->getOutputShape();
+  OrtValue* out = nullptr;
+
+  switch (output_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<float>::type, &out));
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<uint16_t>::type, &out));
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<bool>::type, &out));
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<int8_t>::type, &out));
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<uint8_t>::type, &out));
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<int32_t>::type, &out));
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<int64_t>::type, &out));
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
+                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<double>::type, &out));
+      break;
+    }
+    default: {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
+    }
+  }
+  ctx.SetOutput(output_index, *out);
+  return Status::OK();
+}
+
 TensorrtExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
   if (has_user_compute_stream) {
     CUDA_CALL_THROW(cudaSetDevice(device_id));
@@ -3068,16 +3134,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
       
-      if (sync_stream_after_enqueue) {
-        cudaStreamSynchronize(stream);
+      if (sync_stream_after_enqueue || dds_output_set.size() > 0) {
+        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
       }
 
       // Assign TRT output back to ORT output
-      // (1) Cast TRT INT32 output to ORT INT64 output and TRT double output to float output
-      // (2) Bind TensorRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
-      if (dds_output_set.size() > 0) {
-        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-      }
+      // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
+      // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         char const* output_name = output_binding_names[i];
 
@@ -3088,62 +3151,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
 
         if (dds_output_set.find(output_name) != dds_output_set.end()) {
-          auto allocator = dds_output_allocator_map[output_name];
-          auto& shape = allocator->getOutputShape();
-          OrtValue* out = nullptr;
           size_t output_index = 0;
           const auto& index_iter = output_indexes.find(output_name);
           if (index_iter != output_indexes.end()) {
             output_index = index_iter->second;
           }
-
-          switch (output_type) {
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
-              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<float>::type, &out));
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
-              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<uint16_t>::type, &out));
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
-              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<bool>::type, &out));
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
-              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<int8_t>::type, &out));
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
-              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<uint8_t>::type, &out));
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<int32_t>::type, &out));
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<int64_t>::type, &out));
-              break;
-            }
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
-              Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(&mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                             shape.data(), shape.size(), Ort::TypeToTensorType<double>::type, &out));
-              break;
-            }
-            default: {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                     "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
-            }
+          auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type);
+          if (status != Status::OK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
           }
-          ctx.SetOutput(output_index, *out);
         }
 
         auto& output_tensor = output_tensors[i];

@@ -206,6 +206,7 @@ struct SubGraphContext {
 };
 
 using SubGraphContextMap = std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>;
+using DDSOutputAllocatorMap = std::unordered_map<char const*, OutputAllocator*>;
 
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
@@ -314,7 +315,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
-  std::unordered_map<std::string, std::unordered_map<char const*, OutputAllocator*>> dds_output_allocator_map_; // For DDS output tensor
+  std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_map_; // For DDS output tensor
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;
