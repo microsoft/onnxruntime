@@ -364,7 +364,7 @@ range2scalezp(float min, float max, ScaleT& scale, uint8_t& zp)
     } else {
         zp = (uint8_t)roundf(zero_point_fp);
     }
-    scale = static_cast<ScaleT>(scale_f);
+    scale = ScaleT(scale_f);
 }
 
 template <typename ScaleT, int qbits>
@@ -377,7 +377,7 @@ range2scale(float min, float max, ScaleT& scale)
 
     max = fabsf(max) > fabsf(min) ? max : min;
 
-    scale = static_cast<ScaleT>(max / mid_fp);
+    scale = ScaleT(max / mid_fp);
 };
 
 
@@ -852,6 +852,21 @@ MlasQuantizeBlockwise<float>(
     float* scales,
     uint8_t* zero_points,
     const float* src,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int leading_dimension,
+    MLAS_THREADPOOL* thread_pool
+    );
+
+template
+void
+MlasQuantizeBlockwise<MLAS_FP16>(
+    uint8_t* dst,
+    MLAS_FP16* scales,
+    uint8_t* zero_points,
+    const MLAS_FP16* src,
     int block_size,
     bool columnwise,
     int rows,

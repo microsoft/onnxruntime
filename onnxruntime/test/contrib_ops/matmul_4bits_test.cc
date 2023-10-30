@@ -14,7 +14,6 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "core/util/qmath.h"
-#include "contrib_ops/cpu/quantization/dequantize_blockwise.h"
 
 #include <chrono>
 #include <random>
@@ -75,11 +74,11 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
 
   int meta_rows;
   int meta_cols;
-  MlasBlockwiseQuantMetaShape<float>(block_size, true, (int)K, (int)N, meta_rows, meta_cols);
+  MlasBlockwiseQuantMetaShape<float>((int)block_size, true, (int)K, (int)N, meta_rows, meta_cols);
 
   int q_rows;
   int q_cols;
-  MlasBlockwiseQuantizedShape<float>(block_size, true, (int)K, (int)N, q_rows, q_cols);
+  MlasBlockwiseQuantizedShape<float>((int)block_size, true, (int)K, (int)N, q_rows, q_cols);
 
   std::vector<uint8_t> input1_vals(q_rows * q_cols);
   std::vector<float> scales(meta_rows * meta_cols);

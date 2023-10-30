@@ -54,8 +54,8 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       scales_data,                        // quantization scales
       zero_points_data,                   // quantization zero points
       static_cast<int32_t>(block_size_),  // quantization block size
-      column_wise_quant_,                 // columnwise quantization or rowwise
-      static_cast<int32_t>(K_),	          // number of rows in quantized input
+      column_wise_quant_,                 // columnwise quantization or row-wise
+      static_cast<int32_t>(K_),           // number of rows in quantized input
       static_cast<int32_t>(N_),           // number of columns in quantized input
       thread_pool);
 

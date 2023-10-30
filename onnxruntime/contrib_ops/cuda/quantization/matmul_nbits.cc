@@ -27,6 +27,7 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
+    ORT_ENFORCE(nbits_ == 4, "Only 4b quantization is supported for MatMulNBits op, additional bits support is planed.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -49,8 +50,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const uint8_t* blob_data = b->Data<uint8_t>();
   const auto* scales_data = scales->Data<T>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
-
-  ORT_ENFORCE(nbits_ == 4, "only 4 bits is supported now");
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
