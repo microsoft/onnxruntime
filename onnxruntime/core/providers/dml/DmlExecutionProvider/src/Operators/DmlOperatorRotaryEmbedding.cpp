@@ -21,6 +21,9 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 4);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
+        // When positionIds is a scalar, it represents the start offset for each sequence
+        const bool positionIdsIsOffset = kernelInfo.GetInputTensorDimensionCount(positionIdsIndex) == 1;
+
         Initialize(kernelInfo);
 
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
@@ -50,11 +53,11 @@ public:
 
         // Split the input data into 2 equal parts
         const MLOperatorTensorDataType dataType = kernelInfo.GetInputEdgeDescription(inputDataIndex).tensorDataType;
-        const std::array<uint32_t, 4> inputDataTensorShape {batchSize, sequenceLength, numHeads, headSize};
+        const std::array<uint32_t, 4> inputDataTensorShape = {batchSize, sequenceLength, numHeads, headSize};
         TensorDesc inputDataTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, inputDataTensorShape);
         const DML_TENSOR_DESC inputDataDmlTensorDesc = inputDataTensorDesc.GetDmlDesc();
 
-        const std::array<uint32_t, 4> splitInputDataTensorShape {batchSize, sequenceLength, numHeads, headSize / 2};
+        const std::array<uint32_t, 4> splitInputDataTensorShape = {batchSize, sequenceLength, numHeads, headSize / 2};
         TensorDesc splitInputDataTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, splitInputDataTensorShape);
         const std::array<DML_TENSOR_DESC, 2> splitInputDataDmlTensorDescs = {splitInputDataTensorDesc.GetDmlDesc(), splitInputDataTensorDesc.GetDmlDesc()};
 
@@ -65,22 +68,55 @@ public:
         splitInputDesc.Axis = gsl::narrow_cast<uint32_t>(splitInputDataTensorShape.size()) - 1;
         const DML_OPERATOR_DESC splitInputDmlDesc = {DML_OPERATOR_SPLIT, &splitInputDesc};
 
+        // We generate a sequence from 0 to sequenceLength and add the offset to it
+        const std::array<uint32_t, 4> positionIdsRangeShape = {1, 1, 1, sequenceLength};
+        auto positionIdsDataType = kernelInfo.GetInputEdgeDescription(positionIdsIndex).tensorDataType;
+        TensorDesc positionIdsRangeTensorDesc = TensorDesc::ConstructDefaultTensorDesc(positionIdsDataType, positionIdsRangeShape);
+        const DML_TENSOR_DESC positionIdsRangeDmlTensorDesc = positionIdsRangeTensorDesc.GetDmlDesc();
+
+        const std::array<uint32_t, 4> broadcastedPositionIdsRangeShape = {1, 1, batchSize, sequenceLength};
+        TensorDesc broadcastedPositionIdsRangeTensorDesc = TensorDesc::ConstructBroadcastedTensorDesc(positionIdsDataType, broadcastedPositionIdsRangeShape, positionIdsRangeShape);
+        const DML_TENSOR_DESC broadcastedPositionIdsRangeDmlTensorDesc = broadcastedPositionIdsRangeTensorDesc.GetDmlDesc();
+
+        const std::array<uint32_t, 4> broadcastedOffsetShape = {1, 1, batchSize, sequenceLength};
+        TensorDesc broadcastedOffsetTensorDesc = TensorDesc::ConstructBroadcastedTensorDesc(positionIdsDataType, broadcastedOffsetShape, m_inputTensorDescs[positionIdsIndex].GetSizes());
+        const DML_TENSOR_DESC broadcastedOffsetDmlTensorDesc = broadcastedOffsetTensorDesc.GetDmlDesc();
+
+        TensorDesc offsetPositionIdsTensorDesc = TensorDesc::ConstructDefaultTensorDesc(positionIdsDataType, broadcastedOffsetShape);
+        const DML_TENSOR_DESC offsetPositionIdsRangeDmlTensorDesc = offsetPositionIdsTensorDesc.GetDmlDesc();
+
+        DML_FILL_VALUE_SEQUENCE_OPERATOR_DESC positionIdsRange{};
+        DML_ELEMENT_WISE_ADD_OPERATOR_DESC positionIdsAddOffset{};
+        if (positionIdsIsOffset)
+        {
+            ML_CHECK_VALID_ARGUMENT(positionIdsDataType == MLOperatorTensorDataType::Int64);
+            positionIdsRange.ValueDataType = DML_TENSOR_DATA_TYPE_INT64;
+            positionIdsRange.ValueDelta.Int64 = 1;
+            positionIdsRange.OutputTensor = &positionIdsRangeDmlTensorDesc;
+
+            positionIdsAddOffset.ATensor = &broadcastedPositionIdsRangeDmlTensorDesc;
+            positionIdsAddOffset.BTensor = &broadcastedOffsetDmlTensorDesc;
+            positionIdsAddOffset.OutputTensor = &offsetPositionIdsRangeDmlTensorDesc;
+        }
+        const DML_OPERATOR_DESC positionIdsRangeDmlDesc = {DML_OPERATOR_FILL_VALUE_SEQUENCE, &positionIdsRange};
+        const DML_OPERATOR_DESC positionIdsAddOffsetDmlDesc = {DML_OPERATOR_ELEMENT_WISE_ADD, &positionIdsAddOffset};
+
         // Gather the cos/sin values based on the position ids
-        const std::array<uint32_t, 4> gatheredCosSinShape {1, 1, sequenceLength, headSize / 2};
+        const std::array<uint32_t, 4> gatheredCosSinShape = {1, batchSize, sequenceLength, headSize / 2};
         TensorDesc gatheredCosSinTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, gatheredCosSinShape);
         const DML_TENSOR_DESC gatheredCosSinDmlTensorDesc = gatheredCosSinTensorDesc.GetDmlDesc();
 
         DML_GATHER_OPERATOR_DESC gatherCosSinDesc{};
         gatherCosSinDesc.InputTensor = &inputDescs[cosCacheIndex];
-        gatherCosSinDesc.IndicesTensor = &inputDescs[positionIdsIndex];
+        gatherCosSinDesc.IndicesTensor = positionIdsIsOffset ? &offsetPositionIdsRangeDmlTensorDesc : &inputDescs[positionIdsIndex];
         gatherCosSinDesc.OutputTensor = &gatheredCosSinDmlTensorDesc;
         gatherCosSinDesc.Axis = 2;
         gatherCosSinDesc.IndexDimensions = 2;
         const DML_OPERATOR_DESC gatherCosSinDmlDesc {DML_OPERATOR_GATHER, &gatherCosSinDesc};
 
         // After gathering cos/sin, reshape and broadcast them to match the number of heads of the half input data
-        const std::array<uint32_t, 4> reshapedCosSinShape {1, sequenceLength, 1, headSize / 2};
-        const std::array<uint32_t, 4> broadcastedCosSinShape {batchSize, sequenceLength, numHeads, headSize / 2};
+        const std::array<uint32_t, 4> reshapedCosSinShape = {batchSize, sequenceLength, 1, headSize / 2};
+        const std::array<uint32_t, 4> broadcastedCosSinShape = {batchSize, sequenceLength, numHeads, headSize / 2};
         TensorDesc broadcastedCosSinTensorDesc = TensorDesc::ConstructBroadcastedTensorDesc(dataType, broadcastedCosSinShape, reshapedCosSinShape);
         const DML_TENSOR_DESC broadcastedCosSinDmlTensorDesc = broadcastedCosSinTensorDesc.GetDmlDesc();
 
@@ -89,20 +125,20 @@ public:
         mulHalfDataDesc.ATensor = &splitInputDataDmlTensorDescs.front();
         mulHalfDataDesc.BTensor = &broadcastedCosSinDmlTensorDesc;
         mulHalfDataDesc.OutputTensor = &splitInputDataDmlTensorDescs.front();
-        const DML_OPERATOR_DESC mulHalfDataDmlDesc {DML_OPERATOR_ELEMENT_WISE_MULTIPLY, &mulHalfDataDesc};
+        const DML_OPERATOR_DESC mulHalfDataDmlDesc = {DML_OPERATOR_ELEMENT_WISE_MULTIPLY, &mulHalfDataDesc};
 
         // Negate the second half of the data
         DML_ELEMENT_WISE_NEGATE_OPERATOR_DESC negateHalfDataDesc{};
         negateHalfDataDesc.InputTensor = &splitInputDataDmlTensorDescs.front();
         negateHalfDataDesc.OutputTensor = &splitInputDataDmlTensorDescs.front();
-        const DML_OPERATOR_DESC negateHalfDataDmlDesc {DML_OPERATOR_ELEMENT_WISE_NEGATE, &negateHalfDataDesc};
+        const DML_OPERATOR_DESC negateHalfDataDmlDesc = {DML_OPERATOR_ELEMENT_WISE_NEGATE, &negateHalfDataDesc};
 
         // Add the multiplied 2 halves together
         DML_ELEMENT_WISE_ADD_OPERATOR_DESC addHalfDataDesc{};
         addHalfDataDesc.ATensor = &splitInputDataDmlTensorDescs.front();
         addHalfDataDesc.BTensor = &splitInputDataDmlTensorDescs.front();
         addHalfDataDesc.OutputTensor = &splitInputDataDmlTensorDescs.front();
-        const DML_OPERATOR_DESC addHalfDataDmlDesc {DML_OPERATOR_ELEMENT_WISE_ADD, &addHalfDataDesc};
+        const DML_OPERATOR_DESC addHalfDataDmlDesc = {DML_OPERATOR_ELEMENT_WISE_ADD, &addHalfDataDesc};
 
         // Join the 2 halves together
         DML_JOIN_OPERATOR_DESC joinHalfDataDesc{};
@@ -110,14 +146,14 @@ public:
         joinHalfDataDesc.OutputTensor = &inputDataDmlTensorDesc;
         joinHalfDataDesc.Axis = gsl::narrow_cast<uint32_t>(splitInputDataTensorShape.size()) - 1;
         joinHalfDataDesc.InputCount = gsl::narrow_cast<uint32_t>(splitInputDataDmlTensorDescs.size());
-        const DML_OPERATOR_DESC joinHalfDataDmlDesc {DML_OPERATOR_JOIN, &joinHalfDataDesc};
+        const DML_OPERATOR_DESC joinHalfDataDmlDesc = {DML_OPERATOR_JOIN, &joinHalfDataDesc};
 
         // Construct the graph
         std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
 
-        std::array<const DML_OPERATOR_DESC*, 11> opDescs = {
+        std::vector<const DML_OPERATOR_DESC*> opDescs = {
             &splitInputDmlDesc, // Split the input data
             &gatherCosSinDmlDesc, // Gather cos
             &gatherCosSinDmlDesc, // Gather sin
@@ -150,7 +186,58 @@ public:
             addSecondHalfOpIndex,
 
             joinOpIndex,
+
+            // The following indices are optional
+            positionIdsRangeOpIndex,
+            positionIdsAddOffsetOpIndex,
         };
+
+        if (positionIdsIsOffset)
+        {
+            opDescs.push_back(&positionIdsRangeDmlDesc);
+            opDescs.push_back(&positionIdsAddOffsetDmlDesc);
+
+            DML_INPUT_GRAPH_EDGE_DESC positionIdsToAddOffsetEdge = {};
+            positionIdsToAddOffsetEdge.GraphInputIndex = positionIdsIndex;
+            positionIdsToAddOffsetEdge.ToNodeIndex = positionIdsAddOffsetOpIndex;
+            positionIdsToAddOffsetEdge.ToNodeInputIndex = 1;
+            inputEdges.push_back(positionIdsToAddOffsetEdge);
+
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC positionIdsOffsetToAddOffsetEdge = {};
+            positionIdsOffsetToAddOffsetEdge.FromNodeIndex = positionIdsRangeOpIndex;
+            positionIdsOffsetToAddOffsetEdge.FromNodeOutputIndex = 0;
+            positionIdsOffsetToAddOffsetEdge.ToNodeIndex = positionIdsAddOffsetOpIndex;
+            positionIdsOffsetToAddOffsetEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(positionIdsOffsetToAddOffsetEdge);
+
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC positionIdsAddOffsetToGatherCosEdge = {};
+            positionIdsAddOffsetToGatherCosEdge.FromNodeIndex = positionIdsAddOffsetOpIndex;
+            positionIdsAddOffsetToGatherCosEdge.FromNodeOutputIndex = 0;
+            positionIdsAddOffsetToGatherCosEdge.ToNodeIndex = gatherCosOpIndex;
+            positionIdsAddOffsetToGatherCosEdge.ToNodeInputIndex = 1;
+            intermediateEdges.push_back(positionIdsAddOffsetToGatherCosEdge);
+
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC positionIdsAddOffsetToGatherSinEdge = {};
+            positionIdsAddOffsetToGatherSinEdge.FromNodeIndex = positionIdsAddOffsetOpIndex;
+            positionIdsAddOffsetToGatherSinEdge.FromNodeOutputIndex = 0;
+            positionIdsAddOffsetToGatherSinEdge.ToNodeIndex = gatherSinOpIndex;
+            positionIdsAddOffsetToGatherSinEdge.ToNodeInputIndex = 1;
+            intermediateEdges.push_back(positionIdsAddOffsetToGatherSinEdge);
+        }
+        else
+        {
+            DML_INPUT_GRAPH_EDGE_DESC positionIdsToGatherCosEdge = {};
+            positionIdsToGatherCosEdge.GraphInputIndex = positionIdsIndex;
+            positionIdsToGatherCosEdge.ToNodeIndex = gatherCosOpIndex;
+            positionIdsToGatherCosEdge.ToNodeInputIndex = 1;
+            inputEdges.push_back(positionIdsToGatherCosEdge);
+
+            DML_INPUT_GRAPH_EDGE_DESC positionIdsToGatherSinEdge = {};
+            positionIdsToGatherSinEdge.GraphInputIndex = positionIdsIndex;
+            positionIdsToGatherSinEdge.ToNodeIndex = gatherSinOpIndex;
+            positionIdsToGatherSinEdge.ToNodeInputIndex = 1;
+            inputEdges.push_back(positionIdsToGatherSinEdge);
+        }
 
         DML_INPUT_GRAPH_EDGE_DESC inputToSplitEdge = {};
         inputToSplitEdge.GraphInputIndex = inputDataIndex;
@@ -164,23 +251,11 @@ public:
         cosToGatherEdge.ToNodeInputIndex = 0;
         inputEdges.push_back(cosToGatherEdge);
 
-        DML_INPUT_GRAPH_EDGE_DESC positionIdsToGatherCosEdge = {};
-        positionIdsToGatherCosEdge.GraphInputIndex = positionIdsIndex;
-        positionIdsToGatherCosEdge.ToNodeIndex = gatherCosOpIndex;
-        positionIdsToGatherCosEdge.ToNodeInputIndex = 1;
-        inputEdges.push_back(positionIdsToGatherCosEdge);
-
         DML_INPUT_GRAPH_EDGE_DESC sinToGatherEdge = {};
         sinToGatherEdge.GraphInputIndex = sinCacheIndex;
         sinToGatherEdge.ToNodeIndex = gatherSinOpIndex;
         sinToGatherEdge.ToNodeInputIndex = 0;
         inputEdges.push_back(sinToGatherEdge);
-
-        DML_INPUT_GRAPH_EDGE_DESC positionIdsToGatherSinEdge = {};
-        positionIdsToGatherSinEdge.GraphInputIndex = positionIdsIndex;
-        positionIdsToGatherSinEdge.ToNodeIndex = gatherSinOpIndex;
-        positionIdsToGatherSinEdge.ToNodeInputIndex = 1;
-        inputEdges.push_back(positionIdsToGatherSinEdge);
 
         DML_INTERMEDIATE_GRAPH_EDGE_DESC firstHalfDataToMulCosEdge = {};
         firstHalfDataToMulCosEdge.FromNodeIndex = splitInputOpIndex;

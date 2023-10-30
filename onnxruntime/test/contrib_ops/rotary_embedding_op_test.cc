@@ -25,7 +25,8 @@ static void RunTest(
     int64_t interleaved,
     bool use_float16,
     bool disable_cpu,
-    bool disable_cuda) {
+    bool disable_cuda,
+    bool disable_dml) {
   //    input        : (batch_size, sequence_length, hidden_size)
   //    position ids : (1) or (batch_size, sequence_length)
   //    cos cache    : (max_sequence_length, head_size / 2)
@@ -50,8 +51,13 @@ static void RunTest(
 
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get()) && !disable_dml;
+
   if (enable_cuda && !disable_cuda) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  if (enable_dml && !disable_dml) {
+    execution_providers.push_back(DefaultDmlExecutionProvider());
   }
   if (!use_float16 && !disable_cpu) {
     execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -107,9 +113,10 @@ static void RunTests(const std::vector<float>& input_data,
           interleaved,
           false, /* use_fp16 */
           false, /* disable_cpu */
-          true /* disable_cuda */);
+          true, /* disable_cuda */
+          true /* disable_dml */);
 
-  // FP32 test for CUDA
+  // FP32 test for CUDA and DML
   RunTest(input_data,
           position_ids,
           cos_cache,
@@ -123,9 +130,10 @@ static void RunTests(const std::vector<float>& input_data,
           interleaved,
           false, /* use_fp16 */
           false, /* disable_cpu */
-          false /* disable_cuda */);
+          false, /* disable_cuda */
+          false /* disable_dml */);
 
-  // FP16 test for CUDA
+  // FP16 test for CUDA and DML
   if (use_float16) {
     RunTest(input_data,
             position_ids,
@@ -140,7 +148,8 @@ static void RunTests(const std::vector<float>& input_data,
             interleaved,
             true, /* use_fp16 */
             true, /* disable_cpu */
-            false /* disable_cuda*/);
+            false, /* disable_cuda*/
+            false /* disable_dml */);
   }
 }
 
