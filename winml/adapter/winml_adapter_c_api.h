@@ -573,20 +573,10 @@ struct WinmlAdapterApi {
     _In_ ThreadPoolType type, _In_ OrtThreadPoolOptions* params, _Outptr_ OrtThreadPool** out
   )NO_EXCEPTION;
 
-  /**
-   * GetCommandQueueForSessionInput
-   * Get the obtain the command queue for a given model input.
-   * The queue returned will be nullptr when the input should be created on CPU.
-   */
   OrtStatus*(ORT_API_CALL* GetCommandQueueForSessionInput)(
     _In_ OrtSession* session, _In_ const char* input, _Out_ ID3D12CommandQueue** queue
   )NO_EXCEPTION;
 
-  /**
-   * GetCommandQueueForSessionOutput
-   * Get the obtain the command queue for a given model output.
-   * The queue returned will be nullptr when the output should be created on CPU.
-   */
   OrtStatus*(ORT_API_CALL* GetCommandQueueForSessionOutput)(
     _In_ OrtSession* session, _In_ const char* output, _Out_ ID3D12CommandQueue** queue
   )NO_EXCEPTION;

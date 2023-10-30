@@ -232,7 +232,7 @@ ORT_API_STATUS(
 
 /**
   * GetCommandQueueForSessionInput
-  * Get the obtain the command queue for a given model input.
+  * Get the command queue for a given model input.
   * The queue returned will be nullptr when the input should be created on CPU.
   */
 ORT_API_STATUS(
@@ -241,7 +241,7 @@ ORT_API_STATUS(
 
 /**
   * GetCommandQueueForSessionOutput
-  * Get the obtain the command queue for a given model output.
+  * Get the command queue for a given model output.
   * The queue returned will be nullptr when the output should be created on CPU.
   */
 ORT_API_STATUS(

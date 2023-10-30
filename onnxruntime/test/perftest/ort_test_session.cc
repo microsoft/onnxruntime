@@ -12,12 +12,12 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
-#include "core/providers/dml/dml_provider_factory.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
 
 #ifdef USE_DML
+#include "core/providers/dml/dml_provider_factory.h"
 #include "dml/dml_interop.h"
 #endif
 
