@@ -40,7 +40,8 @@ struct DispatchGroupNorm {
                     int width,
                     int num_groups,
                     bool use_swish_activation,
-                    bool broadcast_skip) {
+                    bool broadcast_skip,
+                    int channels_per_block) {
     typedef typename ToCudaType<T>::MappedType CudaT;
     return LaunchGroupNormKernel<CudaT>(
         stream,
@@ -59,7 +60,8 @@ struct DispatchGroupNorm {
         width,
         num_groups,
         use_swish_activation,
-        broadcast_skip);
+        broadcast_skip,
+        channels_per_block);
   }
 };
 
@@ -86,6 +88,23 @@ GroupNorm::GroupNorm(const OpKernelInfo& op_info) : CudaKernel(op_info) {
   use_swish_activation_ = (activation == 1);
 
   channels_last_ = (op_info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(1)) != 0);
+
+  channels_per_block_ = 0;
+}
+
+Status GroupNorm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                          bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+
+  // Compute and cache cPerBlock using number of channels from gamma tensor shape.
+  if (input_idx == 1) {
+    auto gamma_shape = tensor.Shape();
+    if (gamma_shape.NumDimensions() == 1) {
+      channels_per_block_ = GetChannelsPerBlock(static_cast<int>(gamma_shape[0]), num_groups_);
+    }
+  }
+
+  return Status::OK();
 }
 
 Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
@@ -199,7 +218,8 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
                                                          width,
                                                          num_groups_,
                                                          use_swish_activation_,
-                                                         broadcast_skip);
+                                                         broadcast_skip,
+                                                         channels_per_block_);
 }
 
 }  // namespace cuda

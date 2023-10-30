@@ -37,7 +37,7 @@ namespace cuda {
 namespace {
 constexpr static int32_t CHANNELS_PER_THREAD = 2;
 
-constexpr static int kSizes[] = {64, 128, 256, 320, 384, 512};
+constexpr static int kSizes[] = {128, 256, 320, 384, 512};
 constexpr static size_t kNumOfSizes = sizeof(kSizes) / sizeof(kSizes[0]);
 constexpr static int kMaxSize = kSizes[kNumOfSizes - 1];
 
@@ -362,7 +362,7 @@ void groupNormNHWCSum(GroupNormNHWCParams<T> const& params, cudaStream_t stream)
   dim3 grid;
 
   // The number of blocks to compute all the channels.
-  grid.x = params.c / params.cPerBlock;
+  grid.x = divUp(params.c, params.cPerBlock);
 
   // The number of blocks to compute all the activations in a given instance.
   grid.y = divUp(params.hw, params.hwPerBlock);
@@ -386,9 +386,6 @@ void groupNormNHWCSum(GroupNormNHWCParams<T> const& params, cudaStream_t stream)
       break;
     case 64:
       groupNormNHWCSumKernel<T, 64><<<grid, 64, 0, stream>>>(params);
-      break;
-    case 32:
-      groupNormNHWCSumKernel<T, 32><<<grid, 32, 0, stream>>>(params);
       break;
   }
 }
@@ -494,7 +491,7 @@ void groupNormNHWCScale(GroupNormNHWCParams<T> const& params, cudaStream_t strea
   dim3 grid;
 
   // The number of blocks to compute all the channels.
-  grid.x = params.c / params.cPerBlock;
+  grid.x = divUp(params.c, params.cPerBlock);
   // The number of blocks to compute all the activations in a given instance.
   grid.y = divUp(params.hw, params.hwPerBlock);
   // The number of instances.
@@ -517,9 +514,6 @@ void groupNormNHWCScale(GroupNormNHWCParams<T> const& params, cudaStream_t strea
     case 64:
       groupNormNHWCScaleKernel<T><<<grid, 64, 0, stream>>>(params);
       break;
-    case 32:
-      groupNormNHWCScaleKernel<T><<<grid, 32, 0, stream>>>(params);
-      break;
   }
 }
 
@@ -541,6 +535,39 @@ int32_t findMaxDivisor(int32_t n, int32_t maxAllowedDivisor) {
   return maxDivisor;
 }
 
+int findCPerBlock(int num_channels, int cPerGroup) {
+  int min_cost = -1;
+  int best_candidate = -1;
+  for (size_t i = kNumOfSizes; i > 0; --i) {
+    if (kSizes[i - 1] < cPerGroup) {
+      break;
+    }
+
+    int cPerBlock = kSizes[i - 1] / cPerGroup * cPerGroup;
+    int blocks = (num_channels + cPerBlock - 1) / cPerBlock;
+    int cost = blocks * kSizes[i - 1] - num_channels;
+    if (cost == 0) {
+      return cPerBlock;
+    }
+
+    if (min_cost == -1 || cost < min_cost) {
+      min_cost = cost;
+      best_candidate = cPerBlock;
+    }
+  }
+
+  return best_candidate;
+}
+
+int GetChannelsPerBlock(int num_channels, int num_groups) {
+  int32_t cPerGroup = num_channels / num_groups;
+  int32_t cPerBlock = cPerGroup;
+  if (cPerGroup < kMaxSize / 2) {
+    cPerBlock = findCPerBlock(num_channels, cPerGroup);
+  }
+  return cPerBlock;
+}
+
 template <typename T>
 Status LaunchGroupNormKernel(
     cudaStream_t stream,
@@ -559,47 +586,29 @@ Status LaunchGroupNormKernel(
     int width,
     int num_groups,
     bool use_silu,
-    bool broadcast_skip) {
+    bool broadcast_skip,
+    int channels_per_block) {
   GroupNormNHWCParams<T> params;
 
   int32_t cPerGroup = num_channels / num_groups;
+  int32_t cPerBlock = channels_per_block;
 
-  int32_t cPerBlock;
-  switch (num_channels) {
-    case 2560:
-    case 2048:
-    case 1024:
-    case 512:
-      cPerBlock = 512;
-      break;
-    case 1920:
-    case 960:
-      cPerBlock = 480;
-      break;
-    case 3072:
-    case 1536:
-    case 768:
-    case 384:
-      cPerBlock = 384;
-      break;
-    case 256:
-      cPerBlock = 256;
-      break;
-    case 2304:
-    case 1152:
-      cPerBlock = 288;
-      break;
-    case 128:
-      cPerBlock = 128;
-      break;
-    default:
-      cPerBlock = 320;
+  // channels_per_block is computed in PrePack.
+  // If the gamma is not initializer, channels_per_block might be zero after PrePack. In that happens, compute it here.
+  if (cPerBlock < cPerGroup) {
+    cPerBlock = GetChannelsPerBlock(num_channels, num_groups);
   }
 
-  if (num_channels % cPerBlock != 0 || cPerBlock % cPerGroup != 0) {
-    // Find a maximum cPerBlock that num_channels could be divisible by it.
-    // Try to be close to 512 since multiple kSizes values within [256, 512) range could act as fallback.
-    cPerBlock = findMaxDivisor(num_groups, kMaxSize / cPerGroup) * cPerGroup;
+  // TODO: Update the kernel to support CHANNELS_PER_THREAD==1 and other corner cases
+  if (cPerBlock % cPerGroup != 0 ||
+      cPerBlock > kMaxSize ||
+      (cPerGroup % CHANNELS_PER_THREAD != 0)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "GroupNorm in CUDA does not support the input: n=", batch_size,
+                           " h=", height,
+                           " w=", width,
+                           " c=", num_channels,
+                           " groups=", num_groups);
   }
 
   params.withSilu = use_silu;
@@ -634,19 +643,6 @@ Status LaunchGroupNormKernel(
   // Workspace for SkipGroupNorm to store intermediate results of src+skip+bias.
   params.skip_workspace = (params.add_out != nullptr) ? params.add_out : params.dst;
 
-  // TODO: Update the kernel to support CHANNELS_PER_THREAD==1 and other corner cases
-  if (params.c % params.cPerBlock != 0 ||
-      params.cPerBlock % params.cPerGroup != 0 ||
-      cPerBlock > kMaxSize ||
-      (params.cPerGroup % CHANNELS_PER_THREAD != 0)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "GroupNorm in CUDA does not support the input: n=", params.n,
-                           " h=", params.h,
-                           " w=", params.w,
-                           " c=", params.c,
-                           " groups=", params.groups);
-  }
-
   params.threadsPerBlock = nextSize(cPerBlock) / CHANNELS_PER_THREAD;
 
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
@@ -668,13 +664,15 @@ template Status LaunchGroupNormKernel<half>(cudaStream_t stream, half* output, h
                                             const half* input, const half* skip, const half* bias,
                                             const float* gamma, const float* beta, void* workspace,
                                             float epsilon, int batch_size, int num_channels,
-                                            int height, int width, int num_groups, bool silu, bool broadcast_skip);
+                                            int height, int width, int num_groups, bool silu,
+                                            bool broadcast_skip, int channels_per_block);
 
 template Status LaunchGroupNormKernel<float>(cudaStream_t stream, float* output, float* add_out,
                                              const float* input, const float* skip, const float* bias,
                                              const float* gamma, const float* beta, void* workspace,
                                              float epsilon, int batch_size, int num_channels,
-                                             int height, int width, int num_groups, bool silu, bool broadcast_skip);
+                                             int height, int width, int num_groups, bool silu,
+                                             bool broadcast_skip, int channels_per_block);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

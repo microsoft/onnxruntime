@@ -499,7 +499,7 @@ def run_small_inputs(template: int, fp16):
 def run_performance(fp16):
     # Run perf test to tune parameters for given number of channels.
     for h, w in get_latent_height_width()[:3]:
-        for c in [2304]:
+        for c in get_channels():
             config = GroupNormConfig.create(2, h, w, c, fp16=fp16, num_groups=32, template=0)
             run_parity(config, measure_latency=True)
 
@@ -522,10 +522,14 @@ def run_not_implemented():
         assert "GroupNorm in CUDA does not support the input: n=1 h=2 w=2 c=513 groups=3" in str(e)
 
 
-if __name__ == "__main__":
+def main():
     run_performance(True)
 
     run_not_implemented()
 
     for template in range(6):
         run_all(template)
+
+
+if __name__ == "__main__":
+    main()
