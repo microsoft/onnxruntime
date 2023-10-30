@@ -17,7 +17,8 @@ Abstract:
 --*/
 
 #include "q4gemm.h"
-#if !defined(__APPLE__)
+
+#ifdef MLAS_JBLAS
 #include "jblas/jit_blas_weight_compression.h"
 #endif
 
@@ -139,7 +140,7 @@ MlasQ4GemmBatchDriver(MLAS_BLK_QUANT_TYPE QType,
     });
 }
 
-#if !defined(__APPLE__)
+#ifdef MLAS_JBLAS
 template <class T, JBLAS_ISA ISA>
 using WeiS4ClipFp32PerN =
     jblas::prologue::weight_comp::gemm_kblcok::WeightS4ClipScaleFp32PerN<T, ISA>;
@@ -225,7 +226,7 @@ MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
     MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
 }
 
-
+#ifdef MLAS_JBLAS
 void MLASCALL
 JblasQ4GemmBatch(BLK_QUANT_COMPUTE_TYPE CType,
                 MLAS_BLK_QUANT_TYPE QType,
@@ -240,7 +241,7 @@ JblasQ4GemmBatch(BLK_QUANT_COMPUTE_TYPE CType,
         return JblasQ4GemmBatchDriver(CType, M, N, K, BatchN, DataParams, ThreadPool);
     }
 }
-
+#endif
 
 void MLASCALL
 MlasQ8Q4GemmBatch(MLAS_BLK_QUANT_TYPE QType,

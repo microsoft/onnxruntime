@@ -44,8 +44,8 @@ typedef enum {
  * @brief Define compute types of block quantization
  */
 typedef enum {
-    FP32 = 0,     /*!< int4 Symmetric Block Quantization, zero_point = 0 */
-    INT8 = 1,     /*!< int4 Block Quantization, zero_point is int8 type */
+    CompFp32 = 0,     /*!< int4 Symmetric Block Quantization, zero_point = 0 */
+    CompInt8 = 1,     /*!< int4 Block Quantization, zero_point is int8 type */
 } BLK_QUANT_COMPUTE_TYPE;
 
 

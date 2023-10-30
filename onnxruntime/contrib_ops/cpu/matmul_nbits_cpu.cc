@@ -24,12 +24,12 @@ class MatMulNBitsCPU final : public OpKernel {
     const auto t = info.GetAttrOrDefault<int64_t>("blk_quant_type", static_cast<int64_t>(1));
     const auto c = info.GetAttrOrDefault<int64_t>("compute_type", static_cast<int64_t>(1));
     blk_quant_type_ = t == 0 ? BlkQ4Sym : BlkQ4Zp8;
-    compute_type_ = c == 0 ? FP32 : INT8;
+    compute_type_ = c == 0 ? CompFp32 : CompInt8;
   }
 
   Status Compute(OpKernelContext* context) const override;
   MLAS_BLK_QUANT_TYPE blk_quant_type_{BlkQ4Zp8};
-  BLK_QUANT_COMPUTE_TYPE compute_type_{INT8};
+  BLK_QUANT_COMPUTE_TYPE compute_type_{CompInt8};
 };
 
 Status MatMulNBitsCPU::Compute(OpKernelContext* ctx) const {
@@ -40,7 +40,7 @@ Status MatMulNBitsCPU::Compute(OpKernelContext* ctx) const {
   const Tensor* b = ctx->Input<Tensor>(1);
   const auto blob_shape = b->Shape();
   ORT_ENFORCE(blob_shape.NumDimensions() == 1, "Second input of MatMulNBitsCPU must be a 1D blob!");
-  const auto blob_len = blob_shape[0];
+  //const auto blob_len = blob_shape[0];
 
   const Tensor* bshape_tr = ctx->Input<Tensor>(2);
   TensorShape b_shape(bshape_tr->DataAsSpan<int64_t>());
