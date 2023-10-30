@@ -11,7 +11,7 @@
 #include "core/util/thread_utils.h"
 
 template <size_t BlkBitWidth, size_t BlkLen, bool Symmetric>
-void QNBITGEMM(benchmark::State& state) {
+void SQNBITGEMM(benchmark::State& state) {
   if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
   if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
   if (state.range(2) <= 0) throw std::invalid_argument("K must greater than 0!");
@@ -70,9 +70,9 @@ static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
   ArgsProduct(b, {{1, 1024, 2048}, {4096}, {4096}, {8}});
 }
 
-BENCHMARK(QNBITGEMM<4, 16, false>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(QNBITGEMM<4, 16, true>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(QNBITGEMM<4, 32, false>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(QNBITGEMM<4, 32, true>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(QNBITGEMM<4, 64, false>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(QNBITGEMM<4, 64, true>)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK(SQNBITGEMM<4, 16, false>)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK(SQNBITGEMM<4, 16, true>)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK(SQNBITGEMM<4, 32, false>)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK(SQNBITGEMM<4, 32, true>)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK(SQNBITGEMM<4, 64, false>)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK(SQNBITGEMM<4, 64, true>)->Apply(GemmSizeProducts)->UseRealTime();
