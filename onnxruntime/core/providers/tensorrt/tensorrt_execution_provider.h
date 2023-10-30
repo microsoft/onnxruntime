@@ -26,6 +26,8 @@ static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
+// As a timing cache can be used across multiple ONNX files it makes sense to have a seperate cache path
+static const std::string kTimingCachePath = "ORT_TENSORRT_GLOBAL_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
 static const std::string kForceSequentialEngineBuild = "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
@@ -187,6 +189,7 @@ struct TensorrtFuncState {
   int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
   int (*engine_encryption)(const char*, char*, size_t) = nullptr;
   bool timing_cache_enable = true;
+  std::string timing_cache_path;
   bool force_timing_cache = false;
   bool detailed_build_log = false;
   bool build_heuristics_enable = false;
@@ -254,7 +257,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   Status ReplayGraph() override;
 
  private:
-  TensorrtExecutionProviderInfo info_;
+  mutable TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;
@@ -275,7 +278,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int builder_optimization_level_ = 3;
   int auxiliary_streams_ = -1;
   std::string tactic_sources_;
-  std::string cache_path_, engine_decryption_lib_path_;
+  std::string global_cache_path_, cache_path_, engine_decryption_lib_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;

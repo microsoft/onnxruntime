@@ -890,6 +890,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
     }
+    // use a more global cache if given
+    if (timing_cache_enable_) {
+      if (!info.timing_cache_path.empty()) {
+        global_cache_path_ = info.timing_cache_path;
+      } else {
+        global_cache_path_ = cache_path_;
+      }
+    }
     engine_decryption_enable_ = info.engine_decryption_enable;
     if (engine_decryption_enable_) {
       engine_decryption_lib_path_ = info.engine_decryption_lib_path;
@@ -994,6 +1002,15 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
           LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
         }
       }
+      if (timing_cache_enable_) {
+        std::string timing_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCachePath);
+        // use a more global cache if given
+        if (!timing_cache_path.empty()) {
+          global_cache_path_ = timing_cache_path;
+        } else {
+          global_cache_path_ = cache_path_;
+        }
+      }
 
       const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionEnable);
       if (!engine_decryption_enable_env.empty()) {
@@ -1085,6 +1102,15 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         throw std::runtime_error("Failed to create directory " + cache_path_);
       }
     }
+    if (!global_cache_path_.empty() && !fs::is_directory(global_cache_path_)) {
+      if (!fs::create_directory(global_cache_path_)) {
+        throw std::runtime_error("Failed to create directory " + global_cache_path_);
+      }
+    }
+    {
+      auto lock = GetApiLock();
+      runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
+    }
   }
 
   if (engine_decryption_enable_) {
@@ -1171,6 +1197,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_dump_subgraphs: " << dump_subgraphs_
                         << ", trt_engine_cache_enable: " << engine_cache_enable_
                         << ", trt_cache_path: " << cache_path_
+                        << ", trt_global_cache_path: " << global_cache_path_
                         << ", trt_engine_decryption_enable: " << engine_decryption_enable_
                         << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
                         << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
@@ -1277,6 +1304,12 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
 }
 
 void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
+  if (info_.custom_op_domain_list.empty()) {
+    common::Status status = CreateTensorRTCustomOpDomainList(info_);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
+    }
+  }
   custom_op_domain_list = info_.custom_op_domain_list;
 }
 
@@ -2260,7 +2293,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::string timing_cache_path = "";
       bool engine_update = false;
       if (timing_cache_enable_) {
-        timing_cache_path = GetTimingCachePath(cache_path_, prop);
+        timing_cache_path = GetTimingCachePath(global_cache_path_, prop);
       }
       {
         // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
@@ -2462,7 +2495,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
-            force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
+            global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
             builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics};
       *state = p.release();
       return 0;
@@ -2525,7 +2558,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
       if (timing_cache_enable_) {
-        timing_cache_path = GetTimingCachePath(cache_path_, prop);
+        timing_cache_path = GetTimingCachePath(global_cache_path_, prop);
       }
 
       // Load serialized engine
