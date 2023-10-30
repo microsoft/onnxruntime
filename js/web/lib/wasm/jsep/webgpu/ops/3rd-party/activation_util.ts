@@ -47,5 +47,6 @@ export const activationFnSnippet =
 
 export const biasActivationSnippet = (hasBias: boolean, activation?: Activation): string => `
       ${hasBias ? 'value = value + getBiasByOutputCoords(coords);' : ''}
+      // TODO uncomment the following line when activation is supported above.
       // ${activation ? 'value = activation(value, coords);' : ''}
       `;
