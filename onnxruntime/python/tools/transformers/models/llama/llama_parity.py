@@ -50,7 +50,7 @@ def get_inputs(args: argparse.Namespace, config: LlamaConfig):
             config, args.device, batch_size, sequence_length, use_fp16=args.use_fp16, return_dict=True, world_size = world_size
         )
     else:
-        inputs = get_sample_inputs(config, args.device, batch_size, sequence_length, return_dict=True, world_size = world_size)
+        inputs = get_sample_inputs(config, args.device, batch_size, sequence_length, return_dict=True)
 
     return inputs
 
