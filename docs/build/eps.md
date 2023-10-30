@@ -100,7 +100,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to cudnn bin/include/lib) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
      * On Windows, cuDNN requires [zlibwapi.dll](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-zlib-windows). Feel free to place this dll under `path_to_cudnn/bin`  
- * Install [TensorRT](https://developer.nvidia.com/tensorrt)
+ * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html)
    * The TensorRT execution provider for ONNX Runtime is built and tested up to TensorRT 8.6.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
    * ONNX Runtime uses TensorRT built-in parser from `tensorrt_home` by default.
@@ -235,14 +235,14 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 ### Prerequisites
 {: .no_toc }
 
-1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2023.0** for the appropriate OS and target hardware:
-   * [Windows - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?ENVIRONMENT=RUNTIME&OP_SYSTEM=WINDOWS&VERSION=v_2023_0&DISTRIBUTION=ARCHIVE).
-   * [Linux - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?ENVIRONMENT=RUNTIME&OP_SYSTEM=LINUX&VERSION=v_2023_0&DISTRIBUTION=ARCHIVE)
+1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2023.1** for the appropriate OS and target hardware:
+   * [Windows - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?VERSION=v_2023_1_0&OP_SYSTEM=WINDOWS&DISTRIBUTION=ARCHIVE).
+   * [Linux - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?VERSION=v_2023_1_0&OP_SYSTEM=LINUX&DISTRIBUTION=ARCHIVE)
 
-   Follow [documentation](https://docs.openvino.ai/2023.0/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvino.ai/2023.1/index.html) for detailed instructions.
 
-  *2023.0 is the recommended OpenVINO™ version. [OpenVINO™ 2022.1](https://docs.openvino.ai/archive/2022.1/index.html) is minimal OpenVINO™ version requirement.*
-  *The minimum ubuntu version to support 2023.0 is 18.04.*
+  *2023.1 is the recommended OpenVINO™ version. [OpenVINO™ 2022.1](https://docs.openvino.ai/archive/2022.1/index.html) is minimal OpenVINO™ version requirement.*
+  *The minimum ubuntu version to support 2023.1 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
    * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#linux)

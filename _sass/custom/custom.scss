@@ -1,26 +1,28 @@
-.site-nav, .site-header, .site-footer {
-    width: 100%;
-  }
-  
+.site-nav,
+.site-header,
+.site-footer {
+	width: 100%;
+}
+
 .side-bar {
-  @include mq(lg) {
-    width: $nav-width;
-  }
+	@include mq(lg) {
+		width: $nav-width;
+	}
 }
 
 .site-footer {
-  color: #717072
+	color: #717072;
 }
-  
+
 .main {
-  @include mq(lg) {
-    margin-left: $nav-width;
-  }  
+	@include mq(lg) {
+		margin-left: $nav-width;
+	}
 }
 
 content blockquote {
-  background: #f9f9f9;
-  border-left: 5px solid #ccc;
-  margin: 1.5em 10px;
-  padding: 0.5em 10px;
+	background: #f9f9f9;
+	border-left: 5px solid #ccc;
+	margin: 1.5em 10px;
+	padding: 0.5em 10px;
 }

@@ -355,4 +355,4 @@ In addition to general [requirements](#requirements), please note additional req
 
 ## Training install table for all languages
 
-Refer to the getting started with [Optimized Training](../../index.html#getStartedTable) page for more fine-grained installation instructions.
+Refer to the getting started with [Optimized Training](https://onnxruntime.ai/getting-started) page for more fine-grained installation instructions.

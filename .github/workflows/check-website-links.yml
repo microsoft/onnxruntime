@@ -7,7 +7,7 @@ on:
     branches:
       - gh-pages
   workflow_dispatch:
-    
+
 jobs:
   checklinks:
     name: Check website links
@@ -21,6 +21,22 @@ jobs:
           bundler-cache: true
       - name: Build jekyll website with drafts
         run: bundle exec jekyll build --drafts
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 19.x
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate build
+        run: npm run build
+
+      - name: Move site into place
+        run: |
+          sudo mv ./build/* ./_site
+
       - name: Check for broken links
         run: |
-          bundle exec htmlproofer --assume_extension --checks_to_ignore ImageCheck,ScriptCheck --only_4xx --http_status_ignore 429,403 --allow_hash_href --url_ignore "https://onnxruntime.ai/docs/reference/api/c-api.html,https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example,https://www.onnxruntime.ai/docs/resources/graph-optimizations.html,onnxruntime/capi/onnxruntime_pybind11_state.html,https://github.com/microsoft/onnx-converters-private/issues/new/choose" --log-level :info ./_site
+          bundle exec htmlproofer --assume_extension --checks_to_ignore ImageCheck,ScriptCheck --only_4xx --http_status_ignore 429,403 --allow_hash_href --url_ignore "https://onnxruntime.ai/docs/reference/api/c-api.html,https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example,https://www.onnxruntime.ai/docs/resources/graph-optimizations.html,onnxruntime/capi/onnxruntime_pybind11_state.html,https://github.com/microsoft/onnx-converters-private/issues/new/choose,https://aka.ms/onnx/exportissue,%sveltekit.assets%/favicon.ico,https://onnxruntime.ai/getting-started, https://aka.ms/onnx/board" --log-level :info ./_site
