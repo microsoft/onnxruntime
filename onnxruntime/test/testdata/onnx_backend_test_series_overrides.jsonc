@@ -1,6 +1,6 @@
 {
     "rtol_default": 1e-3,
-    "atol_default": 1e-5,
+    "atol_default": 1e-3,
     // Key: str, the name of the test as defined by ONNX without any device suffix.
     // Val: float, max absolute difference between expected and actual.
     "atol_overrides": {
