@@ -15,8 +15,12 @@ source_filenames = [
     "custom_function_fw.cc",
     "custom_function_shared.cc",
 ]
+
+cur_file_dir = os.path.dirname(__file__)
+
 header_filenames = [
-    # "/usr/local/cuda/include/", # uncomment this line to build nvtx support
+    # "/usr/local/cuda/include/", # uncomment this line to build nvtx support,
+    cur_file_dir,
 ]
 
 extra_compile_args = {"cxx": ["-O3"]}
@@ -25,7 +29,7 @@ setup(
     ext_modules=[
         cpp_extension.CppExtension(
             name="torch_interop_utils",
-            sources=[os.path.join(os.path.dirname(__file__), filename) for filename in source_filenames],
+            sources=[os.path.join(cur_file_dir, filename) for filename in source_filenames],
             extra_compile_args=extra_compile_args,
             include_dirs=header_filenames,
         )
