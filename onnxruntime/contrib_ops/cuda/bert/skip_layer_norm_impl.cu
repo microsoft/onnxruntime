@@ -239,7 +239,6 @@ void LaunchSkipLayerNormKernel(
     CASE_NEXT_SIZE(kSizes[5]);
     CASE_NEXT_SIZE(kSizes[6]);
     CASE_NEXT_SIZE(kSizes[7]);
-    // kMaxSize shall not run vectorized kernel since ld might be larger than kMaxSize.
     default: {
       constexpr int block_size = 256;
       LAUNCH_SKIP_LAYER_NORM_KERNEL();
