@@ -61,6 +61,10 @@ static ORT_STRING_VIEW provider_name_acl = ORT_TSTR("acl");
 #ifdef USE_ARMNN
 static ORT_STRING_VIEW provider_name_armnn = ORT_TSTR("armnn");
 #endif
+#ifdef USE_QNNL
+static ORT_STRING_VIEW provider_name_qnnl = ORT_TSTR("qnnl");
+#endif
+
 static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 
 }  // namespace test

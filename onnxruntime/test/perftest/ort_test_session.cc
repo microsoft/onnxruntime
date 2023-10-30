@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <limits>
 #include <set>
+#include <list>
 #include <type_traits>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -100,36 +101,28 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     const auto& api = Ort::GetApi();
     OrtCUDAProviderOptionsV2* cuda_options;
     Ort::ThrowOnError(api.CreateCUDAProviderOptions(&cuda_options));
-
-    const char* cudnn_conv_algo_search = "cudnn_conv_algo_search";
-    const char* default_conv = "DEFAULT";
-    const char* benchmarking = "EXHAUSTIVE";
-    const char* heuristic = "HEURISTIC";
+    std::vector<const char*> option_keys, option_values;
+    // used to keep all option keys and value strings alive
+    std::list<std::string> buffer;
+    buffer.emplace_back("cudnn_conv_algo_search");
+    option_keys.push_back(buffer.back().c_str());
     switch (performance_test_config.run_config.cudnn_conv_algo) {
       case 0:
-        Ort::ThrowOnError(
-            api.UpdateCUDAProviderOptions(cuda_options, &cudnn_conv_algo_search, &benchmarking, 1));
+        buffer.emplace_back("EXHAUSTIVE");
         break;
       case 1:
-        Ort::ThrowOnError(
-            api.UpdateCUDAProviderOptions(cuda_options, &cudnn_conv_algo_search, &heuristic, 1));
+        buffer.emplace_back("HEURISTIC");
         break;
       default:
-        Ort::ThrowOnError(
-            api.UpdateCUDAProviderOptions(cuda_options, &cudnn_conv_algo_search, &default_conv, 1));
+        buffer.emplace_back("DEFAULT");
         break;
     }
+    option_values.push_back(buffer.back().c_str());
 
-    const char* do_copy_in_default_stream = "do_copy_in_default_stream";
-    if (performance_test_config.run_config.do_cuda_copy_in_separate_stream) {
-      const char* v = "1";
-      Ort::ThrowOnError(
-          api.UpdateCUDAProviderOptions(cuda_options, &do_copy_in_default_stream, &v, 1));
-    } else {
-      const char* v = "0";
-      Ort::ThrowOnError(
-          api.UpdateCUDAProviderOptions(cuda_options, &do_copy_in_default_stream, &v, 1));
-    }
+    buffer.emplace_back("do_copy_in_default_stream");
+    option_keys.push_back(buffer.back().c_str());
+    buffer.emplace_back(!performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0");
+    option_values.push_back(buffer.back().c_str());
 
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -148,51 +141,34 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
             "[ERROR] [CUDA] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
       }
 
-      auto key = token.substr(0, pos);
-      auto value = token.substr(pos + 1);
-      auto key_p = key.c_str();
-      auto value_p = value.c_str();
-      Ort::ThrowOnError(
-          api.UpdateCUDAProviderOptions(cuda_options, &key_p, &value_p, 1));
+      buffer.emplace_back(token.substr(0, pos));
+      option_keys.push_back(buffer.back().c_str());
+      buffer.emplace_back(token.substr(pos + 1));
+      option_values.push_back(buffer.back().c_str());
     }
 
+    Ort::Status status(api.UpdateCUDAProviderOptions(cuda_options,
+                                                     option_keys.data(), option_values.data(), option_keys.size()));
+    if (!status.IsOK()) {
+      OrtAllocator* allocator;
+      char* options;
+      Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
+      Ort::ThrowOnError(api.GetCUDAProviderOptionsAsString(cuda_options, allocator, &options));
+      ORT_THROW("[ERROR] [CUDA] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
+                "\nSupported options are:\n", options);
+    }
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    int device_id = 0;
-    int trt_max_partition_iterations = 1000;
-    int trt_min_subgraph_size = 1;
-    size_t trt_max_workspace_size = 1 << 30;
-    bool trt_fp16_enable = false;
-    bool trt_int8_enable = false;
-    std::string trt_int8_calibration_table_name = "";
-    bool trt_int8_use_native_calibration_table = false;
-    bool trt_dla_enable = false;
-    int trt_dla_core = 0;
-    bool trt_dump_subgraphs = false;
-    bool trt_engine_cache_enable = false;
-    std::string trt_engine_cache_path = "";
-    bool trt_engine_decryption_enable = false;
-    std::string trt_engine_decryption_lib_path = "";
-    bool trt_force_sequential_engine_build = false;
-    bool trt_context_memory_sharing_enable = false;
-    bool trt_layer_norm_fp32_fallback = false;
-    bool trt_timing_cache_enable = false;
-    bool trt_force_timing_cache = false;
-    bool trt_detailed_build_log = false;
-    bool trt_build_heuristics_enable = false;
-    bool trt_sparsity_enable = false;
-    int trt_builder_optimization_level = 3;
-    int trt_auxiliary_streams = -1;
-    std::string trt_tactic_sources = "";
-    std::string trt_extra_plugin_lib_paths = "";
-    std::string trt_profile_min_shapes = "";
-    std::string trt_profile_max_shapes = "";
-    std::string trt_profile_opt_shapes = "";
-    bool trt_cuda_graph_enable = false;
+    const auto& api = Ort::GetApi();
+    OrtTensorRTProviderOptionsV2* tensorrt_options;
+    Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
+    std::vector<const char*> option_keys, option_values;
+    // used to keep all option keys and value strings alive
+    std::list<std::string> buffer;
 
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -207,272 +183,31 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       }
       auto pos = token.find("|");
       if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-        ORT_THROW("[ERROR] [TensorRT] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+        ORT_THROW(
+            "[ERROR] [TensorRT] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
       }
 
-      auto key = token.substr(0, pos);
-      auto value = token.substr(pos + 1);
-      if (key == "device_id") {
-        if (!value.empty()) {
-          device_id = std::stoi(value);
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number.\n");
-        }
-      } else if (key == "trt_max_partition_iterations") {
-        if (!value.empty()) {
-          trt_max_partition_iterations = std::stoi(value);
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_partition_iterations' should be a number.\n");
-        }
-      } else if (key == "trt_min_subgraph_size") {
-        if (!value.empty()) {
-          trt_min_subgraph_size = std::stoi(value);
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_min_subgraph_size' should be a number.\n");
-        }
-      } else if (key == "trt_max_workspace_size") {
-        if (!value.empty()) {
-          trt_max_workspace_size = std::stoull(value);
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number.\n");
-        }
-      } else if (key == "trt_fp16_enable") {
-        if (value == "true" || value == "True") {
-          trt_fp16_enable = true;
-        } else if (value == "false" || value == "False") {
-          trt_fp16_enable = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_int8_enable") {
-        if (value == "true" || value == "True") {
-          trt_int8_enable = true;
-        } else if (value == "false" || value == "False") {
-          trt_int8_enable = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_enable' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_int8_calibration_table_name") {
-        if (!value.empty()) {
-          trt_int8_calibration_table_name = value;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-empty string.\n");
-        }
-      } else if (key == "trt_int8_use_native_calibration_table") {
-        if (value == "true" || value == "True") {
-          trt_int8_use_native_calibration_table = true;
-        } else if (value == "false" || value == "False") {
-          trt_int8_use_native_calibration_table = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_dla_enable") {
-        if (value == "true" || value == "True") {
-          trt_dla_enable = true;
-        } else if (value == "false" || value == "False") {
-          trt_dla_enable = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_enable' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_dla_core") {
-        if (!value.empty()) {
-          trt_dla_core = std::stoi(value);
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_core' should be a number.\n");
-        }
-      } else if (key == "trt_dump_subgraphs") {
-        if (value == "true" || value == "True") {
-          trt_dump_subgraphs = true;
-        } else if (value == "false" || value == "False") {
-          trt_dump_subgraphs = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dump_subgraphs' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_engine_cache_enable") {
-        if (value == "true" || value == "True") {
-          trt_engine_cache_enable = true;
-        } else if (value == "false" || value == "False") {
-          trt_engine_cache_enable = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_enable' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_engine_cache_path") {
-        if (!value.empty()) {
-          trt_engine_cache_path = value;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a non-empty string.\n");
-        }
-      } else if (key == "trt_engine_decryption_enable") {
-        if (value == "true" || value == "True") {
-          trt_engine_decryption_enable = true;
-        } else if (value == "false" || value == "False") {
-          trt_engine_decryption_enable = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_enable' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_engine_decryption_lib_path") {
-        if (!value.empty()) {
-          trt_engine_decryption_lib_path = value;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a non-empty string.\n");
-        }
-      } else if (key == "trt_force_sequential_engine_build") {
-        if (value == "true" || value == "True") {
-          trt_force_sequential_engine_build = true;
-        } else if (value == "false" || value == "False") {
-          trt_force_sequential_engine_build = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_context_memory_sharing_enable") {
-        if (value == "true" || value == "True") {
-          trt_context_memory_sharing_enable = true;
-        } else if (value == "false" || value == "False") {
-          trt_context_memory_sharing_enable = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_context_memory_sharing_enable' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_layer_norm_fp32_fallback") {
-        if (value == "true" || value == "True") {
-          trt_layer_norm_fp32_fallback = true;
-        } else if (value == "false" || value == "False") {
-          trt_layer_norm_fp32_fallback = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_layer_norm_fp32_fallback' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_timing_cache_enable") {
-        if (value == "true" || value == "True") {
-          trt_timing_cache_enable = true;
-        } else if (value == "false" || value == "False") {
-          trt_timing_cache_enable = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_timing_cache_enable' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_force_timing_cache") {
-        if (value == "true" || value == "True") {
-          trt_force_timing_cache = true;
-        } else if (value == "false" || value == "False") {
-          trt_force_timing_cache = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_timing_cache' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_detailed_build_log") {
-        if (value == "true" || value == "True") {
-          trt_detailed_build_log = true;
-        } else if (value == "false" || value == "False") {
-          trt_detailed_build_log = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_detailed_build_log' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_build_heuristics_enable") {
-        if (value == "true" || value == "True") {
-          trt_build_heuristics_enable = true;
-        } else if (value == "false" || value == "False") {
-          trt_build_heuristics_enable = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_build_heuristics_enable' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_sparsity_enable") {
-        if (value == "true" || value == "True") {
-          trt_sparsity_enable = true;
-        } else if (value == "false" || value == "False") {
-          trt_sparsity_enable = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_sparsity_enable' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "trt_builder_optimization_level") {
-        if (!value.empty()) {
-          trt_builder_optimization_level = std::stoi(value);
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_builder_optimization_level' should be a number and default to 2.\n");
-        }
-      } else if (key == "trt_auxiliary_streams") {
-        if (!value.empty()) {
-          trt_auxiliary_streams = std::stoi(value);
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_auxiliary_streams' should be a number.\n");
-        }
-      } else if (key == "trt_tactic_sources") {
-        if (!value.empty()) {
-          trt_tactic_sources = value;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a non-empty string.\n");
-        }
-      } else if (key == "trt_extra_plugin_lib_paths") {
-        if (!value.empty()) {
-          trt_extra_plugin_lib_paths = value;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a non-empty string.\n");
-        }
-      } else if (key == "trt_profile_min_shapes") {
-        if (!value.empty()) {
-          trt_profile_min_shapes = value;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_min_shapes' should be a non-empty string.\n");
-        }
-      } else if (key == "trt_profile_max_shapes") {
-        if (!value.empty()) {
-          trt_profile_max_shapes = value;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_max_shapes' should be a non-empty string.\n");
-        }
-      } else if (key == "trt_profile_opt_shapes") {
-        if (!value.empty()) {
-          trt_profile_opt_shapes = value;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a non-empty string.\n");
-        }
-      } else if (key == "trt_cuda_graph_enable") {
-        if (value == "true" || value == "True") {
-          trt_cuda_graph_enable = true;
-        } else if (value == "false" || value == "False") {
-          trt_cuda_graph_enable = false;
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else {
-        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable', 'trt_layer_norm_fp32_fallback', 'trt_timing_cache_enable', 'trt_force_timing_cache', 'trt_detailed_build_log', 'trt_build_heuristics_enable', 'trt_sparsity_enable', 'trt_builder_optimization_level', 'trt_auxiliary_streams', 'trt_tactic_sources', 'trt_extra_plugin_lib_paths', 'trt_profile_min_shapes', 'trt_profile_max_shapes', 'trt_profile_opt_shapes', 'trt_cuda_graph_enable'] \n");
-      }
+      buffer.emplace_back(token.substr(0, pos));
+      option_keys.push_back(buffer.back().c_str());
+      buffer.emplace_back(token.substr(pos + 1));
+      option_values.push_back(buffer.back().c_str());
     }
-    OrtTensorRTProviderOptionsV2 tensorrt_options;
-    tensorrt_options.device_id = device_id;
-    tensorrt_options.has_user_compute_stream = 0;
-    tensorrt_options.user_compute_stream = nullptr;
-    tensorrt_options.trt_max_partition_iterations = trt_max_partition_iterations;
-    tensorrt_options.trt_min_subgraph_size = trt_min_subgraph_size;
-    tensorrt_options.trt_max_workspace_size = trt_max_workspace_size;
-    tensorrt_options.trt_fp16_enable = trt_fp16_enable;
-    tensorrt_options.trt_int8_enable = trt_int8_enable;
-    tensorrt_options.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str();
-    tensorrt_options.trt_int8_use_native_calibration_table = trt_int8_use_native_calibration_table;
-    tensorrt_options.trt_dla_enable = trt_dla_enable;
-    tensorrt_options.trt_dla_core = trt_dla_core;
-    tensorrt_options.trt_dump_subgraphs = trt_dump_subgraphs;
-    tensorrt_options.trt_engine_cache_enable = trt_engine_cache_enable;
-    tensorrt_options.trt_engine_cache_path = trt_engine_cache_path.c_str();
-    tensorrt_options.trt_engine_decryption_enable = trt_engine_decryption_enable;
-    tensorrt_options.trt_engine_decryption_lib_path = trt_engine_decryption_lib_path.c_str();
-    tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
-    tensorrt_options.trt_context_memory_sharing_enable = trt_context_memory_sharing_enable;
-    tensorrt_options.trt_layer_norm_fp32_fallback = trt_layer_norm_fp32_fallback;
-    tensorrt_options.trt_timing_cache_enable = trt_timing_cache_enable;
-    tensorrt_options.trt_force_timing_cache = trt_force_timing_cache;
-    tensorrt_options.trt_detailed_build_log = trt_detailed_build_log;
-    tensorrt_options.trt_build_heuristics_enable = trt_build_heuristics_enable;
-    tensorrt_options.trt_sparsity_enable = trt_sparsity_enable;
-    tensorrt_options.trt_builder_optimization_level = trt_builder_optimization_level;
-    tensorrt_options.trt_auxiliary_streams = trt_auxiliary_streams;
-    tensorrt_options.trt_tactic_sources = trt_tactic_sources.c_str();
-    tensorrt_options.trt_extra_plugin_lib_paths = trt_extra_plugin_lib_paths.c_str();
-    tensorrt_options.trt_profile_min_shapes = trt_profile_min_shapes.c_str();
-    tensorrt_options.trt_profile_max_shapes = trt_profile_max_shapes.c_str();
-    tensorrt_options.trt_profile_opt_shapes = trt_profile_opt_shapes.c_str();
-    tensorrt_options.trt_cuda_graph_enable = trt_cuda_graph_enable;
 
-    session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
+    Ort::Status status(api.UpdateTensorRTProviderOptions(tensorrt_options,
+                                                         option_keys.data(), option_values.data(), option_keys.size()));
+    if (!status.IsOK()) {
+      OrtAllocator* allocator;
+      char* options;
+      Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
+      Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options, allocator, &options));
+      ORT_THROW("[ERROR] [TensorRT] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
+                "\nSupported options are:\n", options);
+    }
+
+    session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
-    cuda_options.device_id = device_id;
+    cuda_options.device_id = tensorrt_options->device_id;
     cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test

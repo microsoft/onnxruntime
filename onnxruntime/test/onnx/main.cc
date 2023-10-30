@@ -640,7 +640,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     }
 
     auto all_disabled_tests = GetAllDisabledTests(provider_name_view);
-
     auto broken_tests = GetBrokenTests(provider_name);
     auto broken_tests_keyword_set = GetBrokenTestsKeyWordSet(provider_name);
     std::vector<ITestCase*> tests;

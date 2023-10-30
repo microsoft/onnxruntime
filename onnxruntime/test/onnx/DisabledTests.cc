@@ -627,6 +627,31 @@ std::unique_ptr<std::unordered_set<std::basic_string<ORTCHAR_T>>> GetAllDisabled
                                                 ORT_TSTR("fp16_test_tiny_yolov2"),
                                                 ORT_TSTR("fp16_test_shufflenet"),
                                                 ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
+    static const ORTCHAR_T* qnn_disabled_tests[] = {
+        ORT_TSTR("nllloss_NCd1d2d3_none_no_weight_negative_ii"),
+        ORT_TSTR("nllloss_NCd1d2d3_none_no_weight_negative_ii_expanded"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_expanded"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_log_prob"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_log_prob_expanded"),
+        ORT_TSTR("gather_negative_indices"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_ii_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_ii"),
+        ORT_TSTR("nllloss_NCd1_weight_ii_expanded"),
+        ORT_TSTR("nllloss_NCd1_ii_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_no_weight_reduction_mean_ii_expanded"),
+        ORT_TSTR("sce_none_weights"),
+        ORT_TSTR("sce_none_weights_log_prob"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_log_prob"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_log_prob_expanded"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
+        ORT_TSTR("sce_none_weights_log_prob_expanded"),
+        ORT_TSTR("sce_none_weights_expanded")};
     static const ORTCHAR_T* openvino_disabled_tests[] = {
         ORT_TSTR("tf_mobilenet_v1_1.0_224"),
         ORT_TSTR("bertsquad"),
@@ -764,6 +789,9 @@ std::unique_ptr<std::unordered_set<std::basic_string<ORTCHAR_T>>> GetAllDisabled
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(openvino_disabled_tests), std::end(openvino_disabled_tests));
+    } else if (provider_name == provider_name_qnnl) {
+      all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
+      all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
 
 #if !defined(__amd64__) && !defined(_M_AMD64)
