@@ -321,7 +321,9 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_u8u8(self):
         self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT, 18, 8)
 
-    @unittest.skipIf(onnx.defs.onnx_opset_version() < 20, reason="Shape inference bug, see onnx PR #5709")
+    @unittest.skipIf(
+        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
+    )
     def test_quantize_matmul_u8u8_f16(self):
         self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT16, 19, 9)
 
