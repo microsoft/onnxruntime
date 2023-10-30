@@ -411,6 +411,10 @@ def _matmul4bit_export(g, n, *args, **kwargs):
     if blocksize < 16 or blocksize & (blocksize - 1) != 0:
         return None
 
+    # MatMulBnb4 does not support double de-quantization (e.g. absmax is int, needs to be dequantized too)
+    if compressed_stats is not None:
+        return None
+
     # The PyTorch linear weight shape is [out_feature, in_feature]
     in_feature = shape[1]
     out_feature = shape[0]
