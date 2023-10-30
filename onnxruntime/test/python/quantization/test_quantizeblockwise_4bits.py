@@ -38,8 +38,8 @@ def quantize_blockwise_4bits_ref(matrix_float: npt.ArrayLike, block_size: int, i
         matrix_float_padded = np.pad(matrix_float, ((0, pad_len), (0, 0)), "constant")
 
     packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
-    scales = np.zeros((cols * k_blocks), dtype=matrix_float_padded.dtype)
-    zero_point = np.full((cols * k_blocks + 1) // 2, 136, dtype="uint8")
+    scales = np.zeros((cols, k_blocks), dtype=matrix_float_padded.dtype)
+    zero_point = np.full((cols, (k_blocks + 1) // 2), 136, dtype="uint8")
 
     matrix_float_padded = np.transpose(matrix_float_padded)
     for n in range(cols):
@@ -61,10 +61,10 @@ def quantize_blockwise_4bits_ref(matrix_float: npt.ArrayLike, block_size: int, i
                 zp = min(15, max(0, round(zero_point_fp)))
 
             reciprocal_scale = 1.0 / scale if scale != 0 else 0.0
-            block_idx = n * k_blocks + k_id // block_size
-            scales[block_idx] = scale
-            zp_pair = zero_point[block_idx // 2]
-            zero_point[block_idx // 2] = ((zp_pair & 0x0F) | (zp << 4)) if (block_idx & 1) else ((zp_pair & 0xF0) | zp)
+            block_idx = k_id // block_size
+            scales[n, block_idx] = scale
+            zp_pair = zero_point[n, block_idx // 2]
+            zero_point[n, block_idx // 2] = ((zp_pair & 0x0F) | (zp << 4)) if (block_idx & 1) else ((zp_pair & 0xF0) | zp)
 
             blk_int0 = np.clip(
                 np.round(np.float32(matrix_float_padded[n, k_id : k_id + block_size : 2] * reciprocal_scale + zp)),
@@ -76,7 +76,7 @@ def quantize_blockwise_4bits_ref(matrix_float: npt.ArrayLike, block_size: int, i
                 0,
                 15,
             ).astype("uint8")
-            packed[n, k_id // block_size] = np.bitwise_or(blk_int0, np.left_shift(blk_int1, 4))
+            packed[n, block_idx] = np.bitwise_or(blk_int0, np.left_shift(blk_int1, 4))
 
     return (packed, scales, zero_point)
 
@@ -88,8 +88,8 @@ def quantize_blockwise_4bits_target(matrix_float: npt.ArrayLike, block_size: int
 
     k_blocks = (rows + block_size - 1) // block_size
     packed = np.zeros((cols, k_blocks, block_size // 2), dtype="uint8")
-    scales = np.zeros((cols * k_blocks), dtype=matrix_float.dtype)
-    zero_point = np.full(cols * ((k_blocks + 1) // 2), 136, dtype="uint8")
+    scales = np.zeros((cols, k_blocks), dtype=matrix_float.dtype)
+    zero_point = np.full((cols, (k_blocks + 1) // 2), 136, dtype="uint8")
     from onnxruntime.capi._pybind_state import quantize_matmul_4bits
 
     quantize_matmul_4bits(packed, matrix_float, scales, zero_point, block_size, cols, rows, is_symmetric)
@@ -116,24 +116,22 @@ class TestQuantizeBlockwise4Bits(unittest.TestCase):
                         assert np.allclose(zero_point_ref, zero_point)
                         for c in range(quant_value_ref.shape[0]):
                             for k in range(quant_value_ref.shape[1]):
-                                block_idx = c * quant_value_ref.shape[1] + k
-                                zp_idx = block_idx // 2
                                 assert np.allclose(
                                     dequantize_blockwise_4bits(
-                                        quant_value_ref[c][k],
-                                        scales_ref[block_idx],
-                                        (zero_point_ref[zp_idx] >> 4)
-                                        if (block_idx & 1)
-                                        else (zero_point_ref[zp_idx] & 0x0F),
+                                        quant_value_ref[c, k],
+                                        scales_ref[c, k],
+                                        (zero_point_ref[c, k//2] >> 4)
+                                        if (k & 1)
+                                        else (zero_point_ref[c, k//2] & 0x0F),
                                         min(block_size, rows - k * block_size),
                                     ),
                                     dequantize_blockwise_4bits(
-                                        quant_value[c][k],
-                                        scales[block_idx],
-                                        (zero_point[zp_idx] >> 4) if (block_idx & 1) else (zero_point[zp_idx] & 0x0F),
+                                        quant_value[c, k],
+                                        scales[c, k],
+                                        (zero_point[c, k//2] >> 4) if (k & 1) else (zero_point[c, k//2] & 0x0F),
                                         min(block_size, rows - k * block_size),
                                     ),
-                                    atol=1.2 * abs(scales[block_idx]),
+                                    atol=1.2 * abs(scales[c, k]),
                                 )
 
 
