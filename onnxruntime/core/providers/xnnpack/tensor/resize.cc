@@ -254,7 +254,7 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
                            " returned ", status);
   }
 
-  workspace.reset(allocator->aligned_allocate(allocator->context, workspace_size, XNN_ALLOCATION_ALIGNMENT));
+  workspace.reset(allocator->aligned_allocate(allocator->context, XNN_ALLOCATION_ALIGNMENT, workspace_size));
 
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_resize_bilinear2d_nhwc_f32(op0_.get(), workspace.get(), input->Data<float>(),

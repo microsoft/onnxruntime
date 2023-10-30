@@ -34,8 +34,7 @@ void* xnn_aligned_allocate(void* context, size_t alignment, size_t size) {
   return xnn_allocate(context, size);
 #else
   void* ptr = xnn_allocate(context, size);
-  ORT_ENFORCE((int64_t(ptr) & (alignment - 1)) == 0,
-              " xnnpack wants to allocate a space with ", alignment, "bytes aligned. But it's not satisfied");
+  ORT_ENFORCE((int64_t(ptr) & (alignment - 1)) == 0, "xnnpack allocation was not aligned to ", alignment, " bytes.");
   // if ptr is not aligned, we have to find a way to return a aligned ptr and store the original ptr
   return ptr;
 #endif
