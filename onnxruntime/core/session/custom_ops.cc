@@ -29,7 +29,7 @@ static constexpr uint32_t min_ort_version_with_custom_version = 17;
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-static constexpr uint32_t min_ort_version_with_compute_v2_support = 17;
+static constexpr uint32_t min_ort_version_with_compute_v2_support = 16;
 static constexpr uint32_t min_ort_version_with_shape_inference = 17;
 #endif
 
