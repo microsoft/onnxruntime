@@ -28,6 +28,7 @@
 #include "nlohmann/json.hpp"
 
 using namespace onnxruntime;
+using namespace onnxruntime::test;
 
 namespace {
 void usage() {

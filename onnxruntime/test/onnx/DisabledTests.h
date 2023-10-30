@@ -11,6 +11,9 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "TestCase.h"
 
+namespace onnxruntime {
+namespace test {
+
 std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider_name);
 
 std::unique_ptr<std::set<std::string>> GetBrokenTestsKeyWordSet(const std::string& provider_name);
@@ -59,3 +62,6 @@ static ORT_STRING_VIEW provider_name_acl = ORT_TSTR("acl");
 static ORT_STRING_VIEW provider_name_armnn = ORT_TSTR("armnn");
 #endif
 static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
+
+}  // namespace test
+}  // namespace onnxruntime
