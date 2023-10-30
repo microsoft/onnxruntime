@@ -44,7 +44,7 @@ GemmFloat8::GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
   alpha_ = info.GetAttrOrDefault<float>("alpha", 1);
   beta_ = info.GetAttrOrDefault<float>("beta", 0);
 
-#if (CUDA_VERSION <= 12000)
+#if (CUDA_VERSION < 12000)
   ORT_ENFORCE(beta_ == 0, "CUDA < 12.0 does not support bias, beta must be 0.");
 #endif
 
