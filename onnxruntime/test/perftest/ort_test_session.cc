@@ -36,7 +36,7 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   auto& input = test_inputs_.at(id);
 
   struct Timer {
-    std::chrono::steady_clock::time_point start_;
+    std::chrono::high_resolution_clock::time_point start_;
 
     static Timer Start() {
       return Timer{std::chrono::high_resolution_clock::now()};
