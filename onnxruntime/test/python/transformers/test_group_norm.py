@@ -53,6 +53,12 @@ class GroupNormConfig:
         }
         return skip_shape[self.broadcast_skip]
 
+    def broadcast(self, skip: torch.Tensor):
+        if self.broadcast_skip == 2:
+            return skip.reshape(self.batch_size, 1, 1, self.channels)
+
+        return skip
+
     @staticmethod
     def create(
         b: int,
@@ -275,14 +281,14 @@ def group_norm_torch(
     config: GroupNormConfig,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     add_out = src
+
     if skip is not None:
-        add_out = add_out + skip
+        assert config.op_type == GroupNormOpType.SKIP_GROUP_NORM
+        add_out = add_out + config.broadcast(skip)
 
     if bias is not None:
-        if config.op_type == GroupNormOpType.SKIP_GROUP_NORM:
-            add_out = add_out + bias.reshape(1, 1, 1, bias.shape[0])
-        else:
-            add_out = add_out + bias.reshape(bias.shape[0], 1, 1, bias.shape[1])
+        assert config.op_type == GroupNormOpType.SKIP_GROUP_NORM
+        add_out = add_out + bias.reshape(1, 1, 1, bias.shape[0])
 
     x = add_out
     if config.channels_last:
