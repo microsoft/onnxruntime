@@ -113,7 +113,7 @@ static void RunTests(const std::vector<float>& input_data,
           interleaved,
           false, /* use_fp16 */
           false, /* disable_cpu */
-          true, /* disable_cuda */
+          true,  /* disable_cuda */
           true /* disable_dml */);
 
   // FP32 test for CUDA and DML
@@ -146,8 +146,8 @@ static void RunTests(const std::vector<float>& input_data,
             num_heads,
             max_sequence_length,
             interleaved,
-            true, /* use_fp16 */
-            true, /* disable_cpu */
+            true,  /* use_fp16 */
+            true,  /* disable_cpu */
             false, /* disable_cuda*/
             false /* disable_dml */);
   }
