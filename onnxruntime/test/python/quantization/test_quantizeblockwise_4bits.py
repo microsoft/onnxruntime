@@ -64,8 +64,9 @@ def quantize_blockwise_4bits_ref(matrix_float: npt.ArrayLike, block_size: int, i
             block_idx = k_id // block_size
             scales[n, block_idx] = scale
             zp_pair = zero_point[n, block_idx // 2]
-            zero_point[n, block_idx // 2] = ((zp_pair & 0x0F) | (zp << 4)) \
-                if (block_idx & 1) else ((zp_pair & 0xF0) | zp)
+            zero_point[n, block_idx // 2] = (
+                ((zp_pair & 0x0F) | (zp << 4)) if (block_idx & 1) else ((zp_pair & 0xF0) | zp)
+            )
 
             blk_int0 = np.clip(
                 np.round(np.float32(matrix_float_padded[n, k_id : k_id + block_size : 2] * reciprocal_scale + zp)),
