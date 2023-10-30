@@ -8,13 +8,11 @@
 
 namespace onnxruntime {
 
-
-
 /*
-* It matches following pattern:
-*     Pad
-*      |
-*   Conv/MaxPool
+ * It matches following pattern:
+ *     Pad
+ *      |
+ *   Conv/MaxPool
  */
 bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   // if Pad has input axis, don't fuse it.
@@ -30,11 +28,10 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
 
   const NodeAttributes& pad_attributes = node.GetAttributes();
   if (pad_attributes.find("mode") != pad_attributes.end() &&
-      pad_attributes.at("mode").s() != "constant")
-  {
+      pad_attributes.at("mode").s() != "constant") {
     return false;
   }
-  
+
   // constant_value should be an initializer because we have to verify the constant_value should be zero.
   // It is because Conv and MaxPool allow only 0 as padding value.
   if (node.InputDefs().size() > 2 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) {
@@ -54,7 +51,7 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
       return false;
     }
   }
-  
+
   const Node& child_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Conv", {1, 11}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "MaxPool", {1, 8, 10, 11, 12})) {
@@ -76,7 +73,7 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
   } else {
     pads_values.assign(pad_node.GetAttributes().at("pads").ints().begin(), pad_node.GetAttributes().at("pads").ints().end());
   }
-  
+
   uint32_t pads_size = static_cast<uint32_t>(pads_values.size());
   // check if padding is applied only on feature dims
   if (pads_values[0] != 0 || pads_values[1] != 0 || pads_values[pads_size / 2] != 0 ||
@@ -97,7 +94,7 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
     child_pads->Set(child_index, child_pads->Get(child_index) + pads_values[pads_index]);
     child_pads->Set(child_index + (child_pads_size / 2), child_pads->Get(child_index + (child_pads_size / 2)) + pads_values[pads_index + (pads_size / 2)]);
   }
-  
+
   graph_utils::RemoveNodeOutputEdges(graph, pad_node);
   graph_utils::ReplaceNodeInput(child_node, 0, *pad_node.MutableInputDefs()[0]);
   graph.RemoveNode(pad_node.Index());
