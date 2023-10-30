@@ -20,7 +20,6 @@
 // TODO: find a better way to share this
 #include "core/providers/rocm/rocm_stream_handle.h"
 
-
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
 #elif __GNUC__

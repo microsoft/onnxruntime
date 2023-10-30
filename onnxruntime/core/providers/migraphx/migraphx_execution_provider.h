@@ -15,7 +15,6 @@
 // TODO: find a better way to share this
 // #include "core/providers/cuda/rocm_stream_handle.h"
 
-
 namespace onnxruntime {
 
 namespace migraphx_env_vars {
