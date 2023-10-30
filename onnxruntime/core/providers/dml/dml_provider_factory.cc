@@ -128,6 +128,31 @@ Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Devic
   return d3d12_device;
 }
 
+Microsoft::WRL::ComPtr<IDMLDevice> DMLProviderFactoryCreator::CreateDMLDevice(ID3D12Device* d3d12_device)
+{
+  DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
+
+  // In debug builds, enable the DML debug layer if the D3D12 debug layer is also enabled
+#if _DEBUG && !_GAMING_XBOX
+  Microsoft::WRL::ComPtr<ID3D12DebugDevice> debug_device;
+  (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device));  // ignore failure
+  const bool is_d3d12_debug_layer_enabled = (debug_device != nullptr);
+
+  if (is_d3d12_debug_layer_enabled) {
+    flags |= DML_CREATE_DEVICE_FLAG_DEBUG;
+  }
+#endif
+
+  Microsoft::WRL::ComPtr<IDMLDevice> dml_device;
+  ORT_THROW_IF_FAILED(DMLCreateDevice1(
+      d3d12_device,
+      flags,
+      DML_FEATURE_LEVEL_5_0,
+      IID_PPV_ARGS(&dml_device)));
+
+  return dml_device;
+}
+
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int device_id, bool skip_software_device_check) {
   ComPtr<ID3D12Device> d3d12_device = CreateD3D12Device(device_id, skip_software_device_check);
 
@@ -138,25 +163,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   ComPtr<ID3D12CommandQueue> cmd_queue;
   ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
 
-  DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
-
-  // In debug builds, enable the DML debug layer if the D3D12 debug layer is also enabled
-#if _DEBUG && !_GAMING_XBOX
-  ComPtr<ID3D12DebugDevice> debug_device;
-  (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device));  // ignore failure
-  const bool is_d3d12_debug_layer_enabled = (debug_device != nullptr);
-
-  if (is_d3d12_debug_layer_enabled) {
-    flags |= DML_CREATE_DEVICE_FLAG_DEBUG;
-  }
-#endif
-
-  ComPtr<IDMLDevice> dml_device;
-  ORT_THROW_IF_FAILED(DMLCreateDevice1(d3d12_device.Get(),
-                                   flags,
-                                   DML_FEATURE_LEVEL_5_0,
-                                   IID_PPV_ARGS(&dml_device)));
-
+  auto dml_device = CreateDMLDevice(d3d12_device.Get());
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
 }
 
