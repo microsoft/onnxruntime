@@ -70,6 +70,23 @@ stages:
         MachinePool: onnxruntime-Win2022-GPU-T4
         isTraining: true
 
+- stage: dml
+  dependsOn: []
+  jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env.bat
+        buildArch: x64
+        additionalBuildFlags: --enable_pybind --use_dml --enable_wcos  --use_winml
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        ORT_EP_NAME: DML
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-GPU-dml-A10
+
 - stage: kernelDocumentation
   dependsOn: []
   jobs:
