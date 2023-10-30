@@ -1,6 +1,12 @@
 #pragma once
 #include "interface/provider/provider.h"
 
+#ifdef _WIN32
+#define EXPORT_API __declspec(dllexport)
+#else
+#define EXPORT_API
+#endif
+
 namespace onnxruntime {
 
 struct CustomEp2Info {
@@ -27,7 +33,7 @@ private:
 extern "C" {
 #endif
 
-ORT_API(onnxruntime::CustomEp2*, GetExternalProvider, const void* options);
+EXPORT_API onnxruntime::CustomEp2* GetExternalProvider(const void* provider_options);
 
 #ifdef __cplusplus
 }

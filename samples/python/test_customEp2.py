@@ -1,4 +1,5 @@
-import numpy
+import os
+import numpy as np
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C

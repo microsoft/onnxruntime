@@ -107,7 +107,9 @@ common::Status CustomEp2::Compile(std::vector<std::unique_ptr<interface::GraphVi
 
 void CustomEp2::RegisterKernels(interface::IKernelRegistry& kernel_registry) {
   interface::IKernelBuilder& identity_builder = kernel_registry.RegisterKernel("customEp2", "ai.onnx", "Identity", 10, 19, Identity);
+  identity_builder.TypeConstraint("V", interface::TensorDataType::float_tp).Alias(0,0);
   interface::IKernelBuilder& celu_builder = kernel_registry.RegisterKernel<Celu>("customEp2", "ai.onnx", "Celu", 10, 19);
+  celu_builder.TypeConstraint("T", interface::TensorDataType::float_tp).Alias(0,0);
 }
 
 CustomEp2Info ProviderOption2CustomEpInfo(std::unordered_map<std::string, std::string>& provider_option) {
@@ -138,9 +140,9 @@ public:
 extern "C" {
 #endif
 
-ORT_API(onnxruntime::CustomEp2*, GetExternalProvider, const void* provider_options) {
-    std::unordered_map<std::string, std::string>* options = (std::unordered_map<std::string, std::string>*)(provider_options);
-    return onnxruntime::CustomEP2Factory::CreateCustomEp2(*options);
+onnxruntime::CustomEp2* GetExternalProvider(const void* provider_options) {
+  std::unordered_map<std::string, std::string>* options = (std::unordered_map<std::string, std::string>*)(provider_options);
+  return onnxruntime::CustomEP2Factory::CreateCustomEp2(*options);
 }
 
 #ifdef __cplusplus

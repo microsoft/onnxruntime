@@ -182,7 +182,7 @@ struct IKernelBuilder {
   template <typename... Args>
   IKernelBuilder& ParseFn(onnxruntime::Status (*compute_fn)(Args...)) {
     using KernelType = FnKernel<Args...>;
-    create_kernel_fn_ = [&](const IKernelInfo&) {
+    create_kernel_fn_ = [compute_fn](const IKernelInfo&) {
       return std::make_unique<KernelType>(compute_fn);
     };
     return ParseArgs<0, 0, Args...>();
