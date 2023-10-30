@@ -15,7 +15,7 @@ namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,  // Name of the selector-acion instance.
+void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,
                                                        const OpVersionsMap& ops_and_versions_in,
                                                        std::unique_ptr<NodeSelector> selector_in,
                                                        std::unique_ptr<Action> action_in) {
@@ -39,8 +39,7 @@ void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name, 
 #else  // !defined(ORT_MINIMAL_BUILD)
 
 void SelectorActionRegistry::RegisterAction(const std::string& name,
-                                            std::unique_ptr<Action> action,
-                                            const std::string& domain) {
+                                            std::unique_ptr<Action> actionn) {
   // currently all registrations are done from internal code with no external inputs,
   // so throw for invalid usage as it should only happen during development.
   const bool inserted_in_name_to_entry = name_to_entry_.emplace(name, Entry{name, domain, std::move(action)}).second;

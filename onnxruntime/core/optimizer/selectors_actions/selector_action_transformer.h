@@ -89,7 +89,7 @@ class SelectorActionRegistry {
 #else  // !defined(ORT_MINIMAL_BUILD)
 
   // register an action
-  void RegisterAction(const std::string& name, std::unique_ptr<Action> action, const std::string& domain = kOnnxDomain);
+  void RegisterAction(const std::string& name, std::unique_ptr<Action> action);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
