@@ -2582,6 +2582,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
   Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
   
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
