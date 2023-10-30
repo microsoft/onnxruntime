@@ -59,7 +59,7 @@ const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::s
 #if !defined(ORT_MINIMAL_BUILD)
 auto SelectorActionRegistry::LookUpByOpTypeAndDomain(const std::string& op_type, const std::string& domain) const
     -> std::vector<gsl::not_null<const Entry*>> {
-  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(domain + ":" + op_type);
+  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(domain == kOnnxDomain ? op_type : (domain + ":" + op_type));
   std::vector<gsl::not_null<const Entry*>> result{};
   result.reserve(std::distance(range_begin, range_end));
   std::transform(range_begin, range_end, std::back_inserter(result),

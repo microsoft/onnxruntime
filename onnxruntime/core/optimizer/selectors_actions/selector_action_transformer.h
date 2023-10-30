@@ -52,20 +52,14 @@ class SelectorActionRegistry {
           std::unique_ptr<Action> action_in)
         : name{name_in},
 #if !defined(ORT_MINIMAL_BUILD)
+          ops_and_versions{ops_and_versions_in},
           selector{std::move(selector_in)},
 #endif  // !defined(ORT_MINIMAL_BUILD)
           action{std::move(action_in)} {
-#if !defined(ORT_MINIMAL_BUILD)
-      // Copy ops_and_versions
-      const std::string default_prefix = std::string(kOnnxDomain) + ":";
-      for (const auto& [op, versions] : ops_and_versions_in) {
-        // Use the default, kOnnxDomain, if the domain is not specified.
-        ops_and_versions.emplace(op.find(":") == std::string::npos ? default_prefix + op : op, versions);
-      }
-#endif  // !defined(ORT_MINIMAL_BUILD)
     }
 
-    std::string name;  // Name of the entry, same as the registered name of the corresponding selector-action pair.
+    std::string name;
+
 #if !defined(ORT_MINIMAL_BUILD)
     OpVersionsMap ops_and_versions;
     std::unique_ptr<NodeSelector> selector;
