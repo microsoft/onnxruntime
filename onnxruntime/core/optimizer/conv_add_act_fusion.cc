@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/conv_add_act_fusion.h"
+#include "core/optimizer/conv_activation_action_base.h"
 
 #include <deque>
 
@@ -207,36 +208,9 @@ class ConvAddActivationSelector : public NodeSelector {
 namespace actions {
 using NTO = NodesToOptimize;
 
-class FuseConvAddActivationAction : public ReplaceWithNew {
- public:
-  FuseConvAddActivationAction(const std::string& domain = kMSDomain) : ReplaceWithNew(), domain_{std::move(domain)} {}
-
+class FuseConvAddActivationAction : public FusedConvActivationActionBase {
  private:
-  std::string OpType(const RuntimeState& runtime_state) const override {
-    const auto& domain = runtime_state.selected_nodes.Target().Domain();
-    const auto& op_type = runtime_state.selected_nodes.Target().OpType();
-    if (domain == kMSDomain) {
-      if (op_type == "Conv") {
-        return "FusedConv";
-      } else if (op_type == "NhwcConv") {
-        return "NhwcFusedConv";
-      } else {
-        ORT_THROW("Unsupported op type: ", op_type);
-      }
-    } else if (domain == kMSInternalNHWCDomain) {
-      if (op_type != "Conv") {
-        ORT_THROW("Unsupported op type: ", op_type);
-      }
-      return "Conv";
-    } else {
-      ORT_THROW("Unsupported domain: ", domain);
-    }
-  }
 
-  std::string
-  Domain(const RuntimeState& runtime_state) const override {
-    return runtime_state.selected_nodes.Target().Domain();
-  }
 
   NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
     NodeAttributes extra_fused_conv_attributes;
@@ -303,7 +277,6 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
       };
     }
   }
-  std::string domain_;
 };
 }  // namespace actions
 
