@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace test {
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 12000
 
 TEST(GemmFloat8OpTest, BFloat16) {
   OpTester test("GemmFloat8", 1, onnxruntime::kMSDomain);
