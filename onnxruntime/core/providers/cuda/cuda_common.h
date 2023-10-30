@@ -58,6 +58,8 @@ class ToCudaType<BFloat16> {
   }
 };
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 template <>
 class ToCudaType<Float8E4M3FN> {
  public:
@@ -75,6 +77,8 @@ class ToCudaType<Float8E5M2> {
     return MappedType(f);
   }
 };
+
+#endif
 
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
   int stride = 1;
