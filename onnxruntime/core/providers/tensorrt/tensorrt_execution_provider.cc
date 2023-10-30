@@ -651,16 +651,16 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 
 /*
  * Set ORT kernel context Output.
- * 
+ *
  * Note: In the case of DDS (data-dependent shape) output, TRT requires a provided allocator to allocate memory during runtime.
  * Once the output has been put in the allocation buffer, ORT calls this function to bind the allocation to ORT kernel context output.
  */
 Status BindKernelOutput(Ort::KernelContext ctx,
-                   OrtMemoryInfo* mem_info,
-                   DDSOutputAllocatorMap& allocator_map,
-                   char const* output_name,
-                   size_t output_index,
-                   size_t output_type) {
+                        OrtMemoryInfo* mem_info,
+                        DDSOutputAllocatorMap& allocator_map,
+                        char const* output_name,
+                        size_t output_index,
+                        size_t output_type) {
   auto allocator = allocator_map[output_name];
   auto& shape = allocator->getOutputShape();
   OrtValue* out = nullptr;
@@ -2976,7 +2976,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
        * Set output shapes and bind output buffers
        */
       std::unordered_map<char const*, void*> buffers;
-      buffers.reserve(num_outputs);     
+      buffers.reserve(num_outputs);
       using OutputOrtValue = Ort::UnownedValue;
       std::unordered_map<size_t, OutputOrtValue> output_tensors;
       output_tensors.reserve(num_outputs);
@@ -3015,10 +3015,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
 
         // If the output tensor has data-dependent shape, TRT EP will provide an IOutputAllocator for enqueueV3 to dynamically allocate memory buffer.
-        // Once enqueueV3 returns, TRT EP will then bind the output allocation to ORT kernel context output. 
+        // Once enqueueV3 returns, TRT EP will then bind the output allocation to ORT kernel context output.
         // (Please note that we take strategy A mentioned in https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#dynamic-shaped-output,
-        //  which we defer allocation until the size is known and don't call IExecution::setTensorAddress)    
-        //  
+        //  which we defer allocation until the size is known and don't call IExecution::setTensorAddress)
+        //
         // Otherwise, if the shape of the output tensor is known prioir to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
         if (is_dds_output) {
           if (dds_output_allocator_map.find(output_name) == dds_output_allocator_map.end()) {
@@ -3166,7 +3166,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       if (!trt_context->enqueueV3(stream)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
-      
+
       if (sync_stream_after_enqueue || dds_output_set.size() > 0) {
         CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
       }

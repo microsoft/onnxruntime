@@ -186,10 +186,9 @@ class OpKernelContext {
   */
   AllocatorPtr GetAllocator(const OrtDevice& device) const;
 
-
-  #if defined(ENABLE_ATEN) || defined(USE_TENSORRT)
+#if defined(ENABLE_ATEN) || defined(USE_TENSORRT)
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
-  #endif
+#endif
 
  protected:
   OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
