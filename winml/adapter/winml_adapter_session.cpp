@@ -354,7 +354,8 @@ ORT_API_STATUS_IMPL(
   *queue = nullptr;
 #ifdef USE_DML
   return winmla::GetCommandQueueForSessionInput(session, nullptr, queue);
-#endif
+#elif
   return nullptr;
+#endif
   API_IMPL_END
 }
