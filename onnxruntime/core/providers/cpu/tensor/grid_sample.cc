@@ -18,7 +18,7 @@ namespace onnxruntime {
                                               .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
                                           GridSample<T>);
 
-#define REGISTER_KERNEL_TYPED_20(T)                                                           \
+#define REGISTER_KERNEL_TYPED_20(T)                                                          \
   ONNX_OPERATOR_TYPED_KERNEL_EX(GridSample, kOnnxDomain, 20, T, kCpuExecutionProvider,       \
                                 KernelDefBuilder()                                           \
                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
