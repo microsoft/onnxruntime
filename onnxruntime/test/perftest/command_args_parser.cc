@@ -58,7 +58,7 @@ namespace perftest {
       "\t-q [CUDA only] use separate stream for copy. \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
-      "\t    [DML only] [performance_preference]: DML device performance prefernce, options: 'default', 'minimum_power', 'high_performance', \n"
+      "\t    [DML only] [performance_preference]: DML device performance preference, options: 'default', 'minimum_power', 'high_performance', \n"
       "\t    [DML only] [device_filter]: DML device filter, options: 'any', 'gpu', 'npu', \n"
       "\t    [DML only] [disable_metacommands]: Options: 'true', 'false', \n"
       "\t    [DML only] [enable_dynamic_graph_fusion]: Options: 'true', 'false', \n"
@@ -293,14 +293,13 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         }
         break;
       }
-      case 'k': {
+      case 'k':
         if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
           test_config.run_config.native_bindings = false;
         } else if (!CompareCString(optarg, ORT_TSTR("native"))) {
           test_config.run_config.native_bindings = true;
         }
         break;
-      }
       case 'u':
         test_config.run_config.optimized_model_path = optarg;
         break;
