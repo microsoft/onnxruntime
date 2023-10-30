@@ -4,3 +4,5 @@ torch>=2.2.0.dev20230920
 onnx>=1.14.0
 datasets>=2.8.0
 protobuf==3.20.2
+mpi4py
+psutil

@@ -153,6 +153,15 @@ $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output l
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-cpu --precision int4 --quantization_method blockwise --execution_provider cpu
 ```
 
+Export Sharded model, llama-70b into 4 partitions
+```
+# From source:
+$ 1. Get OnnxRuntime code from https://github.com/frankdongms/transformers/tree/frdong/shard_llama or
+$    wait until PR: https://github.com/huggingface/transformers/pull/27119 got merged into HF transformers
+$ 2. Build OnnxRuntime from source with NCCL enabled, sample command: ./build.sh --config RelWithDebInfo --use_cuda --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/local/cuda-12.2 --build_wheel --cuda_version=12.2 --parallel --skip_tests --enable_nccl --nccl_home /usr/local/cuda-12.2 --use_mpi --mpi_home=/usr/lib/x86_64-linux-gnu/
+$ 3. Shard and export llama-70b model: CUDA_VISIBLE_DEVICES=0,1,2,3 bash run.sh 4 -m meta-llama/Llama-2-7b-hf --output llama2-7b-dis2 --precision fp16 --execution_provider cuda
+```
+
 ## Benchmark LLaMA-2
 
 Here are some examples of how you can benchmark LLaMA-2.
