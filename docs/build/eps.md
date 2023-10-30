@@ -142,7 +142,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ### Build Instructions
 {: .no_toc }
 
-These instructions are for JetPack SDK 4.6.1.
+These instructions are for JetPack SDK 5.1.2.
 
 1. Clone the ONNX Runtime repo on the Jetson host
 
@@ -165,17 +165,17 @@ These instructions are for JetPack SDK 4.6.1.
     export PATH="/usr/local/cuda/bin:${PATH}"
     ```
 
-3. Install the ONNX Runtime build dependencies on the Jetpack 4.6.1 host:
+3. Install the ONNX Runtime build dependencies on the Jetpack 5.1.2 host:
 
     ```bash
     sudo apt install -y --no-install-recommends \
       build-essential software-properties-common libopenblas-dev \
-      libpython3.6-dev python3-pip python3-dev python3-setuptools python3-wheel
+      libpython3.8-dev python3-pip python3-dev python3-setuptools python3-wheel
     ```
 
-4. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.18,
+4. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.26,
    it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
-   and follow https://cmake.org/install/ to build from source. Version 3.23.0 has been tested on Jetson.
+   and follow https://cmake.org/install/ to build from source. Version 3.27 has been tested on Jetson.
 
 5. Build the ONNX Runtime Python wheel:
 
