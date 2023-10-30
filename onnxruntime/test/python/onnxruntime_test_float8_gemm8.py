@@ -17,9 +17,9 @@ from onnx.checker import check_model
 from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info
 from onnx.numpy_helper import from_array
 
-from onnxruntime import InferenceSession
+from onnxruntime import InferenceSession, get_available_providers
 
-available_providers = [provider for provider in onnxruntime.get_available_providers()]
+available_providers = [provider for provider in get_available_providers()]
 
 
 class TestFloat8Gemm8(unittest.TestCase):
