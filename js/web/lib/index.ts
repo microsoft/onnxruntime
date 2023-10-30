@@ -7,6 +7,9 @@
 // So we import code inside the if-clause to allow bundler remove the code safely.
 
 export * from 'onnxruntime-common';
+import * as ort from 'onnxruntime-common';
+export default ort;
+
 import {registerBackend, env} from 'onnxruntime-common';
 import {version} from './version';
 
