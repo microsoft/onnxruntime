@@ -7,11 +7,11 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
-#include "core/optimizer/utils.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/optimizer/conv_activation_action_base.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 

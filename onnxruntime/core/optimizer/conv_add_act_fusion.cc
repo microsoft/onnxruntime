@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/conv_add_act_fusion.h"
-#include "core/optimizer/conv_activation_action_base.h"
 
 #include <deque>
 
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/optimizer/conv_activation_action_base.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 
@@ -210,8 +210,6 @@ using NTO = NodesToOptimize;
 
 class FuseConvAddActivationAction : public FusedConvActivationActionBase {
  private:
-
-
   NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
     NodeAttributes extra_fused_conv_attributes;
 

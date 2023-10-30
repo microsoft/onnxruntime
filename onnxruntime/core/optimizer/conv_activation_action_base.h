@@ -8,7 +8,7 @@
 namespace onnxruntime {
 
 class FusedConvActivationActionBase : public ReplaceWithNew {
-private:
+ private:
   std::string OpType(const RuntimeState& runtime_state) const override {
     const auto& domain = runtime_state.selected_nodes.Target().Domain();
     const auto& op_type = runtime_state.selected_nodes.Target().OpType();
@@ -31,6 +31,7 @@ private:
   std::string Domain(const RuntimeState& runtime_state) const override {
     auto domain = runtime_state.selected_nodes.Target().Domain();
     return domain == kOnnxDomain ? kMSDomain : domain;
-  }};
+  }
+};
 
 }  // namespace onnxruntime
