@@ -6,6 +6,7 @@
 # --------------------------------------------------------------------------
 
 import unittest
+import packaging.version as pv
 
 import numpy as np
 import onnx
@@ -354,7 +355,9 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_s8s8(self):
         self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT, 18, 8)
 
-    @unittest.skipIf(onnx.defs.onnx_opset_version() < 20, reason="Shape inference bug, see onnx PR #5709")
+    @unittest.skipIf(
+        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
+    )
     def test_quantize_matmul_s8s8_f16(self):
         self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 19, 9)
 
@@ -386,7 +389,9 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_e4m3fn_same(self):
         self.quantize_matmul_e4m3fn_same(onnx.TensorProto.FLOAT, 18, 8)
 
-    @unittest.skipIf(onnx.defs.onnx_opset_version() < 20, reason="Shape inference bug, see onnx PR #5709")
+    @unittest.skipIf(
+        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
+    )
     def test_quantize_matmul_e4m3fn_same_f16(self):
         self.quantize_matmul_e4m3fn_same(onnx.TensorProto.FLOAT16, 19, 9)
 
@@ -418,7 +423,9 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_e4m3fn_p3(self):
         self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT, 18, 8)
 
-    @unittest.skipIf(onnx.defs.onnx_opset_version() < 20, reason="Shape inference bug, see onnx PR #5709")
+    @unittest.skipIf(
+        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
+    )
     def test_quantize_matmul_e4m3fn_p3_f16(self):
         self.quantize_matmul_e4m3fn_p3(onnx.TensorProto.FLOAT16, 19, 9)
 
