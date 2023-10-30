@@ -101,7 +101,7 @@ void ProcessReturnValues(std::vector<PyObject*>& results,
         const auto refcnt = Py_REFCNT(py_obj);
         if (safe_run_mode_enabled) {
           // For safe_run_mode_enabled, we expect refcnt >= 2.
-          // 1. shared_ptr<PyNode> is maintained in torch_interop_utils::PyNodeSharedPointerPool. PyNode is owing
+          // 1. shared_ptr<PyNode> is maintained in torch_interop_utils::PyNodeSharedPointerPool. PyNode is owning
           //   the context, e.g. THPFunction*.
           // 2. results own another reference to the context, while the ownership will be ended after `Invoke` completed.
           ORT_ENFORCE(refcnt >= 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");

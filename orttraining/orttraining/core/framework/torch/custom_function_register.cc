@@ -120,14 +120,14 @@ void OrtTorchFunctionPool::RegisterBackwardRunner(size_t function_address) {
 
 CustomFunctionRunnerType OrtTorchFunctionPool::GetForwardRunner() {
   ORT_ENFORCE(forward_runner_,
-              "Forward runner cannot be NULL. Do you forget register it by calling RegisterForwardRunner(...)?");
+              "Forward runner cannot be NULL. Did you forget to register it by calling RegisterForwardRunner(...)?");
 
   return forward_runner_;
 }
 
 CustomFunctionRunnerType OrtTorchFunctionPool::GetBackwardRunner() {
   ORT_ENFORCE(backward_runner_,
-              "backward runner cannot be NULL. Do you forget register it by calling RegisterBackwardRunner(...)?");
+              "backward runner cannot be NULL. Did you forget to register it by calling RegisterBackwardRunner(...)?");
   return backward_runner_;
 }
 

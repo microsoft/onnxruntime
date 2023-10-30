@@ -3942,9 +3942,9 @@ Return true if all elements are true and false otherwise.
           "safe_run_mode",
           "Indicate if the function is running in safe mode or not. "
           "Safe mode support common use cases of PyTorch ctx for example, save for backward, mark as dirty,"
-          "or materialize gradient. In this mode, inpace operation is detected on the fly. "
+          "or materialize gradient. In this mode, inplace operation is detected on the fly. "
           "Unsafe mode is used to run the function faster not considering the above ctx usage."
-          "Additional requirement running in this mode: provide correct input alis map.",
+          "Additional requirement running in this mode: provide correct input alias map.",
           AttributeProto::INT,
           static_cast<int64_t>(1))
       .TypeConstraint(
@@ -4109,9 +4109,9 @@ Return true if all elements are true and false otherwise.
           "safe_run_mode",
           "Indicate if the function is running in safe mode or not. "
           "Safe mode support common use cases of PyTorch ctx for example, save for backward, mark as dirty,"
-          "or materialize gradient. In this mode, inpace operation is detected on the fly. "
+          "or materialize gradient. In this mode, inplace operation is detected on the fly. "
           "Unsafe mode is used to run the function faster not considering the above ctx usage."
-          "Additional requirement running in this mode: provide correct input alis map.",
+          "Additional requirement running in this mode: provide correct input alias map.",
           AttributeProto::INT,
           static_cast<int64_t>(1))
       .TypeConstraint(
