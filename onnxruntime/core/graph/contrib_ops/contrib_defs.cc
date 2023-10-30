@@ -2028,6 +2028,48 @@ no offset
 
                                   matmulQ4ShapeInference(ctx, 0, 1, 2, blk_quant_type);
                                 }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(MatMulNBitsCPU, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(
+Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
+During quantization, the matrix is divided into blocks, where each block is a
+continguous subset inside each column. Each block is quantized into a
+sequence of 4b integers with a scaling factor and an optional offset.
+Currently 3 quantization types are supported:
+(0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
+no offset
+)DOC")
+                                .Attr("blk_quant_type", "Quantization type", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("compute_type", "Compute type", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Input(0, "A", "N-dimensional matrix A", "T1")
+                                .Input(1, "B", "1-dimensional data blob", "T2")
+                                .Input(2, "B_shape", "Shape information of B", "T3")
+                                .Output(0, "Y", "Matrix multiply results from A * B", "T1")
+                                .TypeConstraint("T1", {"tensor(float)"}, "Constrain input matrix data types as single precision float tensor")
+                                .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain input B data types as data blob")
+                                .TypeConstraint("T3", {"tensor(int64)"}, "Constrain shape of B must be int64 tensor.")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  auto a_type = ctx.getInputType(0);
+                                  auto b_type = ctx.getInputType(1);
+                                  auto b_shape_type = ctx.getInputType(2);
+                                  auto y_type = ctx.getOutputType(0);
+                                  if (nullptr == a_type || nullptr == b_type || nullptr == b_shape_type || nullptr == y_type ||
+                                      a_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+                                      b_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+                                      b_shape_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+                                    fail_type_inference(
+                                        "inputs are expected to have tensor type and output type should not be null.");
+                                  }
+
+                                  y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+                                  auto blk_quant_v = getAttribute(ctx, "blk_quant_type", 1);
+                                  auto compute_v = getAttribute(ctx, "compute_type", 1);
+                                  MLAS_BLK_QUANT_TYPE blk_quant_type = BlkQ4SymPerN;
+                                  BLK_QUANT_COMPUTE_TYPE compute_type = compute_v == 0 ? FP32 : INT8;
+
+                                  //matmulQ4ShapeInference(ctx, 0, 1, 2, blk_quant_type);
+                                }));
 #endif
 
 constexpr const char* TransposeMatMul_doc = R"DOC(

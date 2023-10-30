@@ -50,6 +50,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
+  * <a href="#com.microsoft.MatMulNBitsCPU">com.microsoft.MatMulNBitsCPU</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulNBits</a>
@@ -2672,6 +2673,58 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>blk_quant_type</tt> : int</dt>
+<dd>Quantization type</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>N-dimensional matrix A</dd>
+<dt><tt>B</tt> : T2</dt>
+<dd>1-dimensional data blob</dd>
+<dt><tt>B_shape</tt> : T3</dt>
+<dd>Shape information of B</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>Matrix multiply results from A * B</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float)</dt>
+<dd>Constrain input matrix data types as single precision float tensor</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain input B data types as data blob</dd>
+<dt><tt>T3</tt> : tensor(int64)</dt>
+<dd>Constrain shape of B must be int64 tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulNBitsCPU"></a><a name="com.microsoft.matmulfpq4">**com.microsoft.MatMulNBitsCPU**</a>
+
+  Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
+  During quantization, the matrix is divided into blocks, where each block is a
+  continguous subset inside each column. Each block is quantized into a
+  sequence of 4b integers with a scaling factor and an optional offset.
+  Currently 3 quantization types are supported:
+  (0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
+  no offset
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>blk_quant_type</tt> : int</dt>
+<dt><tt>compute_type</tt> : int</dt>
 <dd>Quantization type</dd>
 </dl>
 

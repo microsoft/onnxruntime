@@ -41,6 +41,15 @@ typedef enum {
 } MLAS_BLK_QUANT_TYPE;
 
 /**
+ * @brief Define compute types of block quantization
+ */
+typedef enum {
+    FP32 = 0,     /*!< int4 Symmetric Block Quantization, zero_point = 0 */
+    INT8 = 1,     /*!< int4 Block Quantization, zero_point is int8 type */
+} BLK_QUANT_COMPUTE_TYPE;
+
+
+/**
  * @brief Computes the number of bytes required to pack and int4-quantize
  *        a weight matrix
  * @param QType  type of block quantization
@@ -127,7 +136,6 @@ MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
                 const size_t BatchN,
                 const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
                 MLAS_THREADPOOL* ThreadPool = nullptr);
-
 /**
  * @brief Calculate the buffer size needed for int8 block quantize
  * @param[in]  QType   Type of block quantization used
@@ -135,6 +143,26 @@ MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
  * @param[in]  K       Number of columns of the input matrix
  * @return    buffer size (in bytes) needed, 0 if not yet supported on current hardware
  */
+
+void MLASCALL
+JblasQ4GemmBatch(BLK_QUANT_COMPUTE_TYPE CType,
+                 MLAS_BLK_QUANT_TYPE QType,
+                 const size_t M,
+                 const size_t N,
+                 const size_t K,
+                 const size_t BatchN,
+                 const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+                 MLAS_THREADPOOL* ThreadPool = nullptr);
+
+/**
+ * @brief Calculate the buffer size needed for int8 block quantize
+ * @param[in]  CType   Type of computation used
+ * @param[in]  QType   Type of block quantization used
+ * @param[in]  M       Number of rows of the input matrix
+ * @param[in]  K       Number of columns of the input matrix
+ * @return    buffer size (in bytes) needed, 0 if not yet supported on current hardware
+ */
+
 size_t MLASCALL
 MlasQ80BlkQuantSize(MLAS_BLK_QUANT_TYPE QType, size_t M, size_t K);
 

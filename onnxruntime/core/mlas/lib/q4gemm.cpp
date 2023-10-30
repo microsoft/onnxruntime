@@ -168,7 +168,8 @@ static AVX512VNNIFp32Fp32<WeiS4ClipFp32PerN> avx512vnni_s4pernkernl;
 static AMXINT8Fp32Fp32<WeiS4ClipFp32PerN> amxint8_s4pernkernl;
 
 void
-JblasQ4GemmBatchDriver(const size_t M,
+JblasQ4GemmBatchDriver(BLK_QUANT_COMPUTE_TYPE CType,
+                       const size_t M,
                        const size_t N,
                        const size_t K,
                        const size_t BatchN,
@@ -221,13 +222,25 @@ MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
                 const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
                 MLAS_THREADPOOL* ThreadPool)
 {
-#if !defined(__APPLE__)
-    if (QType == MLAS_BLK_QUANT_TYPE::BlkQ4SymPerN) {
-        return JblasQ4GemmBatchDriver(M, N, K, BatchN, DataParams, ThreadPool);
-    }
-#endif
     MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
 }
+
+
+void MLASCALL
+JblasQ4GemmBatch(BLK_QUANT_COMPUTE_TYPE CType,
+                MLAS_BLK_QUANT_TYPE QType,
+                const size_t M,
+                const size_t N,
+                const size_t K,
+                const size_t BatchN,
+                const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+                MLAS_THREADPOOL* ThreadPool)
+{
+    if (QType == MLAS_BLK_QUANT_TYPE::BlkQ4SymPerN) {
+        return JblasQ4GemmBatchDriver(CType, M, N, K, BatchN, DataParams, ThreadPool);
+    }
+}
+
 
 void MLASCALL
 MlasQ8Q4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
