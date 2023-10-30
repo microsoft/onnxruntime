@@ -89,7 +89,7 @@ def quantize_blockwise_4bits_target(matrix_float: npt.ArrayLike, block_size: int
     k_blocks = (rows + block_size - 1) // block_size
     packed = np.zeros((cols, k_blocks, block_size // 2), dtype="uint8")
     scales = np.zeros((cols * k_blocks), dtype=matrix_float.dtype)
-    zero_point = np.full((cols * k_blocks + 1) // 2, 136, dtype="uint8")
+    zero_point = np.full(cols * ((k_blocks + 1) // 2), 136, dtype="uint8")
     from onnxruntime.capi._pybind_state import quantize_matmul_4bits
 
     quantize_matmul_4bits(packed, matrix_float, scales, zero_point, block_size, cols, rows, is_symmetric)
