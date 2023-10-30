@@ -2600,12 +2600,6 @@ This version of the operator has been available since version 1 of the 'com.micr
   
       The computation math:
         dequant_B = dequant(B, absmax, quant_type, block_size)
-        (
-          // Below computation is optimized out
-          transposed_dequant_B = dequant_B^T
-          revert_transposed_dequant_B = transposed_dequant_B^T
-          dequant_B = revert_transposed_dequant_B
-        )
         output = A @ dequant_B
   
       Shape of output: [D0, D1, ..., Dn, K]

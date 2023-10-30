@@ -30,7 +30,7 @@ from ._utils import get_fully_qualified_class_name, get_runtime_pytorch_version
 
 class _HighPriorityExporter:
     """A class to handle high priority export of torch.autograd.Function.
-    `register_high_prioriry_handler` can be used as function decorator to register a handler for a torch.autograd.Function.
+    `register_high_priority_handler` can be used as function decorator to register a handler for a torch.autograd.Function.
     """
 
     _HIGH_PRIORITY_EXPORT_HANDLER_MAP: ClassVar[dict[str, callable]] = {}
@@ -60,7 +60,7 @@ class _HighPriorityExporter:
         return _HighPriorityExporter._HIGH_PRIORITY_EXPORT_HANDLER_MAP.get(func_name, None)
 
 
-def register_high_prioriry_handler(func_name):
+def register_high_priority_handler(func_name):
     """Register a handler for a torch.autograd.Function using its full qualified class name."""
 
     def symbolic_wrapper(fn):
@@ -396,7 +396,7 @@ def post_process_enabling_autograd_function(exported_model: ModelProto) -> Model
     return exported_model
 
 
-@register_high_prioriry_handler("bitsandbytes.autograd._functions.MatMul4Bit")
+@register_high_priority_handler("bitsandbytes.autograd._functions.MatMul4Bit")
 def _matmul4bit_export(g, n, *args, **kwargs):
     cconv = n.cconv()
     can_converted = cconv[0] == "d" and cconv[1] == "d" and cconv[2] == "c" and cconv[3] == "c" and cconv[4] == "c"
