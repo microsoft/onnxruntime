@@ -386,6 +386,10 @@ def quantize_static(
         qdq_ops = list(QDQRegistry.keys())
         op_types_to_quantize = list(set(q_linear_ops + qdq_ops))
 
+    assert all(
+        x in list(QLinearOpsRegistry.keys()) + list(QDQRegistry.keys()) for x in op_types_to_quantize
+    ), f"Following op types to quantize are not in the set of quantizable ops: {set(op_types_to_quantize) - (QLinearOpsRegistry.keys() & QDQRegistry.keys())}"
+
     model = load_model_with_shape_infer(Path(model_input))
 
     pre_processed: bool = model_has_pre_process_metadata(model)
@@ -564,6 +568,10 @@ def quantize_dynamic(
 
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
+
+    assert all(
+        x in list(QLinearOpsRegistry.keys()) + list(QDQRegistry.keys()) for x in op_types_to_quantize
+    ), f"Following op types to quantize are not in the set of quantizable ops: {set(op_types_to_quantize) - (QLinearOpsRegistry.keys() & QDQRegistry.keys())}"
 
     model = load_model_with_shape_infer(Path(model_input))
 
