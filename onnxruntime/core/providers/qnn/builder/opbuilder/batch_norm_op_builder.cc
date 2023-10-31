@@ -32,7 +32,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
                        const NodeUnit& node_unit,
                        const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
-  Status CheckMinMax(float& rmin, float& rmax) const {
+  std::pair<float, float> CheckMinMax(float rmin, float rmax) const {
     // Ensure a minimum range of 0.0001 (required by QNN)
     rmax = std::max(rmax, rmin + 0.0001f);
 
@@ -40,35 +40,25 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     rmin = std::min(rmin, 0.0f);
     rmax = std::max(rmax, 0.0f);
 
-    return Status::OK();
+    return std::make_pair(rmin, rmax);
   }
 
+  template <typename T>
   Status GetQminQmax(const Qnn_DataType_t qnn_data_type,
-                     float& qmin,
-                     float& qmax) const {
-    // onnx only supports 8 bits quantization
+                     T& qmin,
+                     T& qmax) const {
     if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
-      qmin = static_cast<float>(std::numeric_limits<int8_t>::min());
-      qmax = static_cast<float>(std::numeric_limits<int8_t>::max());
+      qmin = static_cast<T>(std::numeric_limits<int8_t>::min());
+      qmax = static_cast<T>(std::numeric_limits<int8_t>::max());
     } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_8) {
-      qmin = static_cast<float>(std::numeric_limits<uint8_t>::min());
-      qmax = static_cast<float>(std::numeric_limits<uint8_t>::max());
-    } else {
-      ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
-    }
-    return Status::OK();
-  }
-
-  Status GetQminQmax(const Qnn_DataType_t qnn_data_type,
-                     int& qmin,
-                     int& qmax) const {
-    // onnx only supports 8 bits quantization
-    if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
-      qmin = static_cast<int>(std::numeric_limits<int8_t>::min());
-      qmax = static_cast<int>(std::numeric_limits<int8_t>::max());
-    } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_8) {
-      qmin = static_cast<int>(std::numeric_limits<uint8_t>::min());
-      qmax = static_cast<int>(std::numeric_limits<uint8_t>::max());
+      qmin = static_cast<T>(std::numeric_limits<uint8_t>::min());
+      qmax = static_cast<T>(std::numeric_limits<uint8_t>::max());
+    } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16) {
+      qmin = static_cast<T>(std::numeric_limits<int16_t>::min());
+      qmax = static_cast<T>(std::numeric_limits<int16_t>::max());
+    } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
+      qmin = static_cast<T>(std::numeric_limits<uint16_t>::min());
+      qmax = static_cast<T>(std::numeric_limits<uint16_t>::max());
     } else {
       ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
     }
@@ -80,14 +70,14 @@ class BatchNormOpBuilder : public BaseOpBuilder {
                         const Qnn_DataType_t qnn_data_type,
                         float& scale,
                         int& zero_point) const {
-    ORT_RETURN_IF_ERROR(CheckMinMax(rmin, rmax));
+    std::tie(rmin, rmax) = CheckMinMax(rmin, rmax);
     float qmin = 0.0f;
     float qmax = 255.0f;
     ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
 
     scale = (rmax - rmin) / (qmax - qmin);
     const float initial_zero_point = qmin - (rmin / scale);
-    zero_point = static_cast<int>(RoundHalfToEven(saturate(qmax, qmin, initial_zero_point)));
+    zero_point = static_cast<int>(RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
     // To match QNN quantization definition
     zero_point = 0 - zero_point;
     return Status::OK();
@@ -100,52 +90,52 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     switch (qnn_data_type) {
       case QNN_DATATYPE_INT_8:
       case QNN_DATATYPE_SFIXED_POINT_8: {
-        value = static_cast<double>(*const_cast<int8_t*>(reinterpret_cast<const int8_t*>(raw_ptr)));
+        value = static_cast<double>(*reinterpret_cast<const int8_t*>(raw_ptr));
         offset += sizeof(int8_t);
         break;
       }
       case QNN_DATATYPE_INT_16:
       case QNN_DATATYPE_SFIXED_POINT_16: {
-        value = static_cast<double>(*const_cast<int16_t*>(reinterpret_cast<const int16_t*>(raw_ptr)));
+        value = static_cast<double>(*reinterpret_cast<const int16_t*>(raw_ptr));
         offset += sizeof(int16_t);
         break;
       }
       case QNN_DATATYPE_INT_32:
       case QNN_DATATYPE_SFIXED_POINT_32: {
-        value = static_cast<double>(*const_cast<int32_t*>(reinterpret_cast<const int32_t*>(raw_ptr)));
+        value = static_cast<double>(*reinterpret_cast<const int32_t*>(raw_ptr));
         offset += sizeof(int32_t);
         break;
       }
       case QNN_DATATYPE_INT_64: {
-        value = static_cast<double>(*const_cast<int64_t*>(reinterpret_cast<const int64_t*>(raw_ptr)));
+        value = static_cast<double>(*reinterpret_cast<const int64_t*>(raw_ptr));
         offset += sizeof(int64_t);
         break;
       }
       case QNN_DATATYPE_UINT_8:
       case QNN_DATATYPE_UFIXED_POINT_8: {
-        value = static_cast<double>(*const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(raw_ptr)));
+        value = static_cast<double>(*reinterpret_cast<const uint8_t*>(raw_ptr));
         offset += sizeof(uint8_t);
         break;
       }
       case QNN_DATATYPE_UINT_16:
       case QNN_DATATYPE_UFIXED_POINT_16: {
-        value = static_cast<double>(*const_cast<uint16_t*>(reinterpret_cast<const uint16_t*>(raw_ptr)));
+        value = static_cast<double>(*reinterpret_cast<const uint16_t*>(raw_ptr));
         offset += sizeof(uint16_t);
         break;
       }
       case QNN_DATATYPE_UINT_32:
       case QNN_DATATYPE_UFIXED_POINT_32: {
-        value = static_cast<double>(*const_cast<uint32_t*>(reinterpret_cast<const uint32_t*>(raw_ptr)));
+        value = static_cast<double>(*reinterpret_cast<const uint32_t*>(raw_ptr));
         offset += sizeof(uint32_t);
         break;
       }
       case QNN_DATATYPE_UINT_64: {
-        value = static_cast<double>(*const_cast<uint64_t*>(reinterpret_cast<const uint64_t*>(raw_ptr)));
+        value = static_cast<double>(*reinterpret_cast<const uint64_t*>(raw_ptr));
         offset += sizeof(uint64_t);
         break;
       }
       case QNN_DATATYPE_FLOAT_32: {
-        value = static_cast<double>(*const_cast<float*>(reinterpret_cast<const float*>(raw_ptr)));
+        value = static_cast<double>(*reinterpret_cast<const float*>(raw_ptr));
         offset += sizeof(float);
         break;
       }
@@ -313,16 +303,17 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     return Status::OK();
   }
 
-  inline double dequantize(const OnnxInputInfo& info,
+  inline double Dequantize(const OnnxInputInfo& info,
                            const double quant_value) const {
     auto offset = static_cast<double>(info.quant_param.scaleOffsetEncoding.offset);
     auto scale = static_cast<double>(info.quant_param.scaleOffsetEncoding.scale);
     return (quant_value + offset) * scale;
   }
 
-  inline int saturate(const int qmax,
-                      const int qmin,
-                      const int quant_value) const {
+  template <typename T>
+  inline T Saturate(const T qmax,
+                    const T qmin,
+                    const T quant_value) const {
     if (quant_value > qmax) {
       return qmax;
     } else if (quant_value < qmin) {
@@ -332,19 +323,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     }
   }
 
-  inline float saturate(const float qmax,
-                        const float qmin,
-                        const float quant_value) const {
-    if (quant_value > qmax) {
-      return qmax;
-    } else if (quant_value < qmin) {
-      return qmin;
-    } else {
-      return quant_value;
-    }
-  }
-
-  inline Status quantize(const double double_value,
+  inline Status Quantize(const double double_value,
                          const float scale,
                          const int zero_point,
                          const Qnn_DataType_t qnn_data_type,
@@ -352,7 +331,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     int qmin = 0;
     int qmax = 255;
     ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
-    quant_value = saturate(qmax, qmin, static_cast<int>(std::round((double_value / scale) - zero_point)));
+    quant_value = Saturate(qmax, qmin, static_cast<int>(std::round((double_value / scale) - zero_point)));
     return Status::OK();
   }
 
@@ -370,7 +349,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double mean_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(mean_info.qnn_data_type, mean_raw_ptr + offset, mean_value, offset));
-      mean_out[i] = (is_npu_backend) ? dequantize(mean_info, mean_value) : mean_value;
+      mean_out[i] = (is_npu_backend) ? Dequantize(mean_info, mean_value) : mean_value;
     }
     return Status::OK();
   }
@@ -390,7 +369,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double var_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(var_info.qnn_data_type, var_raw_ptr + offset, var_value, offset));
-      std_out[i] = (is_npu_backend) ? dequantize(var_info, var_value) : var_value;
+      std_out[i] = (is_npu_backend) ? Dequantize(var_info, var_value) : var_value;
       std_out[i] = std::sqrt(std_out[i] + static_cast<double>(epsilon));
     }
     return Status::OK();
@@ -413,7 +392,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double scale_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(scale_info.qnn_data_type, scale_raw_ptr + offset, scale_value, offset));
-      scale_out[i] = (is_npu_backend) ? dequantize(scale_info, scale_value) : scale_value;
+      scale_out[i] = (is_npu_backend) ? Dequantize(scale_info, scale_value) : scale_value;
       scale_out[i] = scale_out[i] / std_double_tensor[i];
       rmax = std::max(rmax, scale_out[i]);
       rmin = std::min(rmin, scale_out[i]);
@@ -439,7 +418,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double bias_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(bias_info.qnn_data_type, bias_raw_ptr + offset, bias_value, offset));
-      bias_out[i] = (is_npu_backend) ? dequantize(bias_info, bias_value) : bias_value;
+      bias_out[i] = (is_npu_backend) ? Dequantize(bias_info, bias_value) : bias_value;
       bias_out[i] = bias_out[i] - (mean_double_tensor[i] * scale_double_tensor[i]);
       rmax = std::max(rmax, bias_out[i]);
       rmin = std::min(rmin, bias_out[i]);
@@ -468,7 +447,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
       for (size_t i = 0; i < double_tensor.size(); ++i) {
         // onnx only supports 8 bits quantization
         int quant_value_int = 0;
-        ORT_RETURN_IF_ERROR(quantize(double_tensor[i], scale, zero_point, info.qnn_data_type, quant_value_int));
+        ORT_RETURN_IF_ERROR(Quantize(double_tensor[i], scale, zero_point, info.qnn_data_type, quant_value_int));
         if (info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_8) {
           raw_tensor[i] = static_cast<uint8_t>(quant_value_int);
         } else if (info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
@@ -559,23 +538,7 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   // Input 0
   //
-  {
-    const std::string& input0_name = inputs[0].node_arg.Name();
-    if (!qnn_model_wrapper.IsQnnTensorWrapperExist(input0_name)) {
-      OnnxInputInfo input0_info = {};
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], input0_info));
-      std::vector<uint8_t> unpacked_tensor;
-      if (input0_info.is_initializer) {
-        ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input0_info.initializer_tensor, unpacked_tensor));
-      }
-
-      Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input0_name);
-      QnnTensorWrapper input_tensorwrapper(input0_name, tensor_type, input0_info.qnn_data_type, input0_info.quant_param,
-                                           std::move(input0_info.shape), std::move(unpacked_tensor));
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
-    }
-    input_names.push_back(input0_name);
-  }
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
   //
   // Input 1: scale
