@@ -1026,15 +1026,6 @@ bool OnnxRuntimeTestSession::PopulateOutputs(bool use_native_bindings) {
 
       auto& output_name = output_names_[i];
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      std::vector<int64_t> input_node_dim = tensor_info.GetShape();
-
-      // free dimensions are treated as 1 if not overriden
-      for (int64_t& dim : input_node_dim) {
-        if (dim == -1) {
-          dim = 1;
-        }
-      }
-
       auto dml_value_pair = CreateDmlValue(tensor_info, session_, Ort::Value(nullptr), output_name.c_str(), false);
       native_test_bindings_.emplace_back(std::move(dml_value_pair.second));
       test_outputs_.push_back(std::move(dml_value_pair.first));

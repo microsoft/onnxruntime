@@ -238,6 +238,12 @@ std::pair<Ort::Value, UniqueNativePtr> CreateDmlValue(
   }
 
   auto node_dim = tensor_info.GetShape();
+  // free dimensions are treated as 1 if not overriden
+  for (int64_t& dim : node_dim) {
+    if (dim == -1) {
+      dim = 1;
+    }
+  }
   auto d3d_resource = CreateD3D12Resource(device.Get(), tensor_info.GetElementType(), node_dim, D3D12_HEAP_TYPE_DEFAULT);
   void* dml_allocator_resource;
   Ort::ThrowOnError(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d_resource.Get(), &dml_allocator_resource));
