@@ -278,12 +278,14 @@ class FuseConvAddRelu : public ReplaceWithNew {
 
 void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAct";
+  LOGS_DEFAULT(VERBOSE) << "Registering " << name << std::endl;
   auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
-  const std::string mSInternalNHWCDomainConv = std::string(kMSInternalNHWCDomain) + ":NhwcConv";
+  const std::string msInternalNHWCDomainConv = std::string(kMSInternalNHWCDomain) + ":Conv";
+  const std::string msDomainConv = std::string(kMSDomain) + ":NhwcConv";
   auto selector = std::make_unique<selectors::ConvActivationSelector>();
 
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}, {mSInternalNHWCDomainConv, {11}}},
+  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}, {msInternalNHWCDomainConv, {11}}, {msDomainConv, {1}}},
                                      std::move(selector), std::move(action));
 #else
   registry.RegisterAction(name, std::move(action));
