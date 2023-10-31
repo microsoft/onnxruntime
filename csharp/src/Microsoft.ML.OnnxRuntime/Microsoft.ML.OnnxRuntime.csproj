@@ -10,6 +10,11 @@
     <MobileTargets></MobileTargets>
   </PropertyGroup>
 
+  <!-- special case the DesktopOnly solution -->
+  <PropertyGroup Condition="'$(SolutionName)' == 'OnnxRuntime.DesktopOnly.CSharp'">
+    <IncludeMobileTargets>false</IncludeMobileTargets>
+  </PropertyGroup>
+
   <!-- add Xamarin mobile targets if we're building an ORT package and the Xamarin workloads are installed
 
        NOTE: We include in a build of the managed package when creating Microsoft.ML.OnnxRuntime.Gpu as both
@@ -186,8 +191,9 @@
     <DefineConstants>$(DefineConstants);$(OrtConstants)</DefineConstants>
   </PropertyGroup>
 
-  <!-- debug output - makes finding/fixing any issues with the the conditions easy.
+  <!-- debug output - makes finding/fixing any issues with the the conditions easy.  -->
   <Target Name="DumpValues" BeforeTargets="PreBuildEvent">
+    <Message Text="SolutionName='$(SolutionName)'" />
     <Message Text="TargetPlatform='$(TargetPlatform)' TargetPlatformIdentifier='$(TargetPlatformIdentifier)' " />
     <Message Text="TargetFramework='$(TargetFramework)' TargetFrameworkIdentifier='$(TargetFrameworkIdentifier)' " />
     <Message Text="[MSBuild]::GetTargetPlatformIdentifier(TargetFramework)='$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))' " />
@@ -196,7 +202,6 @@
     <Message Text="OrtConstants='$(OrtConstants)' " />
     <Message Text="TargetFrameworks='$(TargetFrameworks)' " />
   </Target>
-  -->
 
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"
