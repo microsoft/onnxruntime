@@ -39,9 +39,16 @@ struct NodeSelector {
 class SelectorActionRegistry {
  public:
   // The key is a string representing the op, optionally specifying the domain using ':' as the
-  // separator with domain as the first part and oprator as the second part, "<domain>:<operator>".
+  // separator with domain as the first part and operator as the second part, "<domain>:<operator>".
   // Ex: "Conv", "com.microsoft:Conv", "com.ms.internal.nhwc:Conv"
   using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
+
+  // Helper function to create a key to OpVersionMap using domain and op_type.
+  static std::string OpVersionsMapKey(std::string_view op_type, std::string_view domain = kOnnxDomain) {
+    return (domain == kOnnxDomain)
+               ? std::string{op_type}
+               : std::string{domain} + ":" + std::string{op_type};
+  }
 
   struct Entry {
     Entry(const std::string& name_in,

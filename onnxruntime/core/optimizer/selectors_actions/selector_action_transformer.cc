@@ -59,8 +59,7 @@ const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::s
 #if !defined(ORT_MINIMAL_BUILD)
 auto SelectorActionRegistry::LookUpByOpTypeAndDomain(const std::string& op_type, const std::string& domain) const
     -> std::vector<gsl::not_null<const Entry*>> {
-  const auto [range_begin, range_end] =
-      op_type_to_entry_.equal_range(domain == kOnnxDomain ? op_type : (domain + ":" + op_type));
+  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(OpVersionsMapKey(domain, op_type));
   std::vector<gsl::not_null<const Entry*>> result{};
   result.reserve(std::distance(range_begin, range_end));
   std::transform(range_begin, range_end, std::back_inserter(result),
@@ -100,11 +99,10 @@ static Status MatchAndProcess(
 
     const auto selector_action_entries =
         selector_action_registry.LookUpByOpTypeAndDomain(node.OpType(), node.Domain());
-    const auto& domain = node.Domain();
-    std::string domain_optype = (domain == kOnnxDomain) ? node.OpType() : (domain + ":" + node.OpType());
+    std::string key = SelectorActionRegistry::OpVersionsMapKey(node.Domain(), node.OpType());
     for (const auto& entry : selector_action_entries) {
       // check the supported versions if specified
-      const auto& versions = entry->ops_and_versions.find(domain_optype)->second;
+      const auto& versions = entry->ops_and_versions.find(key)->second;
       if (!versions.empty()) {
         if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
           continue;
