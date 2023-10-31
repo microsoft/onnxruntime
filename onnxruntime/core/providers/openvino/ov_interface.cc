@@ -17,7 +17,7 @@ using WaitMode = InferenceEngine::IInferRequest::WaitMode;
 namespace onnxruntime {
 namespace openvino_ep {
 
-const char log_tag[] = "[OpenVINO-EP] ";
+const std::string log_tag = "[OpenVINO-EP] ";
 std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model) const {
   try {
     OVTensor weights;

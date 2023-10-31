@@ -217,7 +217,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         // avoid input copies on the CPU device
         if (global_context_.device_type.find("CPU") != std::string::npos) {
           tensor_ptr = std::make_shared<ov::Tensor>(input->get_element_type(), input_tensor_shape,
-                                                    reinterpret_cast<void*>(tensor_data));
+                                                    (void*)tensor_data);
         } else {
           tensor_ptr = std::make_shared<ov::Tensor>(input->get_element_type(), input_tensor_shape);
           FillInputBlob(tensor_ptr, batch_slice_idx, input_name, context, subgraph_context_);

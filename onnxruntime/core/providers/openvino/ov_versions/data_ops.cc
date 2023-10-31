@@ -1190,7 +1190,7 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
   if (opset->second.find(optype) == opset->second.end() && op_fun == ops_supported_as_function.end()) {
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "The operator is not available in OpenVINO ngraph operators list
+      std::cout << "The operator is not available in OpenVINO ngraph operators list"
                 << "nor the operator is a special ONNX function"
                 << std::endl;
     }

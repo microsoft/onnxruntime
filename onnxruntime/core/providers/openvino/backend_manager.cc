@@ -105,7 +105,7 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
 bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   bool has_batched_inputs = true;
 
-  for (int i = 0; i < static_cast<int>(subgraph_context_.input_indexes).size(); i++) {
+  for (int i = 0; i < static_cast<int>(subgraph_context_.input_indexes.size()); i++) {
     auto& input = model_proto.graph().input(subgraph_context_.input_indexes[i]);
 
     // Batch-process only raw image inputs (NCHW or NHWC layouts)

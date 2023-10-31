@@ -107,7 +107,7 @@ struct OpenVINO_Provider : Provider {
 
     if (provider_options_map.find("context") != provider_options_map.end()) {
       std::string str = provider_options_map.at("context");
-      unsigned int64_t number = std::strtoull(str.c_str(), nullptr, 16);
+      uint64_t number = std::strtoull(str.c_str(), nullptr, 16);
       context = reinterpret_cast<void*>(number);
     }
 

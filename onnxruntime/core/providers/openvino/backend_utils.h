@@ -27,7 +27,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
-const char log_tag[] = "[OpenVINO-EP] ";
+const std::string log_tag = "[OpenVINO-EP] ";
 
 #ifndef NDEBUG
 bool IsDebugEnabled();
