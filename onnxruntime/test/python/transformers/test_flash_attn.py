@@ -941,6 +941,8 @@ def parity_check_gqa_no_past(
     print(
         " causal:",
         causal,
+        " local:",
+        local,
         " B:",
         config.batch_size,
         " S:",
@@ -1071,6 +1073,8 @@ def parity_check_gqa_past(
         "BSNH" if past_format == Formats.BSNH else "BNSH",
         " causal:",
         causal,
+        " local:",
+        local,
         " B:",
         config.batch_size,
         " S:",
@@ -1223,6 +1227,8 @@ def parity_check_gqa_past_no_buff(
         "BSNH" if past_format == Formats.BSNH else "BNSH",
         " causal:",
         causal,
+        " local:",
+        local,
         " B:",
         config.batch_size,
         " S:",
@@ -1301,55 +1307,6 @@ class TestMHA(unittest.TestCase):
 
 
 class TestGQA(unittest.TestCase):
-    def test_gqa_past_local(self):
-        print("-------- TEST GQA LOCAL ---------")
-        batches = [2] if pipeline_mode else [1, 2]
-        seqs = (
-            [(1, 128), (3, 1024), (64, 2048)]
-            if pipeline_mode
-            else [
-                (1, 128),
-                (1, 339),
-                (3, 1024),
-                (64, 800),
-                (64, 256),
-                (3, 799),
-                (64, 2048),
-                (16, 20000),
-                (1, 128 * 512),
-                (16, 128 * 512),
-                (128, 128),
-            ]
-        )
-        num_h = [(9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        random.seed(69)
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        for b in batches:
-            for s, s2 in seqs:
-                for n, n2 in num_h:
-                    for h in h_sizes:
-                        for causal, local in [(False, True)]:
-                            for past_kv_format in [Formats.BNSH, Formats.BSNH]:
-                                sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                                config = Config(b, s, s2, sp, n, n2, h)
-                                parity_check_gqa_past(
-                                    config,
-                                    causal=causal,
-                                    local=local,
-                                    past_format=past_kv_format,
-                                    rtol=1e-3,
-                                    atol=1e-3,
-                                )
-                                parity_check_gqa_past_no_buff(
-                                    config,
-                                    causal=causal,
-                                    local=local,
-                                    past_format=past_kv_format,
-                                    rtol=1e-3,
-                                    atol=1e-3,
-                                )
-
     def test_gqa_no_past(self):
         if not torch.cuda.is_available():
             return
@@ -1430,7 +1387,7 @@ class TestGQA(unittest.TestCase):
             for s, s2 in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
-                        for causal, local in [(True, False), (False, True), (False, False)]:
+                        for causal in [True, False]:
                             for past_kv_format in [Formats.BNSH, Formats.BSNH]:
                                 sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                 config = Config(b, s, s2, sp, n, n2, h)
@@ -1473,7 +1430,7 @@ class TestGQA(unittest.TestCase):
                                 parity_check_gqa_past_no_buff(
                                     config,
                                     causal=causal,
-                                    local=False,
+                                    local=local,
                                     past_format=past_kv_format,
                                     rtol=1e-3,
                                     atol=1e-3,
