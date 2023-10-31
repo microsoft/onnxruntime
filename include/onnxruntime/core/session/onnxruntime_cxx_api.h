@@ -2052,6 +2052,7 @@ struct KernelContext {
   ConstValue GetInput(size_t index) const;
   UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
+  void SetOutput(size_t index, const OrtValue& ort_value);
   void* GetGPUComputeStream() const;
   Logger GetLogger() const;
   OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;

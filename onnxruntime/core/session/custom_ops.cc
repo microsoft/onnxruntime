@@ -310,6 +310,22 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
   API_IMPL_END
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_SetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const OrtValue* ort_value) {
+  API_IMPL_BEGIN
+#if defined(ENABLE_ATEN) || defined(USE_TENSORRT)
+  auto status = reinterpret_cast<onnxruntime::OpKernelContext*>(context)->SetOutputMLValue(gsl::narrow_cast<int>(index), *ort_value);
+  if (status.IsOK())
+    return nullptr;
+  return onnxruntime::ToOrtStatus(status);
+#else
+  ORT_UNUSED_PARAMETER(context);
+  ORT_UNUSED_PARAMETER(index);
+  ORT_UNUSED_PARAMETER(ort_value);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+};
+
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   std::string value;

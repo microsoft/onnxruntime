@@ -186,6 +186,10 @@ class OpKernelContext {
   */
   AllocatorPtr GetAllocator(const OrtDevice& device) const;
 
+#if defined(ENABLE_ATEN) || defined(USE_TENSORRT)
+  Status SetOutputMLValue(int index, const OrtValue& ort_value);
+#endif
+
  protected:
   OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 
@@ -194,10 +198,6 @@ class OpKernelContext {
   virtual const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
-
-#ifdef ENABLE_ATEN
-  Status SetOutputMLValue(int index, const OrtValue& ort_value);
-#endif
 
   // Creates the OrtValue* based on the shape, if it does not exist
   virtual OrtValue* OutputMLValue(int index, const TensorShape& shape);

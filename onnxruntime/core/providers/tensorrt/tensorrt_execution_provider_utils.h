@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <string>
 #include <iostream>
+#include <filesystem>
 #include <experimental/filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
@@ -12,6 +13,10 @@
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/common/path_string.h"
 #include "core/framework/murmurhash3.h"
+
+static const std::string EP_CONTEXT_OP_TYPE = "EPContext";
+static const std::string EP_CONTEXT_ATTR_EMBED_MODE = "embed_mode";
+static const std::string EP_CONTEXT_ATTR_CACHE_CTX = "ep_cache_context";
 
 namespace fs = std::experimental::filesystem;
 
@@ -692,6 +697,32 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << shape_string;
   }
 
+  return true;
+}
+
+
+bool CheckPrecompiledEngine(const GraphViewer& graph) {
+  if (graph.NumberOfNodes() == 1 && graph.GetNode(0)->OpType() == EP_CONTEXT_OP_TYPE) {
+    return true;
+  }
+  return false;
+}
+
+/*
+ * The sanity check for EP context contrib op.
+ */
+bool IsValidEPContextNode(const GraphViewer& graph) {
+  assert(graph.NumberOfNodes() == 1);
+  assert(graph.GetNode(0)->OpType() == EP_CONTEXT_OP_TYPE);
+  auto node = graph.GetNode(0);
+  auto& attrs = node->GetAttributes();
+  if (attrs.count(EP_CONTEXT_ATTR_EMBED_MODE) > 0 && attrs.count(EP_CONTEXT_ATTR_CACHE_CTX) > 0) {
+    // ep_cache_context: payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0
+    if (attrs.at(EP_CONTEXT_ATTR_EMBED_MODE).i() == 0 && !std::filesystem::exists(attrs.at(EP_CONTEXT_ATTR_CACHE_CTX).s())) {
+      LOGS_DEFAULT(ERROR) << "Can't find " << attrs.at(EP_CONTEXT_ATTR_CACHE_CTX).s() << " TensorRT engine";
+      return false;
+    }
+  }
   return true;
 }
 }  // namespace onnxruntime
