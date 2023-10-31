@@ -490,6 +490,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
                 else:
                     io_binding.bind_output(name, device_type=args.device, device_id=args.rank)
 
+            setattr(args, "io_binding", io_binding)  # noqa: B010
             return io_binding
 
         return inputs
