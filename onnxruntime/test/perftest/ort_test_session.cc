@@ -16,6 +16,11 @@
 #include "providers.h"
 #include "TestCase.h"
 
+#ifdef USE_DML
+#include "core/providers/dml/dml_provider_factory.h"
+#include "dml/dml_interop.h"
+#endif
+
 #ifdef _WIN32
 #define strdup _strdup
 #endif
@@ -29,12 +34,35 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
   auto& input = test_inputs_.at(id);
-  auto start = std::chrono::high_resolution_clock::now();
-  auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                                    output_names_raw_ptr.data(), output_names_raw_ptr.size());
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> duration_seconds = end - start;
-  return duration_seconds;
+
+  struct Timer {
+    std::chrono::high_resolution_clock::time_point start_;
+
+    static Timer Start() {
+      return Timer{std::chrono::high_resolution_clock::now()};
+    }
+
+    std::chrono::duration<double> End() {
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> duration_seconds = end - start_;
+      return duration_seconds;
+    }
+
+   private:
+    Timer(std::chrono::high_resolution_clock::time_point start) : start_(start) {}
+  };
+
+  auto timer = Timer::Start();
+
+  if (test_outputs_.size() > 0) {
+    session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+                 output_names_raw_ptr.data(), test_outputs_.data(), output_names_raw_ptr.size());
+  } else {
+    session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+                 output_names_raw_ptr.data(), output_names_raw_ptr.size());
+  }
+
+  return timer.End();
 }
 
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
@@ -42,8 +70,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                                const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
-  const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
-  if (provider_name == onnxruntime::kDnnlExecutionProvider) {
+  provider_name_ = performance_test_config.machine_config.provider_type_name;
+  if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     // Generate provider options
     OrtDnnlProviderOptions dnnl_options;
@@ -96,7 +124,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
     const auto& api = Ort::GetApi();
     OrtCUDAProviderOptionsV2* cuda_options;
@@ -161,7 +189,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     const auto& api = Ort::GetApi();
     OrtTensorRTProviderOptionsV2* tensorrt_options;
@@ -215,7 +243,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -306,7 +334,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kQnnExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -368,7 +396,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("QNN is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kSnpeExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kSnpeExecutionProvider) {
 #ifdef USE_SNPE
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -420,7 +448,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("SNPE is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
     uint32_t nnapi_flags = 0;
 #ifdef _MSC_VER
@@ -448,22 +476,81 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kCoreMLExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kCoreMLExecutionProvider) {
 #ifdef USE_COREML
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, 0));
 #else
     ORT_THROW("COREML is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kDmlExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
 #ifdef USE_DML
     std::unordered_map<std::string, std::string> dml_options;
     dml_options["performance_preference"] = "high_performance";
     dml_options["device_filter"] = "gpu";
+    dml_options["disable_metacommands"] = "false";
+    dml_options["enable_dynamic_graph_fusion"] = "false";
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [DML] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+
+      if (key == "device_filter") {
+        std::set<std::string> ov_supported_device_types = {"gpu", "npu"};
+        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong configuration value for the key 'device_filter'. "
+              "Select from 'gpu', or 'npu' \n");
+        }
+      } else if (key == "performance_preference") {
+        std::set<std::string> ov_supported_values = {"default", "high_performance", "minimal_power"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong configuration value for the key 'performance_preference'. "
+              "Select from 'default', 'high_performance' or 'minimal_power' \n");
+        }
+      } else if (key == "disable_metacommands") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong value for the key 'disable_metacommands'. "
+              "Select from 'true' or 'false' \n");
+        }
+      } else if (key == "enable_dynamic_graph_fusion") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong value for the key 'enable_dynamic_graph_fusion'. "
+              "Select from 'true' or 'false' \n");
+        }
+      }
+    }
     session_options.AppendExecutionProvider("DML", dml_options);
 #else
     ORT_THROW("DML is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kAclExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kAclExecutionProvider) {
 #ifdef USE_ACL
     Ort::ThrowOnError(
         OrtSessionOptionsAppendExecutionProvider_ACL(session_options,
@@ -471,14 +558,14 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Acl is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kArmNNExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
                                                                      performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kRocmExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kRocmExecutionProvider) {
 #ifdef USE_ROCM
     OrtROCMProviderOptions rocm_options;
     rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
@@ -488,7 +575,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("ROCM is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kMIGraphXExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
     OrtROCMProviderOptions rocm_options;
@@ -498,7 +585,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("MIGraphX is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kXnnpackExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kXnnpackExecutionProvider) {
 #ifdef USE_XNNPACK
     session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
     session_options.AppendExecutionProvider(
@@ -506,7 +593,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kVitisAIExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -534,7 +621,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
 #endif
-  } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
+  } else if (!provider_name_.empty() && provider_name_ != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
 
@@ -703,12 +790,20 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
 #undef CASE_FOR_TYPE
 }
 
-bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
-  // iterate over all input nodes
-  for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
-    Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
+bool OnnxRuntimeTestSession::PopulateOutputs(bool use_native_bindings) {
+  if (!use_native_bindings) {
+    return true;
+  }
+
+#ifdef USE_DML
+  if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
+    for (size_t i = 0; i < static_cast<size_t>(output_names_.size()); i++) {
+      Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
+      if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
+        continue;
+      }
+
+      auto& output_name = output_names_[i];
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
@@ -719,12 +814,61 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
         }
       }
 
-      auto allocator = Ort::AllocatorWithDefaultOptions();
-      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
-                                                         input_node_dim.size(), tensor_info.GetElementType());
-      InitializeTensorWithSeed(seed, input_tensor);
+      auto dml_value_pair = CreateDmlValue(tensor_info, session_, Ort::Value(nullptr), output_name.c_str(), false);
+      native_test_bindings_.emplace_back(std::move(dml_value_pair.second));
+      test_outputs_.push_back(std::move(dml_value_pair.first));
+    }
+    return true;
+  }
+#endif
+
+  return false;
+}
+
+bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool use_native_bindings) {
+  auto allocator = Ort::AllocatorWithDefaultOptions();
+
+  // iterate over all input nodes
+  for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
+    Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
+    if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
+      continue;
+    }
+
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    auto input_name = session_.GetInputNameAllocated(i, allocator);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+
+    // free dimensions are treated as 1 if not overriden
+    for (int64_t& dim : input_node_dim) {
+      if (dim == -1) {
+        dim = 1;
+      }
+    }
+
+    // Create a CPU tensor
+    Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
+                                                       input_node_dim.size(), tensor_info.GetElementType());
+
+    // Initialize the tensor with data
+    InitializeTensorWithSeed(seed, input_tensor);
+
+    if (!use_native_bindings) {
       PreLoadTestData(0, i, std::move(input_tensor));
     }
+#ifdef USE_DML
+    else if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
+      auto value =
+          CreateDmlValueFromCpuValue(
+              std::move(input_tensor),
+              session_,
+              input_name.get());
+
+      native_test_bindings_.emplace_back(std::move(value.second));
+      PreLoadTestData(0, i, std::move(value.first));
+    }
+#endif
   }
   return true;
 }

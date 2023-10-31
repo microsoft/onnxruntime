@@ -41,7 +41,7 @@ function(AddTest)
   if (MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd6330>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6330>")
-    #Abseil has a lot of C4127/C4324 warnings. 
+    #Abseil has a lot of C4127/C4324 warnings.
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4127>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4127>")
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4324>"
@@ -1177,6 +1177,12 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       "${onnxruntime_perf_test_src_dir}/posix/*.h" )
   endif()
 
+  if(onnxruntime_USE_DML)
+    list(APPEND onnxruntime_perf_test_src_patterns
+      "${onnxruntime_perf_test_src_dir}/dml/*.cc"
+      "${onnxruntime_perf_test_src_dir}/dml/*.h" )
+  endif()
+
   file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
     ${onnxruntime_perf_test_src_patterns}
     )
@@ -1190,6 +1196,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
           ${CMAKE_CURRENT_BINARY_DIR})
   if (onnxruntime_USE_ROCM)
     target_include_directories(onnxruntime_perf_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
+  endif()
+  if(onnxruntime_USE_WINML)
+    target_include_directories(onnxruntime_perf_test PRIVATE ${REPO_ROOT}/winml/adapter)
   endif()
   if (WIN32)
     target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
