@@ -29,7 +29,7 @@ class MatMulNBitsCPU final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
   MLAS_BLK_QUANT_TYPE blk_quant_type_{BlkQ4Zp8};
-  BLK_QUANT_COMPUTE_TYPE compute_type_{CompInt8};
+  MLAS_COMPUTE_TYPE compute_type_{CompInt8};
 };
 
 Status MatMulNBitsCPU::Compute(OpKernelContext* ctx) const {
