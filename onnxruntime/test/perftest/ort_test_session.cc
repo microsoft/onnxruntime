@@ -49,9 +49,7 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
     }
 
    private:
-    Timer(std::chrono::high_resolution_clock::time_point start) :
-      start_(start)
-    {}
+    Timer(std::chrono::high_resolution_clock::time_point start) : start_(start) {}
   };
 
   auto timer = Timer::Start();
