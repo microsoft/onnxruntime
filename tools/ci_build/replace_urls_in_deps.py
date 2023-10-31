@@ -53,8 +53,10 @@ def main():
        csv_file_path = backup_csv_file_path
     else:
        # Make a copy before modifying it
+       print("Making a copy to %s" % str(backup_csv_file_path) )
        shutil.copy(csv_file_path, backup_csv_file_path)
 
+    print("Reading from %s" % str(csv_file_path) )
     # Read the whole file into memory first
     with csv_file_path.open("r", encoding="utf-8") as f:
         depfile_reader = csv.reader(f, delimiter=";")
@@ -66,6 +68,7 @@ def main():
                 continue
             deps.append(Dep(row[0], row[1], row[2]))
 
+    print("Writing to %s" % str(csv_file_path) )
     # Write updated content back
     with csv_file_path.open("w", newline="", encoding="utf-8") as f:
         depfile_writer = csv.writer(f, delimiter=";")
