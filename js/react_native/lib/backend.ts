@@ -161,7 +161,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
 }
 
 class OnnxruntimeBackend implements Backend {
-  async init(): Promise<void> {
+  async init(name: string): Promise<void> {
     return Promise.resolve();
   }
 

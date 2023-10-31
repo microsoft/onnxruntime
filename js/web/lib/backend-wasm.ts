@@ -33,7 +33,19 @@ export const initializeFlags = (): void => {
 };
 
 export class OnnxruntimeWebAssemblyBackend implements Backend {
-  async init(): Promise<void> {
+  async init(name: string): Promise<void> {
+    if (name === 'webgpu') {
+      if (typeof navigator === 'undefined') {
+        throw new Error('navigator is not available');
+      }
+      if (!navigator.gpu) {
+        throw new Error('navigator.gpu not available.');
+      }
+      if (!await navigator.gpu.requestAdapter()) {
+        throw new Error('Failed to get GPU adapter.');
+      }
+    }
+
     // populate wasm flags
     initializeFlags();
 
