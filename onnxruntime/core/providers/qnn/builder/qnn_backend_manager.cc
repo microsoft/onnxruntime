@@ -4,7 +4,6 @@
 #include "qnn_backend_manager.h"
 #include "qnn_model.h"
 #include <filesystem>
-#include <iostream>
 #include <fstream>
 #include <string>
 #include "QnnOpDef.h"
@@ -1023,22 +1022,17 @@ std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& scalar)
         case QNN_DATATYPE_UINT_64:
             return std::to_string(scalar.uint64Value);
         case QNN_DATATYPE_FLOAT_16:
-            // Assuming Qnn_Scalar_t uses float for FLOAT_16, though this is not standard.
             return std::to_string(scalar.floatValue);
         case QNN_DATATYPE_FLOAT_32:
             return std::to_string(scalar.floatValue);
         case QNN_DATATYPE_SFIXED_POINT_8:
         case QNN_DATATYPE_SFIXED_POINT_16:
         case QNN_DATATYPE_SFIXED_POINT_32:
-            // Assuming Qnn_Scalar_t uses int types for signed fixed points.
-            // You might need to adjust this based on how fixed point values should be displayed.
-            return std::to_string(scalar.int32Value); // Adjust as needed
+            return std::to_string(scalar.int32Value); // Assume using int types for signed fixed points.
         case QNN_DATATYPE_UFIXED_POINT_8:
         case QNN_DATATYPE_UFIXED_POINT_16:
         case QNN_DATATYPE_UFIXED_POINT_32:
-            // Assuming Qnn_Scalar_t uses unsigned int types for unsigned fixed points.
-            // You might need to adjust this based on how fixed point values should be displayed.
-            return std::to_string(scalar.uint32Value); // Adjust as needed
+            return std::to_string(scalar.uint32Value); // Assume using unsigned int types for unsigned fixed points.
         case QNN_DATATYPE_BOOL_8:
             return scalar.bool8Value ? "true" : "false";
         case QNN_DATATYPE_STRING:
