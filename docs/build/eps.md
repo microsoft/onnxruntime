@@ -156,7 +156,7 @@ These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvid
 
       1. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA 11.8 upgrade instruction.
 
-      2. CUDA 12.x might only be available to the latest Jetson Orin series. 
+      2. CUDA 12.x might only be available to Jetson Orin and newer series. 
 
    2. CMake can't automatically find the correct `nvcc` if it's not in the `PATH`. `nvcc` can be added to `PATH` via:
 
@@ -180,9 +180,9 @@ These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvid
 
 4. Cmake is needed to build ONNX Runtime. For ONNX Runtime 1.16, the minimum required CMake version is 3.26 (version 3.27.4 has been tested). This can be either installed by:
 
-   1. (Unix/Linux) Build from source. Download sources from https://cmake.org/download/
-      and follow https://cmake.org/install/ to build from source. 
-   2. (Ubuntu) Install deb package via apt repository: e.g https://apt.kitware.com/ 
+   1. (Unix/Linux) Build from source. Download sources from [https://cmake.org/download/](https://cmake.org/download/)
+      and follow [https://cmake.org/install/](https://cmake.org/install/) to build from source. 
+   2. (Ubuntu) Install deb package via apt repository: e.g [https://apt.kitware.com/](https://apt.kitware.com/)
 
 5. Build the ONNX Runtime Python wheel (update path to CUDA/CUDNN/TensorRT libraries if necessary):
 
