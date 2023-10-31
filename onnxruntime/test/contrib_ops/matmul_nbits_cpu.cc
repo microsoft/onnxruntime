@@ -24,10 +24,10 @@ namespace onnxruntime {
 namespace test {
 
 TEST(MatMulNBitsCPU, MatMul2DSymPerN) {
-  // (100 x 52) X (52 x 288)
-  constexpr int64_t M = 100;
-  constexpr int64_t N = 288;
-  constexpr int64_t K = 52;
+  // (128 x 1024) X (1024 x 1024)
+  constexpr int64_t M = 128;
+  constexpr int64_t N = 1024;
+  constexpr int64_t K = 1024;
   constexpr int BlkSize = 32;
   constexpr bool IsAsym = false;
   constexpr MLAS_COMPUTE_TYPE CompType = CompFp32;

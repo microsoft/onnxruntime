@@ -13,7 +13,8 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
-#include "core/mlas/inc/mlas_q4.h"
+#define MLAS_JBLAS
+#include "core/mlas/inc/mlas_q4.h" 
 
 namespace onnxruntime {
 namespace contrib {
@@ -78,7 +79,7 @@ Status MatMulNBitsCPU::Compute(OpKernelContext* ctx) const {
     gemm_params[i].C = y_data + helper.OutputOffsets()[i];
     gemm_params[i].ldc = N;
   }
-  JblasQ4GemmBatch(compute_type_, blk_quant_type_, M, N, K, max_len, gemm_params.data(), thread_pool);
+  MlasJblasQ4GemmBatch(M, N, K, max_len, gemm_params.data(), thread_pool);
 
   return Status::OK();
 }

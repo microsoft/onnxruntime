@@ -2063,12 +2063,12 @@ no offset
                                   }
 
                                   y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
-                                 /* auto blk_quant_v = getAttribute(ctx, "blk_quant_type", 1);
-                                  auto compute_v = getAttribute(ctx, "compute_type", 1);*/
+                                  /* auto blk_quant_v = getAttribute(ctx, "blk_quant_type", 1);
+                                   auto compute_v = getAttribute(ctx, "compute_type", 1);*/
                                   /*MLAS_BLK_QUANT_TYPE blk_quant_type = BlkQ4SymPerN;
                                   BLK_QUANT_COMPUTE_TYPE compute_type = compute_v == 0 ? CompFp32 : CompInt8;*/
 
-                                  //matmulQ4ShapeInference(ctx, 0, 1, 2, blk_quant_type);
+                                  // matmulQ4ShapeInference(ctx, 0, 1, 2, blk_quant_type);
                                 }));
 #endif
 
