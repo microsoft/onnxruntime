@@ -225,11 +225,10 @@ def main(argv: List[str] = []):  # noqa: B006
         use_cache=True,
     ).to(args.device)
 
+    kv_cache_ortvalues = {}
     if not args.merged:
-        verify_parity(args, config, llama)
+        verify_parity(args, config, llama, kv_cache_ortvalues)
     else:
-        kv_cache_ortvalues = {}
-
         # Verify prompt generation in merged model (decoder_model.onnx)
         args.use_past_kv = False
         kv_cache_ortvalues = verify_parity(args, config, llama, kv_cache_ortvalues)
