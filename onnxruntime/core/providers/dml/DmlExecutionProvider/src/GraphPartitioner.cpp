@@ -557,6 +557,38 @@ namespace Dml
             }
         }
 
+        std::unordered_map<std::string, std::vector<GraphPartition*>> inputToPartition;
+        std::unordered_set<GraphPartition*> visitedPartitions;
+        for (auto& partition : partitions)
+        {
+            auto rootPartition = partition->GetRootMergedPartition();
+
+            // Skip finalized partitions
+            if (rootPartition->IsFinalized())
+            {
+                continue;
+            }
+
+            // Skip the root partitions that have already been visited
+            if (!visitedPartitions.insert(rootPartition).second)
+            {
+                continue;
+            }
+
+            for (const std::string& input : rootPartition->GetInputs())
+            {
+                inputToPartition[input].push_back(rootPartition);
+            }
+        }
+
+        for (auto& kvp : inputToPartition)
+        {
+            if (kvp.second.size() > 1)
+            {
+                kvp.second[0]->Merge(gsl::make_span(kvp.second.data() + 1, kvp.second.size() - 1));
+            }
+        }
+
         return partitions;
     }
 } // namespace Dml
