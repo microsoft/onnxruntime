@@ -31,7 +31,7 @@ Basic CPU build
 
 * Install [Python 3.x](http://python.org/).
 
-* Install [cmake-3.26](https://cmake.org/download/) or higher.
+* Install [cmake-3.27](https://cmake.org/download/) or higher.
 
   On Windows, please run
   ```bat
@@ -273,22 +273,19 @@ ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
 
 ### ARM
 
-There are a few options for building for ARM.
+There are a few options for building ONNX Runtime for ARM. 
+
+First, you may do it on a real ARM device, or on a x86_64 device with an emulator(like qemu), or on a x86_64 device with a docker container with an emulator(you can run an ARM container on a x86_64 PC). Then the build instructions are essentially the same as the instructions for Linux x86_64. However, it wouldn't work if your the CPU you are targeting is not 64-bit since the build process needs more than 2GB memory.  
 
 * [Cross compiling for ARM with simulation (Linux/Windows)](#cross-compiling-for-arm-with-simulation-linuxwindows) - **Recommended**;  Easy, slow, ARM64 only(no support for ARM32)
 * [Cross compiling on Linux](#cross-compiling-on-linux) - Difficult, fast
-* [Native compiling on Linux ARM device](#native-compiling-on-linux-arm-device) - Easy, slower
 * [Cross compiling on Windows](#cross-compiling-on-windows)
 
 #### Cross compiling for ARM with simulation (Linux/Windows)
 
 *EASY, SLOW, RECOMMENDED*
 
-This method relies on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device and avoids out-of-memory issues that may be encountered. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
-
-Here is [an example for Raspberrypi3 and Raspbian](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles/README.md#arm-32v7). Note: this does not work for Raspberrypi 1 or Zero, and if your operating system is different from what the dockerfile uses, it also may not work.
-
-The build process can take hours.
+This method relies on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts. The build process can take hours, and may run of memory if the target CPU is 32-bit.
 
 #### Cross compiling on Linux
 
@@ -335,13 +332,8 @@ This option is very fast and allows the package to be built in minutes, but is c
     * ABI: ARM has mutilple ABIs like eabi, eabihf...
 
     You can get all these information from the previous output, please be sure they are all correct.
-
-2. Get a pre-compiled protoc:
-
-   Get this from https://github.com/protocolbuffers/protobuf/releases/download/v3.18.1/protoc-3.18.1-linux-x86_64.zip and unzip after downloading.
-   The version must match the one onnxruntime is using in `cmake/external/protobuf`. Currently we are using 3.18.1.
    
-3. (Optional) Setup sysroot to enable python extension. *Skip if not using Python.*
+2. (Optional) Setup sysroot to enable python extension. *Skip if not using Python.*
 
     Dump the root file system of the target operating system to your build machine. We'll call that folder "sysroot" and use it for build onnxruntime python extension. Before doing that, you should install python3 dev package(which contains the C header files) and numpy python package on the target machine first.
 
@@ -442,7 +434,7 @@ This option is very fast and allows the package to be built in minutes, but is c
     docker export 5a796e98db05 -o manylinux2014_aarch64.tar
     ```
 
-4. Generate CMake toolchain file
+3. Generate CMake toolchain file
     Save the following content as tool.cmake
 
     ```cmake
@@ -459,12 +451,14 @@ This option is very fast and allows the package to be built in minutes, but is c
 
     If you don't have a sysroot, you can delete the last line.
 
+    Besides, you may also set CMAKE_SYSTEM_PROCESSOR. CMake's official document suggests when doing cross-compiling a CMAKE_TOOLCHAIN_FILE should set the CMAKE_SYSTEM_PROCESSOR variable to match target architecture that it specifies. But the document doesn't provide a list of valid values and we found this setting is not necessary. Anyway, if you know which value the variable should be set to, please add the setting there. ONNX Runtime's build scripts do not use this variable, but ONNX Runtime's dependencies may.
+
 5.  Run CMake and make
 
-    Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it. If you want to build Python package as well, you can use cmake args like:
+    Append `-Donnxruntime_ENABLE_CPUINFO=OFF -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it. If you want to build Python package as well, you can use cmake args like:
 
     ```bash
-    -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB=OFF -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake -Donnxruntime_ENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=/mnt/pi/usr/bin/python3 -Donnxruntime_BUILD_SHARED_LIB=OFF -Donnxruntime_DEV_MODE=OFF -DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc "-DPYTHON_INCLUDE_DIR=/mnt/pi/usr/include;/mnt/pi/usr/include/python3.7m" -DNUMPY_INCLUDE_DIR=/mnt/pi/folder/to/numpy/headers
+    -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB=OFF -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake -Donnxruntime_ENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=/mnt/pi/usr/bin/python3 -Donnxruntime_BUILD_SHARED_LIB=OFF -Donnxruntime_DEV_MODE=OFF "-DPYTHON_INCLUDE_DIR=/mnt/pi/usr/include;/mnt/pi/usr/include/python3.7m" -DNUMPY_INCLUDE_DIR=/mnt/pi/folder/to/numpy/headers
     ```
 
     After running cmake, run
@@ -489,61 +483,6 @@ This option is very fast and allows the package to be built in minutes, but is c
 
     This is not needed if you only want to target a specfic Linux distribution (i.e. Ubuntu).
 
-#### Native compiling on Linux ARM device
-
-*Easy, slower*
-
-Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total.
-
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-    sudo \
-    build-essential \
-    curl \
-    libcurl4-openssl-dev \
-    libssl-dev \
-    wget \
-    python3 \
-    python3-pip \
-    python3-dev \
-    git \
-    tar
-
-pip3 install --upgrade pip
-pip3 install --upgrade setuptools
-pip3 install --upgrade wheel
-pip3 install numpy
-
-# Build the latest cmake
-mkdir /code
-cd /code
-wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4.tar.gz
-tar zxf cmake-3.26.4.tar.gz
-
-cd /code/cmake-3.26.4
-./configure --system-curl
-make
-sudo make install
-
-# Prepare onnxruntime Repo
-cd /code
-git clone --recursive https://github.com/Microsoft/onnxruntime.git
-
-# Start the basic build
-cd /code/onnxruntime
-./build.sh --config MinSizeRel --update --build
-
-# Build Shared Library
-./build.sh --config MinSizeRel --build_shared_lib
-
-# Build Python Bindings and Wheel
-./build.sh --config MinSizeRel --enable_pybind --build_wheel
-
-# Build Output
-ls -l /code/onnxruntime/build/Linux/MinSizeRel/*.so
-ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
-```
 
 #### Cross compiling on Windows
 
