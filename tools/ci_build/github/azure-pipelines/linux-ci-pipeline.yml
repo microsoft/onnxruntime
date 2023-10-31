@@ -91,6 +91,7 @@ stages:
 
       - script: |
           set -e -x
+          # ARM64 build
           mkdir -p $(Build.BinariesDirectory)/gccbin
           tar -Jxf $(Build.BinariesDirectory)/gcc/arm-gnu-toolchain-13.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz --strip=1 -C $(Build.BinariesDirectory)/gccbin
           export PATH=$(Build.BinariesDirectory)/gccbin/bin:$PATH
@@ -99,6 +100,8 @@ stages:
           cmake $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm64_crosscompile_toolchain.cmake -G Ninja
           ninja
           rm -rf $(Build.BinariesDirectory)/aarch64build $(Build.BinariesDirectory)/gccbin
+          # ARM32 build
+          mkdir -p $(Build.BinariesDirectory)/gccbin
           tar -Jxf $(Build.BinariesDirectory)/gcc/arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz --strip=1 -C $(Build.BinariesDirectory)/gccbin
           ls $(Build.BinariesDirectory)/gccbin/bin
           mkdir $(Build.BinariesDirectory)/arm32build
