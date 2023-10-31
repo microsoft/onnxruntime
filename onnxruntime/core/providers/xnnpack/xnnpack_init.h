@@ -20,7 +20,7 @@ namespace xnnpack {
 
 #if defined(__wasm__) && !defined(__wasm_relaxed_simd__) && !defined(__wasm_simd128__)
 #define XNN_ARCH_WASM 1
-#ekse
+#else
 #define XNN_ARCH_WASM 0
 #endif
 
