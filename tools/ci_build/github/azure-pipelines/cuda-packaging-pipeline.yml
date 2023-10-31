@@ -58,7 +58,7 @@ parameters:
 - name: WindowsTensorRT
   displayName: Windows TensorRT version
   type: string
-  default: 'TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0'
+  default: '8.6.1.6.Windows10.x86_64.cuda-12.0'
 - name: LinuxTensorRT
   displayName: Linux TensorRT version
   type: string
@@ -192,7 +192,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="C:\local\${{ parameters.WindowsTensorRT }}" --cuda_version=${{ parameters.CudaVersion }} --cuda_home=$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-${{ parameters.WindowsTensorRT }} --cuda_version=${{ parameters.CudaVersion }} --cuda_home=$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
