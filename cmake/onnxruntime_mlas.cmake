@@ -48,7 +48,7 @@ set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 function(add_jblas)
     add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas) 
     target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
-    target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_JBLAS)
+    target_compile_definitions(onnxruntime_mlas PUBLIC MLAS_JBLAS)
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
 endfunction()
 

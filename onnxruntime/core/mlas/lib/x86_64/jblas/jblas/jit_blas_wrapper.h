@@ -16,7 +16,8 @@
 
 #include "jit_blas_epilogue.h"
 #include "jit_blas_gemm.h"
-#include "jit_blas_prologue.h"
+#include "jit_blas_prologue_a.h"
+#include "jit_blas_prologue_b.h"
 #include "jit_blas_utils.h"
 #include "kernel_avx512f.h"
 #include "kernel_jit.h"
@@ -24,11 +25,11 @@
 
 namespace jblas {
 namespace wrapper {
-namespace gemm_pack_weight {
+namespace gemm {
 
 template <JBLAS_ISA _RT_ISA_T, class _GemmCore_T, template <class _T, JBLAS_ISA> class _PrologueA_T,
           template <class _T, JBLAS_ISA> class _PrologueB_T, template <JBLAS_ISA> class _Epilogue_T>
-class GemmLauncherPackWeight {
+class LauncherBase {
  public:
   using GemmCore = _GemmCore_T;
   using PrologueA = _PrologueA_T<GemmCore, _RT_ISA_T>;
@@ -46,303 +47,217 @@ class GemmLauncherPackWeight {
     const AParam paramA;
     const BParam paramB;
     const EpiParam paramC;
-    void* workspace;
-  };
-  struct ParallelConfig {
-    const int rowidx, colidx;
-    const int rowsize, colsize;
-    const int MStep, NStep, KStep;
-    const size_t StackSize;
   };
   _GemmCore_T mGemmCore;
   PrologueA mProA;
   PrologueB mProB;
   Epilogue mEpilogue;
-  GemmLauncherPackWeight() {}
 
-  void launch(const ParallelConfig& _config, const Param& _param) {
-    int rowremain = utils::remainsize(_config.rowidx, _param.M, _config.rowsize);
-    int colremain = utils::remainsize(_config.colidx, _param.N, _config.colsize);
-    auto StackTmp = alloca(_config.StackSize);
+  void run(const Param& _param, const parallel::gemm::ThreadProblemBase& _config) {
+    auto StackTmp = alloca(_config.l2cachesize);
     auto tmpB = (BType*)(StackTmp);
-    auto tmpA = (AType*)(tmpB + (size_t)_config.NStep * _config.KStep);
-    auto tmpC = (CType*)(tmpA + (size_t)GemmCore::MTILE * _config.KStep);
-    for (int itern = 0; itern < colremain; itern += _config.NStep) {
-      int n_remain = utils::remainsize(itern, colremain, _config.NStep);
-      for (int iterm = 0; iterm < rowremain; iterm += _config.MStep) {
-        int m_remain = utils::remainsize(iterm, rowremain, _config.MStep);
-        run_block(_config, _param, iterm, itern, m_remain, n_remain, tmpA, tmpB, tmpC);
+    auto tmpA = (AType*)(tmpB + (size_t)_config.block[1] * _config.block[2]);
+    auto tmpC = (CType*)(tmpA + (size_t)GemmCore::MTILE * _config.block[2]);
+    auto tmpCache = (void*)(tmpC + (size_t)_config.block[0] * _config.block[1]);
+    for (int itern = 0; itern < _config.size[1]; itern += _config.block[1]) {
+      int n_remain = utils::remainsize(itern, _config.size[1], _config.block[1]);
+      for (int iterm = 0; iterm < _config.size[0]; iterm += _config.block[0]) {
+        int m_remain = utils::remainsize(iterm, _config.size[0], _config.block[0]);
+        run_block(_param, _config, iterm, itern, m_remain, n_remain, tmpA, tmpB, tmpC, tmpCache);
       }
     }
   }
 
  protected:
-  void run_block(const ParallelConfig& _config, const Param& _param, int blk_m, int blk_n, int blk_msize, int blk_nsize,
-                 AType* tmpA, BType* tmpB, CType* tmpC) {
+  void run_block(const Param& _param, const parallel::gemm::ThreadProblemBase& _config, int blk_m, int blk_n,
+                 int blk_msize, int blk_nsize, AType* tmpA, BType* tmpB, CType* tmpC, void* tmpcache) {
     int n_padded = utils::padto(blk_nsize, GemmCore::NTILE);
-    for (int iterk = 0; iterk < _param.K; iterk += _config.KStep) {
-      int k_remain = utils::remainsize(iterk, _param.K, _config.KStep);
+    for (int iterk = 0; iterk < _param.K; iterk += _config.block[2]) {
+      int k_remain = utils::remainsize(iterk, _param.K, _config.block[2]);
       int k_padded = utils::padto(k_remain, GemmCore::KTILE);
       int k_paddedle = utils::padto_le(k_remain, GemmCore::KTILE);
       auto bptr_cache = tmpB;
       int bcache_step = 0;
-      mProB.getWeight(&bptr_cache, &bcache_step, k_padded, n_padded, iterk, _config.colidx + blk_n, _param.paramB);
+      mProB.getWeight(&bptr_cache, &bcache_step, k_padded, n_padded, iterk, _config.loc[1] + blk_n, _param.paramB,
+                      tmpcache, _config.tmpcachesize);
       int bcache_stride = bcache_step * sizeof(BType);
       for (int i = 0; i < blk_msize; i += GemmCore::MTILE) {
         int m_remain = utils::remainsize(i, blk_msize, GemmCore::MTILE);
-        auto cptr_cache = tmpC + i * _config.NStep;
-        int ccache_stride = _config.NStep * sizeof(CType);
-
+        auto cptr_cache = tmpC + i * _config.block[1];
+        int ccache_stride = _config.block[1] * sizeof(CType);
         if (k_paddedle) {
           AType* aptr_cache = tmpA;
           int acache_step = 0;
           mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_paddedle,
-                              (blk_m + i + _config.rowidx), iterk);
+                              (blk_m + i + _config.loc[0]), iterk, tmpcache, _config.tmpcachesize);
           mGemmCore.forward(aptr_cache, bptr_cache, cptr_cache, m_remain, n_padded, k_paddedle,
-                            acache_step * sizeof(AType), bcache_stride, ccache_stride, iterk);
+                            acache_step * sizeof(AType), bcache_stride, ccache_stride, iterk, tmpcache,
+                            _config.tmpcachesize);
         }
         int k_tail = k_remain - k_paddedle;
         if (k_tail) {
           AType* aptr_cache = tmpA;
           int acache_step = 0;
-          mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_tail, (blk_m + i + _config.rowidx),
-                              iterk + k_paddedle);
+          mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_tail, (blk_m + i + _config.loc[0]),
+                              iterk + k_paddedle, tmpcache, _config.tmpcachesize);
           mGemmCore.forward(aptr_cache, bptr_cache + k_paddedle * GemmCore::NTILE, cptr_cache, m_remain, n_padded,
                             GemmCore::KTILE, acache_step * sizeof(AType), bcache_stride, ccache_stride,
-                            iterk + k_paddedle);
+                            iterk + k_paddedle, tmpcache, _config.tmpcachesize);
         }
       }
     }
-    mEpilogue.forward(tmpC, _config.NStep, (_config.rowidx + blk_m), _config.colidx + blk_n, blk_msize, blk_nsize,
-                      _param.paramC);
+    mEpilogue.forward(tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n, blk_msize, blk_nsize,
+                      _param.paramC, tmpcache, _config.tmpcachesize);
   }
 };
 
-template <class _Launcher_T, template <class _T> class _Parallel_T>
-class GemmInterfacePackWeight {
+template <JBLAS_ISA _RT_ISA_T, class _GemmCore_T, template <class _T, JBLAS_ISA> class _PrologueA_T,
+          template <class _T, JBLAS_ISA> class _PrologueB_T, template <JBLAS_ISA> class _BlockEpilogue_T,
+          template <JBLAS_ISA> class _Epilogue_T>
+class LauncherKBlock {
  public:
-  using Arguments = typename _Launcher_T::Param;
-  using Config = typename _Launcher_T::ParallelConfig;
-  using ActivationType = typename _Launcher_T::PrologueA;
-  using WeightType = typename _Launcher_T::PrologueB;
-  using Epilogue = typename _Launcher_T::Epilogue;
-  using GemmCore = typename _Launcher_T::GemmCore;
-  using Parallel = _Parallel_T<GemmCore>;
+  using GemmCore = _GemmCore_T;
+  using PrologueA = _PrologueA_T<GemmCore, _RT_ISA_T>;
+  using PrologueB = _PrologueB_T<GemmCore, _RT_ISA_T>;
+  using Epilogue = _Epilogue_T<_RT_ISA_T>;
+  using BlockEpilogue = _BlockEpilogue_T<_RT_ISA_T>;
+  using AType = typename GemmCore::AType;
+  using AParam = typename PrologueA::Param;
+  using BType = typename GemmCore::BType;
+  using BParam = typename PrologueB::Param;
+  using CType = typename GemmCore::CType;
+  using BEpiParam = typename BlockEpilogue::Param;
+  using EpiParam = typename Epilogue::Param;
+  using AccType = float;
+  static_assert(GemmCore::ISA <= _RT_ISA_T, "RunTime ISA should cover GEMM's ISA");
+  struct Param {
+    const int M, N, K, KBlock;
+    const AParam paramA;
+    const BParam paramB;
+    const BEpiParam paramBlk;
+    const EpiParam paramC;
+  };
+  _GemmCore_T mGemmCore;
+  PrologueA mProA;
+  PrologueB mProB;
+  BlockEpilogue mBlockEpi;
+  Epilogue mEpilogue;
 
-  GemmInterfacePackWeight() {}
-
-  WeightType* getWeightPtr() { return &mLauncher.mProB; }
-
-  JBLAS_CODE compute(const Arguments& _param) {
-    auto cb = utils::CpuBase();
-    auto para = Parallel();
-    para.update(_param.M, _param.N, _param.K, cb.mNumThreads);
-    omp_set_num_threads(cb.mNumThreads);
-#pragma omp parallel
-    {
-      int tidx = omp_get_thread_num();
-      int colidx, rowidx, rowsize, colsize;
-      para.getIndex(tidx, &rowidx, &colidx, &rowsize, &colsize);
-      if (rowsize > 0 && colsize > 0) {
-        Config _config{rowidx,          colidx,          rowsize,         colsize,
-                       para.getMStep(), para.getNStep(), para.getKStep(), cb.mL2Cache};
-        mLauncher.launch(_config, _param);
+  void run(const Param& _param, const parallel::gemm::ThreadProblemBase& _config) {
+    auto StackTmp = alloca(_config.l2cachesize);
+    auto tmpB = (BType*)(StackTmp);
+    auto tmpA = (AType*)(tmpB + (size_t)_config.block[1] * _config.block[2]);
+    auto tmpC = (AccType*)(tmpA + (size_t)GemmCore::MTILE * _config.block[2]);
+    auto tmpBlk = (CType*)(tmpC + (size_t)_config.block[0] * _config.block[1]);
+    auto tmpCache = (void*)(tmpBlk + (size_t)_config.block[0] * _config.block[1]);
+    for (int itern = 0; itern < _config.size[1]; itern += _config.block[1]) {
+      int n_remain = utils::remainsize(itern, _config.size[1], _config.block[1]);
+      for (int iterm = 0; iterm < _config.size[0]; iterm += _config.block[0]) {
+        int m_remain = utils::remainsize(iterm, _config.size[0], _config.block[0]);
+        std::memset(tmpC, 0, _config.block[0] * _config.block[1] * sizeof(AccType));
+        if (_param.KBlock <= _config.block[2]) {
+          run_block(_param, _config, iterm, itern, m_remain, n_remain, tmpA, tmpB, tmpBlk, tmpC, tmpCache);
+        } else {
+          run_block_large(_param, _config, iterm, itern, m_remain, n_remain, tmpA, tmpB, tmpBlk, tmpC, tmpCache);
+        }
       }
     }
-    return JblasSuccess;
   }
 
  protected:
-  _Launcher_T mLauncher;
-};
-
-template <class _Launcher_T, template <class _T> class _Parallel_T>
-class GemmInterfaceParallelAB {
- public:
-  using Arguments = typename _Launcher_T::Param;
-  using Config = typename _Launcher_T::ParallelConfig;
-  using ActivationType = typename _Launcher_T::PrologueA;
-  using WeightType = typename _Launcher_T::PrologueB;
-  using Epilogue = typename _Launcher_T::Epilogue;
-  using GemmCore = typename _Launcher_T::GemmCore;
-  using Parallel = _Parallel_T<GemmCore>;
-
-  ActivationType* getActivationPtr() { return &mLauncher.mProA; }
-
-  WeightType* getWeightPtr() { return &mLauncher.mProB; }
-
-  template <bool _LaunchA, bool _LaunchB>
-  JBLAS_CODE compute(const Arguments& _param) {
-    auto cb = utils::CpuBase();
-    auto para = Parallel();
-    para.update(_param.M, _param.N, _param.K, cb.mNumThreads);
-    auto paraA = getActivationPtr()->createParallel(_param.M, _param.K);
-    auto paraB = getWeightPtr()->createParallel(_param.K, _param.N);
-    omp_set_num_threads(cb.mNumThreads);
-#pragma omp parallel
-    {
-      int tidx = omp_get_thread_num();
-      if constexpr (_LaunchA) {
-        getActivationPtr()->launch(_param.paramA, tidx, paraA);
+  void run_block(const Param& _param, const parallel::gemm::ThreadProblemBase& _config, int blk_m, int blk_n,
+                 int blk_msize, int blk_nsize, AType* tmpA, BType* tmpB, CType* tmpBlk, AccType* tmpC, void* tmpcache) {
+    int n_padded = utils::padto(blk_nsize, GemmCore::NTILE);
+    assert(_config.block[2] == _param.KBlock);
+    for (int iterk = 0; iterk < _param.K; iterk += _config.block[2]) {
+      int k_remain = utils::remainsize(iterk, _param.K, _config.block[2]);
+      int k_padded = utils::padto(k_remain, GemmCore::KTILE);
+      int k_paddedle = utils::padto_le(k_remain, GemmCore::KTILE);
+      auto bptr_cache = tmpB;
+      int bcache_step = 0;
+      mProB.getKBlockWeight(&bptr_cache, &bcache_step, k_padded, n_padded, iterk, _config.loc[1] + blk_n, _param.paramB,
+                            tmpcache, _config.tmpcachesize);
+      int bcache_stride = bcache_step * sizeof(BType);
+      for (int i = 0; i < blk_msize; i += GemmCore::MTILE) {
+        int m_remain = utils::remainsize(i, blk_msize, GemmCore::MTILE);
+        auto cptr_cache = tmpBlk + i * _config.block[1];
+        int ccache_stride = _config.block[1] * sizeof(CType);
+        if (k_paddedle) {
+          AType* aptr_cache = tmpA;
+          int acache_step = 0;
+          mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_paddedle,
+                              (blk_m + i + _config.loc[0]), iterk, tmpcache, _config.tmpcachesize);
+          mGemmCore.forward(aptr_cache, bptr_cache, cptr_cache, m_remain, n_padded, k_paddedle,
+                            acache_step * sizeof(AType), bcache_stride, ccache_stride, 0, tmpcache,
+                            _config.tmpcachesize);
+        }
+        int k_tail = k_remain - k_paddedle;
+        if (k_tail) {
+          AType* aptr_cache = tmpA;
+          int acache_step = 0;
+          mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_tail, (blk_m + i + _config.loc[0]),
+                              iterk + k_paddedle, tmpcache, _config.tmpcachesize);
+          mGemmCore.forward(aptr_cache, bptr_cache + k_paddedle * GemmCore::NTILE, cptr_cache, m_remain, n_padded,
+                            k_tail, acache_step * sizeof(AType), bcache_stride, ccache_stride, 0 + k_paddedle, tmpcache,
+                            _config.tmpcachesize);
+        }
       }
-      if constexpr (_LaunchB) {
-        getWeightPtr()->launch(_param.paramB, tidx, paraB);
-      }
-      if constexpr (_LaunchA || _LaunchB) {
-#pragma omp barrier
-        (void)(0);  // make msvc happy with c++20
-      }
-      int colidx, rowidx, rowsize, colsize;
-      para.getIndex(tidx, &rowidx, &colidx, &rowsize, &colsize);
-      if (rowsize > 0 && colsize > 0) {
-        Config _config{rowidx,          colidx,          rowsize,         colsize,
-                       para.getMStep(), para.getNStep(), para.getKStep(), cb.mL2Cache};
-        mLauncher.launch(_config, _param);
-      }
+      mBlockEpi.forward(tmpBlk, tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n,
+                        iterk / _param.KBlock, blk_msize, blk_nsize, _param.paramBlk, tmpcache, _config.tmpcachesize);
     }
-    return JblasSuccess;
+    auto cachewithblk = _config.tmpcachesize + (size_t)_config.block[0] * _config.block[1] * sizeof(CType);
+    mEpilogue.forward(tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n, blk_msize, blk_nsize,
+                      _param.paramC, tmpBlk, cachewithblk);
   }
 
- protected:
-  _Launcher_T mLauncher;
+  void run_block_large(const Param& _param, const parallel::gemm::ThreadProblemBase& _config, int blk_m, int blk_n,
+                       int blk_msize, int blk_nsize, AType* tmpA, BType* tmpB, CType* tmpBlk, AccType* tmpC,
+                       void* tmpcache) {
+    int n_padded = utils::padto(blk_nsize, GemmCore::NTILE);
+    for (int iterk = 0; iterk < _param.K; iterk += _param.KBlock) {
+      for (int iblkk = 0; iblkk < _param.KBlock; iblkk += _config.block[2]) {
+        int k_remain = utils::remainsize(iterk + iblkk, _param.K, _config.block[2]);
+        int k_padded = utils::padto(k_remain, GemmCore::KTILE);
+        int k_paddedle = utils::padto_le(k_remain, GemmCore::KTILE);
+        auto bptr_cache = tmpB;
+        int bcache_step = 0;
+        mProB.getKBlockWeight(&bptr_cache, &bcache_step, k_padded, n_padded, iterk + iblkk, _config.loc[1] + blk_n,
+                              _param.paramB, tmpcache, _config.tmpcachesize);
+        int bcache_stride = bcache_step * sizeof(BType);
+        for (int i = 0; i < blk_msize; i += GemmCore::MTILE) {
+          int m_remain = utils::remainsize(i, blk_msize, GemmCore::MTILE);
+          auto cptr_cache = tmpBlk + i * _config.block[1];
+          int ccache_stride = _config.block[1] * sizeof(CType);
+          if (k_paddedle) {
+            AType* aptr_cache = tmpA;
+            int acache_step = 0;
+            mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_paddedle,
+                                (blk_m + i + _config.loc[0]), iterk + iblkk, tmpcache, _config.tmpcachesize);
+            mGemmCore.forward(aptr_cache, bptr_cache, cptr_cache, m_remain, n_padded, k_paddedle,
+                              acache_step * sizeof(AType), bcache_stride, ccache_stride, iblkk, tmpcache,
+                              _config.tmpcachesize);
+          }
+          int k_tail = k_remain - k_paddedle;
+          if (k_tail) {
+            AType* aptr_cache = tmpA;
+            int acache_step = 0;
+            mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_tail,
+                                (blk_m + i + _config.loc[0]), iterk + k_paddedle + iblkk, tmpcache,
+                                _config.tmpcachesize);
+            mGemmCore.forward(aptr_cache, bptr_cache + k_paddedle * GemmCore::NTILE, cptr_cache, m_remain, n_padded,
+                              k_tail, acache_step * sizeof(AType), bcache_stride, ccache_stride, iblkk + k_paddedle,
+                              tmpcache, _config.tmpcachesize);
+          }
+        }
+      }
+      mBlockEpi.forward(tmpBlk, tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n,
+                        iterk / _param.KBlock, blk_msize, blk_nsize, _param.paramBlk, tmpcache, _config.tmpcachesize);
+    }
+    auto cachewithblk = _config.tmpcachesize + (size_t)_config.block[0] * _config.block[1] * sizeof(CType);
+    mEpilogue.forward(tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n, blk_msize, blk_nsize,
+                      _param.paramC, tmpBlk, cachewithblk);
+  }
 };
-}  // namespace gemm_pack_weight
-namespace gemm_default {
-template <class T>
-using DefaultParallel = jblas::utils::parallel::Parallel2DGemm<T>;
-namespace avx2 {
-JBLAS_ISA constexpr DefaultISA = JblasAVX2;
-using GemmKernel = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_4x24_AVX2,             //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::AccumulatorWriteBackFp32>,
-    DefaultParallel>;
-}
-namespace avx_vnni {
-JBLAS_ISA constexpr DefaultISA = JblasAVX_VNNI;
-using GemmKernel48 = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_2x48_AVX_VNNI,         //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::AlphaBetaProcessS32U8>,
-    DefaultParallel>;
-}
-namespace avx512f {
-JBLAS_ISA constexpr DefaultISA = JblasAVX512F;
-using GemmKernel = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_8x48_AVX512F,             //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::AlphaBetaProcessFp32>,
-    DefaultParallel>;
-}  // namespace avx512f
-namespace avx512_vnni {
-JBLAS_ISA constexpr DefaultISA = JblasAVX512_VNNI;
-using GemmKernel = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_8x48_AVX512_VNNI,         //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::AlphaBetaProcessS32U8>,
-    DefaultParallel>;
-
-using GemmKernelDynamicU8 = jblas::wrapper::gemm_pack_weight::GemmInterfaceParallelAB<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_8x48_AVX512_VNNI,         //
-        jblas::prologue::gemm::ActivationFp32AsymU8Quantize,   //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::ZpDequantInt32ToFp32>,
-    DefaultParallel>;
-}  // namespace avx512_vnni
-
-namespace amx_bf16 {
-JBLAS_ISA constexpr DefaultISA = JblasAMX_BF16;
-using GemmKernelPackedWeightNN = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_16x64_AMX_BF16,           //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::AccumulatorWriteBackFp32Bf16>,
-    DefaultParallel>;
-using GemmKernelPackedWeightNN_48 = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_16x48_AMX_BF16,           //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::AccumulatorWriteBackFp32Bf16>,
-    DefaultParallel>;
-}  // namespace amx_bf16
-
-namespace amx_int8 {
-JBLAS_ISA constexpr DefaultISA = JblasAMX_INT8;
-
-using GemmKernel48 = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_16x48_AMX_U8S8,           //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::AlphaBetaProcessS32U8>,
-    DefaultParallel>;
-
-using GemmKernel = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_16x64_AMX_U8S8,           //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::AlphaBetaProcessS32U8>,
-    DefaultParallel>;
-
-using GemmKernelSSFp32 = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_16x48_AMX_S8S8,           //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::DequantInt32ToFp32>,
-    DefaultParallel>;
-
-using GemmKernelDynamicQuant = jblas::wrapper::gemm_pack_weight::GemmInterfaceParallelAB<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_16x48_AMX_S8S8,           //
-        jblas::prologue::gemm::ActivationFp32SymS8Quantize,    //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::DequantInt32ToFp32>,
-    DefaultParallel>;
-}  // namespace amx_int8
-
-namespace avx512_fp16 {
-JBLAS_ISA constexpr DefaultISA = JblasAVX512_FP16;
-using GemmKernel = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_8x64_AVX512_FP16,         //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::AccumulatorWriteBackFp16>,
-    DefaultParallel>;
-using GemmKernel_96 = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<  //
-        DefaultISA,                                            //
-        jblas::gemm::GemmCore_Row_NN_8x96_AVX512_FP16,         //
-        jblas::prologue::gemm::ActivationBase,                 //
-        jblas::prologue::gemm::WeightPack,                     //
-        jblas::epilogue::gemm::AccumulatorWriteBackFp16>,
-    DefaultParallel>;
-}  // namespace avx512_fp16
-}  // namespace gemm_default
+}  // namespace gemm
 }  // namespace wrapper
 }  // namespace jblas

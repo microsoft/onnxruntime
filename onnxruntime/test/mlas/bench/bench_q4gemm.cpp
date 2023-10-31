@@ -52,6 +52,48 @@ void Q4GEMM(benchmark::State& state, MLAS_BLK_QUANT_TYPE qtype) {
   }
 }
 
+void Q4GEMM_Jblas(benchmark::State& state, size_t block_size, bool is_asym, MLAS_COMPUTE_TYPE cmp_type) {
+  if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
+  if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
+  if (state.range(2) <= 0) throw std::invalid_argument("K must greater than 0!");
+  if (state.range(3) <= 0) throw std::invalid_argument("Threads must greater than 0!");
+
+  const size_t M = static_cast<size_t>(state.range(0));
+  const size_t N = static_cast<size_t>(state.range(1));
+  const size_t K = static_cast<size_t>(state.range(2));
+  const size_t threads = static_cast<size_t>(state.range(3));
+  const size_t pack_b_size = MlasJblasQ4GemmPackBSize(N, K, block_size, is_asym, cmp_type);
+
+  OrtThreadPoolParams tpo;
+  tpo.thread_pool_size = int(threads);
+  tpo.auto_set_affinity = true;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
+      onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+
+  auto A1 = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
+  auto B1 = RandomVectorUniform(static_cast<size_t>(N * K), -1.0f, 1.0f);
+  std::vector<float> C1(static_cast<size_t>(M * N));
+
+  std::vector<int8_t> B1_packed(pack_b_size);
+  MlasJblasQ4GemmPackB(B1_packed.data(), B1.data(), N, K, N, block_size, is_asym, cmp_type, tp.get());
+
+  MLAS_Q4_GEMM_DATA_PARAMS params1;
+  params1.A = A1.data();
+  params1.lda = K;
+  params1.Bias = nullptr;
+  params1.C = C1.data();
+  params1.ldc = N;
+  params1.B = B1_packed.data();
+  params1.OutputProcessor = nullptr;
+
+  MlasJblasQ4GemmBatch(M, N, K, 1, &params1, tp.get());
+
+  for (auto _ : state) {
+    MlasJblasQ4GemmBatch(M, N, K, 1, &params1, tp.get());
+  }
+}
+
 void Q8Q4GEMM(benchmark::State& state, MLAS_BLK_QUANT_TYPE qtype) {
   if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
   if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
@@ -112,7 +154,7 @@ static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
   ArgsProduct(b, {{1, 1024, 2048}, {4096}, {4096}, {8}});
 }
 
-BENCHMARK_CAPTURE(Q4GEMM, Q4SymPerN, BlkQ4SymPerN)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G32SymFp32, 32, false, CompFp32)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(Q4GEMM, Q4Sym, BlkQ4Sym)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(Q4GEMM, Q4Zp8, BlkQ4Zp8)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(Q4GEMM, Q4Sym128, BlkQ4Sym)->Apply(GemmSizeProducts)->UseRealTime();

@@ -16,7 +16,6 @@
 
 #include <cstddef>
 #include <type_traits>
-
 #include "xbyak/xbyak.h"
 #include "xbyak/xbyak_util.h"
 

@@ -31,7 +31,7 @@ namespace avx2 {
 static uint8_t shuffle_map[] = {0x00, 0x01, 0x02, 0x03, 0xff, 0xff, 0xff, 0xff,
                                 0x04, 0x05, 0x06, 0x07, 0xff, 0xff, 0xff, 0xff};
 
-template <JBLAS_SIGN_INT_TYPE S4_T>
+template <JBLAS_DTYPE S4_T>
 static inline __m128i unpack_4bits_sse(void* srcptr) {
   auto shuffle_v = _mm_loadu_si128((__m128i*)shuffle_map);
   auto raw_data = _mm_loadl_epi64((__m128i*)srcptr);
@@ -43,13 +43,58 @@ static inline __m128i unpack_4bits_sse(void* srcptr) {
   auto xmm2 = _mm_unpacklo_epi8(xmm0, xmm1);
   auto xmm3 = _mm_unpackhi_epi8(xmm0, xmm1);
   xmm2 = _mm_unpacklo_epi64(xmm2, xmm3);
-  if constexpr (S4_T != S4_FULLRANGE) xmm2 = _mm_slli_epi32(xmm2, 4);
+  if constexpr (S4_T != JBLAS_DTYPE::S4_FULLRANGE) xmm2 = _mm_slli_epi32(xmm2, 4);
   return xmm2;
 }
 
-template <JBLAS_SIGN_INT_TYPE S4_T>
+inline __m256 ymm_cvt_bf16_fp32(__m128i vbf16) {
+  auto vf32 = _mm256_cvtepu16_epi32(vbf16);
+  return _mm256_castsi256_ps(_mm256_slli_epi32(vf32, 16));
+}
+
+inline __m128i ymm_cvtepi32_epi16(__m256i src) {
+  __m128i tmp;
+#ifdef __GNUC__
+  for (size_t i = 0; i < 8; i++) {
+    ((int16_t*)(&tmp))[i] = ((int32_t*)(&src))[i];
+  }
+#else
+  for (size_t i = 0; i < 8; i++) {
+    tmp.m128i_i16[i] = src.m256i_i32[i];
+  }
+#endif
+  return tmp;
+}
+
+inline __m128i ymm_cvt_fp32_bf16(__m256 vfp32) {
+  return ymm_cvtepi32_epi16(_mm256_bsrli_epi128(_mm256_castps_si256(vfp32), 2));
+}
+
+template <JBLAS_DTYPE S4_T>
 static inline void convert_s4_s8_16_sse(int8_t* dstptr, int8_t* srcptr) {
   auto dst0 = unpack_4bits_sse<S4_T>(srcptr);
+  if constexpr (S4_T == JBLAS_DTYPE::S4_FULLRANGE) {
+    auto s8 = _mm_set1_epi8(8);
+    dst0 = _mm_sub_epi8(dst0, s8);
+  }
+  _mm_storeu_si128((__m128i*)dstptr, dst0);
+}
+
+template <typename T>
+static inline void convert_s8_fp_v8(T* dstptr, int8_t* srcptr) {
+  auto xmm = _mm_loadu_si64(srcptr);
+  auto ymm = _mm256_cvtepi8_epi32(xmm);
+  auto ymm1 = _mm256_cvtepi32_ps(ymm);
+  if constexpr (std::is_same_v<T, utils::bf16>) {
+    auto xmm = ymm_cvt_fp32_bf16(ymm1);
+    _mm_storeu_si128((__m128i*)dstptr, xmm);
+  } else {
+    _mm256_storeu_ps(dstptr, ymm1);
+  }
+}
+
+static inline void fp4_pad_4bit(int8_t* dstptr, int8_t* srcptr) {
+  auto dst0 = unpack_4bits_sse<JBLAS_DTYPE::S4_FULLRANGE>(srcptr);
   _mm_storeu_si128((__m128i*)dstptr, dst0);
 }
 
@@ -141,9 +186,120 @@ static inline JBLAS_CODE dequant_kblock_s8_f32(int8_t* srcptr, float* dstptr, in
                                            kblock, NPad);
 }
 
-constexpr void (*pad_fp4)(int8_t* dstptr, int8_t* srcptr) = &convert_s4_s8_16_sse<S4_FULLRANGE>;
+template <typename SCAB_T>
+static inline JBLAS_CODE dequant_s32_fp32(const int32_t* srcptr, const int srcstep, float* dstptr, const int dststep,
+                                          const int row, const int col, const float* scaleA, const int ldsa,
+                                          const SCAB_T* scaleB) {
+  int col8 = utils::padto_le(col, 8);
+  for (int irow = 0; irow < row; irow++) {
+    auto scale = scaleA[irow * ldsa];
+    auto valpha = _mm256_set1_ps(scale);
+    int icol = 0;
+    for (; icol < col8; icol += 8) {
+      __m256 vwscale;
+      if constexpr (std::is_same_v<SCAB_T, float>) {
+        vwscale = _mm256_loadu_ps(scaleB + icol);
+      } else if constexpr (std::is_same_v<SCAB_T, utils::bf16>) {
+        auto tmp = _mm_loadu_si128((__m128i*)(scaleB + icol));
+        vwscale = ymm_cvt_bf16_fp32(tmp);
+      }
+      auto vscale = _mm256_mul_ps(valpha, vwscale);
+      auto vsrcd = _mm256_loadu_si256((__m256i*)(srcptr + irow * srcstep + icol));
+      auto vsrc = _mm256_cvtepi32_ps(vsrcd);
+      vsrc = _mm256_mul_ps(vsrc, vscale);
+      _mm256_storeu_ps(dstptr + irow * dststep + icol, vsrc);
+    }
+    for (; icol < col; icol += 1) {
+      dstptr[irow * dststep + icol] = scale * scaleB[icol] * srcptr[irow * srcstep + icol];
+    }
+  }
+  return JblasSuccess;
+}
 
-template <JBLAS_SIGN_INT_TYPE S4_T>
+static inline JBLAS_CODE remove_act_zeropoint_bias(float* accptr, int ldacc, int row, int col, uint8_t* zps,
+                                                   float* scales, int lds, const float* reduce) {
+  int constexpr VLen = 8;
+  auto col8 = utils::padto_le(col, VLen);
+  for (int i = 0; i < row; i++) {
+    auto zpf = float(zps[i * lds]) * scales[i * lds];
+    int j = 0;
+    auto vzp = _mm256_set1_ps(-zpf);
+    for (; j < col8; j += VLen) {
+      auto vreduce = _mm256_loadu_ps(reduce + j);
+      auto vacc = _mm256_loadu_ps(&accptr[i * ldacc + j]);
+      vacc = _mm256_fmadd_ps(vzp, vreduce, vacc);
+      _mm256_storeu_ps(&accptr[i * ldacc + j], vacc);
+    }
+    if (j < col) {
+      for (; j < col; j++) {
+        accptr[i * ldacc + j] -= zpf * reduce[j];
+      }
+    }
+  }
+  return JblasSuccess;
+}
+
+static inline JBLAS_CODE remove_wei_zeropoint_bias(float* accptr, int ldacc, int row, int col, int8_t* zps,
+                                                   float* scales, int lds, const float* reduce) {
+  int constexpr VLen = 8;
+  auto col8 = utils::padto_le(col, VLen);
+  const int32_t mask[] = {-1, -1, 0, 0};
+  for (int i = 0; i < row; i++) {
+    auto vreduce = _mm256_set1_ps(-reduce[i * lds]);
+    int j = 0;
+    for (; j < col8; j += VLen) {
+      auto vzp_s32 = _mm256_cvtepi8_epi32(_mm_maskload_epi32((const int*)(zps + j), _mm_loadu_si128((__m128i*)mask)));
+      auto vzp_f32 = _mm256_cvtepi32_ps(vzp_s32);
+      auto vzp = _mm256_mul_ps(vzp_f32, _mm256_loadu_ps(scales + j));
+      auto vacc = _mm256_loadu_ps(&accptr[i * ldacc + j]);
+      vacc = _mm256_fmadd_ps(vzp, vreduce, vacc);
+      _mm256_storeu_ps(&accptr[i * ldacc + j], vacc);
+    }
+    if (j < col) {
+      for (; j < col8; j++) {
+        accptr[i * ldacc + j] -= float(zps[j]) * scales[j] * reduce[i * lds];
+      }
+    }
+  }
+  return JblasSuccess;
+}
+
+static inline JBLAS_CODE remove_zeropoint_bias(float* accptr, int ldacc, int row, int col, uint8_t* zpa, int8_t* zpb,
+                                               float* scalea, float* scaleb, int lds, int k, const float* reducea,
+                                               const float* reduceb) {
+  int constexpr VLen = 8;
+  auto col8 = utils::padto_le(col, VLen);
+  auto vk = _mm256_set1_ps((float)(k));
+  const int32_t mask[] = {-1, -1, 0, 0};
+  for (int i = 0; i < row; i++) {
+    auto vreducea = _mm256_set1_ps(-reducea[i * lds]);
+    auto zpaf = float(zpa[i * lds]) * scalea[i * lds];
+    auto vzpa = _mm256_set1_ps(-zpaf);
+    int j = 0;
+    for (; j < col8; j += VLen) {
+      auto vzp_s32 = _mm256_cvtepi8_epi32(_mm_maskload_epi32((const int*)(zpb + j), _mm_loadu_si128((__m128i*)mask)));
+      auto vzp_f32 = _mm256_cvtepi32_ps(vzp_s32);
+      auto vzpb = _mm256_mul_ps(vzp_f32, _mm256_loadu_ps(scaleb + j));
+      auto vreduceb = _mm256_loadu_ps(reduceb + j);
+      auto vacc = _mm256_loadu_ps(&accptr[i * ldacc + j]);
+      vacc = _mm256_fmadd_ps(vzpa, vreduceb, vacc);
+      vacc = _mm256_fmadd_ps(vzpb, vreducea, vacc);
+      vzpb = _mm256_mul_ps(vzpb, vk);
+      vacc = _mm256_fmadd_ps(vzpa, vzpb, vacc);
+      _mm256_storeu_ps(&accptr[i * ldacc + j], vacc);
+    }
+    if (j < col) {
+      for (; j < col8; j++) {
+        accptr[i * ldacc + j] -= float(zpb[j]) * scaleb[j] * reducea[i * lds];
+        accptr[i * ldacc + j] -= zpaf * reduceb[j];
+        accptr[i * ldacc + j] -= zpaf * float(zpb[j]) * scaleb[j] * k;
+      }
+    }
+  }
+  return JblasSuccess;
+}
+
+template <JBLAS_DTYPE S4_T>
 static inline JBLAS_CODE decompress_s4_s8(utils::int4x2* srcptr, int8_t* dstptr, int row, int col, int ld_src,
                                           int ld_dst) {
   uint32_t mask = 0xf0f0f0f0;
@@ -166,16 +322,94 @@ static inline JBLAS_CODE decompress_s4_s8(utils::int4x2* srcptr, int8_t* dstptr,
   return JblasNotSupport;
 }
 
-template <int N, typename _DST_T, JBLAS_F4_TYPE F4_T>
+template <JBLAS_DTYPE S4_T, typename _DST_T>
+inline JBLAS_CODE decompress_kblock_s4_s8fp(utils::int4x2* srcptr, _DST_T* dstptr, int row, int col, int ld_src,
+                                            int ld_dst, int8_t* tmp, size_t tmpsize) {
+  uint32_t mask = 0xf0f0f0f0;
+  auto vmask = _mm256_set1_epi32(*(int*)&mask);
+  if (col == ld_src) {
+    size_t elesize = (size_t)row * col;
+    size_t ele16 = utils::padto_le(elesize, 16);
+    size_t i = 0;
+    assert(tmpsize >= 16);
+#pragma unroll
+    for (; i < ele16; i += 16) {
+      convert_s4_s8_16_sse<S4_T>(tmp, (int8_t*)(srcptr + i / 2));
+      convert_s8_fp_v8(dstptr + i, tmp);
+      convert_s8_fp_v8(dstptr + i + 8, tmp + 8);
+    }
+    for (; i < elesize; i += 2) {
+      auto tmp = srcptr[i / 2];
+      dstptr[i + 0] = static_cast<_DST_T>(float(ref::get_s8<S4_T>(tmp.x)));
+      dstptr[i + 1] = static_cast<_DST_T>(float(ref::get_s8<S4_T>(tmp.y)));
+    }
+    return JblasSuccess;
+  }
+  return JblasSuccess;
+}
+
+template <typename DST_T>
+inline JBLAS_CODE decompress_kblock_s8_s8fp(int8_t* srcptr, DST_T* dstptr, int row, int col, int ld_src, int ld_dst) {
+  if (col == ld_src) {
+    size_t elesize = (size_t)row * col;
+    size_t ele64 = utils::padto_le(elesize, 64);
+    size_t i = 0;
+    if (i + 64 <= ele64) {
+      for (; i < ele64; i += 64) {
+        for (size_t j = 0; j < 64; j += 8) {
+          convert_s8_fp_v8(dstptr + i + j, srcptr + i + j);
+        }
+      }
+    }
+    for (; i < elesize; i += 1) {
+      auto tmp = srcptr[i];
+      dstptr[i] = static_cast<DST_T>(float(tmp));
+    }
+    return JblasSuccess;
+  }
+  return JblasNotSupport;
+}
+
+template <typename SCA_T>
+static inline JBLAS_CODE accum_alphaN_f32_f32(const SCA_T* alpha, const float* srcptr, const int srcstep, float* dstptr,
+                                              const int dststep, const int M, const int N) {
+  int constexpr Vlen = 8;
+  auto vN = utils::padto_le(N, Vlen);
+  int j = 0;
+  for (; j < vN; j += Vlen) {
+    __m256 valpha;
+    if constexpr (std::is_same_v<SCA_T, float>) {
+      valpha = _mm256_loadu_ps(alpha + j);
+    } else if constexpr (std::is_same_v<SCA_T, utils::bf16>) {
+      auto tmp = _mm_loadu_si128((const __m128i*)(alpha + j));
+      valpha = ymm_cvt_bf16_fp32(tmp);
+    }
+    for (size_t i = 0; i < M; i++) {
+      auto vsrc = _mm256_loadu_ps(srcptr + i * srcstep + j);
+      auto vsrc1 = _mm256_loadu_ps(dstptr + i * dststep + j);
+      auto vdst = _mm256_fmadd_ps(valpha, vsrc, vsrc1);
+      _mm256_storeu_ps(dstptr + i * dststep + j, vdst);
+    }
+  }
+  for (; j < N; j += 1) {
+    for (size_t i = 0; i < M; i++) {
+      dstptr[i * dststep + j] += alpha[j] * srcptr[i * srcstep + j];
+    }
+  }
+  return JblasSuccess;
+}
+
+template <int N, typename _DST_T, JBLAS_DTYPE F4_T>
 static inline void dequant_f4_N(_DST_T* dstptr, int8_t* srcptr, __m256* vscales) {
   static_assert(N % 8 == 0);
   float* LUT;
-  static_assert(F4_T == FP4_BNB || F4_T == NF4 || F4_T == FP4_E2M1, "Unsupported F4 type");
-  if constexpr (F4_T == FP4_BNB) {
+  static_assert(F4_T == JBLAS_DTYPE::F4_BNB || F4_T == JBLAS_DTYPE::F4_NF4 || F4_T == JBLAS_DTYPE::F4_E2M1,
+                "Unsupported F4 type");
+  if constexpr (F4_T == JBLAS_DTYPE::F4_BNB) {
     LUT = fp4_bnb_dequant_fp32_LUT;
-  } else if constexpr (F4_T == NF4) {
+  } else if constexpr (F4_T == JBLAS_DTYPE::F4_NF4) {
     LUT = nf4_dequant_fp32_LUT;
-  } else if constexpr (F4_T == FP4_E2M1) {
+  } else if constexpr (F4_T == JBLAS_DTYPE::F4_E2M1) {
     LUT = fp4_e2m1_dequant_fp32_LUT;
   }
   int constexpr VLoop = N / 8;
@@ -187,24 +421,81 @@ static inline void dequant_f4_N(_DST_T* dstptr, int8_t* srcptr, __m256* vscales)
     fp32_dq_v = _mm256_mul_ps(fp32_dq_v, vscales[iv]);
     if constexpr (std::is_same_v<_DST_T, float>) {
       _mm256_storeu_ps(dstptr + iv * 8, fp32_dq_v);
-    } else {
-      assert(0);
+    } else if constexpr (std::is_same_v<_DST_T, utils::bf16>) {
+      auto bf16v = ymm_cvt_fp32_bf16(fp32_dq_v);
+      _mm_storeu_si128((__m128i*)(dstptr + iv * 8), bf16v);
     }
   }
 }
 
-template <typename _ST>
-static inline JBLAS_CODE decompress_kblock_bit4_fp32(utils::bit4x2* srcptr, float* dstptr, int row, int col, int ld_src,
-                                                     int ld_dst, _ST* scales, int8_t* zero_points, int k_offset,
-                                                     int kblock, int NPad, void (*dequantize)(float*, int8_t*, __m256*),
-                                                     void (*pad_bit4)(int8_t*, int8_t*)) {
+template <int N, typename _DST_T, JBLAS_DTYPE F4_T>
+static inline void unpack_f4_N(_DST_T* dstptr, int8_t* srcptr) {
+  static_assert(N % 8 == 0);
+  float* LUT;
+  static_assert(F4_T == JBLAS_DTYPE::F4_BNB || F4_T == JBLAS_DTYPE::F4_NF4 || F4_T == JBLAS_DTYPE::F4_E2M1,
+                "Unsupported F4 type");
+  if constexpr (F4_T == JBLAS_DTYPE::F4_BNB) {
+    LUT = fp4_bnb_dequant_fp32_LUT;
+  } else if constexpr (F4_T == JBLAS_DTYPE::F4_NF4) {
+    LUT = nf4_dequant_fp32_LUT;
+  } else if constexpr (F4_T == JBLAS_DTYPE::F4_E2M1) {
+    LUT = fp4_e2m1_dequant_fp32_LUT;
+  }
+  int constexpr VLoop = N / 8;
+#pragma unroll(VLoop)
+  for (int iv = 0; iv < VLoop; iv++) {
+    auto idx = _mm_loadl_epi64((__m128i*)(srcptr + iv * 8));
+    auto pad_idx = _mm256_cvtepu8_epi32(idx);
+    auto fp32_dq_v = _mm256_i32gather_ps(LUT, pad_idx, 4);
+    if constexpr (std::is_same_v<_DST_T, float>) {
+      _mm256_storeu_ps(dstptr + iv * 8, fp32_dq_v);
+    } else if constexpr (std::is_same_v<_DST_T, utils::bf16>) {
+      auto bf16v = ymm_cvt_fp32_bf16(fp32_dq_v);
+      _mm_storeu_si128((__m128i*)(dstptr + iv * 8), bf16v);
+    }
+  }
+}
+
+template <JBLAS_DTYPE F4_T, typename DST_T>
+inline JBLAS_CODE decompress_kblock_f4_fp_noscale(utils::f4x2* srcptr, DST_T* dstptr, int row, int col, int ld_src,
+                                                  int ld_dst, int8_t* tmp, size_t tmpsize) {
   uint32_t mask = 0xf0f0f0f0;
   auto vmask = _mm256_set1_epi32(*(int*)&mask);
+  if (col == ld_src) {
+    size_t elesize = (size_t)row * col;
+    size_t ele16 = utils::padto_le(elesize, 16);
+    size_t i = 0;
+    assert(tmpsize >= 16);
+#pragma unroll
+    for (; i < ele16; i += 16) {
+      fp4_pad_4bit(tmp, (int8_t*)(srcptr + i / 2));
+      unpack_f4_N<16, DST_T, F4_T>(dstptr + i, tmp);
+    }
+    for (; i < elesize; i += 2) {
+      auto tmp = srcptr[i / 2];
+      dstptr[i + 0] = static_cast<DST_T>(ref::f4_unpack<F4_T>(tmp.x));
+      dstptr[i + 1] = static_cast<DST_T>(ref::f4_unpack<F4_T>(tmp.y));
+    }
+    return JblasSuccess;
+  }
+  return JblasSuccess;
+}
+
+template <typename _ST, typename _DST_T>
+static inline JBLAS_CODE decompress_kblock_bit4_packrow1(utils::bit4x2* srcptr, _DST_T* dstptr, int row, int col,
+                                                         int ld_src, int ld_dst, _ST* scales, int8_t* zero_points,
+                                                         int k_offset, int kblock, int NPad,
+                                                         void (*dequantize)(_DST_T*, int8_t*, __m256*),
+                                                         void (*pad_bit4)(int8_t*, int8_t*), int8_t* tmpbuf,
+                                                         size_t tmpsize) {
+  uint32_t mask = 0xf0f0f0f0;
+  auto vmask = _mm256_set1_epi32(*(int*)&mask);
+  assert(zero_points == nullptr);
   if (col == 48) {
     __m256 vscales[6];
     int constexpr UnrollRow = 4;
     int constexpr Loop16 = 48 * UnrollRow / 16;
-    int8_t tmpbuf[48 * UnrollRow];
+    assert(tmpsize >= (48 * UnrollRow));
     int row0 = kblock - k_offset % kblock;
     row0 = row0 == kblock ? 0 : row0;
     row0 = row0 > row ? row : row0;
@@ -255,24 +546,28 @@ static inline JBLAS_CODE decompress_kblock_bit4_fp32(utils::bit4x2* srcptr, floa
   return JblasNotSupport;
 }
 
-template <typename _ST>
-static inline JBLAS_CODE decompress_kblock_bit4_bf16(utils::bit4x2* srcptr, utils::bf16* dstptr, int row, int col,
-                                                     int ld_src, int ld_dst, _ST* scales, int8_t* zero_points,
-                                                     int k_offset, int kblock, int NPad,
-                                                     void (*dequantize)(utils::bf16*, int8_t*, __m256*),
-                                                     void (*pad_bit4)(int8_t*, int8_t*)) {
+template <typename _ST, typename _DST_T>
+static inline JBLAS_CODE decompress_kblock_bit4_packrow2(utils::bit4x2* srcptr, _DST_T* dstptr, int row, int col,
+                                                         int ld_src, int ld_dst, _ST* scales, int8_t* zero_points,
+                                                         int k_offset, int kblock, int NPad,
+                                                         void (*dequantize)(_DST_T*, int8_t*, __m256*),
+                                                         void (*pad_bit4)(int8_t*, int8_t*), int8_t* tmp,
+                                                         size_t tmpsize) {
   return JblasNotSupport;
 }
 
-template <typename _ST, typename _DST_T, JBLAS_F4_TYPE F4_T>
+template <JBLAS_DTYPE _F4_T, typename _DST_T, int _PACK_ROW, typename _ST>
 static inline JBLAS_CODE decompress_kblock_f4_fp(utils::f4x2* srcptr, _DST_T* dstptr, int row, int col, int ld_src,
-                                                 int ld_dst, _ST* scales, int k_offset, int kblock, int NPad) {
-  if constexpr (std::is_same<_DST_T, float>::value) {
-    return decompress_kblock_bit4_fp32<_ST>(srcptr, (float*)dstptr, row, col, ld_src, ld_dst, scales, nullptr, k_offset,
-                                            kblock, NPad, &dequant_f4_N<48, float, F4_T>, pad_fp4);
-  } else if constexpr (std::is_same<_DST_T, utils::bf16>::value) {
-    return decompress_kblock_bit4_bf16<_ST>(srcptr, (utils::bf16*)dstptr, row, col, ld_src, ld_dst, scales, nullptr,
-                                            k_offset, kblock, NPad, &dequant_f4_N<64, utils::bf16, F4_T>, pad_fp4);
+                                                 int ld_dst, _ST* scales, int k_offset, int kblock, int NPad,
+                                                 int8_t* tmp, size_t tmpsize) {
+  if constexpr (_PACK_ROW == 1) {
+    return decompress_kblock_bit4_packrow1<_ST, _DST_T>(srcptr, dstptr, row, col, ld_src, ld_dst, scales, nullptr,
+                                                        k_offset, kblock, NPad, &dequant_f4_N<48, _DST_T, _F4_T>,
+                                                        fp4_pad_4bit, tmp, tmpsize);
+  } else if constexpr (_PACK_ROW == 2) {
+    return decompress_kblock_bit4_packrow2<_ST, _DST_T>(srcptr, dstptr, row, col, ld_src, ld_dst, scales, nullptr,
+                                                        k_offset, kblock, NPad, &dequant_f4_N<64, _DST_T, _F4_T>,
+                                                        fp4_pad_4bit, tmp, tmpsize);
   }
   return JblasNotSupport;
 }
@@ -354,7 +649,7 @@ static inline JBLAS_CODE quantize_fp_u8_colblock(int row, int col, const SRC_T* 
         for (; ij < blocksize; ij++) {
           auto srcval = (float)srcptr[(j + ij) + i * ld_src];
           srcval = srcval * rscale;
-          auto srcint = int(srcval + 0.5f) + zp;
+          auto srcint = int(roundf(srcval)) + zp;
           srcint = std::min(srcint, 0xff);
           srcint = std::max(srcint, 0);
           dstptr[(j + ij) + i * ld_dst] = static_cast<uint8_t>(srcint);

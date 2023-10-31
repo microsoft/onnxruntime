@@ -14,7 +14,7 @@
 #pragma once
 #include <tuple>
 
-#include "jit_base.hpp"
+#include "jit_base.h"
 #include "jit_blas.h"
 #include "jit_blas_utils.h"
 #include "kernel_wrapper.h"
@@ -36,7 +36,7 @@ class AccumulatorWriteBack {
 
   template <typename... Eltops>
   JBLAS_CODE forward(const _SRC_T* cacheptr, const int cachestep, const int M_offset, const int N_offset, const int M,
-                     const int N, const Param& _param, Eltops... ops) {
+                     const int N, const Param& _param, void* tmpcache, size_t cachesize, Eltops... ops) {
     auto COffset = M_offset * _param.ldc + N_offset;
     auto cptr = _param.C + COffset;
     bool constexpr Valid = !std::is_same<DType, utils::bf16>::value || std::is_same<SType, float>::value;
@@ -65,7 +65,7 @@ class CustomAccumulatorWriteBackWithEltop {
     void* elt_const_v;
   };
   JBLAS_CODE forward(const _SRC_T* cacheptr, const int cachestep, const int M_offset, const int N_offset, const int M,
-                     const int N, const Param& _param) {
+                     const int N, const Param& _param, void* tmpcache, size_t cachesize) {
     auto COffset = M_offset * _param.ldc + N_offset;
     auto cptr = _param.C + COffset;
     if constexpr (std::is_same<_SRC_T, float>::value && std::is_same<_DST_T, float>::value) {
@@ -103,7 +103,7 @@ class AlphaBetaProcessFp32 {
   };
 
   JBLAS_CODE forward(const float* cacheptr, const int cachestep, const int M_offset, const int N_offset, const int M,
-                     const int N, const Param& _param) {
+                     const int N, const Param& _param, void* tmpcache, size_t cachesize) {
     auto DOffset = M_offset * _param.ldd + N_offset;
     auto COffset = M_offset * _param.ldc + N_offset;
     auto cptr = _param.C + COffset;
@@ -114,17 +114,39 @@ class AlphaBetaProcessFp32 {
 };
 
 template <JBLAS_ISA ISA_T>
+class CompFp32BlockEpilogue {
+ public:
+  struct Param {
+    void* scales;
+    JBLAS_DTYPE scaledtype;
+    int lds;
+  };
+  JBLAS_CODE forward(const float* srcptr, float* dstptr, const int cachestep, const int M_offset, const int N_offset,
+                     const int K_offset, const int M, const int N, const Param& _param, void* tmpcache,
+                     size_t cachesize) {
+    if (_param.scaledtype == JBLAS_DTYPE::F32) {
+      return kernel::wrapper::CompFp32BlockScale::template forward<ISA_T>(
+          (float*)_param.scales + K_offset * _param.lds + N_offset, srcptr, cachestep, dstptr, cachestep, M, N);
+    } else if (_param.scaledtype == JBLAS_DTYPE::BF16) {
+      return kernel::wrapper::CompFp32BlockScale::template forward<ISA_T>(
+          (utils::bf16*)_param.scales + K_offset * _param.lds + N_offset, srcptr, cachestep, dstptr, cachestep, M, N);
+    }
+    return JblasNotSupport;
+  }
+};
+
+template <JBLAS_ISA ISA_T>
 class DequantInt32ToFp32 {
  public:
   struct Param {
     float* C;
     int ldc;
-    float* scalesA;
     int ldsa;
+    float* scalesA;
     float* scalesB;
   };
   JBLAS_CODE forward(const int32_t* cacheptr, const int cachestep, const int M_offset, const int N_offset, const int M,
-                     const int N, const Param& _param) {
+                     const int N, const Param& _param, void* tmpcache, size_t cachesize) {
     auto COffset = M_offset * _param.ldc + N_offset;
     auto cptr = _param.C + COffset;
     return kernel::wrapper::DequanS32Fp32::template forward<ISA_T>(cacheptr, cachestep, cptr, _param.ldc, M, N,
@@ -134,19 +156,93 @@ class DequantInt32ToFp32 {
 };
 
 template <JBLAS_ISA ISA_T>
+class CompInt8BlockEpilogue {
+ public:
+  struct Param {
+    void* scalesB;
+    JBLAS_DTYPE scaleBdtype;
+    int ldsb;
+    float* scalesA;
+    int ldsa;
+    // optional if A asym
+    uint8_t* zpA = nullptr;
+    float* reduceB = nullptr;
+    // optional if B asym
+    int8_t* zpB = nullptr;
+    float* reduceA = nullptr;
+    int K = 1;
+  };
+  JBLAS_CODE forward(const int32_t* srcptr, float* dstptr, const int cachestep, const int M_offset, const int N_offset,
+                     const int K_offset, const int M, const int N, const Param& _param, void* tmpcache,
+                     size_t cachesize) {
+    JBLAS_CODE ret = JblasNotSupport;
+    if (_param.scaleBdtype == JBLAS_DTYPE::F32) {
+      ret = kernel::wrapper::DequanS32Fp32::template forward<ISA_T>(
+          srcptr, cachestep, (float*)srcptr, cachestep, M, N, _param.scalesA + M_offset * _param.ldsa + K_offset,
+          _param.ldsa, (float*)_param.scalesB + N_offset + K_offset * _param.ldsb);
+      assert(ret == JblasSuccess);
+    } else if (_param.scaleBdtype == JBLAS_DTYPE::BF16) {
+      ret = kernel::wrapper::DequanS32Fp32::template forward<ISA_T>(
+          srcptr, cachestep, (float*)srcptr, cachestep, M, N, _param.scalesA + M_offset * _param.ldsa + K_offset,
+          _param.ldsa, (utils::bf16*)_param.scalesB + N_offset + K_offset * _param.ldsb);
+      assert(ret == JblasSuccess);
+    }
+    ret = kernel::wrapper::AccumulateFp32::template forward<ISA_T>((float*)srcptr, cachestep, dstptr, cachestep, M, N);
+    if (ret != JblasSuccess) {
+      assert(0);
+      return ret;
+    }
+
+    if (_param.zpA == nullptr && _param.zpB == nullptr) {
+      return ret;
+    } else if (_param.zpA != nullptr && _param.zpB == nullptr) {
+      ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
+          dstptr, cachestep, M, N, _param.zpA + M_offset * _param.ldsa + K_offset,
+          _param.scalesA + M_offset * _param.ldsa + K_offset, _param.ldsa,
+          _param.reduceB + N_offset + K_offset * _param.ldsb);
+
+    } else if (_param.zpA == nullptr && _param.zpB != nullptr) {
+      if (_param.scaleBdtype == JBLAS_DTYPE::F32) {
+        ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
+            dstptr, cachestep, M, N, _param.zpB + N_offset + K_offset * _param.ldsb,
+            (float*)_param.scalesB + N_offset + K_offset * _param.ldsb, _param.ldsa,
+            _param.reduceA + M_offset * _param.ldsa + K_offset);
+      }
+
+    } else {
+      if (_param.scaleBdtype == JBLAS_DTYPE::F32) {
+        ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
+            dstptr, cachestep, M, N, _param.zpA + M_offset * _param.ldsa + K_offset,
+            _param.zpB + N_offset + K_offset * _param.ldsb, _param.scalesA + M_offset * _param.ldsa + K_offset,
+            (float*)_param.scalesB + N_offset + K_offset * _param.ldsb, _param.ldsa, _param.K,
+            _param.reduceA + M_offset * _param.ldsa + K_offset, _param.reduceB + N_offset + K_offset * _param.ldsb);
+      }
+
+    }
+    return ret;
+  }
+};
+
+template <JBLAS_ISA ISA_T>
 class ZpDequantInt32ToFp32 {
  public:
   struct Param {
+    // necessary
     float* C;
     int ldc;
-    uint8_t* zpA;
-    float* scalesA;
     int ldsa;
-    float* reduceB;
+    float* scalesA;
     float* scalesB;
+    // optional if A asym
+    uint8_t* zpA = nullptr;
+    float* reduceB = nullptr;
+    // optional if B asym
+    int8_t* zpB = nullptr;
+    float* reduceA = nullptr;
+    int K = 1;
   };
   JBLAS_CODE forward(const int32_t* cacheptr, const int cachestep, const int M_offset, const int N_offset, const int M,
-                     const int N, const Param& _param) {
+                     const int N, const Param& _param, void* tmpcache, size_t cachesize) {
     auto COffset = M_offset * _param.ldc + N_offset;
     auto cptr = _param.C + COffset;
     auto ret = kernel::wrapper::DequanS32Fp32::template forward<ISA_T>(cacheptr, cachestep, cptr, _param.ldc, M, N,
@@ -155,9 +251,22 @@ class ZpDequantInt32ToFp32 {
     if (ret != JblasSuccess) {
       return ret;
     }
-    ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
-        cptr, _param.ldc, M, N, _param.zpA + M_offset * _param.ldsa, _param.scalesA + M_offset * _param.ldsa,
-        _param.ldsa, _param.reduceB + N_offset);
+    if (_param.zpA == nullptr && _param.zpB == nullptr) {
+      return ret;
+    } else if (_param.zpA != nullptr && _param.zpB == nullptr) {
+      ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
+          cptr, _param.ldc, M, N, _param.zpA + M_offset * _param.ldsa, _param.scalesA + M_offset * _param.ldsa,
+          _param.ldsa, _param.reduceB + N_offset);
+    } else if (_param.zpA == nullptr && _param.zpB != nullptr) {
+      ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(cptr, _param.ldc, M, N, _param.zpB + N_offset,
+                                                                          _param.scalesB + N_offset, _param.ldsa,
+                                                                          _param.reduceA + M_offset * _param.ldsa);
+    } else {
+      ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
+          cptr, _param.ldc, M, N, _param.zpA + M_offset * _param.ldsa, _param.zpB + N_offset,
+          _param.scalesA + M_offset * _param.ldsa, _param.scalesB + N_offset, _param.ldsa, _param.K,
+          _param.reduceA + M_offset * _param.ldsa, _param.reduceB + N_offset);
+    }
     return ret;
   }
 };
@@ -174,7 +283,7 @@ class AlphaBetaProcessS32U8 {
   };
 
   JBLAS_CODE forward(const int32_t* cacheptr, const int cachestep, const int M_offset, const int N_offset, const int M,
-                     const int N, const Param& _param) {
+                     const int N, const Param& _param, void* tmpcache, size_t cachesize) {
     auto COffset = M_offset * _param.ldc + N_offset;
     auto cptr = _param.C + COffset;
     return kernel::wrapper::QuanOutS32U32::template forward<ISA_T>(_param.alpha, cacheptr, cachestep, cptr, _param.ldc,

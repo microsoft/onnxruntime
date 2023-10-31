@@ -44,9 +44,11 @@ typedef enum {
  * @brief Define compute types of block quantization
  */
 typedef enum {
-    CompFp32 = 0,     /*!< int4 Symmetric Block Quantization, zero_point = 0 */
-    CompInt8 = 1,     /*!< int4 Block Quantization, zero_point is int8 type */
-} BLK_QUANT_COMPUTE_TYPE;
+    CompFp32 = 0, /*!< input fp32, accumulator fp32 */
+    CompInt8 = 1, /*!< input int8, accumulator int32 */
+    CompBf16 = 2, /*!< input bf16, accumulator fp32 */
+    CompFp16 = 3, /*!< input fp16, accumulator fp16 */
+} MLAS_COMPUTE_TYPE;
 
 
 /**
@@ -136,23 +138,6 @@ MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
                 const size_t BatchN,
                 const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
                 MLAS_THREADPOOL* ThreadPool = nullptr);
-/**
- * @brief Calculate the buffer size needed for int8 block quantize
- * @param[in]  QType   Type of block quantization used
- * @param[in]  M       Number of rows of the input matrix
- * @param[in]  K       Number of columns of the input matrix
- * @return    buffer size (in bytes) needed, 0 if not yet supported on current hardware
- */
-
-void MLASCALL
-JblasQ4GemmBatch(BLK_QUANT_COMPUTE_TYPE CType,
-                 MLAS_BLK_QUANT_TYPE QType,
-                 const size_t M,
-                 const size_t N,
-                 const size_t K,
-                 const size_t BatchN,
-                 const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
-                 MLAS_THREADPOOL* ThreadPool = nullptr);
 
 /**
  * @brief Calculate the buffer size needed for int8 block quantize
@@ -370,3 +355,61 @@ MlasDequantizeBlockwise(
     int columns,
     MLAS_THREADPOOL* thread_pool
     );
+
+#ifdef MLAS_JBLAS
+/**
+ * @brief Computes the number of bytes required to pack and int4-quantize
+ *        a weight matrix
+ * @param QType  type of block quantization
+ * @param N      the number of columns of matrix B.
+ * @param K      the number of rows of matrix B.
+ * @return size of the packing buffer, 0 if the operation is not yet supported.
+ */
+size_t MLASCALL MlasJblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize,
+                                         bool isAsym,
+                                         MLAS_COMPUTE_TYPE CompType);
+
+/**
+ * @brief Prepack and Quantize fp32 weight tensor to int4 blocks
+ *
+ * @param QType      type of block quantization
+ * @param PackedBuf  destination buffer
+ * @param FpData     the pointer to fp32 matrix
+ * @param N          the number of columns of matrix B.
+ * @param K          the number of rows of matrix B.
+ * @param ldb        leading dimension of B
+ */
+void MLASCALL MlasJblasQ4GemmPackB(void* PackedBuf, const float* FpData,
+                                   size_t N, size_t K, size_t ldb,
+                                   size_t BlkSize, bool isAsym,
+                                   MLAS_COMPUTE_TYPE CompType,
+                                   MLAS_THREADPOOL* ThreadPool);
+
+/**
+ * @brief Unpack and dequantize from int4 to fp32, reverse operation of
+ *        MlasQ4GemmPackB
+ * @param QType      type of block quantization
+ * @param FpData     destination buffer, the fp32 matrix
+ * @param PackedBuf  int4 quantized and packed data
+ * @param N          the number of columns of matrix B.
+ * @param K          the number of rows of matrix B.
+ * @param ldb        leading dimension of B
+ */
+void MLASCALL MlasJblasQ4GemmUnPackB(float* FpData, const void* PackedBuf,
+                                     size_t N, size_t K, size_t ldb,
+                                     MLAS_THREADPOOL* ThreadPool);
+
+/**
+ * @brief Calculate the buffer size needed for int8 block quantize
+ * @param[in]  QType   Type of block quantization used
+ * @param[in]  M       Number of rows of the input matrix
+ * @param[in]  K       Number of columns of the input matrix
+ * @return    buffer size (in bytes) needed, 0 if not yet supported on current
+ * hardware
+ */
+
+void MLASCALL MlasJblasQ4GemmBatch(const size_t M, const size_t N,
+                                   const size_t K, const size_t BatchN,
+                                   const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+                                   MLAS_THREADPOOL* ThreadPool = nullptr);
+#endif

@@ -22,6 +22,13 @@
 	#define XBYAK_THROW(x) ;
 	#define XBYAK_THROW_RET(x, y) return y;
 #endif
+#ifndef XBYAK_CONSTEXPR
+#if ((__cplusplus >= 201402L) && !(!defined(__clang__) && defined(__GNUC__) && (__GNUC__ <= 5))) || (defined(_MSC_VER) && _MSC_VER >= 1910)
+	#define XBYAK_CONSTEXPR constexpr
+#else
+	#define XBYAK_CONSTEXPR
+#endif
+#endif
 #else
 #include <string.h>
 
@@ -65,9 +72,7 @@
     	#define __GNUC_PREREQ(major, minor) ((((__GNUC__) << 16) + (__GNUC_MINOR__)) >= (((major) << 16) + (minor)))
 	#endif
 	#if __GNUC_PREREQ(4, 3) && !defined(__APPLE__)
-		#if !defined(signature_VORTEX_ebx) && !defined(signature_NEXGEN_ebx) && !defined(signature_AMD_ebx)//workaround for Bug 96238 - [i386] cpuid.h header needs include guards
 		#include <cpuid.h>
-		#endif
 	#else
 		#if defined(__APPLE__) && defined(XBYAK32) // avoid err : can't find a register in class `BREG' while reloading `asm'
 			#define __cpuid(eaxIn, a, b, c, d) __asm__ __volatile__("pushl %%ebx\ncpuid\nmovl %%ebp, %%esi\npopl %%ebx" : "=a"(a), "=S"(b), "=c"(c), "=d"(d) : "0"(eaxIn))
@@ -108,7 +113,7 @@ struct TypeT {
 };
 
 template<uint64_t L1, uint64_t H1, uint64_t L2, uint64_t H2>
-TypeT<L1 | L2, H1 | H2> operator|(TypeT<L1, H1>, TypeT<L2, H2>) { return TypeT<L1 | L2, H1 | H2>(); }
+XBYAK_CONSTEXPR TypeT<L1 | L2, H1 | H2> operator|(TypeT<L1, H1>, TypeT<L2, H2>) { return TypeT<L1 | L2, H1 | H2>(); }
 
 template<typename T>
 inline T max_(T x, T y) { return x >= y ? x : y; }
@@ -474,6 +479,10 @@ public:
 	XBYAK_DEFINE_TYPE(75, tSERIALIZE);
 	XBYAK_DEFINE_TYPE(76, tUINTR);
 	XBYAK_DEFINE_TYPE(77, tXSAVE);
+	XBYAK_DEFINE_TYPE(78, tSHA512);
+	XBYAK_DEFINE_TYPE(79, tSM3);
+	XBYAK_DEFINE_TYPE(80, tSM4);
+	XBYAK_DEFINE_TYPE(81, tAVX_VNNI_INT16);
 
 #undef XBYAK_SPLIT_ID
 #undef XBYAK_DEFINE_TYPE
@@ -535,13 +544,13 @@ public:
 
 		getCpuid(1, data);
 		if (ECX & (1U << 0)) type_ |= tSSE3;
+		if (ECX & (1U << 1)) type_ |= tPCLMULQDQ;
 		if (ECX & (1U << 9)) type_ |= tSSSE3;
 		if (ECX & (1U << 19)) type_ |= tSSE41;
 		if (ECX & (1U << 20)) type_ |= tSSE42;
 		if (ECX & (1U << 22)) type_ |= tMOVBE;
 		if (ECX & (1U << 23)) type_ |= tPOPCNT;
 		if (ECX & (1U << 25)) type_ |= tAESNI;
-		if (ECX & (1U << 1)) type_ |= tPCLMULQDQ;
 		if (ECX & (1U << 26)) type_ |= tXSAVE;
 		if (ECX & (1U << 27)) type_ |= tOSXSAVE;
 		if (ECX & (1U << 30)) type_ |= tRDRAND;
@@ -616,6 +625,9 @@ public:
 			if (EDX & (1U << 25)) type_ |= tAMX_INT8;
 			if (maxNumSubLeaves >= 1) {
 				getCpuidEx(7, 1, data);
+				if (EAX & (1U << 0)) type_ |= tSHA512;
+				if (EAX & (1U << 1)) type_ |= tSM3;
+				if (EAX & (1U << 2)) type_ |= tSM4;
 				if (EAX & (1U << 3)) type_ |= tRAO_INT;
 				if (EAX & (1U << 4)) type_ |= tAVX_VNNI;
 				if (type_ & tAVX512F) {
@@ -626,6 +638,7 @@ public:
 				if (EAX & (1U << 23)) type_ |= tAVX_IFMA;
 				if (EDX & (1U << 4)) type_ |= tAVX_VNNI_INT8;
 				if (EDX & (1U << 5)) type_ |= tAVX_NE_CONVERT;
+				if (EDX & (1U << 10)) type_ |= tAVX_VNNI_INT16;
 				if (EDX & (1U << 14)) type_ |= tPREFETCHITI;
 			}
 		}

@@ -18,7 +18,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "jit_base.hpp"
+#include "jit_base.h"
 #include "jit_blas_utils.h"
 #include "kernel_jit_injector.h"
 
@@ -224,7 +224,7 @@ class DequanKBlockS8F32 {
     if (row2 > 0) {
       DequanS8F32::forward_avx512f(srcptr, dstptr, row2, col, ld_src, ld_dst, sptr, zptr);
     }
-    return JblasNotSupport;
+    return JblasSuccess;
   }
 };
 
@@ -892,7 +892,7 @@ class PaddingInterleaveCvt : protected xbyak::JitAvx512f {
           vmovdqu32(reg_srcs_ii | mask_rd | T_z, ptr[reg_tmp1 + ii * reg_srcstride + jj * src_bytes]);
         }
       }
-      if (src_t == JblasF32 && dst_t == JblasBF16) {
+      if (src_t == JBLAS_DTYPE::F32 && dst_t == JBLAS_DTYPE::BF16) {
         vcvtne2ps2bf16(reg_tmps[0], reg_srcs[1], reg_srcs[0]);
         vpermt2w(reg_tmps[0], vreg_idx0, reg_tmps[0]);
         vmovups(ptr[reg_tmp + jj * row_pack * dst_bytes], reg_tmps[0]);
@@ -936,7 +936,7 @@ class PaddingInterleaveCvt : protected xbyak::JitAvx512f {
       } else {
         assert(false);
       }
-      if (src_t == JblasF32 && dst_t == JblasBF16) {
+      if (src_t == JBLAS_DTYPE::F32 && dst_t == JBLAS_DTYPE::BF16) {
         vcvtne2ps2bf16(reg_tmps[0], reg_srcs[1], reg_srcs[0]);
         vpermt2w(reg_tmps[0], vreg_idx0, reg_tmps[0]);
         vmovups(ptr[reg_tmp + jj * row_pack * dst_bytes], reg_tmps[0]);
@@ -1079,7 +1079,7 @@ class PaddingTransInterleaveCvt : protected xbyak::JitAvx512f {
 
     L(".colloop");
     generate_Nbitsmask(mask_rd, reg_itercol, ptr[reg_colsize], reg_tmp2, reg_tmp3, 64 / dst_bytes);
-    if (src_t == JblasF32 && dst_t == JblasBF16) {
+    if (src_t == JBLAS_DTYPE::F32 && dst_t == JBLAS_DTYPE::BF16) {
       kshiftrq(mask_rd2, mask_rd, 16);
       assert(trans_cell == 16);
       for (int ii = 0; ii < trans_cell; ++ii) {
@@ -1122,7 +1122,7 @@ class PaddingTransInterleaveCvt : protected xbyak::JitAvx512f {
       auto& tailcolloop = l_tail_case[m_tail];
       L(tailcolloop);
       generate_Nbitsmask(mask_rd, reg_itercol, ptr[reg_colsize], reg_tmp2, reg_tmp3, 64 / dst_bytes);
-      if (src_t == JblasF32 && dst_t == JblasBF16) {
+      if (src_t == JBLAS_DTYPE::F32 && dst_t == JBLAS_DTYPE::BF16) {
         kshiftrq(mask_rd2, mask_rd, 16);
         assert(trans_cell == 16);
         for (int ii = 0; ii < trans_cell; ++ii) {

@@ -19,7 +19,8 @@ Abstract:
 #include "q4gemm.h"
 
 #ifdef MLAS_JBLAS
-#include "jblas/jit_blas_weight_compression.h"
+#include "mlas_jblas_defs.h"
+using namespace jblas;
 #endif
 
 size_t MLASCALL
@@ -141,36 +142,102 @@ MlasQ4GemmBatchDriver(MLAS_BLK_QUANT_TYPE QType,
 }
 
 #ifdef MLAS_JBLAS
-template <class T, JBLAS_ISA ISA>
-using WeiS4ClipFp32PerN =
-    jblas::prologue::weight_comp::gemm_kblcok::WeightS4ClipScaleFp32PerN<T, ISA>;
 
-template <template <class GC, JBLAS_ISA ISA> class ProB>
-using AVX512VNNIFp32Fp32 = jblas::wrapper::gemm_pack_weight::GemmInterfaceParallelAB<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<
-        JblasAVX512_VNNI,
-        jblas::gemm::GemmCore_Row_NN_8x48_AVX512_VNNI,
-        jblas::prologue::gemm::ActivationFp32AsymU8Quantize,
-        ProB,
-        jblas::epilogue::gemm::ZpDequantInt32ToFp32>,
-    jblas::utils::parallel::Parallel2DGemm>;
-
-template <template <class GC, JBLAS_ISA ISA> class ProB>
-using AMXINT8Fp32Fp32 = jblas::wrapper::gemm_pack_weight::GemmInterfaceParallelAB<
-    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<
-        JblasAMX_INT8,
-        jblas::gemm::GemmCore_Row_NN_16x48_AMX_S8S8,
-        jblas::prologue::gemm::ActivationFp32SymS8Quantize,
-        ProB,
-        jblas::epilogue::gemm::DequantInt32ToFp32>,
-    jblas::utils::parallel::Parallel2DGemm>;
-
-static AVX512VNNIFp32Fp32<WeiS4ClipFp32PerN> avx512vnni_s4pernkernl;
-static AMXINT8Fp32Fp32<WeiS4ClipFp32PerN> amxint8_s4pernkernl;
+jblas::ORTThreading::ORTThreading(void* tp)
+    : IThreading(MLAS_THREADPOOL::DegreeOfParallelism((MLAS_THREADPOOL*)tp)), mTp(tp)
+{
+}
 
 void
-JblasQ4GemmBatchDriver(BLK_QUANT_COMPUTE_TYPE CType,
-                       const size_t M,
+jblas::ORTThreading::parallel_for(const jblas::parallel::thread_func& func)
+{
+    MlasTrySimpleParallel((MLAS_THREADPOOL*)mTp, mThreadNum,
+                          [&](ptrdiff_t tid) { func(int(tid)); });
+}
+
+template <class Parallel_T, class Launch_T>
+void
+GemmKBlockRun(Launch_T& launcher,
+              const typename Launch_T::Param& args,
+              parallel::IThreading* threading)
+{
+    device::CpuBase cb;
+    Parallel_T para({
+        cb.mNumThreads,
+        cb.mL2Cache,
+        args.M,
+        args.N,
+        args.K,
+        args.KBlock,
+    });
+    threading->parallel_for([&](int tidx) {
+        typename Parallel_T::ThreadProblem thdp{tidx};
+        para.getIndex(thdp);
+        if (thdp.valid) {
+            launcher.run(args, thdp);
+        }
+    });
+}
+
+template <class GemmCore_T>
+void
+JblasQ4GemmCompF32(const int M,
+                   const int N,
+                   const int K,
+                   const float* A,
+                   const int lda,
+                   jblas::storage::gemm::StorageWeightKBlockS4* B,
+                   float* C,
+                   const int ldc,
+                   jblas::parallel::IThreading* th)
+{
+    using Parallel = jblas::parallel::gemm::SchedulerKBlock<GemmCore_T>;
+    using Launcher = JBLAS_FP32_S4_F32F32<GemmCore_T>;
+    typename Launcher::Param args{
+        M,     N, K, B->mBlockSize, {A, K}, {B}, {B->template SPtr<int8_t>(), B->mScaT, B->mCStep},
+        {C, N}};
+    static Launcher kernel;
+    GemmKBlockRun<Parallel>(kernel, args, th);
+}
+
+template <class GemmCore_T>
+void
+JblasQ4GemmCompInt8(const int M,
+                    const int N,
+                    const int K,
+                    const float* A,
+                    const int lda,
+                    jblas::storage::gemm::StorageWeightKBlockS4* B,
+                    float* C,
+                    const int ldc,
+                    jblas::parallel::IThreading* th)
+{
+    using Parallel = jblas::parallel::gemm::SchedulerKBlock<GemmCore_T>;
+    using Launcher = JBLAS_INT8_S4_F32F32<GemmCore_T>;
+
+    static Launcher kernel;
+    auto quanA = kernel.mProA.createStorage(M, K, B->mBlockSize);
+    auto buf = jblas::utils::amalloc<int8_t>(quanA.mSize);
+    quanA.assign(buf);
+    kernel.mProA.quantize({A, K, &quanA}, M, K, th);
+    typename Launcher::Param args{
+        M,
+        N,
+        K,
+        B->mBlockSize,
+        {A, K, &quanA},
+        {B},
+        {B->template SPtr<int8_t>(), B->mScaT, B->mCStep, quanA.template SPtr<float>(),
+         quanA.mCStep, quanA.template ZPtr<uint8_t>(), B->template RPtr<float>(),
+         B->mIsAsym ? B->template ZPtr<int8_t>() : nullptr, B->mIsAsym ? nullptr : nullptr,
+         B->mBlockSize},
+        {C, N}};
+    GemmKBlockRun<Parallel>(kernel, args, th);
+    jblas::utils::afree(buf);
+}
+
+void
+JblasQ4GemmBatchDriver(const size_t M,
                        const size_t N,
                        const size_t K,
                        const size_t BatchN,
@@ -178,39 +245,63 @@ JblasQ4GemmBatchDriver(BLK_QUANT_COMPUTE_TYPE CType,
                        MLAS_THREADPOOL* ThreadPool)
 {
     GetCPUDevice();
+    ORTThreading orth(ThreadPool);
     for (size_t i = 0; i < BatchN; i++) {
-        auto ptr = jblas::prologue::weight_comp::gemm_kblcok::PackedWeightParser::deserialBuffer(
+        auto ptr = jblas::storage::gemm::PackedWeightParser::deserialBuffer(
             const_cast<void*>(DataParams[i].B));
         if (ptr) {
-            if (ptr->mPrologueID == int(jblas::prologue::weight_comp::gemm_kblcok::PrologueBIDs::
-                                            WeightS4ClipScaleFp32PerChannelN)) {
-                auto weiptr = (jblas::prologue::weight_comp::gemm_kblcok::
-                                   StorageWeightS4ScaleFp32PerChannelN*)(ptr);
-                if (ptr->mCoreType == jblas::gemm::GemmCoreType::AVX512_VNNI_8x48) {
-                    if (_cd->AMX_INT8()) {
-                        auto quanA = amxint8_s4pernkernl.getActivationPtr()->createStorage(M, K);
-                        std::vector<int8_t> quanBuf(quanA.mSize);
-                        quanA.assign(quanBuf.data());
-                        amxint8_s4pernkernl.template compute<true, false>(
-                            {int(M * BatchN), int(N), int(K), DataParams[i].A,
-                             int(DataParams[i].lda), &quanA, weiptr, DataParams[i].C,
-                             int(DataParams[i].ldc), quanA.mSPtr, quanA.mCStep, weiptr->mRPtr,
-                             weiptr->mSPtr});
-                    } else if (_cd->AVX512_VNNI()) {
-                        auto quanA = avx512vnni_s4pernkernl.getActivationPtr()->createStorage(M, K);
-                        std::vector<int8_t> quanBuf(quanA.mSize);
-                        quanA.assign(quanBuf.data());
-                        avx512vnni_s4pernkernl.template compute<true, false>(
-                            {int(M * BatchN), int(N), int(K), DataParams[i].A,
-                             int(DataParams[i].lda), &quanA, weiptr, DataParams[i].C,
-                             int(DataParams[i].ldc), quanA.mZPtr, quanA.mSPtr, quanA.mCStep,
-                             weiptr->mRPtr, weiptr->mSPtr});
+            if (ptr->mPrologueID == JBLAS_PROLOGUEB_IDS::WeightKBlockS4) {
+                auto kptr = (jblas::storage::gemm::StorageWeightKBlockS4*)ptr;
+                auto coretype = ptr->mCoreType;
+                auto NTile = uint32_t(coretype) & uint32_t(JBLAS_GEMM_CORE::NTILE_MASK);
+                auto CType = uint32_t(coretype) & uint32_t(JBLAS_GEMM_CORE::COMP_MASK);
+                if (NTile == 48 && CType == uint32_t(JBLAS_GEMM_CORE::COMP_FP32)) {
+                    if (_cd->AVX512F()) {
+                        JblasQ4GemmCompF32<gemm::GemmCore_Row_NN_8x48_AVX512F>(
+                            M, N, K, DataParams[i].A, DataParams[i].lda,
+                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
+                            DataParams[i].ldc, &orth);
+                        return;
+                    }
+                    if (_cd->AVX2()) {
+                        JblasQ4GemmCompF32<gemm::GemmCore_Row_NN_2x48_AVX2>(
+                            M, N, K, DataParams[i].A, DataParams[i].lda,
+                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
+                            DataParams[i].ldc, &orth);
+                        return;
+                    }
+                }
+                if (NTile == 48 && CType == uint32_t(JBLAS_GEMM_CORE::COMP_INT8_US)) {
+                    if (_cd->AVX512_VNNI()) {
+                        JblasQ4GemmCompInt8<gemm::GemmCore_Row_NN_8x48_AVX512_VNNI>(
+                            M, N, K, DataParams[i].A, DataParams[i].lda,
+                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
+                            DataParams[i].ldc, &orth);
+                        return;
+                    }
+                    if (_cd->AVX_VNNI()) {
+                        JblasQ4GemmCompInt8<gemm::GemmCore_Row_NN_2x48_AVX_VNNI>(
+                            M, N, K, DataParams[i].A, DataParams[i].lda,
+                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
+                            DataParams[i].ldc, &orth);
+                        return;
                     }
                 }
             }
             delete ptr;
         }
     }
+}
+
+void MLASCALL
+MlasJblasQ4GemmBatch(const size_t M,
+                     const size_t N,
+                     const size_t K,
+                     const size_t BatchN,
+                     const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+                     MLAS_THREADPOOL* ThreadPool)
+{
+    JblasQ4GemmBatchDriver(M, N, K, BatchN, DataParams, ThreadPool);
 }
 #endif
 
@@ -225,23 +316,6 @@ MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
 {
     MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
 }
-
-#ifdef MLAS_JBLAS
-void MLASCALL
-JblasQ4GemmBatch(BLK_QUANT_COMPUTE_TYPE CType,
-                MLAS_BLK_QUANT_TYPE QType,
-                const size_t M,
-                const size_t N,
-                const size_t K,
-                const size_t BatchN,
-                const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
-                MLAS_THREADPOOL* ThreadPool)
-{
-    if (QType == MLAS_BLK_QUANT_TYPE::BlkQ4SymPerN) {
-        return JblasQ4GemmBatchDriver(CType, M, N, K, BatchN, DataParams, ThreadPool);
-    }
-}
-#endif
 
 void MLASCALL
 MlasQ8Q4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
