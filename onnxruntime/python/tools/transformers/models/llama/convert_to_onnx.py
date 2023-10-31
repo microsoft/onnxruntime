@@ -198,7 +198,11 @@ def run_torchscript_separate_export(
 ):
     # Dummy values for export
     batch_size, sequence_length = 2, 8
-    device = llama.device
+
+    # set device used to export model
+    # for llama-70b we will use current gpus to speed up export process (we need at least 4 A100 GPUs)
+    # for other models, we will use CPU to make sure we have enough memory to do export
+    device = llama.device if args.model_name == "meta-llama/Llama-2-70b-hf" else torch.device("cpu")
 
     # Export decoder_model.onnx
     decoder_inputs = get_sample_inputs(l_config, device, batch_size, sequence_length)
@@ -312,7 +316,11 @@ def run_torchscript_merged_export(
 ):
     # Dummy values for export
     batch_size, sequence_length, past_sequence_length = 2, 8, 0
-    device = llama.device
+    
+    # set device used to export model
+    # for llama-70b we will use current gpus to speed up export process (we need at least 4 A100 GPUs)
+    # for other models, we will use CPU to make sure we have enough memory to do export
+    device = llama.device if args.model_name == "meta-llama/Llama-2-70b-hf" else torch.device("cpu")
 
     # Export decoder_merged_model.onnx
     decoder_merged_inputs = get_merged_sample_with_past_kv_inputs(

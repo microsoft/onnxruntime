@@ -86,8 +86,14 @@ Export Saved Model on Disk
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
 
+# From source using first gpu:
+$ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
+
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
+
+# From wheel using second gpu:
+$ CUDA_VISIBLE_DEVICES=1 python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
 ```
 
 Export for FP32 CUDA
@@ -160,7 +166,7 @@ Export LLaMA-2 70B sharded model into 4 partitions
 # From source:
 # 1. Install necessary packages from requirements-70b-model.txt
 # 2. Build Onnx Runtime from source with NCCL enabled. Here is an sample command: ./build.sh --config RelWithDebInfo --use_cuda --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/local/cuda-12.2 --build_wheel --cuda_version=12.2 --parallel --skip_tests --enable_nccl --nccl_home /usr/local/cuda-12.2 --use_mpi --mpi_home=/usr/lib/x86_64-linux-gnu/
-# 3. Shard and export the LLaMA-2 70B model. Here is an example command: CUDA_VISIBLE_DEVICES=0,1,2,3 bash run_70b_model.sh 4 -m meta-llama/Llama-2-70b-hf --output llama2-70b-dis --precision fp16 --execution_provider cuda
+# 3. Shard and export the LLaMA-2 70B model, we will need at least 4 A100 GPUs to do shard Pytorch model and export each shardding to ONNX. Here is an example command: CUDA_VISIBLE_DEVICES=0,1,2,3 bash run_70b_model.sh 4 -m meta-llama/Llama-2-70b-hf --output llama2-70b-dis --precision fp16 --execution_provider cuda
 ```
 
 ## Benchmark LLaMA-2
