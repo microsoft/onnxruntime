@@ -427,6 +427,16 @@ class FusionRotaryAttention(FusionAttention):
             ["Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
             [1, 2, 1, 0, 0, 0],
         )
+        attn_mask_nodes_5 = self.model.match_parent_path(
+            add_qk,
+            ["Expand", "Add", "Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
+            [1, 0, 0, 2, 1, 0, 0, 0],
+        )
+        attn_mask_nodes_6 = self.model.match_parent_path(
+            add_qk,
+            ["Expand", "Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
+            [1, 0, 2, 1, 0, 0, 0],
+        )
         if attn_mask_nodes_1 is not None:
             _, slice_mask_1, slice_mask_2 = attn_mask_nodes_1
             attn_mask = slice_mask_1.output[0]
@@ -439,6 +449,12 @@ class FusionRotaryAttention(FusionAttention):
         elif attn_mask_nodes_4 is not None:
             # Reshape from (B,1,S,T) to (B,N,S,T)
             add_qk_str = self.reshape_add_qk(attn_mask_nodes_4[0].output[0])
+        elif attn_mask_nodes_5 is not None:
+            # The mask has already been reshaped to (B,N,S,T)
+            add_qk_str = attn_mask_nodes_5[0].output[0]
+        elif attn_mask_nodes_6 is not None:
+            # The mask has already been reshaped to (B,N,S,T)
+            add_qk_str = attn_mask_nodes_6[0].output[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match attention mask nodes")
             return
