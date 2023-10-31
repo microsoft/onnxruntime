@@ -1,5 +1,6 @@
 #include "testPch.h"
 #include <absl/strings/ascii.h>
+#include "test/onnx/DisabledTests.h"
 #include "test/onnx/TestCase.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/util/include/test/compare_ortvalue.h"
