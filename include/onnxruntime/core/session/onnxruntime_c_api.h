@@ -4605,6 +4605,10 @@ struct OrtCustomOp {
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
 
   OrtStatusPtr(ORT_API_CALL* InferOutputShapeFn)(_In_ const struct OrtCustomOp* op, _In_ OrtShapeInferContext*);
+
+  // Get start range
+  int(ORT_API_CALL* GetStartVersion)(_In_ const struct OrtCustomOp* op);
+  int(ORT_API_CALL* GetEndVersion)(_In_ const struct OrtCustomOp* op);
 };
 
 /*

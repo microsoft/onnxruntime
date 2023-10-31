@@ -3323,6 +3323,22 @@ TEST(LiteCustomOpTest, CustomFunc) {
   ASSERT_TRUE(floats_output[1] == 16);
 }
 
+TEST(LiteCustomOpTest, CustomFuncOpsetMismatch) {
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.SetLogSeverityLevel(0);
+#if defined(_WIN32)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("custom_op_library.dll"));
+#elif defined(__APPLE__)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
+#else
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("./libcustom_op_library.so"));
+#endif
+
+  EXPECT_THROW(Ort::Session(*ort_env, TSTR("testdata/fuse_select_filter_opset_8.onnx"), session_options), std::exception);
+}
+
 struct Merge {
   Merge(const OrtApi* ort_api, const OrtKernelInfo* info) {
     int64_t reverse;
