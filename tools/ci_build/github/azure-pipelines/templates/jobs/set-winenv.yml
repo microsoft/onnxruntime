@@ -28,21 +28,21 @@ steps:
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.SecondaryCUDAVersion }}" $(Agent.TempDirectory)
         displayName: 'Download Secondary CUDA SDK v${{ parameters.SecondaryCUDAVersion }}'
-  - $${{ if eq(parameters.DownloadTRT, true) }}:
+  - ${{ if eq(parameters.DownloadTRT, true) }}:
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.PrimaryTensorRTVersion }}", $(Agent.TempDirectory)
         displayName: 'Download Primary TensorRT with version ${{ parameters.PrimaryTensorRTVersion }}'
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.SecondaryTensorRTVersion }}", $(Agent.TempDirectory)
         displayName: 'Download Secondary TensorRT with version ${{ parameters.SecondaryTensorRTVersion }}'
-  - $${{ if eq(parameters.DownloadTRT, true) }}:
+  - ${{ if eq(parameters.DownloadTRT, true) }}:
     - task: BatchScript@1
       displayName: 'setup env'
       inputs:
         filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
-  - $${{ if and(eq(parameters.DownloadCUDA, true), ne(parameters.DownloadTRT, true)) }}:
+  - ${{ if and(eq(parameters.DownloadCUDA, true), ne(parameters.DownloadTRT, true)) }}:
     - task: BatchScript@1
       displayName: 'setup env'
       inputs:
