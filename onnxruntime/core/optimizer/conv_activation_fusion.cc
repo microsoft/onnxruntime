@@ -12,7 +12,6 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/selectors_actions/actions.h"
-#include "core/optimizer/conv_activation_action_base.h"
 
 namespace onnxruntime {
 
@@ -173,8 +172,32 @@ class ConvAddRelu : public NodeSelector {
 namespace actions {
 using NTO = NodesToOptimize;
 
-class FuseConvActivationAction : public FusedConvActivationActionBase {
+class FuseConvActivationAction : public ReplaceWithNew {
  private:
+  std::string OpType(const RuntimeState& runtime_state) const override {
+    const auto& domain = runtime_state.selected_nodes.Target().Domain();
+    const auto& op_type = runtime_state.selected_nodes.Target().OpType();
+    if (domain == kOnnxDomain) {
+      if (op_type == "Conv") {
+        return "FusedConv";
+      }
+    } else if (domain == kMSDomain) {
+      if (op_type == "NhwcConv") {
+        return "NhwcFusedConv";
+      }
+    } else if (domain == kMSInternalNHWCDomain) {
+      if (op_type == "Conv") {
+        return "Conv";
+      }
+    }
+    ORT_THROW("Unsupported operator: ", op_type, " and domain: ", domain);
+  }
+
+  std::string Domain(const RuntimeState& runtime_state) const override {
+    auto domain = runtime_state.selected_nodes.Target().Domain();
+    return domain == kOnnxDomain ? kMSDomain : domain;
+  }
+
   NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
     NodeAttributes extra_fused_conv_attributes;
 
@@ -257,7 +280,6 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAct";
   auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
-  SelectorActionRegistry::OpVersionsMap op_versions_map;
   const std::string mSInternalNHWCDomainConv = std::string(kMSInternalNHWCDomain) + ":NhwcConv";
   auto selector = std::make_unique<selectors::ConvActivationSelector>();
 
