@@ -3,8 +3,8 @@
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
-#include <algorithm>
 #include <cassert>
+#include <algorithm>
 #include <iterator>
 #include <utility>
 
@@ -39,10 +39,10 @@ void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,
 #else  // !defined(ORT_MINIMAL_BUILD)
 
 void SelectorActionRegistry::RegisterAction(const std::string& name,
-                                            std::unique_ptr<Action> actionn) {
+                                            std::unique_ptr<Action> action) {
   // currently all registrations are done from internal code with no external inputs,
   // so throw for invalid usage as it should only happen during development.
-  const bool inserted_in_name_to_entry = name_to_entry_.emplace(name, Entry{name, domain, std::move(action)}).second;
+  const bool inserted_in_name_to_entry = name_to_entry_.emplace(name, Entry{name, std::move(action)}).second;
   ORT_ENFORCE(inserted_in_name_to_entry, "Existing registration with name ", name);
 }
 

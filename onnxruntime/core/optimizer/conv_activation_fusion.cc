@@ -7,11 +7,12 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/optimizer/conv_activation_action_base.h"
 #include "core/optimizer/utils.h"
+#include "core/optimizer/selectors_actions/actions.h"
+#include "core/optimizer/conv_activation_action_base.h"
 
 namespace onnxruntime {
 
@@ -257,15 +258,11 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
   SelectorActionRegistry::OpVersionsMap op_versions_map;
-  const std::string mSInternalNHWCDomainConv = std::string(kMSInternalNHWCDomain) + ":Conv";
-  const std::string mSInternalNHWCDomainConvTranspose = std::string(kMSInternalNHWCDomain) + ":ConvTranspose";
+  const std::string mSInternalNHWCDomainConv = std::string(kMSInternalNHWCDomain) + ":NhwcConv";
   auto selector = std::make_unique<selectors::ConvActivationSelector>();
-  op_versions_map.emplace("Conv", std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
-  op_versions_map.emplace("ConvTranspose", std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
-  op_versions_map.emplace(mSInternalNHWCDomainConv, std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
-  op_versions_map.emplace(mSInternalNHWCDomainConvTranspose, std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
 
-  registry.RegisterSelectorAndAction(name, op_versions_map, std::move(selector), std::move(action));
+  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}, {mSInternalNHWCDomainConv, {11}}},
+                                     std::move(selector), std::move(action));
 #else
   registry.RegisterAction(name, std::move(action));
 #endif

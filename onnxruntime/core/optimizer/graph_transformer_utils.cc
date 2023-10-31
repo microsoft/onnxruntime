@@ -75,12 +75,12 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
+#include "orttraining/core/optimizer/memory_optimizer.h"
 #endif
 #ifdef ENABLE_TRITON
-#include "orttraining/core/framework/triton/triton_op_executor.h"
 #include "orttraining/core/optimizer/triton_fusion.h"
+#include "orttraining/core/framework/triton/triton_op_executor.h"
 #endif  // ENABLE_TRITON
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

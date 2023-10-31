@@ -1,16 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/conv_add_act_fusion.h"
-
 #include <deque>
-
 #include "core/graph/graph_utils.h"
-#include "core/graph/node_attr_utils.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/optimizer/conv_activation_action_base.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/conv_add_act_fusion.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/graph/node_attr_utils.h"
 #include "core/optimizer/utils.h"
+#include "core/optimizer/conv_activation_action_base.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -72,7 +70,7 @@ class ConvAddActivationSelector : public NodeSelector {
     // 1 find the Add node, 2 find it's producer node and make sure it's a conv node
     // 3 find the next node and check if it's a activation node, if yes, we will fuse conv+add+activation or conv+add
     //
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {7, 13, 14}, node.Domain())) {
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {7, 13, 14})) {
       conv_node = SelectProducerConv(*add_node);
     }
     if (conv_node == nullptr) {
@@ -281,15 +279,11 @@ class FuseConvAddActivationAction : public FusedConvActivationActionBase {
 void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   auto action = std::make_unique<actions::FuseConvAddActivationAction>();
   auto selector = std::make_unique<selectors::ConvAddActivationSelector>();
-  SelectorActionRegistry::OpVersionsMap op_versions_map;
-  const std::string kMSDomainFusedConv = std::string(kMSDomain) + ":FusedConv";
-  const std::string kMSInternalNHWCDomainNhwcFusedConv = std::string(kMSInternalNHWCDomain) + ":NhwcFusedConv";
+  const std::string kMSDomainNhwcFusedConv = std::string(kMSDomain) + ":NhwcConv";
 
-  op_versions_map.emplace("Conv", std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
-  op_versions_map.emplace(kMSDomainFusedConv.c_str(), std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
-  op_versions_map.emplace(kMSInternalNHWCDomainNhwcFusedConv.c_str(), std::vector<ONNX_NAMESPACE::OperatorSetVersion>{1, 11});
   registry.RegisterSelectorAndAction("ConvAddAct",
-                                     op_versions_map,
+                                     {{"Conv", {1, 11}},
+                                      {kMSDomainNhwcFusedConv, {1}}},
                                      std::move(selector), std::move(action));
 }
 
