@@ -68,6 +68,7 @@ def main():
                 continue
             deps.append(Dep(row[0], row[1], row[2]))
 
+    csv_file_path = Path(REPO_DIR) / "cmake" / "deps.txt"
     print("Writing to %s" % str(csv_file_path) )
     # Write updated content back
     with csv_file_path.open("w", newline="", encoding="utf-8") as f:
