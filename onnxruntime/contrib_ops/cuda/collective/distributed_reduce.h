@@ -21,27 +21,35 @@ namespace cuda {
 #if defined(ORT_USE_NCCL)
 
 template <typename T>
-class DistributedReduceSum final : public DistributedKernel {
+class DistributedReduceBase : public DistributedKernel {
+ public:
+  explicit DistributedReduceBase(const OpKernelInfo& info, cudnnReduceTensorOp_t cudnn_reduce_op);
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  // ONNX attribute. If true, reduced axes are retained as dimensions with size one.
+  // Otherwise, drop reduced axes.
+  bool keepdims_;
+  cudnnReduceTensorOp_t cudnn_reduce_op_;
+};
+
+template <typename T>
+class DistributedReduceSum final : public DistributedReduceBase {
  public:
   explicit DistributedReduceSum(const OpKernelInfo& info);
-
-  Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class DistributedReduceMean final : public DistributedKernel {
+class DistributedReduceMean final : public DistributedReduceBase {
  public:
   explicit DistributedReduceMean(const OpKernelInfo& info);
-
-  Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class DistributedReduceMax final : public DistributedKernel {
+class DistributedReduceMax final : public DistributedReduceBase {
  public:
   explicit DistributedReduceMax(const OpKernelInfo& info);
-
-  Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 #endif
