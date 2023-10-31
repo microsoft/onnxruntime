@@ -106,6 +106,8 @@ stages:
       - template: jobs/set-winenv.yml
         parameters:
           EnvSetupScript: ${{ parameters.EnvSetupScript }}
+          ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+            DownloadTRT: true
           ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
             DownloadCUDA: true
 
