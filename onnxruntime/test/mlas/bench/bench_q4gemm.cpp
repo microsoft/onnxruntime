@@ -52,7 +52,7 @@ void Q4GEMM(benchmark::State& state, MLAS_BLK_QUANT_TYPE qtype) {
   }
 }
 
-void Q4GEMM_Jblas(benchmark::State& state, size_t block_size, bool is_asym, MLAS_COMPUTE_TYPE cmp_type) {
+void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_COMPUTE_TYPE cmp_type) {
   if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
   if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
   if (state.range(2) <= 0) throw std::invalid_argument("K must greater than 0!");
@@ -154,7 +154,14 @@ static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
   ArgsProduct(b, {{1, 1024, 2048}, {4096}, {4096}, {8}});
 }
 
+BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G32SymInt8, 32, false, CompInt8)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G128SymInt8, 128, false, CompInt8)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4GPerNSymInt8, -1, false, CompInt8)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G32SymFp32, 32, false, CompFp32)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G128SymFp32, 128, false, CompFp32)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4GPerNSymFp32, -1, false, CompFp32)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G32AsymFp32, 32, true, CompFp32)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK_CAPTURE(Q4GEMM_Jblas, Q4G32AsymInt8, 32, true, CompInt8)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(Q4GEMM, Q4Sym, BlkQ4Sym)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(Q4GEMM, Q4Zp8, BlkQ4Zp8)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(Q4GEMM, Q4Sym128, BlkQ4Sym)->Apply(GemmSizeProducts)->UseRealTime();
