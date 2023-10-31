@@ -94,7 +94,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   // so supporting older opsets is unnecessary.
 
   // NOTE: This should be in sync with GetLayoutSensitiveOps in
-  // /onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc
+  // /onnxruntime/core/optimizer/transpose_optimization/transpose_optimizer.cc
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 11);
 
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 9);

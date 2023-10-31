@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -28,7 +28,7 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const createGatherElementsProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: GatherElementsAttributes): ProgramInfo => {
+    (inputs: readonly TensorView[], attributes: GatherElementsAttributes): ProgramInfo => {
       const inputShape = inputs[0].dims;
       const inputOutputDataType = inputs[0].dataType;
       const inputRank = inputShape.length;
@@ -86,10 +86,13 @@ const createGatherElementsProgramInfo =
   }`;
 
       return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+        name: 'GatherElements',
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+        }),
         getShaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
       };
     };
 
@@ -99,12 +102,5 @@ export const parseGatherElementsAttributes = (attributes: Record<string, unknown
 export const gatherElements = (context: ComputeContext, attributes: GatherElementsAttributes): void => {
   const inputs = context.inputs;
   validateInputs(inputs);
-
-  const metadata = {
-    name: 'GatherElements',
-    inputTypes: [GpuDataType.default, GpuDataType.default],
-    cacheHint: attributes.cacheKey,
-  };
-
-  context.compute(createGatherElementsProgramInfo(metadata, context.inputs, attributes));
+  context.compute(createGatherElementsProgramInfo(context.inputs, attributes));
 };

@@ -68,6 +68,7 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kSnpeExecutionProvider ||
          provider_type == onnxruntime::kQnnExecutionProvider ||
          provider_type == onnxruntime::kXnnpackExecutionProvider ||
+         provider_type == onnxruntime::kAzureExecutionProvider ||
          provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
 }
 
@@ -1024,7 +1025,32 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
       overload_name = attrs.at("overload_name").s();
     }
 
-    return !contrib::aten_ops::ATenOperatorExecutor::Instance().IsTensorArgument(op_name, overload_name, index);
+    return contrib::aten_ops::ATenOperatorExecutor::Instance().IsCpuArgument(op_name, overload_name, index, true);
+  }
+#else
+  ORT_UNUSED_PARAMETER(node);
+#endif
+
+  return false;
+}
+
+bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index) {
+  if (p_kci && p_kci->kernel_def->IsOutputOnCpu(index)) {
+    return true;
+  }
+
+#ifdef ENABLE_ATEN
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" &&
+      node.Domain() == kPytorchAtenDomain) {
+    const auto& attrs = node.GetAttributes();
+    ORT_ENFORCE(utils::HasString(attrs.at("operator")));
+    std::string op_name = attrs.at("operator").s();
+    std::string overload_name = "";
+    if (attrs.find("overload_name") != attrs.end() && utils::HasString(attrs.at("overload_name"))) {
+      overload_name = attrs.at("overload_name").s();
+    }
+
+    return contrib::aten_ops::ATenOperatorExecutor::Instance().IsCpuArgument(op_name, overload_name, index, false);
   }
 #else
   ORT_UNUSED_PARAMETER(node);

@@ -9,7 +9,7 @@ from onnxruntime.training.utils.torch_io_helper import (
     extract_data_and_schema,
     unflatten_data_using_schema,
 )
-from onnxruntime.training.utils.torch_type_map import pytorch_dtype_to_onnx
+from onnxruntime.training.utils.torch_type_map import onnx_dtype_to_pytorch, pytorch_dtype_to_onnx
 
 __all__ = [
     "PrimitiveType",
@@ -18,4 +18,5 @@ __all__ = [
     "extract_data_and_schema",
     "unflatten_data_using_schema",
     "pytorch_dtype_to_onnx",
+    "onnx_dtype_to_pytorch",
 ]

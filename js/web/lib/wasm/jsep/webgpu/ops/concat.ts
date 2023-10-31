@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -32,9 +32,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     }
   }
 };
-
-const createConcatProgramMetadata = (inputCount: number, cacheHint: string) =>
-    ({name: 'Concat', inputTypes: Array(inputCount).fill(GpuDataType.default), cacheHint});
 
 const calculateInputIndexImpl = (numberOfTensors: number): string => `
   fn calculateInputIndex(index: u32) -> u32 {
@@ -65,48 +62,47 @@ const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelpe
   return codeLines.join('\n');
 };
 
-const createConcatProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], axis: number): ProgramInfo => {
-      const inputShape = inputs[0].dims.slice();
-      if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
-        throw new Error('axis specified for concat doesn\'t match input dimensionality');
+const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): ProgramInfo => {
+  const inputShape = inputs[0].dims.slice();
+  if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
+    throw new Error('axis specified for concat doesn\'t match input dimensionality');
+  }
+  const adjustedAxis = (axis < 0) ? inputShape.length + axis : axis;
+  // ensure all of the non-concatenated axes match each other
+  // calculate the shape of the output tensor while we do that
+  const outputShape = inputShape.slice(0);
+  for (let i = 1; i < inputs.length; i++) {
+    const dataNShape = inputs[i].dims.slice();
+    for (let axisIndex = 0; axisIndex < inputShape.length; axisIndex++) {
+      // add to the placeholder for computing output shape
+      if (axisIndex === adjustedAxis) {
+        outputShape[adjustedAxis] += dataNShape[axisIndex];
       }
-      const adjustedAxis = (axis < 0) ? inputShape.length + axis : axis;
-      // ensure all of the non-concatenated axes match each other
-      // calculate the shape of the output tensor while we do that
-      const outputShape = inputShape.slice(0);
-      for (let i = 1; i < inputs.length; i++) {
-        const dataNShape = inputs[i].dims.slice();
-        for (let axisIndex = 0; axisIndex < inputShape.length; axisIndex++) {
-          // add to the placeholder for computing output shape
-          if (axisIndex === adjustedAxis) {
-            outputShape[adjustedAxis] += dataNShape[axisIndex];
-          }
-          // ensure all non-cancatenated axes match each other
-          else if (inputShape[axisIndex] !== dataNShape[axisIndex]) {
-            throw new Error('non concat dimensions must match');
-          }
-        }
+      // ensure all non-cancatenated axes match each other
+      else if (inputShape[axisIndex] !== dataNShape[axisIndex]) {
+        throw new Error('non concat dimensions must match');
       }
+    }
+  }
 
-      const outputSize = ShapeUtil.size(outputShape);
+  const outputSize = ShapeUtil.size(outputShape);
 
-      const sizeInConcatAxis = new Array<number>(inputs.length);
-      const inputVars = new Array<IndicesHelper>(inputs.length);
-      const dataType = inputs[0].dataType;
+  const sizeInConcatAxis = new Array<number>(inputs.length);
+  const inputVars = new Array<IndicesHelper>(inputs.length);
+  const dataType = inputs[0].dataType;
 
-      let previousSum = 0;
-      for (let i = 0; i < inputs.length; ++i) {
-        previousSum += inputs[i].dims[adjustedAxis];
-        sizeInConcatAxis[i] = previousSum;
+  let previousSum = 0;
+  for (let i = 0; i < inputs.length; ++i) {
+    previousSum += inputs[i].dims[adjustedAxis];
+    sizeInConcatAxis[i] = previousSum;
 
-        inputVars[i] = inputVariable(`input${i}`, dataType, inputs[i].dims);
-      }
+    inputVars[i] = inputVariable(`input${i}`, dataType, inputs[i].dims);
+  }
 
-      const output = outputVariable('output', dataType, outputShape);
+  const output = outputVariable('output', dataType, outputShape);
 
-      const indicesAxis = output.indicesGet('indices', adjustedAxis);
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const indicesAxis = output.indicesGet('indices', adjustedAxis);
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.declareVariables(...inputVars, output)}
 
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
@@ -124,23 +120,20 @@ const createConcatProgramInfo =
 
     ${assignOutputData(inputVars, output)}
   }`;
-      return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        getShaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
-      };
-    };
-
-const createConcatProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: ConcatAttributes): ProgramInfoLoader => {
-      const metadata = createConcatProgramMetadata(inputs.length, attributes.cacheKey);
-      return {...metadata, get: () => createConcatProgramInfo(metadata, inputs, attributes.axis)};
-    };
+  return {
+    name: 'Concat',
+    shaderCache: {hint: `${axis}`},
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+    }),
+    getShaderSource,
+  };
+};
 
 export const concat = (context: ComputeContext, attributes: ConcatAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createConcatProgramInfoLoader(context.inputs, attributes));
+  context.compute(createConcatProgramInfo(context.inputs, attributes.axis));
 };
 
 export const parseConcatAttributes = (attributes: Record<string, unknown>): ConcatAttributes =>

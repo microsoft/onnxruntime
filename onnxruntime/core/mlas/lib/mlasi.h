@@ -184,11 +184,17 @@ class MLASCPUIDInfo
 
     bool IsCurrentCoreArmv8NarrowLd() const { return false; }
 
+    bool HasArmNeon_I8MM() const { return has_arm_neon_i8mm_; }
+
+    bool HasArmSVE_I8MM() const { return has_arm_sve_i8mm_; }
+
    private:
     MLASCPUIDInfo();
 
     bool has_arm_neon_dot_{false};
     bool has_fp16_{false};
+    bool has_arm_neon_i8mm_{false};
+    bool has_arm_sve_i8mm_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
 
@@ -633,6 +639,24 @@ void
     int8_t ZeroPoint
     );
 
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_U16_KERNEL)(
+    const float* Input,
+    uint16_t* Output,
+    size_t N,
+    float Scale,
+    uint16_t ZeroPoint);
+
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_S16_KERNEL)(
+    const float* Input,
+    int16_t* Output,
+    size_t N,
+    float Scale,
+    int16_t ZeroPoint);
+
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
 {
@@ -749,6 +773,8 @@ extern "C" {
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8Kernel;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8Kernel;
+    MLAS_QUANTIZE_LINEAR_S16_KERNEL MlasQuantizeLinearS16Kernel;
+    MLAS_QUANTIZE_LINEAR_U16_KERNEL MlasQuantizeLinearU16Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
@@ -836,6 +862,8 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
@@ -959,6 +987,8 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
+    MLAS_QUANTIZE_LINEAR_S16_KERNEL* QuantizeLinearS16Kernel;
+    MLAS_QUANTIZE_LINEAR_U16_KERNEL* QuantizeLinearU16Kernel;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
@@ -986,6 +1016,8 @@ struct MLAS_PLATFORM {
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
+    MLAS_QUANTIZE_LINEAR_S16_KERNEL* QuantizeLinearS16Kernel;
+    MLAS_QUANTIZE_LINEAR_U16_KERNEL* QuantizeLinearU16Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
@@ -1044,6 +1076,23 @@ MlasTrySimpleParallel(
     const std::ptrdiff_t Iterations,
     const std::function<void(std::ptrdiff_t tid)>& Work
     );
+
+
+/**
+ * @brief Distribute many iterations of work over a thread pool if supported.
+ * This function is for small workloads in non-performance critical situation.
+ *
+ * @param ThreadPool [IN]          Optional thread pool. Ignored when using OpenMP
+ * @param Iterations [IN]          Total number of iterations
+ * @param Work [IN]                Logic for computing a range of iterations [begin, end)
+ */
+void
+MlasTryBatchParallel(
+	MLAS_THREADPOOL * ThreadPool,
+	const std::ptrdiff_t Iterations,
+	const std::function<void(std::ptrdiff_t tid)>& Work
+    );
+
 
 inline
 ptrdiff_t

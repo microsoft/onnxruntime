@@ -78,7 +78,15 @@ class AttentionMask:
             # ReduceSum-13: axes is moved from attribute to input
             axes_name = "ort_const_1_reduce_sum_axes"
             if self.model.get_initializer(axes_name) is None:
-                self.add_initializer(name=axes_name, data_type=TensorProto.INT64, dims=[1], vals=[1], raw=False)
+                self.model.add_initializer(
+                    helper.make_tensor(
+                        name=axes_name,
+                        data_type=TensorProto.INT64,
+                        dims=[1],
+                        vals=[1],
+                        raw=False,
+                    )
+                )
             mask_index_node = helper.make_node(
                 "ReduceSum",
                 inputs=[input_name, axes_name],
@@ -103,7 +111,7 @@ class FusionAttention(Fusion):
         model: OnnxModel,
         hidden_size: int,
         num_heads: int,
-        attention_mask: AttentionMask,
+        attention_mask: Optional[AttentionMask] = None,
         use_multi_head_attention: bool = False,
         disable_multi_head_attention_bias: bool = False,
         search_op_types: List[str] = ["SkipLayerNormalization", "LayerNormalization"],  # noqa: B006
@@ -112,7 +120,7 @@ class FusionAttention(Fusion):
         super().__init__(model, attention_op_name, search_op_types)
         self.hidden_size = hidden_size
         self.num_heads = num_heads
-        self.attention_mask = attention_mask
+        self.attention_mask = attention_mask if attention_mask else AttentionMask(model)
         self.use_multi_head_attention = use_multi_head_attention
         self.disable_multi_head_attention_bias = disable_multi_head_attention_bias
         self.mask_filter_value = None
@@ -196,7 +204,7 @@ class FusionAttention(Fusion):
     def get_add_qk_str(self, add_qk: NodeProto):
         shape_infer = self.model.infer_runtime_shape(update=True)
         if shape_infer is None:
-            return
+            return None
 
         input_0_shape = shape_infer.get_edge_shape(add_qk.input[0])
         input_1_shape = shape_infer.get_edge_shape(add_qk.input[1])
@@ -210,6 +218,31 @@ class FusionAttention(Fusion):
             return None
 
         return add_qk.input[1]
+
+    def reshape_add_qk(self, add_qk: str):
+        # Convert 4D mask from (B,1,S,T) to (B,N,S,T)
+        # B = batch size, N = num heads, S = source sequence length, T = target sequence length
+        mask_output_name = add_qk + "_mask"
+
+        # Check if concat node for (B,1,S,T) --> (B,N,S,T) already exists
+        concat_node = list(filter(lambda node: node.output[0] == mask_output_name, self.nodes_to_add))
+        if len(concat_node) == 1:
+            return mask_output_name
+
+        assert len(concat_node) == 0
+        concat_node_name = self.model.create_node_name("Concat")
+        concat_add_qk_fp32 = helper.make_node(
+            "Concat",
+            inputs=[add_qk for _ in range(self.num_heads)],
+            outputs=[mask_output_name],
+            name=concat_node_name,
+            axis=1,
+        )
+        # Add new node to graph
+        self.nodes_to_add.append(concat_add_qk_fp32)
+        self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
+
+        return mask_output_name
 
     def concat_kv(self, past_k: str, past_v: str) -> str:
         """Concatenate past_k and past_v inputs to create past_kv input.
@@ -640,8 +673,8 @@ class FusionAttention(Fusion):
             else:
                 mha_inputs.extend([q_matmul.output[0], k_matmul.output[0], v_matmul.output[0]])
         elif (
-            type(k_matmul) == str
-            and type(v_matmul) == str
+            type(k_matmul) == str  # noqa: E721
+            and type(v_matmul) == str  # noqa: E721
             and k_matmul in graph_input_names
             and v_matmul in graph_input_names
         ):
@@ -697,6 +730,7 @@ class FusionAttention(Fusion):
         present_k: str = "",
         present_v: str = "",
         scale: Optional[float] = None,
+        causal: bool = False,
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
@@ -717,6 +751,8 @@ class FusionAttention(Fusion):
             past_v (str): name of input for past V value
             present_k (str): name of output to store present K value
             present_v (str): name of output to store present V value
+            scale: scale before softmax
+            causal: whether it is uni-directional mask.
 
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
@@ -828,7 +864,7 @@ class FusionAttention(Fusion):
 
         # For MultiHeadAttention operator, use separated inputs for query, key and value, and no weights.
         if self.use_multi_head_attention:
-            if add_qk_str is not None:
+            if add_qk_str:
                 logger.debug("MultiHeadAttention does not support relative_position_bias: cannot fuse the attention.")
                 return None
 
@@ -865,20 +901,7 @@ class FusionAttention(Fusion):
                 attention_inputs.append(past_kv)
 
             if add_qk_str is not None:
-                # Convert 4d mask from (B,1,M,M) to (B,N,M,M)
-                # B = batch size, M = max sequence length, N = num heads
-                concat_node_name = self.model.create_node_name("Concat")
-                mask_output_name = add_qk_str + "_mask"
-                concat_add_qk_fp32 = helper.make_node(
-                    "Concat",
-                    inputs=[add_qk_str for _ in range(num_heads)],
-                    outputs=[mask_output_name],
-                    name=concat_node_name,
-                    axis=1,
-                )
-                # Add new nodes to graph
-                self.nodes_to_add.append(concat_add_qk_fp32)
-                self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
+                mask_output_name = self.reshape_add_qk(add_qk_str)
 
                 # Add attention mask to attention node
                 if not past_exists:
@@ -900,6 +923,9 @@ class FusionAttention(Fusion):
 
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+
+        if causal:
+            attention_node.attribute.extend([helper.make_attribute("unidirectional", 1)])
 
         if scale is not None:
             attention_node.attribute.extend([helper.make_attribute("scale", scale)])

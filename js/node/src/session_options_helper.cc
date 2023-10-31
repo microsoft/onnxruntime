@@ -16,7 +16,6 @@
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
 #ifdef USE_TENSORRT
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
 #ifdef USE_COREML

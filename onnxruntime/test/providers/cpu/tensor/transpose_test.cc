@@ -37,7 +37,7 @@ TEST(TransposeOpTest, PermRankDoesNotMatchTensorRank) {
   // This failure comes from shape inference, because in this case it knows the input dims.
   // But in the real world, the model can supply different input dims at runtime.
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Node:node1 Output:Y [ShapeInferenceError] Mismatch between number of source and target dimensions. Source=3 Target=4");
+           "Node:node1 Output:Y [ShapeInferenceError] Mismatch between number of inferred and declared dimensions. inferred=3 declared=4");
 }
 
 // Some of the tests can't run on TensorrtExecutionProvider because of errors.

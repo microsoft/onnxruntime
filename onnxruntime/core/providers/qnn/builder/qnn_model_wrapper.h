@@ -117,6 +117,7 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
+  // TODO(hecli) rename to GetTensorInfo
   Status GetOnnxInputInfo(const NodeUnitIODef& input, OnnxInputInfo& input_info) const;
 
   Status AddReshapeNode(const std::string& input_name,
@@ -179,6 +180,8 @@ class QnnModelWrapper {
                                std::vector<uint8_t>& unpacked_tensor) const;
 
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
+
+  const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
