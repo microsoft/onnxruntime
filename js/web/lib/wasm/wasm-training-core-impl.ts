@@ -150,7 +150,9 @@ export const createTrainingSessionHandle =
     };
 
 /**
- * Prepares input and output tensors by creating the tensors in the WASM side then moving them to the heap
+ * Prepares input and output tensors by creating the tensors in the WASM side then creates a list of the handles of the
+ * WASM tensors.
+ *
  * @param trainingSessionId
  * @param indices for each tensor, the index of the input or output name that the tensor corresponds with
  * @param tensors list of TensorMetaData
@@ -183,73 +185,78 @@ const createAndAllocateTensors =
     };
 
 /**
- * Move output tensors from the heap to an array
+ * Retrieves the information from the output tensor handles, copies to an array, and frees the WASM information
+ * associated with the tensor handle.
+ *
  * @param outputValuesOffset
  * @param outputCount
- * @returns
+ * @returns list of TensorMetadata retrieved from the output handles.
  */
-const moveOutputToTensorMetadataArr = (outputValuesOffset: number, outputCount: number) => {
-  const wasm = getInstance();
-  const output: TensorMetadata[] = [];
+const moveOutputToTensorMetadataArr =
+    (outputValuesOffset: number, outputCount: number, outputTensorHandles: number[],
+     outputTensors: Array<TensorMetadata|null>) => {
+      const wasm = getInstance();
+      const output: TensorMetadata[] = [];
 
-  for (let i = 0; i < outputCount; i++) {
-    const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
-
-    const beforeGetTensorDataStack = wasm.stackSave();
-    // stack allocate 4 pointer value
-    const tensorDataOffset = wasm.stackAlloc(4 * 4);
-
-    const keepOutputTensor = false;
-    let type: Tensor.Type|undefined, dataOffset = 0;
-    try {
-      const errorCode = wasm._OrtGetTensorData(
-          tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
-      if (errorCode !== 0) {
-        checkLastError(`Can't access output tensor data on index ${i}.`);
-      }
-      let tensorDataIndex = tensorDataOffset / 4;
-      const dataType = wasm.HEAPU32[tensorDataIndex++];
-      dataOffset = wasm.HEAPU32[tensorDataIndex++];
-      const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
-      const dimsLength = wasm.HEAPU32[tensorDataIndex++];
-      const dims = [];
-      for (let i = 0; i < dimsLength; i++) {
-        dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
-      }
-      wasm._OrtFree(dimsOffset);
-
-      const size = dims.reduce((a, b) => a * b, 1);
-      type = tensorDataTypeEnumToString(dataType);
-
-      if (type === 'string') {
-        const stringData: string[] = [];
-        let dataIndex = dataOffset / 4;
-        for (let i = 0; i < size; i++) {
-          const offset = wasm.HEAPU32[dataIndex++];
-          const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
-          stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
+      for (let i = 0; i < outputCount; i++) {
+        const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
+        if (tensor === outputTensorHandles[i]) {
+          // output tensor is pre-allocated. no need to copy data.
+          output.push(outputTensors[i]!);
+          continue;
         }
-        output.push([type, dims, stringData, 'cpu']);
-      } else {
-        const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
-        const data = new typedArrayConstructor(size);
-        new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-            .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
-        output.push([type, dims, data, 'cpu']);
-      }
-    } finally {
-      wasm.stackRestore(beforeGetTensorDataStack);
-      if (type === 'string' && dataOffset) {
-        wasm._free(dataOffset);
-      }
-      if (!keepOutputTensor) {
-        wasm._OrtReleaseTensor(tensor);
-      }
-    }
-  }
 
-  return output;
-};
+        const beforeGetTensorDataStack = wasm.stackSave();
+        // stack allocate 4 pointer value
+        const tensorDataOffset = wasm.stackAlloc(4 * 4);
+
+        let type: Tensor.Type|undefined, dataOffset = 0;
+        try {
+          const errorCode = wasm._OrtGetTensorData(
+              tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
+          if (errorCode !== 0) {
+            checkLastError(`Can't access output tensor data on index ${i}.`);
+          }
+          let tensorDataIndex = tensorDataOffset / 4;
+          const dataType = wasm.HEAPU32[tensorDataIndex++];
+          dataOffset = wasm.HEAPU32[tensorDataIndex++];
+          const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
+          const dimsLength = wasm.HEAPU32[tensorDataIndex++];
+          const dims = [];
+          for (let i = 0; i < dimsLength; i++) {
+            dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
+          }
+          wasm._OrtFree(dimsOffset);
+
+          const size = dims.reduce((a, b) => a * b, 1);
+          type = tensorDataTypeEnumToString(dataType);
+
+          if (type === 'string') {
+            const stringData: string[] = [];
+            let dataIndex = dataOffset / 4;
+            for (let i = 0; i < size; i++) {
+              const offset = wasm.HEAPU32[dataIndex++];
+              const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
+              stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
+            }
+            output.push([type, dims, stringData, 'cpu']);
+          } else {
+            const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
+            const data = new typedArrayConstructor(size);
+            new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+                .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
+            output.push([type, dims, data, 'cpu']);
+          }
+        } finally {
+          wasm.stackRestore(beforeGetTensorDataStack);
+          if (type === 'string' && dataOffset) {
+            wasm._free(dataOffset);
+          }
+        }
+      }
+
+      return output;
+    };
 
 export const runTrainStep = async(
     trainingSessionId: number, inputIndices: number[], inputTensors: TensorMetadata[], outputIndices: number[],
@@ -291,7 +298,7 @@ export const runTrainStep = async(
       throw new Error(NO_TRAIN_FUNCS_MSG);
     }
 
-    return moveOutputToTensorMetadataArr(outputValuesOffset, outputCount);
+    return moveOutputToTensorMetadataArr(outputValuesOffset, outputCount, outputTensorHandles, outputTensors);
   } finally {
     wasm.stackRestore(beforeRunStack);
 

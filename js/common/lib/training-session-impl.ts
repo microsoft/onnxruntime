@@ -51,12 +51,10 @@ export class TrainingSession implements TrainingSessionInterface {
 
   /**
    * Helper function for runTrainStep and future runStep methods that handles the type-narrowing conversion from
-   * the given parameters to SessionHandler.FetchesType and RunOptions. Also handles type-checking to ensure that
-   * the inputs are correct.
+   * the given parameters to SessionHandler.FetchesType and RunOptions.
    *
-   * @param feeds the required input -- checked in this function for correctness.
-   * @param arg1 narrowed & converted into the SessionHandler.FetchesType or RunOptions object. Also checked for
-   * correctness.
+   * @param feeds the required input
+   * @param arg1 narrowed & converted into the SessionHandler.FetchesType or RunOptions object
    * @param arg2 optional RunOptions object.
    * @returns
    */
