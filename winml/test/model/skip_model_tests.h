@@ -146,6 +146,8 @@ std::unordered_map<std::string, std::string> disabledTests({
    "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
   {                                           "mlperf_ssd_mobilenet_300_opset10_GPU",
    "Bug 31005624: mlperf_ssd_mobilenet_300 opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"                                                  },
+  {                                           "mlperf_ssd_resnet34_1200_opset10_GPU",
+   "Bug 31005624: mlperf_ssd_resnet34_1200_opset10_GPU opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"                                                  },
 });
 
 /*
