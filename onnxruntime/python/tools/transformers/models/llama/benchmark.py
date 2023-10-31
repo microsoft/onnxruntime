@@ -14,7 +14,6 @@ import torch
 from benchmark_helper import measure_memory, setup_logger
 from llama_inputs import (
     add_io_bindings,
-    convert_inputs_for_ort,
     get_merged_sample_with_past_kv_inputs,
     get_msft_sample_inputs,
     get_sample_inputs,
@@ -441,7 +440,9 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
 
         # Add IO bindings for non-CPU execution providers
         if args.device != "cpu":
-            io_binding, kv_cache_ortvalues = add_io_bindings(model, inputs, args.device, int(args.device_id), kv_cache_ortvalues)
+            io_binding, kv_cache_ortvalues = add_io_bindings(
+                model, inputs, args.device, int(args.device_id), kv_cache_ortvalues
+            )
             setattr(args, "io_binding", io_binding)  # noqa: B010
             return io_binding, kv_cache_ortvalues
 

@@ -89,7 +89,9 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
 
     # Add IO bindings for non-CPU execution providers
     if args.execution_provider != "cpu":
-        io_binding, kv_cache_ortvalues = add_io_bindings(ort_model, inputs, args.execution_provider, int(args.device_id), kv_cache_ortvalues)
+        io_binding, kv_cache_ortvalues = add_io_bindings(
+            ort_model, inputs, args.execution_provider, int(args.device_id), kv_cache_ortvalues
+        )
 
         io_binding.synchronize_inputs()
         start_time = time.time()
@@ -109,11 +111,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
     logger.info(f"ONNX Runtime took {end_time - start_time} s")
 
     # Compare PyTorch and ONNX Runtime accuracy
-    tol = (
-        2e1
-        if "int4" in args.onnx_model_path or "int8" in args.onnx_model_path
-        else 5e-1
-    )
+    tol = 2e1 if "int4" in args.onnx_model_path or "int8" in args.onnx_model_path else 5e-1
     parity = np.allclose(pt_outputs, ort_outputs, rtol=tol, atol=tol)
     logger.warning(f"Are PyTorch and ONNX Runtime results close? {parity}")
     if not parity:

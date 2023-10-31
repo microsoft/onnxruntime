@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from transformers import LlamaConfig
 
-from onnxruntime import OrtValue, InferenceSession
+from onnxruntime import InferenceSession, OrtValue
 
 
 # Get position_ids from attention_mask
@@ -85,7 +85,7 @@ def get_sample_with_past_kv_inputs(
 
     if not return_dict:
         # For export
-        assert type(past_kv) == list
+        assert isinstance(past_kv, list)
         return (input_ids, attention_mask, position_ids, past_kv)
 
     inputs = {
@@ -94,10 +94,10 @@ def get_sample_with_past_kv_inputs(
         "position_ids": position_ids,
     }
     if engine == "ort":
-        assert type(past_kv) == dict
+        assert isinstance(past_kv, dict)
         inputs.update(past_kv)
     else:
-        assert type(past_kv) == list
+        assert isinstance(past_kv, list)
         inputs["past_key_values"] = past_kv
 
     return inputs
@@ -142,7 +142,7 @@ def get_merged_sample_with_past_kv_inputs(
 
     if not return_dict:
         # For export
-        assert type(past_kv) == list
+        assert isinstance(past_kv, list)
         return (input_ids, attention_mask, position_ids, past_kv)
 
     inputs = {
@@ -151,7 +151,7 @@ def get_merged_sample_with_past_kv_inputs(
         "position_ids": position_ids,
     }
     if engine == "ort":
-        assert type(past_kv) == dict
+        assert isinstance(past_kv, dict)
         inputs.update(past_kv)
 
         if use_fp16:  # If model has GQA
@@ -160,7 +160,7 @@ def get_merged_sample_with_past_kv_inputs(
             inputs = enable_past_present_share_buffer(inputs, past_seq_len, max_seq_len)
 
     else:
-        assert type(past_kv) == list
+        assert isinstance(past_kv, list)
         inputs["past_key_values"] = past_kv
 
     return inputs
@@ -168,7 +168,13 @@ def get_merged_sample_with_past_kv_inputs(
 
 # Inputs for Microsoft export from https://github.com/microsoft/Llama-2-Onnx
 def get_msft_sample_inputs(
-    config: LlamaConfig, batch_size: int, past_seq_len: int, seq_len: int, max_seq_len: int, use_fp16: bool, split_kv: bool
+    config: LlamaConfig,
+    batch_size: int,
+    past_seq_len: int,
+    seq_len: int,
+    max_seq_len: int,
+    use_fp16: bool,
+    split_kv: bool,
 ):
     np_dtype = np.float16 if use_fp16 else np.float32
     head_size = config.hidden_size // config.num_attention_heads
