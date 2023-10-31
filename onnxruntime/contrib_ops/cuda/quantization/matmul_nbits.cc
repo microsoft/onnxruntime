@@ -27,7 +27,7 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
-    ORT_ENFORCE(nbits_ == 4, "Only 4b quantization is supported for MatMulNBits op, additional bits support is planed.");
+    ORT_ENFORCE(nbits_ == 4, "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
