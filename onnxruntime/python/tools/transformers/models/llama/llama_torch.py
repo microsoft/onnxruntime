@@ -15,7 +15,7 @@ def setup_torch_model(args, location, use_auth_token, torch_dtype=torch.float32,
     barrier()
 
     if not os.path.exists(args.cache_dir):
-        os.makedirs(args.cache_dir)
+        os.makedirs(args.cache_dir, exist_ok=True)
 
     for i in range(world_size // 2):
         if i == rank % (world_size // 2):

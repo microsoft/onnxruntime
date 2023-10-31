@@ -6,7 +6,6 @@ from typing import List
 
 import numpy as np
 import torch
-from onnxruntime.transformers.benchmark_helper import setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
     convert_inputs_for_ort,
@@ -18,6 +17,7 @@ from llama_torch import setup_torch_model
 from transformers import LlamaConfig, LlamaForCausalLM
 
 import onnxruntime as ort
+from onnxruntime.transformers.benchmark_helper import setup_logger
 
 logger = logging.getLogger("")
 
