@@ -576,13 +576,23 @@ TEST(FunctionTest, TestInlinedLocalFunctionNotRemoved) {
   ASSERT_STATUS_OK(session_object.Load(sstr));
 
   auto model_proto = session_object.GetModel().ToProto();
+#ifdef USE_TVM
+  // TVM EP takes the whole graph and optimizes it within its own framework.
+  // It does not retain the original graph.
+  ASSERT_EQ(0, model_proto.functions_size());
+#else
   ASSERT_EQ(1, model_proto.functions_size());
+#endif
 
   ASSERT_STATUS_OK(session_object.Initialize());
 
   // myfun is not removed because it was claimed by InternalTestingEP
   model_proto = session_object.GetModel().ToProto();
+#ifdef USE_TVM
+  ASSERT_EQ(0, model_proto.functions_size());
+#else
   ASSERT_EQ(1, model_proto.functions_size());
+#endif
 }
 
 }  // namespace test
