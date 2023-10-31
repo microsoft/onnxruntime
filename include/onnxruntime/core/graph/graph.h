@@ -982,13 +982,15 @@ class Graph {
   */
   bool RemoveNode(NodeIndex node_index);
 
-  /** Remove a Node from this Graph and free it. The function in addition
-  removes a corresponding NodeProto in the graph_proto if there is a match.
-  The function calls RemoveNode() internally, and all the requirements for RemoveNode()
-  must be met. In addition, the node must not produce any Graph outputs.
-  @returns true if the node_index was valid
+  /** The function regenerates NodeProto list in a topological order of the Graph
+  nodes instance and replaces it in the graph_proto_. This is necessary for subgraphs
+  that were subjected to constnat folding and some nodes were removed from Graph, but
+  not from graph_proto. This causes problems when a node is promoted in the outer scope
+  when its subraph is being inlined. In this case any node that has subgbraphs regnerates
+  them off the subgraph node protos list and the folded nodes are being resurrected resulting
+  in the duplicate name definitions. This is necessary to call after constant folding for non-main graphs.
   */
-  bool RemoveNodeAndProto(NodeIndex node_index);
+  void RegenerateNodeProtos();
 
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.

@@ -360,14 +360,14 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
       // Remove the output edges of the constant node and then remove the node itself.
       graph_utils::RemoveNodeOutputEdges(graph, *node);
-      if (graph.ParentGraph() != nullptr) {
-        graph.RemoveNodeAndProto(node->Index());
-      } else {
-        graph.RemoveNode(node->Index());
-      }
+      graph.RemoveNode(node->Index());
       modified = true;
       have_updated_nodes = true;
     }
+  }
+
+  if (graph.ParentGraph() != nullptr && have_updated_nodes) {
+    graph.RegenerateNodeProtos();
   }
 
   return Status::OK();

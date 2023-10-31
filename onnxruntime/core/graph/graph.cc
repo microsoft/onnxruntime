@@ -44,8 +44,6 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-static const std::string kProtoBasedNodeNameBase{"proto_based_node"};
-
 #if !defined(ORT_MINIMAL_BUILD)
 #define NO_CHANGE_ON_SYNC_FLAG(...)                  \
   do {                                               \
@@ -1310,16 +1308,8 @@ Graph::Graph(const Model& owning_model,
     }
   }
 
-  {
-    auto& nodes = *graph_proto_->mutable_node();
-    for (auto it = nodes.begin(), end = nodes.end(); it != end; ++it) {
-      // generate a name so the node_proto can be found by name in case it
-      // needs to be removed.
-      if (it->name().empty()) {
-        it->set_name(GenerateNodeName(kProtoBasedNodeNameBase));
-      }
-      AddNode(*it, name_to_type_map);
-    }
+  for (const auto& node_proto : graph_proto_->node()) {
+    AddNode(node_proto, name_to_type_map);
   }
 
   if (is_loaded_from_model_file_) {
@@ -3314,35 +3304,17 @@ bool Graph::RemoveNode(NodeIndex p_index) {
   return ReleaseNode(p_index);
 }
 
-bool Graph::RemoveNodeAndProto(NodeIndex node_index) {
-  auto* node = GetNode(node_index);
-  if (nullptr == node) {
-    return false;
-  }
-
-  const std::string node_name = node->Name();
-  bool result = RemoveNode(node_index);
-
-  if (result && !node_name.empty()) {
-    // Remove node's proto from graph_proto to prevent constant folded Node re-creation
-    // in subgraphs.
-    // E.g. when a node is constant folded and removed from a subgraph, but then re-created
-    // because a parent node that owns the subgraph being copied/inlined. The constant folded Node
-    // is then re-created based on the subgraph proto. This creates a duplicate name and invalidates the subgraph.
-    // This fixes the asymmetry of adding a new initializer to the graph proto, but not removing
-    // the node's proto with a node_arg with a name of the initializer.
-    // If the node does not have a name or a corresponding proto, then it was not created from a proto
-    // and it should be fine.
-    auto& node_list = *graph_proto_->mutable_node();
-    for (auto it = node_list.begin(), end = node_list.end(); it != end; ++it) {
-      if (it->name() == node_name) {
-        ORT_IGNORE_RETURN_VALUE(node_list.erase(it));
-        break;
-      }
+void Graph::RegenerateNodeProtos() {
+  GraphViewer graph(*this);
+  ONNX_NAMESPACE::NodeList replacement_nodes;
+  for (auto node_idx : graph.GetNodesInTopologicalOrder()) {
+    auto* node = GetNode(node_idx);
+    if (node != nullptr) {
+      auto* node_proto = replacement_nodes.Add();
+      node->ToProto(*node_proto);
     }
   }
-
-  return result;
+  graph_proto_->mutable_node()->Swap(&replacement_nodes);
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -4287,27 +4259,6 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
               &node->GetAttributes(),
               node->Domain());
     }
-  }
-
-  // Regenerate the target graph protos in a topological order
-  // we only need this for subgraphs that have nodes that potentially can be inlined
-  // to avoid ConstantFolded nodes duplicates re-created from NodeProtos in CreateSubgraph().
-  // Or and a entire If nodes that just been inlined.
-  // If the inlined node does not have a name, then it was not created on top of the corresponding NodeProto
-  // as we ensure that graph nodes have names at load time.
-  if (ParentGraph() != nullptr && !if_node.Name().empty()) {
-    ONNX_NAMESPACE::NodeList replacement_nodes;
-    GraphViewer graph_viewer(*this);
-    for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
-      if (node_idx != if_node.Index()) {
-        auto* node = GetNode(node_idx);
-        if (node != nullptr) {
-          auto* node_proto = replacement_nodes.Add();
-          node->ToProto(*node_proto);
-        }
-      }
-    }
-    graph_proto_->mutable_node()->Swap(&replacement_nodes);
   }
 
   return Status::OK();
