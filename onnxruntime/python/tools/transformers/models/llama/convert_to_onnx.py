@@ -7,7 +7,6 @@ from typing import List
 
 import onnx
 import torch
-from onnxruntime.transformers.convert_generation import replace_mha_with_gqa
 from dist_settings import barrier, get_rank, get_size, init_dist
 from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
@@ -20,6 +19,7 @@ from transformers import LlamaConfig, LlamaForCausalLM
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 from onnxruntime.transformers.benchmark_helper import Precision, prepare_environment, setup_logger
+from onnxruntime.transformers.convert_generation import replace_mha_with_gqa
 
 logger = logging.getLogger("")
 init_dist()
@@ -316,7 +316,7 @@ def run_torchscript_merged_export(
 ):
     # Dummy values for export
     batch_size, sequence_length, past_sequence_length = 2, 8, 0
-    
+
     # set device used to export model
     # for llama-70b we will use current gpus to speed up export process (we need at least 4 A100 GPUs)
     # for other models, we will use CPU to make sure we have enough memory to do export
