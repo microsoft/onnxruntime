@@ -299,7 +299,7 @@ if (onnxruntime_USE_ROCM)
   if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
     message(FATAL_ERROR "HIP Language is not properly configured.")
   endif()
-  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip -parallel-jobs=4>")
+  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip -parallel-jobs=2>")
 
   if (NOT onnxruntime_HIPIFY_PERL)
     find_path(HIPIFY_PERL_PATH
