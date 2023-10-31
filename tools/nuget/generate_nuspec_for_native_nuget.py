@@ -548,6 +548,11 @@ def generate_files(line_list, args):
             files_list.append(
                 "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.dll") + runtimes + " />"
             )
+            if include_pdbs and os.path.exists(os.path.join(args.native_build_path, "onnxruntime.pdb")):
+                files_list.append(
+                    "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
+                )
+
     else:
         files_list.append(
             "<file src="
