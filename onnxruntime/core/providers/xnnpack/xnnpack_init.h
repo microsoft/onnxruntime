@@ -6,6 +6,10 @@ namespace onnxruntime {
 namespace xnnpack {
 
 // copy #define logic from XNNPACK src/xnnpack/common.h to determine workspace alignment
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 #if defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86)
 #define XNN_ARCH_X86 1
 #else
