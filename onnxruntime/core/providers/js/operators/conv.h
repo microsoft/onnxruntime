@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <vector>
+#include <string>
+
 #include "core/providers/js/js_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 
@@ -11,7 +14,9 @@ namespace js {
 
 class ConvBase : public JsKernel {
  public:
-  ConvBase(const OpKernelInfo& info, bool is_channels_last, bool is_fused_conv) : JsKernel(info), conv_attrs_(info), w_is_const_(false) {
+  ConvBase(const OpKernelInfo& info, bool is_channels_last, bool is_fused_conv) : JsKernel(info),
+                                                                                  conv_attrs_(info),
+                                                                                  w_is_const_(false) {
     TensorShapeVector kernel_shape;
     const size_t pads_vec_size = conv_attrs_.pads.size() == 0 ? 4 : conv_attrs_.pads.size();
     std::vector<int32_t> local_pads(pads_vec_size, 0);
@@ -51,7 +56,8 @@ class ConvBase : public JsKernel {
                                  static_cast<int32_t>(conv_attrs_.auto_pad),
                                  static_cast<int32_t>(conv_attrs_.dilations.size() > 0 ? conv_attrs_.dilations[0] : 0),
                                  static_cast<int32_t>(conv_attrs_.group),
-                                 static_cast<int32_t>(conv_attrs_.kernel_shape_specified && kernel_shape.size() > 0 ? kernel_shape[0] : 0),
+                                 static_cast<int32_t>(conv_attrs_.kernel_shape_specified && kernel_shape.size() > 0 ?
+                                                                                                  kernel_shape[0] : 0),
                                  static_cast<int32_t>(local_pads.size()),
                                  reinterpret_cast<int32_t>(local_pads.size() > 0 ? local_pads.data() : nullptr) >> 2,
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 0 ? conv_attrs_.strides[0] : 0),
@@ -59,7 +65,8 @@ class ConvBase : public JsKernel {
                                  reinterpret_cast<int32_t>(&w_is_const_),
                                  conv_attrs_.activation.c_str(),
                                  activation_params_.size(),
-                                 reinterpret_cast<int32_t>(activation_params_.size() > 0 ? activation_params_.data() : nullptr) >> 2);
+                                 reinterpret_cast<int32_t>(activation_params_.size() > 0 ?
+                                                                            activation_params_.data() : nullptr) >> 2);
     } else {
       JSEP_INIT_KERNEL_ATTRIBUTE(Conv, ({
                                    "format" : $11 ? "NHWC" : "NCHW",
@@ -77,8 +84,10 @@ class ConvBase : public JsKernel {
                                  static_cast<int32_t>(conv_attrs_.dilations.size() > 0 ? conv_attrs_.dilations[0] : 0),
                                  static_cast<int32_t>(conv_attrs_.dilations.size() > 1 ? conv_attrs_.dilations[1] : 0),
                                  static_cast<int32_t>(conv_attrs_.group),
-                                 static_cast<int32_t>(conv_attrs_.kernel_shape_specified && kernel_shape.size() > 0 ? kernel_shape[0] : 0),
-                                 static_cast<int32_t>(conv_attrs_.kernel_shape_specified && kernel_shape.size() > 1 ? kernel_shape[1] : 0),
+                                 static_cast<int32_t>(conv_attrs_.kernel_shape_specified && kernel_shape.size() > 0 ?
+                                                                                                  kernel_shape[0] : 0),
+                                 static_cast<int32_t>(conv_attrs_.kernel_shape_specified && kernel_shape.size() > 1 ?
+                                                                                                  kernel_shape[1] : 0),
                                  static_cast<int32_t>(local_pads.size()),
                                  reinterpret_cast<int32_t>(local_pads.size() > 0 ? local_pads.data() : nullptr) >> 2,
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 0 ? conv_attrs_.strides[0] : 0),
@@ -87,7 +96,8 @@ class ConvBase : public JsKernel {
                                  reinterpret_cast<int32_t>(&w_is_const_),
                                  conv_attrs_.activation.c_str(),
                                  activation_params_.size(),
-                                 reinterpret_cast<int32_t>(activation_params_.size() > 0 ? activation_params_.data() : nullptr) >> 2);
+                                 reinterpret_cast<int32_t>(activation_params_.size() > 0 ?
+                                                                            activation_params_.data() : nullptr) >> 2);
     }
   }
 
@@ -118,7 +128,7 @@ class ConvBase : public JsKernel {
 template <bool is_channels_last, bool is_fused_conv = false>
 class Conv : public ConvBase {
  public:
-  Conv(const OpKernelInfo& info) : ConvBase(info, is_channels_last, is_fused_conv) {
+  explicit Conv(const OpKernelInfo& info) : ConvBase(info, is_channels_last, is_fused_conv) {
   }
 };
 

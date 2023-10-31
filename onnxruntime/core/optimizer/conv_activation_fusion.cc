@@ -4,7 +4,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 
 #include <string_view>
-
+#include <string>
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"

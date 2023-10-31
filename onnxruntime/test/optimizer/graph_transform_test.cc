@@ -1637,7 +1637,7 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
     if (cuda_rocm_supported.find(model.second) == cuda_rocm_supported.end()) {
       ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
     } else {
-      ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
+      ASSERT_EQ(op_to_count_after_fusion[model.second], 0);
     }
 #elif defined(USE_JSEP)
     std::set<std::string> js_supported = {"Relu", "Clip", "Sigmoid", "Tanh", "LeakyRelu"};

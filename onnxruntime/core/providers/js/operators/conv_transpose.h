@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include <algorithm>
 #include "core/common/gsl.h"
 #include "core/providers/js/js_kernel.h"
@@ -43,18 +44,24 @@ class ConvTranspose : public JsKernel {
                                    "activation" : UTF8ToString($14)
                                  }),
                                  static_cast<int32_t>(conv_transpose_attrs_.auto_pad),
-                                 static_cast<int32_t>(conv_transpose_attrs_.dilations.size() > 0 ? conv_transpose_attrs_.dilations[0] : 0),
+                                 static_cast<int32_t>(conv_transpose_attrs_.dilations.size() > 0 ?
+                                                                              conv_transpose_attrs_.dilations[0] : 0),
                                  static_cast<int32_t>(conv_transpose_attrs_.group),
-                                 static_cast<int32_t>(conv_transpose_attrs_.kernel_shape_specified && kernel_shape.size() > 0) ? kernel_shape[0] : 0,
+                                 static_cast<int32_t>(conv_transpose_attrs_.kernel_shape_specified &&
+                                                      kernel_shape.size() > 0) ? kernel_shape[0] : 0,
                                  static_cast<int32_t>(conv_transpose_attrs_.pads.size()),
-                                 static_cast<int32_t>(conv_transpose_attrs_.pads.size() > 1) ? conv_transpose_attrs_.pads[1] : 0,
-                                 static_cast<int32_t>(conv_transpose_attrs_.strides.size() > 0) ? conv_transpose_attrs_.strides[0] : 0,
+                                 static_cast<int32_t>(conv_transpose_attrs_.pads.size() > 1) ?
+                                                                                  conv_transpose_attrs_.pads[1] : 0,
+                                 static_cast<int32_t>(conv_transpose_attrs_.strides.size() > 0) ?
+                                                                                  conv_transpose_attrs_.strides[0] : 0,
                                  static_cast<int32_t>(channels_last),
                                  reinterpret_cast<int32_t>(&w_is_const_),
                                  gsl::narrow_cast<int32_t>(conv_transpose_attrs_.output_padding.size()),
-                                 reinterpret_cast<int32_t>(conv_transpose_attrs_.output_padding.size() > 0 ? conv_transpose_attrs_.output_padding.data() : nullptr) >> 2,
+                                 reinterpret_cast<int32_t>(conv_transpose_attrs_.output_padding.size() > 0 ?
+                                                           conv_transpose_attrs_.output_padding.data() : nullptr) >> 2,
                                  gsl::narrow_cast<int32_t>(conv_transpose_attrs_.output_shape.size()),
-                                 reinterpret_cast<int32_t>(conv_transpose_attrs_.output_shape.size() > 0 ? conv_transpose_attrs_.output_shape.data() : nullptr) >> 2,
+                                 reinterpret_cast<int32_t>(conv_transpose_attrs_.output_shape.size() > 0 ?
+                                                           conv_transpose_attrs_.output_shape.data() : nullptr) >> 2,
                                  conv_transpose_attrs_.activation.c_str());
     } else {
       constexpr size_t pads_vec_size = 4;
@@ -66,8 +73,10 @@ class ConvTranspose : public JsKernel {
       std::vector<int32_t> local_strides(strides_vec_size, 0);
       std::vector<int32_t> local_dilations(dialations_vec_size, 0);
       std::vector<int32_t> local_kernel_shape;
-      std::vector<int32_t> local_output_shape(conv_transpose_attrs_.output_shape.begin(), conv_transpose_attrs_.output_shape.end());
-      std::vector<int32_t> local_output_padding(conv_transpose_attrs_.output_padding.begin(), conv_transpose_attrs_.output_padding.end());
+      std::vector<int32_t> local_output_shape(conv_transpose_attrs_.output_shape.begin(),
+                                              conv_transpose_attrs_.output_shape.end());
+      std::vector<int32_t> local_output_padding(conv_transpose_attrs_.output_padding.begin(),
+                                                conv_transpose_attrs_.output_padding.end());
       if (conv_transpose_attrs_.kernel_shape_specified) {
         for (size_t i = 0; i < kernel_shape.size() && i < kernel_shape_vec_size; ++i) {
           local_kernel_shape.push_back(gsl::narrow_cast<int32_t>(kernel_shape[i]));
@@ -110,9 +119,11 @@ class ConvTranspose : public JsKernel {
                                  static_cast<int32_t>(channels_last),
                                  reinterpret_cast<int32_t>(&w_is_const_),
                                  gsl::narrow_cast<int32_t>(local_output_padding.size()),
-                                 reinterpret_cast<int32_t>(local_output_padding.size() > 0 ? local_output_padding.data() : nullptr) >> 2,
+                                 reinterpret_cast<int32_t>(local_output_padding.size() > 0 ?
+                                                                          local_output_padding.data() : nullptr) >> 2,
                                  gsl::narrow_cast<int32_t>(local_output_shape.size()),
-                                 reinterpret_cast<int32_t>(local_output_shape.size() > 0 ? local_output_shape.data() : nullptr) >> 2,
+                                 reinterpret_cast<int32_t>(local_output_shape.size() > 0 ?
+                                                                          local_output_shape.data() : nullptr) >> 2,
                                  conv_transpose_attrs_.activation.c_str());
     }
   }

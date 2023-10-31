@@ -3,9 +3,10 @@
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
-#include <cassert>
 #include <algorithm>
+#include <cassert>
 #include <iterator>
+#include <string>
 #include <utility>
 
 #include "core/graph/op_identifier_utils.h"
@@ -58,7 +59,8 @@ const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::s
 #if !defined(ORT_MINIMAL_BUILD)
 auto SelectorActionRegistry::LookUpByOpTypeAndDomain(const std::string& op_type, const std::string& domain) const
     -> std::vector<gsl::not_null<const Entry*>> {
-  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(domain == kOnnxDomain ? op_type : (domain + ":" + op_type));
+  const auto [range_begin, range_end] =
+      op_type_to_entry_.equal_range(domain == kOnnxDomain ? op_type : (domain + ":" + op_type));
   std::vector<gsl::not_null<const Entry*>> result{};
   result.reserve(std::distance(range_begin, range_end));
   std::transform(range_begin, range_end, std::back_inserter(result),
@@ -96,7 +98,8 @@ static Status MatchAndProcess(
     std::optional<NodesToOptimizeIndices> node_selection_opt{};
     const SelectorActionRegistry::Entry* selector_action_entry_ptr = nullptr;
 
-    const auto selector_action_entries = selector_action_registry.LookUpByOpTypeAndDomain(node.OpType(), node.Domain());
+    const auto selector_action_entries =
+        selector_action_registry.LookUpByOpTypeAndDomain(node.OpType(), node.Domain());
     const auto& domain = node.Domain();
     std::string domain_optype = (domain == kOnnxDomain) ? node.OpType() : (domain + ":" + node.OpType());
     for (const auto& entry : selector_action_entries) {

@@ -98,7 +98,8 @@ class SelectorActionRegistry {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // return registered Entry or nullptr if not found
-  auto LookUpByOpTypeAndDomain(const std::string& op_type, const std::string& domain) const -> std::vector<gsl::not_null<const Entry*>>;
+  auto LookUpByOpTypeAndDomain(const std::string& op_type,
+                               const std::string& domain) const -> std::vector<gsl::not_null<const Entry*>>;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
  private:
