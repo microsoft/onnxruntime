@@ -11,7 +11,6 @@ import numpy as np
 import onnx
 import psutil
 import torch
-from benchmark_helper import measure_memory, setup_logger
 from llama_inputs import (
     add_io_bindings,
     get_merged_sample_with_past_kv_inputs,
@@ -25,6 +24,7 @@ from tqdm import trange
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
 
 import onnxruntime as ort
+from onnxruntime.transformers.benchmark_helper import measure_memory, setup_logger
 
 logger = logging.getLogger(__name__)
 
