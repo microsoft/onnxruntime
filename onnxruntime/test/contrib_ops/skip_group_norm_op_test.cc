@@ -252,11 +252,7 @@ TEST(SkipGroupNormTest, SkipGroupNorm_no_bias_broadcast_skip) {
         test.AddAttribute<float>("epsilon", 1e-05f);
         test.AddAttribute<int64_t>("groups", 8);
         test.AddAttribute<int64_t>("activation", 0);
-
-        // We interpret channels_last==-1 as the attribute not being provided
-        if (channels_last != -1) {
-          test.AddAttribute<int64_t>("channels_last", channels_last);
-        }
+        test.AddAttribute<int64_t>("channels_last", channels_last);
 
         test.AddInput<MLFloat16>("X", dims_nhwc, ToFloat16(input_data_nhwc));
         test.AddInput<float>("gamma", {C}, gamma_data);
