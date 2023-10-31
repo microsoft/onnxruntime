@@ -92,6 +92,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
+  * <a href="#com.microsoft.SkipGroupNorm">com.microsoft.SkipGroupNorm</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
   * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
@@ -2185,7 +2186,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>activation</tt> : int (required)</dt>
-<dd>Activation after group normalization: 0 for None, 1 for Swish</dd>
+<dd>Activation after group normalization: 0 for None, 1 for SiLU</dd>
 <dt><tt>channels_last</tt> : int</dt>
 <dd>1 if the input and output are in the NHWC layout, 0 if it is in the NCHW layout. Defaults to 1.</dd>
 <dt><tt>epsilon</tt> : float</dt>
@@ -2425,6 +2426,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
   Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
   
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -4922,6 +4924,72 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>I</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.SkipGroupNorm"></a><a name="com.microsoft.skipgroupnorm">**com.microsoft.SkipGroupNorm**</a>
+
+  This operator element-wise adds x, skip and bias, then apply group normalization and optional activation.
+  
+  This operator transforms input according to
+    s = x + skip + bias
+    y = gamma * (s - mean) / sqrt(variance + epsilon) + beta
+  
+  The input channels are separated into num_groups groups, each containing num_channels / num_groups channels.
+  The num_channels must be divisible by num_groups.
+  The mean and standard-deviation of s are calculated separately over the each group.
+  The weight and bias are per-channel affine transform parameter vectors of size num_channels.
+  
+  The activation attribute can be used to enable activation after group normalization.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : int (required)</dt>
+<dd>Activation after group normalization: 0 for None, 1 for SiLU</dd>
+<dt><tt>channels_last</tt> : int</dt>
+<dd>1 if the input and output are in the NHWC layout, 0 if it is in the NCHW layout. Defaults to 1.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero</dd>
+<dt><tt>groups</tt> : int (required)</dt>
+<dd>The number of groups of channels. It should be a divisor of the number of channels C</dd>
+</dl>
+
+#### Inputs (4 - 5)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input data tensor. Dimensions are (N x H x W x C) when channels_last is 1  or (N x C x H x W) otherwise, where N is the batch size, C is the number of channels, and H and W are the height and width of the data</dd>
+<dt><tt>gamma</tt> : M</dt>
+<dd>1D gamma tensor for normalization with shape (C), where C is number of channels</dd>
+<dt><tt>beta</tt> : M</dt>
+<dd>1D beta tensor for normalization with shape (C), where C is number of channels</dd>
+<dt><tt>skip</tt> : T</dt>
+<dd>4D or 2D skip tensor. The shape can be (N x H x W x C) or (N x 1 x 1 x C) or (N x C)</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>1D bias tensor. Dimensions are (C), where C is number of channels</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>The output tensor of the same shape as X</dd>
+<dt><tt>S</tt> (optional) : T</dt>
+<dd>The element-wise sum of input x, skip and bias tensors. It has the same shape as X</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain input X, skip, bias and output Y, S types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain gamma and beta to float tensors.</dd>
 </dl>
 
 
