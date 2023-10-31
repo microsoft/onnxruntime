@@ -1,16 +1,16 @@
-import os
 import logging
+import os
 
 import torch
+from dist_settings import barrier, get_rank, get_size
 from transformers import LlamaConfig, LlamaForCausalLM
-
-from dist_settings import get_rank, get_size, barrier
 
 logger = logging.getLogger("")
 
+
 def setup_torch_model(args, location, use_auth_token, torch_dtype=torch.float32, use_cuda=True):
     world_size = get_size()
-    logger.info(f'world_size: {world_size}')
+    logger.info(f"world_size: {world_size}")
     rank = get_rank()
     barrier()
 
@@ -21,8 +21,13 @@ def setup_torch_model(args, location, use_auth_token, torch_dtype=torch.float32,
         if i == rank:
             l_config = LlamaConfig.from_pretrained(location, use_auth_token=use_auth_token, cache_dir=args.cache_dir)
             l_config.use_cache = True
-            llama = LlamaForCausalLM.from_pretrained(location, use_auth_token=use_auth_token, config=l_config, 
-                                                     torch_dtype=torch_dtype, cache_dir=args.cache_dir)
+            llama = LlamaForCausalLM.from_pretrained(
+                location,
+                use_auth_token=use_auth_token,
+                config=l_config,
+                torch_dtype=torch_dtype,
+                cache_dir=args.cache_dir,
+            )
             if world_size > 1:
                 llama.parallel_model()
             if use_cuda:

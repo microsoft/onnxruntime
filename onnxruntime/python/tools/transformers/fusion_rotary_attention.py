@@ -338,7 +338,7 @@ class FusionRotaryAttention(FusionAttention):
         qkv_nodes_3 = self.model.match_parent_path(
             normalize_node,
             ["AllReduce", "MatMul", "Reshape", "Transpose", "MatMul"],
-            [1,            0,        0,         0,           0],
+            [1, 0, 0, 0, 0],
         )
         if qkv_nodes_1 is not None:
             _, reshape_qkv_2, _, reshape_qkv_1, matmul_qkv = qkv_nodes_1
@@ -373,47 +373,117 @@ class FusionRotaryAttention(FusionAttention):
             ["Transpose", "Reshape", "MatMul"],
             [1, 0, 0],
         )
-        _,v_nodes_4,_ = self.model.match_parent_paths_all(
+        _, v_nodes_4, _ = self.model.match_parent_paths_all(
             matmul_qkv,
             [
                 (
                     ["Reshape", "Expand", "Unsqueeze", "Concat", "Transpose", "Reshape", "MatMul"],
-                    [1,          0,        0,           0,        1,           0,         0],
+                    [1, 0, 0, 0, 1, 0, 0],
                 ),
                 (
-                    ["Reshape", "Expand", "Where", "Equal", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "Transpose", "Reshape", "MatMul"],
-                    [1,          0,        1,       0,       0,         0,        0,           0,        0,       0,        1,           0,         0],
+                    [
+                        "Reshape",
+                        "Expand",
+                        "Where",
+                        "Equal",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
                 ),
                 (
-                    ["Reshape", "Expand", "Where", "Equal", "Mul", "ConstantOfShape", "Shape", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "Transpose", "Reshape", "MatMul"],
-                    [1,          0,        1,       0,       1,     0,                 0,       0,         0,        1,           0,        0,       0,        1,           0,         0],
+                    [
+                        "Reshape",
+                        "Expand",
+                        "Where",
+                        "Equal",
+                        "Mul",
+                        "ConstantOfShape",
+                        "Shape",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0],
                 ),
                 (
-                    ["Reshape", "Expand", "Where", "ConstantOfShape", "Shape", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "Transpose", "Reshape", "MatMul"],
-                    [1,          0,        1,       1,                 0,       0,         0,        3,           0,        0,       0,        1,           0,         0],
+                    [
+                        "Reshape",
+                        "Expand",
+                        "Where",
+                        "ConstantOfShape",
+                        "Shape",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 1, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0],
                 ),
                 (
-                    ["Reshape", "Expand", "Where", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "Transpose", "Reshape", "MatMul"],
-                    [1,          0,        1,       2,         0,        4,           0,        0,       0,        1,           0,         0],
+                    [
+                        "Reshape",
+                        "Expand",
+                        "Where",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 1, 2, 0, 4, 0, 0, 0, 1, 0, 0],
                 ),
                 (
                     ["Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "Transpose", "Reshape", "MatMul"],
-                    [1,          1,        0,           0,        0,       0,        1,           0,         0],
+                    [1, 1, 0, 0, 0, 0, 1, 0, 0],
                 ),
                 (
-                    ["Reshape", "Concat", "Unsqueeze", "Mul", "Gather", "Shape", "Concat", "Transpose", "Reshape", "MatMul"],
-                    [1,          1,        1,           0,     0,        0,       0,        1,           0,         0],
+                    [
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Mul",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 1, 1, 0, 0, 0, 0, 1, 0, 0],
                 ),
                 (
                     ["Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "Transpose", "Reshape", "MatMul"],
-                    [1,          1,        2,           0,        0,       0,        1,           0,         0],
+                    [1, 1, 2, 0, 0, 0, 1, 0, 0],
                 ),
                 (
                     ["Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "Transpose", "Reshape", "MatMul"],
-                    [1,          1,        3,           0,        0,       0,        1,           0,         0],
+                    [1, 1, 3, 0, 0, 0, 1, 0, 0],
                 ),
             ],
-            output_name_to_node = None
+            output_name_to_node=None,
         )
         if v_nodes_1 is not None:
             reshape_v_2, _, concat_v, _, reshape_v_1, matmul_v = v_nodes_1
@@ -441,23 +511,23 @@ class FusionRotaryAttention(FusionAttention):
             v_nodes = v_nodes_3
             present_v = transpose_v.output[0]
         elif v_nodes_4 is not None and len(v_nodes_4) == 9:
-            logger.debug('fuse_rotary_attention: v_nodes_4')
-            logger.debug('*' * 30)
+            logger.debug("fuse_rotary_attention: v_nodes_4")
+            logger.debug("*" * 30)
             for temp_path in v_nodes_4:
-                logger.debug('fuse_rotary_attention: path for v_nodes_4')
+                logger.debug("fuse_rotary_attention: path for v_nodes_4")
                 for temp_node in temp_path:
-                    logger.debug(f'temp_node: {temp_node}')
-                logger.debug('*' * 30)
+                    logger.debug(f"temp_node: {temp_node}")
+                logger.debug("*" * 30)
 
             concat_v, transpose_v, reshape_v, matmul_v = v_nodes_4[0][-4:]
             v_nodes = v_nodes_4
             past_v = concat_v.input[0]
             present_v = concat_v.output[0]
-            logger.debug(f'transpose_v: {transpose_v}')
-            logger.debug(f'reshape_v: {reshape_v}')
-            logger.debug(f'matmul_v: {matmul_v}')
-            logger.debug(f'past_v: {past_v}')
-            logger.debug(f'present_v: {present_v}')
+            logger.debug(f"transpose_v: {transpose_v}")
+            logger.debug(f"reshape_v: {reshape_v}")
+            logger.debug(f"matmul_v: {matmul_v}")
+            logger.debug(f"past_v: {past_v}")
+            logger.debug(f"present_v: {present_v}")
         else:
             logger.debug("fuse_rotary_attention: failed to match v path")
             return
@@ -537,43 +607,169 @@ class FusionRotaryAttention(FusionAttention):
             matmul_qk,
             [
                 (
-                    ["Transpose", "Reshape", "Expand", "Unsqueeze", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
-                    [1,            0,         0,        0,           0,        1,                 0,           0,         0],
+                    [
+                        "Transpose",
+                        "Reshape",
+                        "Expand",
+                        "Unsqueeze",
+                        "Concat",
+                        "RotaryEmbedding",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
-                    ["Transpose", "Reshape", "Expand", "Where", "Equal", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
-                    [1,            0,         0,        1,       0,       0,         0,        0,           0,        0,       0,        1,                 0,           0,         0],
+                    [
+                        "Transpose",
+                        "Reshape",
+                        "Expand",
+                        "Where",
+                        "Equal",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "RotaryEmbedding",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
-                    ["Transpose", "Reshape", "Expand", "Where", "Equal", "Mul", "ConstantOfShape", "Shape", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
-                    [1,            0,         0,        1,       0,       1,     0,                 0,       0,         0,        1,           0,        0,       0,        1,                 0,           0,         0],
+                    [
+                        "Transpose",
+                        "Reshape",
+                        "Expand",
+                        "Where",
+                        "Equal",
+                        "Mul",
+                        "ConstantOfShape",
+                        "Shape",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "RotaryEmbedding",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
-                    ["Transpose", "Reshape", "Expand", "Where", "ConstantOfShape", "Shape", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
-                    [1,            0,         0,        1,       1,                 0,       0,         0,        3,           0,        0,       0,        1,                 0,           0,         0],
+                    [
+                        "Transpose",
+                        "Reshape",
+                        "Expand",
+                        "Where",
+                        "ConstantOfShape",
+                        "Shape",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "RotaryEmbedding",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 0, 1, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
-                    ["Transpose", "Reshape", "Expand", "Where", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
-                    [1,            0,         0,        1,       2,         0,        4,           0,        0,       0,        1,                 0,           0,         0],
+                    [
+                        "Transpose",
+                        "Reshape",
+                        "Expand",
+                        "Where",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "RotaryEmbedding",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 0, 1, 2, 0, 4, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
-                    ["Transpose", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
-                    [1,            0,         1,        0,           0,        0,       0,        1,                 0,           0,         0],
+                    [
+                        "Transpose",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "RotaryEmbedding",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
-                    ["Transpose", "Reshape", "Concat", "Unsqueeze", "Mul", "Gather", "Shape", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
-                    [1,            0,         1,        1,           0,     0,        0,       0,        1,                 0,           0,         0],
+                    [
+                        "Transpose",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Mul",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "RotaryEmbedding",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
-                    ["Transpose", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
-                    [1,            0,         1,        2,           0,        0,       0,        1,                 0,           0,         0],
+                    [
+                        "Transpose",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "RotaryEmbedding",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 1, 2, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
-                    ["Transpose", "Reshape", "Concat", "Unsqueeze", "Gather", "Shape", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
-                    [1,            0,         1,        3,           0,        0,       0,        1,                 0,           0,         0],
+                    [
+                        "Transpose",
+                        "Reshape",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                        "Concat",
+                        "RotaryEmbedding",
+                        "Transpose",
+                        "Reshape",
+                        "MatMul",
+                    ],
+                    [1, 0, 1, 3, 0, 0, 0, 1, 0, 0, 0],
                 ),
             ],
-            output_name_to_node = None
+            output_name_to_node=None,
         )
         if k_nodes_1 is not None:
             reshape_k_2, _, concat_k, _, rotary_k, matmul_k = k_nodes_1
@@ -603,25 +799,25 @@ class FusionRotaryAttention(FusionAttention):
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
         elif k_nodes_4 is not None and len(k_nodes_4) == 9:
-            logger.debug('fuse_rotary_attention: k_nodes_4')
-            logger.debug('*' * 30)
+            logger.debug("fuse_rotary_attention: k_nodes_4")
+            logger.debug("*" * 30)
             for temp_path in k_nodes_4:
-                logger.debug('fuse_rotary_attention: path for k_nodes_4')
+                logger.debug("fuse_rotary_attention: path for k_nodes_4")
                 for temp_node in temp_path:
-                    logger.debug(f'temp_node: {temp_node}')
-                logger.debug('*' * 30)
+                    logger.debug(f"temp_node: {temp_node}")
+                logger.debug("*" * 30)
 
             reshape_k, matmul_k = k_nodes_4[0][-2:]
             concat_k, rotary_k = k_nodes_4[0][-5:-3]
             k_nodes = k_nodes_4
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
-            logger.debug(f'reshape_k: {reshape_k}')
-            logger.debug(f'matmul_k: {matmul_k}')
-            logger.debug(f'concat_k: {concat_k}')
-            logger.debug(f'rotary_k: {rotary_k}')
-            logger.debug(f'past_k: {past_k}')
-            logger.debug(f'present_k: {present_k}')
+            logger.debug(f"reshape_k: {reshape_k}")
+            logger.debug(f"matmul_k: {matmul_k}")
+            logger.debug(f"concat_k: {concat_k}")
+            logger.debug(f"rotary_k: {rotary_k}")
+            logger.debug(f"past_k: {past_k}")
+            logger.debug(f"present_k: {present_k}")
         else:
             logger.debug("fuse_rotary_attention: failed to match k nodes")
             return
@@ -669,7 +865,7 @@ class FusionRotaryAttention(FusionAttention):
                 return
             root_output = reshape_qkv_2.output[0]
 
-        elif qkv_nodes == qkv_nodes_2 or qkv_nodes == qkv_nodes_3:
+        elif qkv_nodes in (qkv_nodes_2, qkv_nodes_3):
             if not self.check_runtime_shape_paths_for_nodes(
                 reshape_qkv,
                 reshape_q,

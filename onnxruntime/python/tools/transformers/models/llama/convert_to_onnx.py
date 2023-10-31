@@ -2,16 +2,16 @@ import argparse
 import logging
 import os
 import shutil
-import tempfile
 from itertools import chain
 from typing import List
 
 import onnx
 import torch
-from onnxruntime.transformers.benchmark_helper import Precision, prepare_environment, setup_logger
 from convert_generation import replace_mha_with_gqa
+from dist_settings import barrier, get_rank, get_size, init_dist
 from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
+from llama_torch import setup_torch_model
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version
@@ -19,12 +19,11 @@ from transformers import LlamaConfig, LlamaForCausalLM
 
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
-
-from dist_settings import init_dist, get_rank, get_size, barrier
-from llama_torch import setup_torch_model
+from onnxruntime.transformers.benchmark_helper import Precision, prepare_environment, setup_logger
 
 logger = logging.getLogger("")
 init_dist()
+
 
 def get_model_dynamic_axes(input_names: List[str], output_names: List[str]):
     dynamic_axes = {}
@@ -133,7 +132,9 @@ def save_onnx_model(onnx_model: onnx.ModelProto, output_path: str, data_path: st
 # del onnx_model
 # temp_dir.cleanup()
 #
-def run_dynamo_export(args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM, rank: int=0, world_size: int=1):
+def run_dynamo_export(
+    args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM, rank: int = 0, world_size: int = 1
+):
     from torch._dynamo import config
 
     config.capture_scalar_outputs = True
@@ -164,7 +165,7 @@ def run_dynamo_export(args: argparse.Namespace, l_config: LlamaConfig, llama: Ll
 
     # Export decoder_with_past_model.onnx
     input_ids, attn_mask, pos_ids, past_kv = get_sample_with_past_kv_inputs(
-        l_config, device, batch_size, sequence_length, world_size = world_size
+        l_config, device, batch_size, sequence_length, world_size=world_size
     )
     temp_dir = args.output  # tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir, "temp.onnx")  # os.path.join(temp_dir.name, "temp.onnx")
@@ -186,11 +187,15 @@ def run_dynamo_export(args: argparse.Namespace, l_config: LlamaConfig, llama: Ll
 
     logger.info(f"The {args.model_name} ONNX model has been successfully created with the Dynamo exporter!")
 
+
 def _prepare_dir(dir_path):
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
 
-def run_torchscript_separate_export(args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM, rank: int=0, world_size: int=1):
+
+def run_torchscript_separate_export(
+    args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM, rank: int = 0, world_size: int = 1
+):
     # Dummy values for export
     batch_size, sequence_length = 2, 8
     device = llama.device
@@ -209,7 +214,7 @@ def run_torchscript_separate_export(args: argparse.Namespace, l_config: LlamaCon
 
     # Avoid use system temp dir to avoid overflood on hard disk as 70b model is very large.
     # Use temp folder per rank to avoid race condition here.
-    temp_dir = f'./temp_{rank}'
+    temp_dir = f"./temp_{rank}"
     _prepare_dir(temp_dir)
     temp_path = os.path.join(temp_dir, "temp.onnx")
     torch.onnx.export(
@@ -240,7 +245,14 @@ def run_torchscript_separate_export(args: argparse.Namespace, l_config: LlamaCon
     shutil.rmtree(temp_dir)
 
     # Export decoder_with_past_model.onnx
-    decoder_with_past_inputs = get_sample_with_past_kv_inputs(l_config, device, batch_size, sequence_length, use_fp16 = args.precision == Precision.FLOAT16, world_size = world_size)
+    decoder_with_past_inputs = get_sample_with_past_kv_inputs(
+        l_config,
+        device,
+        batch_size,
+        sequence_length,
+        use_fp16=args.precision == Precision.FLOAT16,
+        world_size=world_size,
+    )
     input_names = [
         "input_ids",
         "attention_mask",
@@ -289,17 +301,27 @@ def run_torchscript_separate_export(args: argparse.Namespace, l_config: LlamaCon
     del onnx_model
     shutil.rmtree(temp_dir)
 
-    logger.info(f"The {args.model_name} separate ONNX model has been successfully created with the TorchScript exporter!")
+    logger.info(
+        f"The {args.model_name} separate ONNX model has been successfully created with the TorchScript exporter!"
+    )
 
 
-def run_torchscript_merged_export(args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM, rank: int=0, world_size: int=1):
+def run_torchscript_merged_export(
+    args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM, rank: int = 0, world_size: int = 1
+):
     # Dummy values for export
     batch_size, sequence_length, past_sequence_length = 2, 8, 0
     device = llama.device
 
     # Export decoder_merged_model.onnx
     decoder_merged_inputs = get_merged_sample_with_past_kv_inputs(
-        l_config, device, batch_size, sequence_length, past_sequence_length, use_fp16 = args.precision == Precision.FLOAT16, world_size = world_size
+        l_config,
+        device,
+        batch_size,
+        sequence_length,
+        past_sequence_length,
+        use_fp16=args.precision == Precision.FLOAT16,
+        world_size=world_size,
     )
     input_names = [
         "input_ids",
@@ -321,7 +343,7 @@ def run_torchscript_merged_export(args: argparse.Namespace, l_config: LlamaConfi
 
     # Avoid use system temp dir to avoid overflood on hard disk as 70b model is very large.
     # Use temp folder per rank to avoid race condition here.
-    temp_dir = f'./temp_{rank}'
+    temp_dir = f"./temp_{rank}"
     _prepare_dir(temp_dir)
     temp_path = os.path.join(temp_dir, "temp.onnx")
     torch.onnx.export(
@@ -374,12 +396,16 @@ def optimize_export(config: LlamaConfig, input_path: str, output_path: str):
     remove_existing_model(input_path)
 
 
-def convert_to_float16(args: argparse.Namespace, config: LlamaConfig, old_paths: List[str], rank: int=0, world_size: int=1):
+def convert_to_float16(
+    args: argparse.Namespace, config: LlamaConfig, old_paths: List[str], rank: int = 0, world_size: int = 1
+):
     decoder_model_fp16_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp16.onnx")
     decoder_with_past_model_fp16_path = os.path.join(
         args.output, f"rank_{rank}_{args.model_name}_decoder_with_past_model_fp16.onnx"
     )
-    decoder_merged_model_fp16_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_merged_model_fp16.onnx")
+    decoder_merged_model_fp16_path = os.path.join(
+        args.output, f"rank_{rank}_{args.model_name}_decoder_merged_model_fp16.onnx"
+    )
     new_paths = [decoder_model_fp16_path, decoder_with_past_model_fp16_path, decoder_merged_model_fp16_path]
 
     logger.info("Converting to float16...")
@@ -397,9 +423,11 @@ def convert_to_float16(args: argparse.Namespace, config: LlamaConfig, old_paths:
     return new_paths
 
 
-def use_group_query_attention(config: LlamaConfig, fp16_model_opt: OnnxModel, world_size: int=1):
+def use_group_query_attention(config: LlamaConfig, fp16_model_opt: OnnxModel, world_size: int = 1):
     # Replace MultiHeadAttention with GroupQueryAttention and remove attention mask nodes
-    fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, "past_sequence_length", config.num_key_value_heads, world_size)
+    fp16_model_opt = replace_mha_with_gqa(
+        fp16_model_opt, "past_sequence_length", config.num_key_value_heads, world_size
+    )
     fp16_model_opt.prune_graph()
     fp16_model_opt.update_graph(allow_remove_graph_inputs=True)
     return fp16_model_opt
@@ -496,6 +524,7 @@ def remove_existing_files(output_path: str):
         if ".onnx" in filename or ".onnx.data" in filename:
             os.remove(filepath)
             logger.warning(f"Removed {filepath}")
+
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -714,11 +743,15 @@ def main():
     for i in range(world_size):
         if i == rank:
             # Set model paths for FP32 model
-            decoder_model_fp32_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp32.onnx")
+            decoder_model_fp32_path = os.path.join(
+                args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp32.onnx"
+            )
             decoder_with_past_model_fp32_path = os.path.join(
                 args.output, f"rank_{rank}_{args.model_name}_decoder_with_past_model_fp32.onnx"
             )
-            decoder_merged_model_fp32_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_merged_model_fp32.onnx")
+            decoder_merged_model_fp32_path = os.path.join(
+                args.output, f"rank_{rank}_{args.model_name}_decoder_merged_model_fp32.onnx"
+            )
             old_paths = [decoder_model_fp32_path, decoder_with_past_model_fp32_path, decoder_merged_model_fp32_path]
 
             missing_separate_exports = (
@@ -747,14 +780,20 @@ def main():
                     run_torchscript_merged_export(args, l_config, llama, rank, world_size)
 
             # Set model paths to store FP32 optimized model
-            decoder_model_fp32_opt_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp32_opt.onnx")
+            decoder_model_fp32_opt_path = os.path.join(
+                args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp32_opt.onnx"
+            )
             decoder_with_past_model_fp32_opt_path = os.path.join(
                 args.output, f"rank_{rank}_{args.model_name}_decoder_with_past_model_fp32_opt.onnx"
             )
             decoder_merged_model_fp32_opt_path = os.path.join(
                 args.output, f"rank_{rank}_{args.model_name}_decoder_merged_model_fp32_opt.onnx"
             )
-            new_paths = [decoder_model_fp32_opt_path, decoder_with_past_model_fp32_opt_path, decoder_merged_model_fp32_opt_path]
+            new_paths = [
+                decoder_model_fp32_opt_path,
+                decoder_with_past_model_fp32_opt_path,
+                decoder_merged_model_fp32_opt_path,
+            ]
 
             # Run the optimizer script
             logger.info("Optimizing models...")
@@ -777,18 +816,24 @@ def main():
                 _ = convert_to_float16(args, l_config, old_paths, rank, world_size)
 
             elif args.precision == Precision.INT8:
-                decoder_model_int8_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_int8.onnx")
+                decoder_model_int8_path = os.path.join(
+                    args.output, f"rank_{rank}_{args.model_name}_decoder_model_int8.onnx"
+                )
                 decoder_with_past_model_int8_path = os.path.join(
                     args.output, f"rank_{rank}_{args.model_name}_decoder_with_past_model_int8.onnx"
                 )
-                decoder_merged_model_int8_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_merged_model_int8.onnx")
+                decoder_merged_model_int8_path = os.path.join(
+                    args.output, f"rank_{rank}_{args.model_name}_decoder_merged_model_int8.onnx"
+                )
                 new_paths = [decoder_model_int8_path, decoder_with_past_model_int8_path, decoder_merged_model_int8_path]
 
                 if args.quantization_method == "smooth_quant":
                     if not args.no_merged:
                         logger.error("SmoothQuant must be used on separately exported models")
                     else:
-                        logger.info(f"Quantizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to int8")
+                        logger.info(
+                            f"Quantizing {decoder_model_fp32_path} and {decoder_with_past_model_fp32_path} to int8"
+                        )
                         smooth_quant(args, old_paths[0], old_paths[1], new_paths[0], new_paths[1])
 
                 elif args.quantization_method == "quantize_dynamic":
@@ -810,7 +855,9 @@ def main():
                                 use_external_data_format=True,
                                 extra_options={"MatMulConstBOnly": True},
                             )
-                            logger.info(f"The ONNX model at {fp32_path} has been quantized to int8 and saved at {int8_path}!")
+                            logger.info(
+                                f"The ONNX model at {fp32_path} has been quantized to int8 and saved at {int8_path}!"
+                            )
                             remove_existing_model(decoder_model_fp32_path)
 
                     logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")
@@ -822,11 +869,15 @@ def main():
                 if args.execution_provider != "cpu":
                     old_paths = convert_to_float16(args, l_config, old_paths, rank, world_size)
 
-                decoder_model_int4_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_int4.onnx")
+                decoder_model_int4_path = os.path.join(
+                    args.output, f"rank_{rank}_{args.model_name}_decoder_model_int4.onnx"
+                )
                 decoder_with_past_model_int4_path = os.path.join(
                     args.output, f"rank_{rank}_{args.model_name}_decoder_with_past_model_int4.onnx"
                 )
-                decoder_merged_model_int4_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_merged_model_int4.onnx")
+                decoder_merged_model_int4_path = os.path.join(
+                    args.output, f"rank_{rank}_{args.model_name}_decoder_merged_model_int4.onnx"
+                )
                 new_paths = [decoder_model_int4_path, decoder_with_past_model_int4_path, decoder_merged_model_int4_path]
 
                 for fp_path, int4_path in zip(old_paths, new_paths):
@@ -844,7 +895,6 @@ def main():
             del llama
         barrier()
 
-
     logger.info("Verifying parity on all ONNX models created")
 
     # Use FP32 precision for FP32, INT8, INT4 CPU models, use FP16 precision for FP16 and INT4 GPU models
@@ -856,7 +906,12 @@ def main():
 
     # Verify parity on all saved ONNX models
     for filename in os.listdir(args.output):
-        if ".data" in filename or ".onnx" not in filename or args.precision not in filename or f'rank_{rank}' not in filename:
+        if (
+            ".data" in filename
+            or ".onnx" not in filename
+            or args.precision not in filename
+            or f"rank_{rank}" not in filename
+        ):
             continue
 
         parity_cmd = [
@@ -869,7 +924,7 @@ def main():
             "-fp",
             args.precision,
             "--cache_dir",
-            args.cache_dir
+            args.cache_dir,
         ]
         if "with_past" in filename:
             parity_cmd.append("--use_past_kv")
@@ -877,7 +932,7 @@ def main():
             parity_cmd.append("--merged")
 
         try:
-            logger.debug(f'check parity with cmd: {parity_cmd}')
+            logger.debug(f"check parity with cmd: {parity_cmd}")
             parity_check(parity_cmd)
         except Exception as e:
             logger.warning(f"An error occurred while verifying parity: {e}", exc_info=True)

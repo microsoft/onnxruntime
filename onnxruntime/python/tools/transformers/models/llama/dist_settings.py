@@ -1,7 +1,7 @@
 import os
+
 import torch
 import torch.distributed as dist
-
 from mpi4py import MPI
 
 
@@ -22,6 +22,7 @@ def init_dist():
     dist.init_process_group("nccl", init_method="tcp://127.0.0.1:7647", world_size=world_size, rank=rank)
     device = torch.device(local_rank)
     return device
+
 
 comm = MPI.COMM_WORLD
 

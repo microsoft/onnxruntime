@@ -297,40 +297,20 @@ class TestRotaryAttentionFusion(unittest.TestCase):
 
         if model_type == "70b_distributed_merged":
             concat_k_node = helper.make_node(
-                    "Concat",
-                    inputs=["past_key", "k_rope"],
-                    outputs=["present_key"],
-                    axis=2,
-                )
+                "Concat",
+                inputs=["past_key", "k_rope"],
+                outputs=["present_key"],
+                axis=2,
+            )
             k_nodes.append(concat_k_node)
 
-            shape_k1 = helper.make_node(
-                "Shape",
-                inputs=["present_value"],
-                outputs=["shape_k1_out"],
-                name="Shape_k1"
-            )
+            shape_k1 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_k1_out"], name="Shape_k1")
             k_nodes.append(shape_k1)
-            shape_k2 = helper.make_node(
-                "Shape",
-                inputs=["present_value"],
-                outputs=["shape_k2_out"],
-                name="Shape_k2"
-            )
+            shape_k2 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_k2_out"], name="Shape_k2")
             k_nodes.append(shape_k2)
-            shape_k3 = helper.make_node(
-                "Shape",
-                inputs=["present_value"],
-                outputs=["shape_k3_out"],
-                name="Shape_k3"
-            )
+            shape_k3 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_k3_out"], name="Shape_k3")
             k_nodes.append(shape_k3)
-            shape_k4 = helper.make_node(
-                "Shape",
-                inputs=["present_value"],
-                outputs=["shape_k4_out"],
-                name="Shape_k4"
-            )
+            shape_k4 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_k4_out"], name="Shape_k4")
             k_nodes.append(shape_k4)
             gather_k_1 = helper.make_node(
                 "Gather",
@@ -414,18 +394,13 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Reshape_k_2",
             )
             k_nodes.append(reshape_k_2)
-            shape_k5 = helper.make_node(
-                "Shape",
-                inputs=["reshape_k2_out"],
-                outputs=["shape_k5_out"],
-                name="Shape_k5"
-            )
+            shape_k5 = helper.make_node("Shape", inputs=["reshape_k2_out"], outputs=["shape_k5_out"], name="Shape_k5")
             k_nodes.append(shape_k5)
             constant_of_shape_k_1 = helper.make_node(
                 "ConstantOfShape",
                 inputs=["shape_k5_out"],
                 outputs=["constant_of_shape_k1_out"],
-                name="ConstantOfShape_k1"
+                name="ConstantOfShape_k1",
             )
             k_nodes.append(constant_of_shape_k_1)
             mul_k_1 = helper.make_node(
@@ -737,34 +712,14 @@ class TestRotaryAttentionFusion(unittest.TestCase):
 
             if model_type != "70b_distributed_merged":
                 return v_nodes + [concat_v_node]  # noqa: RUF005
-            
-            shape_v1 = helper.make_node(
-                "Shape",
-                inputs=["present_value"],
-                outputs=["shape_1_out"],
-                name="Shape_v1"
-            )
+
+            shape_v1 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_1_out"], name="Shape_v1")
             v_nodes.append(shape_v1)
-            shape_v2 = helper.make_node(
-                "Shape",
-                inputs=["present_value"],
-                outputs=["shape_2_out"],
-                name="Shape_v2"
-            )
+            shape_v2 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_2_out"], name="Shape_v2")
             v_nodes.append(shape_v2)
-            shape_v3 = helper.make_node(
-                "Shape",
-                inputs=["present_value"],
-                outputs=["shape_3_out"],
-                name="Shape_v3"
-            )
+            shape_v3 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_3_out"], name="Shape_v3")
             v_nodes.append(shape_v3)
-            shape_v4 = helper.make_node(
-                "Shape",
-                inputs=["present_value"],
-                outputs=["shape_4_out"],
-                name="Shape_v4"
-            )
+            shape_v4 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_4_out"], name="Shape_v4")
             v_nodes.append(shape_v4)
             gather_v_1 = helper.make_node(
                 "Gather",
@@ -848,18 +803,13 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Reshape_v2",
             )
             v_nodes.append(reshape_v_2)
-            shape_v5 = helper.make_node(
-                "Shape",
-                inputs=["reshape_v2_out"],
-                outputs=["shape_5_out"],
-                name="Shape_v5"
-            )
+            shape_v5 = helper.make_node("Shape", inputs=["reshape_v2_out"], outputs=["shape_5_out"], name="Shape_v5")
             v_nodes.append(shape_v5)
             constant_of_shape_v_1 = helper.make_node(
                 "ConstantOfShape",
                 inputs=["shape_5_out"],
                 outputs=["constant_of_shape_v1_out"],
-                name="ConstantOfShape_v1"
+                name="ConstantOfShape_v1",
             )
             v_nodes.append(constant_of_shape_v_1)
             mul_v_1 = helper.make_node(
@@ -940,9 +890,8 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Reshape_v3",
             )
             v_nodes.append(reshape_v_3)
-            
-            return v_nodes + [concat_v_node]  # noqa: RUF005
 
+            return v_nodes + [concat_v_node]  # noqa: RUF005
 
         # Create extra nodes for `position_ids`
         unsqueeze_v_node = helper.make_node(

@@ -11,7 +11,7 @@ import numpy as np
 import onnx
 import psutil
 import torch
-from onnxruntime.transformers.benchmark_helper import setup_logger
+from dist_settings import get_rank, get_size
 from llama_inputs import (
     convert_inputs_for_ort,
     get_merged_sample_with_past_kv_inputs,
@@ -25,9 +25,7 @@ from tqdm import trange
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
 
 import onnxruntime as ort
-from onnxruntime.transformers.benchmark_helper import measure_memory
-
-from dist_settings import get_rank, get_size
+from onnxruntime.transformers.benchmark_helper import measure_memory, setup_logger
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +118,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=0,
             use_fp16=args.use_fp16,
             return_dict=True,
-            world_size = args.world_size,
+            world_size=args.world_size,
         )
         iter_inputs = get_merged_sample_with_past_kv_inputs(
             args.config,
@@ -130,7 +128,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=args.sequence_length,
             use_fp16=args.use_fp16,
             return_dict=True,
-            world_size = args.world_size,
+            world_size=args.world_size,
         )
         init_inputs = convert_inputs_for_ort(
             init_inputs,
@@ -531,7 +529,7 @@ def run_inference(args, init_inputs, iter_inputs, model):
         raise Exception(f"Cannot recognize {args.benchmark_type}")
 
 
-def get_args(rank = 0):
+def get_args(rank=0):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-bt",
@@ -663,8 +661,8 @@ def main():
     logger.info(args.__dict__)
     torch.backends.cudnn.benchmark = True
 
-    setattr(args, "rank", rank)
-    setattr(args, "world_size", world_size)
+    args.rank = rank
+    args.world_size = world_size
     tokenizer = LlamaTokenizer.from_pretrained(args.model_name)
     config = LlamaConfig.from_pretrained(args.model_name)
     target_device = f"cuda:{args.rank}" if args.device != "cpu" else args.device

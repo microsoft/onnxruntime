@@ -7,6 +7,7 @@ from typing import List
 import numpy as np
 import torch
 from benchmark_helper import setup_logger
+from dist_settings import get_rank, get_size
 from llama_inputs import (
     convert_inputs_for_ort,
     get_merged_sample_with_past_kv_inputs,
@@ -14,7 +15,6 @@ from llama_inputs import (
     get_sample_with_past_kv_inputs,
 )
 from llama_torch import setup_torch_model
-from dist_settings import get_rank, get_size
 from transformers import LlamaConfig, LlamaForCausalLM
 
 import onnxruntime as ort
@@ -43,11 +43,17 @@ def get_inputs(args: argparse.Namespace, config: LlamaConfig):
             past_sequence_length,
             use_fp16=args.use_fp16,
             return_dict=True,
-            world_size = world_size
+            world_size=world_size,
         )
     elif args.use_past_kv:
         inputs = get_sample_with_past_kv_inputs(
-            config, args.device, batch_size, sequence_length, use_fp16=args.use_fp16, return_dict=True, world_size = world_size
+            config,
+            args.device,
+            batch_size,
+            sequence_length,
+            use_fp16=args.use_fp16,
+            return_dict=True,
+            world_size=world_size,
         )
     else:
         inputs = get_sample_inputs(config, args.device, batch_size, sequence_length, return_dict=True)
@@ -82,7 +88,7 @@ def add_io_bindings(args: argparse.Namespace, model: ort.InferenceSession, input
 def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: LlamaForCausalLM):
     inputs = get_inputs(args, config)
 
-    logger.debug(f'torch input: {inputs}')
+    logger.debug(f"torch input: {inputs}")
 
     # Run inference with PyTorch
     if args.execution_provider != "cpu":
@@ -107,7 +113,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
         device_id=int(args.rank),
     )
 
-    logger.debug(f'ORT input: {inputs}')
+    logger.debug(f"ORT input: {inputs}")
 
     ep = f"{args.execution_provider.upper()}ExecutionProvider"
     if ep == "CUDAExecutionProvider":
@@ -247,13 +253,15 @@ def main(argv: List[str] = []):  # noqa: B006
 
     # Load model and config
     setattr(args, "use_fp16", args.precision == "fp16")  # noqa: B010
-    setattr(args, "rank", rank)
+    args.rank = rank
     setattr(args, "device_name", "cpu" if args.execution_provider == "cpu" else f"cuda:{rank}")  # noqa: B010
     setattr(args, "device", torch.device(args.device_name))  # noqa: B010
     use_auth_token = args.torch_model_directory == os.path.join(".")
     location = args.model_name if use_auth_token else args.torch_model_directory
 
-    config, llama = setup_torch_model(args, location, use_auth_token, torch_dtype=(torch.float16 if args.use_fp16 else torch.float32))
+    config, llama = setup_torch_model(
+        args, location, use_auth_token, torch_dtype=(torch.float16 if args.use_fp16 else torch.float32)
+    )
 
     if not args.merged:
         verify_parity(args, config, llama)
