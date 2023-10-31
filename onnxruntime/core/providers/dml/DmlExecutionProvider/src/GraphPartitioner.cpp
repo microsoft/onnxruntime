@@ -345,13 +345,8 @@ namespace Dml
     // Whether any operator in the model contains a subgraph.  This is true
     // if the graph being partitioned is itself within a subgraph, or contains
     // an operator with a subgraph.
-    bool ModelUsesSubgraph(const onnxruntime::GraphViewer& graph)
+    bool ContainsSubgraph(const onnxruntime::GraphViewer& graph)
     {
-        if (graph.IsSubgraph())
-        {
-            return true;
-        }
-
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
 
         for (size_t nodeIndex : toplogicalOrder)
@@ -384,7 +379,8 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
-        gsl::span<const onnxruntime::NodeIndex> additionalSplittingNodes)
+        gsl::span<const onnxruntime::NodeIndex> additionalSplittingNodes,
+        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputs)
     {
         // Nodes are uniquely identified by the name of their first output argument
         std::vector<std::unique_ptr<GraphPartition>> partitions;
@@ -419,7 +415,7 @@ namespace Dml
         }
 
         // Check whether this graph is a subgraph, or contains any node with a subgraph.
-        bool modelUsesSubgraph = ModelUsesSubgraph(graph);
+        bool containsSubgraph = ContainsSubgraph(graph);
 
         uint32_t splittingNodeIndex = 0;
 
@@ -454,10 +450,10 @@ namespace Dml
             // Add a unique partition if graph node usage is not supported.
             //
             // Partitioning is disabled in models with subgraphs to work around issues with implicit inputs.
-            // The partitioning algorithm does not currently consider such inputs.  Transfering shared initializers
+            // The partitioning algorithm does not currently consider such inputs. Transferring shared initializers
             // for partitions could also cause problems.  Note, operators with subgraphs are currently not efficient
             // anyhow due to CPU/GPU copies.
-            if (modelUsesSubgraph || !isDmlGraphNode)
+            if (containsSubgraph || !isDmlGraphNode)
             {
                 partitions.push_back(CreatePartitionAndFinalizeInputs(node, isDmlNode, false, nodeNameToPartitionMap));
                 continue;
@@ -505,7 +501,7 @@ namespace Dml
                             firstNonFinalInputPartition->AddInput(arg->Name());
                         }
 
-                        if (graphInputs.find(arg->Name()) != graphInputs.end())
+                        if (graphInputs.find(arg->Name()) != graphInputs.end() || implicitInputs.find(arg->Name()) != implicitInputs.end())
                         {
                             firstNonFinalInputPartition->AddInput(arg->Name());
                         }
