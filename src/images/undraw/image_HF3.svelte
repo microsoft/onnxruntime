@@ -1,7 +1,11 @@
+<script>
+	export let widthscale = 1;
+	export let heightscale = 1;
+</script>
 <svg
 	stroke="currentColor"
-	width="110"
-	height="81"
+	width={110 * widthscale}
+	height={81 * heightscale}
 	viewBox="0 0 110 81"
 	fill="none"
 	xmlns="http://www.w3.org/2000/svg"
