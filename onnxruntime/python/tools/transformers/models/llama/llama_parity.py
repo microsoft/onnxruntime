@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from benchmark_helper import setup_logger
 from llama_inputs import (
+    add_io_bindings,
     convert_inputs_for_ort,
     get_merged_sample_with_past_kv_inputs,
     get_sample_inputs,
@@ -29,15 +30,16 @@ def get_sequence_lengths(args: argparse.Namespace):
 def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     # Dummy values for parity
     batch_size = 2
-    past_sequence_length, sequence_length, _ = get_sequence_lengths(args)
+    past_sequence_length, sequence_length, max_sequence_length = get_sequence_lengths(args)
 
     if args.merged:
         inputs = get_merged_sample_with_past_kv_inputs(
             config,
             args.device,
             batch_size,
-            sequence_length,
-            past_sequence_length,
+            seq_len=sequence_length,
+            past_seq_len=past_sequence_length,
+            max_seq_len=max_sequence_length,
             use_fp16=args.use_fp16,
             return_dict=True,
         )
@@ -51,31 +53,7 @@ def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     return inputs
 
 
-def add_io_bindings(args: argparse.Namespace, model: ort.InferenceSession, inputs: dict):
-    # Add IO bindings for non-CPU execution providers
-    io_binding = model.io_binding()
-
-    for k, v in inputs.items():
-        if args.use_fp16:
-            # Bind all OrtValue inputs to device
-            io_binding.bind_ortvalue_input(k, v)
-        else:
-            io_binding.bind_cpu_input(k, v)
-
-    for output in model.get_outputs():
-        name = output.name
-        if args.use_fp16 and ("out" in name or "present" in name):
-            # Bind present KV cache outputs to OrtValue with buffer sharing
-            io_binding.bind_ortvalue_output(
-                name, inputs[name.replace("out", "cache").replace("present", "past_key_values")]
-            )
-        else:
-            io_binding.bind_output(name, device_type=args.execution_provider, device_id=int(args.device_id))
-
-    return io_binding
-
-
-def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: LlamaForCausalLM):
+def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: LlamaForCausalLM, kv_cache_ortvalues: dict):
     inputs = get_inputs(args, config)
 
     # Run inference with PyTorch
@@ -111,7 +89,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
 
     # Add IO bindings for non-CPU execution providers
     if args.execution_provider != "cpu":
-        io_binding = add_io_bindings(args, ort_model, inputs)
+        io_binding, kv_cache_ortvalues = add_io_bindings(ort_model, inputs, args.execution_provider, int(args.device_id), kv_cache_ortvalues)
 
         io_binding.synchronize_inputs()
         start_time = time.time()
@@ -134,14 +112,13 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
     tol = (
         2e1
         if "int4" in args.onnx_model_path or "int8" in args.onnx_model_path
-        else 1e-3
-        if args.precision == "fp32"
         else 5e-1
     )
     parity = np.allclose(pt_outputs, ort_outputs, rtol=tol, atol=tol)
     logger.warning(f"Are PyTorch and ONNX Runtime results close? {parity}")
     if not parity:
         logger.warning(f"Max diff: {np.max(pt_outputs - ort_outputs)}")
+    return kv_cache_ortvalues
 
 
 def get_args(argv: List[str]):
@@ -253,13 +230,15 @@ def main(argv: List[str] = []):  # noqa: B006
     if not args.merged:
         verify_parity(args, config, llama)
     else:
+        kv_cache_ortvalues = {}
+
         # Verify prompt generation in merged model (decoder_model.onnx)
         args.use_past_kv = False
-        verify_parity(args, config, llama)
+        kv_cache_ortvalues = verify_parity(args, config, llama, kv_cache_ortvalues)
 
         # Verify token generation in merged model (decoder_with_past_model.onnx)
         args.use_past_kv = True
-        verify_parity(args, config, llama)
+        verify_parity(args, config, llama, kv_cache_ortvalues)
 
 
 if __name__ == "__main__":
