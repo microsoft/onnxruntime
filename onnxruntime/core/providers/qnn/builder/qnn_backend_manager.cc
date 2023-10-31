@@ -914,9 +914,6 @@ Status QnnBackendManager::ExtractProfilingEventExtended(QnnProfile_EventId_t pro
     QnnProfile_ExtendedEventData_t event_data_extended;
     auto resultGetExtendedEventData = qnn_interface_.profileGetExtendedEventData(profile_event_id, &event_data_extended);
     QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(resultGetExtendedEventData & 0xFFFF);
-    if (QNN_PROFILE_NO_ERROR != errorCode) {
-      outfile << "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode));
-    }
     ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != errorCode, "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode)));
 
     std::string message = GetEventTypeString(event_data_extended.v1.type);
