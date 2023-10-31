@@ -72,6 +72,32 @@ stages:
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
           Repository: onnxruntimecpubuild
 
+      - task: PythonScript@0
+        displayName: 'Update deps.txt'
+        inputs:
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+          arguments: --new_dir $(Build.BinariesDirectory)/deps
+          workingDirectory: $(Build.BinariesDirectory)
+          pythonInterpreter: /usr/bin/python3
+
+      - script: |
+          set -e -x
+          tar -Jxf $(Build.BinariesDirectory)/gcc/arm-gnu-toolchain-13.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz --strip=1 -C $(Build.BinariesDirectory)/gcc
+          export PATH=$(Build.BinariesDirectory)/gcc/bin:$PATH
+          mkdir $(Build.BinariesDirectory)/aarch64build
+          cd $(Build.BinariesDirectory)/aarch64build
+          cmake $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm64_crosscompile_toolchain.cmake -G Ninja
+          ninja
+        displayName: Cross-compile for Linux ARM64
+
+      - task: PythonScript@0
+        displayName: 'Update deps.txt'
+        inputs:
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+          arguments: --new_dir /build/deps
+          workingDirectory: $(Build.BinariesDirectory)
+          pythonInterpreter: /usr/bin/python3
+
       - template: templates/linux-build-step-with-cache.yml
         parameters:
           WithCache: true
@@ -114,16 +140,6 @@ stages:
                       ccache -sv; \
                       ccache -z"
                 workingDirectory: $(Build.SourcesDirectory)
-
-      - script: |
-          set -e -x
-          tar -Jxf $(Build.BinariesDirectory)/gcc/arm-gnu-toolchain-13.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz --strip=1 -C $(Build.BinariesDirectory)/gcc
-          export PATH=$(Build.BinariesDirectory)/gcc/bin:$PATH
-          mkdir $(Build.BinariesDirectory)/aarch64build
-          cd $(Build.BinariesDirectory)/aarch64build
-          cmake $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm64_crosscompile_toolchain.cmake -G Ninja
-          ninja
-        displayName: Cross-compile for Linux ARM64
 
       - script: |
           ln -s /data/models $(Build.BinariesDirectory)/models
