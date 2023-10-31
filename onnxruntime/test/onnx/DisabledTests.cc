@@ -611,6 +611,55 @@ std::unique_ptr<std::unordered_set<std::basic_string<ORTCHAR_T>>> GetAllDisabled
       ORT_TSTR("operator_pow"),
   };
 
+    // float 8 types are not supported by any language.
+    static const ORTCHAR_T* float8_tests[] = {
+        ORT_TSTR("cast_FLOAT16_to_FLOAT8E4M3FN"),
+        ORT_TSTR("cast_FLOAT16_to_FLOAT8E4M3FNUZ"),
+        ORT_TSTR("cast_FLOAT16_to_FLOAT8E5M2"),
+        ORT_TSTR("cast_FLOAT16_to_FLOAT8E5M2FNUZ"),
+        ORT_TSTR("cast_FLOAT8E4M3FNUZ_to_FLOAT"),
+        ORT_TSTR("cast_FLOAT8E4M3FNUZ_to_FLOAT16"),
+        ORT_TSTR("cast_FLOAT8E4M3FN_to_FLOAT"),
+        ORT_TSTR("cast_FLOAT8E4M3FN_to_FLOAT16"),
+        ORT_TSTR("cast_FLOAT8E5M2FNUZ_to_FLOAT"),
+        ORT_TSTR("cast_FLOAT8E5M2FNUZ_to_FLOAT16"),
+        ORT_TSTR("cast_FLOAT8E5M2_to_FLOAT"),
+        ORT_TSTR("cast_FLOAT8E5M2_to_FLOAT16"),
+        ORT_TSTR("cast_FLOAT_to_FLOAT8E4M3FN"),
+        ORT_TSTR("cast_FLOAT_to_FLOAT8E4M3FNUZ"),
+        ORT_TSTR("cast_FLOAT_to_FLOAT8E5M2"),
+        ORT_TSTR("cast_FLOAT_to_FLOAT8E5M2FNUZ"),
+        ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E4M3FN"),
+        ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E4M3FNUZ"),
+        ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E5M2"),
+        ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E5M2FNUZ"),
+        ORT_TSTR("cast_no_saturate_FLOAT_to_FLOAT8E4M3FN"),
+        ORT_TSTR("cast_no_saturate_FLOAT_to_FLOAT8E4M3FNUZ"),
+        ORT_TSTR("cast_no_saturate_FLOAT_to_FLOAT8E5M2"),
+        ORT_TSTR("cast_no_saturate_FLOAT_to_FLOAT8E5M2FNUZ"),
+        ORT_TSTR("castlike_FLOAT8E4M3FNUZ_to_FLOAT"),
+        ORT_TSTR("castlike_FLOAT8E4M3FNUZ_to_FLOAT_expanded"),
+        ORT_TSTR("castlike_FLOAT8E4M3FN_to_FLOAT"),
+        ORT_TSTR("castlike_FLOAT8E4M3FN_to_FLOAT_expanded"),
+        ORT_TSTR("castlike_FLOAT8E5M2FNUZ_to_FLOAT"),
+        ORT_TSTR("castlike_FLOAT8E5M2FNUZ_to_FLOAT_expanded"),
+        ORT_TSTR("castlike_FLOAT8E5M2_to_FLOAT"),
+        ORT_TSTR("castlike_FLOAT8E5M2_to_FLOAT_expanded"),
+        ORT_TSTR("castlike_FLOAT_to_BFLOAT16"),
+        ORT_TSTR("castlike_FLOAT_to_BFLOAT16_expanded"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E4M3FN"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E4M3FNUZ"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E4M3FNUZ_expanded"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E4M3FN_expanded"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E5M2"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E5M2FNUZ"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E5M2FNUZ_expanded"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E5M2_expanded"),
+        ORT_TSTR("dequantizelinear_e4m3fn"),
+        ORT_TSTR("dequantizelinear_e5m2"),
+        ORT_TSTR("quantizelinear_e4m3fn"),
+        ORT_TSTR("quantizelinear_e5m2")};
+
   static const ORTCHAR_T* cuda_flaky_tests[] = {ORT_TSTR("fp16_inception_v1"),
                                                 ORT_TSTR("fp16_shufflenet"),
                                                 ORT_TSTR("fp16_tiny_yolov2"),
@@ -789,7 +838,7 @@ std::unique_ptr<std::unordered_set<std::basic_string<ORTCHAR_T>>> GetAllDisabled
     // these models run but disabled tests to keep memory utilization low
     // This will be removed after LRU implementation
     all_disabled_tests.insert(std::begin(openvino_disabled_tests), std::end(openvino_disabled_tests));
-  } else if (provider_name == provider_name_qnnl) {
+  } else if (provider_name == provider_name_qnn) {
     all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
     all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
   }
