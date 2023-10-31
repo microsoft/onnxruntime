@@ -23,7 +23,8 @@ logger = logging.getLogger("")
 
 def get_sequence_lengths(args: argparse.Namespace):
     past_sequence_length, curr_sequence_length = (8, 1) if args.use_past_kv else (0, 8)
-    max_sequence_length = 4096
+    temp_name = args.model_name.lower().replace("-", "").replace("_", "")
+    max_sequence_length = 16384 if "codellama" in temp_name else 4096 if "llama2" in temp_name else 2048
     return past_sequence_length, curr_sequence_length, max_sequence_length
 
 
