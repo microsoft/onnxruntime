@@ -1375,6 +1375,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
                                   GreedySearchShapeInference(ctx);
                                 }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(MoEBlock, 1,
+                            OpSchema()
+                                .SetDoc("Mixture of experts.")
+                                //.Attr("expert_start_idx", "Not implemented", AttributeProto::INT, static_cast<int64_t>(-1))
+                                //.Attr("expert_end_idx", "Not implemented", AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Input(0, "input", "3D input tensor with shape (batch_size, num_rows, in_features)", "T")
+                                .Input(1, "gated_output", "2D input tensor with shape (batch_size * num_rows, num_experts)", "T")
+                                .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, in_features, hidden_features)", "T")
+                                .Input(3, "fc2_experts_weights", "3D input tensor with shape (num_experts, hidden_features, out_features)", "T")
+                                .Input(4, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, hidden_features)", "T", OpSchema::Optional)
+                                .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, in_features)", "T", OpSchema::Optional)
+                                .Output(0, "output", "3D input tensor with shape (batch, num_rows, in_features)", "T")
+                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or float16 tensors.")
+                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
                             OpSchema()
                                 .Input(0, "X", "input", "T")
