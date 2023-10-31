@@ -109,7 +109,7 @@ stages:
           cmake $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm32_crosscompile_toolchain.cmake -G Ninja
           ninja
           rm -rf $(Build.BinariesDirectory)/arm32build $(Build.BinariesDirectory)/gccbin
-        displayName: Cross-compile for Linux ARM64
+        displayName: Cross-compile for Linux ARM32 and ARM64
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
