@@ -105,7 +105,7 @@ class SelectorActionRegistry {
   std::unordered_map<std::string, const Entry> name_to_entry_;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // auxiliary mapping to enable lookup by "domain:op" type
+  // auxiliary mapping to enable lookup by op type or "domain:op type"
   std::unordered_multimap<std::string, const Entry*> op_type_to_entry_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };

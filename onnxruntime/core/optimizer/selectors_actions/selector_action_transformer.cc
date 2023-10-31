@@ -97,7 +97,8 @@ static Status MatchAndProcess(
     const SelectorActionRegistry::Entry* selector_action_entry_ptr = nullptr;
 
     const auto selector_action_entries = selector_action_registry.LookUpByOpTypeAndDomain(node.OpType(), node.Domain());
-    std::string domain_optype = node.Domain() + ":" + node.OpType();
+    const auto& domain = node.Domain();
+    std::string domain_optype = (domain == kOnnxDomain) ? node.OpType() : (domain + ":" + node.OpType());
     for (const auto& entry : selector_action_entries) {
       // check the supported versions if specified
       const auto& versions = entry->ops_and_versions.find(domain_optype)->second;
