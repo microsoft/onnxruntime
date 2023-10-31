@@ -46,14 +46,15 @@ class DequantizeInt4 : public IKernelExplorer {
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(contrib::cuda::Dequantize4Bits(
+    ORT_THROW_IF_ERROR(contrib::cuda::DequantizeBlockwise4b(
         params_.output_,
         params_.quant_,
         params_.scales_,
         params_.zero_points_,
+        32,
+        true,
         params_.k_,
         params_.n_,
-        32,
         params_.StreamHandle()));
   }
 
