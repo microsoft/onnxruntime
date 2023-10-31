@@ -170,7 +170,7 @@ Export LLaMA-2 70B sharded model into 4 partitions
 # 2. Build ONNX Runtime from source with NCCL enabled. Here is a sample command:
 $ ./build.sh --config RelWithDebInfo --use_cuda --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/local/cuda-12.2 --build_wheel --cuda_version=12.2 --parallel --skip_tests --enable_nccl --nccl_home /usr/local/cuda-12.2 --use_mpi --mpi_home=/usr/lib/x86_64-linux-gnu/
 
-# 3. Shard and export the LLaMA-2 70B model. You will need at least 4 A100 GPUs to shard the PyTorch model and export each shard to ONNX. Here is an example command:
+# 3. Shard and export the LLaMA-2 70B model. LLaMA-2 70B has 70 billion parameters, with fp16 you will need at least 140GB GPU memory in total to load model weight, so you will need at least 4 40GB A100 GPUs or 2 80GB A100 GPUs to shard the PyTorch model and export each shard to ONNX. Here is an example command:
 $ CUDA_VISIBLE_DEVICES=0,1,2,3 bash run_70b_model.sh 4 -m meta-llama/Llama-2-70b-hf --output llama2-70b-dis --precision fp16 --execution_provider cuda
 
 ```

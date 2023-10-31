@@ -17,8 +17,8 @@ def setup_torch_model(args, location, use_auth_token, torch_dtype=torch.float32,
     if not os.path.exists(args.cache_dir):
         os.makedirs(args.cache_dir)
 
-    for i in range(world_size):
-        if i == rank:
+    for i in range(world_size // 2):
+        if i == rank % (world_size // 2):
             l_config = LlamaConfig.from_pretrained(location, use_auth_token=use_auth_token, cache_dir=args.cache_dir)
             l_config.use_cache = True
             llama = LlamaForCausalLM.from_pretrained(

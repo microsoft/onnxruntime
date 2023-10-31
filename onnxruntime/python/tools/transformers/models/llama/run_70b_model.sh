@@ -7,7 +7,6 @@ MPI="mpirun --allow-run-as-root
     --tag-output --npernode $NUM_GPUS --bind-to numa
     -x MIOPEN_FIND_MODE=1"
 
-CMD="$MPI bash single_run_70b_model.sh ${@:2}"
+CMD="$MPI python convert_to_onnx.py ${@:2}"
 
-set -x
 $CMD
