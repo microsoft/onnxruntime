@@ -829,6 +829,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   auto result = qnn_interface_.profileGetEvents(profile_backend_handle_, &profile_events, &num_events);
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile events.");
 
+
   if (num_events > 0) {
     LOGS(*logger_, VERBOSE) << "profile_events: " << profile_events << " num_events: " << num_events;
 
