@@ -65,6 +65,15 @@ stages:
           version: 13.2.1
           downloadPath: $(Build.BinariesDirectory)/gcc
 
+      - task: DownloadPackage@1
+        displayName: 'Download ARM32 GCC'
+        inputs:
+          packageType: upack
+          feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+          definition: 'gcc_aarch32_linux_gnu_host_x86_64'
+          version: 13.2.1
+          downloadPath: $(Build.BinariesDirectory)/gcc
+
       - template: templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
@@ -88,6 +97,9 @@ stages:
           cd $(Build.BinariesDirectory)/aarch64build
           cmake $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm64_crosscompile_toolchain.cmake -G Ninja
           ninja
+          rm -rf $(Build.BinariesDirectory)/gcc
+          tar -Jxf $(Build.BinariesDirectory)/gcc/arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz --strip=1 -C $(Build.BinariesDirectory)/gcc
+          ls $(Build.BinariesDirectory)/gcc/bin
         displayName: Cross-compile for Linux ARM64
 
       - task: PythonScript@0
