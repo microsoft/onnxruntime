@@ -32,7 +32,7 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
                                   int64_t to_type,
                                   onnxruntime::ProviderType providerType) {
   // insert cast op to cast input
-  std::string node_name = graph.GenerateNodeName("InsertedCast_" + old_arg->Name());
+  std::string node_name = graph.GenerateNodeName("InsertedPrecisionFreeCast_" + old_arg->Name());
 
   auto* new_arg = &graph.GetOrCreateNodeArg(node_name, new_type);
 
@@ -235,7 +235,8 @@ enum TypeGroup {
   Unknown = -1,
   Bool = 0,
   Integer = 1,
-  Float = 2,
+  Unsigned = 2,
+  Float = 3,
 };
 
 TypeGroup GetTypeGroup(DataType type) {
@@ -243,9 +244,12 @@ TypeGroup GetTypeGroup(DataType type) {
     return Bool;
   }
 
-  if (*type == "tensor(int16)" || *type == "tensor(int32)" || *type == "tensor(int64)" || *type == "tensor(int8)" ||
-      *type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
+  if (*type == "tensor(int16)" || *type == "tensor(int32)" || *type == "tensor(int64)" || *type == "tensor(int8)") {
     return Integer;
+  }
+
+  if (*type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
+    return Unsigned;
   }
 
   if (*type == "tensor(bfloat16)" || *type == "tensor(double)" || *type == "tensor(float)" || *type == "tensor(float16)") {
@@ -255,6 +259,22 @@ TypeGroup GetTypeGroup(DataType type) {
   return Unknown;
 }
 
+int BitLength(DataType type) {
+  if (*type == "tensor(bool)") {
+    return 1;
+  } else if (*type == "tensor(uint8)" || *type == "tensor(int8)") {
+    return 8;
+  } else if (*type == "tensor(int16)" || *type == "tensor(uint16)" || *type == "tensor(bfloat16)" || *type == "tensor(float16)") {
+    return 16;
+  } else if (*type == "tensor(int32)" || *type == "tensor(uint32)" || *type == "tensor(float)") {
+    return 32;
+  } else if (*type == "tensor(int64)" || *type == "tensor(uint64)" || *type == "tensor(double)") {
+    return 64;
+  } else {
+    return -1;
+  }
+}
+
 /** Transformer to remove duplicate Cast nodes. */
 class RemoveDuplicateCastTransformer : public GraphTransformer {
  public:
@@ -262,6 +282,48 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
   }
 
  private:
+  static bool UnsafeCast(DataType src_type, DataType dst_type, const Node& node) {
+    // This is not a complete cast optimisation pass, and is more conservative than it could be.
+    // For instance, certain integral -> floating point casts could be optimised but this is left to an explicit cast optimisation pass.
+
+    // The comparison with "InsertedPrecisionFreeCast_" reflects cast nodes that are inserted by InsertCastTransformer.
+    // Such casts should not be considered as loss of precision - the inserted upcasts (f16 -> f32) and downcasts (f32 -> f16) are inserted to support kernels when on a CPU EP without F16 support.
+    auto src_type_group = GetTypeGroup(src_type);
+    auto dst_type_group = GetTypeGroup(dst_type);
+    if (Unknown == src_type_group || Unknown == dst_type_group) {
+      return true;
+    }
+
+    // Do not remove any signed -> unsigned cast.
+    if ((src_type_group != Bool && src_type_group != Unsigned) && Unsigned == dst_type_group) {
+      return true;
+    }
+
+    // Do not remove any floating point -> non floating point cast.
+    if (Float == src_type_group && Float != dst_type_group) {
+      return true;
+    }
+
+    auto src_bit_length = BitLength(src_type);
+    auto dst_bit_length = BitLength(dst_type);
+
+    // unsigned integer -> integer cast may overflow if the destination integer is smaller or equal to the source integer.
+    if (Unsigned == src_type_group && Integer == dst_type_group) {
+      return dst_bit_length <= src_bit_length;
+    }
+
+    // integral -> floating cast may overflow if integer cannot be encoded in the mantissa. This check could be more precise.
+    if ((Integer == src_type_group || Unsigned == src_type_group) && Float == dst_type_group) {
+      return dst_bit_length <= src_bit_length;
+    }
+
+    if ((*src_type == "tensor(float16)" && *dst_type == "tensor(bfloat16)") || (*src_type == "tensor(bfloat16)" && *dst_type == "tensor(float16)")) {
+      return true;
+    }
+
+    return src_bit_length > dst_bit_length && (node.Name().compare(0, 26, "InsertedPrecisionFreeCast_"));
+  }
+
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override {
     auto output_args = graph.GetOutputs();
     InlinedHashSet<const onnxruntime::NodeArg*> graph_outputs;
@@ -293,17 +355,8 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         //     - for each consumer cast node, it meets above condition for this optimization.
         auto src_type = node.InputDefs()[0]->Type();
         auto dst_type = node.OutputDefs()[0]->Type();
-        TypeGroup src_type_group = GetTypeGroup(src_type);
-        TypeGroup dst_type_group = GetTypeGroup(dst_type);
-        if (src_type_group == Unknown || dst_type_group == Unknown) {
-          continue;
-        }
 
-        bool loss_precision_cast = false;
-        if (src_type_group > dst_type_group) {
-          loss_precision_cast = true;
-        }
-
+        bool loss_precision_cast = UnsafeCast(src_type, dst_type, node);
         size_t num_children = node.GetOutputEdgesCount();
 
         bool inconsistent_casts = false;
@@ -312,10 +365,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           if (output_node.OpType() == "Cast") {
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
-            TypeGroup src_type_group1 = GetTypeGroup(src_type1);
-            TypeGroup dst_type_group1 = GetTypeGroup(dst_type1);
-            if (src_type_group1 == Unknown || dst_type_group1 == Unknown ||
-                (loss_precision_cast && dst_type_group1 > src_type_group1)) {
+            if (loss_precision_cast && UnsafeCast(dst_type1, src_type1, output_node)) {
               inconsistent_casts = true;
               break;
             }
