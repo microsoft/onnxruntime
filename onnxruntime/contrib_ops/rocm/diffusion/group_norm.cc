@@ -72,6 +72,12 @@ GroupNorm::GroupNorm(const OpKernelInfo& op_info) : RocmKernel(op_info) {
   channels_last_ = (op_info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(1)) != 0);
 }
 
+Status GroupNorm::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, AllocatorPtr /*alloc*/,
+                          bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
+  is_packed = false;
+  return Status::OK();
+}
+
 Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* gamma = context->Input<Tensor>(1);
