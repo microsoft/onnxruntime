@@ -164,10 +164,7 @@ export const createTrainingSessionHandle =
 const createAndAllocateTensors =
     (trainingSessionId: number, indices: number[], tensors: Array<TensorMetadata|null>, tensorHandles: number[],
      inputOutputAllocs: number[], indexAdd: number) => {
-      const wasm = getInstance();
-
       const count = indices.length;
-      const valuesOffset = wasm.stackAlloc(count * 4);
 
       // creates the tensors
       for (let i = 0; i < count; i++) {
@@ -176,6 +173,8 @@ const createAndAllocateTensors =
       }
 
       // moves to heap
+      const wasm = getInstance();
+      const valuesOffset = wasm.stackAlloc(count * 4);
       let valuesIndex = valuesOffset / 4;
       for (let i = 0; i < count; i++) {
         wasm.HEAPU32[valuesIndex++] = tensorHandles[i];
@@ -252,6 +251,7 @@ const moveOutputToTensorMetadataArr =
           if (type === 'string' && dataOffset) {
             wasm._free(dataOffset);
           }
+          wasm._OrtReleaseTensor(tensor);
         }
       }
 
