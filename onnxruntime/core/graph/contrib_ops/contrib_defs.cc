@@ -2029,6 +2029,91 @@ no offset
                                   matmulQ4ShapeInference(ctx, 0, 1, 2, blk_quant_type);
                                 }));
 
+#define MLAS_JBLAS
+/**
+ * @brief Shape inference for MatMul with right hand side matrix quantized into int4
+ * @param ctx
+ * @param input_a_idx         points to the left hand size matrix input
+ * @param input_b_idx         points to the quantized right hand side matrix
+ * @param input_bshape_idx    points to the shape tensor of the right hand side matrix
+ */
+static void matmulJblasShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input_a_idx, int input_b_idx, int input_bshape_idx) {
+  if (!hasInputShape(ctx, input_a_idx) || !hasInputShape(ctx, input_b_idx)) {
+    return;
+  }
+
+  const auto& a_shape = ctx.getInputType(input_a_idx)->tensor_type().shape();
+  if (a_shape.dim_size() == 0) {
+    fail_shape_inference("Input tensors of wrong rank (0).");
+  }
+
+  // const auto& blob_shape = ctx.getInputType(input_b_idx)->tensor_type().shape();
+  const auto& shape_shape = ctx.getInputType(input_bshape_idx)->tensor_type().shape();
+  if (shape_shape.dim_size() != 1 && shape_shape.dim(0).dim_value() != 2) {
+    fail_shape_inference("B input for MatMul must be a 2-D matrix!");
+  }
+
+  const TensorProto* b_shape_tensor = ctx.getInputData(input_bshape_idx);
+  if (nullptr == b_shape_tensor) {
+    // Can't find shape info, quiting
+    return;
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
+
+  std::vector<int64_t> shape_r_data = ParseData<int64_t>(b_shape_tensor);
+  for (int d = 0; d < 2; d++) {
+    shapeR.add_dim()->set_dim_value(shape_r_data[d]);
+  }
+
+  // First promote each shape to at least rank-2. This logic is
+  // specific to matmul, not generic broadcasting.
+  {
+    if (a_shape.dim_size() == 1) {
+      shapeL.add_dim()->set_dim_value(1);
+      *shapeL.add_dim() = a_shape.dim(0);
+    } else {
+      *shapeL.mutable_dim() = a_shape.dim();
+    }
+  }
+
+  // TODO Packed size check
+
+  // Check for compatible matrix multiply dimensions
+  {
+    const auto& dimL = shapeL.dim(shapeL.dim_size() - 1);
+    const auto& dimR = shapeR.dim(shapeR.dim_size() - 2);
+    if (dimL.has_dim_value() && dimR.has_dim_value() && dimL.dim_value() != dimR.dim_value()) {
+      fail_shape_inference("Incompatible dimensions for matrix multiplication");
+    }
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto resultShape;
+
+  // Now call out to generic multidimensional broadcasting for
+  // the broadcastable prefixes.
+  {
+    ONNX_NAMESPACE::TensorShapeProto prefixShapeL, prefixShapeR;
+    for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
+      *prefixShapeL.add_dim() = shapeL.dim(i);
+    }
+    for (int i = 0; i < shapeR.dim_size() - 2; ++i) {
+      *prefixShapeR.add_dim() = shapeR.dim(i);
+    }
+    bidirectionalBroadcastShapeInference(prefixShapeL, prefixShapeR, resultShape);
+  }
+
+  // Back to matmul-specific. Add the trailing dimensions back in.
+  {
+    if (a_shape.dim_size() != 1) {
+      *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
+    }
+    *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
+  }
+
+  *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = resultShape;
+}
+
 ONNX_MS_OPERATOR_SET_SCHEMA(MatMulNBitsCPU, 1,
                             OpSchema()
                                 .SetDoc(R"DOC(
@@ -2068,7 +2153,7 @@ no offset
                                   /*MLAS_BLK_QUANT_TYPE blk_quant_type = BlkQ4SymPerN;
                                   BLK_QUANT_COMPUTE_TYPE compute_type = compute_v == 0 ? CompFp32 : CompInt8;*/
 
-                                  // matmulQ4ShapeInference(ctx, 0, 1, 2, blk_quant_type);
+                                  matmulJblasShapeInference(ctx, 0, 1, 2);
                                 }));
 #endif
 

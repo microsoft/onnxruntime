@@ -163,7 +163,7 @@ GemmKBlockRun(Launch_T& launcher,
 {
     device::CpuBase cb;
     Parallel_T para({
-        cb.mNumThreads,
+        threading->num_threads(),
         cb.mL2Cache,
         args.M,
         args.N,
