@@ -51,7 +51,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
     # Set max_seq_len to 4096 for Hugging Face LLaMA-2 model since that is the default value
     # Set max_seq_len to 2048 for Microsoft LLaMA-2 model since that is the max value currently supported
     temp_name = args.model_name.lower().replace("-", "").replace("_", "")
-    args.max_sequence_length = (
+    max_seq_len = (
         2048
         if args.benchmark_type == "ort-msft"
         else 16384
@@ -59,8 +59,6 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
         else 4096
         if "llama2" in temp_name
         else 2048
-        if "llama" in temp_name
-        else args.max_sequence_length
     )
 
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
@@ -106,7 +104,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 args.batch_size,
                 seq_len=args.sequence_length,
                 past_seq_len=0,
-                max_seq_len=args.max_sequence_length,
+                max_seq_len=max_seq_len,
                 use_fp16=args.use_fp16,
                 engine="pt",
                 return_dict=True,
@@ -117,7 +115,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 args.batch_size,
                 seq_len=1,
                 past_seq_len=args.sequence_length,
-                max_seq_len=args.max_sequence_length,
+                max_seq_len=max_seq_len,
                 use_fp16=args.use_fp16,
                 engine="pt",
                 return_dict=True,
@@ -131,7 +129,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.batch_size,
             seq_len=args.sequence_length,
             past_seq_len=0,
-            max_seq_len=args.max_sequence_length,
+            max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
             engine="ort",
             return_dict=True,
@@ -142,7 +140,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.batch_size,
             seq_len=1,
             past_seq_len=args.sequence_length,
-            max_seq_len=args.max_sequence_length,
+            max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
             engine="ort",
             return_dict=True,
@@ -157,7 +155,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.batch_size,
             past_seq_len=0,
             seq_len=args.sequence_length,
-            max_seq_len=args.max_sequence_length,
+            max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
             split_kv=split_kv,
         )
@@ -166,7 +164,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.batch_size,
             past_seq_len=args.sequence_length,
             seq_len=1,
-            max_seq_len=args.max_sequence_length,
+            max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
             split_kv=split_kv,
         )
@@ -572,12 +570,6 @@ def get_args():
         "-s",
         "--sequence-lengths",
         default="8 16 32 64 128 256 512",
-    )
-    parser.add_argument(
-        "--max-sequence-length",
-        type=int,
-        default=4096,
-        help="Max sequence length that the model can support",
     )
     parser.add_argument(
         "-d",
