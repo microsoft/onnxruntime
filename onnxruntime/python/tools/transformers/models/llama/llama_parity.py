@@ -23,7 +23,7 @@ logger = logging.getLogger("")
 
 def get_sequence_lengths(args: argparse.Namespace):
     past_sequence_length, curr_sequence_length = (8, 1) if args.use_past_kv else (0, 8)
-    max_sequence_length = 2048
+    max_sequence_length = 4096
     return past_sequence_length, curr_sequence_length, max_sequence_length
 
 

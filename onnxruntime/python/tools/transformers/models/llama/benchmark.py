@@ -47,9 +47,9 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
     init_inputs, iter_inputs = None, None
 
     # For past_present_share_buffer:
-    # Set max_seq_len to 2048 for Hugging Face model since that is the default value
+    # Set max_seq_len to 4096 for Hugging Face model since that is the default value
     # Set max_seq_len to 2048 for Microsoft model since that is the max value currently supported
-    max_seq_len = 2048
+    max_seq_len = 2048 if args.benchmark_type == "ort-msft" else 4096
 
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
         init_inputs = get_sample_inputs(
