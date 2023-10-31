@@ -7,7 +7,7 @@ MPI="mpirun --allow-run-as-root
     --tag-output --npernode $NUM_GPUS --bind-to numa
     -x MIOPEN_FIND_MODE=1"
 
-CMD="$MPI bash single_run.sh ${@:2}"
+CMD="$MPI bash single_run_70b_model.sh ${@:2}"
 
 set -x
 $CMD

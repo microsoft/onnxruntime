@@ -302,16 +302,11 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 outputs=["present_key"],
                 axis=2,
             )
-            k_nodes.append(concat_k_node)
-
             shape_k1 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_k1_out"], name="Shape_k1")
-            k_nodes.append(shape_k1)
             shape_k2 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_k2_out"], name="Shape_k2")
-            k_nodes.append(shape_k2)
             shape_k3 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_k3_out"], name="Shape_k3")
-            k_nodes.append(shape_k3)
             shape_k4 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_k4_out"], name="Shape_k4")
-            k_nodes.append(shape_k4)
+
             gather_k_1 = helper.make_node(
                 "Gather",
                 inputs=["shape_k1_out", "one"],
@@ -319,7 +314,6 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Gather_k_1",
                 axis=0,
             )
-            k_nodes.append(gather_k_1)
             gather_k_2 = helper.make_node(
                 "Gather",
                 inputs=["shape_k2_out", "one"],
@@ -327,7 +321,6 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Gather_k_2",
                 axis=0,
             )
-            k_nodes.append(gather_k_2)
             gather_k_3 = helper.make_node(
                 "Gather",
                 inputs=["shape_k3_out", "one"],
@@ -335,7 +328,6 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Gather_k_3",
                 axis=0,
             )
-            k_nodes.append(gather_k_3)
             gather_k_4 = helper.make_node(
                 "Gather",
                 inputs=["shape_k4_out", "one"],
@@ -343,42 +335,38 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Gather_k_4",
                 axis=0,
             )
-            k_nodes.append(gather_k_4)
+
             unsqueeze_k_1 = helper.make_node(
                 "Unsqueeze",
                 inputs=["present_value", "zero"],
                 outputs=["unsqueeze_k1_out"],
                 name="Unsqueeze_k1",
             )
-            k_nodes.append(unsqueeze_k_1)
             unsqueeze_k_2 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_k1_out", "zero"],
                 outputs=["unsqueeze_k2_out"],
                 name="Unsqueeze_k2",
             )
-            k_nodes.append(unsqueeze_k_2)
             unsqueeze_k_3 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_k2_out", "zero"],
                 outputs=["unsqueeze_k3_out"],
                 name="Unsqueeze_k3",
             )
-            k_nodes.append(unsqueeze_k_3)
             unsqueeze_k_4 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_k3_out", "zero"],
                 outputs=["unsqueeze_k4_out"],
                 name="Unsqueeze_k4",
             )
-            k_nodes.append(unsqueeze_k_4)
             unsqueeze_k_5 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_k4_out", "zero"],
                 outputs=["unsqueeze_k5_out"],
                 name="Unsqueeze_k5",
             )
-            k_nodes.append(unsqueeze_k_5)
+
             concat_k_2 = helper.make_node(
                 "Concat",
                 inputs=["unsqueeze_k2_out", "unsqueeze_k3_out", "One", "unsqueeze_k4_out", "unsqueeze_k5_out"],
@@ -386,79 +374,67 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Concat_k2",
                 axis=0,
             )
-            k_nodes.append(concat_k_2)
             reshape_k_2 = helper.make_node(
                 "Reshape",
                 inputs=["concat_k2_ouot", "One"],
                 outputs=["reshape_k2_out"],
                 name="Reshape_k_2",
             )
-            k_nodes.append(reshape_k_2)
             shape_k5 = helper.make_node("Shape", inputs=["reshape_k2_out"], outputs=["shape_k5_out"], name="Shape_k5")
-            k_nodes.append(shape_k5)
             constant_of_shape_k_1 = helper.make_node(
                 "ConstantOfShape",
                 inputs=["shape_k5_out"],
                 outputs=["constant_of_shape_k1_out"],
                 name="ConstantOfShape_k1",
             )
-            k_nodes.append(constant_of_shape_k_1)
             mul_k_1 = helper.make_node(
                 "Mul",
                 inputs=["constant_of_shape_k1_out", "One"],
                 outputs=["mul_k1_out"],
                 name="mul_k1",
             )
-            k_nodes.append(mul_k_1)
             equal_k_1 = helper.make_node(
                 "Equal",
                 inputs=["reshape_k2_out", "mul_k1_out"],
                 outputs=["equal_k_1_out"],
                 name="equal_k1",
             )
-            k_nodes.append(equal_k_1)
             where_k_1 = helper.make_node(
                 "Where",
                 inputs=["equal_k_1_out", "constant_of_shape_k1_out", "reshape_k2_out"],
                 outputs=["where_k_1_out"],
                 name="where_k1",
             )
-            k_nodes.append(where_k_1)
             unsqueeze_k_6 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_k1_out", "zero"],
                 outputs=["unsqueeze_k6_out"],
                 name="Unsqueeze_k6",
             )
-            k_nodes.append(unsqueeze_k_6)
             mul_k_2 = helper.make_node(
                 "Mul",
                 inputs=["gather_k2_out", "One"],
                 outputs=["mul_k2_out"],
                 name="mul_k2",
             )
-            k_nodes.append(mul_k_2)
             unsqueeze_k_7 = helper.make_node(
                 "Unsqueeze",
                 inputs=["mul_k2_out", "zero"],
                 outputs=["unsqueeze_k7_out"],
                 name="Unsqueeze_k7",
             )
-            k_nodes.append(unsqueeze_k_7)
             unsqueeze_k_8 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_k3_out", "zero"],
                 outputs=["unsqueeze_k8_out"],
                 name="Unsqueeze_k8",
             )
-            k_nodes.append(unsqueeze_k_8)
             unsqueeze_k_9 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_k4_out", "zero"],
                 outputs=["unsqueeze_k9_out"],
                 name="Unsqueeze_k9",
             )
-            k_nodes.append(unsqueeze_k_9)
             concat_k_3 = helper.make_node(
                 "Concat",
                 inputs=["unsqueeze_k6_out", "unsqueeze_k7_out", "unsqueeze_k8_out", "unsqueeze_k9_out"],
@@ -466,22 +442,18 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Concat_k3",
                 axis=0,
             )
-            k_nodes.append(concat_k_3)
             expand_k_1 = helper.make_node(
                 "Expand",
                 inputs=["unsqueeze_k1_out", "where_k_1_out"],
                 outputs=["expand_k1_out"],
                 name="expand_k1",
             )
-            k_nodes.append(expand_k_1)
             reshape_k_3 = helper.make_node(
                 "Reshape",
                 inputs=["expand_k1_out", "concat_k3_out"],
                 outputs=["reshape_k3_out"],
                 name="Reshape_k_3",
             )
-            k_nodes.append(reshape_k_3)
-
             transpose_k_2_node = helper.make_node(
                 "Transpose",
                 inputs=["reshape_k3_out"],
@@ -489,7 +461,41 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Transpose_k_2",
                 perm=[0, 1, 3, 2],
             )
-            return k_nodes + [transpose_k_2_node]  # noqa: RUF005
+
+            k_nodes_for_70b_model = [
+                concat_k_node,
+                shape_k1,
+                shape_k2,
+                shape_k3,
+                shape_k4,
+                gather_k_1,
+                gather_k_2,
+                gather_k_3,
+                gather_k_4,
+                unsqueeze_k_1,
+                unsqueeze_k_2,
+                unsqueeze_k_3,
+                unsqueeze_k_4,
+                unsqueeze_k_5,
+                concat_k_2,
+                reshape_k_2,
+                shape_k5,
+                constant_of_shape_k_1,
+                mul_k_1,
+                equal_k_1,
+                where_k_1,
+                unsqueeze_k_6,
+                mul_k_2,
+                unsqueeze_k_7,
+                unsqueeze_k_8,
+                unsqueeze_k_9,
+                concat_k_3,
+                expand_k_1,
+                reshape_k_3,
+                transpose_k_2_node,
+            ]
+            k_nodes.extend(k_nodes_for_70b_model)
+            return k_nodes
         else:
             if model_type in {"past", "merged"}:
                 concat_k_node = helper.make_node(
@@ -714,13 +720,9 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 return v_nodes + [concat_v_node]  # noqa: RUF005
 
             shape_v1 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_1_out"], name="Shape_v1")
-            v_nodes.append(shape_v1)
             shape_v2 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_2_out"], name="Shape_v2")
-            v_nodes.append(shape_v2)
             shape_v3 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_3_out"], name="Shape_v3")
-            v_nodes.append(shape_v3)
             shape_v4 = helper.make_node("Shape", inputs=["present_value"], outputs=["shape_4_out"], name="Shape_v4")
-            v_nodes.append(shape_v4)
             gather_v_1 = helper.make_node(
                 "Gather",
                 inputs=["shape_1_out", "one"],
@@ -728,7 +730,6 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Gather_v1",
                 axis=0,
             )
-            v_nodes.append(gather_v_1)
             gather_v_2 = helper.make_node(
                 "Gather",
                 inputs=["shape_2_out", "one"],
@@ -736,7 +737,6 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Gather_v2",
                 axis=0,
             )
-            v_nodes.append(gather_v_2)
             gather_v_3 = helper.make_node(
                 "Gather",
                 inputs=["shape_3_out", "one"],
@@ -744,7 +744,6 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Gather_v3",
                 axis=0,
             )
-            v_nodes.append(gather_v_3)
             gather_v_4 = helper.make_node(
                 "Gather",
                 inputs=["shape_4_out", "one"],
@@ -752,42 +751,36 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Gather_v4",
                 axis=0,
             )
-            v_nodes.append(gather_v_4)
             unsqueeze_v_1 = helper.make_node(
                 "Unsqueeze",
                 inputs=["present_value", "zero"],
                 outputs=["unsqueeze_v1_out"],
                 name="Unsqueeze_v1",
             )
-            v_nodes.append(unsqueeze_v_1)
             unsqueeze_v_2 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_1_out", "zero"],
                 outputs=["unsqueeze_v2_out"],
                 name="Unsqueeze_v2",
             )
-            v_nodes.append(unsqueeze_v_2)
             unsqueeze_v_3 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_2_out", "zero"],
                 outputs=["unsqueeze_v3_out"],
                 name="Unsqueeze_v3",
             )
-            v_nodes.append(unsqueeze_v_3)
             unsqueeze_v_4 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_3_out", "zero"],
                 outputs=["unsqueeze_v4_out"],
                 name="Unsqueeze_v4",
             )
-            v_nodes.append(unsqueeze_v_4)
             unsqueeze_v_5 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_4_out", "zero"],
                 outputs=["unsqueeze_v5_out"],
                 name="Unsqueeze_v5",
             )
-            v_nodes.append(unsqueeze_v_5)
             concat_v_2 = helper.make_node(
                 "Concat",
                 inputs=["unsqueeze_v2_out", "unsqueeze_v3_out", "One", "unsqueeze_v4_out", "unsqueeze_v5_out"],
@@ -795,79 +788,67 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Concat_v2",
                 axis=0,
             )
-            v_nodes.append(concat_v_2)
             reshape_v_2 = helper.make_node(
                 "Reshape",
                 inputs=["concat_v2_ouot", "One"],
                 outputs=["reshape_v2_out"],
                 name="Reshape_v2",
             )
-            v_nodes.append(reshape_v_2)
             shape_v5 = helper.make_node("Shape", inputs=["reshape_v2_out"], outputs=["shape_5_out"], name="Shape_v5")
-            v_nodes.append(shape_v5)
             constant_of_shape_v_1 = helper.make_node(
                 "ConstantOfShape",
                 inputs=["shape_5_out"],
                 outputs=["constant_of_shape_v1_out"],
                 name="ConstantOfShape_v1",
             )
-            v_nodes.append(constant_of_shape_v_1)
             mul_v_1 = helper.make_node(
                 "Mul",
                 inputs=["constant_of_shape_v1_out", "One"],
                 outputs=["mul_v1_out"],
                 name="mul_v1",
             )
-            v_nodes.append(mul_v_1)
             equal_v_1 = helper.make_node(
                 "Equal",
                 inputs=["reshape_v2_out", "mul_v1_out"],
                 outputs=["equal_v_1_out"],
                 name="equal_v1",
             )
-            v_nodes.append(equal_v_1)
             where_v_1 = helper.make_node(
                 "Where",
                 inputs=["equal_v_1_out", "constant_of_shape_v1_out", "reshape_v2_out"],
                 outputs=["where_v_1_out"],
                 name="where_v1",
             )
-            v_nodes.append(where_v_1)
             unsqueeze_v_6 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_1_out", "zero"],
                 outputs=["unsqueeze_v6_out"],
                 name="Unsqueeze_v6",
             )
-            v_nodes.append(unsqueeze_v_6)
             mul_v_2 = helper.make_node(
                 "Mul",
                 inputs=["gather_2_out", "One"],
                 outputs=["mul_v2_out"],
                 name="mul_v2",
             )
-            v_nodes.append(mul_v_2)
             unsqueeze_v_7 = helper.make_node(
                 "Unsqueeze",
                 inputs=["mul_v2_out", "zero"],
                 outputs=["unsqueeze_v7_out"],
                 name="Unsqueeze_v7",
             )
-            v_nodes.append(unsqueeze_v_7)
             unsqueeze_v_8 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_3_out", "zero"],
                 outputs=["unsqueeze_v8_out"],
                 name="Unsqueeze_v8",
             )
-            v_nodes.append(unsqueeze_v_8)
             unsqueeze_v_9 = helper.make_node(
                 "Unsqueeze",
                 inputs=["gather_4_out", "zero"],
                 outputs=["unsqueeze_v9_out"],
                 name="Unsqueeze_v9",
             )
-            v_nodes.append(unsqueeze_v_9)
             concat_v_3 = helper.make_node(
                 "Concat",
                 inputs=["unsqueeze_v6_out", "unsqueeze_v7_out", "unsqueeze_v8_out", "unsqueeze_v9_out"],
@@ -875,23 +856,53 @@ class TestRotaryAttentionFusion(unittest.TestCase):
                 name="Concat_v3",
                 axis=0,
             )
-            v_nodes.append(concat_v_3)
             expand_v_1 = helper.make_node(
                 "Expand",
                 inputs=["unsqueeze_v1_out", "where_v_1_out"],
                 outputs=["expand_v1_out"],
                 name="expand_v1",
             )
-            v_nodes.append(expand_v_1)
             reshape_v_3 = helper.make_node(
                 "Reshape",
                 inputs=["expand_v1_out", "concat_v3_out"],
                 outputs=["reshape_v3_out"],
                 name="Reshape_v3",
             )
-            v_nodes.append(reshape_v_3)
 
-            return v_nodes + [concat_v_node]  # noqa: RUF005
+            v_nodes_for_70b_model = [
+                concat_v_node,
+                shape_v1,
+                shape_v2,
+                shape_v3,
+                shape_v4,
+                gather_v_1,
+                gather_v_2,
+                gather_v_3,
+                gather_v_4,
+                unsqueeze_v_1,
+                unsqueeze_v_2,
+                unsqueeze_v_3,
+                unsqueeze_v_4,
+                unsqueeze_v_5,
+                concat_v_2,
+                reshape_v_2,
+                shape_v5,
+                constant_of_shape_v_1,
+                mul_v_1,
+                equal_v_1,
+                where_v_1,
+                unsqueeze_v_6,
+                mul_v_2,
+                unsqueeze_v_7,
+                unsqueeze_v_8,
+                unsqueeze_v_9,
+                concat_v_3,
+                expand_v_1,
+                reshape_v_3,
+            ]
+            v_nodes.extend(v_nodes_for_70b_model)
+
+            return v_nodes
 
         # Create extra nodes for `position_ids`
         unsqueeze_v_node = helper.make_node(

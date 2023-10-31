@@ -511,23 +511,10 @@ class FusionRotaryAttention(FusionAttention):
             v_nodes = v_nodes_3
             present_v = transpose_v.output[0]
         elif v_nodes_4 is not None and len(v_nodes_4) == 9:
-            logger.debug("fuse_rotary_attention: v_nodes_4")
-            logger.debug("*" * 30)
-            for temp_path in v_nodes_4:
-                logger.debug("fuse_rotary_attention: path for v_nodes_4")
-                for temp_node in temp_path:
-                    logger.debug(f"temp_node: {temp_node}")
-                logger.debug("*" * 30)
-
             concat_v, transpose_v, reshape_v, matmul_v = v_nodes_4[0][-4:]
             v_nodes = v_nodes_4
             past_v = concat_v.input[0]
             present_v = concat_v.output[0]
-            logger.debug(f"transpose_v: {transpose_v}")
-            logger.debug(f"reshape_v: {reshape_v}")
-            logger.debug(f"matmul_v: {matmul_v}")
-            logger.debug(f"past_v: {past_v}")
-            logger.debug(f"present_v: {present_v}")
         else:
             logger.debug("fuse_rotary_attention: failed to match v path")
             return
@@ -585,7 +572,7 @@ class FusionRotaryAttention(FusionAttention):
 
         # k_nodes_1 is for LLaMA-2 Microsoft
         # k_nodes_2 is for LLaMA-2 Hugging Face
-        # k_nodes_4 is for distributed LLaMA-2 Hugging Face
+        # k_nodes_4 is for LLaMA-2 70B Hugging Face
         past_k, present_k = "", ""
         k_nodes = None
         k_nodes_1 = self.model.match_parent_path(
@@ -799,25 +786,11 @@ class FusionRotaryAttention(FusionAttention):
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
         elif k_nodes_4 is not None and len(k_nodes_4) == 9:
-            logger.debug("fuse_rotary_attention: k_nodes_4")
-            logger.debug("*" * 30)
-            for temp_path in k_nodes_4:
-                logger.debug("fuse_rotary_attention: path for k_nodes_4")
-                for temp_node in temp_path:
-                    logger.debug(f"temp_node: {temp_node}")
-                logger.debug("*" * 30)
-
             reshape_k, matmul_k = k_nodes_4[0][-2:]
             concat_k, rotary_k = k_nodes_4[0][-5:-3]
             k_nodes = k_nodes_4
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
-            logger.debug(f"reshape_k: {reshape_k}")
-            logger.debug(f"matmul_k: {matmul_k}")
-            logger.debug(f"concat_k: {concat_k}")
-            logger.debug(f"rotary_k: {rotary_k}")
-            logger.debug(f"past_k: {past_k}")
-            logger.debug(f"present_k: {present_k}")
         else:
             logger.debug("fuse_rotary_attention: failed to match k nodes")
             return
@@ -914,13 +887,9 @@ class FusionRotaryAttention(FusionAttention):
         if v_nodes != v_nodes_4:
             self.nodes_to_remove.extend(v_nodes[:-1])
         else:
-            remove_dic = {}
-            node_keep_name = v_nodes[0][-1].name
+            nodes_to_keep = [v_nodes[0][-1]]
             for temp_path in v_nodes:
-                for temp_node in temp_path:
-                    if temp_node.name not in remove_dic and temp_node.name != node_keep_name:
-                        remove_dic[temp_node.name] = temp_node
-            self.nodes_to_remove.extend(list(remove_dic.values()))
+                self.add_nodes_to_remove_with_nodes_to_keep(temp_path, nodes_to_keep)
 
         self.nodes_to_remove.extend(qk_nodes)
 
@@ -936,13 +905,9 @@ class FusionRotaryAttention(FusionAttention):
             self.nodes_to_remove.append(k_nodes[3])
             self.nodes_to_remove.append(k_nodes[4])
         elif k_nodes == k_nodes_4:
-            remove_dic = {}
-            node_keep_names = [k_nodes[0][-1].name, k_nodes[0][-4].name]
+            nodes_to_keep = [k_nodes[0][-1], k_nodes[0][-4]]
             for temp_path in k_nodes:
-                for temp_node in temp_path:
-                    if temp_node.name not in remove_dic and temp_node.name not in node_keep_names:
-                        remove_dic[temp_node.name] = temp_node
-            self.nodes_to_remove.extend(list(remove_dic.values()))
+                self.add_nodes_to_remove_with_nodes_to_keep(temp_path, nodes_to_keep)
 
         if q_nodes == q_nodes_1:
             self.nodes_to_remove.extend(q_nodes[:-2])

@@ -1282,6 +1282,10 @@ def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads
     # Replace MultiHeadAttention with GroupQueryAttention
     for node in model.model.graph.node:
         if node.op_type == "MultiHeadAttention":
+            num_heads_mha = 0
+            for att in node.attribute:
+                if att.name == "num_heads":
+                    num_heads_mha = att.i
             gqa_node = onnx.helper.make_node(
                 "GroupQueryAttention",
                 inputs=[
@@ -1295,8 +1299,8 @@ def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads
                 outputs=node.output,
                 name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
                 domain="com.microsoft",
-                num_heads=node.attribute[0].i // world_size,
-                kv_num_heads=node.attribute[0].i // world_size if kv_num_heads == 0 else kv_num_heads // world_size,
+                num_heads=num_heads_mha // world_size,
+                kv_num_heads=num_heads_mha // world_size if kv_num_heads == 0 else kv_num_heads // world_size,
                 is_past_bsnh=0,
             )
             model.model.graph.node.remove(node)

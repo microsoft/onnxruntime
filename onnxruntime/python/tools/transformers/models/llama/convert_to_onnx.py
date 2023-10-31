@@ -7,7 +7,7 @@ from typing import List
 
 import onnx
 import torch
-from convert_generation import replace_mha_with_gqa
+from onnxruntime.transformers.convert_generation import replace_mha_with_gqa
 from dist_settings import barrier, get_rank, get_size, init_dist
 from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
@@ -273,6 +273,7 @@ def run_torchscript_separate_export(
 
     # Avoid use system temp dir to avoid overflood on hard disk as 70b model is very large.
     # Use temp folder per rank to avoid race condition here.
+    temp_dir = f"./temp_past_{rank}"
     temp_path = os.path.join(temp_dir, "temp.onnx")
     torch.onnx.export(
         llama,
