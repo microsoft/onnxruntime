@@ -8,7 +8,6 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/conv_activation_action_base.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -206,8 +205,17 @@ class ConvAddActivationSelector : public NodeSelector {
 namespace actions {
 using NTO = NodesToOptimize;
 
-class FuseConvAddActivationAction : public FusedConvActivationActionBase {
+class FuseConvAddActivationAction : public ReplaceWithNew {
+ public:
+  FuseConvAddActivationAction() = default;
+
  private:
+  std::string OpType(const RuntimeState& runtimeState) const override {
+    return (runtimeState.selected_nodes.Target().OpType() == "Conv") ? "FusedConv" : "NhwcFusedConv";
+  }
+
+  std::string Domain(const RuntimeState&) const override { return kMSDomain; }
+
   NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
     NodeAttributes extra_fused_conv_attributes;
 
@@ -279,12 +287,12 @@ class FuseConvAddActivationAction : public FusedConvActivationActionBase {
 void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   auto action = std::make_unique<actions::FuseConvAddActivationAction>();
   auto selector = std::make_unique<selectors::ConvAddActivationSelector>();
-  const std::string kMSDomainNhwcFusedConv = std::string(kMSDomain) + ":NhwcConv";
-
-  registry.RegisterSelectorAndAction("ConvAddAct",
-                                     {{"Conv", {1, 11}},
-                                      {kMSDomainNhwcFusedConv, {1}}},
+  registry.RegisterSelectorAndAction("ConvAddAct", {{"Conv", {1, 11}}},
                                      std::move(selector), std::move(action));
+  auto action_nhwc = std::make_unique<actions::FuseConvAddActivationAction>();
+  auto selector_nhwc = std::make_unique<selectors::ConvAddActivationSelector>();
+  registry.RegisterSelectorAndAction("NhwcFusedConvAct", {{"NhwcFusedConv", {1, 11}}},
+                                     std::move(selector_nhwc), std::move(action_nhwc));
 }
 
 SelectorActionRegistry CreateSelectorActionRegistry() {
