@@ -142,58 +142,70 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ### Build Instructions
 {: .no_toc }
 
-These instructions are for JetPack SDK 5.1.2.
+These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvidia.com/embedded/jetpack-sdk-512).
 
 1. Clone the ONNX Runtime repo on the Jetson host
 
-    ```bash
-    git clone --recursive https://github.com/microsoft/onnxruntime
-    ```
+   ```bash
+   git clone --recursive https://github.com/microsoft/onnxruntime
+   ```
 
 2. Specify the CUDA compiler, or add its location to the PATH.
 
-   Cmake can't automatically find the correct nvcc if it's not in the PATH.
+   1. Starting with **CUDA 11.8**, Jetson users on **JetPack 5.0+** can upgrade to the latest CUDA release without updating the JetPack version or Jetson Linux BSP (Board Support Package). CUDA version 11.8 with JetPack 5.1.2 has been tested on Jetson when building ONNX Runtime 1.16. 
 
-    ```bash
-    export CUDACXX="/usr/local/cuda/bin/nvcc"
+      1. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA 11.8 upgrade instruction.
 
-    ```
+      2. CUDA 12.x might only be available to the latest Jetson Orin series. 
 
-    or:
+   2. CMake can't automatically find the correct `nvcc` if it's not in the `PATH`. `nvcc` can be added to `PATH` via:
 
-    ```bash
-    export PATH="/usr/local/cuda/bin:${PATH}"
-    ```
+      ```bash
+      export PATH="/usr/local/cuda/bin:${PATH}"
+      ```
+
+       or:
+
+      ```bash
+      export CUDACXX="/usr/local/cuda/bin/nvcc"
+      ```
 
 3. Install the ONNX Runtime build dependencies on the Jetpack 5.1.2 host:
 
-    ```bash
-    sudo apt install -y --no-install-recommends \
-      build-essential software-properties-common libopenblas-dev \
-      libpython3.8-dev python3-pip python3-dev python3-setuptools python3-wheel
-    ```
+   ```bash
+   sudo apt install -y --no-install-recommends \
+     build-essential software-properties-common libopenblas-dev \
+     libpython3.8-dev python3-pip python3-dev python3-setuptools python3-wheel
+   ```
 
-4. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.26,
-   it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
-   and follow https://cmake.org/install/ to build from source. Version 3.27 has been tested on Jetson.
+4. Cmake is needed to build ONNX Runtime. For ONNX Runtime 1.16, the minimum required CMake version is 3.26 (version 3.27.4 has been tested). This can be either installed by:
 
-5. Build the ONNX Runtime Python wheel:
+   1. (Unix/Linux) Build from source. Download sources from https://cmake.org/download/
+      and follow https://cmake.org/install/ to build from source. 
+   2. (Ubuntu) Install deb package via apt repository: e.g https://apt.kitware.com/ 
 
-    ```bash
-    ./build.sh --config Release --update --build --parallel --build_wheel \
-    --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
-    ```
+5. Build the ONNX Runtime Python wheel (update path to CUDA/CUDNN/TensorRT libraries if necessary):
 
-    Note: You may optionally build with TensorRT support.
+   1. Build `onnxruntime-gpu` wheel with CUDA support:
 
-    ```bash
-    ./build.sh --config Release --update --build --parallel --build_wheel \
-    --use_tensorrt --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu \
-    --tensorrt_home /usr/lib/aarch64-linux-gnu
-    ```
+      ```bash
+      ./build.sh --config Release --update --build --parallel --build_wheel \
+      --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
+      ```
 
----
+   2. Build `onnxruntime-gpu` wheel with additional TensorRT support:
 
+      ```bash
+      ./build.sh --config Release --update --build --parallel --build_wheel \
+      --use_tensorrt --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu \
+      --tensorrt_home /usr/lib/aarch64-linux-gnu
+      ```
+
+​	Notes:
+
+* By default, `onnxruntime-gpu` wheel file will be captured under `path_to/onnxruntime/build/Linux/Release/dist/` (build path can be customized by adding `--build_dir` followed by a customized path to the build command above).
+
+* For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resources when building ONNX Runtime. Update `--parallel` with smaller value if system resource is limited and OOM happens. 
 ## oneDNN
 
 See more information on oneDNN (formerly DNNL) [here](../execution-providers/oneDNN-ExecutionProvider.md).
