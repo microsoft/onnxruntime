@@ -7,7 +7,7 @@ import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common';
+import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
 type BuiltinFunctionName = string;
 type ElementwiseCustomExpression = (expression: string) => string;
@@ -24,17 +24,23 @@ const createElementwiseProgramShader =
       } else {
         expression = funcCall('a');
       }
-
-      const input = inputVariable('inputData', inputDataType, [vecSize], 4);
-      const output = outputVariable('outputData', outputDataType, [vecSize], 4);
+      const inputRank = 1;
+      const outputRank = 1;
+      const useShapesUniforms = enableShapesUniforms(inputRank);
+      const inputShape = [vecSize];
+      const outputShape = [vecSize];
+      const inputShapeOrRank = useShapesUniforms ? inputRank : inputShape;
+      const outputShapeOrRank = useShapesUniforms ? outputRank : outputShape;
+      const input = inputVariable('inputData', inputDataType, inputShapeOrRank, 4);
+      const output = outputVariable('outputData', outputDataType, outputShapeOrRank, 4);
 
       return `
-  ${shaderHelper.declareVariables(input, output)}
+      ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(input, output)}
 
   ${additionalImplementation ?? ''}
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
 
     let a = ${input.getByOffset('global_idx')};
     ${output.setByOffset('global_idx', expression)}
@@ -45,13 +51,19 @@ const createElementwiseProgramInfo =
     (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
      cacheKey?: string, outputDataType: number = input.dataType): ProgramInfo => ({
       name,
-      shaderCache: {hint: cacheKey},
+      shaderCache: {hint: cacheKey, inputDependencies: enableShapesUniforms(1) ? ['rank'] : ['dims']},
       getShaderSource: shaderHelper => createElementwiseProgramShader(
           shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall, additionalImplementation),
       getRunData: (inputTensors) => ({
         outputs: [{dims: input.dims, dataType: outputDataType}],
         dispatchGroup:
-            {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)}
+            {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
+            programUniforms:
+            [
+              {type: 'uint32', data: Math.ceil(ShapeUtil.size(input.dims)/4)},
+              ...createTensorShapeVariables([Math.ceil(ShapeUtil.size(input.dims)/4)]),
+              ...createTensorShapeVariables([Math.ceil(ShapeUtil.size(input.dims)/4)]),
+            ],
       })
     });
 
