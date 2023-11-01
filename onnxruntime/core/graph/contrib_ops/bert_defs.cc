@@ -1039,7 +1039,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(5,
                "past_sequence_length",
                "When buffered past_key and past_value is used (present_key uses same tensor as past_key), required"
-               "to specify past_sequence_length (could be 0). Otherwise, past_sequence_length inferred from past_key.",
+               "to specify past_sequence_length (could be 0). Otherwise, past_sequence_length inferred from past_key."
+               "Can be a scalar tensor or a tensor of shape (batch_size) indicating the length of each sequence.",
                "M",
                OpSchema::Optional)
         .Output(0,
@@ -1129,7 +1130,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* RotaryEmbedding_ver1_doc = R"DOC(
-RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices 
+RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices
 that are multiplied to query and key before the inner product of query and key is taken.
 )DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(

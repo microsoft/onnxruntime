@@ -170,25 +170,32 @@ Status CheckInputs(const Tensor* query,
   // When kv-cache, we take past_seq_len as an argument... otherwise we use sequence length of past kv directly.
   int32_t past_sequence_length = 0;
   int present_sequence_length = kv_sequence_length;
+  bool has_seqlens_tensor = false;
   if (past_seq_len != nullptr) {
     if (past_key == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Past KV must be present as share-buffer when using past_seq_len pointer.");
     }
-    if (!onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "past_sequence_length tensor must be of one element when using past kv.");
-    }
-    if (past_seq_len->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-      past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+    if (onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
+      if (past_seq_len->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+        past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+      } else {
+        past_sequence_length = static_cast<int32_t>(*((*past_seq_len).template Data<int64_t>()));
+      }
+      if (past_sequence_length + kv_sequence_length > max_sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "KV buffer too small... shall be that max_sequence_length >= past_sequence_length + kv_sequence_length");
+      }
+      present_sequence_length = max_sequence_length;
     } else {
-      past_sequence_length = static_cast<int32_t>(*((*past_seq_len).template Data<int64_t>()));
+      const auto& past_seq_len_shape = past_seq_len->Shape().GetDims();
+      if (past_seq_len_shape.size() != 1 || past_seq_len_shape[0] != batch_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "past_sequence_length tensor must be of shape (1) or (batch_size).");
+      }
+      present_sequence_length = max_sequence_length;
+      has_seqlens_tensor = true;
     }
-    if (past_sequence_length + kv_sequence_length > max_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "KV buffer too small... shall be that max_sequence_length >= past_sequence_length + kv_sequence_length");
-    }
-    present_sequence_length = max_sequence_length;
   } else if (past_key != nullptr) {
     past_sequence_length = max_sequence_length;  // this is the length of past_key tensor
     present_sequence_length = past_sequence_length + kv_sequence_length;
@@ -207,6 +214,7 @@ Status CheckInputs(const Tensor* query,
     output_parameters->head_size = q_hidden_size / num_heads;
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->kv_num_heads = kv_num_heads;
+    output_parameters->has_seqlens_k = has_seqlens_tensor;
     output_parameters->is_unidirectional = true;
     output_parameters->scale = scale;
     output_parameters->qkv_format = qkv_format;

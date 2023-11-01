@@ -448,10 +448,12 @@ Status FlashAttention(
     void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
     void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
 
-    // Launch kernel to copy seqlen
-    int thr_per_blk = 256;
-    int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
-    repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
+    if (!parameters.has_seqlens_k) {
+      // Launch kernel to copy seqlen
+      int thr_per_blk = 256;
+      int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
+      repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
+    }
 
     bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(

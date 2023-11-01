@@ -95,6 +95,7 @@ struct GroupQueryAttentionParameters {
   int head_size;
   int kv_hidden_size;
   int kv_num_heads;
+  bool has_seqlens_k;
   bool is_unidirectional;  // causal
   float scale;
   int num_splits;  // number of splits for splitkv

@@ -127,7 +127,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
           parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, head_size_rounded);
     }
     // seqlens_k buffer
-    if (past_key != nullptr) {
+    if (!parameters.has_seqlens_k && past_key != nullptr) {
       seqlens_k_bytes = sizeof(int) * parameters.batch_size;
     }
   }
@@ -204,7 +204,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (out_accum_buffer != nullptr) {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
-  if (seqlens_k_buffer != nullptr) {
+  if (parameters.has_seqlens_k) {
+    data.seqlens_k = reinterpret_cast<int*>(past_seq_len->Data<int>());
+  } else if (seqlens_k_buffer != nullptr) {
     data.seqlens_k = reinterpret_cast<int*>(seqlens_k_buffer.get());
   }
   if (k_buffer != nullptr) {
