@@ -281,8 +281,8 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   LOGS_DEFAULT(VERBOSE) << "Registering " << name << std::endl;
   auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
-  const std::string msInternalNHWCDomainConv = SelectorActionRegistry::OpVersionsMapKey(kMSInternalNHWCDomain, "Conv");
-  const std::string msDomainConv = SelectorActionRegistry::OpVersionsMapKey(kMSDomain, "NhwcConv");
+  const std::string msInternalNHWCDomainConv = SelectorActionRegistry::OpVersionsMapKey("Conv", kMSInternalNHWCDomain);
+  const std::string msDomainConv = SelectorActionRegistry::OpVersionsMapKey("NhwcConv", kMSDomain);
   auto selector = std::make_unique<selectors::ConvActivationSelector>();
 
   registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}, {msInternalNHWCDomainConv, {11}}, {msDomainConv, {1}}},

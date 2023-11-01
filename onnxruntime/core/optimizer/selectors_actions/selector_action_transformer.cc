@@ -59,7 +59,7 @@ const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::s
 #if !defined(ORT_MINIMAL_BUILD)
 auto SelectorActionRegistry::LookUpByOpTypeAndDomain(const std::string& op_type, const std::string& domain) const
     -> std::vector<gsl::not_null<const Entry*>> {
-  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(OpVersionsMapKey(domain, op_type));
+  const auto [range_begin, range_end] = op_type_to_entry_.equal_range(OpVersionsMapKey(op_type, domain));
   std::vector<gsl::not_null<const Entry*>> result{};
   result.reserve(std::distance(range_begin, range_end));
   std::transform(range_begin, range_end, std::back_inserter(result),
@@ -99,7 +99,7 @@ static Status MatchAndProcess(
 
     const auto selector_action_entries =
         selector_action_registry.LookUpByOpTypeAndDomain(node.OpType(), node.Domain());
-    std::string key = SelectorActionRegistry::OpVersionsMapKey(node.Domain(), node.OpType());
+    std::string key = SelectorActionRegistry::OpVersionsMapKey(node.OpType(), node.Domain());
     for (const auto& entry : selector_action_entries) {
       // check the supported versions if specified
       const auto& versions = entry->ops_and_versions.find(key)->second;
