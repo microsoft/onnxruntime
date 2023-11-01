@@ -38,5 +38,20 @@ class Slice : public CudaKernel, public SliceBase {
                               const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
                               const TensorShape& output_shape) const;
 };
+
+Status FuncSlice(
+    // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+    // TODO: remove CudaKernel and OpKernelContext.
+    const CudaKernel* cuda_kernel,
+    // Do NOT use ctx to access inputs and outputs.
+    // Inputs and outputs are passed in as function arguments.
+    OpKernelContext* ctx,
+    const Tensor* input,
+    const std::vector<int64_t>& starts,
+    const std::vector<int64_t>& ends,
+    const std::vector<int64_t>& axes,
+    const std::vector<int64_t>& steps,
+    Tensor* output);
+
 }  // namespace cuda
 }  // namespace onnxruntime

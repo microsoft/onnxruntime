@@ -32,7 +32,7 @@ static void RunAveragePoolOpTest(const std::string& op_type,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildOpTestCase(op_type, input_defs, attrs),
+  RunQnnModelTest(BuildOpTestCase<float>(op_type, input_defs, {}, attrs),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -53,8 +53,8 @@ static void RunQDQAveragePoolOpTest(const std::string& op_type,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildOpTestCase(op_type, input_defs, attrs),
-                       BuildQDQOpTestCase<QuantType>(op_type, input_defs, attrs),
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input_defs, {}, attrs),
+                       BuildQDQOpTestCase<QuantType>(op_type, input_defs, {}, attrs),
                        provider_options,
                        opset,
                        expected_ep_assignment);

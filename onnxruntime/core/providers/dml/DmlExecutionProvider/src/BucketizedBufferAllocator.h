@@ -83,16 +83,16 @@ namespace Dml
         std::vector<Bucket> m_pool;
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
-        
-        // Unless specifically requested, allocation sizes are not rounded to enable pooling 
-        // until SetDefaultRoundingMode is called.  This should be done at completion of session 
+
+        // Unless specifically requested, allocation sizes are not rounded to enable pooling
+        // until SetDefaultRoundingMode is called.  This should be done at completion of session
         // initialization.
         AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Disabled;
 
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
 
-    #if _DEBUG
+    #ifndef NDEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet
         std::map<size_t, AllocationInfo*> m_outstandingAllocationsById;
     #endif

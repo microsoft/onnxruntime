@@ -135,32 +135,52 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (use_flash_attention && parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
     use_flash_attention = false;
   }
+  // Allocate buffers
+  size_t softmax_lse_accum_bytes = 0;
+  size_t out_accum_bytes = 0;
+  if (use_flash_attention) {
+    using namespace std;
+    auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
+        parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
+        parameters.head_size, device_prop.multiProcessorCount);
+    parameters.num_splits = num_splits;
+    softmax_lse_accum_bytes = slse_accum_bytes;
+    out_accum_bytes = o_accum_bytes;
+  }
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
+  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
+  auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
   if (!use_flash_attention) {
-    if (is_unidirectional_ && enable_fused_causal_attention_) {  // GPT
-      // GPT fused kernels requires left side padding. mask can be:
-      //     none (no padding), 1D sequence lengths or 2d mask.
-      // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
-      // where past state is empty.
-      bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
-      bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
-                                     nullptr == relative_position_bias &&
-                                     parameters.past_sequence_length == 0 &&
-                                     parameters.hidden_size == parameters.v_hidden_size &&
-                                     FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                                        enable_trt_flash_attention_, true);
-      if (use_causal_fused_runner) {
-        // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
-        if (nullptr == fused_fp16_runner_.get()) {
-          fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                            enable_trt_flash_attention_, parameters.scale);
-        }
+    if (is_unidirectional_) {  // GPT
+      if (enable_fused_causal_attention_) {
+        // GPT fused kernels requires left side padding. mask can be:
+        //     none (no padding), 1D sequence lengths or 2d mask.
+        // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
+        // where past state is empty.
+        bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
+        bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
+                                       nullptr == relative_position_bias &&
+                                       parameters.past_sequence_length == 0 &&
+                                       parameters.hidden_size == parameters.v_hidden_size &&
+                                       FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
+                                                                          enable_trt_flash_attention_, true);
+        if (use_causal_fused_runner) {
+          // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
+          if (nullptr == fused_fp16_runner_.get()) {
+            std::call_once(fused_fp16_runner_created_, [&]() {
+              fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                                enable_trt_flash_attention_, parameters.scale);
+            });
+          }
 
-        // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
-        fused_runner = fused_fp16_runner_.get();
+          // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
+          fused_runner = fused_fp16_runner_.get();
+        }
       }
     } else {  // BERT
       bool use_fused_runner = !disable_fused_self_attention_ &&
@@ -175,8 +195,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       if (use_fused_runner) {
         // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
         if (nullptr == fused_fp16_runner_.get()) {
-          fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                            enable_trt_flash_attention_, parameters.scale);
+          std::call_once(fused_fp16_runner_created_, [&]() {
+            fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                              enable_trt_flash_attention_, parameters.scale);
+          });
         }
 
         // In case some kernel not loaded due to shared memory limit, we need to double check here.
@@ -213,11 +235,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  IAllocatorUniquePtr<T> gemm_buffer;
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
   int m = batch_size * sequence_length;
   int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   int k = parameters.input_hidden_size;
-  gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  IAllocatorUniquePtr<void> gemm_buffer = IAllocator::MakeUniquePtr<void>(allocator, static_cast<size_t>(m * n) * sizeof(T), false, context->GetComputeStream());
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -244,35 +267,40 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    use_flash_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention);
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
+  ;
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
-  data.bias = nullptr == bias ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
-  data.query = nullptr;
-  data.key = nullptr;
-  data.value = nullptr;
-  data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
-  data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
-  data.past = (nullptr == past) ? nullptr : reinterpret_cast<const CudaT*>(past->Data<T>());
-  data.past_key = nullptr;
-  data.past_value = nullptr;
-  data.relative_position_bias = (nullptr == relative_position_bias)
-                                    ? nullptr
-                                    : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  if (nullptr != bias) {
+    data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
+  }
+  if (nullptr != mask_index) {
+    data.mask_index = mask_index->Data<int>();
+    data.mask_index_dims = mask_index->Shape().GetDims();
+  }
+  if (nullptr != past) {
+    data.past = reinterpret_cast<const CudaT*>(past->Data<T>());
+  }
+  if (nullptr != relative_position_bias) {
+    data.relative_position_bias = reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  }
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
-  data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
-  data.present_key = nullptr;
-  data.present_value = nullptr;
+  if (nullptr != present) {
+    data.present = reinterpret_cast<CudaT*>(present->MutableData<T>());
+  }
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
-  data.fused_cross_attention_kernel = nullptr;
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
-  data.cumulated_sequence_length_q_cache = nullptr;
-  data.cumulated_sequence_length_kv_cache = nullptr;
+  if (softmax_lse_accum_buffer != nullptr) {
+    data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
+  }
+  if (out_accum_buffer != nullptr) {
+    data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
+  }
 
   return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);
 }

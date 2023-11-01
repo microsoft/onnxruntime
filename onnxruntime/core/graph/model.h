@@ -139,7 +139,7 @@ class Model {
   // Returns empty string if not specified.
   const std::string GraphDocString() const;
 
-  const InlinedHashMap<std::string, FunctionTemplate*>& GetModelLocalFunctionTemplates() const;
+  const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& GetModelLocalFunctionTemplates() const;
 
 #else
   // Get model's IR version.
@@ -182,14 +182,14 @@ class Model {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Get model's serialization proto data.
-  ONNX_NAMESPACE::ModelProto ToProto();
+  ONNX_NAMESPACE::ModelProto ToProto() const;
 
   // Get model's serialization proto data.
   // Save initializer larger than the given threshold (in bytes) into an external binary file
   // with the given name. This function is useful to avoid hitting the size limit of protobuf files.
   ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
                                                                   const PathString& file_path,
-                                                                  size_t initializer_size_threshold);
+                                                                  size_t initializer_size_threshold) const;
 
 #ifdef _WIN32
   static common::Status Save(Model& model, const std::wstring& file_path);
@@ -291,6 +291,13 @@ class Model {
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
+  /// <summary>
+  /// Frees local function definitions in the model, excluding those in the `retained` set.
+  /// Called from GraphPartitioner::InlineFunctionsAOT.
+  /// </summary>
+  /// <param name="retained">contains function IDs that should not be removed.</param>
+  void RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained);
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Model& fbs_model,
@@ -310,15 +317,14 @@ class Model {
   // map from function id to pointer of model local function proto
   // FunctionProto is hosted in ModelProto.
   // this map will be used for the local functions' schema's type/shape inference.
-  InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
-  // this is the container that host the generated schemas for model local functions.
-  // the generated schemare will be used for graph resolving and type/shape inference.
-  // those schemas' type/shape inference will reference to the model_local_functions_ as context,
-  // so need to keep them with same lifetime.
-  InlinedVector<std::unique_ptr<FunctionTemplate>> model_local_function_templates_;
+  // This container is used by ONNX code and must be an std::unordered_map.
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
   // this is the map from function id to the local function template.
   // this map will be used by graph to instantiate the function body.
-  InlinedHashMap<std::string, FunctionTemplate*> model_local_function_templates_maps_;
+  // Defined as a node based map so the memory is released when not all of the functions
+  // are inlined and removed.
+  NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>> model_local_function_templates_maps_;
+
 #else
   // properties that would normally come from ModelProto
   std::string producer_version_;

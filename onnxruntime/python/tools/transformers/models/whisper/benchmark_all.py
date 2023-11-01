@@ -54,7 +54,21 @@ def get_args():
     )
 
     parser.add_argument(
-        "--hf-ort-model-path",
+        "--hf-pt-eager",
+        default=False,
+        action="store_true",
+        help="Benchmark in PyTorch without `torch.compile`",
+    )
+
+    parser.add_argument(
+        "--hf-pt-compile",
+        default=False,
+        action="store_true",
+        help="Benchmark in PyTorch with `torch.compile`",
+    )
+
+    parser.add_argument(
+        "--hf-ort-dir-path",
         type=str,
         help="Path to folder containing ONNX models for Optimum + ORT benchmarking",
     )
@@ -109,6 +123,8 @@ def get_args():
         help="Number of mins to attempt the benchmark before moving on",
     )
 
+    parser.add_argument("--tune", default=False, action="store_true")
+
     args = parser.parse_args()
 
     setattr(args, "model_size", args.model_name.split("/")[-1].replace(".", "-"))  # noqa: B010
@@ -134,7 +150,7 @@ def process_log_file(device_id, log_file, base_results):
 
     load_audio_latency_s, load_audio_throughput_s = None, None
     feat_ext_latency_s, feat_ext_throughput_s = None, None
-    latency_s, per_token_latency_s, per_token_latency_ms = None, None, None
+    token_length, latency_s, per_token_latency_s, per_token_latency_ms = None, None, None, None
     throughput, memory = None, None
 
     # Detect metrics
@@ -292,6 +308,7 @@ def main():
     ort_decoder_input_ids_cmd = (
         ["--decoder-input-ids", str(ort_forced_decoder_ids)] if args.language and args.task else []
     )
+    ort_tune_cmd = ["--tune"] if args.tune else []
 
     all_results = []
     for audio_file in os.listdir(args.audio_path):
@@ -307,73 +324,75 @@ def main():
         logger.info(f"Testing {audio_path}...")
 
         # Benchmark PyTorch without torch.compile
-        benchmark_cmd = [  # noqa: RUF005
-            "python3",
-            "-m",
-            "models.whisper.benchmark",
-            "--audio-path",
-            audio_path,
-            "--benchmark-type",
-            "hf-pt",
-            "--model-name",
-            args.model_name,
-            "--precision",
-            args.precision,
-            "--device",
-            args.device,
-            "--device-id",
-            str(args.device_id),
-            "--warmup-runs",
-            str(args.warmup_runs),
-            "--num-runs",
-            str(args.num_runs),
-            "--log-folder",
-            args.log_folder,
-        ] + hf_decoder_input_ids_cmd
-        logger.info("Benchmark PyTorch without torch.compile")
-        results = benchmark(args, benchmark_cmd, "pytorch", audio_file, duration)
-        all_results.extend(results)
+        if args.hf_pt_eager:
+            benchmark_cmd = [  # noqa: RUF005
+                "python",
+                "-m",
+                "models.whisper.benchmark",
+                "--audio-path",
+                audio_path,
+                "--benchmark-type",
+                "hf-pt-eager",
+                "--model-name",
+                args.model_name,
+                "--precision",
+                args.precision,
+                "--device",
+                args.device,
+                "--device-id",
+                str(args.device_id),
+                "--warmup-runs",
+                str(args.warmup_runs),
+                "--num-runs",
+                str(args.num_runs),
+                "--log-folder",
+                args.log_folder,
+            ] + hf_decoder_input_ids_cmd
+            logger.info("Benchmark PyTorch without torch.compile")
+            results = benchmark(args, benchmark_cmd, "pytorch-eager", audio_file, duration)
+            all_results.extend(results)
 
         # Benchmark PyTorch with torch.compile
-        benchmark_cmd = [  # noqa: RUF005
-            "python3",
-            "-m",
-            "models.whisper.benchmark",
-            "--audio-path",
-            audio_path,
-            "--benchmark-type",
-            "hf-pt2",
-            "--model-name",
-            args.model_name,
-            "--precision",
-            args.precision,
-            "--device",
-            args.device,
-            "--device-id",
-            str(args.device_id),
-            "--warmup-runs",
-            str(args.warmup_runs),
-            "--num-runs",
-            str(args.num_runs),
-            "--log-folder",
-            args.log_folder,
-        ] + hf_decoder_input_ids_cmd
-        logger.info("Benchmark PyTorch with torch.compile")
-        results = benchmark(args, benchmark_cmd, "pytorch-2", audio_file, duration)
-        all_results.extend(results)
+        if args.hf_pt_compile:
+            benchmark_cmd = [  # noqa: RUF005
+                "python",
+                "-m",
+                "models.whisper.benchmark",
+                "--audio-path",
+                audio_path,
+                "--benchmark-type",
+                "hf-pt-compile",
+                "--model-name",
+                args.model_name,
+                "--precision",
+                args.precision,
+                "--device",
+                args.device,
+                "--device-id",
+                str(args.device_id),
+                "--warmup-runs",
+                str(args.warmup_runs),
+                "--num-runs",
+                str(args.num_runs),
+                "--log-folder",
+                args.log_folder,
+            ] + hf_decoder_input_ids_cmd
+            logger.info("Benchmark PyTorch with torch.compile")
+            results = benchmark(args, benchmark_cmd, "pytorch-compile", audio_file, duration)
+            all_results.extend(results)
 
         # Benchmark Optimum + ONNX Runtime
-        if args.hf_ort_model_path:
+        if args.hf_ort_dir_path:
             benchmark_cmd = [  # noqa: RUF005
-                "python3",
+                "python",
                 "-m",
                 "models.whisper.benchmark",
                 "--audio-path",
                 audio_path,
                 "--benchmark-type",
                 "hf-ort",
-                "--hf-ort-model-path",
-                args.hf_ort_model_path,
+                "--hf-ort-dir-path",
+                args.hf_ort_dir_path,
                 "--model-name",
                 args.model_name,
                 "--precision",
@@ -390,36 +409,40 @@ def main():
                 args.log_folder,
             ] + hf_decoder_input_ids_cmd
             logger.info("Benchmark Optimum + ONNX Runtime")
-            results = benchmark(args, benchmark_cmd, "pytorch-ort", audio_file, duration)
+            results = benchmark(args, benchmark_cmd, "optimum-ort", audio_file, duration)
             all_results.extend(results)
 
         # Benchmark ONNX Runtime
         if args.ort_model_path:
-            benchmark_cmd = [  # noqa: RUF005
-                "python3",
-                "-m",
-                "models.whisper.benchmark",
-                "--audio-path",
-                audio_path,
-                "--benchmark-type",
-                "ort",
-                "--ort-model-path",
-                args.ort_model_path,
-                "--model-name",
-                args.model_name,
-                "--precision",
-                args.precision,
-                "--device",
-                args.device,
-                "--device-id",
-                str(args.device_id),
-                "--warmup-runs",
-                str(args.warmup_runs),
-                "--num-runs",
-                str(args.num_runs),
-                "--log-folder",
-                args.log_folder,
-            ] + ort_decoder_input_ids_cmd
+            benchmark_cmd = (
+                [  # noqa: RUF005
+                    "python",
+                    "-m",
+                    "models.whisper.benchmark",
+                    "--audio-path",
+                    audio_path,
+                    "--benchmark-type",
+                    "ort",
+                    "--ort-model-path",
+                    args.ort_model_path,
+                    "--model-name",
+                    args.model_name,
+                    "--precision",
+                    args.precision,
+                    "--device",
+                    args.device,
+                    "--device-id",
+                    str(args.device_id),
+                    "--warmup-runs",
+                    str(args.warmup_runs),
+                    "--num-runs",
+                    str(args.num_runs),
+                    "--log-folder",
+                    args.log_folder,
+                ]
+                + ort_decoder_input_ids_cmd
+                + ort_tune_cmd
+            )
             logger.info("Benchmark ONNX Runtime")
             results = benchmark(args, benchmark_cmd, "onnxruntime", audio_file, duration)
             all_results.extend(results)

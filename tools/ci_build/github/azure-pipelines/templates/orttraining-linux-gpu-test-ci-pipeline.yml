@@ -1,0 +1,53 @@
+parameters:
+- name: DockerImageTag
+  type: string
+- name: BuildConfig
+  type: string
+
+steps:
+
+- bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
+  displayName: 'Mount MNIST'
+  condition: succeededOrFailed()
+
+- bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
+  displayName: 'Mount bert-data'
+  condition: succeededOrFailed()
+
+- bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+  displayName: 'Mount hf-models-cache'
+  condition: succeededOrFailed()
+
+  # Entry point for all ORTModule tests
+  # The onnxruntime folder is deleted in the build directory
+  # to enforce use of the onnxruntime wheel
+  # Uninstall orttraining requirements.txt and install ortmodule requirements.txt before running tests.
+- script: |
+    docker run \
+      --gpus all \
+      --shm-size=1024m \
+      --rm \
+      --volume $(Build.SourcesDirectory):/onnxruntime_src \
+      --volume $(Build.BinariesDirectory)/${{ parameters.BuildConfig }}:/build \
+      --volume /mnist:/mnist \
+      --volume /bert_data:/bert_data \
+      --volume /hf_models_cache:/hf_models_cache \
+      ${{ parameters.DockerImageTag }} \
+        bash -c "rm -rf /build/onnxruntime/ && python3 -m pip install /build/dist/onnxruntime*.whl && python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install && /build/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw' --cwd /build" \
+  displayName: 'Run orttraining_ortmodule_tests.py'
+  condition: succeededOrFailed()
+  timeoutInMinutes: 60
+
+# Entry point for all ort training api tests
+- script: |
+    docker run \
+      --gpus all \
+      --shm-size=1024m \
+      --rm \
+      --volume $(Build.SourcesDirectory):/onnxruntime_src \
+      --volume $(Build.BinariesDirectory)/${{ parameters.BuildConfig }}:/build \
+      ${{ parameters.DockerImageTag }} \
+        bash -c "rm -rf /build/onnxruntime/ && python3 -m pip install /build/dist/onnxruntime*.whl && /build/launch_test.py --cmd_line_with_args 'python orttraining_test_ort_apis.py --cwd /build' --cwd /build" \
+  displayName: 'Run ORT Training APIs Tests'
+  condition: succeededOrFailed()
+  timeoutInMinutes: 120

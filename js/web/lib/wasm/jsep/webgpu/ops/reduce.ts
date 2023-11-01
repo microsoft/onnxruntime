@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo, ProgramShaderCacheInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -16,10 +16,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 
   if (inputs.length === 2 && inputs[1].dims.length !== 1) {
     throw new Error('Invalid axes input dims.');
-  }
-
-  if (inputs[0].dataType !== DataType.float) {
-    throw new Error('Invalid input type.');
   }
 };
 
@@ -35,8 +31,8 @@ export type ReduceOp =
 
 const noOp: ReduceOp = (input) => ['', '', `var value = ${input.getByOffset('inputOffset')};`, ''];
 export const createReduceProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], reduceOp: ReduceOp, axesInput: number[],
-     outputDataType: DataType, keepDims = false, noopWithEmptyAxes = false): ProgramInfo => {
+    (name: string, shaderCache: ProgramShaderCacheInfo, inputs: readonly TensorView[], reduceOp: ReduceOp,
+     axesInput: number[], outputDataType: DataType, keepDims = false, noopWithEmptyAxes = false): ProgramInfo => {
       const outputShape: number[] = [];
       const inputShape = inputs[0].dims;
 
@@ -100,10 +96,13 @@ export const createReduceProgramInfo =
         }`;
 
       return {
-        ...metadata,
+        name,
+        shaderCache,
         getShaderSource,
-        outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: outputDataType}],
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+        }),
       };
     };
 
@@ -117,23 +116,19 @@ const createReduceAttributesFromInputs =
           {axes, keepDims: attributes.keepDims, noopWithEmptyAxes: attributes.noopWithEmptyAxes});
     };
 
-const createReduceProgramInfoLoader =
-    (inputs: readonly TensorView[], name: string, attributes: ReduceAttributes,
-     reduceOp: ReduceOp): ProgramInfoLoader => {
+const runReduceProgram =
+    (context: ComputeContext, name: string, attributes: ReduceAttributes, reduceOp: ReduceOp): void => {
+      const inputs = context.inputs;
       const updatedAttributes: ReduceAttributes =
           inputs.length === 1 ? attributes : createReduceAttributesFromInputs(inputs, attributes);
-      const metadata: ProgramMetadata = {
-        name,
-        inputTypes: [GpuDataType.default],
-        cacheHint: updatedAttributes.cacheKey + '_' + inputs[0].dims.map(d => d.toString()).join(',')
-      };
-      return {
-        ...metadata,
-        get: () => createReduceProgramInfo(
-            metadata, [inputs[0]],
-            updatedAttributes.noopWithEmptyAxes && updatedAttributes.axes.length === 0 ? noOp : reduceOp,
-            updatedAttributes.axes, inputs[0].dataType, updatedAttributes.keepDims, updatedAttributes.noopWithEmptyAxes)
-      };
+
+      context.compute(
+          createReduceProgramInfo(
+              name, {hint: updatedAttributes.cacheKey}, [inputs[0]],
+              updatedAttributes.noopWithEmptyAxes && updatedAttributes.axes.length === 0 ? noOp : reduceOp,
+              updatedAttributes.axes, inputs[0].dataType, updatedAttributes.keepDims,
+              updatedAttributes.noopWithEmptyAxes),
+          {inputs: [0]});
     };
 
 export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
@@ -144,7 +139,7 @@ export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttribut
        `value += ${input.getByOffset('inputOffset')};`,
        'value = log(value);',
   ];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceLogSum', attributes, reduceOp), {inputs: [0]});
+  runReduceProgram(context, 'ReduceLogSum', attributes, reduceOp);
 };
 
 export const reduceL1 = (context: ComputeContext, attributes: ReduceAttributes): void => {
@@ -155,18 +150,18 @@ export const reduceL1 = (context: ComputeContext, attributes: ReduceAttributes):
        `value += abs(${input.getByOffset('inputOffset')});`,
        '',
   ];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceL1', attributes, reduceOp), {inputs: [0]});
+  runReduceProgram(context, 'ReduceL1', attributes, reduceOp);
 };
 
 export const reduceL2 = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
-      [`var t = f32(0); var value = ${output.type.storage}(0);`,
+      [`var t = ${output.type.value}(0); var value = ${output.type.value}(0);`,
        '',
        `t = ${input.getByOffset('inputOffset')}; value += (t * t);`,
        'value = sqrt(value);',
   ];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceL2', attributes, reduceOp), {inputs: [0]});
+  runReduceProgram(context, 'ReduceL2', attributes, reduceOp);
 };
 
 export const reduceLogSumExp = (context: ComputeContext, attributes: ReduceAttributes): void => {
@@ -177,15 +172,14 @@ export const reduceLogSumExp = (context: ComputeContext, attributes: ReduceAttri
        `value += exp(${input.getByOffset('inputOffset')});`,
        'value = log(value);',
   ];
-  context.compute(
-      createReduceProgramInfoLoader(context.inputs, 'ReduceLogSumExp', attributes, reduceOp), {inputs: [0]});
+  runReduceProgram(context, 'ReduceLogSumExp', attributes, reduceOp);
 };
 
 export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, _output, axes) => {
     const idxZero = [];
-    for (let k = 0; k < input.shape.length; k++) {
+    for (let k = 0; k < input.rank; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
         idxZero.push(input.indicesSet('inputIndices', k, 0));
       }
@@ -198,34 +192,35 @@ export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes)
       '',
     ];
   };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMax', attributes, reduceOp), {inputs: [0]});
+  runReduceProgram(context, 'ReduceMax', attributes, reduceOp);
 };
 
 export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output, axes) => {
     let size = 1.0;
-    for (let k = 0; k < input.shape.length; k++) {
+    for (let k = 0; k < input.rank; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
-        size *= input.shape[k];
+        // TODO: this depends on the input dims. If we want to use uniform, this need to be updated.
+        size *= context.inputs[0].dims[k];
       }
     }
 
     return [
-      `var value = ${output.type.storage}(0);`,
+      'var sum = f32(0);',
       '',
-      `value += ${input.getByOffset('inputOffset')};`,
-      `value = value / ${size}.;`,
+      `sum += f32(${input.getByOffset('inputOffset')});`,
+      `let value = ${output.type.value}(sum / ${size});`,
     ];
   };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMean', attributes, reduceOp), {inputs: [0]});
+  runReduceProgram(context, 'ReduceMean', attributes, reduceOp);
 };
 
 export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, _output, axes) => {
     const idxZero = [];
-    for (let k = 0; k < input.shape.length; k++) {
+    for (let k = 0; k < input.rank; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
         idxZero.push(`inputIndices[${k}] = 0;`);  // first element
       }
@@ -238,7 +233,7 @@ export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes)
       '',
     ];
   };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMin', attributes, reduceOp), {inputs: [0]});
+  runReduceProgram(context, 'ReduceMin', attributes, reduceOp);
 };
 
 export const reduceProd = (context: ComputeContext, attributes: ReduceAttributes): void => {
@@ -249,7 +244,7 @@ export const reduceProd = (context: ComputeContext, attributes: ReduceAttributes
        `value *= ${input.getByOffset('inputOffset')};`,
        '',
   ];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceProd', attributes, reduceOp), {inputs: [0]});
+  runReduceProgram(context, 'ReduceProd', attributes, reduceOp);
 };
 
 export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
@@ -260,19 +255,18 @@ export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes)
        `value += ${input.getByOffset('inputOffset')};`,
        '',
   ];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSum', attributes, reduceOp), {inputs: [0]});
+  runReduceProgram(context, 'ReduceSum', attributes, reduceOp);
 };
 
 export const reduceSumSquare = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
   const reduceOp: ReduceOp = (input, output) =>
-      [`var t = f32(0); var value = ${output.type.storage}(0);`,
+      [`var t = ${output.type.value}(0); var value = ${output.type.value}(0);`,
        '',
        `t = ${input.getByOffset('inputOffset')}; value += t * t;`,
        '',
   ];
-  context.compute(
-      createReduceProgramInfoLoader(context.inputs, 'ReduceSumSquare', attributes, reduceOp), {inputs: [0]});
+  runReduceProgram(context, 'ReduceSumSquare', attributes, reduceOp);
 };
 
 export const parseReduceAttributes = (attributes: Record<string, unknown>): ReduceAttributes =>

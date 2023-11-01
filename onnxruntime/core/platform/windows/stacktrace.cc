@@ -10,7 +10,6 @@
 #include <stacktrace>
 #endif
 #endif
-#include <stacktrace>
 
 #include "core/common/logging/logging.h"
 #include "core/common/gsl.h"

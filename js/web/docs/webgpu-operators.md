@@ -21,6 +21,8 @@ Do not modify directly.*
 | Atan | ai.onnx(7+) |  |
 | Atanh | ai.onnx(9+) |  |
 | AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(11+) | need perf optimization; need implementing activation |
+| BiasAdd | com.microsoft(1+) |  |
+| BiasSplitGelu | com.microsoft(1+) |  |
 | Cast | ai.onnx(6-8,9-12,13-18,19+) |  |
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
@@ -30,6 +32,7 @@ Do not modify directly.*
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
+| Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |
 | Equal | ai.onnx(7-10,11-12,13-18,19+) |  |
 | Erf | ai.onnx(9-12,13+) |  |
@@ -44,10 +47,13 @@ Do not modify directly.*
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | Greater | ai.onnx(7-8,9-12,13+) |  |
+| GreaterOrEqual | ai.onnx(12-15,16+) |  |
+| If | ai.onnx(1-10,11-12,13-18,19+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
 | Less | ai.onnx(7-8,9-12,13+) |  |
+| LessOrEqual | ai.onnx(12-15,16+) |  |
 | Log | ai.onnx(6-12,13+) |  |
 | MatMul | ai.onnx(1-12,13+) |  |
 | MaxPool | ai.onnx(1-7,8-9,10,11,12+); com.ms.internal.nhwc(11,12+) | need perf optimization; need implementing activation |
@@ -56,7 +62,9 @@ Do not modify directly.*
 | Mul | ai.onnx(7-12,13,14+) |  |
 | Neg | ai.onnx(6-12,13+) |  |
 | Not | ai.onnx(1+) |  |
+| Pad | ai.onnx(2-10,11-12,13-17,18,19+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
+| Range | ai.onnx(11+) |  |
 | Reciprocal | ai.onnx(6-12,13+) |  |
 | ReduceL1 | ai.onnx(1-10,11-12,13-17,18+) |  |
 | ReduceL2 | ai.onnx(1-10,11-12,13-17,18+) |  |
@@ -88,3 +96,4 @@ Do not modify directly.*
 | Tile | ai.onnx(6-12,13+) |  |
 | Transpose | ai.onnx(1-12,13+) | need perf optimization |
 | Unsqueeze | ai.onnx(1-10,11-12,13+) |  |
+| Where | ai.onnx(9-15,16+) |  |

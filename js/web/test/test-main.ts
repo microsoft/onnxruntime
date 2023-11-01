@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Load onnxruntime-web and testdata-config.
+// Load onnxruntime-common and testdata-config.
 // NOTE: this need to be called before import any other library.
-const ort = require('..');
+import * as ort from 'onnxruntime-common';
+
 const ORT_WEB_TEST_CONFIG = require('./testdata-config.json') as Test.Config;
 
 import * as platform from 'platform';
@@ -56,6 +57,9 @@ if (options.globalEnvFlags) {
   }
   if (flags.webgpu?.profilingMode !== undefined) {
     ort.env.webgpu.profilingMode = flags.webgpu.profilingMode;
+  }
+  if (flags.webgpu?.validateInputContent !== undefined) {
+    ort.env.webgpu.validateInputContent = flags.webgpu.validateInputContent;
   }
 }
 
@@ -110,9 +114,9 @@ for (const group of ORT_WEB_TEST_CONFIG.model) {
               test, ORT_WEB_TEST_CONFIG.profile, ORT_WEB_TEST_CONFIG.options.sessionOptions);
         });
 
-        after('release session', () => {
+        after('release session', async () => {
           if (context) {
-            context.release();
+            await context.release();
           }
         });
 

@@ -106,9 +106,19 @@ export declare namespace Tensor {
   type ElementType = ElementTypeMap[Type];
 
   /**
+   * supported data types for constructing a tensor from a pinned CPU buffer
+   */
+  export type CpuPinnedDataTypes = Exclude<Tensor.Type, 'string'>;
+
+  /**
    * type alias for WebGL texture
    */
   export type TextureType = WebGLTexture;
+
+  /**
+   * supported data types for constructing a tensor from a WebGL texture
+   */
+  export type TextureDataTypes = 'float32';
 
   /**
    * type alias for WebGPU buffer
@@ -121,6 +131,11 @@ export declare namespace Tensor {
    * for more info see https://github.com/gpuweb/types/issues/127
    */
   export type GpuBufferType = {size: number; mapState: 'unmapped' | 'pending' | 'mapped'};
+
+  /**
+   * supported data types for constructing a tensor from a WebGPU buffer
+   */
+  export type GpuBufferDataTypes = 'float32'|'float16'|'int32'|'int64'|'uint32'|'bool';
 
   /**
    * represent where the tensor data is stored

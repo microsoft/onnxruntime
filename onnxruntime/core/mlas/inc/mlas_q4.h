@@ -229,3 +229,117 @@ MlasQ8Q4GemmBatch(
     const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
     MLAS_THREADPOOL* ThreadPool
     );
+
+
+////////////////////////////////////////////////////////////
+// Blockwise quantization and dequantization where quantization
+// parameters are packed into separate buffers.
+//
+
+/**
+ * @brief For quantization type <T, block_size, columnwise>, and
+ *        matrix shape [rows, columns], compute the shape of the
+ *        quantization parameter matrix [meta_rows, meta_cols]
+*/
+template <typename T>
+void
+MlasBlockwiseQuantMetaShape(
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int& meta_rows,
+    int& meta_cols
+    );
+
+/**
+ * @brief For quantization type <T, block_size, columnwise>, and
+ * matrix shape [rows, columns], compute the shape of the
+ * quantized matrix [q_rows, q_cols]. The quantized matrix
+ * is in column major layout, with bits packed on the column.
+ * 
+ * @tparam T 
+ * @param block_size 
+ * @param columnwise 
+ * @param rows 
+ * @param columns 
+ * @param q_rows 
+ * @param q_cols 
+*/
+template <typename T>
+void
+MlasBlockwiseQuantizedShape(
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int& q_rows,
+    int& q_cols
+    );
+
+
+/**
+ * @brief Blockwise 4 bits quantization, resulting elements and quantization
+ *        parameters (scales, zero points) are packed into separate matrices
+ *        all in column major layout for faster access during subsequent matrix
+ *        multiplication.
+ * 
+ * @tparam ElementT             type of the input matrix element, usually floating point
+ * 
+ * @param dst                   points to the quantized matrix, shape [rows, columns] column major
+ * @param scales                points to the scales matrix, column major 
+ * @param zero_points           points to the zero_points matrix, column major
+ * @param src                   points to the floating point matrix, to be quantized, row major shape [rows, columns]
+ * @param block_size            size of the block to quantize, elements from the same block share the same scale and zero point
+ * @param columnwise            true when elements in a block are from the same column, false when elements in a block are from the same row
+ * @param rows 
+ * @param columns 
+ * @param leading_dimension 
+ * @param thread_pool 
+*/
+template <typename ElementT>
+void
+MlasQuantizeBlockwise(
+    uint8_t* dst,
+    ElementT* scales,
+    uint8_t* zero_points,
+    const ElementT* src,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int leading_dimension,
+    MLAS_THREADPOOL* thread_pool
+    );
+
+
+/**
+ * @brief Blockwise 4 bits dequantization, quantized elements and quantization
+ *        parameters (scales, zero points) are from separate matrices packed
+ *        in column major layout.  Output is a floating point matrix in column
+ *        major layout for faster access during subsequent matrix multiplication.
+ * 
+ * @tparam ElementT     type of the dequantized matrix element, usually floating point
+ * @param dst           points to dequantized matrix shape [rows, columns] column major
+ * @param src           points to quantized matrix, column major
+ * @param scales        points to quantization scales, column major
+ * @param zero_points   points to quantization zero points, column major
+ * @param block_size    size of the block to quantize, elements from the same block share the same scale and zero point
+ * @param columnwise    true when elements in a block are from the same column, false when elements in a block are from the same row
+ * @param rows 
+ * @param columns 
+ * @param thread_pool 
+*/
+template <typename ElementT>
+void
+MlasDequantizeBlockwise(
+    ElementT* dst,
+    const uint8_t* src,
+    const ElementT* scales,
+    const uint8_t* zero_points,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+    );

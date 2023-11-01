@@ -6,9 +6,9 @@
 // a optimized codepath for this.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext} from '../types';
 
 import {createReduceProgramInfo, ReduceOp} from './reduce';
 
@@ -32,26 +32,11 @@ const createArgMinMaxAttributesFromInputs =
         createAttributeWithCacheKey(
             {axis: attributes.axis, keepDims: attributes.keepDims, selectLastIndex: attributes.selectLastIndex});
 
-const createArgMinMaxProgramInfoLoader =
-    (inputs: readonly TensorView[], name: string, attributes: ArgMinMaxAttributes, reduceOp: ReduceOp):
-        ProgramInfoLoader => {
-          const updatedAttributes: ArgMinMaxAttributes =
-              inputs.length === 1 ? attributes : createArgMinMaxAttributesFromInputs(inputs, attributes);
-          const cacheHint = updatedAttributes.cacheKey + inputs.map(x => x.dims.toString()).join('_');
-          const metadata: ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint};
-          return {
-            ...metadata,
-            get: () => createReduceProgramInfo(
-                metadata, [inputs[0]], reduceOp, [updatedAttributes.axis], DataType.int64, updatedAttributes.keepDims)
-          };
-        };
-
-
 export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes): void => {
   validateInputs(context.inputs);
   const argMinMaxOp: ReduceOp = (input, output, axes) => {
     const idxZero = [];
-    for (let k = 0; k < input.shape.length; k++) {
+    for (let k = 0; k < input.rank; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
         idxZero.push(`inputIndices[${k}] = 0;`);  // first element
       }
@@ -65,14 +50,21 @@ export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       '', output.setByOffset('global_idx', 'bestIndex')
     ];
   };
-  context.compute(createArgMinMaxProgramInfoLoader(context.inputs, 'ArgMin', attributes, argMinMaxOp), {inputs: [0]});
+
+  const updatedAttributes: ArgMinMaxAttributes =
+      context.inputs.length === 1 ? attributes : createArgMinMaxAttributesFromInputs(context.inputs, attributes);
+  context.compute(
+      createReduceProgramInfo(
+          'ArgMin', {hint: updatedAttributes.cacheKey}, [context.inputs[0]], argMinMaxOp, [updatedAttributes.axis],
+          DataType.int64, updatedAttributes.keepDims),
+      {inputs: [0]});
 };
 
 export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes): void => {
   validateInputs(context.inputs);
   const argMinMaxOp: ReduceOp = (input, output, axes) => {
     const idxZero = [];
-    for (let k = 0; k < input.shape.length; k++) {
+    for (let k = 0; k < input.rank; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
         idxZero.push(`inputIndices[${k}] = 0;`);  // first element
       }
@@ -86,7 +78,14 @@ export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       '', output.setByOffset('global_idx', 'bestIndex')
     ];
   };
-  context.compute(createArgMinMaxProgramInfoLoader(context.inputs, 'argMax', attributes, argMinMaxOp), {inputs: [0]});
+
+  const updatedAttributes: ArgMinMaxAttributes =
+      context.inputs.length === 1 ? attributes : createArgMinMaxAttributesFromInputs(context.inputs, attributes);
+  context.compute(
+      createReduceProgramInfo(
+          'argMax', {hint: updatedAttributes.cacheKey}, [context.inputs[0]], argMinMaxOp, [updatedAttributes.axis],
+          DataType.int64, updatedAttributes.keepDims),
+      {inputs: [0]});
 };
 
 export const parseArgMinMaxAttributes = (attributes: Record<string, unknown>): ArgMinMaxAttributes =>
