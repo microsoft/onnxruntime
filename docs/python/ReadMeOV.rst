@@ -7,7 +7,6 @@ OpenVINO™ Execution Provider for ONNX Runtime accelerates inference across man
  - Intel® CPUs
  - Intel® integrated GPUs
  - Intel® discrete GPUs
- - Intel® integrated VPUs
 
 Installation
 ------------
@@ -22,7 +21,6 @@ This package supports:
  - Intel® CPUs
  - Intel® integrated GPUs
  - Intel® discrete GPUs
- - Intel® integrated VPUs
 
 ``pip3 install onnxruntime-openvino``
 
