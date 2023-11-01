@@ -843,10 +843,18 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
       LOGS(*logger_, VERBOSE) << "The QNN backend does not support extended event data.";
     }
 
-    // Write to CSV
-    std::ofstream outfile("qnn-profiling-data.csv", std::ios_base::out);
+    // Write to CSV in append mode
+    const char* profilingCsvFilename = "qnn-profiling-data.csv";
+    std::ifstream infile(profilingCsvFilename);
+    bool exists = infile.good();
+    infile.close();
+
+    std::ofstream outfile(profilingCsvFilename, std::ios_base::app);
     ORT_RETURN_IF(!outfile.is_open(), "Failed to open qnn-profiling-data.csv");
-    outfile << "Msg Timestamp,Message,Time,Unit of Measurement,Timing Source,Event Level,Event Identifier\n";
+    // If file didn't exist before, write the header
+    if (!exists) {
+      outfile << "Msg Timestamp,Message,Time,Unit of Measurement,Timing Source,Event Level,Event Identifier\n";
+    }
 
     for (size_t event_idx = 0; event_idx < num_events; event_idx++) {
       ORT_RETURN_IF_ERROR(
