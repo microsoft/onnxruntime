@@ -700,8 +700,13 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
   return true;
 }
 
-
-bool CheckPrecompiledEngine(const GraphViewer& graph) {
+/*
+ *  Check whether the graph has the EP context contrib op.
+ *  The op can contain the precompiled engine info for TRT EP to directly load the engine.
+ *
+ *  Note: Please see more details about "EPContext" contrib op in contrib_defs.cc
+ */
+bool HasPrecompiledEngine(const GraphViewer& graph) {
   if (graph.NumberOfNodes() == 1) {
     for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
       auto node = graph.GetNode(i);
@@ -739,6 +744,7 @@ bool IsValidEPContextNode(const GraphViewer& graph) {
   assert(graph.GetNode(0)->OpType() == EP_CONTEXT_OP_TYPE);
   auto node = graph.GetNode(0);
   auto& attrs = node->GetAttributes();
+
   // "embed_mode" attr and "ep_cache_context" attr should be present
   if (attrs.count(EP_CONTEXT_ATTR_EMBED_MODE) > 0 && attrs.count(EP_CONTEXT_ATTR_CACHE_CTX) > 0) {
     // ep_cache_context: payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0

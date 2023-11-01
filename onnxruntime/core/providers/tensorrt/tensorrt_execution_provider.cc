@@ -1539,6 +1539,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
   }
 
+  {
+    auto lock = GetApiLock();
+    runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
+  }
+
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
                         << ", trt_max_partition_iterations: " << max_partition_iterations_
@@ -2164,15 +2169,16 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  // If the model only consists of one single "EPContext" contrib op, it means TRT EP can run the precompiled engine directly without 
-  // having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
+  // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and 
+  // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
   // So, simply return the ComputeCapability here.
-  if (CheckPrecompiledEngine(graph)) {
+  if (HasPrecompiledEngine(graph)) {
     if (IsValidEPContextNode(graph)) {
       SubGraph_t supported_node_vector = {{0}, false};
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     }
+    LOGS_DEFAULT(ERROR) << "[TensorRT EP] It's not a valid EP context contrib op";
     return result;
   }
 
@@ -3842,15 +3848,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       output_map[output_defs[i]->Name()] = i;
     }
 
-    {
-      if (!runtime_) {
-        auto lock = GetApiLock();
-        runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
-      }
-    }
-
     Status status;
-    if (CheckPrecompiledEngine(graph_body_viewer)) {
+    if (HasPrecompiledEngine(graph_body_viewer)) {
       status = CreateNodeComputeFromPrecompiledEngine(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
     } else {
       status = CreateNodeComputeFromOrtGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
