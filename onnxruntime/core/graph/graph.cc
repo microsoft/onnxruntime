@@ -3306,7 +3306,7 @@ bool Graph::RemoveNode(NodeIndex p_index) {
 
 void Graph::RegenerateNodeProtos() {
   GraphViewer graph(*this);
-  ONNX_NAMESPACE::NodeList replacement_nodes;
+  google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::NodeProto> replacement_nodes;
   for (auto node_idx : graph.GetNodesInTopologicalOrder()) {
     auto* node = GetNode(node_idx);
     if (node != nullptr) {
