@@ -716,6 +716,7 @@ def main():
             run_torchscript_separate_export(args, l_config, llama)
         else:
             run_torchscript_merged_export(args, l_config, llama)
+    del llama  # Delete LLaMA model from memory since it will be loaded again during parity check
 
     # Set model paths to store FP32 optimized model
     decoder_model_fp32_opt_path = os.path.join(args.output, f"{args.model_name}_decoder_model_fp32_opt.onnx")
@@ -811,7 +812,6 @@ def main():
                 logger.info(f"The ONNX model at {fp_path} has been quantized to int4 and saved at {int4_path}!")
                 remove_existing_model(fp_path)
 
-    del llama  # Delete LLaMA model from memory since it will be loaded again during parity check
     logger.info("Verifying parity on all ONNX models created")
 
     # Use FP32 precision for FP32, INT8, INT4 CPU models, use FP16 precision for FP16 and INT4 GPU models
