@@ -2352,9 +2352,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
                                                                          std::unordered_map<std::string, size_t>& input_map,
                                                                          std::unordered_map<std::string, size_t>& output_map,
                                                                          std::vector<NodeComputeInfo>& node_compute_funcs) {
-  if (!IsValidEPContextNode(graph_body_viewer)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "It's not a valid EPContext node.");
-  }
   auto node = graph_body_viewer.GetNode(0);
   auto& attrs = node->GetAttributes();
 
