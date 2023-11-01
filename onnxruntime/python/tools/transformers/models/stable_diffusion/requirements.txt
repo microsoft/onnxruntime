@@ -1,10 +1,15 @@
-diffusers>=0.15.1
-transformers>=4.26.0
+diffusers>=0.19.3
+transformers>=4.31.0
 numpy>=1.24.1
 accelerate
 onnx>=1.13.0
 coloredlogs
 packaging
+# Use newer version of protobuf might cause crash
 protobuf==3.20.3
 psutil
 sympy
+# The following are for SDXL
+optimum>=1.11.1
+safetensors
+invisible_watermark

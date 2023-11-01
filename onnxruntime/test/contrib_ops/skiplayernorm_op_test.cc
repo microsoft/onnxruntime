@@ -11,14 +11,15 @@ namespace onnxruntime {
 namespace test {
 constexpr float epsilon_ = 1e-12f;
 
-static void RunTest(
+static void RunOneTest(
+    bool strict,
     const std::vector<float>& input_data,
     const std::vector<float>& skip_data,
     const std::vector<float>& gamma_data,
     const std::vector<float>& beta_data,
     const std::vector<float>& bias_data,
     const std::vector<float>& output_data,
-    const std::vector<float>& skip_input_bias_add_output_data,
+    const std::vector<float>& sum_output_data,
     float epsilon,
     int batch_size,
     int sequence_length,
@@ -27,7 +28,6 @@ static void RunTest(
     bool no_beta = false,
     bool simplified = false,
     bool use_token_count = false,
-    bool strict = false,
     bool broadcast_skip = false,
     bool no_batch_size = false) {
   // Input and output shapes
@@ -82,14 +82,14 @@ static void RunTest(
 
     test.AddOutput<float>("output", output_dims, output_data);
 
-    if (skip_input_bias_add_output_data.size() != 0) {
+    if (sum_output_data.size() != 0) {
       // The second and third outputs are reserved for something else
       test.AddOptionalOutputEdge<float>();
       test.AddOptionalOutputEdge<float>();
 
       test.AddOutput<float>("skip_input_bias_add_output",
                             output_dims,
-                            skip_input_bias_add_output_data);
+                            sum_output_data);
     }
 
     if (cpu_ep != nullptr) {
@@ -117,14 +117,19 @@ static void RunTest(
 
     test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
 
-    if (skip_input_bias_add_output_data.size() != 0) {
+    // Use larger threshold for fp16
+    if (use_float16) {
+      test.SetOutputAbsErr("output", 0.01f);
+    }
+
+    if (sum_output_data.size() != 0) {
       // The second and third outputs are reserved for something else
       test.AddOptionalOutputEdge<MLFloat16>();
       test.AddOptionalOutputEdge<MLFloat16>();
 
       test.AddOutput<MLFloat16>("skip_input_bias_add_output",
                                 output_dims,
-                                ToFloat16(skip_input_bias_add_output_data));
+                                ToFloat16(sum_output_data));
     }
 
     if (dml_ep != nullptr) {
@@ -148,6 +153,36 @@ static void RunTest(
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+static void RunTest(
+    const std::vector<float>& input_data,
+    const std::vector<float>& skip_data,
+    const std::vector<float>& gamma_data,
+    const std::vector<float>& beta_data,
+    const std::vector<float>& bias_data,
+    const std::vector<float>& output_data,
+    const std::vector<float>& sum_output_data,
+    float epsilon,
+    int batch_size,
+    int sequence_length,
+    int hidden_size,
+    bool use_float16 = false,
+    bool no_beta = false,
+    bool simplified = false,
+    bool use_token_count = false,
+    bool broadcast_skip = false,
+    bool no_batch_size = false) {
+  RunOneTest(false, input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
+             epsilon, batch_size, sequence_length, hidden_size, use_float16, no_beta, simplified,
+             use_token_count, broadcast_skip, no_batch_size);
+
+  // strict mode does not support skip broadcasting.
+  if (!broadcast_skip) {
+    RunOneTest(true, input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
+               epsilon, batch_size, sequence_length, hidden_size, use_float16, no_beta, simplified,
+               use_token_count, broadcast_skip, no_batch_size);
   }
 }
 
@@ -359,8 +394,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec) {
           true /*use_float16*/,
           false /*no_beta*/,
           false /*simplified*/,
-          false /*use_token_count*/,
-          true /*strict*/);
+          false /*use_token_count*/);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch1_NoBeta) {
@@ -648,8 +682,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec_token_count) {
           true /*use_float16*/,
           false /*no_beta*/,
           false /*simplified*/,
-          true /*use_token_count*/,
-          true /*strict*/);
+          true /*use_token_count*/);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_TokenCount) {
@@ -774,13 +807,12 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_No_Batch_Size) {
           batch_size,
           sequence_length,
           hidden_size,
-          false,
-          false,
-          false,
-          false,
-          false,
-          false,
-          true);
+          false,  // use_float16
+          false,  // no_beta
+          false,  // simplified
+          false,  // use_token_count
+          true,   // broadcast_skip
+          true);  // no_batch_size
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
@@ -821,13 +853,12 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
           batch_size,
           sequence_length,
           hidden_size,
-          false,
-          false,
-          false,
-          false,
-          false,
-          true,
-          false);
+          false,   // use_float16
+          false,   // no_beta
+          false,   // simplified
+          false,   // use_token_count
+          true,    // broadcast_skip
+          false);  // no_batch_size
 }
 #endif
 

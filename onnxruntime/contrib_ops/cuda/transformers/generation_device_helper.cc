@@ -56,18 +56,22 @@ namespace GenerationCudaDeviceHelper {
 // It might be better to forcefully require the same type since cast node generates
 // extra overhead.
 Status ReorderPastState(
-    const void* cuda_device_prop,
+    const void*,
     Tensor& past_state,
     Tensor& past_state_staging,
     Stream* stream) {
   ORT_ENFORCE(stream);
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream->GetHandle());
-  cublasHandle_t cublas_handle = static_cast<CudaStream*>(stream)->cublas_handle_;
 
   const auto& past_state_shape = past_state.Shape();
 
   const auto& past_state_dims = past_state_shape.GetDims();
   const bool packed_past = past_state_dims.size() == 5;
+
+  size_t batch_size = packed_past ? past_state_dims[1] : past_state_dims[0];
+  size_t num_heads = packed_past ? past_state_dims[2] : past_state_dims[1];
+  size_t max_length = packed_past ? past_state_dims[3] : past_state_dims[2];
+  size_t head_size = packed_past ? past_state_dims[4] : past_state_dims[3];
 
   // Copy the 'K' values into the temp staging buffer
   size_t past_state_size = packed_past ? past_state.SizeInBytes() / 2 : past_state.SizeInBytes();
@@ -79,27 +83,16 @@ Status ReorderPastState(
   // [B, N, head_size / x, max_length, x], where x = 16 / sizeof(T)
   int64_t chunk_size = static_cast<int64_t>(16 / past_state.DataType()->Size());
 
-  std::vector<size_t> permutation_vector = {0, 1, 3, 2, 4};
-  gsl::span<size_t> permutation(permutation_vector.data(), 5);
+  cuda::ReorderPastStatesKernelLauncher(past_state.MutableDataRaw(),
+                                        past_state_staging_buffer,
+                                        static_cast<int>(batch_size),
+                                        static_cast<int>(num_heads),
+                                        static_cast<int>(max_length),
+                                        static_cast<int>(head_size),
+                                        static_cast<int>(chunk_size),
+                                        cuda_stream);
 
-  // "Fake" the shapes of the input and output tensors of the Transpose operation to suit our need
-  size_t offset = packed_past ? 1 : 0;
-  TensorShape transpose_input_shape_override = {past_state_shape[offset],
-                                                past_state_shape[offset + 1],
-                                                past_state_shape[offset + 2],
-                                                past_state_shape[offset + 3] / chunk_size,
-                                                chunk_size};
-
-  TensorShape transpose_output_shape_override = {past_state_shape[offset], past_state_shape[offset + 1],
-                                                 past_state_shape[offset + 3] / chunk_size, past_state_shape[offset + 2],
-                                                 chunk_size};
-
-  // TODO(hasesh): Explore perf tuning for this Transpose operation
-  return onnxruntime::cuda::Transpose::DoTranspose(*static_cast<const cudaDeviceProp*>(cuda_device_prop), cuda_stream,
-                                                   cublas_handle, permutation,
-                                                   past_state_staging, past_state,
-                                                   &transpose_input_shape_override,
-                                                   &transpose_output_shape_override);
+  return Status::OK();
 }
 
 Status InitCacheIndir(Tensor& cache_indir, Stream* stream) {

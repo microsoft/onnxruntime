@@ -147,7 +147,7 @@ std::unordered_map<std::string, std::string> disabledTests({
   {                                           "mlperf_ssd_mobilenet_300_opset10_GPU",
    "Bug 31005624: mlperf_ssd_mobilenet_300 opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"                                                  },
   {                                           "mlperf_ssd_resnet34_1200_opset10_GPU",
-   "Bug 31005624: mlperf_ssd_resnet34_1200_opset10_GPU opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"                                                  },
+   "Bug 31005624: mlperf_ssd_resnet34_1200_opset10_GPU opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"                                      },
 });
 
 /*

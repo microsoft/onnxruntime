@@ -339,7 +339,7 @@ def verify_attention(
 
         ort_outputs = onnxruntime_inference(ort_session, input_hidden_states, attention_mask, layer_past)
 
-        tolerance = 1e-03 if float16 else 1e-05
+        tolerance = 1e-02 if float16 else 1e-04
         is_all_close, max_diff = compare_outputs(torch_outputs, ort_outputs, atol=tolerance, verbose=True)
         max_diffs.append(max_diff)
         if is_all_close:

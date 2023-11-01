@@ -2384,6 +2384,35 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC"));
 
+static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
+                                                int64_t K,
+                                                int64_t N) {
+  int input_a_idx = 0;
+  if (!hasInputShape(ctx, input_a_idx)) {
+    return;
+  }
+
+  const auto& a_shape = ctx.getInputType(input_a_idx)->tensor_type().shape();
+  if (a_shape.dim_size() == 0) {
+    fail_shape_inference("Input tensors of wrong rank (0).");
+  }
+
+  // TODO: check B shape
+
+  const auto& dim_last = a_shape.dim(a_shape.dim_size() - 1);
+  if (dim_last.has_dim_value() && dim_last.dim_value() != K) {
+    fail_shape_inference("Incompatible dimensions for matrix multiplication");
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto resultShape;
+  for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+    *resultShape.add_dim() = a_shape.dim(i);
+  }
+  resultShape.add_dim()->set_dim_value(N);
+
+  *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = resultShape;
+}
+
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
@@ -2893,6 +2922,90 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
         if (ctx.getNumOutputs() == 2) {
           updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::UINT32);
         }
+      });
+
+  static const char* MatMulNBits_ver1_doc = R"DOC(
+MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7).It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
+  1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
+  2. Input B is quantized with x bits which is specified by attribute 'bits'. It is quantized blockwisely along dimension 0 (e.g. column) with block size specified by attribute block_size.
+     And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
+  3. Input B's scale and zero point are specified by input scales and zero_points.
+
+Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
+- n_blocks_per_col = (K + block_size - 1) / block_size
+- blob_size = block_size / 8 * bits
+
+  For a block blob. It is stored in format:
+  struct Blob {
+    uint8 one_bits[(bits & 0x1) * 1 * block_size / 8];  // highest 1 bit for 3, 5, 7 bits quantization
+    uint8 two_bits[(bits & 0x2) * 2 * block_size / 8];  // high 2 bits for 2, 6, 7 bits quantization
+    uint8 four_bits[(bits & 0x4) * 4 * block_size / 8]; // low 4 bits for 4, 5, 6 bits quantization
+  }
+
+Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
+Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored as one unit8_t. If bits > 4, one zero point is stored with one unit8_t. Thus, its shape is:
+  - [(N * n_blocks_per_col + 1) / 2] if bits <=4
+  - [N * n_blocks_per_col] if bits > 4
+
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(MatMulNBits_ver1_doc)
+      .Attr("K", "size of each input feature", AttributeProto::INT)
+      .Attr("N", "size of each output feature", AttributeProto::INT)
+      .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
+      .Attr("block_size", "number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
+      .Input(0, "A", "The input tensor, not quantized", "T1")
+      .Input(1, "B", "1-dimensional data blob", "T2")
+      .Input(2, "scales", "quantization scale", "T1")
+      .Input(3, "zero_points", "quantization zero points", "T2", OpSchema::Optional)
+      .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference
+        int64_t in_features = getAttribute(ctx, "K", -1);
+        int64_t out_features = getAttribute(ctx, "N", -1);
+        MatmulWithQuantWeightShapeInference(ctx, in_features, out_features);
+      });
+
+  static const char* MatMulBnb4_ver1_doc = R"DOC(
+MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4 data type (https://arxiv.org/pdf/2305.14314.pdf). It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
+  1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
+  2. Input B is quantized with 4 bits with quantization data type specified by attribute 'quant_type'. It is transposed, flattened and quantized blockwisely with block size specified by attribute 'block_size'.
+     And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
+  3. Input B's quantization constants or scales are specified by input 'absmax'.
+
+Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
+Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
+
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulBnb4)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(MatMulBnb4_ver1_doc)
+      .Attr("K", "size of each input feature", AttributeProto::INT)
+      .Attr("N", "size of each output feature", AttributeProto::INT)
+      .Attr("block_size", "number of groupsize used for weight quantization. It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
+      .Attr("quant_type", "quantization data type. 0 for FP4, 1 for NF4.", AttributeProto::INT)
+      .Input(0, "A", "The input tensor, not quantized", "T1")
+      .Input(1, "B", "1-dimensional quantized data for weight", "T2")
+      .Input(2, "absmax", "quantization constants", "T1")
+      .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference
+        int64_t in_features = getAttribute(ctx, "K", -1);
+        int64_t out_features = getAttribute(ctx, "N", -1);
+        MatmulWithQuantWeightShapeInference(ctx, in_features, out_features);
       });
 
 #ifdef ENABLE_ATEN

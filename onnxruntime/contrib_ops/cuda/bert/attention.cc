@@ -135,8 +135,24 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (use_flash_attention && parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
     use_flash_attention = false;
   }
+  // Allocate buffers
+  size_t softmax_lse_accum_bytes = 0;
+  size_t out_accum_bytes = 0;
+  if (use_flash_attention) {
+    using namespace std;
+    auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
+        parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
+        parameters.head_size, device_prop.multiProcessorCount);
+    parameters.num_splits = num_splits;
+    softmax_lse_accum_bytes = slse_accum_bytes;
+    out_accum_bytes = o_accum_bytes;
+  }
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
+  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
+  auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
   if (!use_flash_attention) {
@@ -251,30 +267,34 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
-  data.bias = nullptr == bias ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
-  data.query = nullptr;
-  data.key = nullptr;
-  data.value = nullptr;
-  data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
-  data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
-  data.past = (nullptr == past) ? nullptr : reinterpret_cast<const CudaT*>(past->Data<T>());
-  data.past_key = nullptr;
-  data.past_value = nullptr;
-  data.relative_position_bias = (nullptr == relative_position_bias)
-                                    ? nullptr
-                                    : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  if (nullptr != bias) {
+    data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
+  }
+  if (nullptr != mask_index) {
+    data.mask_index = mask_index->Data<int>();
+    data.mask_index_dims = mask_index->Shape().GetDims();
+  }
+  if (nullptr != past) {
+    data.past = reinterpret_cast<const CudaT*>(past->Data<T>());
+  }
+  if (nullptr != relative_position_bias) {
+    data.relative_position_bias = reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  }
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
-  data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
-  data.present_key = nullptr;
-  data.present_value = nullptr;
+  if (nullptr != present) {
+    data.present = reinterpret_cast<CudaT*>(present->MutableData<T>());
+  }
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
-  data.fused_cross_attention_kernel = nullptr;
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
-  data.cumulated_sequence_length_q_cache = nullptr;
-  data.cumulated_sequence_length_kv_cache = nullptr;
+  if (softmax_lse_accum_buffer != nullptr) {
+    data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
+  }
+  if (out_accum_buffer != nullptr) {
+    data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
+  }
 
   return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);
 }
