@@ -90,6 +90,18 @@ Status DistributedReduceBase<T>::ComputeInternal(OpKernelContext* context) const
   return Status::OK();
 }
 
+template <typename T>
+DistributedReduceSum<T>::DistributedReduceSum(
+    const OpKernelInfo& info) : DistributedReduceBase<T>(info, CUDNN_REDUCE_TENSOR_ADD) {};
+
+template <typename T>
+DistributedReduceMean<T>::DistributedReduceMean(
+    const OpKernelInfo& info) : DistributedReduceBase<T>(info, CUDNN_REDUCE_TENSOR_AVG) {};
+
+template <typename T>
+DistributedReduceMax<T>::DistributedReduceMax(
+    const OpKernelInfo& info) : DistributedReduceBase<T>(info, CUDNN_REDUCE_TENSOR_MAX) {};
+
 // ReduceSum
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     DistributedReduceSum,

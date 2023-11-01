@@ -35,19 +35,19 @@ class DistributedReduceBase : public DistributedKernel {
 };
 
 template <typename T>
-class DistributedReduceSum final : public DistributedReduceBase {
+class DistributedReduceSum final : public DistributedReduceBase<T> {
  public:
   explicit DistributedReduceSum(const OpKernelInfo& info);
 };
 
 template <typename T>
-class DistributedReduceMean final : public DistributedReduceBase {
+class DistributedReduceMean final : public DistributedReduceBase<T> {
  public:
   explicit DistributedReduceMean(const OpKernelInfo& info);
 };
 
 template <typename T>
-class DistributedReduceMax final : public DistributedReduceBase {
+class DistributedReduceMax final : public DistributedReduceBase<T> {
  public:
   explicit DistributedReduceMax(const OpKernelInfo& info);
 };
