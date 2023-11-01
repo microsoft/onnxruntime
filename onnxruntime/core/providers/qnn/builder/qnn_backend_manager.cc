@@ -833,7 +833,8 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
     LOGS(*logger_, VERBOSE) << "profile_events: " << profile_events << " num_events: " << num_events;
 
     bool backendSupportsExtendedEventData = false;
-    Qnn_ErrorHandle_t resultPropertyHasCapability = qnn_interface_.propertyHasCapability(QNN_PROPERTY_PROFILE_SUPPORTS_EXTENDED_EVENT);
+    Qnn_ErrorHandle_t resultPropertyHasCapability =
+        qnn_interface_.propertyHasCapability(QNN_PROPERTY_PROFILE_SUPPORTS_EXTENDED_EVENT);
     uint16_t errorCodePropertyHasCapability = static_cast<uint16_t>(resultPropertyHasCapability & 0xFFFF);
     if (errorCodePropertyHasCapability == QNN_PROFILE_NO_ERROR) {
       LOGS(*logger_, VERBOSE) << "The QNN backend supports extended event data.";
@@ -848,8 +849,10 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
     outfile << "Msg Timestamp,Message,Time,Unit of Measurement,Timing Source,Event Level,Event Identifier\n";
 
     for (size_t event_idx = 0; event_idx < num_events; event_idx++) {
-      ORT_RETURN_IF_ERROR(ExtractProfilingEvent(*(profile_events + event_idx), "ROOT", outfile, backendSupportsExtendedEventData));
-      ORT_RETURN_IF_ERROR(ExtractProfilingSubEvents(*(profile_events + event_idx), outfile, backendSupportsExtendedEventData));
+      ORT_RETURN_IF_ERROR(
+          ExtractProfilingEvent(*(profile_events + event_idx), "ROOT", outfile, backendSupportsExtendedEventData));
+      ORT_RETURN_IF_ERROR(
+          ExtractProfilingSubEvents(*(profile_events + event_idx), outfile, backendSupportsExtendedEventData));
     }
 
     outfile.close();
@@ -859,7 +862,10 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   return Status::OK();
 }
 
-Status QnnBackendManager::ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile, bool backendSupportsExtendedEventData) {
+Status QnnBackendManager::ExtractProfilingSubEvents(
+    QnnProfile_EventId_t profile_event_id,
+    std::ofstream& outfile,
+    bool useExtendedEventData) {
   const QnnProfile_EventId_t* profile_sub_events{nullptr};
   uint32_t num_sub_events{0};
   auto result = qnn_interface_.profileGetSubEvents(profile_event_id, &profile_sub_events, &num_sub_events);
@@ -869,8 +875,10 @@ Status QnnBackendManager::ExtractProfilingSubEvents(QnnProfile_EventId_t profile
     LOGS(*logger_, VERBOSE) << "profile_sub_events: " << profile_sub_events << " num_sub_events: " << num_sub_events;
 
     for (size_t sub_event_idx = 0; sub_event_idx < num_sub_events; sub_event_idx++) {
-      ORT_RETURN_IF_ERROR(ExtractProfilingEvent(*(profile_sub_events + sub_event_idx), "SUB-EVENT", outfile, backendSupportsExtendedEventData));
-      ORT_RETURN_IF_ERROR(ExtractProfilingSubEvents(*(profile_sub_events + sub_event_idx), outfile, backendSupportsExtendedEventData));
+      ORT_RETURN_IF_ERROR(
+          ExtractProfilingEvent(*(profile_sub_events + sub_event_idx), "SUB-EVENT", outfile, useExtendedEventData));
+      ORT_RETURN_IF_ERROR(
+          ExtractProfilingSubEvents(*(profile_sub_events + sub_event_idx), outfile, useExtendedEventData));
     }
 
     LOGS(*logger_, INFO) << "Wrote QNN profiling sub events (" << num_sub_events << ") to qnn-profiling-data.csv";
@@ -879,15 +887,22 @@ Status QnnBackendManager::ExtractProfilingSubEvents(QnnProfile_EventId_t profile
   return Status::OK();
 }
 
-Status QnnBackendManager::ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, std::string eventLevel, std::ofstream& outfile, bool backendSupportsExtendedEventData) {
-  if (backendSupportsExtendedEventData) {
+Status QnnBackendManager::ExtractProfilingEvent(
+    QnnProfile_EventId_t profile_event_id,
+    std::string eventLevel,
+    std::ofstream& outfile,
+    bool useExtendedEventData) {
+  if (useExtendedEventData) {
     return ExtractProfilingEventExtended(profile_event_id, eventLevel, outfile);
   } else {
     return ExtractProfilingEventBasic(profile_event_id, eventLevel, outfile);
   }
 }
 
-Status QnnBackendManager::ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, std::string eventLevel, std::ofstream& outfile) {
+Status QnnBackendManager::ExtractProfilingEventBasic(
+    QnnProfile_EventId_t profile_event_id,
+    std::string eventLevel,
+    std::ofstream& outfile) {
   QnnProfile_EventData_t event_data;
   auto result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
   QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(result & 0xFFFF);
@@ -909,7 +924,10 @@ Status QnnBackendManager::ExtractProfilingEventBasic(QnnProfile_EventId_t profil
   return Status::OK();
 }
 
-Status QnnBackendManager::ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, std::string eventLevel, std::ofstream& outfile) {
+Status QnnBackendManager::ExtractProfilingEventExtended(
+    QnnProfile_EventId_t profile_event_id,
+    std::string eventLevel,
+    std::ofstream& outfile) {
   QnnProfile_ExtendedEventData_t event_data_extended;
   auto resultGetExtendedEventData = qnn_interface_.profileGetExtendedEventData(profile_event_id, &event_data_extended);
   QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(resultGetExtendedEventData & 0xFFFF);
