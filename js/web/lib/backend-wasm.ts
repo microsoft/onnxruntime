@@ -42,7 +42,12 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
         throw new Error('navigator.gpu not available.');
       }
       if (!await navigator.gpu.requestAdapter()) {
-        throw new Error('Failed to get GPU adapter.');
+        throw new Error(
+            'Failed to get GPU adapter. Maybe you need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
+      }
+      if (!env.wasm.simd) {
+        throw new Error(
+            'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using WebGPU EP');
       }
     }
 

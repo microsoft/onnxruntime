@@ -143,11 +143,6 @@ export class WebGpuBackend {
   sessionExternalDataMapping: Map<number, Map<number, [number, GPUBuffer]>> = new Map();
 
   async initialize(env: Env): Promise<void> {
-    if (!navigator.gpu) {
-      // WebGPU is not available.
-      throw new Error('WebGpuBackend: WebGPU is not available.');
-    }
-
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) {
       throw new Error('WebGpuBackend: Failed to get GPU adapter.');
