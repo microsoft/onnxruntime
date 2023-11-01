@@ -8,7 +8,7 @@ import {Session} from './onnxjs/session';
 import {OnnxjsSessionHandler} from './onnxjs/session-handler';
 
 class OnnxjsBackend implements Backend {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   async init(name: string): Promise<void> {}
 
   async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):

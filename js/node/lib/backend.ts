@@ -49,6 +49,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
 }
 
 class OnnxruntimeBackend implements Backend {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async init(name: string): Promise<void> {
     return Promise.resolve();
   }

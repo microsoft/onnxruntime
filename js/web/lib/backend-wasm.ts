@@ -39,11 +39,11 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
         throw new Error('navigator is not available');
       }
       if (!navigator.gpu) {
-        throw new Error('navigator.gpu not available.');
+        throw new Error('navigator.gpu is not available.');
       }
       if (!await navigator.gpu.requestAdapter()) {
         throw new Error(
-            'Failed to get GPU adapter. Maybe you need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
+            'Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
       }
       if (!env.wasm.simd) {
         throw new Error(
