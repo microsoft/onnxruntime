@@ -47,7 +47,7 @@ stages:
       OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
       OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
       OnnxruntimeNodejsBindingArch: 'arm64'
-      PoolName: 'aiinfra-linux-ARM64-CPU-2019'
+      PoolName: 'onnxruntime-linux-ARM64-CPU-2019'
       ArtifactNamePrefix: ${{ parameters.ArtifactNamePrefix }}
       PackageJava: ${{ parameters.PackageJava }}
       PackageNodeJS: ${{ parameters.PackageNodeJS }}
