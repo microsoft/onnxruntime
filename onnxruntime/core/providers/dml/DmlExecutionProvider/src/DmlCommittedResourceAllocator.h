@@ -12,7 +12,7 @@ namespace Dml
     class DmlCommittedResourceAllocator : public DmlSubAllocator
     {
     public:
-        DmlCommittedResourceAllocator(ID3D12Device* device) : m_device(device) {}
+        DmlCommittedResourceAllocator(ID3D12Device* device);
         Microsoft::WRL::ComPtr<DmlResourceWrapper> Alloc(size_t size) final;
 
         ~DmlCommittedResourceAllocator();
@@ -21,7 +21,7 @@ namespace Dml
 
     private:
         ID3D12Device* m_device = nullptr;
-        std::vector<ID3D12Pageable*> m_resources;
+        std::shared_ptr<std::vector<ID3D12Pageable*>> m_resources;
         bool m_isResident = true;
 
         static void OnResourceRelease(void* context, ID3D12Resource* resource);
