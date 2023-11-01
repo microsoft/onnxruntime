@@ -49,6 +49,8 @@ if(NOT CMAKE_CXX_STANDARD)
     else()
       set(CMAKE_CXX_STANDARD 17)
     endif()
+  else()
+    set(CMAKE_CXX_STANDARD 17)
   endif()
 endif()
 
