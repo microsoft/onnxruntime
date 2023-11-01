@@ -944,8 +944,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
       {"col2im_pads", "result mismatch", {"opset18"}},
-      {"gridsample_volumetric_nearest_align_corners_0", "result differs", {}},
-      {"gridsample_volumetric_nearest_align_corners_1", "result differs", {}},
       {"reduce_l1_empty_set", "unknown version", {}},
       {"reduce_l1_empty_set_expanded", "unknown version", {}},
       {"reduce_l2_empty_set", "unknown version", {}},
