@@ -27,16 +27,15 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install python3-pip
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install -r requirements-dev.txt
-          python3 -m pip install onnxruntime>=1.12.0
+          python3 -m pip install onnxruntime
           python3 -m pip install transformers
           python3 -m pip install tensorflow_text
           python3 -m pip install requests
-          python3 -m pip install --index-url https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-extensions/ onnxruntime-extensions
+          python3 -m pip install --no-index --index-url https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-extensions/ onnxruntime-extensions
           python3 -m pip list
       - name: Generate Python docs with Sphinx
         run: |
