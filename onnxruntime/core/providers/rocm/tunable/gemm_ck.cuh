@@ -61,7 +61,7 @@ auto GetCKGemmTypeStringAndOps() {
                                            params->lda, params->ldb, params->ldc,
                                            nop, nop, nop);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                                impl->GetTypeString(), " does not support ", params->Signature());
+                                                impl->GetTypeString(), " does not support the params");
       invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
@@ -164,7 +164,7 @@ auto GetCKStridedBatchedGemmTypeStringAndOps() {
       auto zero = ToHipType<T>::FromFloat(0.0f);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->alpha != one || params->beta != zero,
-          impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
+          impl->GetTypeString(), " only supports alpha == 1 and beta == 0");
 
       auto nop = Nop{};
       auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
@@ -174,7 +174,7 @@ auto GetCKStridedBatchedGemmTypeStringAndOps() {
                                            params->batch,
                                            nop, nop, nop);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                                impl->GetTypeString(), " does not support ", params->Signature());
+                                                impl->GetTypeString(), " does not support the params");
       invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
