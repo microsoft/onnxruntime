@@ -91,8 +91,46 @@ void dequantizeThread(ElementT* dst, const uint8_t* weights, const ElementT* sca
     // by wraping the packing/unpacking code like cutlass::Array
     static_assert(qbits == 4, "Only 4b block quantization is supported!");
 
-    for (int32_t i = r; i < r_end; i += 2) {
+    for (int32_t i = r; i < (r_end - 1); i += 2) {
       const int32_t meta_row = i / QuantBlk::kRow;
+
+      const auto scale0 = scales[meta_col * row_blks + meta_row];
+      const uint16_t zp_pair = (zero_points == nullptr)
+            ? 0x88
+            : zero_points[meta_col * ((row_blks + 1) / 2) + meta_row / 2];
+      const uint16_t zp0 = (meta_row & 1) ? (zp_pair >> 4) : (zp_pair & 0xf);
+
+      auto scale1 = scale0;
+      uint16_t zp1 = zp0;
+      if constexpr (QuantBlk::kRow == 1) {
+        scale1 = scales[meta_col * row_blks + meta_row + 1];
+        zp1 = (zp_pair >> 4) & 0xf;
+      }
+
+      const auto vi = weights[j * q_rows + i / 2];
+
+      if constexpr (std::is_same<ElementT, half>::value){
+        half2 scale_half2 = {scale0, scale1};
+        half2 zp_adjust2 = {(-scale0) * __ushort2half_rn(zp0), (-scale1) * __ushort2half_rn(zp1)};
+
+        half2 v = {__ushort2half_rn(vi & 0xF), __ushort2half_rn((vi >> 4) & 0xF)};
+        half2 results = v * scale_half2 + zp_adjust2;
+
+        dst[j * rows + i] = results.x;
+        dst[j * rows + (i + 1)] = results.y;
+      } else {
+
+        static_assert(std::is_same<ElementT, float>::value, "Only float and half are supported!");
+        const uint8_t vi0 = vi & 0xf;
+        const uint8_t vi1 = vi >> 4;
+        dst[j * rows + i] = (static_cast<float>(vi0) - zp0) * static_cast<float>(scale0);
+        dst[j * rows + (i + 1)] = (static_cast<float>(vi1) - zp1) * static_cast<float>(scale1);
+      }
+
+    }
+
+    if (r_end & 1){
+      const int32_t meta_row = (r_end - 1) / QuantBlk::kRow;
 
       const float scale0 = static_cast<float>(scales[meta_col * row_blks + meta_row]);
       const int zp_pair = (zero_points == nullptr)
@@ -100,21 +138,11 @@ void dequantizeThread(ElementT* dst, const uint8_t* weights, const ElementT* sca
             : zero_points[meta_col * ((row_blks + 1) / 2) + meta_row / 2];
       const int zp0 = (meta_row & 1) ? (zp_pair >> 4) : (zp_pair & 0xf);
 
-      const uint8_t vi0 = weights[j * q_rows + i / 2] & 0xf;
+      const auto vi = weights[j * q_rows + (r_end - 1) / 2];
+      const uint8_t vi0 = vi & 0xf;
       const float v0 = (static_cast<float>(vi0) - zp0) * scale0;
 
-      dst[j * rows + i] = static_cast<ElementT>(v0);
-      if ((i + 1) < r_end) {
-        float scale1 = scale0;
-        int zp1 = zp0;
-        if constexpr (QuantBlk::kRow == 1) {
-          scale1 = static_cast<float>(scales[meta_col * row_blks + meta_row + 1]);
-          zp1 = (zp_pair >> 4) & 0xf;
-        }
-        const uint8_t vi1 = weights[j * q_rows + i / 2] >> 4;
-        const float v1 = (static_cast<float>(vi1) - zp1) * scale1;
-        dst[j * rows + (i + 1)] = static_cast<ElementT>(v1);
-      }
+      dst[j * rows + (r_end - 1)] = static_cast<ElementT>(v0);
     }
   }
 }
