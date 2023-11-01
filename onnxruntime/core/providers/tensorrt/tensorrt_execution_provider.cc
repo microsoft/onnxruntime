@@ -3119,6 +3119,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               if (output_tensor_ptr == nullptr) {
                 scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
                 buffers[output_name] = scratch_buffers.back().get();
+                output_dim_sizes[i] = 1;
               } else {
                 SafeInt<int> output_dim_size(1);
                 for (int j = 0, end = nb_dims; j < end; ++j) {
