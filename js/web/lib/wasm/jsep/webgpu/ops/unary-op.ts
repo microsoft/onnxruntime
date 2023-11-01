@@ -58,12 +58,11 @@ const createElementwiseProgramInfo =
         outputs: [{dims: input.dims, dataType: outputDataType}],
         dispatchGroup:
             {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
-            programUniforms:
-            [
-              {type: 'uint32', data: Math.ceil(ShapeUtil.size(input.dims)/4)},
-              ...createTensorShapeVariables([Math.ceil(ShapeUtil.size(input.dims)/4)]),
-              ...createTensorShapeVariables([Math.ceil(ShapeUtil.size(input.dims)/4)]),
-            ],
+        programUniforms: [
+          {type: 'uint32', data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
+          ...createTensorShapeVariables([Math.ceil(ShapeUtil.size(input.dims) / 4)]),
+          ...createTensorShapeVariables([Math.ceil(ShapeUtil.size(input.dims) / 4)]),
+        ],
       })
     });
 
