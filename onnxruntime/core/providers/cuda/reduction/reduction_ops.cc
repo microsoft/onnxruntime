@@ -614,6 +614,30 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
   return Status::OK();
 }
 
+template Status ReduceComputeCore<float, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+    const AllocatorPtr& gpu_allocator, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+    /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
+    gsl::span<const int64_t> axes,
+    bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+    Stream* ort_stream,
+    const TensorShape* input_shape_override);
+
+template Status ReduceComputeCore<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+    const AllocatorPtr& gpu_allocator, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+    /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
+    gsl::span<const int64_t> axes,
+    bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+    Stream* ort_stream,
+    const TensorShape* input_shape_override);
+
+template Status ReduceComputeCore<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+    const AllocatorPtr& gpu_allocator, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+    /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
+    gsl::span<const int64_t> axes,
+    bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+    Stream* ort_stream,
+    const TensorShape* input_shape_override);
+
 template <bool allow_multi_axes>
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
