@@ -212,7 +212,6 @@ void dequantizeThread(ElementT* dst, const uint8_t* weights, const ElementT* sca
   const ElementT adjust_buf[2] = {(-scale_buf[0]) * static_cast<ElementT>(zp_buf[0]),
                                   (-scale_buf[1]) * static_cast<ElementT>(zp_buf[1])};
 
-  const int32_t meta_col = c / QuantBlk::kColumn;
   for (int32_t j = c; j < c_end; ++j) {
     const uint8_t* q_ptr = weights + j * q_rows;
     for (int32_t i = r; i < (r_end - 1); i += 2) {

@@ -85,7 +85,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     auto* b_data = b_data_ptr.get();
     if (column_wise_quant_blk_) {
       // column-wise block
-      ORT_RETURN_IF_ERROR(Dequantize4Bits(reinterpret_cast<CudaT*>(b_data),
+      ORT_RETURN_IF_ERROR(Dequantize4Bits(
+          reinterpret_cast<CudaT*>(b_data),
           blob_data,
           reinterpret_cast<const CudaT*>(scales_data),
           zero_points_data,
