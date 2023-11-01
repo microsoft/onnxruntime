@@ -44,8 +44,8 @@
 		<div class="col-span-2">
 			<h1 class="text-3xl pb-4">Export Hugging Face Models to ONNX</h1>
 			<p class="pb-4">
-				Hugging Face provides many options for exporting models to ONNX, including an ONNX Export Space
-				for PyTorch models from the Hugging Face Model Hub.
+				Hugging Face provides many options for exporting models to ONNX, including an ONNX Export
+				Space for PyTorch models from the Hugging Face Model Hub.
 			</p>
 			<a href="https://huggingface.co/spaces/onnx/export" class="btn btn-primary"
 				>Export PyTorch models to ONNX →</a
@@ -120,7 +120,7 @@
 			</p>
 		</div>
 		<div class="hidden md:grid mx-auto">
-			<ImageHf2 widthscale={2} heightscale={2}/>
+			<ImageHf2 widthscale={2} heightscale={2} />
 		</div>
 	</div>
 </div>
@@ -135,14 +135,37 @@
 				Learning, which improves time to value, streamlines MLOps, and provides built-in security.
 			</p>
 			<p>
-				<a href="https://ml.azure.com/" class="text-blue-500">Azure Machine Learning</a> also publishes a
-				curated model list that is updated regularly and includes some of the most popular models at the
-				moment. Of the models on this list that are available on Hugging Face, there is currently Optimum
-				ONNX support for over 85%.
+				<a href="https://ml.azure.com/" class="text-blue-500">Azure Machine Learning</a> also publishes
+				a curated model list that is updated regularly and includes some of the most popular models at
+				the moment. Of the models on this list that are available on Hugging Face, there is currently
+				Optimum ONNX support for over 85%.
 			</p>
 		</div>
 		<div class="hidden md:grid mx-auto">
-			<ImageHf3 widthscale={2} heightscale={2}/>
+			<ImageHf3 widthscale={2} heightscale={2} />
+		</div>
+	</div>
+</div>
+
+<div class="container mx-auto px-10 my-10">
+	<div class="divider" />
+	<div>
+		<div>
+			<h1 class="text-3xl pb-4">Transformers.js + ONNX Runtime Web</h1>
+			<p class="pb-4">
+				<a href="https://huggingface.co/docs/transformers.js/index" class="text-blue-500"
+					>Transformers.js</a
+				>
+				is amazing tool to run transformers on the web, designed to be functionally equivalent to Hugging
+				Face’s
+				<a href="https://github.com/huggingface/transformers" class="text-blue-500">transformers</a>
+				python library.
+			</p>
+			<p class="pb-4">
+				Powered by ONNX Runtime Web, it enables you to execute cutting-edge Machine Learning tasks
+				in areas such as Natural Language Processing, Computer Vision, Audio, and Multimodal
+				directly within your web browser, eliminating the need for a server.
+			</p>
 		</div>
 	</div>
 </div>
