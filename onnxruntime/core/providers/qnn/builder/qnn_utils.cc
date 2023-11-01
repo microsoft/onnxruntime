@@ -11,6 +11,7 @@
 #include "core/framework/data_types.h"
 #include "qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -421,6 +422,76 @@ bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn
   } else {
     return do_type_mapping(onnx_to_qnn_data_type, onnx_data_type, qnn_data_type);
   }
+}
+
+std::pair<float, float> CheckMinMax(float rmin, float rmax) {
+  // Ensure a minimum range of 0.0001 (required by QNN)
+  rmax = std::max(rmax, rmin + 0.0001f);
+
+  // Both QNN and ORT require the range to include 0.0f
+  rmin = std::min(rmin, 0.0f);
+  rmax = std::max(rmax, 0.0f);
+
+  return std::make_pair(rmin, rmax);
+}
+
+template <typename T>
+Status GetQminQmax(const Qnn_DataType_t qnn_data_type,
+                   T& qmin,
+                   T& qmax) {
+  if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
+    qmin = static_cast<T>(std::numeric_limits<int8_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<int8_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_8) {
+    qmin = static_cast<T>(std::numeric_limits<uint8_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<uint8_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16) {
+    qmin = static_cast<T>(std::numeric_limits<int16_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<int16_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
+    qmin = static_cast<T>(std::numeric_limits<uint16_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<uint16_t>::max());
+  } else {
+    ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
+  }
+  return Status::OK();
+}
+
+Status GetQuantParams(float rmin,
+                      float rmax,
+                      const Qnn_DataType_t qnn_data_type,
+                      float& scale,
+                      int& zero_point) {
+  std::tie(rmin, rmax) = CheckMinMax(rmin, rmax);
+  float qmin = 0.0f;
+  float qmax = 255.0f;
+  ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
+
+  scale = (rmax - rmin) / (qmax - qmin);
+  const float initial_zero_point = qmin - (rmin / scale);
+  zero_point = static_cast<int>(RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
+  // To match QNN quantization definition
+  zero_point = 0 - zero_point;
+  return Status::OK();
+}
+
+double Dequantize(const OnnxInputInfo& info,
+                  const double quant_value) {
+  auto offset = static_cast<double>(info.quant_param.scaleOffsetEncoding.offset);
+  auto scale = static_cast<double>(info.quant_param.scaleOffsetEncoding.scale);
+  return (quant_value + offset) * scale;
+}
+
+Status Quantize(const double double_value,
+                const float scale,
+                const int zero_point,
+                const Qnn_DataType_t qnn_data_type,
+                int& quant_value) {
+  int qmin = 0;
+  int qmax = 255;
+  ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
+  quant_value = Saturate(qmax, qmin, static_cast<int>(std::round((double_value / scale) - zero_point)));
+  return Status::OK();
 }
 
 }  // namespace utils
