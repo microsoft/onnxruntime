@@ -479,7 +479,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // So we need these std::string variables defined here as they will be kept alive for the lifetime of TRT EP and we can still access them from OrtTensorRTProviderOptionsV2 instance.
       // (The reason is string copy is involved, for example params.trt_engine_cache_path = cache_path.c_str() and those std::string variable is referenced by OrtTensorRTProviderOptionsV2 instance
       // and TRT EP instance, so it won't be released.)
-      std::string calibration_table, cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile;
+      std::string calibration_table, cache_path, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -622,6 +622,13 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_timing_cache_enable = false;
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_timing_cache_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_timing_cache_path") {
+            if (!option.second.empty()) {
+              timing_cache_path = option.second;
+              params.trt_timing_cache_path = timing_cache_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_timing_cache_path' should be a path string i.e. 'cache_folder/'.\n");
             }
           } else if (option.first == "trt_force_timing_cache") {
             if (option.second == "True" || option.second == "true") {
@@ -806,10 +813,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (option.first == "device_type") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-        } else if (option.first == "enable_vpu_fast_compile") {
+        } else if (option.first == "enable_npu_fast_compile") {
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
-            ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
+            ORT_THROW("Invalid value passed for enable_npu_fast_compile: ", option.second);
           }
           OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_opencl_throttling") {
@@ -1214,14 +1221,14 @@ void addGlobalMethods(py::module& m) {
 
 #ifdef ENABLE_ATEN
   m.def("register_aten_op_executor",
-        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
-          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
+        [](const std::string& is_cpu_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
+          size_t is_cpu_argument_address_int, aten_op_executor_address_int;
           ORT_THROW_IF_ERROR(
-              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
+              ParseStringWithClassicLocale(is_cpu_argument_address_str, is_cpu_argument_address_int));
           ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
-          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
+          void* p_is_cpu_argument = reinterpret_cast<void*>(is_cpu_argument_address_int);
           void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
+          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_cpu_argument, p_aten_op_executor);
         });
 #endif
 }
