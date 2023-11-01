@@ -132,13 +132,13 @@
 			<h1 class="text-3xl pb-4">Cloud Models</h1>
 			<p class="pb-4">
 				Models accelerated by ONNX Runtime can be easily deployed to the cloud through Azure Machine
-				Learning, which improves time to value, streamlines MLOps, and provides built-in security.
+				Learning, which improves time-to-value, streamlines MLOps, provides built-in AI governance,
+				and designs responsible AI solutions.
 			</p>
 			<p>
-				<a href="https://ml.azure.com/" class="text-blue-500">Azure Machine Learning</a> also publishes
-				a curated model list that is updated regularly and includes some of the most popular models at
-				the moment. Of the models on this list that are available on Hugging Face, there is currently
-				Optimum ONNX support for over 85%.
+				<a href="https://ml.azure.com/" class="text-blue-500">Azure Machine Learning</a> publishes a
+				curated model list that is updated regularly and includes the most popular models. You can run
+				the vast majority of the models on the curated list with ONNX Runtime, using HuggingFace Optimum.
 			</p>
 		</div>
 		<div class="hidden md:grid mx-auto">
@@ -156,8 +156,8 @@
 				<a href="https://huggingface.co/docs/transformers.js/index" class="text-blue-500"
 					>Transformers.js</a
 				>
-				is amazing tool to run transformers on the web, designed to be functionally equivalent to Hugging
-				Face’s
+				is an amazing tool to run transformers on the web, designed to be functionally equivalent to
+				Hugging Face’s
 				<a href="https://github.com/huggingface/transformers" class="text-blue-500">transformers</a>
 				python library.
 			</p>
