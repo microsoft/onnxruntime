@@ -38,7 +38,19 @@ struct NodeSelector {
 // class to manage a set of selector and associated actions
 class SelectorActionRegistry {
  public:
+  // The key is a string representing the op, optionally specifying the domain using ':' as the
+  // separator with domain as the first part and operator as the second part, "<domain>:<operator>" or "<operator>".
+  // For ops in kOnnxDomain, the domain should be left unspecified ("<operator>").
+  // For ops in other domains, the domain should be specified ("<domain>:<operator>").
+  // Ex: "Conv", "com.microsoft:Conv", "com.ms.internal.nhwc:Conv"
   using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
+
+  // Helper function to create a key to OpVersionsMap using domain and op_type.
+  static std::string OpVersionsMapKey(std::string_view op_type, std::string_view domain = kOnnxDomain) {
+    return (domain == kOnnxDomain)
+               ? std::string{op_type}
+               : std::string{domain} + ":" + std::string{op_type};
+  }
 
   struct Entry {
     Entry(const std::string& name_in,
@@ -95,14 +107,15 @@ class SelectorActionRegistry {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // return registered Entry or nullptr if not found
-  auto LookUpByOpType(const std::string& op_type) const -> std::vector<gsl::not_null<const Entry*>>;
+  auto LookUpByOpTypeAndDomain(const std::string& op_type,
+                               const std::string& domain) const -> std::vector<gsl::not_null<const Entry*>>;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
  private:
   std::unordered_map<std::string, const Entry> name_to_entry_;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // auxiliary mapping to enable lookup by op type
+  // auxiliary mapping to enable lookup by op type or "domain:op type"
   std::unordered_multimap<std::string, const Entry*> op_type_to_entry_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };

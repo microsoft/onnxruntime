@@ -41,12 +41,12 @@ export const activationFnSnippet =
       if (!activation) {
         return '';
       }
-
       // TODO: add implementations
       return '';
     };
 
 export const biasActivationSnippet = (hasBias: boolean, activation?: Activation): string => `
       ${hasBias ? 'value = value + getBiasByOutputCoords(coords);' : ''}
-      ${activation ? 'value = activation(value, coords);' : ''}
+      // TODO uncomment the following line when activation is supported above.
+      // ${activation ? 'value = activation(value, coords);' : ''}
       `;
