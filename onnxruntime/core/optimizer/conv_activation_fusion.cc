@@ -278,7 +278,6 @@ class FuseConvAddRelu : public ReplaceWithNew {
 
 void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAct";
-  LOGS_DEFAULT(VERBOSE) << "Registering " << name << std::endl;
   auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
   const std::string msInternalNHWCDomainConv = SelectorActionRegistry::OpVersionsMapKey("Conv", kMSInternalNHWCDomain);

@@ -287,13 +287,9 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
 void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   auto action = std::make_unique<actions::FuseConvAddActivationAction>();
   auto selector = std::make_unique<selectors::ConvAddActivationSelector>();
-  registry.RegisterSelectorAndAction("ConvAddAct", {{"Conv", {1, 11}}},
+  std::string msDomainNhwcFusedConv = SelectorActionRegistry::OpVersionsMapKey("NhwcFusedConv", kMSDomain);
+  registry.RegisterSelectorAndAction("ConvAddAct", {{"Conv", {1, 11}}, {msDomainNhwcFusedConv, {1, 11}}},
                                      std::move(selector), std::move(action));
-  auto action_nhwc = std::make_unique<actions::FuseConvAddActivationAction>();
-  auto selector_nhwc = std::make_unique<selectors::ConvAddActivationSelector>();
-  std::string msDomainNhwcConv = SelectorActionRegistry::OpVersionsMapKey("NhwcFusedConv", kMSDomain);
-  registry.RegisterSelectorAndAction("NhwcFusedConvAct", {{msDomainNhwcConv, {1, 11}}},
-                                     std::move(selector_nhwc), std::move(action_nhwc));
 }
 
 SelectorActionRegistry CreateSelectorActionRegistry() {
