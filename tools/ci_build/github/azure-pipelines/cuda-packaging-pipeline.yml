@@ -63,7 +63,6 @@ parameters:
   displayName: Linux TensorRT version
   type: string
   default: '8.6.1.6-1.cuda12.0'
-
 - name: CudaVersion
   displayName: CUDA version
   type: string
@@ -130,7 +129,10 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "
+        --build-arg BUILD_UID=$( id -u )
+        --build-arg BASEIMAGE=${{ parameters.DockerBaseImage }}
+        "
         Repository: onnxruntimecuda11centosbuild
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
@@ -485,7 +487,11 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
         Context: tools/ci_build/github/linux/docker/
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "
+        --build-arg BASEIMAGE=${{ parameters.DockerBaseImage }}
+        --build-arg TRT_VERSION=${{ parameters.LinuxTensorRT }}
+        --build-arg BUILD_UID=$( id -u )
+        "
         Repository: onnxruntimeubi8packagestest
         UpdateDepsTxt: false
 
