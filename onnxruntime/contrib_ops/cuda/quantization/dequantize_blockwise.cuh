@@ -7,10 +7,22 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+template <class T>
+Status Dequantize4Bits(
+    T* output,
+    const uint8_t* quant_data,
+    const T* scales_data,
+    const uint8_t* zero_points,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream);
+
 
 /**
- * @brief Dequantize a column major quantized matrix, and store the result in a column major
- * matrix for use in subsequent GEMM
+ * @brief Dequantize a block-wise quantized matrix, and store the result in a
+ *        column major matrix for use in subsequent GEMM. This implementation supports
+ *        columnwise and rowwise block orientation.
  * @param[out] dst           pointer to the dequantized matrix, column major: [columns, rows]
  * @param[in]  qelements     pointer to the quantized elements, column major: [columns, rows]
  * @param[in]  scales        pointer to the scales of quantized blocks, column major layout

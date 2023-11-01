@@ -27,7 +27,9 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
-    ORT_ENFORCE(nbits_ == 4, "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    ORT_ENFORCE(nbits_ == 4,
+                "Only 4b quantization is supported for MatMulNBits op,"
+                " additional bits support is planned.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -37,6 +39,7 @@ class MatMulNBits final : public CudaKernel {
   int64_t N_;
   int64_t block_size_;
   int64_t nbits_;
+  bool column_wise_quant_blk_{true};
 };
 
 template <typename T>
@@ -77,18 +80,34 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       SafeInt<int>(GetDeviceProp().sharedMemPerBlock),
       static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
   if (!is_4bit_done) {
-    IAllocatorUniquePtr<T> b_data_ptr = GetScratchBuffer<T>(N_ * K_, ctx->GetComputeStream());
+    int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;
+    IAllocatorUniquePtr<T> b_data_ptr = GetScratchBuffer<T>(N_ * K_padded, ctx->GetComputeStream());
     auto* b_data = b_data_ptr.get();
-    ORT_RETURN_IF_ERROR(DequantizeBlockwise4b(
-        reinterpret_cast<CudaT*>(b_data),
-        blob_data,
-        reinterpret_cast<const CudaT*>(scales_data),
-        zero_points_data,
-        SafeInt<int>(block_size_),
-        true,
-        SafeInt<int>(K_),
-        SafeInt<int>(N_),
-        static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+    if (column_wise_quant_blk_) {
+      // column-wise block
+      ORT_RETURN_IF_ERROR(Dequantize4Bits(reinterpret_cast<CudaT*>(b_data),
+          blob_data,
+          reinterpret_cast<const CudaT*>(scales_data),
+          zero_points_data,
+          SafeInt<int>(K_padded),
+          SafeInt<int>(N_),
+          SafeInt<int>(block_size_),
+          static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+    } else {
+      // row-wise block
+      K_padded = K_;
+
+      ORT_RETURN_IF_ERROR(DequantizeBlockwise4b(
+          reinterpret_cast<CudaT*>(b_data),
+          blob_data,
+          reinterpret_cast<const CudaT*>(scales_data),
+          zero_points_data,
+          SafeInt<int>(block_size_),
+          column_wise_quant_blk_,
+          SafeInt<int>(K_),
+          SafeInt<int>(N_),
+          static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+    }
 #if 0
   cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
   T* b_data_cpu = new T[K_ * N_];
@@ -109,7 +128,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           SafeInt<int>(helper.K()),
           &alpha,
           reinterpret_cast<const CudaT*>(b_data),
-          SafeInt<int>(K_),
+          SafeInt<int>(K_padded),
           reinterpret_cast<const CudaT*>(a_data),
           helper.Lda(transa),
           &zero,
