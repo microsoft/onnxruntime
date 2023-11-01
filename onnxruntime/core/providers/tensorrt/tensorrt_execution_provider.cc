@@ -1107,10 +1107,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         throw std::runtime_error("Failed to create directory " + global_cache_path_);
       }
     }
-    {
-      auto lock = GetApiLock();
-      runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
-    }
   }
 
   if (engine_decryption_enable_) {
