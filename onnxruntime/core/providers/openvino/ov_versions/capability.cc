@@ -24,7 +24,8 @@ namespace openvino_ep {
 
 // Constructor
 GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param,
-                             const std::string version_param) : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
+                             const std::string version_param)
+    : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
   if (version_param == "V_2022_1") {
     data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
   } else if (version_param == "V_2022_2") {
@@ -114,11 +115,11 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     }
     openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
 
-  } else {  // unsupported_nodes_idx.empty()
-
+  } else {                                     // unsupported_nodes_idx.empty()
 #if defined(OPENVINO_DISABLE_GRAPH_PARTITION)  // disables graph partition at build time
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DISABLE_GRAPH_PARTITION option is set";
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is not fully supported by OpenVINO, so making the full model fall back to default CPU Execution Provider";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is not fully supported by OpenVINO, "
+                       << "so making the full model fall back to default CPU Execution Provider";
     return result;
 #endif
 
@@ -159,7 +160,13 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
 
-      GetInputsOutputsOfCluster(graph_viewer_, this_cluster, ng_required_initializers, cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs);
+      GetInputsOutputsOfCluster(graph_viewer_,
+                                this_cluster,
+                                ng_required_initializers,
+                                cluster_graph_inputs,
+                                cluster_inputs,
+                                const_inputs,
+                                cluster_outputs);
 
       bool omit_subgraph = false;
       // Omitting zero dim subgraphs

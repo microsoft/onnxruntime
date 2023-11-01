@@ -813,10 +813,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (option.first == "device_type") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-        } else if (option.first == "enable_vpu_fast_compile") {
+        } else if (option.first == "enable_npu_fast_compile") {
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
-            ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
+            ORT_THROW("Invalid value passed for enable_npu_fast_compile: ", option.second);
           }
           OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_opencl_throttling") {

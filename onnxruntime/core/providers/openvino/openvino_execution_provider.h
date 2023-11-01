@@ -3,19 +3,28 @@
 
 #pragma once
 
-#include "backend_manager.h"
 #include <map>
 #include <algorithm>
 #include <iostream>
+#include <string>
+#include <memory>
+#include <vector>
+
+#include "backend_manager.h"
 
 namespace onnxruntime {
 
 static void print_build_options() {
   std::cout << "[ERROR] INVALID DEVICE BUILD TYPE SPECIFIED" << std::endl;
-  std::cout << "Specify the keyword HETERO (or) MULTI (or) AUTO followed by the devices in the order of priority you want to build" << std::endl;
-  std::cout << "The different hardware devices that can be added with HETERO/MULTI/AUTO build ";
-  std::cout << "are ['CPU','GPU','VPUX']" << std::endl;
-  std::cout << "An example of how to specify the HETERO or MULTI or AUTO build type. Ex: HETERO:GPU,CPU  Ex: MULTI:GPU,CPU Ex: AUTO:GPU,CPU" << std::endl;
+  std::cout << "Specify the keyword HETERO (or) MULTI (or) AUTO followed by the devices in the order of priority "
+            << "you want to build"
+            << std::endl;
+  std::cout << "The different hardware devices that can be added with HETERO/MULTI/AUTO build "
+            << "are ['CPU','GPU']"
+            << std::endl;
+  std::cout << "An example of how to specify the HETERO or MULTI or AUTO build type. "
+            << "Ex: HETERO:GPU,CPU  Ex: MULTI:GPU,CPU Ex: AUTO:GPU,CPU"
+            << std::endl;
 }
 
 static std::vector<std::string> split(const std::string& s, char delim) {
@@ -39,7 +48,7 @@ static std::vector<std::string> parseDevices(const std::string& device_string) {
     print_build_options();
     ORT_THROW("Invalid device string: " + device_string);
   }
-  std::vector<std::string> dev_options = {"CPU", "GPU", "VPUX"};
+  std::vector<std::string> dev_options = {"CPU", "GPU"};
   for (std::string dev : devices) {
     if (!std::count(dev_options.begin(), dev_options.end(), dev)) {
       print_build_options();
@@ -53,7 +62,7 @@ static std::vector<std::string> parseDevices(const std::string& device_string) {
 struct OpenVINOExecutionProviderInfo {
   std::string device_type_;
   std::string precision_;
-  bool enable_vpu_fast_compile_;
+  bool enable_npu_fast_compile_;
   std::string device_id_;
   size_t num_of_threads_;
   std::string cache_dir_;
@@ -62,11 +71,18 @@ struct OpenVINOExecutionProviderInfo {
   bool enable_opencl_throttling_;
   bool enable_dynamic_shapes_;
 
-  explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_vpu_fast_compile, std::string dev_id,
+  explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_npu_fast_compile, std::string dev_id,
                                          size_t num_of_threads, std::string cache_dir, int num_streams,
                                          void* context, bool enable_opencl_throttling,
                                          bool enable_dynamic_shapes)
-      : enable_vpu_fast_compile_(enable_vpu_fast_compile), device_id_(dev_id), num_of_threads_(num_of_threads), cache_dir_(cache_dir), num_streams_(num_streams), context_(context), enable_opencl_throttling_(enable_opencl_throttling), enable_dynamic_shapes_(enable_dynamic_shapes) {
+      : enable_npu_fast_compile_(enable_npu_fast_compile),
+        device_id_(dev_id),
+        num_of_threads_(num_of_threads),
+        cache_dir_(cache_dir),
+        num_streams_(num_streams),
+        context_(context),
+        enable_opencl_throttling_(enable_opencl_throttling),
+        enable_dynamic_shapes_(enable_dynamic_shapes) {
     if (dev_type == "") {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                          << "No runtime device selection option provided.";
@@ -82,11 +98,11 @@ struct OpenVINOExecutionProviderInfo {
 #elif defined OPENVINO_CONFIG_GPU_FP16
       device_type_ = "GPU";
       precision_ = "FP16";
-#elif defined OPENVINO_CONFIG_VPUX_FP16
-      device_type_ = "VPUX";
+#elif defined OPENVINO_CONFIG_NPU_FP16
+      device_type_ = "NPU";
       precision_ = "FP16";
-#elif defined OPENVINO_CONFIG_VPUX_U8
-      device_type_ = "VPUX";
+#elif defined OPENVINO_CONFIG_NPU_U8
+      device_type_ = "NPU";
       precision_ = "U8";
 #elif defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
 #ifdef DEVICE_NAME
@@ -126,11 +142,11 @@ struct OpenVINOExecutionProviderInfo {
     } else if (dev_type == "GPU.1_FP16") {
       device_type_ = "GPU.1";
       precision_ = "FP16";
-    } else if (dev_type == "VPUX_FP16") {
-      device_type_ = "VPUX";
+    } else if (dev_type == "NPU_FP16") {
+      device_type_ = "NPU";
       precision_ = "FP16";
-    } else if (dev_type == "VPUX_U8") {
-      device_type_ = "VPUX";
+    } else if (dev_type == "NPU_U8") {
+      device_type_ = "NPU";
       precision_ = "U8";
     } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0) {
       std::vector<std::string> devices = parseDevices(dev_type);

@@ -1282,14 +1282,6 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
   endif()
 
-  if (onnxruntime_USE_OPENVINO_VPUX_FP16)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_FP16=1)
-  endif()
-
-  if (onnxruntime_USE_OPENVINO_VPUX_U8)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_U8=1)
-  endif()
-
   if (onnxruntime_USE_OPENVINO_GPU_FP32_NP)
     add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
@@ -1307,16 +1299,6 @@ if (onnxruntime_USE_OPENVINO)
 
   if (onnxruntime_USE_OPENVINO_CPU_FP16_NP)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
-    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
-  endif()
-
-  if (onnxruntime_USE_OPENVINO_VPUX_FP32_NP)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_FP32=1)
-    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
-  endif()
-
-  if (onnxruntime_USE_OPENVINO_VPUX_FP16_NP)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_FP16=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 
