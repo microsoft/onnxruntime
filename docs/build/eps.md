@@ -156,7 +156,7 @@ These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvid
 
       1. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA 11.8 upgrade instruction.
 
-      2. CUDA 12.x might only be available to Jetson Orin and newer series. 
+      2. CUDA 12.x is only available to Jetson Orin and newer series (CUDA compute capability >= 8.7). Check [here](https://developer.nvidia.com/cuda-gpus#collapse5) for compute capability datasheet.
 
    2. CMake can't automatically find the correct `nvcc` if it's not in the `PATH`. `nvcc` can be added to `PATH` via:
 
@@ -186,14 +186,7 @@ These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvid
 
 5. Build the ONNX Runtime Python wheel (update path to CUDA/CUDNN/TensorRT libraries if necessary):
 
-   1. Build `onnxruntime-gpu` wheel with CUDA support:
-
-      ```bash
-      ./build.sh --config Release --update --build --parallel --build_wheel \
-      --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
-      ```
-
-   2. Build `onnxruntime-gpu` wheel with additional TensorRT support:
+   1. Build `onnxruntime-gpu` wheel with CUDA and TensorRT support:
 
       ```bash
       ./build.sh --config Release --update --build --parallel --build_wheel \
