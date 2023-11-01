@@ -40,6 +40,7 @@ class SelectorActionRegistry {
  public:
   // The key is a string representing the op, optionally specifying the domain using ':' as the
   // separator with domain as the first part and operator as the second part, "<domain>:<operator>".
+  // If the domain is not specified, the default value kOnnxDomain is implied.
   // Ex: "Conv", "com.microsoft:Conv", "com.ms.internal.nhwc:Conv"
   using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
 
