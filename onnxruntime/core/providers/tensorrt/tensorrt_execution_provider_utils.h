@@ -702,8 +702,13 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
 
 
 bool CheckPrecompiledEngine(const GraphViewer& graph) {
-  if (graph.NumberOfNodes() == 1 && graph.GetNode(0)->OpType() == EP_CONTEXT_OP_TYPE) {
-    return true;
+  if (graph.NumberOfNodes() == 1) {
+    for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
+      auto node = graph.GetNode(i);
+      if (node != nullptr && node->OpType() == EP_CONTEXT_OP_TYPE) {
+        return true;
+      }
+    }
   }
   return false;
 }
