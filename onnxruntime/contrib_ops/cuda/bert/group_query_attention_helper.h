@@ -134,33 +134,33 @@ Status CheckInputs(const Tensor* query,
 
   if (key_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
-                            key_dims.size());
+                           key_dims.size());
   }
   if (query_dims[0] != key_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Input 'query' and 'key' shall have same dim 0 (batch size)");
+                           "Input 'query' and 'key' shall have same dim 0 (batch size)");
   }
 
   if (num_heads % kv_num_heads != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
-                            num_heads % kv_num_heads);
+                           "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
+                           num_heads % kv_num_heads);
   }
 
   const auto& value_dims = value->Shape().GetDims();
   if (value_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
-                            value_dims.size());
+                           value_dims.size());
   }
 
   if (query_dims[0] != value_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Input 'query' and 'value' shall have same dim 0 (batch_size)");
+                           "Input 'query' and 'value' shall have same dim 0 (batch_size)");
   }
 
   if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
+                           "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
   }
 
   if (value_dims[2] != kv_hidden_size) {
