@@ -94,15 +94,15 @@ struct Flash_fwd_params : public Qkv_params {
   index_t vnew_head_stride = 0;
 
   // The cos and sin matrices for rotary embedding.
-  void * __restrict__ rotary_cos_ptr = nullptr;
-  void * __restrict__ rotary_sin_ptr = nullptr;
+  void* __restrict__ rotary_cos_ptr = nullptr;
+  void* __restrict__ rotary_sin_ptr = nullptr;
 
   // The indices to index into the KV cache.
-  int *__restrict__ cache_batch_idx = nullptr;
+  int* __restrict__ cache_batch_idx = nullptr;
 
   // Local window size
-  int window_size_left = 0;
-  int window_size_right = 0;
+  int window_size_left = -1;
+  int window_size_right = -1;
 
   bool is_bf16 = false;
   bool is_causal = false;

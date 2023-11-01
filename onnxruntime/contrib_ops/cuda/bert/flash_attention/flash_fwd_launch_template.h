@@ -58,7 +58,7 @@ void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
         // If not IsEvenKConst, we also set IsEvenMNConst to false to reduce number of templates.
         // If head dim > 128, set IsEvenMNConst to false to reduce number of templates
         // If Is_local, set Is_causal to false
-        auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal && !Is_local, Is_local, IsEvenMNConst && IsEvenKConst && !Is_local && Kernel_traits::kHeadDim <= 128, IsEvenKConst, false>;
+        auto kernel = &flash_fwd_kernel < Kernel_traits, Is_causal && !Is_local, Is_local, IsEvenMNConst && IsEvenKConst && !Is_local && Kernel_traits::kHeadDim <= 128, IsEvenKConst, false > ;
         // auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenMNConst, true, ReturnSoftmaxConst>;
         if (smem_size >= 48 * 1024) {
           cudaFuncSetAttribute(

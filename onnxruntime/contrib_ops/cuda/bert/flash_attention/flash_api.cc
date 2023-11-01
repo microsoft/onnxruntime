@@ -36,9 +36,8 @@ void set_params_fprop(Flash_fwd_params& params,
                       float softmax_scale,
                       bool is_causal,
                       bool kv_bsnh = true,
-                      int window_size_left=-1,
-                      int window_size_right=-1
-                      ) {
+                      int window_size_left = -1,
+                      int window_size_right = -1) {
   // Set the pointers and strides.
   params.q_ptr = q;
   params.k_ptr = k;
@@ -110,11 +109,15 @@ void set_params_fprop(Flash_fwd_params& params,
     // Within flash kernel, causal and local are mutually exclusive and cannot be true at the same time.
     if (window_size_left >= 0 || window_size_right != 0) {
       params.is_causal = false;
-    } else{
+    } else {
       params.is_causal = true;
     }
-    if (window_size_left < 0 && window_size_right >= 0) { window_size_left = seqlen_k; }
-    if (window_size_left >= 0 && window_size_right < 0) { window_size_right = seqlen_k; }
+    if (window_size_left < 0 && window_size_right >= 0) {
+      window_size_left = seqlen_k;
+    }
+    if (window_size_left >= 0 && window_size_right < 0) {
+      window_size_right = seqlen_k;
+    }
     params.window_size_left = window_size_left;
     params.window_size_right = window_size_right;
   } else {
@@ -308,8 +311,6 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    nullptr,
                    softmax_lse,
                    softmax_scale,
-                   -1,
-                   -1,
                    is_causal);
   params.dprops = &dprops;
   params.num_splits = 0;
@@ -352,8 +353,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int num_splits,
                        void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
                        void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
-                       int local_window_size
-) {
+                       int local_window_size) {
   // if (seqlen_q == 1) {
   //   is_causal = false;
   // }  // causal=true is the same as causal=false in this case

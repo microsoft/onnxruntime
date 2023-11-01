@@ -113,10 +113,10 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
     if args.execution_provider != "cpu":
         io_binding = add_io_bindings(args, ort_model, inputs)
 
-        torch.cuda.synchronize()
+        io_binding.synchronize_inputs()
         start_time = time.time()
         ort_model.run_with_iobinding(io_binding)
-        torch.cuda.synchronize()
+        io_binding.synchronize_outputs()
         end_time = time.time()
 
         ort_outputs = io_binding.copy_outputs_to_cpu()[0]  # Get logits

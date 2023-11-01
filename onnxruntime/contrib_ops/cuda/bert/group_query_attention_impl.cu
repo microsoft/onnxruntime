@@ -158,7 +158,7 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
 
   assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
-  const int H = head_size / 4; // divide by 4 so kernel can operate on 4 float16 elements at a time.
+  const int H = head_size / 4;  // divide by 4 so kernel can operate on 4 float16 elements at a time.
   if (H * kv_num_heads <= max_threads_per_block) {
     const dim3 grid(present_sequence_length, batch_size, 1);
     const dim3 block(H, kv_num_heads, 1);
@@ -527,8 +527,8 @@ Status EfficientAttention(
       ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block));
     }
     const bool is_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
-    if (num_heads == kv_num_heads && parameters.present_sequence_length == parameters.max_sequence_length) {
-      // Use present kv directly under specific conditions
+    if (num_heads == kv_num_heads) {
+      // Use present kv directly if not grouped
       key = reinterpret_cast<const void*>(data.present_key);
       value = reinterpret_cast<const void*>(data.present_value);
     } else {
@@ -543,19 +543,20 @@ Status EfficientAttention(
       value = reinterpret_cast<const void*>(data.v);
     }
   } else if (num_heads == kv_num_heads) {
-    // no past or present and no need to ungroup... still copy kv into present
+    // no past or present and no need to ungroup... still copy kv into present buffer
     ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block));
-    key = reinterpret_cast<const void*>(data.key);
-    value = reinterpret_cast<const void*>(data.value);
+    key = reinterpret_cast<const void*>(data.present_key);
+    value = reinterpret_cast<const void*>(data.present_value);
   } else {
-    // intermediate buffer so q and kv have same num heads... still copy kv into present
+    // intermediate buffer so q and kv have same num heads... still copy kv into present buffer
     ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block));
     float2* k_buff = reinterpret_cast<float2*>(data.k);
     float2* v_buff = reinterpret_cast<float2*>(data.v);
-    const float2* k_og = reinterpret_cast<const float2*>(data.key);
-    const float2* v_og = reinterpret_cast<const float2*>(data.value);
+    const float2* k_og = reinterpret_cast<const float2*>(data.present_key);
+    const float2* v_og = reinterpret_cast<const float2*>(data.present_value);
     ORT_RETURN_IF_ERROR(LaunchUngroup(parameters, k_buff, v_buff, k_og, v_og, kv_sequence_length,
-                                      kv_sequence_length, true, stream, max_threads_per_block));
+                                      kv_sequence_length, past_kv_format == AttentionQkvFormat::Q_K_V_BSNH, stream,
+                                      max_threads_per_block));
     key = reinterpret_cast<const void*>(data.k);
     value = reinterpret_cast<const void*>(data.v);
   }
@@ -567,6 +568,7 @@ Status EfficientAttention(
   p.num_heads = num_heads;
   p.sequence_length = sequence_length;
   p.kv_sequence_length = present_sequence_length;
+  p.max_sequence_length = (num_heads == kv_num_heads) ? max_sequence_length : present_sequence_length;
   p.qk_head_size = head_size;
   p.v_head_size = head_size;
   p.causal = parameters.is_unidirectional;
@@ -579,7 +581,7 @@ Status EfficientAttention(
   p.value = value;
   p.attn_bias = nullptr;
   p.is_attn_bias_batched = false;
-  p.is_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
+  p.is_kv_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
   p.output = data.output;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(p.v_head_size, sizeof(T) == sizeof(float))
                     ? data.fmha_buffer
