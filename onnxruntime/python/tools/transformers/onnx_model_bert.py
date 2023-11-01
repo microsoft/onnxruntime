@@ -112,12 +112,12 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionSimplifiedLayerNormalization(self)
         fusion.apply()
 
-    def fuse_skip_layer_norm(self):
-        fusion = FusionSkipLayerNormalization(self)
+    def fuse_skip_layer_norm(self, disable_broadcast):
+        fusion = FusionSkipLayerNormalization(self, disable_broadcast=disable_broadcast)
         fusion.apply()
 
-    def fuse_skip_simplified_layer_norm(self):
-        fusion = FusionSkipSimplifiedLayerNormalization(self)
+    def fuse_skip_simplified_layer_norm(self, disable_broadcast):
+        fusion = FusionSkipSimplifiedLayerNormalization(self, disable_broadcast=disable_broadcast)
         fusion.apply()
 
     def fuse_rotary_embeddings(self):
@@ -405,8 +405,9 @@ class BertOnnxModel(OnnxModel):
         self.fuse_reshape()
 
         if (options is None) or options.enable_skip_layer_norm:
-            self.fuse_skip_layer_norm()
-            self.fuse_skip_simplified_layer_norm()
+            disable_broadcast = options and options.disable_skip_layer_norm_broadcast
+            self.fuse_skip_layer_norm(disable_broadcast)
+            self.fuse_skip_simplified_layer_norm(disable_broadcast)
 
         if (options is None) or options.enable_rotary_embeddings:
             self.fuse_rotary_embeddings()

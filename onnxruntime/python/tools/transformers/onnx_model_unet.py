@@ -143,7 +143,8 @@ class UnetOnnxModel(BertOnnxModel):
             self.fuse_multi_head_attention(options)
 
         if (options is None) or options.enable_skip_layer_norm:
-            self.fuse_skip_layer_norm()
+            disable_broadcast = options and options.disable_skip_layer_norm_broadcast
+            self.fuse_skip_layer_norm(disable_broadcast)
 
         self.fuse_shape()
 

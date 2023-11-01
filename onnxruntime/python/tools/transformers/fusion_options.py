@@ -33,9 +33,17 @@ class FusionOptions:
         #     merged into one.
         # (2) Attention could only handle self attention; MultiHeadAttention could handle both self and cross attention.
         self.use_multi_head_attention = False
+
+        # False indicates the Bias of input linear projection will not be fused into MultiHeadAttention.
         self.disable_multi_head_attention_bias = False
 
+        # False will disable both SkipLayerNormalization and SkipSimplifiedLayerNormalization fusions.
         self.enable_skip_layer_norm = True
+
+        # Disable SkipLayerNormalization and SkipSimplifiedLayerNormalization fusions when skip need broadcast.
+        # False indicates input and skip shall have same shape; True allows skip with shape [1, seq_len, hidden_size].
+        self.disable_skip_layer_norm_broadcast = False
+
         self.enable_embed_layer_norm = True
         self.enable_bias_skip_layer_norm = True
         self.enable_bias_gelu = True
@@ -141,9 +149,17 @@ class FusionOptions:
             "--disable_skip_layer_norm",
             required=False,
             action="store_true",
-            help="disable SkipLayerNormalization fusion",
+            help="disable SkipLayerNormalization and SkipSimplifiedLayerNormalization fusions",
         )
         parser.set_defaults(disable_skip_layer_norm=False)
+
+        parser.add_argument(
+            "--disable_skip_layer_norm_broadcast",
+            required=False,
+            action="store_true",
+            help="disable SkipLayerNormalization and SkipSimplifiedLayerNormalization fusions when skip need broadcast",
+        )
+        parser.set_defaults(disable_skip_layer_norm_broadcast=False)
 
         parser.add_argument(
             "--disable_embed_layer_norm",

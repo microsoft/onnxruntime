@@ -134,8 +134,9 @@ class FusionSimplifiedLayerNormalization(Fusion):
 
 
 class FusionSkipSimplifiedLayerNormalization(FusionSkipLayerNormalization):
-    def __init__(self, model: OnnxModel):
-        super().__init__(model, "SkipSimplifiedLayerNormalization", "SimplifiedLayerNormalization")
+    def __init__(self, model: OnnxModel, disable_broadcast: bool = False):
+        super().__init__(model, "SkipSimplifiedLayerNormalization", "SimplifiedLayerNormalization",
+                         disable_broadcast=disable_broadcast)
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         super().fuse(node, input_name_to_nodes, output_name_to_node)

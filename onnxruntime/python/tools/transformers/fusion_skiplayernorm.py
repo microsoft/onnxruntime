@@ -16,7 +16,6 @@ logger = getLogger(__name__)
 class FusionSkipLayerNormalization(Fusion):
     """
     Fuse Add + LayerNormalization into one node: SkipLayerNormalization
-    Note: This fusion does not check the input shape of Add and LayerNormalization.
     """
 
     def __init__(
@@ -24,27 +23,29 @@ class FusionSkipLayerNormalization(Fusion):
         model: OnnxModel,
         fused_op_type: str = "SkipLayerNormalization",
         search_op_types: str = "LayerNormalization",
+        disable_broadcast: bool = False,
     ):
         super().__init__(model, fused_op_type, search_op_types)
         # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
         self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
 
         if self.shape_infer_helper is None:
-            # TODO(tianleiwu): support subgraph in shape inference or add broadcasting in SkipLayerNormalization op.
+            # TODO(tianleiwu): support subgraph in shape inference.
             logger.warning("symbolic shape inference disabled or failed.")
+
+        self.allow_broadcast = not disable_broadcast
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         add = self.model.get_parent(node, 0, output_name_to_node)
 
-        # In some models there is input_ids->gather->add->LayerNorm and one of input of the
-        # add node is initializer with fixed shape which should not be fused into SkipLayerNorm
         if add is None or add.op_type != "Add":
             return
 
         # The number of inputs of add should be 2
-        if len(add.input) != 2:
-            return
+        assert len(add.input) == 2
 
+        # In some models there is input_ids->gather->add->LayerNorm and one of input of the
+        # add node is initializer with fixed shape which should not be fused into SkipLayerNorm
         for add_input in add.input:
             if self.model.get_initializer(add_input) is not None:
                 return
@@ -56,11 +57,24 @@ class FusionSkipLayerNormalization(Fusion):
         # Root Mean Square Layer Normalization
         simplified = node.op_type == "SimplifiedLayerNormalization"
 
+        skip = -1
         if self.shape_infer_helper is not None:
-            # TODO(tianleiwu): support broadcasting Skip shape (1, sequence_length, hidden_size) or (sequence_length, hidden_size)
-            if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
+            shape_a = self.shape_infer_helper.get_edge_shape(add.input[0])
+            shape_b = self.shape_infer_helper.get_edge_shape(add.input[1])
+            assert shape_a is not None and shape_b is not None
+            if len(shape_a) != 3 or len(shape_b) != 3:
+                return
+            if shape_a == shape_b:
+                skip = 1
+            elif self.allow_broadcast and shape_a[1] == shape_b[1] and shape_a[2] == shape_b[2]:
+                # Here we support Skip shape (1, sequence_length, hidden_size) for broadcasting
+                if shape_b[0] == 1:
+                    skip = 1
+                elif shape_a[1] == 1:
+                    skip = 0
+            if skip < 0:
                 logger.debug(
-                    "skip SkipLayerNormalization fusion since shape of inputs (%s, %s) are not same",
+                    "skip SkipLayerNormalization fusion since shape of Add inputs (%s, %s) are not expected",
                     add.input[0],
                     add.input[1],
                 )
@@ -98,9 +112,9 @@ class FusionSkipLayerNormalization(Fusion):
             self.nodes_to_remove.extend([add, node])
 
             inputs = (
-                [add.input[0], add.input[1], node.input[1], node.input[2]]
+                [add.input[1 - skip], add.input[skip], node.input[1], node.input[2]]
                 if not simplified
-                else [add.input[0], add.input[1], node.input[1]]
+                else [add.input[1 - skip], add.input[skip], node.input[1]]
             )
             normalize_node = helper.make_node(
                 self.fused_op_type,
@@ -110,12 +124,12 @@ class FusionSkipLayerNormalization(Fusion):
             )
             normalize_node.domain = "com.microsoft"
 
-            # Pass attribute "epsilon" from layernorm node to SkipLayerNormalization
+            # Pass attribute "epsilon" from LayerNormalization node to SkipLayerNormalization
             for att in node.attribute:
                 if att.name == "epsilon":
                     normalize_node.attribute.extend([att])
 
-            # Set default epsilon if no epsilon exists from layernorm
+            # Set default epsilon if no epsilon exists from LayerNormalization
             if len(normalize_node.attribute) == 0:
                 normalize_node.attribute.extend([helper.make_attribute("epsilon", 1.0e-12)])
 
@@ -187,12 +201,12 @@ class FusionBiasSkipLayerNormalization(Fusion):
         )
         new_node.domain = "com.microsoft"
 
-        # Pass attribute "epsilon" from skiplayernorm node to skiplayernorm(add bias)
+        # Pass attribute "epsilon" from SkipLayerNormalization node to SkipLayerNormalization(add bias)
         for att in node.attribute:
             if att.name == "epsilon":
                 new_node.attribute.extend([att])
 
-        # Set default epsilon if no epsilon exists from skiplayernorm
+        # Set default epsilon if no epsilon exists from SkipLayerNormalization
         if len(new_node.attribute) == 0:
             new_node.attribute.extend([helper.make_attribute("epsilon", 1.0e-12)])
 
