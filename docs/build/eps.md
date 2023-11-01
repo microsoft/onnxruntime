@@ -198,7 +198,7 @@ These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvid
 
 * By default, `onnxruntime-gpu` wheel file will be captured under `path_to/onnxruntime/build/Linux/Release/dist/` (build path can be customized by adding `--build_dir` followed by a customized path to the build command above).
 
-* For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resources when building ONNX Runtime. Update `--parallel` with smaller value if system resource is limited and OOM happens. 
+* For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resource when building ONNX Runtime. Set `--parallel 2` or smaller in the build command if system is hanging and OOM happens. 
 ## oneDNN
 
 See more information on oneDNN (formerly DNNL) [here](../execution-providers/oneDNN-ExecutionProvider.md).
