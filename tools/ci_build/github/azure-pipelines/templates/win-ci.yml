@@ -107,6 +107,7 @@ stages:
         parameters:
           EnvSetupScript: ${{ parameters.EnvSetupScript }}
           ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+            DownloadCUDA: true
             DownloadTRT: true
           ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
             DownloadCUDA: true
