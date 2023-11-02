@@ -175,9 +175,13 @@ template <
   int32_t qbits,
   bool Columnwise>
 __global__
-void dequantizeThread(ElementT* dst, const uint8_t* weights, const ElementT* scales,
-  const uint8_t* zero_points, int rows,  int columns,  int thrd_row_blks) {
-
+void dequantizeThread(ElementT* dst,
+                      const uint8_t* weights,
+                      const ElementT* scales,
+                      const uint8_t* zero_points,
+                      int rows,
+                      int columns,
+                      int thrd_row_blks) {
   using QuantBlk = typename BlkQuantTraits<ElementT, block_size, qbits, Columnwise>::QuantBlk;
   using ThreadBlk = typename BlkQuantTraits<ElementT, block_size, qbits, Columnwise>::ThreadBlk;
 
@@ -204,7 +208,9 @@ void dequantizeThread(ElementT* dst, const uint8_t* weights, const ElementT* sca
   // for 4b quant, kPackSize = 2, so we have 2 scales and 2 offsets
   const ElementT scale_buf[2] = {
       scales[(c / QuantBlk::kColumn) * row_blks + r / QuantBlk::kRow],
-      ((r/QuantBlk::kRow) < (meta_rows - 1)) ? scales[(c / QuantBlk::kColumn) * row_blks + r / QuantBlk::kRow + 1] : static_cast<ElementT>(0.0f)};
+      ((r/QuantBlk::kRow) < (meta_rows - 1))
+          ? scales[(c / QuantBlk::kColumn) * row_blks + r / QuantBlk::kRow + 1]
+          : static_cast<ElementT>(0.0f)};
   const uint8_t zp_pair = (zero_points == nullptr)
         ? 0x88
         : zero_points[(c / QuantBlk::kColumn) * ((row_blks + 1) / 2) + (r / QuantBlk::kRow) / 2];
@@ -215,7 +221,6 @@ void dequantizeThread(ElementT* dst, const uint8_t* weights, const ElementT* sca
   for (int32_t j = c; j < c_end; ++j) {
     const uint8_t* q_ptr = weights + j * q_rows;
     for (int32_t i = r; i < (r_end - 1); i += 2) {
-
       const auto scale0 = scale_buf[(i - r) / QuantBlk::kRow];
       const auto adjust0 = adjust_buf[(i - r) / QuantBlk::kRow];
 
@@ -224,7 +229,7 @@ void dequantizeThread(ElementT* dst, const uint8_t* weights, const ElementT* sca
 
       const auto vi = q_ptr[i / 2];
 
-      if constexpr (std::is_same<ElementT, half>::value){
+      if constexpr (std::is_same<ElementT, half>::value) {
         half2 scale_half2 = {scale0, scale1};
         half2 zp_adjust2 = {adjust0, adjust1};
 
@@ -242,7 +247,7 @@ void dequantizeThread(ElementT* dst, const uint8_t* weights, const ElementT* sca
       }
     }
 
-    if ((r_end & 1) && (r_end > r)){
+    if ((r_end & 1) && (r_end > r)) {
       const auto scale0 = scale_buf[(r_end - 1 - r) / QuantBlk::kRow];
       const auto adjust0 = adjust_buf[(r_end - 1 - r) / QuantBlk::kRow];
 

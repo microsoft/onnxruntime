@@ -124,8 +124,8 @@ __global__ void MatMulFloatInt4Kernel(
   float sum = 0.f;
   int k_id = 0;
   for (; k_id < (k & 0xffffff00); k_id += k_per_iter) {
-    const int t_k = k_id + (lane_id << 3); // k index for this thread
-    const int t_meta_k = t_k / block_size; // k index for this thread, points to the scale and zero point
+    const int t_k = k_id + (lane_id << 3);  // k index for this thread
+    const int t_meta_k = t_k / block_size;  // k index for this thread, points to the scale and zero point
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + (t_k >> 1)));
     T scale = b_scale_vec[scale_col_offset + t_meta_k];
     uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k/2];
@@ -135,8 +135,8 @@ __global__ void MatMulFloatInt4Kernel(
 
   // handle reminder
   if (k_id + lane_id * 8 < k) {
-    const int t_k = k_id + (lane_id << 3); // k index for this thread
-    const int t_meta_k = t_k / block_size; // k index for this thread, points to the scale and zero point
+    const int t_k = k_id + (lane_id << 3);  // k index for this thread
+    const int t_meta_k = t_k / block_size;  // k index for this thread, points to the scale and zero point
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_iter * 128 + lane_id * 4));
     T scale = b_scale_vec[scale_col_offset + t_meta_k];
     uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k/2];
