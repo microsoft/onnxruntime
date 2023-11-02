@@ -279,26 +279,26 @@ class QuantizeF4RowBlock {
                                                blocksize);
   }
 };
+
 class QuantizeU8ColBlock {
  public:
   template <JBLAS_ISA ISA_T, typename SRC_T>
   static inline JBLAS_CODE forward(int row, int col, const SRC_T* srcptr, int ld_src, uint8_t* dstptr, int ld_dst,
-                                   float* scales, int ld_scale, uint8_t* zps, int blocksize) {
+                                   float* scales, int ld_scale, uint8_t* zps, int blocksize, float* blkreduce) {
 #if CompileAVX512F()
     if constexpr (utils::isa_base<ISA_T>::avx512f) {
       return avx512f::quantize_fp_u8_colblock<SRC_T>(row, col, srcptr, ld_src, dstptr, ld_dst, scales, ld_scale, zps,
-                                                     blocksize);
+                                                     blocksize, blkreduce);
     }
 #endif
 #if CompileAVX2()
     if constexpr (utils::isa_base<ISA_T>::avx2) {
       return avx2::quantize_fp_u8_colblock<SRC_T>(row, col, srcptr, ld_src, dstptr, ld_dst, scales, ld_scale, zps,
-                                                  blocksize);
+                                                  blocksize, blkreduce);
     }
 #endif
-    if constexpr (std::is_same_v<SRC_T, float>)
-      return ref::quantize_f32_u8_colblock(row, col, srcptr, ld_src, dstptr, ld_dst, scales, ld_scale, zps, blocksize);
-    return JblasNotSupport;
+    return ref::quantize_fp_u8_colblock(row, col, srcptr, ld_src, dstptr, ld_dst, scales, ld_scale, zps, blocksize,
+                                        blkreduce);
   }
 };
 
@@ -306,16 +306,14 @@ class QuantizeS8ColBlock {
  public:
   template <JBLAS_ISA ISA_T, typename SRC_T>
   static inline JBLAS_CODE forward(int row, int col, const SRC_T* srcptr, int ld_src, int8_t* dstptr, int ld_dst,
-                                   float* scales, int ld_scale, int blocksize) {
+                                   float* scales, int ld_scale, int blocksize, float* reduce) {
 #if CompileAVX512F()
     if constexpr (utils::isa_base<ISA_T>::avx512f) {
       return avx512f::quantize_fp_s8_colblock<SRC_T>(row, col, srcptr, ld_src, dstptr, ld_dst, scales, ld_scale,
-                                                     blocksize);
+                                                     blocksize, reduce);
     }
 #endif
-    if constexpr (std::is_same_v<SRC_T, float>)
-      return ref::quantize_f32_s8_colblock(row, col, srcptr, ld_src, dstptr, ld_dst, scales, ld_scale, blocksize);
-    return JblasNotSupport;
+    return ref::quantize_fp_s8_colblock(row, col, srcptr, ld_src, dstptr, ld_dst, scales, ld_scale, blocksize, reduce);
   }
 };
 
@@ -367,9 +365,16 @@ class DecompressKBlockS4Fp {
     // AVX2 device only focus on fp32 data and layout
     if constexpr (utils::isa_base<ISA_T>::avx2 && std::is_same_v<_SCA_T, float> && std::is_same_v<_DST_T, float> &&
                   _PACK_ROW == 1) {
-      ret = avx2::decompress_kblock_bit4_packrow1(srcptr, dstptr, row, col, ld_src, ld_dst, scales, zero_points,
-                                                  k_offset, kblock, NPad, &avx2::dequant_s8_N_avx2<48>,
-                                                  &avx2::convert_s4_s8_16_sse<S4_T>, (int8_t*)tmp, tmpsize);
+      if (zero_points == nullptr) {
+        ret = avx2::decompress_kblock_bit4_packrow1<true>(srcptr, dstptr, row, col, ld_src, ld_dst, scales, zero_points,
+                                                          k_offset, kblock, NPad, &avx2::dequant_s8_N_avx2<48, true>,
+                                                          &avx2::convert_s4_s8_16_sse<S4_T>, (int8_t*)tmp, tmpsize);
+      } else {
+        ret = avx2::decompress_kblock_bit4_packrow1<false>(
+            srcptr, dstptr, row, col, ld_src, ld_dst, scales, zero_points, k_offset, kblock, NPad,
+            &avx2::dequant_s8_N_avx2<48, false>, &avx2::convert_s4_s8_16_sse<S4_T>, (int8_t*)tmp, tmpsize);
+      }
+
       if (ret == JblasSuccess) return ret;
     }
 #endif
@@ -467,6 +472,7 @@ class DecompressKBlockS4S8 {
     return ref::decompress_s4_s8<S4_T>(srcptr, dstptr, row, col, ld_src, ld_dst);
   }
 };
+
 template <int PACK_ROW>
 class DecompressKBlockS8F32 {
  public:
@@ -617,6 +623,21 @@ class RowReduceSum {
   template <JBLAS_ISA ISA_T>
   static inline JBLAS_CODE forward(const _RT* srcptr, int ldsrc, int row, int col, _RT* reduce) {
     return ref::row_reduce_sum<_RT>(srcptr, ldsrc, row, col, reduce);
+  }
+};
+
+class ColBlockReduceSum {
+ public:
+  template <JBLAS_ISA ISA_T, typename SRC_T>
+  static inline JBLAS_CODE forward(const SRC_T* srcptr, int ldsrc, int row, int col, int blocksize, float* reduce,
+                                   int ldr) {
+    if constexpr (utils::isa_base<ISA_T>::avx512f) {
+      return avx512f::col_block_reduce_sum<SRC_T>(srcptr, ldsrc, row, col, blocksize, reduce, ldr);
+    }
+    if constexpr (utils::isa_base<ISA_T>::avx2) {
+      return avx2::col_block_reduce_sum<SRC_T>(srcptr, ldsrc, row, col, blocksize, reduce, ldr);
+    }
+    return ref::col_block_reduce_sum<SRC_T>(srcptr, ldsrc, row, col, blocksize, reduce, ldr);
   }
 };
 

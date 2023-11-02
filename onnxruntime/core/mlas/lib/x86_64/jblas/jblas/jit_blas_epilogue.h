@@ -119,17 +119,35 @@ class CompFp32BlockEpilogue {
   struct Param {
     void* scales;
     JBLAS_DTYPE scaledtype;
-    int lds;
+    int ldsb;
+    int8_t* zps = nullptr;
+    float* reduce = nullptr;
+    int ldra;
   };
   JBLAS_CODE forward(const float* srcptr, float* dstptr, const int cachestep, const int M_offset, const int N_offset,
                      const int K_offset, const int M, const int N, const Param& _param, void* tmpcache,
                      size_t cachesize) {
+    auto ret = JblasNotSupport;
     if (_param.scaledtype == JBLAS_DTYPE::F32) {
-      return kernel::wrapper::CompFp32BlockScale::template forward<ISA_T>(
-          (float*)_param.scales + K_offset * _param.lds + N_offset, srcptr, cachestep, dstptr, cachestep, M, N);
+      ret = kernel::wrapper::CompFp32BlockScale::template forward<ISA_T>(
+          (float*)_param.scales + K_offset * _param.ldsb + N_offset, srcptr, cachestep, dstptr, cachestep, M, N);
+      assert(ret == JblasSuccess);
+      if (_param.zps != nullptr) {
+        ret = kernel::wrapper::RemoveZeroPointBias::forward<ISA_T>(
+            dstptr, cachestep, M, N, _param.zps + K_offset * _param.ldsb + N_offset,
+            (float*)_param.scales + K_offset * _param.ldsb + N_offset, _param.ldra,
+            _param.reduce + M_offset * _param.ldra + K_offset);
+      }
+      assert(ret == JblasSuccess);
+      return ret;
     } else if (_param.scaledtype == JBLAS_DTYPE::BF16) {
-      return kernel::wrapper::CompFp32BlockScale::template forward<ISA_T>(
-          (utils::bf16*)_param.scales + K_offset * _param.lds + N_offset, srcptr, cachestep, dstptr, cachestep, M, N);
+      ret = kernel::wrapper::CompFp32BlockScale::template forward<ISA_T>(
+          (utils::bf16*)_param.scales + K_offset * _param.ldsb + N_offset, srcptr, cachestep, dstptr, cachestep, M, N);
+      if (_param.zps != nullptr) {
+        assert(0);
+      }
+      assert(ret == JblasSuccess);
+      return ret;
     }
     return JblasNotSupport;
   }
@@ -217,7 +235,6 @@ class CompInt8BlockEpilogue {
             (float*)_param.scalesB + N_offset + K_offset * _param.ldsb, _param.ldsa, _param.K,
             _param.reduceA + M_offset * _param.ldsa + K_offset, _param.reduceB + N_offset + K_offset * _param.ldsb);
       }
-
     }
     return ret;
   }

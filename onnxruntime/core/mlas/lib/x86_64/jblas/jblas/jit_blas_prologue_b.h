@@ -210,16 +210,16 @@ class WeightKBlockS8 {
         if (thdp.valid) {
           for (int i = thdp.loc[1]; i < thdp.loc[1] + thdp.size[1]; i++) {
             if (i < rawnk_scale) {
-              std::memcpy(stor->template SPtr<float>() + i * stor->mNPad, scales + i * N, N * sizeof(scales[0]));
-              if (zero_points != nullptr) {
+              if (scales != nullptr)
+                std::memcpy(stor->template SPtr<float>() + i * stor->mNPad, scales + i * N, N * sizeof(scales[0]));
+              if (zero_points != nullptr)
                 std::memcpy(stor->template ZPtr<int8_t>() + i * stor->mNPad, zero_points + i * N,
                             N * sizeof(zero_points[0]));
-              }
             } else {
-              std::memset(stor->template SPtr<float>() + i * stor->mNPad, 0, stor->mNPad * sizeof(float));
-              if (zero_points != nullptr) {
+              if (scales != nullptr)
+                std::memset(stor->template SPtr<float>() + i * stor->mNPad, 0, stor->mNPad * sizeof(float));
+              if (zero_points != nullptr)
                 std::memset(stor->template ZPtr<int8_t>() + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
-              }
             }
           }
         }
@@ -231,18 +231,20 @@ class WeightKBlockS8 {
         if (thdp.valid) {
           for (int i = thdp.loc[1]; i < thdp.loc[1] + thdp.size[1]; i++) {
             if (i < rawnk_scale) {
-              for (size_t j = 0; j < N; j++) {
-                stor->template SPtr<utils::bf16>()[j + i * stor->mNPad] = static_cast<utils::bf16>(scales[i * N + j]);
+              if (scales != nullptr) {
+                for (size_t j = 0; j < N; j++) {
+                  stor->template SPtr<utils::bf16>()[j + i * stor->mNPad] = static_cast<utils::bf16>(scales[i * N + j]);
+                }
               }
               if (zero_points != nullptr) {
                 std::memcpy(stor->template ZPtr<int8_t>() + i * stor->mNPad, zero_points + i * N,
                             N * sizeof(zero_points[0]));
               }
             } else {
-              std::memset(stor->template SPtr<utils::bf16>() + i * stor->mNPad, 0, stor->mNPad * sizeof(utils::bf16));
-              if (zero_points != nullptr) {
+              if (scales != nullptr)
+                std::memset(stor->template SPtr<utils::bf16>() + i * stor->mNPad, 0, stor->mNPad * sizeof(utils::bf16));
+              if (zero_points != nullptr)
                 std::memset(stor->template ZPtr<int8_t>() + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
-              }
             }
           }
         }
@@ -250,6 +252,36 @@ class WeightKBlockS8 {
     }
   }
 
+  virtual void setTransposeQuantCorrection(const int N, const int K, const int8_t* zero_points, const float* scales,
+                                           void* ptr, parallel::IThreading* threading) {
+    auto stor = reinterpret_cast<StorageWeight*>(ptr);
+    int rawnk_scale = utils::updiv(K, stor->mBlockSize);
+    int nk_scale = utils::updiv(stor->mKPad, stor->mBlockSize);
+    parallel::Scheduler2D _para({threading->num_threads(), 1, nk_scale, 1, 1});
+    if (stor->mScaT == JBLAS_DTYPE::F32) {  // fp32 to fp32 direct copy
+      threading->parallel_for([&](int tidx) {
+        parallel::ThreadProblem2D thdp{tidx};
+        _para.getIndex(thdp);
+        if (thdp.valid) {
+          for (int i = thdp.loc[1]; i < thdp.loc[1] + thdp.size[1]; i++) {
+            if (i < rawnk_scale) {
+              for (size_t j = 0; j < N; j++) {
+                stor->template SPtr<float>()[i * stor->mNPad + j] = scales[j * rawnk_scale + i];
+              }
+              if (stor->mIsAsym)
+                for (size_t j = 0; j < N; j++) {
+                  stor->template ZPtr<int8_t>()[i * stor->mNPad + j] = zero_points[j * rawnk_scale + i];
+                }
+            } else {
+              std::memset(stor->template SPtr<float>() + i * stor->mNPad, 0, stor->mNPad * sizeof(float));
+              if (stor->mIsAsym)
+                std::memset(stor->template ZPtr<int8_t>() + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
+            }
+          }
+        }
+      });
+    }
+  }
 
   virtual void packQWeight(const int N, const int K, const int8_t* B, const int ldb, const float* scales,
                            const int8_t* zero_points, void* ptr, parallel::IThreading* threading) {
@@ -443,19 +475,78 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
                            const int8_t* zero_points, void* ptr, parallel::IThreading* threading) override {
     WeightKBlockS8<_GemmCore_T, ISA_T>::setQuantCorrection(N, K, zero_points, scales, ptr, threading);
     auto stor = reinterpret_cast<StorageWeight*>(ptr);
-    auto reorded = utils::amalloc<int8_t>((size_t)stor->mKPad * stor->mNPad);
+    auto tmp = utils::amalloc<float>((size_t)stor->mKPad * stor->mNPad);
+    auto reorded = (int8_t*)tmp;
     WeightKBlockS8<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded, threading);
     compressWeight(stor->mNPad, stor->mKPad, reorded, stor->mNPad, stor->WPtr(), threading);
     if (stor->mHasReduce) {
-      auto deq = utils::amalloc<float>((size_t)K * N);
+      auto deq = tmp;
       WeightKBlockS8<_GemmCore_T, ISA_T>::unpackWeight(N, K, stor, deq, N, threading);
       if (stor->mRedT == JBLAS_DTYPE::F32) {
-        WeightKBlockS8<_GemmCore_T, ISA_T>::reduceWeight(N, K, stor->mBlockSize, deq, ldb, stor->RPtr<float>(),
+        WeightKBlockS8<_GemmCore_T, ISA_T>::reduceWeight(N, K, stor->mBlockSize, deq, N, stor->RPtr<float>(),
                                                          stor->mNPad, threading);
       }
-      utils::afree(deq);
     }
-    utils::afree(reorded);
+    utils::afree(tmp);
+  }
+
+  virtual void packNbitsWeight(const int N, const int K, bool isasym, const uint8_t* B, const int ldb,
+                               const float* scales, const uint8_t* zero_points, void* ptr,
+                               parallel::IThreading* threading) {
+    if (B == nullptr || scales == nullptr) {
+      assert(0);
+      return;
+    }
+    if (isasym && zero_points == nullptr) {
+      assert(0);
+      return;
+    }
+    auto stor = reinterpret_cast<StorageWeight*>(ptr);
+    auto tmp = utils::amalloc<float>((size_t)stor->mKPad * stor->mNPad);
+    auto blks = updiv(K, stor->mBlockSize);
+    auto tmpscales = (float*)tmp;
+    auto tmpzeropoints = (int8_t*)(tmpscales + N * blks);
+    for (size_t i = 0; i < N * blks; i += 2) {
+      tmpscales[i] = scales[i] / 16;
+      tmpscales[i + 1] = scales[i + 1] / 16;
+      auto tmpzp = *(zero_points + i / 2);
+      tmpzeropoints[i] = ((tmpzp & 0xf) - 8) << 4;
+      tmpzeropoints[i + 1] = (((tmpzp & 0xf0) >> 4) - 8) << 4;
+    }
+
+    WeightKBlockS8<_GemmCore_T, ISA_T>::setTransposeQuantCorrection(N, K, tmpzeropoints, tmpscales, ptr, threading);
+    if (B) {
+      auto s8ptr = (int8_t*)tmp;
+      auto transposeunpackfunc_u4s4 = [&]() {
+        parallel::Scheduler2D para({threading->num_threads(), N, K, 1, 2});
+        threading->parallel_for([&](int tid) {
+          parallel::ThreadProblem2D thdp{tid};
+          para.getIndex(thdp);
+          if (thdp.valid) {
+            for (size_t i = thdp.loc[0]; i < thdp.loc[0] + thdp.size[0]; i++) {
+              for (size_t j = thdp.loc[1]; j < thdp.loc[1] + thdp.size[1]; j += 2) {
+                auto src = *(B + i * ldb / 2 + j / 2);
+                s8ptr[(j + 0) * N + i] = ((src & 0xf) - 8) << 4;
+                s8ptr[(j + 1) * N + i] = (((src & 0xf0) >> 4) - 8) << 4;
+              }
+            }
+          }
+        });
+      };
+      transposeunpackfunc_u4s4();
+      auto reorded = s8ptr + (size_t)K * N;
+      WeightKBlockS8<_GemmCore_T, ISA_T>::reorderWeight(N, K, s8ptr, N, reorded, threading);
+      compressWeight(stor->mNPad, stor->mKPad, reorded, stor->mNPad, stor->WPtr(), threading);
+      if (stor->mHasReduce) {
+        auto deq = (float*)tmp;
+        WeightKBlockS8<_GemmCore_T, ISA_T>::unpackWeight(N, K, stor, deq, N, threading);
+        if (stor->mRedT == JBLAS_DTYPE::F32) {
+          WeightKBlockS8<_GemmCore_T, ISA_T>::reduceWeight(N, K, stor->mBlockSize, deq, N, stor->template RPtr<float>(),
+                                                           stor->mCStep, threading);
+        }
+      }
+    }
+    utils::afree(tmp);
   }
 
   void compressWeight(const int N, const int K, const int8_t* B, const int ldb, utils::bit4x2* dstptr,

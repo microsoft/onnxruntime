@@ -332,6 +332,78 @@ class StorageQuantCorrection : public ISerialObject {
   }
 };
 
+class StorageReduce : public ISerializable, public ISerialBuffer {
+ public:
+  using CorrectionType = StorageQuantCorrection;
+  int m = 0, k = 0, lda = 0, kblock = 1;
+  size_t resize(int _m, int _k, int _kblock, JBLAS_DTYPE redt) {
+    kblock = _kblock;
+    m = _m;
+    k = _k;
+    lda = utils::updiv(_k, _kblock);
+    size_t bufsize = size_t(m) * lda * utils::jblas_dtype_size(redt);
+    ISerialBuffer::resize(bufsize);
+    mSize = getSerializedSize();
+    return mSize;
+  }
+  template <typename QT_T>
+  inline QT_T* APtr() {
+    return get<QT_T>();
+  }
+
+  virtual void assign(int8_t* buf) override {
+    ISerializable::deserializeBuffer(buf, true);
+    deserializeBuffer(buf, true);
+    ISerialBuffer::deserializeBuffer(buf, true);
+  }
+
+  virtual void serialize(int8_t* wptr) {
+    ISerializable::serializeToBuffer(wptr);
+    serializeToBuffer(wptr);
+    ISerialBuffer::serializeToBuffer(wptr);
+  }
+
+  virtual void deserialize(int8_t* rptr) override {
+    ISerializable::deserializeBuffer(rptr, false);
+    deserializeBuffer(rptr, false);
+    ISerialBuffer::deserializeBuffer(rptr, false);
+  }
+
+ protected:
+  virtual size_t getSerializedSize() {
+    return ISerializable::getSerializedSize() + getMiscSize() + ISerialBuffer::getSerializedSize();
+  }
+
+  virtual void serializeToBuffer(int8_t*& wptr) {
+    utils::serialize(wptr, m);
+    utils::serialize(wptr, k);
+    utils::serialize(wptr, lda);
+    utils::serialize(wptr, kblock);
+  }
+
+  virtual void deserializeBuffer(int8_t*& rptr, bool map_buf) {
+    if (!map_buf) {
+      m = utils::deserialize<int>(rptr);
+      lda = utils::deserialize<int>(rptr);
+      kblock = utils::deserialize<int>(rptr);
+    } else {
+      utils::serialize(rptr, m);
+      utils::serialize(rptr, k);
+      utils::serialize(rptr, lda);
+      utils::serialize(rptr, kblock);
+    }
+  }
+
+  inline constexpr size_t getMiscSize() {
+    size_t totalsize = 0;
+    totalsize += sizeof(m);
+    totalsize += sizeof(k);
+    totalsize += sizeof(lda);
+    totalsize += sizeof(kblock);
+    return totalsize;
+  }
+};
+
 class StorageQuantActivation : public ISerializable, public ISerialBuffer, public StorageQuantCorrection {
  public:
   using CorrectionType = StorageQuantCorrection;

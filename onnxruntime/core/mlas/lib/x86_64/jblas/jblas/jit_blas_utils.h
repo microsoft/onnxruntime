@@ -51,11 +51,11 @@
 // As long as the compiler supports the ISA, we will enable it.
 // Only the ISA you use in your project will be compiled.
 #ifdef __GNUC__
-#define CompileAVX512F() (defined(__GNUC__) && (__GNUC__ >= 6))
-#define CompileAVX2() (defined(__GNUC__) && (__GNUC__ >= 5))
-#define CompileAMX() (defined(__GNUC__) && (__GNUC__ >= 11))
-#define CompileBF16() (defined(__GNUC__) && (__GNUC__ >= 13))
-#define CompileFP16() (defined(__GNUC__) && (__GNUC__ >= 13))
+#define CompileAVX512F() (__GNUC__ >= 6)
+#define CompileAVX2() (__GNUC__ >= 5)
+#define CompileAMX() (__GNUC__ >= 11)
+#define CompileBF16() (__GNUC__ >= 13)
+#define CompileFP16() (__GNUC__ >= 13)
 #define CompileAMXBF16() (CompileAMX())
 #define CompileAMXINT8() (CompileAMX())
 #else
@@ -415,6 +415,11 @@ uint8_t cast(float _src) {
   _src = std::min(_src, 255.f);
   _src = std::max(_src, 0.f);
   return static_cast<uint8_t>(_src);
+}
+
+template <>
+int cast(float _src) {
+  return int(roundf(_src));
 }
 
 template <>
