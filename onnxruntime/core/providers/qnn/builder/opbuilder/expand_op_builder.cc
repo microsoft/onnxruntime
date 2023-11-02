@@ -27,7 +27,7 @@ class ExpandOpBuilder : public BaseOpBuilder {
 };
 
 template <typename T>
-void FillNonQuantizedInput(std::vector<uint8_t>& shape_data, int shape_size, T ini_value) {
+void FillShapeInputData(std::vector<uint8_t>& shape_data, int shape_size, T ini_value) {
   shape_data.resize(shape_size * sizeof(T));
   T* shape_data_float = reinterpret_cast<T*>(shape_data.data());
   std::fill(shape_data_float, shape_data_float + shape_size, ini_value);
@@ -86,15 +86,15 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(utils::Quantize(ini_value, scale, zero_point, qnn_data_type, quant_value_int));
     switch (qnn_data_type) {
       case QNN_DATATYPE_SFIXED_POINT_8: {
-        FillNonQuantizedInput(shape_data, shape_size, static_cast<int8_t>(quant_value_int));
+        FillShapeInputData(shape_data, shape_size, static_cast<int8_t>(quant_value_int));
         break;
       }
       case QNN_DATATYPE_UFIXED_POINT_8: {
-        FillNonQuantizedInput(shape_data, shape_size, static_cast<uint8_t>(quant_value_int));
+        FillShapeInputData(shape_data, shape_size, static_cast<uint8_t>(quant_value_int));
         break;
       }
       case QNN_DATATYPE_UFIXED_POINT_16: {
-        FillNonQuantizedInput(shape_data, shape_size, static_cast<uint16_t>(quant_value_int));
+        FillShapeInputData(shape_data, shape_size, static_cast<uint16_t>(quant_value_int));
         break;
       }
       default:
@@ -104,15 +104,15 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(utils::GetQnnDataType(false, type_proto, qnn_data_type));
     switch (qnn_data_type) {
       case QNN_DATATYPE_FLOAT_32: {
-        FillNonQuantizedInput(shape_data, shape_size, static_cast<float>(1.0));
+        FillShapeInputData(shape_data, shape_size, static_cast<float>(1.0));
         break;
       }
       case QNN_DATATYPE_INT_32: {
-        FillNonQuantizedInput(shape_data, shape_size, static_cast<int32_t>(1));
+        FillShapeInputData(shape_data, shape_size, static_cast<int32_t>(1));
         break;
       }
       case QNN_DATATYPE_UINT_32: {
-        FillNonQuantizedInput(shape_data, shape_size, static_cast<uint32_t>(1));
+        FillShapeInputData(shape_data, shape_size, static_cast<uint32_t>(1));
         break;
       }
       default:
@@ -120,7 +120,8 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     }  // switch
   }    // if-else
 
-  std::string shape_input_name(input_name + "_mul");
+  const std::string& output_name = node_unit.Outputs()[0].node_arg.Name();
+  std::string shape_input_name(input_name + "_" + output_name);
   QnnTensorWrapper input_tensorwrapper(shape_input_name, QNN_TENSOR_TYPE_STATIC, qnn_data_type, quantize_param,
                                        std::move(input_shape), std::move(shape_data));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
