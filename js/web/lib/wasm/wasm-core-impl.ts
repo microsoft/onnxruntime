@@ -240,7 +240,7 @@ export const releaseSession = (sessionId: number): void => {
   activeSessions.delete(sessionId);
 };
 
-const prepareInputOutputTensor =
+export const prepareInputOutputTensor =
     (tensor: TensorMetadata|null, tensorHandles: number[], allocs: number[], sessionId: number, index: number):
         void => {
           if (!tensor) {

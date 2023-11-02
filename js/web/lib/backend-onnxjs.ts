@@ -5,7 +5,7 @@
 import {Backend, InferenceSession, InferenceSessionHandler} from 'onnxruntime-common';
 
 import {Session} from './onnxjs/session';
-import {OnnxjsSessionHandler} from './onnxjs/session-handler';
+import {OnnxjsSessionHandler} from './onnxjs/session-handler-inference';
 
 class OnnxjsBackend implements Backend {
   // eslint-disable-next-line @typescript-eslint/no-empty-function

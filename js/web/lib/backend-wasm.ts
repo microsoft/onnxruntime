@@ -5,7 +5,7 @@ import {cpus} from 'node:os';
 import {Backend, env, InferenceSession, InferenceSessionHandler} from 'onnxruntime-common';
 
 import {initializeWebAssemblyInstance} from './wasm/proxy-wrapper';
-import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler';
+import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler-inference';
 
 /**
  * This function initializes all flags for WebAssembly.
