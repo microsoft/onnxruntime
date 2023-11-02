@@ -58,9 +58,9 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   std::vector<uint8_t> unpacked_tensor;
   const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
-  const int64_t* gather_indices_int64 = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+  const int64_t* shape_data_int64 = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
   std::vector<uint32_t> input_shape(shape_rank, 0);
-  std::transform(gather_indices_int64, gather_indices_int64 + shape_rank, input_shape.begin(),
+  std::transform(shape_data_int64, shape_data_int64 + shape_rank, input_shape.begin(),
                  [](int64_t item) { return SafeInt<uint32_t>(item); });
   int shape_size = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<uint32_t>());
 
@@ -73,10 +73,10 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(utils::GetQnnDataType(true, type_proto, qnn_data_type));
     float scale = 0.0f;
     int zero_point = 0;
-    constexpr double scale_rmax = std::numeric_limits<double>::min();
-    constexpr double scale_rmin = std::numeric_limits<double>::max();
-    ORT_RETURN_IF_ERROR(utils::GetQuantParams(static_cast<float>(scale_rmin),
-                                              static_cast<float>(scale_rmax),
+    float rmax = 1.0f;
+    float rmin = 1.0f;
+    ORT_RETURN_IF_ERROR(utils::GetQuantParams(rmin,
+                                              rmax,
                                               qnn_data_type,
                                               scale,
                                               zero_point));
@@ -120,7 +120,6 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     } // switch
   } // if-else
 
-  std::vector<uint32_t> cast_output_shape(input_shape);
   std::string shape_input_name(input_name + "_mul");
   QnnTensorWrapper input_tensorwrapper(shape_input_name, QNN_TENSOR_TYPE_STATIC, qnn_data_type, quantize_param,
                                        std::move(input_shape), std::move(shape_data));
