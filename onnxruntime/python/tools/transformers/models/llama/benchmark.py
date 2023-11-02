@@ -21,7 +21,7 @@ from llama_inputs import (
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
 from tqdm import trange
-from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 import onnxruntime as ort
 from onnxruntime.transformers.benchmark_helper import measure_memory, setup_logger
