@@ -946,7 +946,11 @@ bool Node::ClearAttribute(const std::string& attr_name) {
   return attributes_.erase(attr_name) > 0;
 }
 
-void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
+void Node::ToProto(NodeProto& proto, bool
+#if !defined(ORT_MINIMAL_BUILD)
+                                         update_subgraphs
+#endif
+) const {
   proto.set_name(name_);
   proto.set_op_type(op_type_);
 
