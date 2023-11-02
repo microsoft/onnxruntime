@@ -116,7 +116,7 @@ std::vector<std::unique_ptr<SubGraphDef>> CustomEp2::GetCapability(interface::Gr
       }
     }
   }
-
+  std::cout<<"CustomEp2::GetCapability() has "<<ret.size()<<" subgraphs\n";
   return ret;
 }
 
@@ -124,6 +124,11 @@ common::Status CustomEp2::Compile(std::vector<std::unique_ptr<interface::GraphVi
   for (size_t i = 0; i < partial_graph.size(); i++) {
 
     NodeComputeInfo compute_info;
+    compute_info.create_state_func = [](ComputeContext*, FunctionState*) {
+      return 0;
+    };
+    compute_info.release_state_func = [](FunctionState) {
+    };
     compute_info.compute_func = [](void* state, const OrtApi*, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
       assert(ctx.GetInputCount() == 1);

@@ -216,33 +216,34 @@ class ExecutionProviderAdapter : public IExecutionProvider {
     external_ep_impl_->RegisterStreamHandlers(stream_handle_registry, ort_allocators);
   }
 
-  virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
-    return IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
+//  virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
+//    return IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
+//  }
+
+virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  ApiGraphView api_graph_view(graph_viewer.GetGraph(), std::move(cpu_allocator));
+  std::vector<std::unique_ptr<SubGraphDef>> sub_graphs = external_ep_impl_->GetCapability(&api_graph_view);
+  if (sub_graphs.size() == 0) return IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
+
+  std::vector<std::unique_ptr<ComputeCapability>> ret;
+  for (auto& sub_graph : sub_graphs) {
+    std::unique_ptr<IndexedSubGraph> sb = std::make_unique<IndexedSubGraph>();
+    sb->nodes = sub_graph->nodes;
+    auto meta_def = std::make_unique<onnxruntime::IndexedSubGraph::MetaDef>();
+    meta_def->name = sub_graph->GetMetaDef()->name;
+    meta_def->doc_string = sub_graph->GetMetaDef()->doc_string;
+    meta_def->domain = sub_graph->GetMetaDef()->domain;
+    meta_def->since_version = sub_graph->GetMetaDef()->since_version;
+    meta_def->inputs = sub_graph->GetMetaDef()->inputs;
+    meta_def->outputs = sub_graph->GetMetaDef()->outputs;
+    meta_def->constant_initializers = sub_graph->GetMetaDef()->constant_initializers;
+    sb->SetMetaDef(std::move(meta_def));
+
+    ret.push_back(std::make_unique<ComputeCapability>(std::move(sb)));
   }
-
-  //virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
-  //  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
-  //  ApiGraphView api_graph_view(graph_viewer.GetGraph(), std::move(cpu_allocator));
-  //  std::vector<std::unique_ptr<SubGraphDef>> sub_graphs = external_ep_impl_->GetCapability(&api_graph_view);
-  //  if (sub_graphs.size() == 0) return IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
-
-  //  std::vector<std::unique_ptr<ComputeCapability>> ret;
-  //  for (auto& sub_graph : sub_graphs) {
-  //    std::unique_ptr<IndexedSubGraph> sb = std::make_unique<IndexedSubGraph>();
-  //    sb->nodes = sub_graph->nodes;
-  //    auto meta_def = std::make_unique<onnxruntime::IndexedSubGraph::MetaDef>();
-  //    meta_def->name = sub_graph->GetMetaDef()->name;
-  //    meta_def->doc_string = sub_graph->GetMetaDef()->doc_string;
-  //    meta_def->domain = sub_graph->GetMetaDef()->domain;
-  //    meta_def->since_version = sub_graph->GetMetaDef()->since_version;
-  //    meta_def->inputs = sub_graph->GetMetaDef()->inputs;
-  //    meta_def->outputs = sub_graph->GetMetaDef()->outputs;
-  //    meta_def->constant_initializers = sub_graph->GetMetaDef()->constant_initializers;
-
-  //    sb->SetMetaDef(std::move(meta_def));
-  //  }
-  //  return ret;
-  //}
+  return ret;
+}
 
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
     std::vector<std::unique_ptr<interface::GraphViewRef>> fused_node_as_graph;
