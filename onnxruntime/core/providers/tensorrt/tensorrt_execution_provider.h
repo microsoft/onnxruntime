@@ -169,6 +169,7 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
   bool sync_stream_after_enqueue = false;
+  std::unordered_map<char const*, OutputAllocator*> dds_output_allocator_map;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
   bool int8_enable = false;
