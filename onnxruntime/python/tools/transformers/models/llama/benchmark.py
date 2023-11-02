@@ -21,7 +21,7 @@ from llama_inputs import (
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
 from tqdm import trange
-from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer, AutoModelForCausalLM, MistralConfig
+from transformers import AutoModelForCausalLM, LlamaConfig, LlamaForCausalLM, LlamaTokenizer, MistralConfig
 
 import onnxruntime as ort
 from onnxruntime.transformers.benchmark_helper import measure_memory, setup_logger
@@ -121,29 +121,29 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 return_dict=True,
             )
     elif args.benchmark_type == "mistral-ort":
-            # Using merged model in Optimum (e.g. created by convert_to_onnx export)
-            init_inputs = get_merged_sample_with_past_kv_inputs(
-                args.config,
-                args.target_device,
-                args.batch_size,
-                seq_len=args.sequence_length,
-                past_seq_len=0,
-                max_seq_len=max_seq_len,
-                use_fp16=args.use_fp16,
-                engine="ort",
-                return_dict=True,
-            )
-            iter_inputs = get_merged_sample_with_past_kv_inputs(
-                args.config,
-                args.target_device,
-                args.batch_size,
-                seq_len=1,
-                past_seq_len=args.sequence_length,
-                max_seq_len=max_seq_len,
-                use_fp16=args.use_fp16,
-                engine="ort",
-                return_dict=True,
-            )
+        # Using merged model in Optimum (e.g. created by convert_to_onnx export)
+        init_inputs = get_merged_sample_with_past_kv_inputs(
+            args.config,
+            args.target_device,
+            args.batch_size,
+            seq_len=args.sequence_length,
+            past_seq_len=0,
+            max_seq_len=max_seq_len,
+            use_fp16=args.use_fp16,
+            engine="ort",
+            return_dict=True,
+        )
+        iter_inputs = get_merged_sample_with_past_kv_inputs(
+            args.config,
+            args.target_device,
+            args.batch_size,
+            seq_len=1,
+            past_seq_len=args.sequence_length,
+            max_seq_len=max_seq_len,
+            use_fp16=args.use_fp16,
+            engine="ort",
+            return_dict=True,
+        )
 
     elif args.benchmark_type == "ort-convert-to-onnx":
         # Microsoft export from convert_to_onnx
@@ -223,7 +223,7 @@ def get_model(args: argparse.Namespace):
 
         if args.benchmark_type == "hf-pt-compile":
             model = torch.compile(model)
-    
+
     elif args.benchmark_type in {"mistral-hf"}:
         source = args.hf_pt_dir_path if args.hf_pt_dir_path else args.model_name
         start_time = time.time()
@@ -554,7 +554,15 @@ def get_args():
         "--benchmark-type",
         type=str,
         required=True,
-        choices=["hf-pt-eager", "hf-pt-compile", "hf-ort", "ort-msft", "ort-convert-to-onnx", "mistral-ort", "mistral-hf"]
+        choices=[
+            "hf-pt-eager",
+            "hf-pt-compile",
+            "hf-ort",
+            "ort-msft",
+            "ort-convert-to-onnx",
+            "mistral-ort",
+            "mistral-hf",
+        ],
     )
     parser.add_argument(
         "-m",
@@ -677,9 +685,9 @@ def main():
     torch.backends.cudnn.benchmark = True
 
     tokenizer = LlamaTokenizer.from_pretrained(args.model_name)
-    if (args.benchmark_type in ("mistral-ort", "mistral-hf")):
-        config = MistralConfig.from_pretrained(args.model_name) 
-    else:   
+    if args.benchmark_type in ("mistral-ort", "mistral-hf"):
+        config = MistralConfig.from_pretrained(args.model_name)
+    else:
         config = LlamaConfig.from_pretrained(args.model_name)
     target_device = f"cuda:{args.device_id}" if args.device != "cpu" else args.device
     use_fp16 = args.precision == "fp16"
