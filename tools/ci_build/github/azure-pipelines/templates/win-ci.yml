@@ -108,6 +108,8 @@ stages:
           EnvSetupScript: ${{ parameters.EnvSetupScript }}
           ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
             DownloadCUDA: true
+          ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+            DownloadCUDA: true
 
       - template: download-deps.yml
 
