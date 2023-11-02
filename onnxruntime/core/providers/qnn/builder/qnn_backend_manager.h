@@ -178,10 +178,10 @@ class QnnBackendManager {
 
   Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, std::string eventLevel, std::ofstream& outfile);
   Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, std::string eventLevel, std::ofstream& outfile);
-  std::string QnnBackendManager::GetUnitString(QnnProfile_EventUnit_t unitType);
-  std::string QnnBackendManager::GetEventTypeString(QnnProfile_EventType_t eventType);
+  std::string GetUnitString(QnnProfile_EventUnit_t unitType);
+  std::string GetEventTypeString(QnnProfile_EventType_t eventType);
   std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
-  const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error);
+  const char* QnnProfileErrorToString(QnnProfile_Error_t error);
 
  private:
   const std::string backend_path_;
