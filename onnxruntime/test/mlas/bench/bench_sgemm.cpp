@@ -65,6 +65,7 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
     }
 
   } else {
+#if 0
     MlasGemm(
         trans_a ? CblasTrans : CblasNoTrans,
         trans_b ? CblasTrans : CblasNoTrans,
@@ -80,8 +81,11 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
         C.data(),
         N,
         tp.get());
+#endif
+    abort();
 
     for (auto _ : state) {
+#if 0
       MlasGemm(
           trans_a ? CblasTrans : CblasNoTrans,
           trans_b ? CblasTrans : CblasNoTrans,
@@ -97,6 +101,8 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
           C.data(),
           N,
           tp.get());
+#endif
+      abort();
     }
   }
 }
