@@ -2803,7 +2803,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             if (!tensor_shape_values[input_name].empty()) {
               shape_values = tensor_shape_values[input_name];
             } else {
-              auto status = GetShapeOfShapeTensor(input_tensor, shape_values, trt_engine, input_name, stream);
+              auto status = GetShapeOfShapeTensor(input_tensor, shape_values, trt_engine, binding_index, stream);
               if (status != Status::OK()) {
                 return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
               }
