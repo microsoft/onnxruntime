@@ -45,7 +45,7 @@ class MatMulNBits final : public OpKernel {
   IAllocatorUniquePtr<void> packed_b_;
   const uint8_t *qptr_, *zptr_;
   const float* sptr_;
-  bool is_asym_;
+  int64_t is_asym_;
   int64_t comp_type_;
 };
 
@@ -69,8 +69,10 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
       auto packed_b_size = MlasJblasQ4GemmPackBSize(N_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_));
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
       MlasJblasNBitsGemmPackB(packed_b_.get(), qptr_, sptr_, zptr_, N_, K_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), NULL);
-      prepacked_weights->buffers_.push_back(std::move(packed_b_));
-      prepacked_weights->buffer_sizes_.push_back(packed_b_size);
+      if (prepacked_weights) {
+        prepacked_weights->buffers_.push_back(std::move(packed_b_));
+        prepacked_weights->buffer_sizes_.push_back(packed_b_size);
+      }
       is_packed = true;
     }
   }
