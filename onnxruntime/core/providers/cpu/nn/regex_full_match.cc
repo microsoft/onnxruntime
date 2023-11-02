@@ -1,4 +1,7 @@
-#include "regex_full_match.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/providers/cpu/nn/regex_full_match.h"
 #include "core/common/common.h"
 
 namespace onnxruntime {
@@ -10,28 +13,19 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     RegexFullMatch);
 
-RegexFullMatch::RegexFullMatch(const OpKernelInfo& info) : OpKernel(info) {
-  ORT_ENFORCE(info.GetAttr<std::string>("pattern", &pattern_).IsOK());
-  ORT_ENFORCE(RE2(pattern_).ok(), "Invalid pattern: ", pattern_);
+RegexFullMatch::RegexFullMatch(const OpKernelInfo& info) : OpKernel(info), re_{info.GetAttr<std::string>("pattern")} {
+  ORT_ENFORCE(re_.ok(), "Invalid regex pattern: ", re_.pattern());
 }
 
 Status RegexFullMatch::Compute(OpKernelContext* context) const {
-  RE2 re(pattern_);
   const auto* input_tensor = context->Input<Tensor>(0);
-  if (nullptr == input_tensor) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Input count mismatch");
-  }
-  auto* output_tensor = context->Output(0, input_tensor->Shape());
-  if (nullptr == output_tensor) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Output count mismatch");
-  }
   const auto input_data = input_tensor->template DataAsSpan<std::string>();
+  auto* output_tensor = context->Output(0, input_tensor->Shape());
   auto output_data = output_tensor->template MutableDataAsSpan<bool>();
-  const auto N = input_tensor->Shape().Size();
   auto output_iter = output_data.begin();
   auto input_iter = input_data.begin();
-  while (input_iter != output_data.end()) {
-    *output_iter = RE2::FullMatch(*input_iter, re);
+  while (input_iter != input_data.end()) {
+    *output_iter = RE2::FullMatch(*input_iter, re_);
     input_iter++;
     output_iter++;
   }

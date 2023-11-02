@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "core/framework/op_kernel.h"
@@ -11,7 +14,7 @@ class RegexFullMatch final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  std::string pattern_;
+  RE2 re_;
 };
 
 }  // namespace onnxruntime
