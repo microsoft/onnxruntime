@@ -14,21 +14,18 @@ type ElementwiseCustomExpression = (expression: string) => string;
 type ElementwiseFunctionCall = BuiltinFunctionName|ElementwiseCustomExpression;
 
 const createElementwiseProgramShader =
-    (shaderHelper: ShaderHelper, datasize: number, inputDataType: number, outputDataType: number,
+    (shaderHelper: ShaderHelper, inputShape: readonly number[], inputDataType: number, outputDataType: number,
      funcCall: ElementwiseFunctionCall, additionalImplementation?: string): string => {
-      const vecSize = Math.ceil(datasize / 4);
-
       let expression = '';
       if (typeof funcCall === 'string') {
         expression = `${funcCall}(a)`;
       } else {
         expression = funcCall('a');
       }
-      const inputRank = 1;
-      const outputRank = 1;
+      const inputRank = inputShape.length;
+      const outputRank = inputRank;
       const useShapesUniforms = enableShapesUniforms(inputRank);
-      const inputShape = [vecSize];
-      const outputShape = [vecSize];
+      const outputShape = inputShape;
       const inputShapeOrRank = useShapesUniforms ? inputRank : inputShape;
       const outputShapeOrRank = useShapesUniforms ? outputRank : outputShape;
       const input = inputVariable('inputData', inputDataType, inputShapeOrRank, 4);
@@ -53,15 +50,15 @@ const createElementwiseProgramInfo =
       name,
       shaderCache: {hint: cacheKey, inputDependencies: enableShapesUniforms(1) ? ['rank'] : ['dims']},
       getShaderSource: shaderHelper => createElementwiseProgramShader(
-          shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall, additionalImplementation),
+          shaderHelper, input.dims, input.dataType, outputDataType, funcCall, additionalImplementation),
       getRunData: (inputTensors) => ({
         outputs: [{dims: input.dims, dataType: outputDataType}],
         dispatchGroup:
             {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
         programUniforms: [
           {type: 'uint32', data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
-          ...createTensorShapeVariables([Math.ceil(ShapeUtil.size(input.dims) / 4)]),
-          ...createTensorShapeVariables([Math.ceil(ShapeUtil.size(input.dims) / 4)]),
+          ...createTensorShapeVariables(input.dims),
+          ...createTensorShapeVariables(input.dims),
         ],
       })
     });

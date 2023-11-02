@@ -186,7 +186,7 @@ const createBinaryOpProgramInfo =
             {type: 'uint32', data: Math.ceil(ShapeUtil.size(outputShape) / 4)},
             ...createTensorShapeVariables(a.dims),
             ...createTensorShapeVariables(b.dims),
-            ...createTensorShapeVariables(outputShape)
+            ...createTensorShapeVariables(outputShape),
           ],
         }),
       };
