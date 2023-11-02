@@ -200,7 +200,7 @@ def run_torchscript_separate_export(
     batch_size, sequence_length = 2, 8
 
     # set device used to export model
-    # for llama-2-70b we will use current gpus to speed up export process (we need at least 4 A100 GPUs)
+    # for llama-2-70b we will use current gpus to speed up export process
     # for other models, we will use CPU to make sure we have enough memory to do export
     device = llama.device if args.model_name == "Llama-2-70b-hf" else torch.device("cpu")
 
@@ -278,6 +278,7 @@ def run_torchscript_separate_export(
     # Avoid using system temp dir to avoid overflood on hard disk as 70b model is very large.
     # Use temp folder per rank to avoid race condition here.
     temp_dir = f"./temp_past_{rank}"
+    _prepare_dir(temp_dir)
     temp_path = os.path.join(temp_dir, "temp.onnx")
     torch.onnx.export(
         llama,
@@ -318,9 +319,12 @@ def run_torchscript_merged_export(
     batch_size, sequence_length, past_sequence_length = 2, 8, 0
 
     # set device used to export model
-    # for llama-2-70b we will use current gpus to speed up export process (we need at least 4 A100 GPUs)
+    # for llama-2-70b we will use current gpus to speed up export process
     # for other models, we will use CPU to make sure we have enough memory to do export
     device = llama.device if args.model_name == "Llama-2-70b-hf" else torch.device("cpu")
+
+    temp_name = args.model_name.lower().replace("-", "").replace("_", "")
+    max_sequence_length = 16384 if "codellama" in temp_name else 4096 if "llama2" in temp_name else 2048
 
     # Export decoder_merged_model.onnx
     decoder_merged_inputs = get_merged_sample_with_past_kv_inputs(
@@ -329,6 +333,7 @@ def run_torchscript_merged_export(
         batch_size,
         sequence_length,
         past_sequence_length,
+        max_seq_len=max_sequence_length,
         use_fp16=args.precision == Precision.FLOAT16,
         world_size=world_size,
     )
@@ -460,7 +465,7 @@ def smooth_quant(
         calibration_sampling_size=[args.calibration_sampling_size],
         recipes={
             "optypes_to_exclude_output_quant": ["MatMul"],
-            "smooth_quant": args.smooth_quant,
+            "smooth_quant": True,
             "smooth_quant_args": {"alpha": args.smooth_quant_alpha},
         },
         op_type_dict={
@@ -578,15 +583,6 @@ def get_args():
         default="cpu",
         choices=["cpu", "cuda", "rocm"],
         help="Execution provider to verify parity with",
-    )
-
-    parser.add_argument(
-        "-id",
-        "--device-id",
-        required=False,
-        type=str,
-        default="0",
-        help="Device ID for GPUs",
     )
 
     parser.add_argument(
@@ -735,18 +731,28 @@ def main():
         remove_existing_files(args.output)
     logger.info(f"Arguments: {args}")
 
+    world_size = get_size()
+    rank = get_rank()
+
     # Load model and config
     use_auth_token = args.input == os.path.join(".")
     setattr(args, "use_auth_token", use_auth_token)  # noqa: B010
 
-    location = args.model_name if use_auth_token else args.input
-    l_config, llama = setup_torch_model(args, location, use_auth_token)
     original_model_name = args.model_name
     setattr(args, "original_model_name", original_model_name)  # noqa: B010
     args.model_name = args.model_name.split("/")[-1]
 
-    world_size = get_size()
-    rank = get_rank()
+    setattr(args, "device_name", "cpu" if args.execution_provider == "cpu" else f"cuda:{rank}")  # noqa: B010
+    setattr(args, "device", torch.device(args.device_name))  # noqa: B010
+
+    location = args.original_model_name if use_auth_token else args.input
+
+    # use cuda for Llama-2-70b to speedup export, other models use CPU by default
+    l_config, llama = setup_torch_model(
+        args, location, use_auth_token, device=args.device if args.model_name == "Llama-2-70b-hf" else None
+    )
+
+    assert l_config.num_attention_heads % world_size == 0 and l_config.num_key_value_heads % world_size == 0
 
     barrier()
     for i in range(world_size):
@@ -787,6 +793,7 @@ def main():
                     run_torchscript_separate_export(args, l_config, llama, rank, world_size)
                 else:
                     run_torchscript_merged_export(args, l_config, llama, rank, world_size)
+            del llama  # Delete LLaMA model from memory since it will be loaded again during parity check
 
             # Set model paths to store FP32 optimized model
             decoder_model_fp32_opt_path = os.path.join(
@@ -899,9 +906,6 @@ def main():
                         del quant
                         logger.info(f"The ONNX model at {fp_path} has been quantized to int4 and saved at {int4_path}!")
                         remove_existing_model(fp_path)
-
-            # Delete LLaMA model from memory since it will be loaded again during parity
-            del llama
         barrier()
 
     logger.info("Verifying parity on all ONNX models created")
