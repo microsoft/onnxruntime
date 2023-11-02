@@ -87,6 +87,7 @@ const getModelInputOutputNamesLoop =
           ifErrCodeCheckLastError(name, `Can't get input or output name -- is input: ${isInput}, index ${i}`, false);
 
           names.push(wasm.UTF8ToString(name));
+          wasm._free(name);
         } else {
           throw new Error(NO_TRAIN_FUNCS_MSG);
         }
@@ -506,14 +507,13 @@ export const loadParametersBuffer =
   }
 };
 
-export const releaseTrainingSessionAndCheckpoint =
-    (checkpointId: number, sessionId: number): void => {
-      const wasm = getInstance();
+export const releaseTrainingSessionAndCheckpoint = (checkpointId: number, sessionId: number): void => {
+  const wasm = getInstance();
 
-      if (wasm._OrtTrainingReleaseSession) {
-        wasm._OrtTrainingReleaseSession(sessionId);
-      }
-      if (wasm._OrtTrainingReleaseCheckpoint) {
-        wasm._OrtTrainingReleaseCheckpoint(checkpointId);
-      }
-    };
+  if (wasm._OrtTrainingReleaseSession) {
+    wasm._OrtTrainingReleaseSession(sessionId);
+  }
+  if (wasm._OrtTrainingReleaseCheckpoint) {
+    wasm._OrtTrainingReleaseCheckpoint(checkpointId);
+  }
+};
