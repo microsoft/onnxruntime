@@ -283,12 +283,6 @@
         "^test_dft_axis",
         "^test_dft",
         "^test_dft_inverse",
-        "^test_isinf",
-        "^test_isinf_float16",
-        "^test_isinf_negative",
-        "^test_isinf_positive",
-        "^test_isnan",
-        "^test_isnan_float16",
         "^test_reduce_max_bool_inputs",
         "^test_reduce_min_bool_inputs",
         "^test_reduce_min_empty_set",
@@ -526,6 +520,10 @@
         "test_range_float_type_positive_delta_expanded_cpu", // Error but not a failure.
         "test_scan_sum_cpu", // Disabled due to output mismatch with tolerance.
         "test_scan9_sum_cpu" // Disabled due to output mismatch with tolerance.
+    ],
+    "current_failing_tests_OPENVINO_NPU_FP16": [
+        "^test_prelu_broadcast",
+        "test_loop11_cpu"
     ],
     "current_failing_tests_OPENVINO_opset18": [
         // pending opset 18 support, RUNTIME_EXCEPTION : Encountered unknown exception in Initialize()
