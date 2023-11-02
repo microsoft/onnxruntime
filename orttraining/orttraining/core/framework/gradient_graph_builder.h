@@ -70,6 +70,7 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Split", {1}},
         {"Clip", {1, 2}},
         {"Pad", {1, 2}},
+        {"MatMulBnb4", {1, 2}},  // quantified weight (non float) and absmax constant don't need gradients.
         {"Multinomial", {0}},
         {"RandomNormalLike", {0}},
         {"RandomUniformLike", {0}},

@@ -25,6 +25,9 @@ class MatMulBnb4 final : public CudaKernel {
     ORT_ENFORCE(
         quant_type_ == FP4 || quant_type_ == NF4,
         "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
+
+    is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
+    transB_ = static_cast<bool>(info.GetAttrOrDefault("transB", static_cast<int64_t>(1)));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -34,6 +37,8 @@ class MatMulBnb4 final : public CudaKernel {
   int64_t N_;
   int64_t block_size_;
   int64_t quant_type_;
+  bool is_training_mode_;
+  bool transB_;
 };
 
 template <typename T>
@@ -59,7 +64,7 @@ Status MatMulBnb4<T>::ComputeInternal(OpKernelContext* ctx) const {
       static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
 
   constexpr bool transa = false;
-  constexpr bool transb = true;
+  const bool transb = transB_;
   MatMulComputeHelper helper;
   TensorShape b_shape({N_, K_});
   ORT_RETURN_IF_ERROR(
@@ -69,17 +74,18 @@ Status MatMulBnb4<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0) return Status::OK();
 
-  bool is_4bit_done = TryMatMulBnb4(
-      reinterpret_cast<const CudaT*>(quant_map_buffer_data),
-      reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-      reinterpret_cast<const CudaT*>(a_data),
-      b_quant_data,
-      reinterpret_cast<const CudaT*>(absmax_data),
-      SafeInt<int>(helper.M()),
-      SafeInt<int>(helper.N()),
-      SafeInt<int>(helper.K()),
-      SafeInt<int>(block_size_),
-      static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
+  bool is_4bit_done = !is_training_mode_  // skip inference specific handle if in training mode
+                      && TryMatMulBnb4(
+                             reinterpret_cast<const CudaT*>(quant_map_buffer_data),
+                             reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+                             reinterpret_cast<const CudaT*>(a_data),
+                             b_quant_data,
+                             reinterpret_cast<const CudaT*>(absmax_data),
+                             SafeInt<int>(helper.M()),
+                             SafeInt<int>(helper.N()),
+                             SafeInt<int>(helper.K()),
+                             SafeInt<int>(block_size_),
+                             static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
 
   if (!is_4bit_done) {
     IAllocatorUniquePtr<T> b_dequant_ptr = GetScratchBuffer<T>(N_ * K_, ctx->GetComputeStream());
@@ -98,16 +104,16 @@ Status MatMulBnb4<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         GetCublasHandle(ctx),
-        CUBLAS_OP_T,
-        CUBLAS_OP_N,
+        transb ? CUBLAS_OP_T : CUBLAS_OP_N,  // transB
+        CUBLAS_OP_N,                         // transA
         SafeInt<int>(helper.N()),
         SafeInt<int>(helper.M()),
         SafeInt<int>(helper.K()),
         &alpha,
         reinterpret_cast<const CudaT*>(b_dequant_data),
-        SafeInt<int>(K_),
+        helper.Ldb(transb),  // ldb
         reinterpret_cast<const CudaT*>(a_data),
-        helper.Lda(transa),
+        helper.Lda(transa),  // lda
         &zero,
         reinterpret_cast<CudaT*>(Y->MutableData<T>()),
         helper.Ldc(),

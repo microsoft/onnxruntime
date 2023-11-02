@@ -12,7 +12,7 @@ from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
-from onnxruntime.training.utils import pytorch_dtype_to_onnx
+from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
 from ._utils import get_runtime_pytorch_version
 
@@ -145,7 +145,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         weight_casted,
         ignore_index,
         reduction_s=reduction,
-        output_type_i=pytorch_dtype_to_onnx(output_type.scalarType()),
+        output_type_i=pytorch_type_to_onnx_dtype(output_type.scalarType()),
         outputs=2,
     )
     output.setType(output_type)
