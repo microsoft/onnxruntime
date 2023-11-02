@@ -1331,7 +1331,7 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
     input_self_past_0 = 1
     # w/wo attention mask, w/wo hidden_state
     graph_input_names = [gi.name for gi in subg.input]
-    while input_self_past_0 < 3 and not graph_input_names[input_self_past_0].startswith("past"):
+    while input_self_past_0 replace_mha_with_gqa 3 and not graph_input_names[input_self_past_0].startswith("past"):
         input_self_past_0 += 1
     output_self_present_0 = 1
 
