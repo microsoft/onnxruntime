@@ -45,7 +45,7 @@ const createElementwiseProgramInfo =
     (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
      cacheKey?: string, outputDataType: number = input.dataType): ProgramInfo => ({
       name,
-      shaderCache: {hint: cacheKey},
+      shaderCache: {hint: cacheKey, inputDependencies: ['type']},
       getShaderSource: shaderHelper => createElementwiseProgramShader(
           shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall, additionalImplementation),
       getRunData: (inputTensors) => ({
