@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {InferenceSession} from './inference-session.js';
+import {OnnxValue} from './onnx-value.js';
 import {TrainingSession as TrainingSessionImpl} from './training-session-impl.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
@@ -49,13 +50,21 @@ export interface TrainingSession {
   // #endregion
 
   // #region copy parameters
+
+  /**
+   * Retrieves the size of all parameters for the training state.
+   *
+   * @param trainableOnly skips non-trainable parameters when true.
+   */
+  getParametersSize(trainableOnly: boolean): Promise<number>;
+
   /**
    * Copies from a buffer containing parameters to the TrainingSession parameters.
    *
    * @param buffer - buffer containing parameters
    * @param trainableOnly - True if trainable parameters only to be modified, false otherwise.
    */
-  loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void>;
+  loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void>;
 
   /**
    * Copies from the TrainingSession parameters to a buffer.
@@ -63,7 +72,7 @@ export interface TrainingSession {
    * @param trainableOnly - True if trainable parameters only to be copied, false othrwise.
    * @returns A promise that resolves to a buffer of the requested parameters.
    */
-  getContiguousParameters(trainableOnly: boolean): Promise<Uint8Array>;
+  getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue>;
   // #endregion
 
   // #region release()

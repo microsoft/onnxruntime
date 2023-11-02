@@ -6,15 +6,9 @@ import {env, InferenceSession, SessionHandler, Tensor, TrainingSessionHandler} f
 import {SerializableModeldata, TensorMetadata} from './proxy-messages';
 import {decodeTensorMetadata, encodeTensorMetadata} from './session-handler-inference';
 import {createSessionAllocate, initRuntime, isOrtEnvInitialized} from './wasm-core-impl';
-import {createCheckpointHandle, createTrainingSessionHandle, releaseTrainingSessionAndCheckpoint, runTrainStep} from './wasm-training-core-impl';
+import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getParametersSize, loadParametersBuffer, releaseTrainingSessionAndCheckpoint, runTrainStep} from './wasm-training-core-impl';
 
 export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
-  async loadParametersBuffer(_array: Uint8Array, _trainableOnly: boolean): Promise<void> {
-    throw new Error('Method not implemented.');
-  }
-  async getContiguousParameters(_trainableOnly: boolean): Promise<Uint8Array> {
-    throw new Error('Method not implemented.');
-  }
   private sessionId: number;
   private checkpointId: number;
 
@@ -122,6 +116,18 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
 
     const results = await runTrainStep(this.sessionId, inputIndices, inputs, outputIndices, outputs, options);
     return this.convertTensorMetadataToReturnType(results, outputArray, outputIndices);
+  }
+
+  async getParametersSize(trainableOnly: boolean): Promise<number> {
+    return getParametersSize(this.sessionId, trainableOnly);
+  }
+
+  async loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void> {
+    await loadParametersBuffer(this.sessionId, array, trainableOnly);
+  }
+  async getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue> {
+    const tensorResult = await getContiguousParameters(this.sessionId, trainableOnly);
+    return decodeTensorMetadata(tensorResult);
   }
 
   async dispose(): Promise<void> {
