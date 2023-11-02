@@ -2834,8 +2834,9 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 #ifdef USE_TENSORRT
 TEST(TensorrtExecutionProviderTest, ShapeTensorTest) {
   const auto& api = Ort::GetApi();
-  Ort::SessionOptions session_options;
 
+  // Test input tensor which is shape tensor with explicit trt profile shapes
+  Ort::SessionOptions session_options;
   OrtTensorRTProviderOptionsV2* trt_options;
   ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
   std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
@@ -2851,7 +2852,6 @@ TEST(TensorrtExecutionProviderTest, ShapeTensorTest) {
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_trt_options.get()) == nullptr);
 
-  // std::unique_ptr<Ort::Env> ort_env;
   auto model_path = ORT_TSTR("testdata/trt_reshape.onnx");
 
   std::vector<float> input_value_0{1.1f, 1.2f, 1.3f, 1.4f};
@@ -2870,6 +2870,18 @@ TEST(TensorrtExecutionProviderTest, ShapeTensorTest) {
 
   Ort::Session session(*ort_env, model_path, session_options);
   session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
+
+  // Test input tensor which is shape tensor with implicit trt profile shapes
+  Ort::SessionOptions session_options_2;
+  OrtTensorRTProviderOptionsV2* trt_options_2;
+  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options_2) == nullptr);
+  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
+      rel_trt_options_2(trt_options_2, api.ReleaseTensorRTProviderOptions);
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
+                  static_cast<OrtSessionOptions*>(session_options_2),
+                  rel_trt_options_2.get()) == nullptr);
+  Ort::Session session_2(*ort_env, model_path, session_options_2);
+  session_2.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
 }
 
 TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
