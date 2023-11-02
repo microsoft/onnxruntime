@@ -52,14 +52,15 @@ export interface TrainingSession {
   // #region copy parameters
 
   /**
-   * Retrieves the size of all parameters for the training state.
+   * Retrieves the size of all parameters for the training state. Calculates the total number of primitive (datatype of
+   * the parameters) elements of all the parameters in the training state.
    *
-   * @param trainableOnly skips non-trainable parameters when true.
+   * @param trainableOnly - When set to true, the size is calculated for trainable params only.
    */
   getParametersSize(trainableOnly: boolean): Promise<number>;
 
   /**
-   * Copies from a buffer containing parameters to the TrainingSession parameters.
+   * Copies parameter values from the given array to the training state.
    *
    * @param buffer - buffer containing parameters
    * @param trainableOnly - True if trainable parameters only to be modified, false otherwise.
@@ -67,9 +68,10 @@ export interface TrainingSession {
   loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void>;
 
   /**
-   * Copies from the TrainingSession parameters to a buffer.
+   * Copies from the TrainingSession parameters to a contiguous buffer.
    *
-   * @param trainableOnly - True if trainable parameters only to be copied, false othrwise.
+   * @param trainableOnly - When set to true, only trainable parameters are copied. Trainable parameters are parameters
+   * for which requires_grad is set to true.
    * @returns A promise that resolves to a buffer of the requested parameters.
    */
   getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue>;

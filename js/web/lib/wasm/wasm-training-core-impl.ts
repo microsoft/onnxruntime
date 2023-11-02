@@ -19,7 +19,7 @@ const NO_TRAIN_FUNCS_MSG =
 /**
  * Runs the checkLastError function which will throw an error, if the provided error code matches the specified
  * pattern for an error code.
- * @param errCode number to evaluated for if it's an erro
+ * @param errCode number to evaluated for if it's an error
  * @param message message to pass into checkLastError
  * @param checkNeqZero when true, treats not equal to zero as an error.
  *                     When false, treats equal to zero as an error.
