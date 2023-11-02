@@ -1,8 +1,8 @@
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 import torch
-from transformers import LlamaConfig
+from transformers import LlamaConfig, MistralConfig
 
 from onnxruntime import InferenceSession, OrtValue
 
@@ -24,7 +24,7 @@ def get_position_ids(attention_mask: torch.Tensor, use_past_kv: bool):
 #   attention_mask: (batch_size, sequence_length)
 #   position_ids: (batch_size, sequence_length)
 def get_sample_inputs(
-    config: LlamaConfig,
+    config: Union[LlamaConfig, MistralConfig],
     device: torch.device,
     batch_size: int,
     seq_len: int,
@@ -59,7 +59,7 @@ def get_sample_inputs(
 #   past_key: (batch_size, num_heads, past_sequence_length, head_size)
 #   past_value: (batch_size, num_heads, past_sequence_length, head_size)
 def get_sample_with_past_kv_inputs(
-    config: LlamaConfig,
+    config: Union[LlamaConfig, MistralConfig],
     device: torch.device,
     batch_size: int,
     past_seq_len: int,
@@ -114,7 +114,7 @@ def get_sample_with_past_kv_inputs(
 #      For models with GQA, kv_sequence_length = max_sequence_length
 #      For models without GQA, kv_sequence_length = past_sequence_length
 def get_merged_sample_with_past_kv_inputs(
-    config: LlamaConfig,
+    config: Union[LlamaConfig, MistralConfig],
     device: torch.device,
     batch_size: int,
     seq_len: int,
@@ -168,7 +168,7 @@ def get_merged_sample_with_past_kv_inputs(
 
 # Inputs for Microsoft export from https://github.com/microsoft/Llama-2-Onnx
 def get_msft_sample_inputs(
-    config: LlamaConfig,
+    config: Union[LlamaConfig, MistralConfig],
     batch_size: int,
     past_seq_len: int,
     seq_len: int,
@@ -220,8 +220,10 @@ def get_msft_sample_inputs(
 
 # Create past_key_values
 # Each is of shape (batch_size, num_heads, past_sequence_length, head_size)
-def get_past_kv_inputs(config: LlamaConfig, batch_size: int, past_seq_len: int, use_fp16: bool):
+def get_past_kv_inputs(config: Union[LlamaConfig, MistralConfig], batch_size: int, past_seq_len: int, use_fp16: bool):
     num_heads, head_size = config.num_key_value_heads, config.hidden_size // config.num_key_value_heads
+    if isinstance(config, MistralConfig):
+        num_heads, head_size = config.num_key_value_heads, config.hidden_size // config.num_attention_heads
     torch_dtype = torch.float16 if use_fp16 else torch.float32
     past_kv = [
         (
