@@ -94,6 +94,11 @@ set(contrib_ops_excluded_files
   "cuda_contrib_kernels.h"
   "inverse.cc"
   "fused_conv.cc"
+  "bert/group_query_attention_helper.h"
+  "bert/group_query_attention.h"
+  "bert/group_query_attention.cc"
+  "bert/group_query_attention_impl.h"
+  "bert/group_query_attention_impl.cu"
 )
 
 if (NOT onnxruntime_ENABLE_ATEN)
@@ -109,6 +114,7 @@ if (NOT onnxruntime_USE_NCCL)
   list(APPEND contrib_ops_excluded_files "collective/distributed_slice.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_reshape.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_expand.cc")
+  list(APPEND contrib_ops_excluded_files "collective/distributed_reduce.cc")
 endif()
 
 set(provider_excluded_files
