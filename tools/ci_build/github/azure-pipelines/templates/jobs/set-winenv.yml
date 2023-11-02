@@ -35,10 +35,9 @@ steps:
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.SecondaryTensorRTVersion }}", $(Agent.TempDirectory)
         displayName: 'Download Secondary TensorRT with version ${{ parameters.SecondaryTensorRTVersion }}'
-  - step:
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
