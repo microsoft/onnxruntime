@@ -31,7 +31,6 @@ class BatchNormOpBuilder : public BaseOpBuilder {
                        const NodeUnit& node_unit,
                        const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
-
   inline Status GetValueOnQnnDataType(const Qnn_DataType_t qnn_data_type,
                                       const uint8_t* raw_ptr,
                                       double& value,
@@ -367,10 +366,10 @@ class BatchNormOpBuilder : public BaseOpBuilder {
       float scale = 0.0f;
       int zero_point = 0;
       ORT_RETURN_IF_ERROR(utils::GetQuantParams(static_cast<float>(rmin),
-                                         static_cast<float>(rmax),
-                                         info.qnn_data_type,
-                                         scale,
-                                         zero_point));
+                                                static_cast<float>(rmax),
+                                                info.qnn_data_type,
+                                                scale,
+                                                zero_point));
       quant_param = QNN_QUANTIZE_PARAMS_INIT;
       utils::InitializeQuantizeParam(quant_param, true, scale, zero_point);
       for (size_t i = 0; i < double_tensor.size(); ++i) {

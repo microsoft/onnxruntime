@@ -66,7 +66,7 @@ TEST_F(QnnCPUBackendTests, Reshape_4D_f32) {
                             TestInputDef<int64_t>({2}, true, {1, 48}),
                             {},  // Attributes
                             ExpectedEPNodeAssignment::All,
-                            19); // Opset
+                            19);  // Opset
 }
 
 // Test Expand with non-initializer shape input, not supported.
@@ -75,7 +75,7 @@ TEST_F(QnnCPUBackendTests, Expand_NonIniShape) {
                             TestInputDef<int64_t>({2}, false, {2, 2}),
                             {},  // Attributes
                             ExpectedEPNodeAssignment::None,
-                            19); // Opset
+                            19);  // Opset
 }
 
 // Test Expand with initializer shape input.
@@ -84,7 +84,7 @@ TEST_F(QnnCPUBackendTests, Expand_IniShape) {
                             TestInputDef<int64_t>({2}, true, {2, 3}),
                             {},  // Attributes
                             ExpectedEPNodeAssignment::All,
-                            19); // Opset
+                            19);  // Opset
 }
 
 // Test Expand with initializer shape input.
@@ -98,11 +98,11 @@ TEST_F(QnnCPUBackendTests, Expand_Uint32) {
 
 // Test Expand with 6D output.
 TEST_F(QnnCPUBackendTests, Expand_6D) {
-  RunReshapeExpandTestOnCPU("Expand", TestInputDef<float>({3}, false, {1.0f ,2.0f, 3.0f}),
+  RunReshapeExpandTestOnCPU("Expand", TestInputDef<float>({3}, false, {1.0f, 2.0f, 3.0f}),
                             TestInputDef<int64_t>({6}, true, {1, 2, 3, 4, 5, 3}),
                             {},  // Attributes
                             ExpectedEPNodeAssignment::All,
-                            19); // Opset
+                            19);  // Opset
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -119,7 +119,7 @@ GetTestQDQModelFn<QuantType> BuildQDQReshapeExpandTestCase(const std::string& op
                                                            bool use_contrib_qdq = false) {
   return [input_def, shape_def, attrs,
           use_contrib_qdq, op_type](ModelTestBuilder& builder,
-                           std::vector<QuantParams<QuantType>>& output_qparams) {
+                                    std::vector<QuantParams<QuantType>>& output_qparams) {
     // input -> Q -> DQ ->
     NodeArg* input = MakeTestInput(builder, input_def);
     QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
@@ -282,7 +282,7 @@ TEST_F(QnnHTPBackendTests, Expand_4D) {
   RunQDQReshapeExpandTestOnHTP<uint8_t>("Expand",
                                         TestInputDef<float>({3}, false, {1.0f, 2.0f, 3.0f}),
                                         TestInputDef<int64_t>({4}, true, {3, 2, 2, 1}),
-                                        {},                                            // Attributes
+                                        {},  // Attributes
                                         ExpectedEPNodeAssignment::All,
                                         19);  // Opset
 }
