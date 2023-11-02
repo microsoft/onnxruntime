@@ -38,14 +38,6 @@ export class ProgramManager {
     const device = this.backend.device;
 
     const computePassEncoder = this.backend.getComputePassEncoder();
-    const profilingEnabled = this.backend.supportTimestampQuery && this.backend.env.webgpu.profilingMode === 'default';
-    if (profilingEnabled) {
-      // profiling write start timestamp
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (computePassEncoder as any).writeTimestamp(this.backend.profilingQuerySet, 0);
-    }
-
     computePassEncoder.setPipeline(buildArtifact.computePipeline);
     const entries = [];
     for (const input of inputs) {
@@ -65,24 +57,20 @@ export class ProgramManager {
 
     this.backend.pendingDispatchNumber++;
 
-    if (profilingEnabled) {
-      // profiling write end timestamp
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (computePassEncoder as any).writeTimestamp(this.backend.profilingQuerySet, 1);
-      if (this.backend.profilingQueryData == null) {
-        this.backend.profilingQueryData =
+    if (this.backend.isQueryEnabled()) {
+      if (typeof this.backend.queryData === 'undefined') {
+        this.backend.queryData = this.backend.gpuDataManager.create(
             // eslint-disable-next-line no-bitwise
-            this.backend.gpuDataManager.create(16, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
+            this.backend.querySetCount * 8, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
       }
-      // eslint-disable-next-line no-bitwise
-      const syncData = this.backend.gpuDataManager.create(16, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
+      const syncData = this.backend.gpuDataManager.create(
+          // eslint-disable-next-line no-bitwise
+          this.backend.querySetCount * 8, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
 
       this.backend.endComputePass();
-      this.backend.getCommandEncoder().resolveQuerySet(
-          this.backend.profilingQuerySet, 0, 2, this.backend.profilingQueryData.buffer, 0);
+      this.backend.getCommandEncoder().resolveQuerySet(this.backend.querySet, 0, 2, this.backend.queryData.buffer, 0);
       this.backend.getCommandEncoder().copyBufferToBuffer(
-          this.backend.profilingQueryData.buffer, 0, syncData.buffer, 0, 16);
+          this.backend.queryData.buffer, 0, syncData.buffer, 0, this.backend.querySetCount * 8);
       this.backend.flush();
 
       const kernelId = this.backend.currentKernelId!;
@@ -96,12 +84,12 @@ export class ProgramManager {
 
         syncData.buffer.unmap();
 
-        if (typeof this.backend.profilingTimeBase === 'undefined') {
-          this.backend.profilingTimeBase = startTimeU64;
+        if (typeof this.backend.queryTimeBase === 'undefined') {
+          this.backend.queryTimeBase = startTimeU64;
         }
 
-        const startTime = Number(startTimeU64 - this.backend.profilingTimeBase);
-        const endTime = Number(endTimeU64 - this.backend.profilingTimeBase);
+        const startTime = Number(startTimeU64 - this.backend.queryTimeBase);
+        const endTime = Number(endTimeU64 - this.backend.queryTimeBase);
 
         if (!Number.isSafeInteger(startTime) || !Number.isSafeInteger(endTime)) {
           throw new RangeError('incorrect timestamp range');

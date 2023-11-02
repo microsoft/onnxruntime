@@ -1432,7 +1432,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   if (legacy_ov_options->device_type != nullptr)
     ov_options_converted_map["device_type"] = legacy_ov_options->device_type;
 
-  ov_options_converted_map["enable_vpu_fast_compile"] = legacy_ov_options->enable_vpu_fast_compile;
+  ov_options_converted_map["enable_npu_fast_compile"] = legacy_ov_options->enable_npu_fast_compile;
 
   if (legacy_ov_options->device_id != nullptr)
     ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
@@ -1931,6 +1931,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
   if (ptr != nullptr) {
     delete[] ptr->trt_int8_calibration_table_name;
     delete[] ptr->trt_engine_cache_path;
+    delete[] ptr->trt_timing_cache_path;
     delete[] ptr->trt_engine_decryption_lib_path;
     delete[] ptr->trt_tactic_sources;
     delete[] ptr->trt_extra_plugin_lib_paths;
