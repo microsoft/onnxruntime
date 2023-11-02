@@ -293,63 +293,83 @@ const useNaiveReduceMethod =
     };
 
 export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes) ?
-      reduceMeanNaive(context, attributes) :
-      reduceMeanShared(context, attributes);
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceMeanNaive(context, attributes);
+  } else {
+    reduceMeanShared(context, attributes);
+  }
 };
 
 export const reduceL1 = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes) ?
-      reduceL1Naive(context, attributes) :
-      reduceL1Shared(context, attributes);
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceL1Naive(context, attributes);
+  } else {
+    reduceL1Shared(context, attributes);
+  }
 };
 
 export const reduceL2 = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes) ?
-      reduceL2Naive(context, attributes) :
-      reduceL2Shared(context, attributes);
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceL2Naive(context, attributes);
+  } else {
+    reduceL2Shared(context, attributes);
+  }
 };
 
 export const reduceLogSumExp = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes) ?
-      reduceLogSumExpNaive(context, attributes) :
-      reduceLogSumExpShared(context, attributes);
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceLogSumExpNaive(context, attributes);
+  } else {
+    reduceLogSumExpShared(context, attributes);
+  }
 };
 
 export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes) ?
-      reduceMaxNaive(context, attributes) :
-      reduceMaxShared(context, attributes);
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceMaxNaive(context, attributes);
+  } else {
+    reduceMaxShared(context, attributes);
+  }
 };
 
 export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes) ?
-      reduceMinNaive(context, attributes) :
-      reduceMinShared(context, attributes);
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceMinNaive(context, attributes);
+  } else {
+    reduceMinShared(context, attributes);
+  }
 };
 
 export const reduceProd = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes) ?
-      reduceProdNaive(context, attributes) :
-      reduceProdShared(context, attributes);
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceProdNaive(context, attributes);
+  } else {
+    reduceProdShared(context, attributes);
+  }
 };
 
 export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes) ?
-      reduceSumNaive(context, attributes) :
-      reduceSumShared(context, attributes);
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceSumNaive(context, attributes);
+  } else {
+    reduceSumShared(context, attributes);
+  }
 };
 
 export const reduceSumSquare = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes) ?
-      reduceSumSquareNaive(context, attributes) :
-      reduceSumSquareShared(context, attributes);
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceSumSquareNaive(context, attributes);
+  } else {
+    reduceSumSquareShared(context, attributes);
+  }
 };
 
 export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes) ?
-      reduceLogSumNaive(context, attributes) :
-      reduceLogSumShared(context, attributes);
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceLogSumNaive(context, attributes);
+  } else {
+    reduceLogSumShared(context, attributes);
+  }
 };
 
 export const parseReduceAttributes = (attributes: Record<string, unknown>): ReduceAttributes =>
