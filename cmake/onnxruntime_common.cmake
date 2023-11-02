@@ -88,7 +88,7 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
 if(HAS_DEPRECATED_DECLARATIONS)
   # TODO: 'divup<long>' is deprecated. Fix the problem
-  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/common/threadpool.c" PROPERTIES COMPILE_FLAGS -Wno-deprecated-declarations)
+  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/common/threadpool.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-declarations)
 endif()
 if(WIN32)
   if("cxx_std_23" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
