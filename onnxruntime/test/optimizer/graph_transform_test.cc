@@ -1560,7 +1560,7 @@ TEST_F(GraphTransformationTests, NotWhereFusion) {
   ASSERT_TRUE(op_to_count["Not"] == 1);  // can't remove Not if it is graph output/ has consumer that's not where
 }
 
-#if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
+#if (defined(USE_CUDA) || defined(USE_JSEP)) && !defined(DISABLE_CONTRIB_OPS)
 // Conv->Add->Relu will be transformed to FusedConv
 TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_add_relu.onnx";
@@ -1740,6 +1740,10 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
     for (auto& node : p_model->MainGraph().Nodes()) {
       node.SetExecutionProviderType(kCudaExecutionProvider);
     }
+#elif defined(USE_JSEP)
+    for (auto& node : p_model->MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kJsExecutionProvider);
+    }
 #endif
     std::map<std::string, int> op_to_count_before_fusion = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count_before_fusion[model.second] >= 1);
@@ -1753,6 +1757,13 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
     std::set<std::string> cuda_rocm_supported = {"Relu"};
     if (cuda_rocm_supported.find(model.second) == cuda_rocm_supported.end()) {
+      ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
+    } else {
+      ASSERT_EQ(op_to_count_after_fusion[model.second], 0);
+    }
+#elif defined(USE_JSEP)
+    std::set<std::string> js_supported = {"Relu", "Clip", "Sigmoid", "Tanh", "LeakyRelu"};
+    if (js_supported.find(model.second) == js_supported.end()) {
       ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
     } else {
       ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
