@@ -34,12 +34,15 @@ class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatte
 def parse_arguments(is_xl: bool, description: str):
     parser = argparse.ArgumentParser(description=description, formatter_class=RawTextArgumentDefaultsHelpFormatter)
 
+    engines = ["ORT_CUDA", "ORT_TRT", "TRT"]
+
     parser.add_argument(
         "--engine",
         type=str,
-        default="ORT_TRT",
-        choices=["ORT_TRT", "TRT"],
-        help="Backend engine. Default is OnnxRuntime CUDA execution provider.",
+        default=engines[0],
+        choices=engines,
+        help="Backend engine in {engines}. "
+        "ORT_CUDA is CUDA execution provider; ORT_TRT is Tensorrt execution provider; TRT is TensorRT",
     )
 
     supported_versions = PipelineInfo.supported_versions(is_xl)
@@ -92,7 +95,7 @@ def parse_arguments(is_xl: bool, description: str):
         "--denoising-steps",
         type=int,
         default=30 if is_xl else 50,
-        help="Number of denoising steps" + (" in each of base and refiner." if is_xl else "."),
+        help="Number of denoising steps" + (" in base." if is_xl else "."),
     )
 
     parser.add_argument(
@@ -106,7 +109,7 @@ def parse_arguments(is_xl: bool, description: str):
     parser.add_argument(
         "--onnx-opset",
         type=int,
-        default=17,
+        default=None,
         choices=range(14, 18),
         help="Select ONNX opset version to target for exported models.",
     )
@@ -155,13 +158,17 @@ def parse_arguments(is_xl: bool, description: str):
         "--build-all-tactics", action="store_true", help="Build TensorRT engines using all tactic sources."
     )
 
-    # Pipeline options
-    if is_xl:
-        parser.add_argument(
-            "--enable-refiner", action="store_true", help="Enable refiner and run both base and refiner pipelines."
-        )
-
     args = parser.parse_args()
+
+    if (
+        args.engine in ["ORT_CUDA", "ORT_TRT"]
+        and (args.force_onnx_export or args.force_onnx_optimize)
+        and not args.force_engine_build
+    ):
+        raise ValueError(
+            "For ORT_CUDA or ORT_TRT, --force_onnx_export and --force_onnx_optimize are not supported. "
+            "Please use --force_engine_build instead."
+        )
 
     # Validate image dimensions
     if args.height % 8 != 0 or args.width % 8 != 0:
@@ -172,6 +179,9 @@ def parse_arguments(is_xl: bool, description: str):
     if (args.build_dynamic_batch or args.build_dynamic_shape) and not args.disable_cuda_graph:
         print("[I] CUDA Graph is disabled since dynamic input shape is configured.")
         args.disable_cuda_graph = True
+
+    if args.onnx_opset is None:
+        args.onnx_opset = 14 if args.engine == "ORT_CUDA" else 17
 
     print(args)
 
@@ -187,6 +197,7 @@ def repeat_prompt(args):
         raise ValueError(
             f"`--negative-prompt` must be of type `str` or `str` list, but is {type(args.negative_prompt)}"
         )
+
     if len(args.negative_prompt) == 1:
         negative_prompt = args.negative_prompt * len(prompt)
     else:
@@ -197,7 +208,7 @@ def repeat_prompt(args):
 
 def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_size, batch_size):
     onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
-        args.work_dir, pipeline_info, engine_type
+        work_dir=args.work_dir, pipeline_info=pipeline_info, engine_type=engine_type
     )
 
     # Initialize demo
@@ -214,7 +225,19 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
         engine_type=engine_type,
     )
 
-    if engine_type == EngineType.ORT_TRT:
+    if engine_type == EngineType.ORT_CUDA:
+        # Build CUDA EP engines and load pytorch modules
+        pipeline.backend.build_engines(
+            engine_dir=engine_dir,
+            framework_model_dir=framework_model_dir,
+            onnx_dir=onnx_dir,
+            opt_image_height=args.height,
+            opt_image_width=args.height,
+            opt_batch_size=batch_size,
+            force_engine_rebuild=args.force_engine_build,
+            device_id=torch.cuda.current_device(),
+        )
+    elif engine_type == EngineType.ORT_TRT:
         # Build TensorRT EP engines and load pytorch modules
         pipeline.backend.build_engines(
             engine_dir,

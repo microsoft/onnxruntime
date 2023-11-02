@@ -4,7 +4,7 @@
 import {env} from 'onnxruntime-common';
 
 import {DataType} from '../../../wasm-common';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {outputVariable, ShaderHelper} from './common';
 
@@ -18,28 +18,29 @@ const validateInputsContent = (start: number, limit: number, delta: number): voi
   }
 };
 
-const createRangeProgramInfo =
-    (metadata: ProgramMetadata, start: number, limit: number, delta: number, dataType: DataType): ProgramInfo => {
-      const numElements = Math.abs(Math.ceil((limit - start) / delta));
-      const outputShape: number[] = [numElements];
-      const outputSize = numElements;
+const createRangeProgramInfo = (start: number, limit: number, delta: number, dataType: DataType): ProgramInfo => {
+  const numElements = Math.abs(Math.ceil((limit - start) / delta));
+  const outputShape: number[] = [numElements];
+  const outputSize = numElements;
 
-      const output = outputVariable('output', dataType, outputShape);
-      const wgslType = output.type.storage;
+  const output = outputVariable('output', dataType, outputShape);
+  const wgslType = output.type.storage;
 
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
         ${shaderHelper.declareVariables(output)}
         ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
         output[global_idx] = ${wgslType}(${start}) + ${wgslType}(global_idx) * ${wgslType}(${delta});
       }`;
-      return {
-        ...metadata,
-        getShaderSource,
-        outputs: [{dims: outputShape, dataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
-      };
-    };
+  return {
+    name: 'Range',
+    shaderCache: {hint: [start, limit, delta].map(x => x.toString()).join('_')},
+    getShaderSource,
+    getRunData: () => (
+        {outputs: [{dims: outputShape, dataType}],
+         dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}})
+  };
+};
 
 export const range = (context: ComputeContext): void => {
   let start = 0;
@@ -58,9 +59,5 @@ export const range = (context: ComputeContext): void => {
     validateInputsContent(start, limit, delta);
   }
 
-  const cacheHint = [start, limit, delta].map(x => x.toString()).join('_');
-  const metadata: ProgramMetadata = {name: 'Range', inputTypes: [], cacheHint};
-  context.compute(
-      {...metadata, get: () => createRangeProgramInfo(metadata, start, limit, delta, context.inputs[0].dataType)},
-      {inputs: []});
+  context.compute(createRangeProgramInfo(start, limit, delta, context.inputs[0].dataType), {inputs: []});
 };

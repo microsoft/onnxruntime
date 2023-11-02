@@ -24,6 +24,7 @@ const createSessionCallbacks: Array<PromiseCallbacks<SerializableSessionMetadata
 const releaseSessionCallbacks: Array<PromiseCallbacks<void>> = [];
 const runCallbacks: Array<PromiseCallbacks<SerializableTensorMetadata[]>> = [];
 const endProfilingCallbacks: Array<PromiseCallbacks<void>> = [];
+const isOrtEnvInitializedCallbacks: Array<PromiseCallbacks<boolean>> = [];
 
 const ensureWorker = (): void => {
   if (initializing || !initialized || aborted || !proxyWorker) {
@@ -92,6 +93,13 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         endProfilingCallbacks.shift()![0]();
       }
       break;
+    case 'is-ort-env-initialized':
+      if (ev.data.err) {
+        isOrtEnvInitializedCallbacks.shift()![1](ev.data.err);
+      } else {
+        isOrtEnvInitializedCallbacks.shift()![0](ev.data.out!);
+      }
+      break;
     default:
   }
 };
@@ -121,9 +129,18 @@ export const initializeWebAssemblyInstance = async(): Promise<void> => {
 
     return new Promise<void>((resolve, reject) => {
       proxyWorker?.terminate();
-      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
-      proxyWorker = require('worker-loader?inline=no-fallback!./proxy-worker/main').default() as Worker;
+
+      const workerUrl = URL.createObjectURL(new Blob(
+          [
+            // This require() function is handled by esbuild plugin to load file content as string.
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            require('./proxy-worker/main')
+          ],
+          {type: 'text/javascript'}));
+      proxyWorker = new Worker(workerUrl, {name: 'ort-wasm-proxy-worker'});
+      proxyWorker.onerror = (ev: ErrorEvent) => reject(ev);
       proxyWorker.onmessage = onProxyWorkerMessage;
+      URL.revokeObjectURL(workerUrl);
       initWasmCallbacks = [resolve, reject];
       const message: OrtWasmMessage = {type: 'init-wasm', in : env.wasm};
       proxyWorker.postMessage(message);
@@ -240,5 +257,18 @@ export const endProfiling = async(sessionId: number): Promise<void> => {
     });
   } else {
     core.endProfiling(sessionId);
+  }
+};
+
+export const isOrtEnvInitialized = async(): Promise<boolean> => {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
+    ensureWorker();
+    return new Promise<boolean>((resolve, reject) => {
+      isOrtEnvInitializedCallbacks.push([resolve, reject]);
+      const message: OrtWasmMessage = {type: 'is-ort-env-initialized'};
+      proxyWorker!.postMessage(message);
+    });
+  } else {
+    return core.isOrtEnvInitialized();
   }
 };

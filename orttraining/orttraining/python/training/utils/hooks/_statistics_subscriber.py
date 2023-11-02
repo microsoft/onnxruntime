@@ -93,6 +93,13 @@ class _InspectActivation(torch.autograd.Function):
     ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
 
+    @staticmethod
+    def alias_input(node_proto_str: str):
+        fw_alias_map = [3]
+        bw_alias_map = [-1] * 6
+        bw_alias_map[3] = 0
+        return fw_alias_map, bw_alias_map
+
 
 class StatisticsSubscriber(SubscriberBase):
     """

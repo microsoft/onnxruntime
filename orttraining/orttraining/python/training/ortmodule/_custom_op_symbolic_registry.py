@@ -12,7 +12,7 @@ from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
-from onnxruntime.training.utils import pytorch_dtype_to_onnx
+from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
 from ._utils import get_runtime_pytorch_version
 
@@ -129,7 +129,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         output_type = logits_casted.type()
     else:
         # For higher version torch we can get node output types
-        loss_output = list(node.outputs())[0]
+        loss_output = next(iter(node.outputs()))
         output_type = loss_output.type()
     ##################################
 
@@ -145,7 +145,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         weight_casted,
         ignore_index,
         reduction_s=reduction,
-        output_type_i=pytorch_dtype_to_onnx(output_type.scalarType()),
+        output_type_i=pytorch_type_to_onnx_dtype(output_type.scalarType()),
         outputs=2,
     )
     output.setType(output_type)
@@ -808,16 +808,3 @@ def upsample_nearest2d(g, input, output_size, scale_factors):
 @register_symbolic("upsample_nearest3d")
 def upsample_nearest3d(g, input, output_size, scale_factors):
     return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
-
-
-@register_symbolic("upsample_bilinear2d")
-def upsample_bilinear2d(g, input, output_size, align_corners, scale_factors):
-    return g.op(
-        "org.pytorch.aten::ATen",
-        input,
-        output_size,
-        align_corners,
-        scale_factors,
-        operator_s="upsample_bilinear2d",
-        overload_name_s="vec",
-    )

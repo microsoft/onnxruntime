@@ -59,7 +59,16 @@ class EngineBuilder:
         self.device = torch.device(device)
         self.torch_device = torch.device(device, torch.cuda.current_device())
         self.stages = pipeline_info.stages()
-        self.vae_torch_fallback = self.pipeline_info.is_sd_xl()
+
+        # TODO: use custom fp16 for ORT_TRT, and no need to fallback to torch.
+        self.vae_torch_fallback = self.pipeline_info.is_xl() and engine_type != EngineType.ORT_CUDA
+
+        # For SD XL, use an VAE that modified to run in fp16 precision without generating NaNs.
+        self.custom_fp16_vae = (
+            "madebyollin/sdxl-vae-fp16-fix"
+            if self.pipeline_info.is_xl() and self.engine_type == EngineType.ORT_CUDA
+            else None
+        )
 
         self.models = {}
         self.engines = {}
@@ -77,9 +86,8 @@ class EngineBuilder:
 
     def get_onnx_path(self, model_name, onnx_dir, opt=True):
         engine_name = self.engine_type.name.lower()
-        onnx_model_dir = os.path.join(
-            onnx_dir, self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "")
-        )
+        directory_name = self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "")
+        onnx_model_dir = os.path.join(onnx_dir, directory_name)
         os.makedirs(onnx_model_dir, exist_ok=True)
         return os.path.join(onnx_model_dir, "model.onnx")
 
@@ -131,7 +139,7 @@ class EngineBuilder:
                 fp16=export_fp16_unet,
                 max_batch_size=self.max_batch_size,
                 unet_dim=4,
-                time_dim=(5 if self.pipeline_info.is_sd_xl_refiner() else 6),
+                time_dim=(5 if self.pipeline_info.is_xl_refiner() else 6),
             )
 
         # VAE Decoder
@@ -141,6 +149,7 @@ class EngineBuilder:
                 None,  # not loaded yet
                 device=self.torch_device,
                 max_batch_size=self.max_batch_size,
+                custom_fp16_vae=self.custom_fp16_vae,
             )
 
             if self.vae_torch_fallback:
@@ -157,8 +166,9 @@ class EngineBuilder:
 
     def vae_decode(self, latents):
         if self.vae_torch_fallback:
-            latents = latents.to(dtype=torch.float32)
-            self.torch_models["vae"] = self.torch_models["vae"].to(dtype=torch.float32)
+            if not self.custom_fp16_vae:
+                latents = latents.to(dtype=torch.float32)
+                self.torch_models["vae"] = self.torch_models["vae"].to(dtype=torch.float32)
             images = self.torch_models["vae"](latents)["sample"]
         else:
             images = self.run_engine("vae", {"latent": latents})["images"]

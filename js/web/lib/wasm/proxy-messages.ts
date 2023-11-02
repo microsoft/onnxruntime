@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
+import type {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
 export type SerializableTensorMetadata =
     [dataType: Tensor.Type, dims: readonly number[], data: Tensor.DataType, location: 'cpu'];
@@ -73,5 +73,10 @@ interface MesssageEndProfiling extends MessageError {
   in ?: number;
 }
 
+interface MessageIsOrtEnvInitialized extends MessageError {
+  type: 'is-ort-env-initialized';
+  out?: boolean;
+}
+
 export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCreateSessionAllocate|MessageCreateSessionFinalize|
-    MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling;
+    MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling|MessageIsOrtEnvInitialized;

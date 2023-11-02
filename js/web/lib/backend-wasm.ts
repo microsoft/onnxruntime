@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {cpus} from 'node:os';
 import {Backend, env, InferenceSession, InferenceSessionHandler} from 'onnxruntime-common';
-import {cpus} from 'os';
 
 import {initializeWebAssemblyInstance} from './wasm/proxy-wrapper';
-import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler';
+import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler-inference';
 
 /**
  * This function initializes all flags for WebAssembly.
@@ -32,7 +32,7 @@ export const initializeFlags = (): void => {
   }
 };
 
-class OnnxruntimeWebAssemblyBackend implements Backend {
+export class OnnxruntimeWebAssemblyBackend implements Backend {
   async init(): Promise<void> {
     // populate wasm flags
     initializeFlags();
@@ -51,5 +51,3 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
     return Promise.resolve(handler);
   }
 }
-
-export const wasmBackend = new OnnxruntimeWebAssemblyBackend();
