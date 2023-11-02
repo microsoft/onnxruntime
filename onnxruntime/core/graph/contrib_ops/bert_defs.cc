@@ -1051,15 +1051,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "present state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
-                "T",
-                OpSchema::Optional)
+                "T")
         .Output(2,
                 "present_value",
                 "present state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
-                "T",
-                OpSchema::Optional)
+                "T")
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)", "tensor(int64)"}, "Constrain past sequence length to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
