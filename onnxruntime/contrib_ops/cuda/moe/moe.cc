@@ -23,7 +23,7 @@ namespace cuda {
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      MoEBlock<T>);                                         
+      MoEBlock<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
@@ -44,12 +44,20 @@ Status MoEBlock<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc2_experts_bias = context->Input<Tensor>(5);
 
   // shape check
+  const auto& input_dims = input->Shape().GetDims();
+  const int64_t num_rows = input_dims[0];
+  const int64_t hidden_size = input_dims[1];
+
+  const auto& fc1_experts_weights_dims = fc1_experts_weights->Shape().GetDims();
+  const int64_t num_experts = fc1_experts_weights_dims[0];
+  const int64_t inter_size = fc1_experts_weights_dims[2];
 
   Tensor* output = context->Output(0, input->Shape());
 
-  //typedef typename ToCudaType<T>::MappedType CudaT;
-
-  //auto& device_prop = GetDeviceProp();
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  //context->GetComputeStream();
+  // scale can be nullptr
+  // skip can be nullptr later(todo);
 
   ORT_UNUSED_PARAMETER(input);
   ORT_UNUSED_PARAMETER(gated_output);

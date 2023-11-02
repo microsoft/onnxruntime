@@ -21,6 +21,9 @@
 #include "cutlass/array.h"
 #include "cutlass/numeric_conversion.h"
 
+#include "cutlass/layout/matrix.h"
+#include "cutlass/numeric_types.h"
+
 #include "cutlass/gemm/device/gemm_grouped.h"
 #include "cutlass/gemm/kernel/default_gemm_grouped.h"
 
@@ -31,21 +34,149 @@
 
 //#include "cutlass_extensions/compute_occupancy.h"
 //#include "cutlass_extensions/epilogue_helpers.h"
-#include "cutlass_extensions/gemm/kernel/default_fpA_intB_traits.h"
-#include "cutlass_extensions/gemm/kernel/moe_cutlass_kernel.h"
-#include "cutlass_extensions/gemm/threadblock/default_mma.h"
+//#include "cutlass_extensions/gemm/kernel/default_fpA_intB_traits.h"
+#include "moe_cutlass_kernel.h"
+//#include "cutlass_extensions/gemm/threadblock/default_mma.h"
 
 #pragma GCC diagnostic pop
 
-#include "src/fastertransformer/kernels/cutlass_kernels/cutlass_heuristic.h"
+#include "cutlass_heuristic.h"
 #include "moe_gemm_kernels.h"
-#include "src/fastertransformer/utils/cuda_utils.h"
+//#include "src/fastertransformer/utils/cuda_utils.h"
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <math.h>
 #include <sstream>
 
 namespace fastertransformer {
+
+template<typename TypeB, typename Arch, typename Enable = void>
+struct LayoutDetailsB {
+};
+
+// Volta specialiations. Volta will dequantize before STS, so we need a different operator
+template<typename TypeB>
+struct LayoutDetailsB<TypeB, arch::Sm70> {
+    static constexpr int ThreadblockK      = 64;
+    using Layout                           = layout::RowMajor;
+    static constexpr int ElementsPerAccess = 8;
+    using Operator                         = cutlass::arch::OpMultiplyAdd;
+};
+
+// Specializations for Turing+ when B is FP16. These are currently only used for MoE networks.
+// TODO - Switch this to column major for weights since gemms should be more performant.
+template<typename Arch>
+struct LayoutDetailsB<half_t, Arch, typename platform::enable_if<Arch::kMinComputeCapability >= 75>::type> {
+    static constexpr int ThreadblockK      = 64;
+    using Layout                           = layout::RowMajor;
+    static constexpr int ElementsPerAccess = 128 / cutlass::sizeof_bits<half_t>::value;
+    using Operator                         = cutlass::arch::OpMultiplyAdd;
+};
+
+
+template<typename TypeA, typename TypeB, typename arch, typename Enable = void>
+struct MixedGemmArchTraits {
+};
+
+template<typename arch>
+struct MixedGemmArchTraits<float, float, arch> {
+    static constexpr int Stages = 2;
+    using OperatorClass         = cutlass::arch::OpClassSimt;
+    using AccType               = float;
+    using LayoutB               = cutlass::layout::RowMajor;
+
+    static constexpr int ElementsPerAccessA = 1;
+    static constexpr int ElementsPerAccessB = 1;
+    static constexpr int ElementsPerAccessC = 1;
+    static constexpr int ThreadblockK       = 8;
+    using InstructionShape                  = cutlass::gemm::GemmShape<1, 1, 1>;
+
+    using Operator = cutlass::arch::OpMultiplyAdd;
+};
+
+// ========================= Volta Traits ===========================
+// Volta will always dequantize after the global memory load.
+// This will instantiate any HMMA tensorcore kernels for Volta.
+// Note that volta does not have native bfloat support so weights and activations will be casted to fp16
+// and compute will happen in fp16 then will be converted for bf16 output.
+template<typename TypeA, typename TypeB>
+struct MixedGemmArchTraits<
+    TypeA,
+    TypeB,
+    cutlass::arch::Sm70,
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value
+                                          || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+private:
+    using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm70>;
+
+public:
+    static constexpr int ThreadblockK = LayoutDetails::ThreadblockK;
+
+    using OperatorClass = cutlass::arch::OpClassTensorOp;
+    using AccType       = float;
+    using LayoutB       = typename LayoutDetails::Layout;
+
+    static constexpr int ElementsPerAccessA = 128 / cutlass::sizeof_bits<TypeA>::value;
+    static constexpr int ElementsPerAccessB = LayoutDetails::ElementsPerAccess;
+    static constexpr int ElementsPerAccessC = 128 / cutlass::sizeof_bits<TypeA>::value;
+    using InstructionShape                  = cutlass::gemm::GemmShape<8, 8, 4>;
+
+    using Operator = typename LayoutDetails::Operator;
+};
+
+// ======================= Turing Traits ==============================
+// Note that turing does not have native bfloat support so weights and activations will be casted to fp16
+// and compute will happen in fp16 then will be converted for bf16 output.
+template<typename TypeA, typename TypeB>
+struct MixedGemmArchTraits<
+    TypeA,
+    TypeB,
+    cutlass::arch::Sm75,
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value
+                                          || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+private:
+    using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm75>;
+
+public:
+    static constexpr int ThreadblockK = LayoutDetails::ThreadblockK;
+
+    using OperatorClass = cutlass::arch::OpClassTensorOp;
+    using AccType       = float;
+    using LayoutB       = typename LayoutDetails::Layout;
+
+    static constexpr int ElementsPerAccessA = 128 / cutlass::sizeof_bits<TypeA>::value;
+    static constexpr int ElementsPerAccessB = LayoutDetails::ElementsPerAccess;
+    static constexpr int ElementsPerAccessC = 128 / cutlass::sizeof_bits<TypeA>::value;
+    using InstructionShape                  = cutlass::gemm::GemmShape<16, 8, 8>;
+
+    using Operator = typename LayoutDetails::Operator;
+};
+
+// ======================= Ampere Traits ==============================
+template<typename TypeA, typename TypeB>
+struct MixedGemmArchTraits<
+    TypeA,
+    TypeB,
+    cutlass::arch::Sm80,
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value
+                                          || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+private:
+    using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm80>;
+
+public:
+    static constexpr int ThreadblockK = LayoutDetails::ThreadblockK;
+
+    using OperatorClass = cutlass::arch::OpClassTensorOp;
+    using AccType       = float;
+    using LayoutB       = typename LayoutDetails::Layout;
+
+    static constexpr int ElementsPerAccessA = 128 / cutlass::sizeof_bits<TypeA>::value;
+    static constexpr int ElementsPerAccessB = LayoutDetails::ElementsPerAccess;
+    static constexpr int ElementsPerAccessC = 128 / cutlass::sizeof_bits<TypeA>::value;
+    using InstructionShape                  = cutlass::gemm::GemmShape<16, 8, 16>;
+
+    using Operator = typename LayoutDetails::Operator;
+};
 
 struct EpilogueOpBiasReLU {
 };
@@ -263,8 +394,6 @@ struct dispatch_stages<T, WeightType, arch, EpilogueTag, ThreadblockShape, WarpS
                          cudaStream_t      stream,
                          int*              occupancy = nullptr)
     {
-
-        FT_LOG_DEBUG(__PRETTY_FUNCTION__);
         generic_moe_gemm_kernelLauncher<T, WeightType, arch, EpilogueTag, ThreadblockShape, WarpShape, 2>(
             A,
             B,
@@ -310,8 +439,6 @@ struct dispatch_stages<T,
                          cudaStream_t      stream,
                          int*              occupancy = nullptr)
     {
-
-        FT_LOG_DEBUG(__PRETTY_FUNCTION__);
         generic_moe_gemm_kernelLauncher<T,
                                         WeightType,
                                         cutlass::arch::Sm80,
@@ -354,8 +481,6 @@ void dispatch_gemm_config(const T*          A,
                           cudaStream_t      stream,
                           int*              occupancy = nullptr)
 {
-
-    FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     switch (gemm_config.stages) {
         case 2:
             using DispatcherStages2 = dispatch_stages<T, WeightType, arch, EpilogueTag, ThreadblockShape, WarpShape, 2>;
@@ -435,9 +560,6 @@ void dispatch_moe_gemm_to_cutlass(const T*          A,
                                   cudaStream_t      stream,
                                   int*              occupancy = nullptr)
 {
-
-    FT_LOG_DEBUG(__PRETTY_FUNCTION__);
-
     switch (gemm_config.tile_config) {
         case CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64:
             dispatch_gemm_config<T,
@@ -538,9 +660,6 @@ void dispatch_moe_gemm_to_cutlass(const T*          A,
                                   cudaStream_t      stream,
                                   int*              occupancy = nullptr)
 {
-
-    FT_LOG_DEBUG(__PRETTY_FUNCTION__);
-
     switch (gemm_config.tile_config) {
         case CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64:
             dispatch_gemm_config<T,
@@ -639,7 +758,7 @@ void dispatch_moe_gemm_to_cutlass(const T*          A,
                                   int*              occupancy = nullptr)
 {
 
-    FT_LOG_DEBUG(__PRETTY_FUNCTION__);
+
 
     switch (gemm_config.tile_config) {
         case CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8:
@@ -679,7 +798,7 @@ void dispatch_moe_gemm_to_cutlass(const T*          A,
 template<typename T, typename WeightType>
 MoeGemmRunner<T, WeightType>::MoeGemmRunner()
 {
-    FT_LOG_DEBUG(__PRETTY_FUNCTION__);
+
     int device{-1};
     check_cuda_error(cudaGetDevice(&device));
     sm_ = getSMVersion();
@@ -702,7 +821,7 @@ void MoeGemmRunner<T, WeightType>::dispatch_to_arch<EpilogueTag>(const T*       
                                                                  cudaStream_t      stream,
                                                                  int*              occupancy)
 {
-    FT_LOG_DEBUG(__PRETTY_FUNCTION__);
+
 
     if (sm_ >= 70 && sm_ < 75) {
         dispatch_moe_gemm_to_cutlass<T, WeightType, cutlass::arch::Sm70, EpilogueTag>(A,

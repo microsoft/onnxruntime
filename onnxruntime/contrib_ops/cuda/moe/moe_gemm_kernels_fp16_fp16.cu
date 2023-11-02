@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "src/fastertransformer/kernels/cutlass_kernels/moe_gemm/moe_gemm_kernels_template.h"
+#include "moe_gemm_kernels_template.h"
 
 namespace fastertransformer {
 #ifdef ENABLE_BF16
