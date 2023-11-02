@@ -7,29 +7,26 @@ import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common';
+import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
 type BuiltinFunctionName = string;
 type ElementwiseCustomExpression = (expression: string) => string;
 type ElementwiseFunctionCall = BuiltinFunctionName|ElementwiseCustomExpression;
 
 const createElementwiseProgramShader =
-    (shaderHelper: ShaderHelper, inputShape: readonly number[], inputDataType: number, outputDataType: number,
+    (shaderHelper: ShaderHelper, datasize: number, inputDataType: number, outputDataType: number,
      funcCall: ElementwiseFunctionCall, additionalImplementation?: string): string => {
+      const vecSize = Math.ceil(datasize / 4);
+
       let expression = '';
       if (typeof funcCall === 'string') {
         expression = `${funcCall}(a)`;
       } else {
         expression = funcCall('a');
       }
-      const inputRank = inputShape.length;
-      const outputRank = inputRank;
-      const useShapesUniforms = enableShapesUniforms(inputRank);
-      const outputShape = inputShape;
-      const inputShapeOrRank = useShapesUniforms ? inputRank : inputShape;
-      const outputShapeOrRank = useShapesUniforms ? outputRank : outputShape;
-      const input = inputVariable('inputData', inputDataType, inputShapeOrRank, 4);
-      const output = outputVariable('outputData', outputDataType, outputShapeOrRank, 4);
+
+      const input = inputVariable('inputData', inputDataType, [vecSize], 4);
+      const output = outputVariable('outputData', outputDataType, [vecSize], 4);
 
       return `
       ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(input, output)}
@@ -48,17 +45,15 @@ const createElementwiseProgramInfo =
     (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
      cacheKey?: string, outputDataType: number = input.dataType): ProgramInfo => ({
       name,
-      shaderCache: {hint: cacheKey, inputDependencies: enableShapesUniforms(1) ? ['rank'] : ['dims']},
+      shaderCache: {hint: cacheKey},
       getShaderSource: shaderHelper => createElementwiseProgramShader(
-          shaderHelper, input.dims, input.dataType, outputDataType, funcCall, additionalImplementation),
+          shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall, additionalImplementation),
       getRunData: (inputTensors) => ({
         outputs: [{dims: input.dims, dataType: outputDataType}],
         dispatchGroup:
             {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
         programUniforms: [
           {type: 'uint32', data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
-          ...createTensorShapeVariables(input.dims),
-          ...createTensorShapeVariables(input.dims),
         ],
       })
     });
