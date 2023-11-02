@@ -7,7 +7,7 @@ from typing import Tuple
 import numpy as np
 import onnxscript
 from mpi4py import MPI
-from onnxscript import FLOAT, INT64
+from onnxscript import FLOAT, FLOAT16, INT64
 
 import onnxruntime as ort
 
@@ -27,10 +27,21 @@ def shard_tensor_per_device_mesh(X, rank, axis, device_mesh):
     return np.concatenate(selected_shards, axis=axis)
 
 
-def translate_device_mesh_to_attrs(device_mesh: np.ndarray):
+def translate_single_device_mesh(device_mesh: np.ndarray):
     device_mesh_shape = "[" + ",".join(str(dim) for dim in device_mesh.shape) + "]"
     device_mesh_elements = "[" + ",".join(str(elem) for elem in device_mesh.flat) + "]"
     return device_mesh_shape, device_mesh_elements
+
+
+def translate_all_device_meshes(device_meshes: np.ndarray):
+    assert all(len(mesh.shape) == 1 for mesh in device_meshes)
+    device_mesh_shapes = []
+    device_mesh_elements = []
+    for device_mesh in device_meshes:
+        device_mesh_shape, device_mesh_element = translate_single_device_mesh(device_mesh)
+        device_mesh_shapes.append(device_mesh_shape)
+        device_mesh_elements.append(device_mesh_element)
+    return device_mesh_shapes, device_mesh_elements
 
 
 def parse_sharding_spec(spec: str):
@@ -90,29 +101,13 @@ class TestDistributedReshape(unittest.TestCase):
         self,
         shape: Tuple[int, ...],
         target_shape: Tuple[int, ...],
-        input_device_meshs: np.ndarray,
+        input_device_meshes: np.ndarray,
         input_shard_specs: Tuple[str, ...],
-        output_device_meshs: np.ndarray,
+        output_device_meshes: np.ndarray,
         output_shard_specs: Tuple[str, ...],
     ):
-        assert all(len(mesh.shape) == 1 for mesh in input_device_meshs)
-        assert all(len(mesh.shape) == 1 for mesh in output_device_meshs)
-        assert len(input_device_meshs) == len(input_shard_specs)
-        assert len(output_device_meshs) == len(output_shard_specs)
-
-        input_device_mesh_shapes = []
-        input_device_mesh_elements = []
-        for device_mesh in input_device_meshs:
-            device_mesh_shape, device_mesh_element = translate_device_mesh_to_attrs(device_mesh)
-            input_device_mesh_shapes.append(device_mesh_shape)
-            input_device_mesh_elements.append(device_mesh_element)
-
-        output_device_mesh_shapes = []
-        output_device_mesh_elements = []
-        for device_mesh in output_device_meshs:
-            device_mesh_shape, device_mesh_element = translate_device_mesh_to_attrs(device_mesh)
-            output_device_mesh_shapes.append(device_mesh_shape)
-            output_device_mesh_elements.append(device_mesh_element)
+        input_device_mesh_shapes, input_device_mesh_elements = translate_all_device_meshes(input_device_meshes)
+        output_device_mesh_shapes, output_device_mesh_elements = translate_all_device_meshes(output_device_meshes)
 
         @onnxscript.script()
         def distributed_reshape_instance(data_tensor: FLOAT, shape_tensor: INT64):
@@ -134,11 +129,11 @@ class TestDistributedReshape(unittest.TestCase):
             dtype=np.int64,
         )
 
-        local_data_tensor = shard_tensor_per_spec(data_tensor, rank, input_shard_specs[0], input_device_meshs[0])
+        local_data_tensor = shard_tensor_per_spec(data_tensor, rank, input_shard_specs[0], input_device_meshes[0])
         assert "S" not in input_shard_specs[1], "Shape should not be sharded."
 
         expected = np.reshape(data_tensor, shape_tensor)
-        local_expected = shard_tensor_per_spec(expected, rank, output_shard_specs[0], output_device_meshs[0])
+        local_expected = shard_tensor_per_spec(expected, rank, output_shard_specs[0], output_device_meshes[0])
 
         onnx_model = distributed_reshape_instance.to_model_proto(
             input_types=[FLOAT[tuple(local_data_tensor.shape)], INT64[tuple(shape_tensor.shape)]],
@@ -176,9 +171,9 @@ class TestDistributedReshape(unittest.TestCase):
                 3,
             ),
             target_shape=(6,),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("S[0]R", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("S[0]",),
         )
 
@@ -191,9 +186,9 @@ class TestDistributedReshape(unittest.TestCase):
                 4,
             ),
             target_shape=(8,),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RS[0]", "R"),
-            output_device_meshs=[np.array([0, 1, 0, 1])],
+            output_device_meshes=[np.array([0, 1, 0, 1])],
             output_shard_specs=("S[0]",),
         )
 
@@ -210,9 +205,9 @@ class TestDistributedReshape(unittest.TestCase):
                 2,
                 15,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("S[0]RR", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("S[0]R",),
         )
 
@@ -229,9 +224,9 @@ class TestDistributedReshape(unittest.TestCase):
                 2,
                 20,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RS[0]R", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RS[0]",),
         )
 
@@ -248,9 +243,9 @@ class TestDistributedReshape(unittest.TestCase):
                 2,
                 18,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RRS[0]", "R"),
-            output_device_meshs=[np.array([0, 1, 0, 1, 0, 1])],
+            output_device_meshes=[np.array([0, 1, 0, 1, 0, 1])],
             output_shard_specs=("RS[0]",),
         )
         # Two axis fusion.
@@ -268,9 +263,9 @@ class TestDistributedReshape(unittest.TestCase):
                 2,
                 3,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("S[0]R",),
         )
 
@@ -283,9 +278,9 @@ class TestDistributedReshape(unittest.TestCase):
                 1,
                 16,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RS[0]",),
         )
 
@@ -298,9 +293,9 @@ class TestDistributedReshape(unittest.TestCase):
                 2,
                 8,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("S[0]R",),
         )
 
@@ -313,9 +308,9 @@ class TestDistributedReshape(unittest.TestCase):
                 4,
                 4,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("S[0]R",),
         )
 
@@ -328,9 +323,9 @@ class TestDistributedReshape(unittest.TestCase):
                 8,
                 2,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("S[0]R",),
         )
 
@@ -343,9 +338,9 @@ class TestDistributedReshape(unittest.TestCase):
                 16,
                 1,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("S[0]R",),
         )
 
@@ -359,9 +354,9 @@ class TestDistributedReshape(unittest.TestCase):
                 1,
                 16,
             ),
-            input_device_meshs=[np.array([0, 1, 0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1, 0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1, 0, 1])],
+            output_device_meshes=[np.array([0, 1, 0, 1])],
             output_shard_specs=("RS[0]",),
         )
 
@@ -375,9 +370,9 @@ class TestDistributedReshape(unittest.TestCase):
                 2,
                 8,
             ),
-            input_device_meshs=[np.array([0, 1, 0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1, 0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RS[0]",),
         )
 
@@ -390,9 +385,9 @@ class TestDistributedReshape(unittest.TestCase):
                 4,
                 4,
             ),
-            input_device_meshs=[np.array([0, 1, 0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1, 0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1, 0, 1])],
+            output_device_meshes=[np.array([0, 1, 0, 1])],
             output_shard_specs=("S[0]R",),
         )
 
@@ -405,9 +400,9 @@ class TestDistributedReshape(unittest.TestCase):
                 8,
                 2,
             ),
-            input_device_meshs=[np.array([0, 1, 0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1, 0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1, 0, 1])],
+            output_device_meshes=[np.array([0, 1, 0, 1])],
             output_shard_specs=("S[0]R",),
         )
 
@@ -420,9 +415,9 @@ class TestDistributedReshape(unittest.TestCase):
                 16,
                 1,
             ),
-            input_device_meshs=[np.array([0, 1, 0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1, 0, 1])] * 2,
             input_shard_specs=("S[0]", "R"),
-            output_device_meshs=[np.array([0, 1, 0, 1])],
+            output_device_meshes=[np.array([0, 1, 0, 1])],
             output_shard_specs=("S[0]R",),
         )
 
@@ -444,9 +439,9 @@ class TestDistributedReshape(unittest.TestCase):
                 7,
                 4096,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RS[0]", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RRS[0]",),
         )
 
@@ -471,9 +466,9 @@ class TestDistributedReshape(unittest.TestCase):
                 64,
                 64,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RRS[0]", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RRS[0]R",),
         )
 
@@ -495,9 +490,9 @@ class TestDistributedReshape(unittest.TestCase):
                 21,
                 4096,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RRR", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RR",),
         )
 
@@ -519,9 +514,9 @@ class TestDistributedReshape(unittest.TestCase):
                 7,
                 4096,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RR", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RRR",),
         )
 
@@ -546,9 +541,9 @@ class TestDistributedReshape(unittest.TestCase):
                 7,
                 64,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RS[0]RR", "R"),
-            output_device_meshs=[np.array([0, 1, 0, 1, 0, 1])],
+            output_device_meshes=[np.array([0, 1, 0, 1, 0, 1])],
             output_shard_specs=("S[0]RR",),
         )
 
@@ -573,9 +568,9 @@ class TestDistributedReshape(unittest.TestCase):
                 7,
                 7,
             ),
-            input_device_meshs=[np.array([0, 1, 0, 1, 0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1, 0, 1, 0, 1])] * 2,
             input_shard_specs=("S[0]RR", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RS[0]RR",),
         )
 
@@ -600,9 +595,9 @@ class TestDistributedReshape(unittest.TestCase):
                 7,
                 7,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RS[0]RR", "R"),
-            output_device_meshs=[np.array([0, 1, 0, 1, 0, 1])],
+            output_device_meshes=[np.array([0, 1, 0, 1, 0, 1])],
             output_shard_specs=("S[0]RR",),
         )
 
@@ -627,9 +622,9 @@ class TestDistributedReshape(unittest.TestCase):
                 7,
                 64,
             ),
-            input_device_meshs=[np.array([0, 1, 0, 1, 0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1, 0, 1, 0, 1])] * 2,
             input_shard_specs=("S[0]RR", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RS[0]RR",),
         )
 
@@ -654,9 +649,9 @@ class TestDistributedReshape(unittest.TestCase):
                 7,
                 4096,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RRS[0]R", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RRS[0]",),
         )
 
@@ -678,10 +673,329 @@ class TestDistributedReshape(unittest.TestCase):
                 21,
                 4096,
             ),
-            input_device_meshs=[np.array([0, 1])] * 2,
+            input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RRS[0]", "R"),
-            output_device_meshs=[np.array([0, 1])],
+            output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RS[0]",),
+        )
+
+
+class TestDistributedExpand(unittest.TestCase):
+    def _check_distributed_expand(
+        self,
+        shape: Tuple[int, ...],
+        target_shape: Tuple[int, ...],
+        input_device_meshes: np.ndarray,
+        input_shard_specs: Tuple[str, ...],
+        output_device_meshes: np.ndarray,
+        output_shard_specs: Tuple[str, ...],
+    ):
+        assert len(input_device_meshes) == len(input_shard_specs)
+        assert len(output_device_meshes) == len(output_shard_specs)
+
+        input_device_mesh_shapes, input_device_mesh_elements = translate_all_device_meshes(input_device_meshes)
+        output_device_mesh_shapes, output_device_mesh_elements = translate_all_device_meshes(output_device_meshes)
+
+        @onnxscript.script()
+        def distributed_expand_instance(data_tensor: FLOAT, shape_tensor: INT64):
+            return MICROSOFT_OPSET.DistributedExpand(
+                data_tensor,
+                shape_tensor,
+                input_device_mesh_shapes=input_device_mesh_shapes,
+                input_device_mesh_elements=input_device_mesh_elements,
+                input_shard_specs=input_shard_specs,
+                output_device_mesh_shapes=output_device_mesh_shapes,
+                output_device_mesh_elements=output_device_mesh_elements,
+                output_shard_specs=output_shard_specs,
+            )
+
+        rank = comm.Get_rank()
+        data_tensor = np.arange(np.prod(shape), dtype=np.float32).reshape(*shape)
+        shape_tensor = np.array(
+            target_shape,
+            dtype=np.int64,
+        )
+
+        local_data_tensor = shard_tensor_per_spec(data_tensor, rank, input_shard_specs[0], input_device_meshes[0])
+        assert "S" not in input_shard_specs[1], "Shape should not be sharded."
+
+        expected = data_tensor * np.ones(shape_tensor)
+        local_expected = shard_tensor_per_spec(expected, rank, output_shard_specs[0], output_device_meshes[0])
+
+        onnx_model = distributed_expand_instance.to_model_proto(
+            input_types=[FLOAT[tuple(local_data_tensor.shape)], INT64[tuple(shape_tensor.shape)]],
+            output_types=[FLOAT[tuple(local_expected.shape)]],
+        )
+
+        # Each MPI process owns a sharded model.
+        sess = ort.InferenceSession(
+            onnx_model.SerializeToString(),
+            providers=["CUDAExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}],
+        )
+
+        # Each MPI process executes its sharded model.
+        # The result is `local` tensor stored on a specific MPI rank
+        # instead of `logical` tensor.
+        result = sess.run(
+            None,
+            {
+                "data_tensor": local_data_tensor,
+                "shape_tensor": shape_tensor,
+            },
+        )
+
+        # Compare local tensor and the corresponding logical sub-tensor
+        # obtained by sharding logical tensor following output's sharding spec.
+        np.testing.assert_allclose(result[0], local_expected, rtol=1e-5, atol=1e-8)
+
+    def test_expand_sharded_on_expanded_axis(self):
+        # data: shape=[8,1], spec=(RR, [0,1])
+        # shape: shape=[2], spec=(R, [0,1]), value=[1,4]
+        # output: shape=[8,4], spec=(RS, [0,1])
+        self._check_distributed_expand(
+            shape=(
+                8,
+                1,
+            ),
+            target_shape=(
+                8,
+                4,
+            ),
+            input_device_meshes=[np.array([0, 1])] * 2,
+            input_shard_specs=("RR", "R"),
+            output_device_meshes=[np.array([0, 1])],
+            output_shard_specs=("RS[0]",),
+        )
+
+    def test_expand_sharded_on_expanded_axis_with_device_mesh_0101(self):
+        # data: shape=[8,1], spec=(RR, [0,1])
+        # shape: shape=[2], spec=(R, [0,1]), value=[1,4]
+        # output: shape=[8,4], spec=(RS, [0,1])
+        self._check_distributed_expand(
+            shape=(
+                8,
+                1,
+            ),
+            target_shape=(
+                8,
+                8,
+            ),
+            input_device_meshes=[np.array([0, 1])] * 2,
+            input_shard_specs=("RR", "R"),
+            output_device_meshes=[np.array([0, 1, 0, 1])],
+            output_shard_specs=("RS[0]",),
+        )
+
+    def test_expand_replicated_on_expanded_axis(self):
+        # data: shape=[8,1], spec=(RR, [0,1])
+        # shape: shape=[2], spec=(R, [0,1]), value=[1,4]
+        # output: shape=[8,4], spec=(RR, [0,1])
+        self._check_distributed_expand(
+            shape=(
+                8,
+                1,
+            ),
+            target_shape=(
+                1,
+                4,
+            ),
+            input_device_meshes=[np.array([0, 1])] * 2,
+            input_shard_specs=("RR", "R"),
+            output_device_meshes=[np.array([0, 1])],
+            output_shard_specs=("RR",),
+        )
+
+    def test_expand_with_pass_through_sharding_spec(self):
+        # data: shape=[8,1], spec=(SR, [0,1])
+        # shape: shape=[2], spec=(R, [0,1]), value=[1,4]
+        # output: shape=[8,4], spec=(SR, [0,1])
+        self._check_distributed_expand(
+            shape=(
+                8,
+                1,
+            ),
+            target_shape=(
+                1,
+                4,
+            ),
+            input_device_meshes=[np.array([0, 1])] * 2,
+            input_shard_specs=(
+                "S[0]R",
+                "R",
+            ),
+            output_device_meshes=[np.array([0, 1])],
+            output_shard_specs=("S[0]R",),
+        )
+
+    def test_expand_in_tiny_llama(self):
+        # data: shape=[2,4,256,4], spec=(RSRR, [0,1])
+        # shape: shape=[4], spec=(R, [0,1,2,3]), value=[2,4,256,4]
+        # output: shape=[2,4,256,4], spec=(RSRR, [0,1])
+        self._check_distributed_expand(
+            shape=(
+                2,
+                4,
+                256,
+                4,
+            ),
+            target_shape=(
+                2,
+                4,
+                256,
+                4,
+            ),
+            input_device_meshes=[np.array([0, 1])] * 2,
+            input_shard_specs=("RS[0]RR", "R"),
+            output_device_meshes=[np.array([0, 1])],
+            output_shard_specs=("RS[0]RR",),
+        )
+
+
+class TestDistributedReduce(unittest.TestCase):
+    def _check_distributed_reduce(
+        self,
+        keepdims: int,
+        dtype: np.dtype,
+        shape: Tuple[int, ...],
+        axes: Tuple[int, ...],
+        input_device_meshes: np.ndarray,
+        input_shard_specs: Tuple[str, ...],
+        output_device_meshes: np.ndarray,
+        output_shard_specs: Tuple[str, ...],
+    ):
+        assert len(input_device_meshes) == len(input_shard_specs)
+        assert len(output_device_meshes) == len(output_shard_specs)
+
+        input_device_mesh_shapes, input_device_mesh_elements = translate_all_device_meshes(input_device_meshes)
+        output_device_mesh_shapes, output_device_mesh_elements = translate_all_device_meshes(output_device_meshes)
+
+        @onnxscript.script()
+        def distributed_reduce_sum_instance(data_tensor: FLOAT, axes_tensor: INT64):
+            return MICROSOFT_OPSET.DistributedReduceSum(
+                data_tensor,
+                axes_tensor,
+                keepdims=keepdims,
+                input_device_mesh_shapes=input_device_mesh_shapes,
+                input_device_mesh_elements=input_device_mesh_elements,
+                input_shard_specs=input_shard_specs,
+                output_device_mesh_shapes=output_device_mesh_shapes,
+                output_device_mesh_elements=output_device_mesh_elements,
+                output_shard_specs=output_shard_specs,
+            )
+
+        @onnxscript.script()
+        def distributed_reduce_max_instance(data_tensor: FLOAT, axes_tensor: INT64):
+            return MICROSOFT_OPSET.DistributedReduceMax(
+                data_tensor,
+                axes_tensor,
+                keepdims=keepdims,
+                input_device_mesh_shapes=input_device_mesh_shapes,
+                input_device_mesh_elements=input_device_mesh_elements,
+                input_shard_specs=input_shard_specs,
+                output_device_mesh_shapes=output_device_mesh_shapes,
+                output_device_mesh_elements=output_device_mesh_elements,
+                output_shard_specs=output_shard_specs,
+            )
+
+        @onnxscript.script()
+        def distributed_reduce_mean_instance(data_tensor: FLOAT, axes_tensor: INT64):
+            return MICROSOFT_OPSET.DistributedReduceMean(
+                data_tensor,
+                axes_tensor,
+                keepdims=keepdims,
+                input_device_mesh_shapes=input_device_mesh_shapes,
+                input_device_mesh_elements=input_device_mesh_elements,
+                input_shard_specs=input_shard_specs,
+                output_device_mesh_shapes=output_device_mesh_shapes,
+                output_device_mesh_elements=output_device_mesh_elements,
+                output_shard_specs=output_shard_specs,
+            )
+
+        rank = comm.Get_rank()
+
+        for onnx_func, np_func in zip(
+            [distributed_reduce_sum_instance, distributed_reduce_max_instance, distributed_reduce_mean_instance],
+            [np.sum, np.maximum.reduce, np.mean],
+        ):
+            data = np.random.randint(4, size=shape).astype(dtype)
+            expected = np_func(data, axis=axes, keepdims=bool(keepdims))
+
+            assert len(input_shard_specs) == 2 and len(input_device_meshes) == 2, "Reduce has two inputs."
+            assert "S" not in input_shard_specs[1], "Tensor `axes` should not be sharded."
+            assert len(output_shard_specs) == 1 and len(output_device_meshes) == 1, "Reduce has only one output."
+
+            local_data = shard_tensor_per_spec(data, rank, input_shard_specs[0], input_device_meshes[0])
+            local_expected = shard_tensor_per_spec(expected, rank, output_shard_specs[0], output_device_meshes[0])
+
+            if dtype == np.float32:
+                onnx_model = onnx_func.to_model_proto(
+                    input_types=[FLOAT[tuple(local_data.shape)], INT64[len(axes)]],
+                    output_types=[FLOAT[tuple(local_expected.shape)]],
+                )
+            elif dtype == np.int64:
+                onnx_model = onnx_func.to_model_proto(
+                    input_types=[INT64[tuple(local_data.shape)], INT64[len(axes)]],
+                    output_types=[INT64[tuple(local_expected.shape)]],
+                )
+            elif dtype == np.float16:
+                onnx_model = onnx_func.to_model_proto(
+                    input_types=[FLOAT16[tuple(local_data.shape)], INT64[len(axes)]],
+                    output_types=[FLOAT16[tuple(local_expected.shape)]],
+                )
+            else:
+                raise RuntimeError(f"Unsupported dtype: {dtype}")
+
+            # Each MPI process owns a sharded model.
+            sess = ort.InferenceSession(
+                onnx_model.SerializeToString(),
+                providers=["CUDAExecutionProvider"],
+                provider_options=[{"device_id": str(rank)}],
+            )
+
+            # Each MPI process executes its sharded model.
+            # The result is `local` tensor stored on a specific MPI rank
+            # instead of `logical` tensor.
+            result = sess.run(
+                None,
+                {
+                    "data_tensor": local_data,
+                    "axes_tensor": np.array(axes, dtype=np.int64),
+                },
+            )
+
+            # Compare local tensor and the corresponding logical sub-tensor
+            # obtained by sharding logical tensor following output's sharding spec.
+            np.testing.assert_allclose(result[0], local_expected, rtol=1e-5, atol=1e-8)
+
+    def test_reduce(self):
+        self._check_distributed_reduce(
+            keepdims=1,
+            dtype=np.float32,
+            shape=(
+                8,
+                4,
+            ),
+            axes=(0,),
+            input_device_meshes=[np.array([0, 1])] * 2,
+            input_shard_specs=("RR", "R"),
+            output_device_meshes=[np.array([0, 1])],
+            output_shard_specs=("RR",),
+        )
+
+    def test_reduce_sharded(self):
+        self._check_distributed_reduce(
+            keepdims=1,
+            dtype=np.float32,
+            shape=(
+                8,
+                4,
+            ),
+            axes=(1,),
+            input_device_meshes=[np.array([0, 1])] * 2,
+            input_shard_specs=("S[0]R", "R"),
+            output_device_meshes=[np.array([0, 1])],
+            output_shard_specs=("S[0]R",),
         )
 
 

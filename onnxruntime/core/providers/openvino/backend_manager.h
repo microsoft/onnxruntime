@@ -3,6 +3,11 @@
 
 #pragma once
 
+#include <vector>
+#include <map>
+#include <memory>
+#include <string>
+
 #include "ov_interface.h"
 #include "contexts.h"
 #include "ibackend.h"
@@ -13,7 +18,9 @@ namespace openvino_ep {
 // Singleton class that manages all the backends
 class BackendManager {
  public:
-  BackendManager(const onnxruntime::Node& fused_node, const onnxruntime::GraphViewer& subgraph, const logging::Logger& logger);
+  BackendManager(const onnxruntime::Node& fused_node,
+                 const onnxruntime::GraphViewer& subgraph,
+                 const logging::Logger& logger);
   void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
   static GlobalContext& GetGlobalContext();
@@ -21,7 +28,9 @@ class BackendManager {
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(
-      const onnxruntime::Node& fused_node, const onnxruntime::GraphViewer& subgraph, const logging::Logger& logger) const;
+      const onnxruntime::Node& fused_node,
+      const onnxruntime::GraphViewer& subgraph,
+      const logging::Logger& logger) const;
   bool ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const;
   bool ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const;
 
