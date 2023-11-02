@@ -14,7 +14,6 @@
 namespace onnxruntime {
 namespace qnn {
 class QnnOpConfigWrapper;
-struct OnnxInputInfo;
 
 namespace utils {
 size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
@@ -75,7 +74,7 @@ Status GetQuantParams(float rmin,
                       float& scale,
                       int& zero_point);
 
-double Dequantize(const OnnxInputInfo& info, const double quant_value);
+double Dequantize(int32_t offset, float scale, const double quant_value);
 
 Status Quantize(const double double_value,
                 const float scale,

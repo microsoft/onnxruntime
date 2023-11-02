@@ -266,7 +266,10 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double mean_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(mean_info.qnn_data_type, mean_raw_ptr + offset, mean_value, offset));
-      mean_out[i] = (is_npu_backend) ? utils::Dequantize(mean_info, mean_value) : mean_value;
+      mean_out[i] = (is_npu_backend) ? utils::Dequantize(mean_info.quant_param.scaleOffsetEncoding.offset,
+                                                         mean_info.quant_param.scaleOffsetEncoding.scale,
+                                                         mean_value)
+                                     : mean_value;
     }
     return Status::OK();
   }
@@ -286,7 +289,10 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double var_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(var_info.qnn_data_type, var_raw_ptr + offset, var_value, offset));
-      std_out[i] = (is_npu_backend) ? utils::Dequantize(var_info, var_value) : var_value;
+      std_out[i] = (is_npu_backend) ? utils::Dequantize(var_info.quant_param.scaleOffsetEncoding.offset,
+                                                        var_info.quant_param.scaleOffsetEncoding.scale,
+                                                        var_value)
+                                    : var_value;
       std_out[i] = std::sqrt(std_out[i] + static_cast<double>(epsilon));
     }
     return Status::OK();
@@ -309,7 +315,10 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double scale_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(scale_info.qnn_data_type, scale_raw_ptr + offset, scale_value, offset));
-      scale_out[i] = (is_npu_backend) ? utils::Dequantize(scale_info, scale_value) : scale_value;
+      scale_out[i] = (is_npu_backend) ? utils::Dequantize(scale_info.quant_param.scaleOffsetEncoding.offset,
+                                                          scale_info.quant_param.scaleOffsetEncoding.scale,
+                                                          scale_value)
+                                      : scale_value;
       scale_out[i] = scale_out[i] / std_double_tensor[i];
       rmax = std::max(rmax, scale_out[i]);
       rmin = std::min(rmin, scale_out[i]);
@@ -335,7 +344,10 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double bias_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(bias_info.qnn_data_type, bias_raw_ptr + offset, bias_value, offset));
-      bias_out[i] = (is_npu_backend) ? utils::Dequantize(bias_info, bias_value) : bias_value;
+      bias_out[i] = (is_npu_backend) ? utils::Dequantize(bias_info.quant_param.scaleOffsetEncoding.offset,
+                                                         bias_info.quant_param.scaleOffsetEncoding.scale,
+                                                         bias_value)
+                                     : bias_value;
       bias_out[i] = bias_out[i] - (mean_double_tensor[i] * scale_double_tensor[i]);
       rmax = std::max(rmax, bias_out[i]);
       rmin = std::min(rmin, bias_out[i]);

@@ -11,7 +11,6 @@
 #include "core/framework/data_types.h"
 #include "qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_def.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -475,11 +474,10 @@ Status GetQuantParams(float rmin,
   return Status::OK();
 }
 
-double Dequantize(const OnnxInputInfo& info,
-                  const double quant_value) {
-  auto offset = static_cast<double>(info.quant_param.scaleOffsetEncoding.offset);
-  auto scale = static_cast<double>(info.quant_param.scaleOffsetEncoding.scale);
-  return (quant_value + offset) * scale;
+double Dequantize(int32_t offset, float scale, const double quant_value) {
+  double offset_d = static_cast<double>(offset);
+  double scale_d = static_cast<double>(scale);
+  return (quant_value + offset_d) * scale_d;
 }
 
 Status Quantize(const double double_value,
