@@ -688,6 +688,7 @@ Status FusedAttentionCutlass(
   p.num_heads = parameters.num_heads;
   p.sequence_length = parameters.sequence_length;
   p.kv_sequence_length = parameters.sequence_length;
+  p.max_sequence_length = parameters.sequence_length;
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
   p.causal = false;
@@ -702,6 +703,7 @@ Status FusedAttentionCutlass(
   p.attn_bias = data.relative_position_bias;
   p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
   p.output = data.output;
+  p.is_kv_bsnh = true;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float))
                     ? (data.workspace + (data.no_qkv_workspace ? 0 : (elements_qk + elements_qk + elements_v)))
                     : nullptr;

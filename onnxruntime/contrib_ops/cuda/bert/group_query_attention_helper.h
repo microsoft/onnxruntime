@@ -29,13 +29,13 @@ Status CheckInputs(const Tensor* query,
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, S+, D_kv)
   //     value            (V)       : (B, S+, D_kv)
+  ORT_UNUSED_PARAMETER(value);
 
   AttentionQkvFormat qkv_format = Q_K_V_BSNH;
   AttentionQkvFormat past_kv_format = Q_K_V_BSNH;
 
   const auto& query_dims = query->Shape().GetDims();
   const auto& key_dims = key->Shape().GetDims();
-  const auto& value_dims = value->Shape().GetDims();
 
   if (query_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
@@ -47,10 +47,8 @@ Status CheckInputs(const Tensor* query,
   int q_hidden_size = static_cast<int>(query_dims[2]);
   int head_size = static_cast<int>(q_hidden_size) / num_heads;
 
-  int kv_sequence_length = sequence_length;
-  int kv_hidden_size = (key_dims.size() == 3)
-                           ? static_cast<int>(key_dims[2])
-                           : (kv_num_heads * static_cast<int>(key_dims[3]));
+  int kv_sequence_length = static_cast<int>(key_dims[1]);
+  int kv_hidden_size = static_cast<int>(key_dims[2]);
 
   int max_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
@@ -134,63 +132,49 @@ Status CheckInputs(const Tensor* query,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
   }
 
-  if (key != nullptr) {
-    const auto& key_dims = key->Shape().GetDims();
-    if (key_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
-                             key_dims.size());
-    }
-    if (query_dims[0] != key_dims[0]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'key' shall have same dim 0 (batch size)");
-    }
-
-    if (num_heads % kv_num_heads != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
-                             num_heads % kv_num_heads);
-    }
-    if (key_dims[2] != value_dims[2]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' and 'value' shall have same dim 2 (kv_hidden_size)");
-    }
-
-    qkv_format = Q_K_V_BSNH;
-    kv_sequence_length = static_cast<int>(key_dims[1]);
-  } else {
+  if (key_dims.size() != 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
+                           key_dims.size());
+  }
+  if (query_dims[0] != key_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Missing key tensor.");
+                           "Input 'query' and 'key' shall have same dim 0 (batch size)");
   }
 
-  if (value != nullptr) {
-    const auto& value_dims = value->Shape().GetDims();
-    if (value_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
-                             value_dims.size());
-    }
-
-    if (query_dims[0] != value_dims[0]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'value' shall have same dim 0 (batch_size)");
-    }
-
-    if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
-    }
-
-    if (value_dims[2] != kv_hidden_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
-    }
-  } else {
+  if (num_heads % kv_num_heads != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Missing value tensor.");
+                           "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
+                           num_heads % kv_num_heads);
+  }
+
+  const auto& value_dims = value->Shape().GetDims();
+  if (value_dims.size() != 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
+                           value_dims.size());
+  }
+
+  if (query_dims[0] != value_dims[0]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' and 'value' shall have same dim 0 (batch_size)");
+  }
+
+  if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
+  }
+
+  if (value_dims[2] != kv_hidden_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
   }
 
   // When kv-cache, we take past_seq_len as an argument... otherwise we use sequence length of past kv directly.
   int32_t past_sequence_length = 0;
-  int present_sequence_length = 0;
+  int present_sequence_length = kv_sequence_length;
   if (past_seq_len != nullptr) {
+    if (past_key == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Past KV must be present as share-buffer when using past_seq_len pointer.");
+    }
     if (!onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "past_sequence_length tensor must be of one element when using past kv.");
@@ -199,6 +183,10 @@ Status CheckInputs(const Tensor* query,
       past_sequence_length = *((*past_seq_len).template Data<int32_t>());
     } else {
       past_sequence_length = static_cast<int32_t>(*((*past_seq_len).template Data<int64_t>()));
+    }
+    if (past_sequence_length + kv_sequence_length > max_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "KV buffer too small... shall be that max_sequence_length >= past_sequence_length + kv_sequence_length");
     }
     present_sequence_length = max_sequence_length;
   } else if (past_key != nullptr) {

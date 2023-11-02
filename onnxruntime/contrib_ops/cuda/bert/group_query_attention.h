@@ -27,6 +27,7 @@ class GroupQueryAttention final : public CudaKernel {
   bool is_past_bsnh_;
   float scale_;
   bool disable_flash_attention_;
+  bool disable_memory_efficient_attention_;
 };
 
 }  // namespace cuda
