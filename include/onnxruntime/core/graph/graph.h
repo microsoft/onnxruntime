@@ -397,6 +397,16 @@ class Node {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
+
+  /** Gets the NodeProto representation of this Node.
+  @param update_subgraphs Update the GraphProto values for any subgraphs in the returned NodeProto.
+                          If graph optimization has been run this is most likely required
+                          to ensure the complete Graph is valid.
+                          The function does not update subgraphs in the minimal builds due
+                          to ToGraphProto() not being available.
+  */
+  void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   /**
@@ -468,13 +478,6 @@ class Node {
   @param replacements Map of current NodeArg to replacement NodeArg.
   */
   void ReplaceDefs(const std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*>& replacements);
-
-  /** Gets the NodeProto representation of this Node.
-  @param update_subgraphs Update the GraphProto values for any subgraphs in the returned NodeProto.
-                          If graph optimization has been run this is most likely required
-                          to ensure the complete Graph is valid.
-  */
-  void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
 
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<onnxruntime::fbs::Node>& fbs_node) const;
@@ -989,6 +992,7 @@ class Graph {
   when its subraph is being inlined. In this case any node that has subgbraphs regnerates
   them off the subgraph node protos list and the folded nodes are being resurrected resulting
   in the duplicate name definitions. This is necessary to call after constant folding for non-main graphs.
+  The function does not update any subgraph protos.
   */
   void RegenerateNodeProtos();
 

@@ -632,45 +632,6 @@ void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
   func_template_ = &func_template;
 }
 
-void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
-  proto.set_name(name_);
-  proto.set_op_type(op_type_);
-
-  if (!domain_.empty())
-    proto.set_domain(domain_);
-
-  if (!description_.empty())
-    proto.set_doc_string(description_);
-
-  // Checks an attribute was not removed.
-  if (!can_be_saved_) {
-    ORT_THROW("Removable attributes were removed before the conversion is started.");
-  }
-
-  // Set attributes.
-  proto.clear_attribute();
-  for (const auto& attribute : attributes_) {
-    const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
-    *attr = attribute.second;  // copy
-    if (update_subgraphs && attr->has_g()) {
-      attr->clear_g();
-      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
-    }
-  }
-
-  // Set inputs' definitions.
-  proto.clear_input();
-  for (auto& input_def : definitions_.input_defs) {
-    proto.add_input(input_def->Name());
-  }
-
-  // Set outputs' definitions.
-  proto.clear_output();
-  for (auto& output_def : definitions_.output_defs) {
-    proto.add_output(output_def->Name());
-  }
-}
-
 Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                              flatbuffers::Offset<fbs::Node>& fbs_node) const {
   // if type is Primitive it's an ONNX function and currently we have kernel implementations for all those
@@ -984,6 +945,48 @@ bool Node::ClearAttribute(const std::string& attr_name) {
   graph_->SetGraphProtoSyncNeeded();
   return attributes_.erase(attr_name) > 0;
 }
+
+void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
+  proto.set_name(name_);
+  proto.set_op_type(op_type_);
+
+  if (!domain_.empty())
+    proto.set_domain(domain_);
+
+  if (!description_.empty())
+    proto.set_doc_string(description_);
+
+  // Checks an attribute was not removed.
+  if (!can_be_saved_) {
+    ORT_THROW("Removable attributes were removed before the conversion is started.");
+  }
+
+  // Set attributes.
+  proto.clear_attribute();
+  for (const auto& attribute : attributes_) {
+    const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
+    *attr = attribute.second;  // copy
+#if !defined(ORT_MINIMAL_BUILD)
+    if (update_subgraphs && attr->has_g()) {
+      attr->clear_g();
+      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+    }
+#endif
+  }
+
+  // Set inputs' definitions.
+  proto.clear_input();
+  for (auto& input_def : definitions_.input_defs) {
+    proto.add_input(input_def->Name());
+  }
+
+  // Set outputs' definitions.
+  proto.clear_output();
+  for (auto& output_def : definitions_.output_defs) {
+    proto.add_output(output_def->Name());
+  }
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 int Node::PruneRemovableAttributes(gsl::span<const std::string> removable_attributes) {
@@ -3311,7 +3314,10 @@ void Graph::RegenerateNodeProtos() {
     auto* node = GetNode(node_idx);
     if (node != nullptr) {
       auto* node_proto = replacement_nodes.Add();
-      node->ToProto(*node_proto);
+      // We do not need to update subgraphs and the functionality
+      // is not there in MINIMAL builds.
+      constexpr bool update_subgraphs_false = false;
+      node->ToProto(*node_proto, update_subgraphs_false);
     }
   }
   graph_proto_->mutable_node()->Swap(&replacement_nodes);
