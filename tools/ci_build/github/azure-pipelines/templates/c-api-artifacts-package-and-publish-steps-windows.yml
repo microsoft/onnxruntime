@@ -39,6 +39,13 @@ steps:
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
 
+          # copy cuda context deps
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers\cuda
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\resource.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\custom_op_context.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_context.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers\cuda
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_resource.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers\cuda
+
           echo "Directories created"
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
