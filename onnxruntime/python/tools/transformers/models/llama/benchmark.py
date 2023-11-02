@@ -120,7 +120,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 engine="pt",
                 return_dict=True,
             )
-    
+
     elif args.benchmark_type == "ort-convert-to-onnx":
         # Microsoft export from convert_to_onnx
         init_inputs = get_merged_sample_with_past_kv_inputs(
@@ -519,7 +519,13 @@ def get_args():
         "--benchmark-type",
         type=str,
         required=True,
-        choices=["hf-pt-eager", "hf-pt-compile", "hf-ort", "ort-msft", "ort-convert-to-onnx"]
+        choices=[
+            "hf-pt-eager",
+            "hf-pt-compile",
+            "hf-ort",
+            "ort-msft",
+            "ort-convert-to-onnx",
+        ],
     )
     parser.add_argument(
         "-m",
@@ -643,6 +649,7 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     config = AutoConfig.from_pretrained(args.model_name)
+
     target_device = f"cuda:{args.device_id}" if args.device != "cpu" else args.device
     use_fp16 = args.precision == "fp16"
 

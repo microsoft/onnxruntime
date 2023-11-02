@@ -1,15 +1,17 @@
+import argparse
+import logging
+import os
+
 import onnx
+from benchmark_helper import setup_logger
 from convert_generation import replace_mha_with_gqa
+from fusion_options import FusionOptions
 from onnx_model import OnnxModel
 from optimizer import optimize_model
-from fusion_options import FusionOptions
 from transformers import AutoConfig
-import os
-import argparse
-from benchmark_helper import setup_logger
-import logging
 
 logger = logging.getLogger("")
+
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -46,6 +48,7 @@ def get_args():
     args = parser.parse_args()
     return args
 
+
 def main():
     args = get_args()
     setup_logger(args.verbose)
@@ -75,13 +78,15 @@ def main():
     del model_opt
     opt_model = OnnxModel(onnx.load(tmp_file, load_external_data=True))
     opt_model.convert_float_to_float16(keep_io_types=False)
-    opt_model = replace_mha_with_gqa(opt_model, "past_sequence_length", config.num_key_value_heads, config.sliding_window)
+    opt_model = replace_mha_with_gqa(
+        opt_model, "past_sequence_length", config.num_key_value_heads, config.sliding_window
+    )
 
     logger.info(f"The ONNX model at {tmp_file} has been successfully integrated with GQA and quantized!")
 
     opt_model.prune_graph()
     opt_model.update_graph(allow_remove_graph_inputs=True)
-    opt_model.save_model_to_file(args.output_path, use_external_data_format = True)
+    opt_model.save_model_to_file(args.output_path, use_external_data_format=True)
 
     logger.info(f"The ONNX model at {tmp_file} has been successfully pruned and saved at {args.output_path}!")
 
@@ -90,6 +95,7 @@ def main():
     os.remove(data_path)
 
     logger.info(f"Temporary file {tmp_file} has been successfully deleted.")
+
 
 if __name__ == "__main__":
     main()
