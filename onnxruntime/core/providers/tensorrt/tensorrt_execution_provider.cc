@@ -713,7 +713,7 @@ Status BindContextInput(Ort::KernelContext& ctx,
 
   if (trt_engine->isShapeInferenceIO(input_name)) {
     // Get the shape value of "shape tensor"
-    if (!shape_values.empty()) {
+    if (shape_values.empty()) {
       auto status = GetShapeOfShapeTensor(input_tensor, shape_values, trt_engine, input_name, stream);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
