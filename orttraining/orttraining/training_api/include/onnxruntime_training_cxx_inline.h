@@ -279,4 +279,16 @@ inline Property CheckpointState::GetProperty(const std::string& property_name) {
   return property;
 }
 
+inline void CheckpointState::UpdateParameter(const std::string& parameter_name, const Value& parameter) {
+  ThrowOnError(GetTrainingApi().UpdateParameter(p_, parameter_name.c_str(), parameter));
+}
+
+inline Value CheckpointState::GetParameter(const std::string& parameter_name) {
+  AllocatorWithDefaultOptions allocator;
+  OrtValue* parameter;
+  ThrowOnError(GetTrainingApi().GetParameter(p_, parameter_name.c_str(), allocator, &parameter));
+
+  return Value{parameter};
+}
+
 }  // namespace Ort

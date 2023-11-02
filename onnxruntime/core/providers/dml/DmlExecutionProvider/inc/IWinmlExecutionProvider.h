@@ -83,7 +83,7 @@ namespace Windows::AI::MachineLearning::Adapter
     // Either nodesAsOperatorDesc or nodesAsIDMLOperator can have non-zero size.
     struct DmlGraphNodeCreateInfo
     {
-        uint32_t nodeCount;
+        uint32_t nodeCount = 0;
         std::vector<std::unique_ptr<AbstractOperatorDesc>> nodesAsOperatorDesc;
         std::vector<Microsoft::WRL::ComPtr<IDMLOperator>> nodesAsIDMLOperator;
         std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
