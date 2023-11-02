@@ -17,7 +17,8 @@
 #pragma once
 
 #include "ft_gemm_configs.h"
-#include "src/fastertransformer/utils/cuda_utils.h"
+#include <vector>
+//#include "src/fastertransformer/utils/cuda_utils.h"
 
 namespace fastertransformer {
 
