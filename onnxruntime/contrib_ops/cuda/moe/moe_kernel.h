@@ -15,7 +15,7 @@
  */
 
 #pragma once
-#include "cutlass/gemm/gemm.h"
+//#include "cutlass/gemm/gemm.h"
 #include "moe_gemm_kernels.h"
 #include <cuda_runtime_api.h>
 

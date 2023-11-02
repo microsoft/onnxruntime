@@ -56,15 +56,6 @@ Status MoEBlock<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   auto stream = context->GetComputeStream();
 
-  const CudaT* input_ptr = reinterpret_cast<const CudaT*>(input->template Data<T>());
-  const CudaT* gated_output_ptr = reinterpret_cast<const CudaT*>(gated_output->template Data<T>());
-  const CudaT* fc1_experts_weights_ptr = reinterpret_cast<const CudaT*>(fc1_experts_weights->template Data<T>());
-  const CudaT* fc2_experts_weights_ptr = reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>());
-  const CudaT* fc1_experts_bias_ptr = reinterpret_cast<const CudaT*>(fc1_experts_bias->template Data<T>());
-  const CudaT* fc2_experts_bias_ptr = reinterpret_cast<const CudaT*>(fc2_experts_bias->template Data<T>());
-  const CudaT* fc1_scales_ptr = nullptr;
-  const CudaT* fc2_scales_ptr = nullptr;
-
   fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner;
 
   size_t ws_size = moe_runner.getWorkspaceSize(num_rows, hidden_size, inter_size, num_experts, k);
@@ -82,50 +73,45 @@ Status MoEBlock<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> expanded_source_row_to_expanded_dest_row = IAllocator::MakeUniquePtr<void>(allocator, expanded_source_row_to_expanded_dest_row_size, false, stream);
   IAllocatorUniquePtr<void> expert_for_source_row = IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
 
-  char* workspace_ptr = reinterpret_cast<char*>(work_space.get());
-  CudaT* fc2_output_ptr = reinterpret_cast<CudaT*>(fc2_output.get());
-  CudaT* expert_scales_ptr = reinterpret_cast<CudaT*>(expert_scales.get());
-  int* expanded_source_row_to_expanded_dest_row_ptr = reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get());
-  int* expert_for_source_row_ptr = reinterpret_cast<int*>(expert_for_source_row.get());
+  const CudaT* fc1_scales_ptr = nullptr;
+  const CudaT* fc2_scales_ptr = nullptr;
 
-  moe_runner.run_moe_fc(input_ptr,
-                        gated_output_ptr,
-                        fc1_experts_weights_ptr,
-                        fc1_scales_ptr,
-                        fc1_experts_bias_ptr,
-                        ActivationType::GELU,
-                        fc2_experts_weights_ptr,
-                        fc2_scales_ptr,
-                        num_rows,
-                        hidden_size,
-                        inter_size,
-                        num_experts,
-                        k,
-                        workspace_ptr,
-                        fc2_output_ptr,
-                        expert_scales_ptr,
-                        expanded_source_row_to_expanded_dest_row_ptr,
-                        expert_for_source_row_ptr,
-                        stream);
+  // bugbug: use a string to select from different activationType
+  moe_runner.run_moe_fc(reinterpret_cast<const CudaT*>(input->template Data<T>()),
+                        reinterpret_cast<const CudaT*>(gated_output->template Data<T>()),
+                        reinterpret_cast<const CudaT*>(fc1_experts_weights->template Data<T>()),
+                        std::move(fc1_scales_ptr),
+                        reinterpret_cast<const CudaT*>(fc1_experts_bias->template Data<T>()),
+                        fastertransformer::ActivationType::Gelu,
+                        reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()),
+                        std::move(fc2_scales_ptr),
+                        static_cast<int>(num_rows),
+                        static_cast<int>(hidden_size),
+                        static_cast<int>(inter_size),
+                        static_cast<int>(num_experts),
+                        static_cast<int>(k),
+                        reinterpret_cast<char*>(work_space.get()),
+                        reinterpret_cast<CudaT*>(fc2_output.get()),
+                        reinterpret_cast<CudaT*>(expert_scales.get()),
+                        reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
+                        reinterpret_cast<int*>(expert_for_source_row.get()),
+                        Stream(context));
 
   Tensor* output = context->Output(0, input->Shape());
-  CudaT* output_ptr = reinterpret_cast<CudaT*>(output->template MutableData<T>());
 
   // bugbug: support no skip in moe_kernel
   IAllocatorUniquePtr<void> skip_layer = IAllocator::MakeUniquePtr<void>(allocator, num_rows * hidden_size * sizeof(T), false, stream);
-  CudaT* skip_layer_ptr = reinterpret_cast<CudaT*>(skip_layer.get());
-  // bugbug: remove above code
-  fastertransformer::finalize_moe_routing_kernelLauncher(fc2_output_ptr,
-                                                         output_tensor_ptr,
-                                                         skip_layer_ptr,
-                                                         fc2_expert_biases_ptr,
-                                                         expert_scales_ptr,
-                                                         expanded_source_row_to_expanded_dest_row_ptr,
-                                                         expert_for_source_row_ptr,
-                                                         num_rows,
-                                                         hidden_size,
-                                                         k,
-                                                         stream);
+  fastertransformer::finalize_moe_routing_kernelLauncher(reinterpret_cast<CudaT*>(fc2_output.get()),
+                                                         reinterpret_cast<CudaT*>(output->template MutableData<T>()),
+                                                         reinterpret_cast<CudaT*>(skip_layer.get()),
+                                                         reinterpret_cast<const CudaT*>(fc2_experts_bias->template Data<T>()),
+                                                         reinterpret_cast<CudaT*>(expert_scales.get()),
+                                                         reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
+                                                         reinterpret_cast<int*>(expert_for_source_row.get()),
+                                                         static_cast<int>(num_rows),
+                                                         static_cast<int>(hidden_size),
+                                                         static_cast<int>(k),
+                                                         Stream(context));
 
   return Status::OK();
 }

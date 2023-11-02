@@ -18,12 +18,13 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#include "cutlass/gemm/gemm.h"
-#include "cutlass/numeric_types.h"
+//#include "cutlass/gemm/gemm.h"
+//#include "cutlass/numeric_types.h"
 #pragma GCC diagnostic pop
 
 #include <cuda_runtime_api.h>
 #include <vector>
+#include <stdexcept>
 
 namespace fastertransformer {
 
@@ -129,7 +130,7 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
                                                         const int64_t                         m,
                                                         const int64_t                         n,
                                                         const int64_t                         k,
-                                                        const int64_t                         num_experts,
+                                                        const int64_t                         ,
                                                         const int                             split_k_limit,
                                                         const size_t                          workspace_bytes,
                                                         const int                             multi_processor_count,

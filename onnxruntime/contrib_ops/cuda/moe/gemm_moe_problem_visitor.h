@@ -40,7 +40,6 @@
 #include "cutlass/gemm/kernel/gemm_grouped_problem_visitor.h"
 #include "cutlass/matrix_coord.h"
 
-#include "gemm_moe_problem_visitor.h"
 #include "moe_problem_visitor.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -56,7 +55,7 @@ template<typename ThreadblockShape,
          int               ThreadCount,
          bool              Transposed = false>
 struct GemmMoeProblemVisitor:
-    public MoeProblemVisitor<detail::GemmGroupedProblemSizeHelper<Transposed>,
+    public MoeProblemVisitor<detail::GemmGroupedProblemSizeHelper<ThreadblockShape, Transposed>,
                              ThreadblockShape,
                              GroupScheduleMode_,
                              PrefetchTileCount,
@@ -64,7 +63,7 @@ struct GemmMoeProblemVisitor:
 
     static bool const kTransposed = Transposed;
 
-    using ProblemSizeHelper = detail::GemmGroupedProblemSizeHelper<Transposed>;
+    using ProblemSizeHelper = detail::GemmGroupedProblemSizeHelper<ThreadblockShape, Transposed>;
     using Base =
         MoeProblemVisitor<ProblemSizeHelper, ThreadblockShape, GroupScheduleMode_, PrefetchTileCount, ThreadCount>;
     using Params        = typename Base::Params;
