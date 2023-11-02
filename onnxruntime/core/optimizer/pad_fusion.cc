@@ -26,33 +26,6 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
     return false;
   }
 
-  const NodeAttributes& pad_attributes = node.GetAttributes();
-  if (pad_attributes.find("mode") != pad_attributes.end() &&
-      pad_attributes.at("mode").s() != "constant") {
-    return false;
-  }
-
-  // Since opset 11, <pads> and <constant_value> moved to inputs.
-  // Both of these should be initializer because we have to verify the values.
-  if (node.SinceVersion() >= 11) {
-    if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
-        (node.InputDefs().size() > 2 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2]))) {
-      return false;
-    }
-
-    // constant_value should be zero because Conv and MaxPool allow only 0 as padding value.
-    const auto* pad_constant_value_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[2]->Name());
-    Initializer pad_constant_value{*pad_constant_value_proto, graph.ModelPath()};
-    if (std::any_of(pad_constant_value.DataAsByteSpan().begin(), pad_constant_value.DataAsByteSpan().end(), [](const uint8_t byte) { return byte != 0; })) {
-      return false;
-    }
-  } else {
-    if (pad_attributes.find("value") != pad_attributes.end() &&
-        pad_attributes.at("value").f() != 0.0) {
-      return false;
-    }
-  }
-
   const Node& child_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Conv", {1, 11}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "MaxPool", {1, 8, 10, 11, 12})) {
@@ -74,6 +47,36 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
       child_node.GetAttributes().at("auto_pad").s() != "NOTSET") {
     return false;
   }
+
+  const NodeAttributes& pad_attributes = node.GetAttributes();
+  if (pad_attributes.find("mode") != pad_attributes.end() &&
+      pad_attributes.at("mode").s() != "constant") {
+    return false;
+  }
+
+  // Since opset 11, <pads> and <constant_value> moved to inputs.
+  // Both of these should be initializer because we have to verify the values.
+  if (node.SinceVersion() >= 11) {
+    if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
+        (node.InputDefs().size() > 2 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2]))) {
+      return false;
+    }
+
+    // constant_value should be zero because Conv and MaxPool allow only 0 as padding value.
+    if (node.InputDefs().size() > 2) {
+      const auto* pad_constant_value_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[2]->Name());
+      Initializer pad_constant_value{*pad_constant_value_proto, graph.ModelPath()};
+      if (std::any_of(pad_constant_value.DataAsByteSpan().begin(), pad_constant_value.DataAsByteSpan().end(), [](const uint8_t byte) { return byte != 0; })) {
+        return false;
+      }
+    }
+  } else {
+    if (pad_attributes.find("value") != pad_attributes.end() &&
+        pad_attributes.at("value").f() != 0.0) {
+      return false;
+    }
+  }
+
   return true;
 }
 
