@@ -87,8 +87,8 @@ impl<'a, T> std::ops::Deref for WithOutputTensor<'a, T> {
 }
 
 impl<'a, T> TryFrom<OrtOutputTensor> for WithOutputTensor<'a, T>
-    where
-        T: TypeToTensorElementDataType,
+where
+    T: TypeToTensorElementDataType,
 {
     type Error = OrtError;
 
