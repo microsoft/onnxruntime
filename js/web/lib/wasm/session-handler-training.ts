@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env, InferenceSession, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
+import {env, InferenceSession, OnnxValue, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
 
 import {SerializableModeldata, TensorMetadata} from './proxy-messages';
 import {decodeTensorMetadata, encodeTensorMetadata} from './session-handler-inference';

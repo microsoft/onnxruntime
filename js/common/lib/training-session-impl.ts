@@ -176,11 +176,11 @@ export class TrainingSession implements TrainingSessionInterface {
     return this.convertHandlerReturnTypeToMapOfTensors(results);
   }
 
-  async getParametersSize(trainableOnly: boolean): Promise<number> {
+  async getParametersSize(trainableOnly: boolean = true): Promise<number> {
     return this.handler.getParametersSize(trainableOnly);
   }
 
-  async loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void> {
+  async loadParametersBuffer(array: Float32Array, trainableOnly: boolean = true): Promise<void> {
     const paramsSize = await this.getParametersSize(trainableOnly);
     if (array.length !== paramsSize) {
       throw new Error(
@@ -190,7 +190,7 @@ export class TrainingSession implements TrainingSessionInterface {
     return this.handler.loadParametersBuffer(array, trainableOnly);
   }
 
-  async getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue> {
+  async getContiguousParameters(trainableOnly: boolean = true): Promise<OnnxValue> {
     return this.handler.getContiguousParameters(trainableOnly);
   }
 
