@@ -1177,7 +1177,7 @@ TEST_F(GraphTransformationTests, FusePadWithMaxPool) {
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "MaxPool") {
       auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-      ASSERT_EQ(child_pads->size(), expected_pads.size())
+      ASSERT_EQ(child_pads->size(), static_cast<int32_t>(expected_pads.size()))
           << "fusion should produce the same size of pads integer as the MaxPool node";
       for (uint32_t index = 0; index < expected_pads.size(); index++) {
         ASSERT_EQ(expected_pads[index], child_pads->Get(index))
@@ -1228,7 +1228,7 @@ TEST_F(GraphTransformationTests, FusePadWithMaxPoolOpsetLessThan11) {
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "MaxPool") {
       auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
-      ASSERT_EQ(child_pads->size(), expected_pads.size())
+      ASSERT_EQ(child_pads->size(), static_cast<int32_t>(expected_pads.size()))
           << "fusion should produce the same size of pads integer as the MaxPool node";
       for (uint32_t index = 0; index < expected_pads.size(); index++) {
         ASSERT_EQ(expected_pads[index], child_pads->Get(index))
