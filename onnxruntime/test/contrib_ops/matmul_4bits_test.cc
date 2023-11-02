@@ -37,7 +37,7 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
                                           concurrency::ThreadPoolType::INTRA_OP);
 
-  MlasQuantizeBlockwise<float>(
+  MlasQuantizeBlockwise<float, 4>(
       quant_vals.data(),
       scales.data(),
       zp != nullptr ? zp->data() : nullptr,
@@ -50,7 +50,7 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
       tp.get());
 
   // Note that input1_f_vals is NxK after dequant
-  MlasDequantizeBlockwise<float>(
+  MlasDequantizeBlockwise<float, 4>(
       raw_vals.data(),                       // dequantized output
       quant_vals.data(),                     // quantized input
       scales.data(),                         // quantization scales

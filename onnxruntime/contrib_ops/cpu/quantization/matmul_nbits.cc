@@ -48,7 +48,8 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(status);
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
 
-  MlasDequantizeBlockwise<float>(
+  // dequantize b, only 4b quantization is supported for now
+  MlasDequantizeBlockwise<float, 4>(
       tmp_b_data_ptr.get(),               // dequantized output
       b_data,                             // quantized input
       scales_data,                        // quantization scales

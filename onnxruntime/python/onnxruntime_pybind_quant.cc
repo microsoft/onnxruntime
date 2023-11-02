@@ -53,7 +53,7 @@ void QuantizeMatMul4BitsBlockwise(
   py::buffer_info scale_buf = scale.request();
   py::buffer_info zp_buf = zero_points.request();
 
-  MlasQuantizeBlockwise<T>(
+  MlasQuantizeBlockwise<T, 4>(
       reinterpret_cast<uint8_t*>(dst_buf.ptr),
       reinterpret_cast<T*>(scale_buf.ptr),
       is_symmetric ? nullptr : reinterpret_cast<uint8_t*>(zp_buf.ptr),
