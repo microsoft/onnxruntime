@@ -21,7 +21,7 @@ from llama_inputs import (
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
 from tqdm import trange
-from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer, AutoModelForCausalLM, MistralConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
 
 import onnxruntime as ort
 from onnxruntime.transformers.benchmark_helper import measure_memory, setup_logger
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 # For determining whether the ONNX model can do both prompt generation and token generation or only one of the two
 def get_ort_model_inputs_len(args, model):
-    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile", "mistral-hf"}:
+    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
         return 0
     if args.benchmark_type == "hf-ort":
         try:
@@ -78,7 +78,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             return_dict=True,
         )
 
-    elif args.benchmark_type in {"hf-ort", "mistral-hf"}:
+    elif args.benchmark_type in {"hf-ort"}:
         if ort_model_inputs_len == 3:  # [input_ids, attention_mask, position_ids]
             # Using split models in Optimum (e.g. created by Optimum export)
             init_inputs = get_sample_inputs(
@@ -120,31 +120,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 engine="pt",
                 return_dict=True,
             )
-    elif args.benchmark_type == "mistral-ort":
-            # Using merged model in Optimum (e.g. created by convert_to_onnx export)
-            init_inputs = get_merged_sample_with_past_kv_inputs(
-                args.config,
-                args.target_device,
-                args.batch_size,
-                seq_len=args.sequence_length,
-                past_seq_len=0,
-                max_seq_len=max_seq_len,
-                use_fp16=args.use_fp16,
-                engine="ort",
-                return_dict=True,
-            )
-            iter_inputs = get_merged_sample_with_past_kv_inputs(
-                args.config,
-                args.target_device,
-                args.batch_size,
-                seq_len=1,
-                past_seq_len=args.sequence_length,
-                max_seq_len=max_seq_len,
-                use_fp16=args.use_fp16,
-                engine="ort",
-                return_dict=True,
-            )
-
+    
     elif args.benchmark_type == "ort-convert-to-onnx":
         # Microsoft export from convert_to_onnx
         init_inputs = get_merged_sample_with_past_kv_inputs(
@@ -213,7 +189,7 @@ def get_model(args: argparse.Namespace):
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
         source = args.hf_pt_dir_path if args.hf_pt_dir_path else args.model_name
         start_time = time.time()
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             source,
             torch_dtype=torch.float16 if args.use_fp16 else torch.float32,
             use_auth_token=args.auth,
@@ -223,19 +199,8 @@ def get_model(args: argparse.Namespace):
 
         if args.benchmark_type == "hf-pt-compile":
             model = torch.compile(model)
-    
-    elif args.benchmark_type in {"mistral-hf"}:
-        source = args.hf_pt_dir_path if args.hf_pt_dir_path else args.model_name
-        start_time = time.time()
-        model = AutoModelForCausalLM.from_pretrained(
-            source,
-            torch_dtype=torch.float16 if args.use_fp16 else torch.float32,
-            use_auth_token=args.auth,
-            use_cache=True,
-        ).to(args.target_device)
-        end_time = time.time()
 
-    elif args.benchmark_type in {"hf-ort", "ort-msft", "ort-convert-to-onnx", "mistral-ort"}:
+    elif args.benchmark_type in {"hf-ort", "ort-msft", "ort-convert-to-onnx"}:
         sess_options = ort.SessionOptions()
         sess_options.enable_profiling = args.profile
         if args.verbose:
@@ -277,7 +242,7 @@ def get_model(args: argparse.Namespace):
         )
         end_time = time.time()
 
-    if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx", "mistral-ort"}:
+    if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}:
         # Ex: Microsoft export from https://github.com/microsoft/Llama-2-Onnx
         logger.info(f"Loading model from {args.ort_model_path}")
         start_time = time.time()
@@ -539,9 +504,9 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
 
 
 def run_inference(args, init_inputs, iter_inputs, model):
-    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile", "hf-ort", "mistral-hf"}:
+    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile", "hf-ort"}:
         run_hf_inference(args, init_inputs, iter_inputs, model)
-    elif args.benchmark_type in {"ort-msft", "ort-convert-to-onnx", "mistral-ort"}:
+    elif args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}:
         run_ort_inference(args, init_inputs, iter_inputs, model)
     else:
         raise Exception(f"Cannot recognize {args.benchmark_type}")
@@ -554,7 +519,7 @@ def get_args():
         "--benchmark-type",
         type=str,
         required=True,
-        choices=["hf-pt-eager", "hf-pt-compile", "hf-ort", "ort-msft", "ort-convert-to-onnx", "mistral-ort", "mistral-hf"]
+        choices=["hf-pt-eager", "hf-pt-compile", "hf-ort", "ort-msft", "ort-convert-to-onnx"]
     )
     parser.add_argument(
         "-m",
@@ -676,11 +641,8 @@ def main():
     logger.info(args.__dict__)
     torch.backends.cudnn.benchmark = True
 
-    tokenizer = LlamaTokenizer.from_pretrained(args.model_name)
-    if (args.benchmark_type in ("mistral-ort", "mistral-hf")):
-        config = MistralConfig.from_pretrained(args.model_name) 
-    else:   
-        config = LlamaConfig.from_pretrained(args.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    config = AutoConfig.from_pretrained(args.model_name)
     target_device = f"cuda:{args.device_id}" if args.device != "cpu" else args.device
     use_fp16 = args.precision == "fp16"
 
