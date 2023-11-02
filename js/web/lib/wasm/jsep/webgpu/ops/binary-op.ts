@@ -6,7 +6,7 @@ import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
+import {inputVariable, outputVariable, ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type BinaryCustomExpression = (expressionA: string, expressionB: string) => string;
@@ -19,6 +19,9 @@ const createBinaryOpProgramShader =
     (shaderHelper: ShaderHelper, dimsA: readonly number[], dimsB: readonly number[], dimsOutput: readonly number[],
      vectorize: boolean, doBroadcast: boolean, funcCall: BinaryFunctionCall, typeA: number, typeB: number,
      typeOutput: number, additionalImplementation?: string) => {
+      const outputSize = ShapeUtil.size(dimsOutput);
+      const vecSize = Math.ceil(outputSize / 4);
+
       let expressionScalar: BinaryCustomExpression;
       let expressionVector: BinaryCustomExpression;
       if (typeof funcCall === 'string') {
@@ -31,12 +34,9 @@ const createBinaryOpProgramShader =
       }
 
       let broadcastImpl = '';
-      const inputAShapeOrRank = enableShapesUniforms(dimsA.length) ? dimsA.length : dimsA;
-      const inputBShapeOrRank = enableShapesUniforms(dimsB.length) ? dimsB.length : dimsB;
-      const outputShapeOrRank = enableShapesUniforms(dimsOutput.length) ? dimsOutput.length : dimsOutput;
-      const output = outputVariable('outputData', typeOutput, outputShapeOrRank, 4);
-      const a = inputVariable('aData', typeA, inputAShapeOrRank, 4);
-      const b = inputVariable('bData', typeB, inputBShapeOrRank, 4);
+      const output = outputVariable('outputData', typeOutput, dimsOutput, 4);
+      const a = inputVariable('aData', typeA, dimsA, 4);
+      const b = inputVariable('bData', typeB, dimsB, 4);
       if (doBroadcast) {
         const calcOffsetImpl = (dims: readonly number[]) => {
           const strides = ShapeUtil.computeStrides(dims);
@@ -122,13 +122,13 @@ const createBinaryOpProgramShader =
       }
 
       return `
-        ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(a, b, output)}
+        ${shaderHelper.declareVariables(a, b, output)}
 
         ${additionalImplementation ?? ''}
         ${broadcastImpl}
 
         ${shaderHelper.mainStart()}
-        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
+        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
         ${assignment}
       }`;
     };
@@ -181,13 +181,7 @@ const createBinaryOpProgramInfo =
             outputDataType, additionalImplementation),
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: outputDataType}],
-          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)},
-          programUniforms: [
-            {type: 'uint32', data: Math.ceil(ShapeUtil.size(outputShape) / 4)},
-            ...createTensorShapeVariables(a.dims),
-            ...createTensorShapeVariables(b.dims),
-            ...createTensorShapeVariables(outputShape),
-          ],
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)}
         }),
       };
     };
