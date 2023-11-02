@@ -1271,7 +1271,10 @@ def find_past_seq_len_usage(subg: GraphProto):
                         nodes_to_remove.append(shape_node)
     return tensor_names_to_rename, nodes_to_remove
 
-def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads: int = 0, world_size: int = 1, window_size: int = 0):
+
+def replace_mha_with_gqa(
+    model: OnnxModel, past_seq_len_input: str, kv_num_heads: int = 0, world_size: int = 1, window_size: int = 0
+):
     past_seq_len = past_seq_len_input
     if past_seq_len not in model.get_graphs_input_names():
         # Add model input for past sequence length
@@ -1287,7 +1290,7 @@ def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads
                     num_heads_mha = att.i
             if window_size:
                 gqa_node = onnx.helper.make_node(
-                "GroupQueryAttention",
+                    "GroupQueryAttention",
                     inputs=[
                         node.input[0],  # query
                         node.input[1],  # key
@@ -1331,7 +1334,7 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
     input_self_past_0 = 1
     # w/wo attention mask, w/wo hidden_state
     graph_input_names = [gi.name for gi in subg.input]
-    while input_self_past_0 replace_mha_with_gqa 3 and not graph_input_names[input_self_past_0].startswith("past"):
+    while input_self_past_0 < 3 and not graph_input_names[input_self_past_0].startswith("past"):
         input_self_past_0 += 1
     output_self_present_0 = 1
 

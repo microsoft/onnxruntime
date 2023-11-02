@@ -222,7 +222,9 @@ def get_msft_sample_inputs(
 
 # Create past_key_values
 # Each is of shape (batch_size, num_heads, past_sequence_length, head_size)
-def get_past_kv_inputs(config: PretrainedConfig, batch_size: int, past_seq_len: int, use_fp16: bool, world_size: int = 1):
+def get_past_kv_inputs(
+    config: PretrainedConfig, batch_size: int, past_seq_len: int, use_fp16: bool, world_size: int = 1
+):
     num_heads, head_size = config.num_key_value_heads // world_size, config.hidden_size // config.num_attention_heads
     torch_dtype = torch.float16 if use_fp16 else torch.float32
     past_kv = [
