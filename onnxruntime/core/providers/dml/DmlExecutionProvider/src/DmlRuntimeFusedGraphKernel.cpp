@@ -93,7 +93,7 @@ namespace Dml
 
         onnxruntime::Status Compute(onnxruntime::OpKernelContext* kernelContext) const override
         {
-            ORT_THROW_HR_IF(E_UNEXPECTED, m_subgraphInputs.size() != kernelContext->InputCount());
+            ORT_THROW_HR_IF(E_UNEXPECTED, (int) m_subgraphInputs.size() != kernelContext->InputCount());
 
             bool recompileNeeded = m_compiledExecutionPlanOperator == nullptr;
 
@@ -159,7 +159,7 @@ namespace Dml
                     if (iter != m_inferredInputShapes.end())
                     {
                         auto tensorShape = *nodeArg->Shape();
-                        ORT_THROW_HR_IF(E_UNEXPECTED, tensorShape.dim_size() != iter->second.NumDimensions());
+                        ORT_THROW_HR_IF(E_UNEXPECTED, tensorShape.dim_size() != (int) iter->second.NumDimensions());
 
                         for (int i = 0; i < tensorShape.dim_size(); ++i)
                         {
