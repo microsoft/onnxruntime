@@ -25,7 +25,7 @@ python -m optimum.exporters.onnx -m mistralai/Mistral-7B-v0.1 --library-name tra
 
 To quantize Mistral to FP16 and apply fusion optimizations, you can run the following command:
 ```
-python optimize.py --onnx-model-path /path/to/mistral/model.onnx --output-path /path/to/optimized/model.opt.onnx 
+python optimize.py --onnx-model-path /path/to/mistral/model.onnx --output-path /path/to/optimized/model.opt.onnx -hf mistralai/Mistral-7B-v0.1
 ```
 
 ## Benchmark Mistral
