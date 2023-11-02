@@ -18,10 +18,6 @@ using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 
-// Once we use C++17 this could be replaced with std::size
-template <typename T, size_t N>
-constexpr size_t countof(T (&)[N]) { return N; }
-
 namespace onnxruntime {
 
 namespace test {
