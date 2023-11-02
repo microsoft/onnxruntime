@@ -88,6 +88,11 @@ struct AttentionData {
   T* v = nullptr;
   T* scratch = nullptr;
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+
+  // Flash buffers
+  T* softmax_lse = nullptr;
+  T* softmax_lse_accum = nullptr;
+  T* out_accum = nullptr;
 };
 
 template <typename T>
