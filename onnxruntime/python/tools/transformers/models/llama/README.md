@@ -10,6 +10,8 @@ Please note the package versions needed for using LLaMA-2 in the `requirements.t
   - Note that `torch` with CUDA enabled is not installed automatically. This is because `torch` should be installed with the CUDA version used on your machine. Please visit [the PyTorch website](https://pytorch.org/get-started/locally/) to download the `torch` version that is used with the CUDA version installed on your machine and satisfies the requirement listed in the file.
 - `requirements-quant.txt`
   - For running the SmoothQuant algorithm using [Intel's Neural Compressor](https://github.com/intel/neural-compressor)
+- `requirements-70b-model.txt`
+  - For running the LLaMA-2 70B model on multiple GPUs
 - `requirements.txt`
   - Package versions needed in each of the above files
 
@@ -78,6 +80,15 @@ model.save_pretrained(name.split("/")[-1] + "-onnx")
 ## Examples of Exporting LLaMA-2
 
 Here are some additional examples for exporting LLaMA-2.
+
+Export Model with Different GPU Device Ids
+```
+# From source using first GPU:
+$ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
+
+# From wheel using second GPU:
+$ CUDA_VISIBLE_DEVICES=1 python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input ./Llama-2-7b-hf --output ./llama2-7b
+```
 
 Export Saved Model on Disk
 ```
@@ -153,6 +164,19 @@ $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output l
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-cpu --precision int4 --quantization_method blockwise --execution_provider cpu
 ```
 
+Export LLaMA-2 70B sharded model into 4 partitions
+```
+# From source:
+# 1. Install necessary packages from requirements-70b-model.txt
+
+# 2. Build ONNX Runtime from source with NCCL enabled. Here is a sample command:
+$ ./build.sh --config RelWithDebInfo --use_cuda --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/local/cuda-12.2 --build_wheel --cuda_version=12.2 --parallel --skip_tests --enable_nccl --nccl_home /usr/local/cuda-12.2 --use_mpi --mpi_home=/usr/lib/x86_64-linux-gnu/
+
+# 3. Shard and export the LLaMA-2 70B model. With FP16, you will need at least 140GB of GPU memory to load the model. Therefore, you will need at least 4 40GB A100 GPUs or 2 80GB A100 GPUs to shard the PyTorch model and export each shard to ONNX. Here is an example command:
+$ CUDA_VISIBLE_DEVICES=0,1,2,3 bash convert_70b_model.sh 4 -m meta-llama/Llama-2-70b-hf --output llama2-70b-dis --precision fp16 --execution_provider cuda
+
+```
+
 ## Benchmark LLaMA-2
 
 Here are some examples of how you can benchmark LLaMA-2.
@@ -220,11 +244,11 @@ python3 -m models.llama.benchmark \
     --device cuda
 ```
 
-6. ONNX Runtime, FP32, convert_to_onnx
+6. ONNX Runtime, FP32, convert_to_onnx, use 2nd GPU
 ```
-python3 -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=1 python3 -m models.llama.benchmark \
     --benchmark-type ort-convert-to-onnx \
-    --ort-model-path ./llama2-7b/Llama-2-7b-hf_decoder_merged_model_fp32.onnx \
+    --ort-model-path ./llama2-7b/rank_0_Llama-2-7b-hf_decoder_merged_model_fp32.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp32 \
     --batch-sizes "1 2" \
@@ -232,11 +256,11 @@ python3 -m models.llama.benchmark \
     --device cpu
 ```
 
-7. ONNX Runtime, FP16, convert_to_onnx
+7. ONNX Runtime, FP16, convert_to_onnx, use 5th GPU
 ```
-python3 -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=4 python3 -m models.llama.benchmark \
     --benchmark-type ort-convert-to-onnx \
-    --ort-model-path ./llama2-7b/Llama-2-7b-hf_decoder_merged_model_fp16.onnx \
+    --ort-model-path ./llama2-7b/rank_0_Llama-2-7b-hf_decoder_merged_model_fp16.onnx \
     --model-name meta-llama/Llama-2-7b-hf \
     --precision fp16 \
     --batch-sizes "1 2" \

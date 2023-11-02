@@ -66,12 +66,13 @@ def get_sample_with_past_kv_inputs(
     use_fp16: bool = False,
     engine: str = "pt",
     return_dict: bool = False,
+    world_size: int = 1,
 ):
     input_ids = torch.randint(low=0, high=config.vocab_size, size=(batch_size, 1), dtype=torch.int64)
     attention_mask = torch.ones(batch_size, past_seq_len + 1, dtype=torch.int64)
     # position_ids is of shape (batch_size, 1)
     position_ids = get_position_ids(attention_mask, use_past_kv=True)
-    past_kv = get_past_kv_inputs(config, batch_size, past_seq_len, use_fp16)
+    past_kv = get_past_kv_inputs(config, batch_size, past_seq_len, use_fp16, world_size=world_size)
 
     # Convert inputs to NumPy (for ORT) or send to device (for PyTorch)
     input_ids = input_ids.numpy() if engine == "ort" else input_ids.to(device)
@@ -123,12 +124,13 @@ def get_merged_sample_with_past_kv_inputs(
     use_fp16: bool = False,
     engine: str = "pt",
     return_dict: bool = False,
+    world_size: int = 1,
 ):
     input_ids = torch.randint(low=0, high=config.vocab_size, size=(batch_size, seq_len), dtype=torch.int64)
     attention_mask = torch.ones(batch_size, past_seq_len + seq_len, dtype=torch.int64)
     # position_ids is of shape (batch_size, seq_len) for prompt generation, (batch_size, 1) for token generation
     position_ids = get_position_ids(attention_mask, use_past_kv=(past_seq_len != 0))
-    past_kv = get_past_kv_inputs(config, batch_size, past_seq_len, use_fp16)
+    past_kv = get_past_kv_inputs(config, batch_size, past_seq_len, use_fp16, world_size=world_size)
 
     # Convert inputs to NumPy (for ORT) or send to device (for PyTorch)
     input_ids = input_ids.numpy() if engine == "ort" else input_ids.to(device)
@@ -220,8 +222,8 @@ def get_msft_sample_inputs(
 
 # Create past_key_values
 # Each is of shape (batch_size, num_heads, past_sequence_length, head_size)
-def get_past_kv_inputs(config: LlamaConfig, batch_size: int, past_seq_len: int, use_fp16: bool):
-    num_heads, head_size = config.num_key_value_heads, config.hidden_size // config.num_key_value_heads
+def get_past_kv_inputs(config: LlamaConfig, batch_size: int, past_seq_len: int, use_fp16: bool, world_size: int = 1):
+    num_heads, head_size = config.num_key_value_heads // world_size, config.hidden_size // config.num_attention_heads
     torch_dtype = torch.float16 if use_fp16 else torch.float32
     past_kv = [
         (

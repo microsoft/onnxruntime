@@ -247,6 +247,7 @@ def main():
     torch.backends.cudnn.benchmark = True
 
     all_results = []
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device_id)
 
     # Benchmark PyTorch without torch.compile
     if args.hf_pt_eager:
@@ -266,8 +267,6 @@ def main():
             args.sequence_lengths,
             "--device",
             args.device,
-            "--device-id",
-            str(args.device_id),
             "--warmup-runs",
             str(args.warmup_runs),
             "--num-runs",
@@ -298,8 +297,6 @@ def main():
             args.sequence_lengths,
             "--device",
             args.device,
-            "--device-id",
-            str(args.device_id),
             "--warmup-runs",
             str(args.warmup_runs),
             "--num-runs",
@@ -332,8 +329,6 @@ def main():
             args.sequence_lengths,
             "--device",
             args.device,
-            "--device-id",
-            str(args.device_id),
             "--warmup-runs",
             str(args.warmup_runs),
             "--num-runs",
@@ -366,8 +361,6 @@ def main():
             args.sequence_lengths,
             "--device",
             args.device,
-            "--device-id",
-            str(args.device_id),
             "--warmup-runs",
             str(args.warmup_runs),
             "--num-runs",
@@ -399,8 +392,6 @@ def main():
             args.sequence_lengths,
             "--device",
             args.device,
-            "--device-id",
-            str(args.device_id),
             "--warmup-runs",
             str(args.warmup_runs),
             "--num-runs",

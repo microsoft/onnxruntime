@@ -337,6 +337,18 @@ class OnnxModel:
                 return i, matched, return_indice
         return -1, None, None
 
+    def match_parent_paths_all(self, node, paths, output_name_to_node):
+        match_i, matches, return_indices = [], [], []
+        for i, path in enumerate(paths):
+            assert isinstance(path, (List, Tuple))
+            return_indice = []
+            matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
+            if matched:
+                match_i.append(i)
+                matches.append(matched)
+                return_indices.append(return_indice)
+        return match_i, matches, return_indices
+
     def match_parent_path(
         self,
         node,

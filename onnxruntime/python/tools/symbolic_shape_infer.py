@@ -147,6 +147,7 @@ class SymbolicShapeInference:
             "GatherElements": self._infer_GatherElements,
             "GatherND": self._infer_GatherND,
             "Identity": self._pass_on_shape_and_type,
+            "AllReduce": self._pass_on_shape_and_type,
             "If": self._infer_If,
             "Loop": self._infer_Loop,
             "MatMul": self._infer_MatMul,

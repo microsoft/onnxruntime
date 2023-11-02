@@ -130,3 +130,8 @@ class Fusion:
         for node in nodes:
             if node not in self.nodes_to_remove:
                 self.nodes_to_remove.append(node)
+
+    def add_nodes_to_remove_with_nodes_to_keep(self, nodes: List[NodeProto], nodes_to_keep: List[NodeProto]):
+        for node in nodes:
+            if node not in self.nodes_to_remove and node not in nodes_to_keep:
+                self.nodes_to_remove.append(node)

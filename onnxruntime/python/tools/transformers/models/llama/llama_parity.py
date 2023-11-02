@@ -6,7 +6,7 @@ from typing import List
 
 import numpy as np
 import torch
-from benchmark_helper import setup_logger
+from dist_settings import get_rank, get_size
 from llama_inputs import (
     add_io_bindings,
     convert_inputs_for_ort,
@@ -14,9 +14,11 @@ from llama_inputs import (
     get_sample_inputs,
     get_sample_with_past_kv_inputs,
 )
+from llama_torch import setup_torch_model
 from transformers import LlamaConfig, LlamaForCausalLM
 
 import onnxruntime as ort
+from onnxruntime.transformers.benchmark_helper import setup_logger
 
 logger = logging.getLogger("")
 
@@ -30,6 +32,7 @@ def get_sequence_lengths(args: argparse.Namespace):
 
 def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     # Dummy values for parity
+    world_size = get_size()
     batch_size = 2
     past_sequence_length, sequence_length, max_sequence_length = get_sequence_lengths(args)
 
@@ -43,10 +46,17 @@ def get_inputs(args: argparse.Namespace, config: LlamaConfig):
             max_seq_len=max_sequence_length,
             use_fp16=args.use_fp16,
             return_dict=True,
+            world_size=world_size,
         )
     elif args.use_past_kv:
         inputs = get_sample_with_past_kv_inputs(
-            config, args.device, batch_size, sequence_length, use_fp16=args.use_fp16, return_dict=True
+            config,
+            args.device,
+            batch_size,
+            sequence_length,
+            use_fp16=args.use_fp16,
+            return_dict=True,
+            world_size=world_size,
         )
     else:
         inputs = get_sample_inputs(config, args.device, batch_size, sequence_length, return_dict=True)
@@ -66,6 +76,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
         torch.cuda.synchronize()
     end_time = time.time()
     logger.info(f"PyTorch took {end_time - start_time} s")
+    del pt_model
 
     # Run inference with ORT
     past_sequence_length, _, max_sequence_length = get_sequence_lengths(args)
@@ -76,12 +87,12 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
         past_seq_len=past_sequence_length,
         max_seq_len=max_sequence_length,
         device=args.execution_provider,
-        device_id=int(args.device_id),
+        device_id=int(args.rank),
     )
 
     ep = f"{args.execution_provider.upper()}ExecutionProvider"
     if ep == "CUDAExecutionProvider":
-        ep = (ep, {"device_id": args.device_id})
+        ep = (ep, {"device_id": args.rank})
     ort_model = ort.InferenceSession(
         args.onnx_model_path,
         sess_options=ort.SessionOptions(),
@@ -91,7 +102,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
     # Add IO bindings for non-CPU execution providers
     if args.execution_provider != "cpu":
         io_binding, kv_cache_ortvalues = add_io_bindings(
-            ort_model, inputs, args.execution_provider, int(args.device_id), kv_cache_ortvalues
+            ort_model, inputs, args.execution_provider, int(args.rank), kv_cache_ortvalues
         )
 
         io_binding.synchronize_inputs()
@@ -101,6 +112,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
         end_time = time.time()
 
         ort_outputs = io_binding.copy_outputs_to_cpu()[0]  # Get logits
+        del ort_model
 
     else:
         start_time = time.time()
@@ -156,15 +168,6 @@ def get_args(argv: List[str]):
     )
 
     parser.add_argument(
-        "-id",
-        "--device-id",
-        required=False,
-        type=str,
-        default="0",
-        help="Device ID for GPUs",
-    )
-
-    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -195,6 +198,14 @@ def get_args(argv: List[str]):
         help="Precision of model",
     )
 
+    parser.add_argument(
+        "--cache_dir",
+        required=False,
+        type=str,
+        default="./model_cache",
+        help="model cache dir to override default HF cache dir to avoid overflood the /home dir",
+    )
+
     args = parser.parse_args() if argv == [] else parser.parse_args(argv)
 
     # Use FP32 precision for FP32, INT8, INT4 CPU models, use FP16 precision for FP16 and INT4 GPU models
@@ -210,21 +221,23 @@ def main(argv: List[str] = []):  # noqa: B006
     args = get_args(argv)
     setup_logger(args.verbose)
     logger.info(f"Arguments: {args}")
+    rank = get_rank()
 
     # Load model and config
     setattr(args, "use_fp16", args.precision == "fp16")  # noqa: B010
-    setattr(args, "device_name", "cpu" if args.execution_provider == "cpu" else f"cuda:{args.device_id}")  # noqa: B010
+    args.rank = rank
+    setattr(args, "device_name", "cpu" if args.execution_provider == "cpu" else f"cuda:{rank}")  # noqa: B010
     setattr(args, "device", torch.device(args.device_name))  # noqa: B010
     use_auth_token = args.torch_model_directory == os.path.join(".")
     location = args.model_name if use_auth_token else args.torch_model_directory
 
-    config = LlamaConfig.from_pretrained(location, use_auth_token=use_auth_token)
-    llama = LlamaForCausalLM.from_pretrained(
+    config, llama = setup_torch_model(
+        args,
         location,
+        use_auth_token,
         torch_dtype=(torch.float16 if args.use_fp16 else torch.float32),
-        use_auth_token=use_auth_token,
-        use_cache=True,
-    ).to(args.device)
+        device=args.device,
+    )
 
     kv_cache_ortvalues = {}
     if not args.merged:
