@@ -87,8 +87,8 @@ impl<'a, T> std::ops::Deref for WithOutputTensor<'a, T> {
 }
 
 impl<'a, T> TryFrom<OrtOutputTensor> for WithOutputTensor<'a, T>
-where
-    T: TypeToTensorElementDataType,
+    where
+        T: TypeToTensorElementDataType,
 {
     type Error = OrtError;
 
@@ -290,9 +290,6 @@ impl<'a> TryFrom<OrtOutputTensor> for OrtOutput<'a> {
                 .unwrap()(shape_info);
 
             match element_type {
-                sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED => {
-                    unimplemented!()
-                }
                 sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT => {
                     WithOutputTensor::try_from(value).map(OrtOutput::Float)
                 }
@@ -317,12 +314,6 @@ impl<'a> TryFrom<OrtOutputTensor> for OrtOutput<'a> {
                 sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING => {
                     WithOutputTensor::try_from(value).map(OrtOutput::String)
                 }
-                sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL => {
-                    unimplemented!()
-                }
-                sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 => {
-                    unimplemented!()
-                }
                 sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE => {
                     WithOutputTensor::try_from(value).map(OrtOutput::Double)
                 }
@@ -332,14 +323,18 @@ impl<'a> TryFrom<OrtOutputTensor> for OrtOutput<'a> {
                 sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64 => {
                     WithOutputTensor::try_from(value).map(OrtOutput::UInt64)
                 }
-                sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64 => {
-                    unimplemented!()
-                }
-                sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128 => {
-                    unimplemented!()
-                }
-                sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16 => {
-                    unimplemented!()
+                // Unimplemented output tensor data types
+                sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ
+                | sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2 => {
+                    unimplemented!("{:?}", element_type)
                 }
             }
         }
