@@ -2709,25 +2709,14 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
 
   const auto& dim_last = a_shape.dim(a_shape.dim_size() - 1);
   ONNX_NAMESPACE::TensorShapeProto resultShape;
-  if (transB) {
-    if (dim_last.has_dim_value() && dim_last.dim_value() != K) {
-      fail_shape_inference("Incompatible dimensions for matrix multiplication");
-    }
-
-    for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
-      *resultShape.add_dim() = a_shape.dim(i);
-    }
-    resultShape.add_dim()->set_dim_value(N);
-  } else {
-    if (dim_last.has_dim_value() && dim_last.dim_value() != N) {
-      fail_shape_inference("Incompatible dimensions for matrix multiplication");
-    }
-
-    for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
-      *resultShape.add_dim() = a_shape.dim(i);
-    }
-    resultShape.add_dim()->set_dim_value(K);
+  if (dim_last.has_dim_value() && dim_last.dim_value() != (transB ? K : N)) {
+    fail_shape_inference("Incompatible dimensions for matrix multiplication");
   }
+
+  for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+    *resultShape.add_dim() = a_shape.dim(i);
+  }
+  resultShape.add_dim()->set_dim_value(transB ? N : K);
 
   *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = resultShape;
 }

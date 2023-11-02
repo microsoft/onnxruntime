@@ -28,7 +28,7 @@ from ._fallback import ORTModuleONNXModelException, wrap_exception
 from ._utils import get_fully_qualified_class_name, get_runtime_pytorch_version
 
 
-class _HighPriorityExporter:
+class _SpecialCustomFunctionHandler:
     """A class to handle high priority export of torch.autograd.Function.
     `register_high_priority_handler` can be used as function decorator to register a handler for a torch.autograd.Function.
     """
@@ -44,7 +44,7 @@ class _HighPriorityExporter:
             handler (callable): The handler.
 
         """
-        _HighPriorityExporter._HIGH_PRIORITY_EXPORT_HANDLER_MAP[func_name] = handler
+        _SpecialCustomFunctionHandler._HIGH_PRIORITY_EXPORT_HANDLER_MAP[func_name] = handler
 
     @staticmethod
     def get_handler(func_name: str) -> callable | None:
@@ -57,14 +57,14 @@ class _HighPriorityExporter:
             callable | None: The handler.
 
         """
-        return _HighPriorityExporter._HIGH_PRIORITY_EXPORT_HANDLER_MAP.get(func_name, None)
+        return _SpecialCustomFunctionHandler._HIGH_PRIORITY_EXPORT_HANDLER_MAP.get(func_name, None)
 
 
 def register_high_priority_handler(func_name):
     """Register a handler for a torch.autograd.Function using its full qualified class name."""
 
     def symbolic_wrapper(fn):
-        _HighPriorityExporter.add_handler(func_name, fn)
+        _SpecialCustomFunctionHandler.add_handler(func_name, fn)
         return fn
 
     return symbolic_wrapper
@@ -184,7 +184,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         func_full_qual_name = get_fully_qualified_class_name(func_class)
 
         # Check if the function is handled by high priority exporter.
-        hi_pri_handler = _HighPriorityExporter.get_handler(func_full_qual_name)
+        hi_pri_handler = _SpecialCustomFunctionHandler.get_handler(func_full_qual_name)
         if hi_pri_handler:
             try_export = hi_pri_handler(g, n, *args, **kwargs)
             if try_export is not None:

@@ -366,7 +366,7 @@ class _RuntimeOptions:
 
         # Cache exported model
         if "ORTMODULE_CACHE_DIR" in os.environ:
-            self._logger.warning("ORTModule cache optimization is ON.")
+            self._logger.warning("ORTModule optimization for caching exported model is ON.")
             self.ortmodule_cache_dir = os.getenv("ORTMODULE_CACHE_DIR")
 
         # Experimental features.
