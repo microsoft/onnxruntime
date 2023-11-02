@@ -503,7 +503,7 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
     }
     auto stor = reinterpret_cast<StorageWeight*>(ptr);
     auto tmp = utils::amalloc<float>((size_t)stor->mKPad * stor->mNPad);
-    auto blks = updiv(K, stor->mBlockSize);
+    auto blks = utils::updiv(K, stor->mBlockSize);
     auto tmpscales = (float*)tmp;
     auto tmpzeropoints = (int8_t*)(tmpscales + N * blks);
     for (size_t i = 0; i < N * blks; i += 2) {

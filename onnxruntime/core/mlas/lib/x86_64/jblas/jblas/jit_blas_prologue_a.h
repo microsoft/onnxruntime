@@ -125,7 +125,7 @@ class ActivationKBlockQuantize {
       auto blk_offset = thdp.loc[0] * quan->mCStep + thdp.loc[1] / quan->kblock;
       auto thdsptr = quan->template SPtr<float>() + blk_offset;
       auto thdzptr = quan->template ZPtr<AType>() + blk_offset;
-      auto thdrptr = quan->RPtr<float>() == nullptr ? nullptr : quan->RPtr<float>() + blk_offset;
+      auto thdrptr = quan->template RPtr<float>() == nullptr ? nullptr : quan->template RPtr<float>() + blk_offset;
       if constexpr (std::is_same_v<AType, uint8_t>) {
         kernel::wrapper::QuantizeU8ColBlock::template forward<ISA_T, SRC_T>(
             thdp.size[0], thdp.size[1], srcptr, _param.lda, thdqptr, quan->lda, thdsptr, quan->mCStep, thdzptr,

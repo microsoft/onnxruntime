@@ -18,6 +18,7 @@ Abstract:
 
 --*/
 #ifdef MLAS_JBLAS
+#include "../framework/allocator.h"
 #include "mlas_jblas_defs.h"
 using namespace jblas;
 #endif
@@ -87,7 +88,6 @@ JblaQ4GemmPackB(T& JblasKernel,
     JblasKernel.mProB.packWeight(N, K, FpData, ldb, &stor, &orth);
 }
 
-
 void MLASCALL
 MlasJblasQ4GemmPackB(void* PackedBuf,
                      const float* FpData,
@@ -106,6 +106,54 @@ MlasJblasQ4GemmPackB(void* PackedBuf,
         case CompFp32:
             return JblaQ4GemmPackB(JblasAvx512fS4Fp32Fp32, int(BlkSize), PackedBuf, FpData, int(N),
                                    int(K), isAsym, int(ldb), ThreadPool);
+        case CompBf16:
+        case CompFp16:
+        default:
+            break;
+    }
+}
+
+template <typename T>
+void
+JblaNBitsGemmPackB(T& JblasKernel,
+                   void* PackedBuf,
+                   int BlkSize,
+                   const uint8_t* QData,
+                   const float* Scale,
+                   const uint8_t* Zp,
+                   int N,
+                   int K,
+                   bool IsAsym,
+                   int ldb,
+                   MLAS_THREADPOOL* ThreadPool)
+{
+    auto stor = JblasKernel.mProB.createStorage(N, K, BlkSize, JBLAS_DTYPE::S4_CLIP,
+                                                JBLAS_DTYPE::F32, JBLAS_DTYPE::F32, IsAsym);
+    stor.assign((int8_t*)PackedBuf);
+    ORTThreading orth(ThreadPool);
+    JblasKernel.mProB.packNbitsWeight(N, K, IsAsym, QData, ldb, Scale, Zp, &stor, &orth);
+}
+
+void MLASCALL
+MlasJblasNBitsGemmPackB(void* PackedBuf,
+                        const uint8_t* QData,
+                        const float* Scale,
+                        const uint8_t* Zp,
+                        size_t N,
+                        size_t K,
+                        size_t ldb,
+                        size_t BlkSize,
+                        bool isAsym,
+                        MLAS_COMPUTE_TYPE CompType,
+                        MLAS_THREADPOOL* ThreadPool)
+{
+    switch (CompType) {
+        case CompInt8:
+            return JblaNBitsGemmPackB(JblasAvxVnniS4Fp32Fp32, PackedBuf, int(BlkSize), QData, Scale,
+                                      Zp, int(N), int(K), isAsym, int(ldb), ThreadPool);
+        case CompFp32:
+            return JblaNBitsGemmPackB(JblasAvx512fS4Fp32Fp32, PackedBuf, int(BlkSize), QData, Scale,
+                                      Zp, int(N), int(K), isAsym, int(ldb), ThreadPool);
         case CompBf16:
         case CompFp16:
         default:
@@ -141,6 +189,7 @@ MlasJblasQ4GemmUnPackB(float* FpData,
         delete ptr;
     }
 }
+
 #endif
 
 size_t MLASCALL

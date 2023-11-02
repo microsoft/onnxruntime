@@ -216,7 +216,7 @@ JblasQ4GemmCompInt8(const int M,
     using Launcher = JBLAS_INT8_S4_F32F32<GemmCore_T>;
 
     static Launcher kernel;
-    auto quanA = kernel.mProA.createStorage(M, K, B->mBlockSize);
+    auto quanA = kernel.mProA.createStorage(M, K, B->mBlockSize, B->mIsAsym);
     auto buf = jblas::utils::amalloc<int8_t>(quanA.mSize);
     quanA.assign(buf);
     kernel.mProA.quantize({A, K, &quanA}, M, K, th);

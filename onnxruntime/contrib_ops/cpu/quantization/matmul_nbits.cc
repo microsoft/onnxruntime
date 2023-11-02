@@ -9,6 +9,7 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
+#include "core/mlas/inc/mlas_q4.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -23,9 +24,17 @@ class MatMulNBits final : public OpKernel {
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))} {
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    info.GetAttrOrDefault<int64_t>("accuracy_level", &comp_type_, 0);
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
 
  private:
   const size_t K_;
@@ -33,7 +42,54 @@ class MatMulNBits final : public OpKernel {
   const size_t block_size_;
   const size_t nbits_;
   const bool column_wise_quant_{true};
+  IAllocatorUniquePtr<void> packed_b_;
+  const uint8_t *qptr_, *zptr_;
+  const float* sptr_;
+  bool is_asym_;
+  int64_t comp_type_;
 };
+
+Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                            /*out*/ bool& is_packed,
+                            /*out*/ PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+
+  if (comp_type_ != -1 && nbits_ == 4) {
+    // only pack Matrix B
+    if (input_idx == 1) {
+      qptr_ = tensor.Data<uint8_t>();
+      is_packed = true;
+    }
+    if (input_idx == 2) {
+      sptr_ = tensor.Data<float>();
+      is_packed = true;
+    }
+    if (input_idx == 3) {
+      zptr_ = tensor.Data<uint8_t>();
+      auto packed_b_size = MlasJblasQ4GemmPackBSize(N_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_));
+      packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
+      MlasJblasNBitsGemmPackB(packed_b_.get(), qptr_, sptr_, zptr_, N_, K_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), NULL);
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size);
+      is_packed = true;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                              int input_idx,
+                                              /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+
+  if (input_idx == 1) {
+    used_shared_buffers = true;
+    packed_b_ = std::move(prepacked_buffers[0]);
+  }
+
+  return Status::OK();
+}
 
 Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
@@ -42,8 +98,39 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const Tensor* b = ctx->Input<Tensor>(1);
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->Input<Tensor>(3);
-
   const auto* a_data = a->Data<float>();
+
+  if (packed_b_.get()) {
+    TensorShape b_shape({N_, K_});
+
+    MatMulComputeHelper helper;
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
+
+    Tensor* y = ctx->Output(0, helper.OutputShape());
+
+    // Bail out early if the output is going to be empty
+    if (y->Shape().Size() == 0)
+      return Status::OK();
+
+    auto* y_data = y->MutableData<float>();
+
+    const size_t max_len = helper.OutputOffsets().size();
+    const size_t M = static_cast<size_t>(helper.M());
+    const size_t N = static_cast<size_t>(helper.N());
+    const size_t K = static_cast<size_t>(helper.K());
+    const size_t lda = helper.Lda(false);
+    std::vector<MLAS_Q4_GEMM_DATA_PARAMS> gemm_params(max_len);
+    for (size_t i = 0; i < max_len; i++) {
+      gemm_params[i].A = a_data + helper.LeftOffsets()[i];
+      gemm_params[i].lda = lda;
+      gemm_params[i].B = packed_b_.get();
+      gemm_params[i].C = y_data + helper.OutputOffsets()[i];
+      gemm_params[i].ldc = N;
+    }
+    MlasJblasQ4GemmBatch(M, N, K, max_len, gemm_params.data(), thread_pool);
+    return Status::OK();
+  }
+
   const uint8_t* b_data = b->Data<uint8_t>();
   const auto* scales_data = scales->Data<float>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();

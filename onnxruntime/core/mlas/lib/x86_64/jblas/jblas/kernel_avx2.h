@@ -613,6 +613,10 @@ inline float avx2_reduce_ps(__m256 x) {
   if constexpr (TYPE == AVX2_REDUCE_TYPE::MIN) dst = _mm256_min_epi32(dst, src); \
   if constexpr (TYPE == AVX2_REDUCE_TYPE::ADD) dst = _mm256_add_epi32(dst, src);
 
+#ifndef _mm256_cvtsi256_si32
+#define _mm256_cvtsi256_si32(a) (_mm_cvtsi128_si32(_mm256_castsi256_si128(a)))
+#endif
+
 template <AVX2_REDUCE_TYPE TYPE>
 inline int avx2_reduce_epi32(__m256i xd) {
   auto x = _mm256_castsi256_ps(xd);

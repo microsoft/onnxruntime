@@ -44,12 +44,12 @@ typedef enum {
  * @brief Define compute types of block quantization
  */
 typedef enum {
-    CompFp32 = 0, /*!< input fp32, accumulator fp32 */
-    CompInt8 = 1, /*!< input int8, accumulator int32 */
-    CompBf16 = 2, /*!< input bf16, accumulator fp32 */
-    CompFp16 = 3, /*!< input fp16, accumulator fp16 */
+    CompUndef = -1, /*!< input fp32, accumulator fp32 */
+    CompFp32 = 0,   /*!< input fp32, accumulator fp32 */
+    CompInt8 = 1,   /*!< input int8, accumulator int32 */
+    CompBf16 = 2,   /*!< input bf16, accumulator fp32 */
+    CompFp16 = 3,   /*!< input fp16, accumulator fp16 */
 } MLAS_COMPUTE_TYPE;
-
 
 /**
  * @brief Computes the number of bytes required to pack and int4-quantize
@@ -384,6 +384,29 @@ void MLASCALL MlasJblasQ4GemmPackB(void* PackedBuf, const float* FpData,
                                    size_t BlkSize, bool isAsym,
                                    MLAS_COMPUTE_TYPE CompType,
                                    MLAS_THREADPOOL* ThreadPool);
+
+/**
+ * @brief Prepack and Quantize fp32 weight tensor to int4 blocks
+ *
+ * @param QType      type of block quantization
+ * @param PackedBuf  destination buffer
+ * @param FpData     the pointer to fp32 matrix
+ * @param N          the number of columns of matrix B.
+ * @param K          the number of rows of matrix B.
+ * @param ldb        leading dimension of B
+ */
+void MLASCALL
+MlasJblasNBitsGemmPackB(void* PackedBuf,
+                        const uint8_t* QData,
+                        const float* Scale,
+                        const uint8_t* Zp,
+                        size_t N,
+                        size_t K,
+                        size_t ldb,
+                        size_t BlkSize,
+                        bool isAsym,
+                        MLAS_COMPUTE_TYPE CompType,
+                        MLAS_THREADPOOL* ThreadPool);
 
 /**
  * @brief Unpack and dequantize from int4 to fp32, reverse operation of
