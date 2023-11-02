@@ -189,6 +189,13 @@ std::unique_ptr<interface::ValueInfoViewRef> ApiGraphView::GetValueInfoView(std:
   ORT_ENFORCE(node_arg_ != nullptr, "No NodeArg found for name ", name);
   return std::make_unique<ApiValueInfoView>(*node_arg_);
 }
+
+std::unique_ptr<interface::NodeViewRef> ApiGraphView::GetNodeViewProducingOutput(std::string_view name) const {
+  const Node* producer = graph_.GetProducerNode(std::string(name));
+  if (producer == nullptr) return nullptr;
+  return std::make_unique<ApiNodeView>(*producer);
+}
+
 #ifdef INTREE_EP
 onnx::ModelProto ApiGraphView::ToModelProto() {
   Model model(graph_.Name(), true, ModelMetaData(), PathString(),

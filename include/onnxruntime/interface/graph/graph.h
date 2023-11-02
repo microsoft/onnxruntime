@@ -82,6 +82,8 @@ class ValueInfoViewRef {
 
 class NodeViewRef {
  public:
+  virtual size_t Index() const = 0;
+
   /// <returns>Op computed by the node</returns>
   virtual std::string_view OpType() const = 0;
 
@@ -169,6 +171,9 @@ class GraphViewRef {
   /// <param name="name">Value name. Must be nonempty.</param>
   /// <returns>A ValueInfo instance corresponding to the value with the given name</returns>
   virtual std::unique_ptr<ValueInfoViewRef> GetValueInfoView(std::string_view name) const = 0;
+
+  virtual std::unique_ptr<NodeViewRef> GetNodeViewProducingOutput(std::string_view name) const = 0;
+
 #ifdef INTREE_EP
   virtual onnx::ModelProto ToModelProto() = 0;
 #endif

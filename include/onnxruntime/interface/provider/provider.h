@@ -53,6 +53,7 @@ namespace onnxruntime {
         };
 
         std::vector<size_t> nodes;
+        void SetMetaDef(std::unique_ptr<MetaDef>&& meta_def) { meta_def_ = std::move(meta_def); }
         MetaDef* GetMetaDef() { return meta_def_.get(); };
 
     private:

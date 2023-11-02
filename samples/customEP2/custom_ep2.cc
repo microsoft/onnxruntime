@@ -97,11 +97,53 @@ void CustomEp2::MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) {
 }
 
 std::vector<std::unique_ptr<SubGraphDef>> CustomEp2::GetCapability(interface::GraphViewRef* graph) {
-  auto opset = graph->Opset("");
-  return {};
+  std::vector<std::unique_ptr<SubGraphDef>> ret;
+  for (std::unique_ptr<interface::NodeViewRef>& node : graph->NodeViews()) {
+    if (node->IsOp("Celu")) {
+      std::vector<std::string_view> inputs = node->Inputs();
+      assert(inputs.size() == 1);
+      std::unique_ptr<interface::NodeViewRef> producer = graph->GetNodeViewProducingOutput(inputs[0]);
+      if (producer != nullptr && producer->IsOp("Identity")) {
+        std::unique_ptr<SubGraphDef> subgraph = std::make_unique<SubGraphDef>();
+        subgraph->nodes.push_back(producer->Index());
+        subgraph->nodes.push_back(node->Index());
+        std::unique_ptr<SubGraphDef::MetaDef> meta_data = std::make_unique<SubGraphDef::MetaDef>();
+        meta_data->name = "Identity_Celu";
+        for (std::string_view& input : producer->Inputs()) meta_data->inputs.emplace_back(std::string(input));
+        for (std::string_view& output : node->Outputs())   meta_data->outputs.emplace_back(std::string(output));
+        subgraph->SetMetaDef(std::move(meta_data));
+        ret.emplace_back(std::move(subgraph));
+      }
+    }
+  }
+
+  return ret;
 }
 
-common::Status CustomEp2::Compile(std::vector<std::unique_ptr<interface::GraphViewRef>>&, std::vector<std::unique_ptr<interface::NodeViewRef>>&, std::vector<NodeComputeInfo>&) {
+common::Status CustomEp2::Compile(std::vector<std::unique_ptr<interface::GraphViewRef>>& partial_graph, std::vector<std::unique_ptr<interface::NodeViewRef>>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (size_t i = 0; i < partial_graph.size(); i++) {
+
+    NodeComputeInfo compute_info;
+    compute_info.compute_func = [](void* state, const OrtApi*, OrtKernelContext* context) {
+      Ort::KernelContext ctx(context);
+      assert(ctx.GetInputCount() == 1);
+      assert(ctx.GetOutputCount() == 1);
+      Ort::ConstValue input = ctx.GetInput(0);
+      const float* X = input.GetTensorData<float>();
+      size_t len = 1;
+      for (int64_t& elem : input.GetTensorTypeAndShapeInfo().GetShape()) len *= elem;
+      Ort::UnownedValue output = ctx.GetOutput(0, input.GetTensorTypeAndShapeInfo().GetShape());
+      float* Y = output.GetTensorMutableData<float>();
+
+      float alpha = 1.0;
+      for (size_t j = 0; j < len; j++) {
+        Y[j] = std::max(0.f, X[j]) + std::min<float>(0.f, alpha*(exp(X[j]/alpha)-1));
+      }
+      std::cout<<"CustomEP2::Compile()\n";
+      return Status::OK();
+    };
+    node_compute_funcs.push_back(compute_info);
+  }
   return common::Status::OK();
 }
 

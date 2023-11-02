@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-
+#include <cassert>
+#include <numeric>
 #include "interface/common/data_types.h"
 #include "interface/framework/tensor.h"
 #include "core/common/status.h"
@@ -27,7 +28,6 @@ struct IArg {
 using ArgPtr = std::unique_ptr<IArg>;
 using ArgPtrs = std::vector<ArgPtr>;
 
-template <typename T>
 struct ITensor : public IArg {
   //using MyType = ITensor<T>;
   ITensor(IKernelContext* ctx = {}, int index = -1) : ctx_(ctx), index_(index){};
@@ -46,8 +46,8 @@ struct ITensor : public IArg {
 };
 
 template <typename T>
-struct TensorView : public ITensor<T> {
-  TensorView(IKernelContext* ctx, int index) : ITensor<T>(ctx, index) {
+struct TensorView : public ITensor {
+  TensorView(IKernelContext* ctx, int index) : ITensor(ctx, index) {
     data_ = reinterpret_cast<const T*>(ctx->InputData(index));
     size_t num_dims = 0;
     const auto* dims = ctx->InputShape(index, &num_dims);
@@ -65,8 +65,8 @@ struct TensorView : public ITensor<T> {
 };
 
 template <typename T>
-struct Tensor : public ITensor<T> {
-  Tensor(IKernelContext* ctx, size_t index) : ITensor<T>(ctx, index) {}
+struct Tensor : public ITensor {
+  Tensor(IKernelContext* ctx, size_t index) : ITensor(ctx, index) {}
   Tensor(T* data, const TensorShape& shape) : data_(data) {
     shape_ = shape;
   };

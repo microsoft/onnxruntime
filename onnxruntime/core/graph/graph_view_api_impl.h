@@ -61,6 +61,7 @@ class ApiNodeView : virtual public interface::NodeViewRef {
   const Node& node_;
  public:
   explicit ApiNodeView(const Node& node) : node_(node) {}
+  size_t Index() const override { return node_.Index(); }
   std::string_view OpType() const override {
     return node_.OpType();
   }
@@ -90,6 +91,7 @@ class ApiGraphView : virtual public interface::GraphViewRef {
   std::vector<std::unique_ptr<interface::NodeViewRef>> NodeViews() const override;
   std::unique_ptr<interface::TensorRef> GetConstant(std::string_view name) const override;
   std::unique_ptr<interface::ValueInfoViewRef> GetValueInfoView(std::string_view name) const override;
+  std::unique_ptr<interface::NodeViewRef> GetNodeViewProducingOutput(std::string_view name) const override;
 #ifdef INTREE_EP
   onnx::ModelProto ToModelProto() override;
 #endif

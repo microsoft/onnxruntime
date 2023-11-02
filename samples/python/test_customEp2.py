@@ -4,6 +4,7 @@ import numpy as np
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import RunOptions
+from sys import platform
 
 # usage:
 # 1. build onnxruntime: ./build.sh --parallel --skip_tests --build_shared_lib --build_wheel
@@ -31,8 +32,10 @@ print('y:')
 print(y)
 '''
 
-model_path = '/onnxruntime/samples/python/identity.onnx'
+model_path = './identity.onnx'
 shared_lib_path = '/onnxruntime/samples/customEP2/build/Debug/customep2.dll'
+if platform == 'linux' or platform == 'linux2':
+    shared_lib_path = '/home/leca/code/onnxruntime/samples/customEP2/build/libcustomep2.so'
 
 onnxruntime.load_execution_provider_info('customEp2', shared_lib_path)
 _ = input(os.getpid())
