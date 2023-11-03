@@ -1086,7 +1086,7 @@ def generate_build_tree(
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
         cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
-        if not args.disable_float8_types and args.cuda_version:
+        if not disable_float8_types and args.cuda_version:
             if pv.Version(args.cuda_version) < pv.Version("11.8"):
                 raise BuildError(
                     f"Float 8 types require CUDA>=11.8. They must be disabled on CUDA=={args.cuda_version}. "
