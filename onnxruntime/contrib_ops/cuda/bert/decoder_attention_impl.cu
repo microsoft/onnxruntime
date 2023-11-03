@@ -145,7 +145,7 @@ Status DecoderQkvToContext(
     constexpr int max_sequence_length = 0;
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(
         ort_stream, kv_sequence_length, sequence_length, batch_size,
-        num_heads, nullptr, key_padding_mask, add_before_softmax,
+        num_heads, nullptr, key_padding_mask, add_before_softmax, nullptr,
         false /*broadcast rpb*/, scratch1, scratch2, is_unidirectional,
         1.0f, mask_dimension, max_sequence_length, false, nullptr,
         mask_filter_value));

@@ -465,6 +465,26 @@ Status UnfusedAttention(
   DUMP_TENSOR_D("K", data.k, batch_size, num_heads, qk_head_size, sequence_length);
   DUMP_TENSOR_D("QK", data.scratch, batch_size, num_heads, sequence_length, total_sequence_length);
 
+  // T* transposed_positional_embed = nullptr;
+
+  // MatMul q with the positional embedding and then pass the output to calculate softmax
+  if (data.positional_embedding != nullptr){
+    T* q_reshaped = data.q;
+    ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, sequence_length, batch_size, qk_head_size, num_heads,
+                          device_prop.maxThreadsPerBlock, true, data.q, q_reshaped));
+    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
+        cublas, CUBLAS_OP_T, CUBLAS_OP_N,
+        total_sequence_length, (batch_size * num_heads), qk_head_size,
+        &alpha, data.positional_embedding, qk_head_size, total_sequence_length * qk_head_size,
+        q_reshaped, qk_head_size, (batch_size * num_heads * qk_head_size),
+        &zero, data.positional_embed, total_sequence_length, batch_size * num_heads * total_sequence_length, sequence_length, device_prop));
+
+    data.transposed_positional_embed = data.positional_embed;
+    ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, total_sequence_length, num_heads,
+                                      device_prop.maxThreadsPerBlock, true, data.positional_embed, data.transposed_positional_embed));
+
+  }
+
   constexpr size_t element_size = sizeof(T);
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                sequence_length, total_sequence_length);
@@ -483,7 +503,7 @@ Status UnfusedAttention(
     ORT_RETURN_IF_ERROR(
         ComputeSoftmaxWithRawMask<T>(
             ort_stream, total_sequence_length, sequence_length, batch_size, num_heads,
-            mask_index, nullptr, data.relative_position_bias, parameters.broadcast_res_pos_bias,
+            mask_index, nullptr, data.relative_position_bias, data.transposed_positional_embed, parameters.broadcast_res_pos_bias,
             data.scratch, scratch2, parameters.is_unidirectional, scale, mask_dimension,
             parameters.max_sequence_length, use_persistent_softmax, persistent_softmax_workspace,
             parameters.mask_filter_value));

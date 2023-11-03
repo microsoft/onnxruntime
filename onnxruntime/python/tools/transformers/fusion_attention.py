@@ -620,6 +620,7 @@ class FusionAttention(Fusion):
         add_qk: str = "",
         past_k: str = "",
         past_v: str = "",
+        positional_embedding: str = "",
         present_k: str = "",
         present_v: str = "",
         packed_qkv: bool = False,
@@ -693,13 +694,15 @@ class FusionAttention(Fusion):
             mha_inputs.append("")
 
         # Add optional inputs for MHA
-        if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
-            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
+        if past_k and past_v:
+            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v, positional_embedding])
 
         # Add outputs for MHA
         mha_outputs = [output]
-        if present_k and present_v and present_k in graph_output_names and present_v in graph_output_names:
+        if present_k and present_v:
             mha_outputs.extend([present_k, present_v])
+
+        print("MHA inputs = ", mha_inputs)
 
         mha_node = helper.make_node(
             "MultiHeadAttention",

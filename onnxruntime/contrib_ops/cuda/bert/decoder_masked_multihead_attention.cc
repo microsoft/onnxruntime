@@ -61,6 +61,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* relative_position_bias = context->Input<Tensor>(4);
+  const Tensor* positional_embedding = context->Input<Tensor>(8);
   const Tensor* past_key = context->Input<Tensor>(kPastInputIndex);
   const Tensor* past_value = context->Input<Tensor>(kPastInputIndex + 1);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
@@ -77,6 +78,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       bias,
                                                                       mask_index,
                                                                       relative_position_bias,
+                                                                      positional_embedding,
                                                                       past_key,
                                                                       past_value,
                                                                       past_seq_len,

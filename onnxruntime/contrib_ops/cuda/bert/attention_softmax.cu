@@ -359,6 +359,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
                                                const int* attention_mask,  // 2D, 3D or 4D attention mask
                                                const bool* key_padding_mask,
                                                const T* rel_pos_bias,
+                                               const T* positional_embedding,
                                                const bool broadcast_rel_pos_bias,
                                                const T* input,
                                                T* output,
@@ -399,6 +400,11 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     } else if (mask_dimension == 4) {
       int from_index = all_sequence_length - sequence_length + sequence_index;
       mask_offset = (batch_index * max_sequence_length + from_index) * max_sequence_length + threadIdx.x;
+    }
+  
+    if (positional_embedding != nullptr){
+      float pos_emb = float(positional_embedding[index])* rsqrt_head_size;
+      thread_data += pos_emb;
     }
 
     if (nullptr == key_padding_mask) {
@@ -670,6 +676,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(const int all_sequence_length,
                                               const int* attention_mask,
                                               const bool* key_padding_mask,
                                               const T* rel_pos_bias,
+                                              const T* positional_embedding,
                                               const bool broadcast_rel_pos_bias,
                                               const T* input,
                                               T* output,
@@ -681,7 +688,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(const int all_sequence_length,
                                               const float mask_filter_value) {
   SoftmaxWithRawMaskSmall<T, TPB>(
       all_sequence_length, sequence_length,
-      attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input, output,
+      attention_mask, key_padding_mask, rel_pos_bias, positional_embedding, broadcast_rel_pos_bias, input, output,
       causal, rsqrt_head_size, mask_dimension, max_sequence_length,
       skip_softmax, mask_filter_value);
 }
@@ -804,6 +811,7 @@ Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
                                  const int* attention_mask,
                                  const bool* key_padding_mask,
                                  const T* rel_pos_bias,
+                                 const T* positional_embedding,
                                  const bool broadcast_rel_pos_bias,
                                  const T* input,
                                  T* output,
@@ -822,42 +830,42 @@ Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
     const int blockSize = 32;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
-                                         attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
+                                         attention_mask, key_padding_mask, rel_pos_bias, positional_embedding, broadcast_rel_pos_bias, input,
                                          out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else if (all_sequence_length <= 64) {
     const int blockSize = 64;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
-                                         attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
+                                         attention_mask, key_padding_mask, rel_pos_bias, positional_embedding, broadcast_rel_pos_bias, input,
                                          out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else if (all_sequence_length <= 128) {
     const int blockSize = 128;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
-                                         attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
+                                         attention_mask, key_padding_mask, rel_pos_bias, positional_embedding, broadcast_rel_pos_bias, input,
                                          out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else if (all_sequence_length <= 256) {
     const int blockSize = 256;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
-                                         attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
+                                         attention_mask, key_padding_mask, rel_pos_bias, positional_embedding, broadcast_rel_pos_bias, input,
                                          out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else if (all_sequence_length <= 512) {
     const int blockSize = 512;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
-                                         attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
+                                         attention_mask, key_padding_mask, rel_pos_bias, positional_embedding, broadcast_rel_pos_bias, input,
                                          out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else if (all_sequence_length <= 1024) {
     const int blockSize = 1024;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
-                                         attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
+                                         attention_mask, key_padding_mask, rel_pos_bias, positional_embedding, broadcast_rel_pos_bias, input,
                                          out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else {
@@ -949,6 +957,7 @@ template Status ComputeSoftmaxWithRawMask<float>(Stream* ort_stream,
                                                  const int* attention_mask,
                                                  const bool* key_padding_mask,
                                                  const float* rel_pos_bias,
+                                                 const float* positional_embedding,
                                                  const bool broadcast_rel_pos_bias,
                                                  const float* input,
                                                  float* output,
@@ -968,6 +977,7 @@ template Status ComputeSoftmaxWithRawMask<half>(Stream* ort_stream,
                                                 const int* attention_mask,
                                                 const bool* key_padding_mask,
                                                 const half* rel_pos_bias,
+                                                const half* positional_embedding,
                                                 const bool broadcast_rel_pos_bias,
                                                 const half* input,
                                                 half* output,

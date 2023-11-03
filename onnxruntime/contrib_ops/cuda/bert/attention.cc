@@ -81,6 +81,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past = context->Input<Tensor>(kPastInputIndex);
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
+  const Tensor* positional_embedding = context->Input<Tensor>(8);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
@@ -300,6 +301,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
   if (out_accum_buffer != nullptr) {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
+  }
+  if (nullptr != positional_embedding) {
+    data.positional_embedding = reinterpret_cast<const CudaT*>(positional_embedding->Data<T>());
   }
 
   return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);

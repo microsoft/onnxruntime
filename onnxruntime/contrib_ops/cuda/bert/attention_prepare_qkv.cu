@@ -439,6 +439,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                   cudaStream_t stream,
                   int max_threads_per_block) {
   data.scratch = data.workspace;
+  data.positional_embed = data.workspace;
   if (data.has_qkv_workspace) {
     const int size_per_batch_q = parameters.sequence_length * parameters.head_size;
     const int size_per_batch_k = parameters.kv_sequence_length * parameters.head_size;

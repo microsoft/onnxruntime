@@ -261,6 +261,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* extra_add_qk = context->Input<Tensor>(5);
   const Tensor* past_key = context->Input<Tensor>(6);
   const Tensor* past_value = context->Input<Tensor>(7);
+  const Tensor* positional_embedding = context->Input<Tensor>(8);
 
   if (query->Shape().GetDims().size() == 5) {
     ORT_NOT_IMPLEMENTED("Packed QKV of shape (B, L, N, 3, H) not implemented for CPU");
@@ -281,6 +282,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       past_key,
                                                                       past_value,
                                                                       nullptr,
+                                                                      positional_embedding,
                                                                       &parameters,
                                                                       num_heads_,
                                                                       scale,
