@@ -479,7 +479,7 @@ void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnGraphConfigsBuilder& conf
     htp_graph_opt_config.optimizationOption.type = QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
     htp_graph_opt_config.optimizationOption.floatValue = static_cast<float>(htp_graph_finalization_opt_mode_);
 
-    QnnGraph_Config_t& graph_opt_config = configs_builder.PushGraphConfig(true /*is_last*/);
+    QnnGraph_Config_t& graph_opt_config = configs_builder.PushGraphConfig();
     graph_opt_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
     graph_opt_config.customConfig = &htp_graph_opt_config;
   }

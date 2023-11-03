@@ -9,7 +9,15 @@ namespace onnxruntime {
 namespace qnn {
 
 const QnnGraph_Config_t** QnnGraphConfigsBuilder::GetQnnGraphConfigs() {
-  return graph_config_ptrs_.empty() ? nullptr : graph_config_ptrs_.data();
+  if (graph_config_ptrs_.empty()) {
+    return nullptr;
+  }
+
+  if (!IsNullTerminated()) {
+    graph_config_ptrs_.push_back(nullptr);
+  }
+
+  return graph_config_ptrs_.data();
 }
 
 QnnHtpGraph_CustomConfig_t& QnnGraphConfigsBuilder::PushHtpGraphCustomConfig() {
@@ -17,14 +25,17 @@ QnnHtpGraph_CustomConfig_t& QnnGraphConfigsBuilder::PushHtpGraphCustomConfig() {
   return htp_custom_graph_configs_.back();
 }
 
-QnnGraph_Config_t& QnnGraphConfigsBuilder::PushGraphConfig(bool is_last) {
+QnnGraph_Config_t& QnnGraphConfigsBuilder::PushGraphConfig() {
   graph_configs_.push_back(QNN_GRAPH_CONFIG_INIT);
   QnnGraph_Config_t& config = graph_configs_.back();
 
-  graph_config_ptrs_.push_back(&config);
-  if (is_last) {
-    graph_config_ptrs_.push_back(nullptr);
+  // Add pointer to this new graph config to the list of graph config pointers.
+  if (IsNullTerminated()) {
+    graph_config_ptrs_.back() = &config;  // Replace last nullptr entry.
+  } else {
+    graph_config_ptrs_.push_back(&config);
   }
+
   return config;
 }
 

@@ -38,13 +38,15 @@ class QnnGraphConfigsBuilder {
    * Creates and returns a reference to a new graph configuration object. The object is initialized to
    * the QNN recommended default value. The caller is meant to override fields in this object.
    *
-   * \param is_last True if this is the last graph configuration. If true, this builder will also insert a terminating
-   *                nullptr graph configuration entry.
    * \return A reference to a default QnnGraph_Config_t object.
    */
-  QnnGraph_Config_t& PushGraphConfig(bool is_last);
+  QnnGraph_Config_t& PushGraphConfig();
 
  private:
+  bool IsNullTerminated() const {
+    return !graph_config_ptrs_.empty() && graph_config_ptrs_.back() == nullptr;
+  }
+
   InlinedVector<QnnHtpGraph_CustomConfig_t> htp_custom_graph_configs_;
   InlinedVector<QnnGraph_Config_t> graph_configs_;
   InlinedVector<const QnnGraph_Config_t*> graph_config_ptrs_;
