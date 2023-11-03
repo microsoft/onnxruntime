@@ -15,7 +15,7 @@ logger = getLogger(__name__)
 
 class FusionSkipGroupNorm(Fusion):
     """
-    Fuse Add + GroupNorm into one node: SkipGroupNorm
+    Fuse Add + GroupNorm into one node: SkipGroupNorm.
     """
 
     def __init__(self, model: OnnxModel):
@@ -36,6 +36,7 @@ class FusionSkipGroupNorm(Fusion):
         return transpose_node
 
     def get_skip_index(self, add, is_channel_last: bool):
+        """Add has two inputs. This classifies which input is skip based on shape info (skip allows broadcast)."""
         skip = -1
         broadcast = False
 
@@ -68,18 +69,18 @@ class FusionSkipGroupNorm(Fusion):
         return skip, broadcast
 
     def has_multiple_consumers(self, output_name, input_name_to_nodes):
-        return (
-            self.model.find_graph_output(output_name) is not None
-            or (output_name in input_name_to_nodes)
-            and (len(input_name_to_nodes[output_name]) > 1)
+        """Whether an output has multiple consumers (like graph output or more than one children nodes)"""
+        return self.model.find_graph_output(output_name) is not None or (
+            output_name in input_name_to_nodes and len(input_name_to_nodes[output_name]) > 1
         )
 
     def remove_if_safe(self, node, input_name_to_nodes):
-        # Remove a node if it is safe (only one children, and not graph output)
+        """Remove a node if it is safe (only one children, and not graph output)"""
         if not self.has_multiple_consumers(node.output[0], input_name_to_nodes):
             self.nodes_to_remove.extend([node])
 
     def is_bias_1d(self, bias_name: str):
+        """Whether bias is an initializer of one dimension"""
         initializer = self.model.get_initializer(bias_name)
         if initializer is None:
             return False
@@ -95,6 +96,38 @@ class FusionSkipGroupNorm(Fusion):
         return True
 
     def match_bias_path(self, node, input_name_to_nodes, output_name_to_node):
+        """
+        Match the bias graph pattern from an Transpose node after Reshape node like in below example.
+        It checks whether the bias is 1D initializer. If so, remove Add and redirect MatMul output to Reshape.
+        """
+        # Before Fusion:
+        #                        MatMul  (bias)
+        #                            \  /     (shape)
+        #                             Add    /
+        #                               \   /
+        #       (a)                   Reshape
+        #        \                       |
+        # Transpose([0, 3, 1, 2])   Transpose([0, 3, 1, 2])  --- the start node, this func only handles the above nodes.
+        #                        \  /
+        #                         Add
+        #                         / \
+        #                      (c)  Transpose([0,2,3,1])
+        #                              |
+        #                           GroupNorm
+        #                              |
+        #                             (d)
+        #
+        # After Fusion (the nodes below Reshape is handled in the fuse function):
+        #                    MatMul (shape)
+        #                       \   /
+        #                (a)   Reshape
+        #                  \    /
+        #                SkipGroupNorm
+        #                  /    \
+        #                (d)   Transpose([0, 3, 1, 2])
+        #                         \
+        #                         (c)
+
         add_input_index = []
         bias_nodes = self.model.match_parent_path(
             node, ["Reshape", "Add", "MatMul"], [0, 0, None], output_name_to_node, add_input_index
@@ -113,6 +146,7 @@ class FusionSkipGroupNorm(Fusion):
         return bias
 
     def match_transpose_from_nhwc(self, output_name, input_name_to_nodes, output_name_to_node):
+        """Match whether an output is from a Transpose(perm=[0,3,1,2]) node. """
         parent = output_name_to_node[output_name] if output_name in output_name_to_node else None
         if parent is not None and parent.op_type == "Transpose":
             permutation = OnnxModel.get_node_attribute(parent, "perm")
@@ -121,31 +155,32 @@ class FusionSkipGroupNorm(Fusion):
                 return parent
         return None
 
-    # Before Fusion:
-    #     (a)  (b)
-    #       \  /
-    #       Add
-    #       /\
-    #   (c)   Transpose([0,2,3,1])
-    #            \
-    #          GroupNorm
-    #             |
-    #            (d)
-    #
-    # After Fusion:
-    #           (a)              (b)
-    #             \              /
-    #   Transpose([0,2,3,1])   Transpose([0,2,3,1])
-    #                \        /
-    #              SkipGroupNorm
-    #                  /    \
-    #                 /     Transpose([0, 3, 1, 2])
-    #                /        \
-    #               (d)       (c)
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        # This fusion requires shape information, so skip it if shape is not available.
         if self.shape_infer_helper is None:
             return
 
+        # Before Fusion:
+        #     (a)  (b)
+        #       \  /
+        #       Add
+        #       /\
+        #   (c)   Transpose([0,2,3,1])
+        #            \
+        #          GroupNorm
+        #             |
+        #            (d)
+        #
+        # After Fusion:
+        #           (a)              (b)
+        #             \              /
+        #   Transpose([0,2,3,1])   Transpose([0,2,3,1])
+        #                \        /
+        #              SkipGroupNorm
+        #                  /    \
+        #                 /    Transpose([0, 3, 1, 2])
+        #                /        \
+        #               (d)       (c)
         nodes = self.model.match_parent_path(node, ["Transpose", "Add"], [0, 0], output_name_to_node)
         if nodes is None:
             return
@@ -158,7 +193,6 @@ class FusionSkipGroupNorm(Fusion):
             return
 
         permutation = OnnxModel.get_node_attribute(transpose, "perm")
-        assert isinstance(permutation, list)
         if permutation != [0, 2, 3, 1]:
             return
 
@@ -167,9 +201,15 @@ class FusionSkipGroupNorm(Fusion):
         for i in range(2):
             matched_transpose = self.match_transpose_from_nhwc(add.input[i], input_name_to_nodes, output_name_to_node)
             if matched_transpose:
+                # When there is an Transpose node before Add (see examples in match_bias_path), we do not need to
+                # insert another Transpose node. The existing Transpose node will be removed in prune_graph if it
+                # has only one consumer.
                 inputs.append(matched_transpose.input[0])
-                bias = self.match_bias_path(matched_transpose, input_name_to_nodes, output_name_to_node) or bias
+                # See whether it match bias pattern.
+                if bias is None:
+                    bias = self.match_bias_path(matched_transpose, input_name_to_nodes, output_name_to_node)
             else:
+                # Otherwise, insert a Transpose node before Add.
                 new_transpose = self.create_transpose_node(add.input[i], [0, 2, 3, 1])
                 self.model.add_node(new_transpose, self.this_graph_name)
                 inputs.append(new_transpose.output[0])
@@ -189,6 +229,7 @@ class FusionSkipGroupNorm(Fusion):
             add_out_name = new_node_name + "_add_out"
             outputs.append(add_out_name)
 
+            # Insert a Transpose node after add output.
             add_out_transpose = self.create_transpose_node(add_out_name, [0, 3, 1, 2], add.output[0])
             self.model.add_node(add_out_transpose, self.this_graph_name)
 

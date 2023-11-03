@@ -145,7 +145,7 @@ DEFAULT_OP_BLOCK_LIST = [
 
 
 # Some operators has data type fixed as float for some inputs. Key is op_type, value is list of input indices
-# Note that DirectML allows float16 gamma and beta in GroupNorm. Use force_fp16_inputs parameter to overwrite it.
+# Note that DirectML allows float16 gamma and beta in GroupNorm. Use force_fp16_inputs parameter could overwrite this.
 ALWAYS_FLOAT_INPUTS = {"Resize": [2], "GroupNorm": [1, 2], "SkipGroupNorm": [1, 2]}
 
 

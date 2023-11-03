@@ -128,9 +128,9 @@ class UnetOnnxModel(BertOnnxModel):
 
         self.fuse_reshape()
 
-        group_norm_channels_last = (options is None) or options.group_norm_channels_last
         if (options is None) or options.enable_group_norm:
-            group_norm_fusion = FusionGroupNorm(self, group_norm_channels_last)
+            channels_last = (options is None) or options.group_norm_channels_last
+            group_norm_fusion = FusionGroupNorm(self, channels_last)
             group_norm_fusion.apply()
 
             insert_transpose_fusion = FusionInsertTranspose(self)
