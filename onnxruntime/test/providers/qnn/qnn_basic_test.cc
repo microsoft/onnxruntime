@@ -174,7 +174,7 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 // shape inferencing issues on QNN. Thus, the models are expected to have a specific input/output
 // types and shapes.
 static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bool enable_qnn_saver = false,
-                               const std::string& htp_graph_finalization_opt_mode = "") {
+                               std::string htp_graph_finalization_opt_mode = "") {
   Ort::SessionOptions so;
 
   // Ensure all type/shape inference warnings result in errors!
@@ -196,7 +196,7 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
 #endif
 
   if (!htp_graph_finalization_opt_mode.empty()) {
-    options["htp_graph_finalization_optimization_mode"] = htp_graph_finalization_opt_mode;
+    options["htp_graph_finalization_optimization_mode"] = std::move(htp_graph_finalization_opt_mode);
   }
 
   so.AppendExecutionProvider("QNN", options);
@@ -309,12 +309,12 @@ TEST_F(QnnHTPBackendTests, QnnSaver_OutputFiles) {
 
 // Test that models run with various HTP graph finalization optimization modes.
 TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
-  std::array<std::string, 4> graph_opt_modes = {"", "1", "2", "3"};
-  for (const auto& mode : graph_opt_modes) {
+  constexpr std::array<const char*, 4> graph_opt_modes = {"", "1", "2", "3"};
+  for (auto mode : graph_opt_modes) {
     RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
                        true,   // use_htp
                        false,  // enable_qnn_saver
-                       mode);
+                       mode);  // htp_graph_finalization_opt_mode
   }
 }
 
