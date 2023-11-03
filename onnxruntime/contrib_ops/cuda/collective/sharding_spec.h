@@ -258,14 +258,22 @@ class TensorPartitionSpec {
   }
 
   static TensorPartitionSpec CreateByDropOneAxis(
-      const TensorPartitionSpec& TensorPartitionSpec, const size_t axis_to_drop) {
+      const TensorPartitionSpec& spec, const size_t axis_to_drop) {
     std::vector<AxisPartitionSpec> axis_specs;
-    for (size_t i = 0; i < TensorPartitionSpec.axis_specs.size(); ++i) {
+    for (size_t i = 0; i < spec.axis_specs.size(); ++i) {
       if (i != axis_to_drop) {
-        axis_specs.push_back(TensorPartitionSpec.axis_specs[i]);
+        axis_specs.push_back(spec.axis_specs[i]);
       }
     }
-    return TensorPartitionSpec::Create(axis_specs, TensorPartitionSpec.device_mesh);
+    return TensorPartitionSpec::Create(axis_specs, spec.device_mesh);
+  }
+
+  static TensorPartitionSpec CreateByInsertOneAxis(
+      const TensorPartitionSpec& spec,
+      const size_t axis_to_insert) {
+    std::vector<AxisPartitionSpec> axis_specs(spec.axis_specs);
+    axis_specs.insert(axis_specs.begin() + axis_to_insert, AxisPartitionSpec::CreateReplica());
+    return TensorPartitionSpec::Create(axis_specs, spec.device_mesh);
   }
 
   // Helper to debug and generate error message; e.g.,
