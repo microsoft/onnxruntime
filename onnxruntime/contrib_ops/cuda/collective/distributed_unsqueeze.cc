@@ -6,9 +6,6 @@
 #include "mpi_include.h"
 
 // ORT system.
-#include "core/providers/cpu/tensor/unsqueeze.h"
-#include "core/providers/cuda/math/matmul.h"
-#include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 
 namespace onnxruntime {
@@ -36,7 +33,7 @@ Status DistributedUnsqueeze<T, Tind>::ComputeInternal(OpKernelContext* context) 
   std::sort(axes.begin(), axes.end());
   auto dims = input_tensor->Shape().AsShapeVector();
   auto native_output_spec = input_spec;
-  for (auto axis : axes_span) {
+  for (auto axis : axes) {
     if (axis < 0) {
       axis += input_tensor->Shape().NumDimensions() + 1;
     }
