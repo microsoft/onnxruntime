@@ -194,9 +194,6 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
   MlasBlockwiseQdqTest() = default;
 };
 
-template <>
-MlasBlockwiseQdqTest* MlasTestFixture<MlasBlockwiseQdqTest>::mlas_tester(nullptr);
-
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {

@@ -4,20 +4,6 @@
 #include "test_pool2d.h"
 #include "test_pool2d_fixture.h"
 
-template <>
-MlasPool2DTest<MlasMaximumPooling, false>* MlasTestFixture<MlasPool2DTest<MlasMaximumPooling, false>>::mlas_tester(nullptr);
-template <>
-MlasPool2DTest<MlasAveragePoolingExcludePad, false>* MlasTestFixture<MlasPool2DTest<MlasAveragePoolingExcludePad, false>>::mlas_tester(nullptr);
-template <>
-MlasPool2DTest<MlasAveragePoolingIncludePad, false>* MlasTestFixture<MlasPool2DTest<MlasAveragePoolingIncludePad, false>>::mlas_tester(nullptr);
-
-template <>
-MlasPool2DTest<MlasMaximumPooling, true>* MlasTestFixture<MlasPool2DTest<MlasMaximumPooling, true>>::mlas_tester(nullptr);
-template <>
-MlasPool2DTest<MlasAveragePoolingExcludePad, true>* MlasTestFixture<MlasPool2DTest<MlasAveragePoolingExcludePad, true>>::mlas_tester(nullptr);
-template <>
-MlasPool2DTest<MlasAveragePoolingIncludePad, true>* MlasTestFixture<MlasPool2DTest<MlasAveragePoolingIncludePad, true>>::mlas_tester(nullptr);
-
 static size_t Pool2dRegistLongExecute() {
   size_t count = 0;
   count += MlasLongExecuteTests<MlasPool2DTest<MlasMaximumPooling, false>>::RegisterLongExecute();

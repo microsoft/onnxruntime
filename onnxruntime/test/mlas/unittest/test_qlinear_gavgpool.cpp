@@ -163,11 +163,6 @@ class MlasQLinearGlobalAveragePoolTest : public MlasTestBase {
 };
 
 template <>
-MlasQLinearGlobalAveragePoolTest<int8_t>* MlasTestFixture<MlasQLinearGlobalAveragePoolTest<int8_t>>::mlas_tester(nullptr);
-template <>
-MlasQLinearGlobalAveragePoolTest<uint8_t>* MlasTestFixture<MlasQLinearGlobalAveragePoolTest<uint8_t>>::mlas_tester(nullptr);
-
-template <>
 const std::vector<int8_t> MlasQLinearGlobalAveragePoolTest<int8_t>::ZeroPoints = {-128, -110, 1, 103, 127};
 
 template <>

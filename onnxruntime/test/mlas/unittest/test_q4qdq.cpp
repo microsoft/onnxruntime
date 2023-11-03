@@ -141,9 +141,6 @@ class MlasQ4dqTest : public MlasTestBase {
   MlasQ4dqTest() = default;
 };
 
-template <>
-MlasQ4dqTest* MlasTestFixture<MlasQ4dqTest>::mlas_tester(nullptr);
-
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   if (MlasQ4GemmPackBSize(BlkQ4Sym, 32, 32) == 0) {
     return (size_t)0;

@@ -188,8 +188,7 @@ class MlasTestFixture : public testing::Test {
     mlas_tester = nullptr;
   };
 
-  // Do not forgot to define this static member element when upon usage.
-  static TMlasTester* mlas_tester;
+  static inline TMlasTester* mlas_tester = nullptr;
 };
 
 // Long Execute test. It is too heavy to register each single test, treat long execute big groups.
