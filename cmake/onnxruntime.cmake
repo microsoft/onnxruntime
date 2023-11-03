@@ -291,13 +291,13 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # Setup the various directories required. Remove any existing ones so we start with a clean directory.
   set(STATIC_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/static_libraries)
   set(STATIC_LIB_TEMP_DIR ${STATIC_LIB_DIR}/temp)
-  file(REMOVE_RECURSE  ${STATIC_LIB_DIR})
-  file(MAKE_DIRECTORY ${STATIC_LIB_DIR})
-  file(MAKE_DIRECTORY ${STATIC_LIB_TEMP_DIR})
+  add_custom_command(TARGET onnxruntime PRE_BUILD COMMAND ${CMAKE_COMMAND} -E rm -rf ${STATIC_LIB_DIR})
+  add_custom_command(TARGET onnxruntime PRE_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory ${STATIC_LIB_DIR})
+  add_custom_command(TARGET onnxruntime PRE_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory ${STATIC_LIB_TEMP_DIR})
 
   set(STATIC_FRAMEWORK_DIR ${STATIC_FRAMEWORK_OUTPUT_DIR}/static_framework/onnxruntime.framework)
-  file(REMOVE_RECURSE  ${STATIC_FRAMEWORK_DIR})
-  file(MAKE_DIRECTORY ${STATIC_FRAMEWORK_DIR})
+  add_custom_command(TARGET onnxruntime PRE_BUILD COMMAND ${CMAKE_COMMAND} -E rm -rf ${STATIC_FRAMEWORK_DIR})
+  add_custom_command(TARGET onnxruntime PRE_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory ${STATIC_FRAMEWORK_DIR})
 
   # replicate XCode's Single Object Pre-Link
   # link the internal onnxruntime .o files with the external .a files into a single relocatable object
