@@ -242,14 +242,14 @@ MlasBlockwiseQuantMetaShape(
  * matrix shape [rows, columns], compute the shape of the
  * quantized matrix [q_rows, q_cols]. The quantized matrix
  * is in column major layout, with bits packed on the column.
- * 
- * @tparam T 
- * @param block_size 
- * @param columnwise 
- * @param rows 
- * @param columns 
- * @param q_rows 
- * @param q_cols 
+ *
+ * @tparam T
+ * @param block_size
+ * @param columnwise
+ * @param rows
+ * @param columns
+ * @param q_rows
+ * @param q_cols
 */
 template <typename T>
 void
@@ -268,21 +268,22 @@ MlasBlockwiseQuantizedShape(
  *        parameters (scales, zero points) are packed into separate matrices
  *        all in column major layout for faster access during subsequent matrix
  *        multiplication.
- * 
+ *
  * @tparam ElementT             type of the input matrix element, usually floating point
- * 
+ * @tparam qbits                number of bits used for quantization, 4 for int4
+ *
  * @param dst                   points to the quantized matrix, shape [rows, columns] column major
- * @param scales                points to the scales matrix, column major 
+ * @param scales                points to the scales matrix, column major
  * @param zero_points           points to the zero_points matrix, column major
  * @param src                   points to the floating point matrix, to be quantized, row major shape [rows, columns]
  * @param block_size            size of the block to quantize, elements from the same block share the same scale and zero point
  * @param columnwise            true when elements in a block are from the same column, false when elements in a block are from the same row
- * @param rows 
- * @param columns 
- * @param leading_dimension 
- * @param thread_pool 
+ * @param rows
+ * @param columns
+ * @param leading_dimension
+ * @param thread_pool
 */
-template <typename ElementT>
+template <typename ElementT, int qbits>
 void
 MlasQuantizeBlockwise(
     uint8_t* dst,
@@ -303,19 +304,21 @@ MlasQuantizeBlockwise(
  *        parameters (scales, zero points) are from separate matrices packed
  *        in column major layout.  Output is a floating point matrix in column
  *        major layout for faster access during subsequent matrix multiplication.
- * 
+ *
  * @tparam ElementT     type of the dequantized matrix element, usually floating point
+ * @tparam qbits        number of bits used for quantization, 4 for int4
+ *
  * @param dst           points to dequantized matrix shape [rows, columns] column major
  * @param src           points to quantized matrix, column major
  * @param scales        points to quantization scales, column major
  * @param zero_points   points to quantization zero points, column major
  * @param block_size    size of the block to quantize, elements from the same block share the same scale and zero point
  * @param columnwise    true when elements in a block are from the same column, false when elements in a block are from the same row
- * @param rows 
- * @param columns 
- * @param thread_pool 
+ * @param rows
+ * @param columns
+ * @param thread_pool
 */
-template <typename ElementT>
+template <typename ElementT, int qbits>
 void
 MlasDequantizeBlockwise(
     ElementT* dst,
