@@ -121,7 +121,7 @@ const createBinaryOpProgramInfo =
 
       // TODO: deal with zero-sized tensors (eg. dims=[1,0])
 
-      let cacheKeyAux = [isBroadcast];
+      const cacheKeyAux = [isBroadcast];
       if (isBroadcast) {
         const calculatedShape = BroadcastUtil.calcShape(a.dims, b.dims, false);
         if (!calculatedShape) {
