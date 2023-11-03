@@ -7,16 +7,25 @@
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(ConcatTraining,
-                        kMSDomain,
-                        1,
-                        kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .OutputMemoryType(OrtMemTypeCPUInput, 1)
-                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                        ConcatTraining);
+#define REGISTER_MS_KERNEL_TYPED(name, T)                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      name,                                                       \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
 
-Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
+REGISTER_MS_KERNEL_TYPED(ConcatTraining, BFloat16)
+REGISTER_MS_KERNEL_TYPED(ConcatTraining, MLFloat16)
+REGISTER_MS_KERNEL_TYPED(ConcatTraining, float)
+REGISTER_MS_KERNEL_TYPED(ConcatTraining, double)
+REGISTER_MS_KERNEL_TYPED(ConcatTraining, int32_t)
+
+template <typename T>
+Status ConcatTraining<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step

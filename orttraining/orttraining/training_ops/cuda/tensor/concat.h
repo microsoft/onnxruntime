@@ -7,6 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
+template <typename T>
 class ConcatTraining final : public CudaKernel, public ConcatBase {
  public:
   ConcatTraining(const OpKernelInfo& info) : CudaKernel(info), ConcatBase(info) {}
