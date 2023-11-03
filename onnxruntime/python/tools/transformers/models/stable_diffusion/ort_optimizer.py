@@ -60,27 +60,33 @@ class OrtStableDiffusionOptimizer:
         fp32_op_list=None,
         keep_outputs=None,
         optimize_by_ort=True,
+        optimize_by_fusion=True,
         final_target_float16=True,
     ):
         """Optimize onnx model using ONNX Runtime transformers optimizer"""
         logger.info(f"Optimize {input_fp32_onnx_path}...")
-        fusion_options = FusionOptions(self.model_type)
 
-        # It is allowed float16=False and final_target_float16=True, for using fp32 as intermediate optimization step.
-        # For rare fp32 use case, we can disable packed kv/qkv since there is no fp32 TRT fused attention kernel.
-        if self.model_type in ["unet"] and not final_target_float16:
-            fusion_options.enable_packed_kv = False
-            fusion_options.enable_packed_qkv = False
+        if optimize_by_fusion:
+            fusion_options = FusionOptions(self.model_type)
 
-        m = optimize_model(
-            input_fp32_onnx_path,
-            model_type=self.model_type,
-            num_heads=0,  # will be deduced from graph
-            hidden_size=0,  # will be deduced from graph
-            opt_level=0,
-            optimization_options=fusion_options,
-            use_gpu=True,
-        )
+            # It is allowed float16=False and final_target_float16=True, for using fp32 as intermediate optimization step.
+            # For rare fp32 use case, we can disable packed kv/qkv since there is no fp32 TRT fused attention kernel.
+            if self.model_type in ["unet"] and not final_target_float16:
+                fusion_options.enable_packed_kv = False
+                fusion_options.enable_packed_qkv = False
+
+            m = optimize_model(
+                input_fp32_onnx_path,
+                model_type=self.model_type,
+                num_heads=0,  # will be deduced from graph
+                hidden_size=0,  # will be deduced from graph
+                opt_level=0,
+                optimization_options=fusion_options,
+                use_gpu=True,
+            )
+        else:
+            model = onnx.load_model(input_fp32_onnx_path, load_external_data=True)
+            m = self.model_type_class_mapping[self.model_type](model)
 
         if keep_outputs:
             m.prune_graph(outputs=keep_outputs)

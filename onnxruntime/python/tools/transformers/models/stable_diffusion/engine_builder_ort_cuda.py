@@ -227,7 +227,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 else:
                     logger.info("Found cached model: %s", onnx_path)
 
-                # Fp32 optimized model.
+                # Generate fp32 optimized model.
                 # If final target is fp16 model, we save fp32 optimized model so that it is easy to tune
                 # fp16 conversion. That could save a lot of time in developing.
                 if not os.path.exists(onnx_fp32_path):
@@ -245,17 +245,20 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 else:
                     logger.info("Found cached optimized model: %s", onnx_fp32_path)
 
-                # Fp16 optimized model
+                # Generate fp16 optimized model.
                 if not os.path.exists(onnx_opt_path):
                     print("------")
                     logger.info("Generating optimized model: %s", onnx_opt_path)
 
+                    # The input is fp32 optimized model, so we need not run fusion again in this step.
+                    # This step will convert model to fp16, then run ORT optimization to fuse fp16 ops if possible.
                     model_obj.optimize_ort(
                         onnx_fp32_path,
                         onnx_opt_path,
                         to_fp16=self.model_config[model_name].fp16,
                         fp32_op_list=self.model_config[model_name].force_fp32_ops,
                         optimize_by_ort=self.model_config[model_name].optimize_by_ort,
+                        optimize_by_fusion=False,
                     )
                 else:
                     logger.info("Found cached optimized model: %s", onnx_opt_path)
