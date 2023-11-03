@@ -94,23 +94,28 @@ void Select(const Ort::Custom::Span<int32_t>& indices_in,
   }
 }
 
-void Filter(const Ort::Custom::Tensor<float>& floats_in,
-            Ort::Custom::Tensor<float>& floats_out) {
-  const float* in = floats_in.Data();
-  auto in_len = floats_in.NumberOfElement();
+struct Filter {
+  Filter(const OrtApi*, const OrtKernelInfo*) {}
+  Ort::Status Compute(const Ort::Custom::Tensor<float>& floats_in,
+                      Ort::Custom::Tensor<float>& floats_out) {
+    const float* in = floats_in.Data();
+    auto in_len = floats_in.NumberOfElement();
 
-  std::vector<float> filter_floats;
-  for (int64_t i = 0; i < in_len; ++i) {
-    if (in[i] > 1.f) {
-      filter_floats.push_back(in[i]);
+    std::vector<float> filter_floats;
+    for (int64_t i = 0; i < in_len; ++i) {
+      if (in[i] > 1.f) {
+        filter_floats.push_back(in[i]);
+      }
     }
-  }
 
-  float* out = static_cast<float*>(floats_out.Allocate({static_cast<int64_t>(filter_floats.size())}));
-  for (size_t j = 0; j < filter_floats.size(); ++j) {
-    out[j] = filter_floats[j];
+    float* out = static_cast<float*>(floats_out.Allocate({static_cast<int64_t>(filter_floats.size())}));
+    for (size_t j = 0; j < filter_floats.size(); ++j) {
+      out[j] = filter_floats[j];
+    }
+
+    return Ort::Status{nullptr};
   }
-}
+};
 
 void Box(const Ort::Custom::Tensor<float>* float_in_1,
          const Ort::Custom::Tensor<float>* float_in_2,
@@ -293,9 +298,9 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
   static const std::unique_ptr<OrtLiteCustomOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", "CPUExecutionProvider", KernelTwo)};
   static const std::unique_ptr<OrtLiteCustomOp> c_MulTopOpFloat{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<float>)};
   static const std::unique_ptr<OrtLiteCustomOp> c_MulTopOpInt32{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<int32_t>)};
-  static const std::unique_ptr<OrtLiteCustomOp> c_Fuse{Ort::Custom::CreateLiteCustomOp("Fuse", "CPUExecutionProvider", Fuse)};
+  static const std::unique_ptr<OrtLiteCustomOp> c_Fuse{Ort::Custom::CreateLiteCustomOp("Fuse", "CPUExecutionProvider", Fuse, {}, 10, 12)};
   static const std::unique_ptr<OrtLiteCustomOp> c_Select{Ort::Custom::CreateLiteCustomOp("Select", "CPUExecutionProvider", Select)};
-  static const std::unique_ptr<OrtLiteCustomOp> c_Fill{Ort::Custom::CreateLiteCustomOp("Filter", "CPUExecutionProvider", Filter)};
+  static const std::unique_ptr<OrtLiteCustomOp> c_Filter{Ort::Custom::CreateLiteCustomOp<Filter>("Filter", "CPUExecutionProvider", 15, 17)};
   static const std::unique_ptr<OrtLiteCustomOp> c_Box{Ort::Custom::CreateLiteCustomOp("Box", "CPUExecutionProvider", Box)};
   static const std::unique_ptr<OrtLiteCustomOp> c_CopyTensorArrayAllVariadic{Ort::Custom::CreateLiteCustomOp("CopyTensorArrayAllVariadic", "CPUExecutionProvider", CopyTensorArrayAllVariadic<float>)};
   static const std::unique_ptr<OrtLiteCustomOp> c_CopyTensorArrayCombined{Ort::Custom::CreateLiteCustomOp("CopyTensorArrayCombined", "CPUExecutionProvider", CopyTensorArrayCombined<float>)};
@@ -314,7 +319,7 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
   domain.Add(c_MulTopOpInt32.get());
   domain.Add(c_Fuse.get());
   domain.Add(c_Select.get());
-  domain.Add(c_Fill.get());
+  domain.Add(c_Filter.get());
   domain.Add(c_Box.get());
   domain.Add(c_CopyTensorArrayAllVariadic.get());
   domain.Add(c_CopyTensorArrayCombined.get());
