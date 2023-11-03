@@ -405,6 +405,7 @@ MlasJblasNBitsGemmPackB(void* PackedBuf,
                         size_t ldb,
                         size_t BlkSize,
                         bool isAsym,
+                        bool lastCall,
                         MLAS_COMPUTE_TYPE CompType,
                         MLAS_THREADPOOL* ThreadPool);
 
@@ -431,8 +432,12 @@ void MLASCALL MlasJblasQ4GemmUnPackB(float* FpData, const void* PackedBuf,
  * hardware
  */
 
-void MLASCALL MlasJblasQ4GemmBatch(const size_t M, const size_t N,
-                                   const size_t K, const size_t BatchN,
-                                   const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
-                                   MLAS_THREADPOOL* ThreadPool = nullptr);
+void MLASCALL
+MlasJblasQ4GemmBatch(const size_t M,
+                     const size_t N,
+                     const size_t K,
+                     const size_t BatchN,
+                     const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+                     int8_t* WorkSpace,
+                     MLAS_THREADPOOL* ThreadPool = nullptr);
 #endif

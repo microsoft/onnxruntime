@@ -124,6 +124,7 @@ JblaNBitsGemmPackB(T& JblasKernel,
                    int N,
                    int K,
                    bool IsAsym,
+                   bool lastCall,
                    int ldb,
                    MLAS_THREADPOOL* ThreadPool)
 {
@@ -132,6 +133,9 @@ JblaNBitsGemmPackB(T& JblasKernel,
     stor.assign((int8_t*)PackedBuf);
     ORTThreading orth(ThreadPool);
     JblasKernel.mProB.packNbitsWeight(N, K, IsAsym, QData, ldb, Scale, Zp, &stor, &orth);
+    if (lastCall) {
+        JblasKernel.mProB.reduceWeight(&stor, &orth);
+    }
 }
 
 void MLASCALL
@@ -144,16 +148,17 @@ MlasJblasNBitsGemmPackB(void* PackedBuf,
                         size_t ldb,
                         size_t BlkSize,
                         bool isAsym,
+                        bool lastCall,
                         MLAS_COMPUTE_TYPE CompType,
                         MLAS_THREADPOOL* ThreadPool)
 {
     switch (CompType) {
         case CompInt8:
             return JblaNBitsGemmPackB(JblasAvxVnniS4Fp32Fp32, PackedBuf, int(BlkSize), QData, Scale,
-                                      Zp, int(N), int(K), isAsym, int(ldb), ThreadPool);
+                                      Zp, int(N), int(K), isAsym, lastCall, int(ldb), ThreadPool);
         case CompFp32:
             return JblaNBitsGemmPackB(JblasAvx512fS4Fp32Fp32, PackedBuf, int(BlkSize), QData, Scale,
-                                      Zp, int(N), int(K), isAsym, int(ldb), ThreadPool);
+                                      Zp, int(N), int(K), isAsym, lastCall, int(ldb), ThreadPool);
         case CompBf16:
         case CompFp16:
         default:

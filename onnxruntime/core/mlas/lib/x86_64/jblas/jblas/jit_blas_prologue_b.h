@@ -295,18 +295,24 @@ class WeightKBlockS8 {
     setQuantCorrection(N, K, zero_points, scales, ptr, threading);
     auto stor = reinterpret_cast<StorageWeight*>(ptr);
     reorderWeight(N, K, B, ldb, stor->WPtr(), threading);
+    reduceWeight(ptr, threading);
+  }
+
+  void reduceWeight(void* ptr, parallel::IThreading* threading) {
+    auto stor = reinterpret_cast<StorageWeight*>(ptr);
     if (stor->mHasReduce) {
-      auto deq = utils::amalloc<float>((size_t)K * N);
-      unpackWeight(N, K, stor, deq, N, threading);
+      auto deq = utils::amalloc<float>((size_t)stor->mK * stor->mN);
+      unpackWeight(stor->mN, stor->mK, stor, deq, stor->mN, threading);
       if (stor->mRedT == JBLAS_DTYPE::F32) {
-        reduceWeight(N, K, stor->mBlockSize, deq, ldb, stor->template RPtr<float>(), stor->mCStep, threading);
+        reduce(stor->mN, stor->mK, stor->mBlockSize, deq, stor->mN, stor->template RPtr<float>(), stor->mCStep,
+               threading);
       }
       utils::afree(deq);
     }
   }
 
-  void reduceWeight(const int N, const int K, const int KBlock, const float* B, const int ldb, float* rptr,
-                    const int ldr, parallel::IThreading* threading) {
+  void reduce(const int N, const int K, const int KBlock, const float* B, const int ldb, float* rptr, const int ldr,
+              parallel::IThreading* threading) {
     parallel::Scheduler2D _para({threading->num_threads(), K, N, KBlock, 16});
     threading->parallel_for([&](int tidx) {
       parallel::ThreadProblem2D thdp({tidx});
@@ -486,14 +492,7 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
     auto reorded = (int8_t*)tmp;
     WeightKBlockS8<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded, threading);
     compressWeight(stor->mNPad, stor->mKPad, reorded, stor->mNPad, stor->WPtr(), threading);
-    if (stor->mHasReduce) {
-      auto deq = tmp;
-      WeightKBlockS8<_GemmCore_T, ISA_T>::unpackWeight(N, K, stor, deq, N, threading);
-      if (stor->mRedT == JBLAS_DTYPE::F32) {
-        WeightKBlockS8<_GemmCore_T, ISA_T>::reduceWeight(N, K, stor->mBlockSize, deq, N, stor->RPtr<float>(),
-                                                         stor->mNPad, threading);
-      }
-    }
+    WeightKBlockS8<_GemmCore_T, ISA_T>::reduceWeight(ptr, threading);
     utils::afree(tmp);
   }
 
@@ -543,14 +542,6 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
       auto reorded = s8ptr + (size_t)K * N;
       WeightKBlockS8<_GemmCore_T, ISA_T>::reorderWeight(N, K, s8ptr, N, reorded, threading);
       compressWeight(stor->mNPad, stor->mKPad, reorded, stor->mNPad, stor->WPtr(), threading);
-      if (stor->mHasReduce) {
-        auto deq = (float*)tmp;
-        WeightKBlockS8<_GemmCore_T, ISA_T>::unpackWeight(N, K, stor, deq, N, threading);
-        if (stor->mRedT == JBLAS_DTYPE::F32) {
-          WeightKBlockS8<_GemmCore_T, ISA_T>::reduceWeight(N, K, stor->mBlockSize, deq, N, stor->template RPtr<float>(),
-                                                           stor->mCStep, threading);
-        }
-      }
     }
     utils::afree(tmp);
   }

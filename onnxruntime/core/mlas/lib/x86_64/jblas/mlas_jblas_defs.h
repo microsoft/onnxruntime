@@ -17,9 +17,11 @@
 
 namespace jblas {
 template <class GemmCore_T>
-using JBLAS_FP32_S4_F32F32 = jblas::wrapper::gemm::LauncherKBlock<
-    GemmCore_T::ISA, GemmCore_T, jblas::prologue_a::gemm::ActivationBase, jblas::prologue_b::gemm::WeightKBlockS4,
-    jblas::epilogue::gemm::CompFp32BlockEpilogue, jblas::epilogue::gemm::AccumulatorWriteBackFp32>;
+using JBLAS_FP32_S4_F32F32 =
+    jblas::wrapper::gemm::LauncherKBlock<GemmCore_T::ISA, GemmCore_T, jblas::prologue_a::gemm::ActivationKBlockBaseF32,
+                                         jblas::prologue_b::gemm::WeightKBlockS4,
+                                         jblas::epilogue::gemm::CompFp32BlockEpilogue,
+                                         jblas::epilogue::gemm::AccumulatorWriteBackFp32>;
 
 template <class GemmCore_T>
 using JBLAS_INT8_S4_F32F32 = jblas::wrapper::gemm::LauncherKBlock<

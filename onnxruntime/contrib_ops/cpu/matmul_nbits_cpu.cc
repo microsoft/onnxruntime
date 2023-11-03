@@ -79,7 +79,11 @@ Status MatMulNBitsCPU::Compute(OpKernelContext* ctx) const {
     gemm_params[i].C = y_data + helper.OutputOffsets()[i];
     gemm_params[i].ldc = N;
   }
-  MlasJblasQ4GemmBatch(M, N, K, max_len, gemm_params.data(), thread_pool);
+  AllocatorPtr allocator;
+  auto status = ctx->GetTempSpaceAllocator(&allocator);
+  ORT_RETURN_IF_ERROR(status);
+  auto ws_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K) * M);  // workspace for activation process(dynamic quantization and others)
+  MlasJblasQ4GemmBatch(M, N, K, max_len, gemm_params.data(), (int8_t*)ws_ptr.get(), thread_pool);
 
   return Status::OK();
 }

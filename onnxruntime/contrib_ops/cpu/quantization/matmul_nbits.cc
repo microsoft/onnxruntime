@@ -61,21 +61,21 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
       auto qptr = tensor.Data<uint8_t>();
       packed_b_size_ = MlasJblasQ4GemmPackBSize(N_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_));
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-      MlasJblasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
+      MlasJblasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, is_asym_, false, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
     }
     if (input_idx == 2) {
       auto sptr = tensor.Data<float>();
-      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
+      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, is_asym_, !is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
     }
     if (input_idx == 3) {
       auto zptr = tensor.Data<uint8_t>();
-      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
+      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, is_asym_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
@@ -131,6 +131,10 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     const size_t K = static_cast<size_t>(helper.K());
     const size_t lda = helper.Lda(false);
     std::vector<MLAS_Q4_GEMM_DATA_PARAMS> gemm_params(max_len);
+    AllocatorPtr allocator;
+    auto status = ctx->GetTempSpaceAllocator(&allocator);
+    ORT_RETURN_IF_ERROR(status);
+    auto ws_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K) * M);  // workspace for activation process(dynamic quantization and others)
     for (size_t i = 0; i < max_len; i++) {
       gemm_params[i].A = a_data + helper.LeftOffsets()[i];
       gemm_params[i].lda = lda;
@@ -138,7 +142,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       gemm_params[i].C = y_data + helper.OutputOffsets()[i];
       gemm_params[i].ldc = N;
     }
-    MlasJblasQ4GemmBatch(M, N, K, max_len, gemm_params.data(), thread_pool);
+    MlasJblasQ4GemmBatch(M, N, K, max_len, gemm_params.data(), (int8_t*)ws_ptr.get(), thread_pool);
     return Status::OK();
   }
 
