@@ -4,6 +4,7 @@
 	export let description: string;
 	export let date: string;
 	export let link: string;
+	export let image: string;
 	let handleEnter = (e: any) => {
 		anime({
 			targets: e.target,
