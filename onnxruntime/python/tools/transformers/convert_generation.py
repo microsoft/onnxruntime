@@ -1272,7 +1272,7 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
-def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads: int = 0):
+def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads: int = 0, world_size: int = 1):
     past_seq_len = past_seq_len_input
     if past_seq_len not in model.get_graphs_input_names():
         # Add model input for past sequence length
@@ -1282,6 +1282,10 @@ def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads
     # Replace MultiHeadAttention with GroupQueryAttention
     for node in model.model.graph.node:
         if node.op_type == "MultiHeadAttention":
+            num_heads_mha = 0
+            for att in node.attribute:
+                if att.name == "num_heads":
+                    num_heads_mha = att.i
             gqa_node = onnx.helper.make_node(
                 "GroupQueryAttention",
                 inputs=[
@@ -1295,8 +1299,8 @@ def replace_mha_with_gqa(model: OnnxModel, past_seq_len_input: str, kv_num_heads
                 outputs=node.output,
                 name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
                 domain="com.microsoft",
-                num_heads=node.attribute[0].i,
-                kv_num_heads=node.attribute[0].i if kv_num_heads == 0 else kv_num_heads,
+                num_heads=num_heads_mha // world_size,
+                kv_num_heads=num_heads_mha // world_size if kv_num_heads == 0 else kv_num_heads // world_size,
                 is_past_bsnh=0,
             )
             model.model.graph.node.remove(node)

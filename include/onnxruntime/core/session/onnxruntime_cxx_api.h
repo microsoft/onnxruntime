@@ -2229,6 +2229,8 @@ struct ShapeInferContext {
 
 using ShapeInferFn = Ort::Status (*)(Ort::ShapeInferContext&);
 
+#define MAX_CUSTOM_OP_END_VER (1UL << 31) - 1
+
 template <typename TOp, typename TKernel, bool WithStatus = false>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
@@ -2281,6 +2283,14 @@ struct CustomOpBase : OrtCustomOp {
     }
 
     SetShapeInferFn<TOp>(0);
+
+    OrtCustomOp::GetStartVersion = [](const OrtCustomOp* this_) {
+      return static_cast<const TOp*>(this_)->start_ver_;
+    };
+
+    OrtCustomOp::GetEndVersion = [](const OrtCustomOp* this_) {
+      return static_cast<const TOp*>(this_)->end_ver_;
+    };
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
@@ -2349,6 +2359,9 @@ struct CustomOpBase : OrtCustomOp {
  protected:
   // Helper function that returns a map of session config entries specified by CustomOpBase::GetSessionConfigKeys.
   void GetSessionConfigs(std::unordered_map<std::string, std::string>& out, ConstSessionOptions options) const;
+
+  int start_ver_ = 1;
+  int end_ver_ = MAX_CUSTOM_OP_END_VER;
 };
 
 }  // namespace Ort
