@@ -568,7 +568,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
+               "commitHash": "6f9ad7da6122fdb4197c0b43dfec09ec3525305e",
                "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
             }            
          }
