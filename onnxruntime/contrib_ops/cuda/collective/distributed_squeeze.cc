@@ -29,19 +29,23 @@ Status DistributedSqueeze<T, Tind>::ComputeInternal(OpKernelContext* context) co
 
   ORT_ENFORCE(axes_spec.HasNoShard(), "Axes tensor cannot be sharded.");
 
-  std::vector<int64_t> axes(axes_span.begin(), axes_span.end());
-  std::sort(axes.begin(), axes.end(), [](Tind a, Tind b) { return a > b; });
-  auto dims = input_tensor->Shape().AsShapeVector();
-  auto native_output_spec = input_spec;
-  for (auto axis : axes) {
-    if (axis < 0) {
-      axis += input_tensor->Shape().NumDimensions() + 1;
-    }
-    dims.erase(dims.begin() + axis);
-    native_output_spec = TensorPartitionSpec::CreateByDropOneAxis(
-        native_output_spec,
-        axis);
+  // Non-negative collection of axes to drop.
+  std::vector<Tind> axes;
+  for (const auto axis: axes_span) {
+    axes.push_back(axis >= 0? axis : axis + input_tensor->Shape().NumDimensions());
   }
+  // Shape after dropping axes.
+  auto dims = input_tensor->Shape().AsShapeVector();
+  // Sort in descending order so that we can drop axes from the end.
+  std::sort(axes.begin(), axes.end(), [](Tind a, Tind b) { return a > b; });
+  for (const auto axis : axes) {
+    ORT_ENFORCE(input_tensor->Shape()[axis] == 1, "Cannot squeeze non-singleton dimension.");
+    dims.erase(dims.begin() + axis);
+  }
+  auto native_output_spec = TensorPartitionSpec::CreateByDropAxes(
+      input_spec,
+      axes
+  );
   ORT_ENFORCE(
       output_spec == native_output_spec,
       "Re-sharding is required but not supported yet for this case.");

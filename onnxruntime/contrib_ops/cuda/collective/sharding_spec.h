@@ -257,13 +257,15 @@ class TensorPartitionSpec {
     return TensorPartitionSpec::Create(axis_specs, device_mesh);
   }
 
-  static TensorPartitionSpec CreateByDropOneAxis(
-      const TensorPartitionSpec& spec, const size_t axis_to_drop) {
+  static TensorPartitionSpec CreateByDropAxes(
+      const TensorPartitionSpec& spec, const std::vector<int64_t>& axes_to_drop) {
     std::vector<AxisPartitionSpec> axis_specs;
     for (size_t i = 0; i < spec.axis_specs.size(); ++i) {
-      if (i != axis_to_drop) {
-        axis_specs.push_back(spec.axis_specs[i]);
+      if (std::find(axes_to_drop.begin(), axes_to_drop.end(), i) != axes_to_drop.end()) {
+        // This axis, i, is in axes_to_drop. Let's not copy its spec.
+        continue;
       }
+      axis_specs.push_back(spec.axis_specs[i]);
     }
     return TensorPartitionSpec::Create(axis_specs, spec.device_mesh);
   }

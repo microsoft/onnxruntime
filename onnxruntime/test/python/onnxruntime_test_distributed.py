@@ -937,6 +937,22 @@ class TestDistributedUnsqueeze(unittest.TestCase):
             output_shard_specs=("RRS[0]",),
         )
 
+    def test_unsqueeze_descending_axes(self):
+        # data: shape=[8,1], spec=(RR, [0,1])
+        # shape: shape=[2], spec=(R, [0,1]), value=[1,4]
+        # output: shape=[8,4], spec=(RS, [0,1])
+        self._check_distributed_unsqueeze(
+            shape=(
+                8,
+                2,
+            ),
+            axes=(4, 1, 0,),
+            input_device_meshes=[np.array([0, 1])] * 2,
+            input_shard_specs=("RS[0]", "R"),
+            output_device_meshes=[np.array([0, 1])],
+            output_shard_specs=("RRRS[0]R",),
+        )
+
     def test_unsqueeze_not_sharded(self):
         # data: shape=[8,1], spec=(RR, [0,1])
         # shape: shape=[2], spec=(R, [0,1]), value=[1,4]
@@ -1057,7 +1073,7 @@ class TestDistributedSqueeze(unittest.TestCase):
             input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RRRR", "R"),
             output_device_meshes=[np.array([0, 1])],
-            output_shard_specs=("R",),
+            output_shard_specs=("RR",),
         )
 
 
