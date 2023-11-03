@@ -428,4 +428,14 @@ template Status MultinomialComputeShared<int64_t>(AllocatorPtr& alloc,
                                                   std::default_random_engine& generator,
                                                   Tensor& Y);
 
+#if !defined(DISABLE_CONTRIB_OPS)
+// used by onnxruntime/contrib_ops/cpu/transformers/sampling_cpu_helper.h
+template Status MultinomialComputeShared<int32_t>(AllocatorPtr& alloc,
+                                                  const Tensor& X,
+                                                  const int64_t batch_size,
+                                                  const int64_t num_classes,
+                                                  const int64_t num_samples,
+                                                  std::default_random_engine& generator,
+                                                  Tensor& Y);
+#endif
 }  // namespace onnxruntime
