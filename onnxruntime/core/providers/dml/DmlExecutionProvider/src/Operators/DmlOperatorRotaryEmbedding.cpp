@@ -78,6 +78,7 @@ public:
         const bool interleaved = gsl::narrow_cast<bool>(kernelInfo.GetOptionalAttribute<int64_t>(AttrName::Interleaved, 0));
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
         const MLOperatorTensorDataType dataType = kernelInfo.GetInputEdgeDescription(inputDataIndex).tensorDataType;
 
         // Split the input data into 2 equal parts
@@ -212,9 +213,9 @@ public:
 
         // Add the multiplied cos and sin values together
         DML_ELEMENT_WISE_ADD_OPERATOR_DESC addDesc{};
-        addDesc.ATensor = &inputDataDmlTensorDesc;
-        addDesc.BTensor = &inputDataDmlTensorDesc;
-        addDesc.OutputTensor = &inputDataDmlTensorDesc;
+        addDesc.ATensor = &outputDescs[0];
+        addDesc.BTensor = &outputDescs[0];
+        addDesc.OutputTensor = &outputDescs[0];
         const DML_OPERATOR_DESC addDmlDesc = {DML_OPERATOR_ELEMENT_WISE_ADD, &addDesc};
 
         // Construct the graph
