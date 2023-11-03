@@ -694,6 +694,9 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 
 /*
  * Set TensorRT execution context input.
+ * 
+ * There are two types of input tensor: (1) shape tensor and (2) execution tensor.
+ * The input buffer binding needs to be handled differently.
  *
  */
 Status BindContextInput(Ort::KernelContext& ctx,
@@ -858,6 +861,9 @@ Status BindContextInput(Ort::KernelContext& ctx,
 
 /*
  * Set TensorRT execution context output.
+ * 
+ * Please note that the "data-depedent shape" output needs corresponding allocator provided.
+ * 
  * 
  * param ctx - ORT kernel context
  * param trt_context - A pointer to TensorRT Execution context object
@@ -2532,9 +2538,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
 
     /*
      * Set input shapes and bind input buffers
-     * 
-     * There are two types of input tensor: (1) shape tensor and (2) execution tensor.
-     * They are being handled differently.
      */
     std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
     for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
