@@ -1050,7 +1050,10 @@ class TestDistributedSqueeze(unittest.TestCase):
                 1,
                 1,
             ),
-            axes=(1, 3,),
+            axes=(
+                1,
+                3,
+            ),
             input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RRRR", "R"),
             output_device_meshes=[np.array([0, 1])],
