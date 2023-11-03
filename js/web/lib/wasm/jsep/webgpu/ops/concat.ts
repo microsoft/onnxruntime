@@ -93,7 +93,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
   const dataType = inputs[0].dataType;
 
   let previousSum = 0;
-  const inputDependencies = [];
+  const inputDependencies: ProgramInputTensorInfoDependency[] = [];
   const inputShapeOrRanks = [];
   const enableInputShapesUniforms = [];
   let programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
@@ -151,7 +151,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
 
   return {
     name: 'Concat',
-    shaderCache: {hint: `${axis}`, inputDependencies: inputDependencies as ProgramInputTensorInfoDependency[]},
+    shaderCache: {hint: `${axis}`, inputDependencies},
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
