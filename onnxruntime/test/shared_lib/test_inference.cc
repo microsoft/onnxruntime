@@ -2832,6 +2832,58 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 #endif
 
 #ifdef USE_TENSORRT
+TEST(TensorrtExecutionProviderTest, ShapeTensorTest) {
+  const auto& api = Ort::GetApi();
+
+  // Test input tensor which is shape tensor with explicit trt profile shapes
+  Ort::SessionOptions session_options;
+  OrtTensorRTProviderOptionsV2* trt_options;
+  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
+  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
+      rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+
+  const char* trt_profile_min_shapes = "data:2x2,shape:4x1";
+  const char* trt_profile_max_shapes = "data:2x2,shape:4x1";
+  const char* trt_profile_opt_shapes = "data:2x2,shape:4x1";
+  std::vector<const char*> keys{"trt_profile_min_shapes", "trt_profile_max_shapes", "trt_profile_opt_shapes"};
+  std::vector<const char*> values{trt_profile_min_shapes, trt_profile_max_shapes, trt_profile_opt_shapes};
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_trt_options.get()) == nullptr);
+
+  auto model_path = ORT_TSTR("testdata/trt_reshape.onnx");
+
+  std::vector<float> input_value_0{1.1f, 1.2f, 1.3f, 1.4f};
+  std::vector<int64_t> input_shape_0{2, 2};
+  std::vector<int64_t> input_value_1{4, 1};
+  std::vector<int64_t> input_shape_1{2};
+
+  std::vector<const char*> input_names{"data", "shape"};
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(info, input_value_0.data(), input_value_0.size(), input_shape_0.data(), input_shape_0.size()));
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<int64_t>(info, input_value_1.data(), input_value_1.size(), input_shape_1.data(), input_shape_1.size()));
+
+  const char* output_names[] = {"reshaped"};
+
+  Ort::Session session(*ort_env, model_path, session_options);
+  session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
+
+  // Test input tensor which is shape tensor with implicit trt profile shapes
+  Ort::SessionOptions session_options_2;
+  OrtTensorRTProviderOptionsV2* trt_options_2;
+  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options_2) == nullptr);
+  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
+      rel_trt_options_2(trt_options_2, api.ReleaseTensorRTProviderOptions);
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
+                  static_cast<OrtSessionOptions*>(session_options_2),
+                  rel_trt_options_2.get()) == nullptr);
+  Ort::Session session_2(*ort_env, model_path, session_options_2);
+  session_2.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
+}
+
 TEST(CApiTest, TestExternalCUDAStreamWithIOBinding) {
   const auto& api = Ort::GetApi();
   Ort::SessionOptions session_options;
