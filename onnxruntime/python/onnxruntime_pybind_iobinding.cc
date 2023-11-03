@@ -60,8 +60,6 @@ void addIoBindingMethods(pybind11::module& m) {
       })
       // This binds input as a Tensor that wraps memory pointer along with the OrtMemoryInfo
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, const std::vector<int64_t>& shape, int64_t data_ptr) -> void {
-        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
-
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
           throw std::runtime_error("Not a valid numpy type");
