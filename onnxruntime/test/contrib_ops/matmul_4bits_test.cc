@@ -35,28 +35,28 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
   OrtThreadPoolParams to;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
                                           concurrency::ThreadPoolType::INTRA_OP);
-  contrib::QuantizeBlockwise<float>(
-      quant_vals.data(),
-      raw_vals.data(),
-      scales.data(),
-      zp != nullptr ? zp->data() : nullptr,
-      block_size,
-      4,
-      N,
-      K,
-      tp.get());
 
-  // Note that input1_f_vals is NxK after dequant
-  contrib::DequantizeBlockwise<float>(
-      raw_vals.data(),
-      quant_vals.data(),
-      scales.data(),
-      zp != nullptr ? zp->data() : nullptr,
-      block_size,
-      4,
-      N,
-      K,
-      tp.get());
+  MlasQuantizeBlockwise<float>(quant_vals.data(),
+                               scales.data(),
+                               (zp != nullptr) ? zp->data() : nullptr,
+                               raw_vals.data(),
+                               block_size,
+                               /* columnwise */ true,
+                               K,
+                               N,
+                               N,
+                               tp.get());
+
+  // Note that raw_vals is NxK after dequant
+  MlasDequantizeBlockwise<float>(raw_vals.data(),
+                                 quant_vals.data(),
+                                 scales.data(),
+                                 (zp != nullptr) ? zp->data() : nullptr,
+                                 block_size,
+                                 /* columnwise */ true,
+                                 K,
+                                 N,
+                                 tp.get());
 }
 
 void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zeropoint, bool use_float16) {
@@ -73,9 +73,10 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   int64_t number_of_block = block_per_k * N;
   int64_t block_blob_size = block_size * 4 / 8;
   int64_t buf_size = number_of_block * (block_size * 4 / 8);
+  const int64_t zp_len = N * (block_per_k + 1) / 2;
   std::vector<uint8_t> input1_vals(buf_size);
   std::vector<float> scales(number_of_block);
-  std::vector<uint8_t> zp((N * block_per_k + 1) / 2);
+  std::vector<uint8_t> zp(zp_len);
 
   QuantizeDequantize(input1_f_vals,
                      input1_vals,
@@ -106,7 +107,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     test.AddInput<uint8_t>("B", {N, block_per_k, block_blob_size}, input1_vals, true);
     test.AddInput<MLFloat16>("scales", {N * block_per_k}, ToFloat16(scales), true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {(N * block_per_k + 1) / 2}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {zp_len}, zp, true);
     }
 
     test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(expected_vals));
@@ -120,7 +121,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     test.AddInput<uint8_t>("B", {N, block_per_k, block_blob_size}, input1_vals, true);
     test.AddInput<float>("scales", {N * block_per_k}, scales, true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {(N * block_per_k + 1) / 2}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {zp_len}, zp, true);
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_vals);

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "mlas_q4.h"
 #include "mlas_qnbit.h"
 
 #include <stdexcept>
@@ -22,10 +23,10 @@ void SQNBITGEMM(benchmark::State& state) {
   const size_t K = static_cast<size_t>(state.range(2));
   const size_t threads = static_cast<size_t>(state.range(3));
 
-  size_t PackedBDataSize, PackedBScaleSize, PackedBZeroPointSize;
+  size_t QuantBDataSize, QuantBScaleSize, QuantBZeroPointSize;
   MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::GetPackedBSizes(
       N, K,
-      PackedBDataSize, PackedBScaleSize, &PackedBZeroPointSize);
+      QuantBDataSize, QuantBScaleSize, &QuantBZeroPointSize);
 
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = static_cast<int>(threads);
@@ -36,23 +37,24 @@ void SQNBITGEMM(benchmark::State& state) {
                                                  tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   auto A = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
-  auto B = RandomVectorUniform(static_cast<size_t>(N * K), -1.0f, 1.0f);
+  auto B = RandomVectorUniform(static_cast<size_t>(K * N), -1.0f, 1.0f);
   std::vector<float> C(static_cast<size_t>(M * N));
 
-  std::vector<uint8_t> PackedBData(PackedBDataSize);
-  std::vector<float> PackedBScale(PackedBScaleSize);
-  std::vector<uint8_t> PackedBZeroPoint(Symmetric ? 0 : PackedBZeroPointSize);
+  std::vector<uint8_t> QuantBData(QuantBDataSize);
+  std::vector<float> QuantBScale(QuantBScaleSize);
+  std::vector<uint8_t> QuantBZeroPoint(Symmetric ? 0 : QuantBZeroPointSize);
 
-  MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::PackB(
-      N, K, B.data(), N,
-      PackedBData.data(), PackedBScale.data(), Symmetric ? nullptr : PackedBZeroPoint.data());
+  MlasQuantizeBlockwise<float>(QuantBData.data(), QuantBScale.data(), Symmetric ? nullptr : QuantBZeroPoint.data(),
+                               B.data(), BlkLen,
+                               /* columnwise */ true, static_cast<int>(K), static_cast<int>(N), static_cast<int>(N),
+                               tp.get());
 
   MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
   params.A = A.data();
   params.lda = K;
-  params.PackedBData = PackedBData.data();
-  params.PackedBScale = PackedBScale.data();
-  params.PackedBZeroPoint = Symmetric ? nullptr : PackedBZeroPoint.data();
+  params.QuantBData = QuantBData.data();
+  params.QuantBScale = QuantBScale.data();
+  params.QuantBZeroPoint = Symmetric ? nullptr : QuantBZeroPoint.data();
   params.Bias = nullptr;
   params.C = C.data();
   params.ldc = N;

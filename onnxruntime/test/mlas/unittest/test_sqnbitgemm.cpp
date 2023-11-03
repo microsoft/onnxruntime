@@ -15,6 +15,7 @@ Abstract:
 --*/
 
 #include "test_util.h"
+#include "mlas_q4.h"
 #include "mlas_qnbit.h"
 
 /**
@@ -26,10 +27,10 @@ class MlasSQNBitGemmTest : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> BufferA;
   MatrixGuardBuffer<float> BufferB;
-  MatrixGuardBuffer<uint8_t> BufferPackedBData;
-  MatrixGuardBuffer<uint8_t> BufferPackedBZeroPoint;
-  MatrixGuardBuffer<float> BufferPackedBScale;
-  MatrixGuardBuffer<float> BufferUnpackedBReference;
+  MatrixGuardBuffer<uint8_t> BufferQuantBData;
+  MatrixGuardBuffer<uint8_t> BufferQuantBZeroPoint;
+  MatrixGuardBuffer<float> BufferQuantBScale;
+  MatrixGuardBuffer<float> BufferDequantizedB;
   MatrixGuardBuffer<float> BufferBias;
   MatrixGuardBuffer<float> BufferC;
   MatrixGuardBuffer<float> BufferCReference;
@@ -39,9 +40,9 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 size_t K,
                 const float* A,
                 size_t lda,
-                const uint8_t* PackedBData,
-                const float* PackedBScale,
-                const uint8_t* PackedBZeroPoint,
+                const uint8_t* QuantBData,
+                const float* QuantBScale,
+                const uint8_t* QuantBZeroPoint,
                 const float* Bias,
                 float* C,
                 size_t ldc,
@@ -52,9 +53,9 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.Bias = Bias;
     params.C = C;
     params.ldc = ldc;
-    params.PackedBData = PackedBData;
-    params.PackedBScale = PackedBScale;
-    params.PackedBZeroPoint = PackedBZeroPoint;
+    params.QuantBData = QuantBData;
+    params.QuantBScale = QuantBScale;
+    params.QuantBZeroPoint = QuantBZeroPoint;
     params.PostProcessor = nullptr;
 
     MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, &params, Threadpool);
@@ -64,25 +65,28 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                          size_t N,
                          size_t K,
                          const float* A,
-                         const uint8_t* PackedBData,
-                         const float* PackedBScale,
-                         const uint8_t* PackedBZeroPoint,
+                         const uint8_t* QuantBData,
+                         const float* QuantBScale,
+                         const uint8_t* QuantBZeroPoint,
                          const float* Bias,
                          float* C) {
-    float* UnpackedBData = BufferUnpackedBReference.GetBuffer(K * N);
-    MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::UnpackB(
-        N, K, PackedBData, PackedBScale, PackedBZeroPoint, UnpackedBData, N);
+    float* DequantizedBData = BufferDequantizedB.GetBuffer(K * N);
+    static_assert(BlkBitWidth == 4);
+    MlasDequantizeBlockwise<float>(DequantizedBData, QuantBData, QuantBScale, QuantBZeroPoint, BlkLen,
+                                   /* columnwise */ true, static_cast<int>(K), static_cast<int>(N),
+                                   GetMlasThreadPool());
+    // Note: DequantizedBData is in column major layout.
 
     for (size_t m = 0; m < M; m++) {
       for (size_t n = 0; n < N; n++) {
         const float* a = A + m * K;
-        const float* b = UnpackedBData + n;
+        const float* b = DequantizedBData + n * K;
         float* c = C + (m * N) + n;
 
         float sum = Bias == nullptr ? 0.0f : Bias[n];
         for (size_t k = 0; k < K; k++) {
           sum += (*a) * (*b);
-          b += N;
+          b += 1;
           a += 1;
         }
         *c = sum;
@@ -124,26 +128,26 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     float* CReference = BufferCReference.GetBuffer(N * M, true);
 
     // pack B
-    uint8_t* PackedBData = nullptr;
-    float* PackedBScale = nullptr;
-    uint8_t* PackedBZeroPoint = nullptr;
+    uint8_t* QuantBData = nullptr;
+    float* QuantBScale = nullptr;
+    uint8_t* QuantBZeroPoint = nullptr;
     {
-      size_t PackedBDataSize, PackedBScaleSize, PackedBZeroPointSize;
+      size_t QuantBDataSize, QuantBScaleSize, QuantBZeroPointSize;
       MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::GetPackedBSizes(
-          N, K, PackedBDataSize, PackedBScaleSize, &PackedBZeroPointSize);
+          N, K, QuantBDataSize, QuantBScaleSize, &QuantBZeroPointSize);
 
-      PackedBData = BufferPackedBData.GetBuffer(PackedBDataSize);
-      PackedBScale = BufferPackedBScale.GetBuffer(PackedBScaleSize);
+      QuantBData = BufferQuantBData.GetBuffer(QuantBDataSize);
+      QuantBScale = BufferQuantBScale.GetBuffer(QuantBScaleSize);
       if (Symmetric) {
-        PackedBZeroPoint = BufferPackedBZeroPoint.GetBuffer(PackedBZeroPointSize);
+        QuantBZeroPoint = BufferQuantBZeroPoint.GetBuffer(QuantBZeroPointSize);
       }
 
       MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::PackB(N, K, B, /* ldb */ N,
-                                                            PackedBData, PackedBScale, PackedBZeroPoint);
+                                                            QuantBData, QuantBScale, QuantBZeroPoint);
     }
 
-    CallGemm(M, N, K, A, /* lda */ K, PackedBData, PackedBScale, PackedBZeroPoint, Bias, C, /* ldc */ N, Threadpool);
-    CallReferenceGemm(M, N, K, A, PackedBData, PackedBScale, PackedBZeroPoint, Bias, CReference);
+    CallGemm(M, N, K, A, /* lda */ K, QuantBData, QuantBScale, QuantBZeroPoint, Bias, C, /* ldc */ N, Threadpool);
+    CallReferenceGemm(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, Bias, CReference);
 
     size_t f = 0;
     for (size_t m = 0; m < M; m++) {

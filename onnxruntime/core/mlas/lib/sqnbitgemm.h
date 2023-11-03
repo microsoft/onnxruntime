@@ -37,21 +37,22 @@ Abstract:
 
 /**
  * @brief Multiply float matrix A with quantized n-bit integer matrix B.
+ *        B is block quantized and column major.
  *
  * @tparam BlkBitWidth  Bit width of each value in a block.
  * @tparam BlkLen       Number of values in a block.
  * @tparam KernelType   Hardware-specific kernel type.
  *
  * @param       A                   Supplies the A matrix.
- * @param       PackedBData         Supplies the packed B matrix block data.
- * @param       PackedBScale        Supplies the packed B matrix block scale values.
- * @param       PackedBZeroPoint    Supplies the packed B matrix block zero point values. Optional.
+ * @param       QuantBData          Supplies the quantized B matrix block data.
+ * @param       QuantBScale         Supplies the quantized B matrix block scale values.
+ * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
  * @param[out]  C                   Supplies the output C matrix.
  * @param       CountM              Number of rows of A and C.
  * @param       CountN              Number of columns of B and C.
  * @param       CountK              Number of columns of A and rows of B.
  * @param       lda                 Leading dimension of A.
- * @param       BlockStridePackedB  Number of blocks between adjacent columns of B (packed B values are transposed).
+ * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
  * @param       ldc                 Leading dimension of C.
  * @param       Bias                Bias vector of length N.
  *
@@ -61,46 +62,47 @@ template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
 MLAS_FORCEINLINE size_t
 MlasSQNBitGemmKernel(
     const float* A,
-    const uint8_t* PackedBData,
-    const float* PackedBScale,
-    const uint8_t* PackedBZeroPoint,
+    const uint8_t* QuantBData,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
     float* C,
     size_t CountM,
     size_t CountN,
     size_t CountK,
     size_t lda,
-    size_t BlockStridePackedB,
+    size_t BlockStrideQuantB,
     size_t ldc,
     const float* Bias
 );
 
 /**
  * @brief Dequantize B into the format expected by the Sgemm kernel.
- *        This is equivalent to unpacking and dequantizing B and then running
+ *        B is block quantized and column major.
+ *        This is equivalent to dequantizing B and then running
  *        MlasSgemmCopyPackB.
  *
  * @tparam BlkBitWidth  Bit width of each value in a block.
  * @tparam BlkLen       Number of values in a block.
  * @tparam KernelType   Hardware-specific kernel type.
  *
- * @param[out]  FpData              Supplies the output buffer for the B float data.
- * @param       PackedBData         Supplies the packed B matrix block data.
- * @param       PackedBScale        Supplies the packed B matrix block scale values.
- * @param       PackedBZeroPoint    Supplies the packed B matrix block zero point values. Optional.
+ * @param[out]  FpData              Supplies the output buffer for the dequantized B float data.
+ * @param       QuantBData          Supplies the quantized B matrix block data.
+ * @param       QuantBScale         Supplies the quantized B matrix block scale values.
+ * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
  * @param       CountN              Number of columns of B.
  * @param       CountK              Number of rows of B.
- * @param       BlockStridePackedB  Number of blocks between adjacent columns of B (packed B values are transposed).
+ * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
  */
 template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
 MLAS_FORCEINLINE void
 MlasQNBitBlkDequantBForSgemm(
     float* FpData,
-    const uint8_t* PackedBData,
-    const float* PackedBScale,
-    const uint8_t* PackedBZeroPoint,
+    const uint8_t* QuantBData,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
     size_t CountN,
     size_t CountK,
-    size_t BlockStridePackedB
+    size_t BlockStrideQuantB
 );
 
 //
@@ -167,9 +169,9 @@ MlasSQNBitGemmOperation(
     const size_t k_blks = MlasDivRoundup(K, BlkLen);
     const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const float* A = DataParams->A + RangeStartM * lda;
-    const uint8_t* PackedBData = static_cast<const uint8_t*>(DataParams->PackedBData);
-    const float* PackedBScale = DataParams->PackedBScale;
-    const uint8_t* PackedBZeroPoint = static_cast<const uint8_t*>(DataParams->PackedBZeroPoint);
+    const uint8_t* QuantBData = static_cast<const uint8_t*>(DataParams->QuantBData);
+    const float* QuantBScale = DataParams->QuantBScale;
+    const uint8_t* QuantBZeroPoint = static_cast<const uint8_t*>(DataParams->QuantBZeroPoint);
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
     const float* Bias = DataParams->Bias;
 
@@ -182,12 +184,12 @@ MlasSQNBitGemmOperation(
             // Step through each slice of matrix A along the M dimension.
             //
             const float* bias = (Bias == nullptr) ? nullptr : Bias + RangeStartN + n;
-            const uint8_t* b_col = PackedBData + (RangeStartN + n) * ldb;
-            const float* b_col_scale = PackedBScale + (RangeStartN + n) * k_blks;
+            const uint8_t* b_col = QuantBData + (RangeStartN + n) * ldb;
+            const float* b_col_scale = QuantBScale + (RangeStartN + n) * k_blks;
             const uint8_t* b_col_zp =
-                (PackedBZeroPoint == nullptr)
+                (QuantBZeroPoint == nullptr)
                     ? nullptr
-                    : PackedBZeroPoint + (RangeStartN + n) * MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
+                    : QuantBZeroPoint + (RangeStartN + n) * MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
             float* c_blk = C + n;
             const float* a_row = A;
 
@@ -228,12 +230,12 @@ MlasSQNBitGemmOperation(
         // Step through each slice of matrix A along the M dimension.
         //
         const float* bias = (Bias == nullptr) ? nullptr : Bias + RangeStartN + n;
-        const uint8_t* b_col = PackedBData + (RangeStartN + n) * ldb;
-        const float* b_col_scale = PackedBScale + (RangeStartN + n) * k_blks;
+        const uint8_t* b_col = QuantBData + (RangeStartN + n) * ldb;
+        const float* b_col_scale = QuantBScale + (RangeStartN + n) * k_blks;
         const uint8_t* b_col_zp =
-            (PackedBZeroPoint == nullptr)
+            (QuantBZeroPoint == nullptr)
                 ? nullptr
-                : PackedBZeroPoint + (RangeStartN + n) * MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
+                : QuantBZeroPoint + (RangeStartN + n) * MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
         float* c_blk = C + n;
         const float* a_row = A;
 

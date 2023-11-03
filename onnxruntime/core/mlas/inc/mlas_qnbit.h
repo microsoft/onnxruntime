@@ -29,10 +29,10 @@ Abstract:
 struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
     const float* A = nullptr;                ///< address of A (float32 matrix)
     size_t lda = 0;                          ///< leading dimension of A
-    const void* PackedBData = nullptr;       ///< address of B (quantized and packed n-bit int values)
-    const float* PackedBScale = nullptr;     ///< address of scale values of quantized B, one per block
-    const void* PackedBZeroPoint = nullptr;  ///< optional address of zero point values of quantized B, one per block
-    bool IsBPacked = false;                  ///< whether B values are packed in the optimal format for the computation
+    const void* QuantBData = nullptr;        ///< address of quantized B (quantized n-bit int values)
+    const float* QuantBScale = nullptr;      ///< address of scale values of quantized B, one per block
+    const void* QuantBZeroPoint = nullptr;   ///< optional address of zero point values of quantized B, one per block
+    bool IsBPacked = false;                  ///< whether B values are packed in an optimized format for the computation
     const float* Bias = nullptr;             ///< optional address of Bias, vector size N
     float* C = nullptr;                      ///< address of result matrix
     size_t ldc = 0;                          ///< leading dimension of C
