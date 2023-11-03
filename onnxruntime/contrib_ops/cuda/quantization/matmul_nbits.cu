@@ -96,6 +96,9 @@ __global__ void MatMulFloatInt4Kernel(
   constexpr int k_per_iter = 256;
   int k_iter = k / k_per_iter;
 
+  // blocks_per_k is the number of scales and zero points on the k dim
+  const int b_zp_k = (blocks_per_K + 1)/ 2;
+
   extern __shared__ char shared_buffer[];
 
   // load scale to shared buffer
@@ -105,30 +108,39 @@ __global__ void MatMulFloatInt4Kernel(
   for (int i = thread_id; i < kColsPerThreadBlock * blocks_per_K; i += kColsPerThreadBlock * kWarpSize) {
     b_scale_vec[i] = scales_data[offset + i];
   }
-  for (int i = thread_id; i < kColsPerThreadBlock * blocks_per_K / 2; i += kColsPerThreadBlock * kWarpSize) {
-    b_zp_vec[i] = zero_points != nullptr ? zero_points[offset / 2 + i] : uint8_t(0x88);
+
+  int zp_offset = n_block_id * kColsPerThreadBlock * b_zp_k;
+  for (int i = thread_id; i < kColsPerThreadBlock * b_zp_k; i += kColsPerThreadBlock * kWarpSize) {
+    b_zp_vec[i] = zero_points != nullptr ? zero_points[zp_offset + i] : uint8_t(0x88);
   }
   __syncthreads();
 
   a_data += m_id * k;
   b_data_quant += n_id * blocks_per_K * (block_size / 2);
 
+  const int scale_col_offset = warp_id * blocks_per_K;
+  const int zp_col_offset = warp_id * b_zp_k;
+
   float sum = 0.f;
   int k_id = 0;
   for (; k_id < (k & 0xffffff00); k_id += k_per_iter) {
-    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + (k_id >> 1) + lane_id * 4));
-    int32_t block_idx = warp_id * blocks_per_K + (k_id + lane_id * 8) / block_size;
-    T scale = b_scale_vec[block_idx];
-    uint8_t zp = (block_idx & 0x01) ? (b_zp_vec[block_idx / 2] >> 4) : (b_zp_vec[block_idx / 2] & 0x0f);
+    const int t_k = k_id + (lane_id << 3);  // k index for this thread
+    const int t_meta_k = t_k / block_size;  // k index for this thread, points to the scale and zero point
+    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + (t_k >> 1)));
+    T scale = b_scale_vec[scale_col_offset + t_meta_k];
+    uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k/2];
+    zp = (t_meta_k & 0x01) ? (zp >> 4) : (zp & 0x0f);
     sum += AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3));
   }
 
   // handle reminder
   if (k_id + lane_id * 8 < k) {
+    const int t_k = k_id + (lane_id << 3);  // k index for this thread
+    const int t_meta_k = t_k / block_size;  // k index for this thread, points to the scale and zero point
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_iter * 128 + lane_id * 4));
-    int32_t block_idx = warp_id * blocks_per_K + (k_id + lane_id * 8) / block_size;
-    T scale = b_scale_vec[block_idx];
-    uint8_t zp = (block_idx & 0x01) ? (b_zp_vec[block_idx / 2] >> 4) : (b_zp_vec[block_idx / 2] & 0x0f);
+    T scale = b_scale_vec[scale_col_offset + t_meta_k];
+    uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k/2];
+    zp = (t_meta_k & 0x01) ? (zp >> 4) : (zp & 0x0f);
     sum += AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3));
   }
 

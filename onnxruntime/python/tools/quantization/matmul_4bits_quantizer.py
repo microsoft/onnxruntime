@@ -61,7 +61,7 @@ class MatMul4BitsQuantizer:
         # block wise quantization, each block comes from a single column
         packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
         scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
-        zero_point = np.zeros((cols * k_blocks + 1) // 2, dtype="uint8")
+        zero_point = np.zeros(cols * ((k_blocks + 1) // 2), dtype="uint8")
         quantize_matmul_4bits(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.is_symmetric)
 
         return (packed, scales, zero_point)
