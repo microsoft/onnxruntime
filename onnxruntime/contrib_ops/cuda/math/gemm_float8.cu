@@ -287,15 +287,14 @@ Status GemmFloat8::ComputeGemm(
       CUBLAS_RETURN_IF_ERROR(
           cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
     }
+#else
+    CUBLAS_RETURN_IF_ERROR(
+        cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
+#endif
   } else {
     CUBLAS_RETURN_IF_ERROR(
         cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
   }
-#else
-    // An output is still needed but it is not initialized.
-    CUBLAS_RETURN_IF_ERROR(
-        cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
-#endif
 
   if (row_major_compute) {
     cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
