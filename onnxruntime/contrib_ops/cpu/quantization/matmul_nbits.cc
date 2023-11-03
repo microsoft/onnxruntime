@@ -25,6 +25,7 @@ class MatMulNBits final : public OpKernel {
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
     info.GetAttrOrDefault<int64_t>("accuracy_level", &comp_type_, 0);
+    is_asym_ = info.GetInputCount() >= 4;
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -43,9 +44,8 @@ class MatMulNBits final : public OpKernel {
   const size_t nbits_;
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_;
-  const uint8_t *qptr_, *zptr_;
-  const float* sptr_;
-  int64_t is_asym_;
+  size_t packed_b_size_;
+  bool is_asym_;
   int64_t comp_type_;
 };
 
@@ -55,24 +55,29 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   is_packed = false;
 
   if (comp_type_ != -1 && nbits_ == 4) {
-    // only pack Matrix B
+    // TODO use threadpool here
+    MLAS_THREADPOOL* pool = NULL;
     if (input_idx == 1) {
-      qptr_ = tensor.Data<uint8_t>();
+      auto qptr = tensor.Data<uint8_t>();
+      packed_b_size_ = MlasJblasQ4GemmPackBSize(N_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_));
+      packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+      MlasJblasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
     }
     if (input_idx == 2) {
-      sptr_ = tensor.Data<float>();
+      auto sptr = tensor.Data<float>();
+      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
     }
     if (input_idx == 3) {
-      zptr_ = tensor.Data<uint8_t>();
-      auto packed_b_size = MlasJblasQ4GemmPackBSize(N_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_));
-      packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
-      MlasJblasNBitsGemmPackB(packed_b_.get(), qptr_, sptr_, zptr_, N_, K_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), NULL);
-      if (prepacked_weights) {
-        prepacked_weights->buffers_.push_back(std::move(packed_b_));
-        prepacked_weights->buffer_sizes_.push_back(packed_b_size);
-      }
+      auto zptr = tensor.Data<uint8_t>();
+      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
     }
   }
@@ -89,7 +94,14 @@ Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
     used_shared_buffers = true;
     packed_b_ = std::move(prepacked_buffers[0]);
   }
-
+  if (input_idx == 2) {
+    used_shared_buffers = true;
+    packed_b_ = std::move(prepacked_buffers[0]);
+  }
+  if (input_idx == 3) {
+    used_shared_buffers = true;
+    packed_b_ = std::move(prepacked_buffers[0]);
+  }
   return Status::OK();
 }
 
@@ -97,9 +109,6 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   const Tensor* a = ctx->Input<Tensor>(0);
-  const Tensor* b = ctx->Input<Tensor>(1);
-  const Tensor* scales = ctx->Input<Tensor>(2);
-  const Tensor* zero_points = ctx->Input<Tensor>(3);
   const auto* a_data = a->Data<float>();
 
   if (packed_b_.get()) {
@@ -133,6 +142,9 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
+  const Tensor* b = ctx->Input<Tensor>(1);
+  const Tensor* scales = ctx->Input<Tensor>(2);
+  const Tensor* zero_points = ctx->Input<Tensor>(3);
   const uint8_t* b_data = b->Data<uint8_t>();
   const auto* scales_data = scales->Data<float>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();

@@ -263,19 +263,26 @@ class WeightKBlockS8 {
         parallel::ThreadProblem2D thdp{tidx};
         _para.getIndex(thdp);
         if (thdp.valid) {
-          for (int i = thdp.loc[1]; i < thdp.loc[1] + thdp.size[1]; i++) {
-            if (i < rawnk_scale) {
-              for (size_t j = 0; j < N; j++) {
-                stor->template SPtr<float>()[i * stor->mNPad + j] = scales[j * rawnk_scale + i];
+          if (scales) {
+            for (int i = thdp.loc[1]; i < thdp.loc[1] + thdp.size[1]; i++) {
+              if (i < rawnk_scale) {
+                for (size_t j = 0; j < N; j++) {
+                  stor->template SPtr<float>()[i * stor->mNPad + j] = scales[j * rawnk_scale + i];
+                }
+              } else {
+                std::memset(stor->template SPtr<float>() + i * stor->mNPad, 0, stor->mNPad * sizeof(float));
               }
-              if (stor->mIsAsym)
+            }
+          }
+          if (stor->mIsAsym && zero_points) {
+            for (int i = thdp.loc[1]; i < thdp.loc[1] + thdp.size[1]; i++) {
+              if (i < rawnk_scale) {
                 for (size_t j = 0; j < N; j++) {
                   stor->template ZPtr<int8_t>()[i * stor->mNPad + j] = zero_points[j * rawnk_scale + i];
                 }
-            } else {
-              std::memset(stor->template SPtr<float>() + i * stor->mNPad, 0, stor->mNPad * sizeof(float));
-              if (stor->mIsAsym)
+              } else {
                 std::memset(stor->template ZPtr<int8_t>() + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
+              }
             }
           }
         }
@@ -493,28 +500,27 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
   virtual void packNbitsWeight(const int N, const int K, bool isasym, const uint8_t* B, const int ldb,
                                const float* scales, const uint8_t* zero_points, void* ptr,
                                parallel::IThreading* threading) {
-    if (B == nullptr || scales == nullptr) {
-      assert(0);
-      return;
-    }
-    if (isasym && zero_points == nullptr) {
-      assert(0);
-      return;
-    }
     auto stor = reinterpret_cast<StorageWeight*>(ptr);
     auto tmp = utils::amalloc<float>((size_t)stor->mKPad * stor->mNPad);
     auto blks = utils::updiv(K, stor->mBlockSize);
     auto tmpscales = (float*)tmp;
     auto tmpzeropoints = (int8_t*)(tmpscales + N * blks);
-    for (size_t i = 0; i < N * blks; i += 2) {
-      tmpscales[i] = scales[i] / 16;
-      tmpscales[i + 1] = scales[i + 1] / 16;
-      auto tmpzp = *(zero_points + i / 2);
-      tmpzeropoints[i] = ((tmpzp & 0xf) - 8) << 4;
-      tmpzeropoints[i + 1] = (((tmpzp & 0xf0) >> 4) - 8) << 4;
+    if (scales) {
+      for (size_t i = 0; i < N * blks; i += 2) {
+        tmpscales[i] = scales[i] / 16;
+        tmpscales[i + 1] = scales[i + 1] / 16;
+      }
+    }
+    if (zero_points) {
+      for (size_t i = 0; i < N * blks; i += 2) {
+        auto tmpzp = *(zero_points + i / 2);
+        tmpzeropoints[i] = ((tmpzp & 0xf) - 8) << 4;
+        tmpzeropoints[i + 1] = (((tmpzp & 0xf0) >> 4) - 8) << 4;
+      }
     }
 
-    WeightKBlockS8<_GemmCore_T, ISA_T>::setTransposeQuantCorrection(N, K, tmpzeropoints, tmpscales, ptr, threading);
+    WeightKBlockS8<_GemmCore_T, ISA_T>::setTransposeQuantCorrection(N, K, zero_points ? tmpzeropoints : nullptr,
+                                                                    scales ? tmpscales : nullptr, ptr, threading);
     if (B) {
       auto s8ptr = (int8_t*)tmp;
       auto transposeunpackfunc_u4s4 = [&]() {

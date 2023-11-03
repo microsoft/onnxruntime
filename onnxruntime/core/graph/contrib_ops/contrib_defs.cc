@@ -3489,6 +3489,7 @@ Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored
       .Attr("K", "size of each input feature", AttributeProto::INT)
       .Attr("N", "size of each output feature", AttributeProto::INT)
       .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
+      .Attr("compute_type", "compute type for compressed weight, can be: 0(fp32), 1(int8), 2(bf16), or 3(fp16) (default fp32)", AttributeProto::INT)
       .Attr("block_size", "number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
       .Input(0, "A", "The input tensor, not quantized", "T1")
       .Input(1, "B", "1-dimensional data blob", "T2")

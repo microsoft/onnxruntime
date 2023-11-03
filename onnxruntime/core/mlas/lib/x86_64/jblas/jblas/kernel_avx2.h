@@ -580,13 +580,13 @@ static inline JBLAS_CODE decompress_kblock_f4_fp(utils::f4x2* srcptr, _DST_T* ds
                                                  int ld_dst, _ST* scales, int k_offset, int kblock, int NPad,
                                                  int8_t* tmp, size_t tmpsize) {
   if constexpr (_PACK_ROW == 1) {
-    return decompress_kblock_bit4_packrow1<true, _ST, _DST_T>(
-        srcptr, dstptr, row, col, ld_src, ld_dst, scales, nullptr, k_offset, kblock, NPad,
-        &dequant_f4_N<48, _DST_T, _F4_T>, fp4_pad_4bit, tmp, tmpsize);
+    return decompress_kblock_bit4_packrow1<true, _ST, _DST_T>(srcptr, dstptr, row, col, ld_src, ld_dst, scales, nullptr,
+                                                              k_offset, kblock, NPad, &dequant_f4_N<48, _DST_T, _F4_T>,
+                                                              fp4_pad_4bit, tmp, tmpsize);
   } else if constexpr (_PACK_ROW == 2) {
-    return decompress_kblock_bit4_packrow2<true, _ST, _DST_T>(
-        srcptr, dstptr, row, col, ld_src, ld_dst, scales, nullptr, k_offset, kblock, NPad,
-        &dequant_f4_N<64, _DST_T, _F4_T>, fp4_pad_4bit, tmp, tmpsize);
+    return decompress_kblock_bit4_packrow2<true, _ST, _DST_T>(srcptr, dstptr, row, col, ld_src, ld_dst, scales, nullptr,
+                                                              k_offset, kblock, NPad, &dequant_f4_N<64, _DST_T, _F4_T>,
+                                                              fp4_pad_4bit, tmp, tmpsize);
   }
   return JblasNotSupport;
 }
