@@ -3235,6 +3235,41 @@ TEST(GradientCheckerTest, ConvTransposeGrad) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
   ConvTransposeGradientCheckerTest(&execution_providers);
 }
+
+// TODO: Enable test for ROCM
+TEST(GradientCheckerTest, ResizeGrad) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {
+      MakeAttribute("coordinate_transformation_mode", "half_pixel"),
+      MakeAttribute("cubic_coeff_a", -0.75f),
+      MakeAttribute("exclude_outside", static_cast<int64_t>(0)),
+      MakeAttribute("extrapolation_value", 0.0f),
+      MakeAttribute("mode", "linear"),
+      MakeAttribute("nearest_mode", "floor")};
+
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Resize", kOnnxDomain, 18};
+
+  TensorInfo x_info({1, 2, 4, 4}, true);
+  TensorInfo roi_info({4}, false, nullptr, DataTypeImpl::GetTensorType<float>());
+  TensorInfo scales_info({4}, false, nullptr, DataTypeImpl::GetTensorType<float>());
+
+  TensorInfo y_info({1, 2, 8, 8}, true);
+
+  std::vector<std::vector<float>> x_datas = {{0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f,
+                                              0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f,
+                                              0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f,
+                                              0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f},
+                                             {1.0f, 1.0f, 1.0f, 1.0f},
+                                             {1.0f, 1.0f, 2.0f, 2.0f}};
+
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, roi_info, scales_info},
+                                                         {y_info}, &max_error, x_datas, attributes, true, false, &execution_providers));
+  EXPECT_IS_TINY(max_error);
+}
+
 #endif  // USE_CUDA
 
 }  // namespace test
