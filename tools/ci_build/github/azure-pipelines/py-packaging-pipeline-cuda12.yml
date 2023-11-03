@@ -1,0 +1,16 @@
+trigger: none
+
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
+
+stages:
+- template: template/py-packaging-stage-cuda12.yml
+  parameters:
+    enable_linux_gpu: true
+    enable_windows_gpu: true
+    cmake_build_type: Release

@@ -1,0 +1,74 @@
+parameters:
+- name: build_py_parameters
+  displayName: >
+    Extra parameters to pass to build.py. Don't put newlines in here.
+  type: string
+  default: ''
+
+- name: enable_linux_gpu
+  displayName: 'Whether Linux GPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_gpu
+  displayName: 'Whether Windows GPU package is built.'
+  type: boolean
+  default: true
+
+# TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
+- name: cmake_build_type
+  type: string
+  displayName: 'Linux packages cmake build type. Linux Only.'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+stages:
+- stage: Python_Packaging
+  dependsOn: []
+
+  jobs:
+  - ${{ if eq(parameters.enable_windows_gpu, true) }}:
+      - template: py-win-gpu-cuda12.yml
+        parameters:
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
+          PYTHON_VERSION: '3.8'
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0" --cuda_home="$(Agent.TempDirectory)\v12.2"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          ENV_SETUP_SCRIPT: setup_env_gpu.bat
+          EP_NAME: gpu
+
+      - template: py-win-gpu-cuda12.yml
+        parameters:
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
+          PYTHON_VERSION: '3.9'
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0" --cuda_home="$(Agent.TempDirectory)\v12.2"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          ENV_SETUP_SCRIPT: setup_env_gpu.bat
+          EP_NAME: gpu
+
+      - template: py-win-gpu-cuda12.yml
+        parameters:
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
+          PYTHON_VERSION: '3.10'
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0" --cuda_home="$(Agent.TempDirectory)\v12.2"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          ENV_SETUP_SCRIPT: setup_env_gpu.bat
+          EP_NAME: gpu
+
+      - template: py-win-gpu-cuda12.yml
+        parameters:
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
+          PYTHON_VERSION: '3.11'
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0" --cuda_home="$(Agent.TempDirectory)\v12.2"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          ENV_SETUP_SCRIPT: setup_env_gpu_cuda12.bat
+          EP_NAME: gpu
+
+
+  - ${{ if eq(parameters.enable_linux_gpu, true) }}:
+      - template: py-linux-gpu-cuda12.yml
+        parameters:
+          arch: 'x86_64'
+          machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}

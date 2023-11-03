@@ -1,0 +1,74 @@
+parameters:
+- name: arch
+  type: string
+
+- name: machine_pool
+  type: string
+
+- name: extra_build_arg
+  type: string
+  default: ''
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+jobs:
+- job: Linux_py_GPU_Wheels_${{ parameters.arch }}
+  timeoutInMinutes: 240
+  workspace:
+    clean: all
+  pool: ${{ parameters.machine_pool }}
+  variables:
+    # The build machine pool doesn't have dotnet, so it can't run CG.
+    skipComponentGovernanceDetection: true
+  steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
+
+    - template: set-nightly-build-option-variable-step.yml
+
+    - template: get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "
+        --network=host 
+        --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8 
+        --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 
+        --build-arg BUILD_UID=$( id -u )
+        --build-arg PLATFORM=${{ parameters.arch }}
+        "
+        Repository: onnxruntimecuda118xtrt86build${{ parameters.arch }}
+
+
+    - task: Bash@3
+      displayName: 'Build Python Wheel'
+      inputs:
+        targetType: filePath
+        filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
+        # please check ONNXRUNTIME_CUDA_VERSION in tools/ci_build/github/linux/build_linux_arm64_python_package.sh
+        arguments: -i onnxruntimecuda118xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} -x "${{ parameters.extra_build_arg }}"
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        PathtoPublish: '$(Build.BinariesDirectory)/dist'
+        ArtifactName: onnxruntime_gpu
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Test Binaries'
+      inputs:
+        artifactName: 'drop-linux-gpu-${{ parameters.arch }}'
+        targetPath: '$(Build.BinariesDirectory)/Release'
+
+
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
