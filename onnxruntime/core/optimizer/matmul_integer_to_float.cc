@@ -81,11 +81,10 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     auto& mul_node = *node_ptr;
 
     ORT_RETURN_IF_ERROR(Recurse(mul_node, modified, graph_level, logger));
-    auto ep_type = node_ptr->GetExecutionProviderType();
-    bool dml_ep = ep_type == kDmlExecutionProvider;
+    const bool is_dml_ep = node_ptr->GetExecutionProviderType() == kDmlExecutionProvider;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) ||
         !graph_utils::IsSupportedProvider(mul_node, GetCompatibleExecutionProviders()) ||
-        (!dml_ep && HasElementDataType(*mul_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16))) {
+        (!is_dml_ep && HasElementDataType(*mul_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16))) {
       continue;
     }
 
