@@ -149,7 +149,7 @@ namespace Dml::GraphDescBuilder
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
-        const void* executionHandle,
+        const ExecutionProviderImpl* executionHandle,
         const onnxruntime::Path& modelPath,
         gsl::span<const onnxruntime::Node* const> subgraphNodes,
         gsl::span<const onnxruntime::NodeArg* const> subgraphInputs,
@@ -198,7 +198,7 @@ namespace Dml::GraphDescBuilder
         const uint32_t minNodeCountToReuseCommandList = 5;
         bool reuseCommandList = false;
 
-        if (subgraphNodes.size() >= minNodeCountToReuseCommandList || providerImpl->IsMcdmDevice())
+        if (subgraphNodes.size() >= minNodeCountToReuseCommandList || executionHandle->IsMcdmDevice())
         {
             reuseCommandList = true;
         }

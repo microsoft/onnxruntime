@@ -48,7 +48,7 @@ namespace Dml
             const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             IDMLDevice* device,
-            const void* executionHandle,
+            const ExecutionProviderImpl* executionHandle,
             const onnxruntime::Path& modelPath,
             gsl::span<const onnxruntime::Node* const> subgraphNodes,
             gsl::span<const onnxruntime::NodeArg* const> subgraphInputs,

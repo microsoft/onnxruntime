@@ -103,119 +103,14 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
            {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
-//TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_uint8) {
-//  OpTester test("Resize", 13);
-//  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
-//  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
-//
-//  test.AddAttribute("mode", "linear");
-//  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
-//  test.AddAttribute("extrapolation_value", 10.0f);
-//
-//  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
-//  std::vector<uint8_t> X = {
-//      1, 2, 3, 4,
-//      5, 6, 7, 8,
-//      9, 10, 11, 12,
-//      13, 14, 15, 16};
-//
-//  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
-//  test.AddInput<float>("roi", {8}, roi);
-//  test.AddInput<float>("scales", {4}, scales);
-//
-//  std::vector<uint8_t> Y = {7, 10, 10,
-//                            12, 10, 10,
-//                            10, 10, 10};
-//
-//  test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-//  // CUDA: result mismatch due to not implementing NHWC support
-//  // ROCm: results mismatch
-//  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kQnnExecutionProvider});
-//}
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
+  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
 
-//TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_int8) {
-//  OpTester test("Resize", 13);
-//  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
-//  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
-//
-//  test.AddAttribute("mode", "linear");
-//  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
-//  test.AddAttribute("extrapolation_value", 10.0f);
-//
-//  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
-//  std::vector<int8_t> X = {
-//      1, -2, 3, -4,
-//      -5, 6, -7, 8,
-//      9, -10, 11, -12,
-//      -13, 14, -15, 16};
-//
-//  test.AddInput<int8_t>("X", {N, H, W, C}, X);
-//  test.AddInput<float>("roi", {8}, roi);
-//  test.AddInput<float>("scales", {4}, scales);
-//
-//  std::vector<int8_t> Y = {-2, 10, 10,
-//                           0, 10, 10,
-//                           10, 10, 10};
-//
-//  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-//  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
-//}
-//
-//TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_extrapolation_uint8) {
-//  OpTester test("Resize", 13);
-//  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
-//  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
-//
-//  test.AddAttribute("mode", "linear");
-//  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
-//
-//  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
-//  std::vector<uint8_t> X = {
-//      1, 2, 3, 4,
-//      5, 6, 7, 8,
-//      9, 10, 11, 12,
-//      13, 14, 15, 16};
-//
-//  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
-//  test.AddInput<float>("roi", {8}, roi);
-//  test.AddInput<float>("scales", {4}, scales);
-//
-//  std::vector<uint8_t> Y = {7, 0, 0,
-//                            12, 0, 0,
-//                            0, 0, 0};
-//
-//  test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-//  // CUDA: result mismatch due to not implementing NHWC support
-//  // ROCm: results mismatch
-//  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kQnnExecutionProvider});
-//}
-//
-//TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_extrapolation_int8) {
-//  OpTester test("Resize", 13);
-//  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
-//  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
-//
-//  test.AddAttribute("mode", "linear");
-//  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
-//
-//  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
-//  std::vector<int8_t> X = {
-//      1, -2, 3, -4,
-//      -5, 6, -7, 8,
-//      9, -10, 11, -12,
-//      -13, 14, -15, 16};
-//
-//  test.AddInput<int8_t>("X", {N, H, W, C}, X);
-//  test.AddInput<float>("roi", {8}, roi);
-//  test.AddInput<float>("scales", {4}, scales);
-//
-//  std::vector<int8_t> Y = {-2, 0, 0,
-//                           0, 0, 0,
-//                           0, 0, 0};
-//
-//  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-//  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
-//}
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("extrapolation_value", 10.0f);
 
   constexpr int64_t N = 1, H = 4, W = 4, C = 1;
   std::vector<uint8_t> X = {
@@ -369,51 +264,10 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
            {kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
-//TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
-//  OpTester test("Resize", 13);
-//  std::vector<float> roi{};
-//  std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
-//
-//  test.AddAttribute("mode", "linear");
-//
-//  constexpr int64_t N = 1, H = 2, W = 4, C = 1;
-//  std::vector<uint8_t> X = {
-//      1, 2, 3, 4,
-//      5, 6, 7, 8};
-//
-//  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
-//  test.AddInput<float>("roi", {0}, roi);
-//  test.AddInput<float>("scales", {4}, scales);
-//
-//  std::vector<uint8_t> Y = {2, 4};
-//
-//  test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-//  // CUDA: result mismatch due to not implementing NHWC support
-//  // ROCm: results mismatch
-//  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kQnnExecutionProvider});
-//}
-//
-//TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
-//  OpTester test("Resize", 13);
-//  std::vector<float> roi{};
-//  std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
-//
-//  test.AddAttribute("mode", "linear");
-//
-//  constexpr int64_t N = 1, H = 2, W = 4, C = 1;
-//  std::vector<int8_t> X = {
-//      1, -2, 3, -4,
-//      -5, 6, -7, 8};
-//
-//  test.AddInput<int8_t>("X", {N, H, W, C}, X);
-//  test.AddInput<float>("roi", {0}, roi);
-//  test.AddInput<float>("scales", {4}, scales);
-//
-//  std::vector<int8_t> Y = {0, 0};
-//
-//  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-//  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
-//}
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
 
   test.AddAttribute("mode", "linear");
 
@@ -1897,19 +1751,19 @@ void ResizeOpTypeCheck_Ver_11_13_18(int opset_version) {
   test.Run();
 }
 
-//TEST(ResizeOpTest, ResizeOpTypeCheck_Ver11) {
-//  ResizeOpTypeCheck_Ver_11_13_18<float>(11);
-//  ResizeOpTypeCheck_Ver_11_13_18<int32_t>(11);
-//  ResizeOpTypeCheck_Ver_11_13_18<int8_t>(11);
-//  ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(11);
-//}
-//
-//TEST(ResizeOpTest, ResizeOpTypeCheck_Ver13) {
-//  ResizeOpTypeCheck_Ver_11_13_18<float>(13);
-//  ResizeOpTypeCheck_Ver_11_13_18<int32_t>(13);
-//  ResizeOpTypeCheck_Ver_11_13_18<int8_t>(13);
-//  ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(13);
-//}
+TEST(ResizeOpTest, ResizeOpTypeCheck_Ver11) {
+  ResizeOpTypeCheck_Ver_11_13_18<float>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<int32_t>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<int8_t>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(11);
+}
+
+TEST(ResizeOpTest, ResizeOpTypeCheck_Ver13) {
+  ResizeOpTypeCheck_Ver_11_13_18<float>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<int32_t>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<int8_t>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(13);
+}
 
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver18) {
   ResizeOpTypeCheck_Ver_11_13_18<float>(18);
