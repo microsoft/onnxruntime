@@ -198,16 +198,8 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   // Qnn format is begin_0, end_0, begin_1, end_1, ...
   ReArranagePads(pad_amount);
 
-  std::vector<uint32_t> pad_amount_dim{static_cast<uint32_t>(pad_amount.size() / 2), static_cast<uint32_t>(2)};
-  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), QNN_OP_PAD_PARAM_PAD_AMOUNT, std::move(pad_amount_dim),
-                                  std::move(pad_amount));
-  param_tensor_names.push_back(multiples_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(multiples_param));
-
-  // Process optional input constant_value
-  if (node_unit.Inputs().size() > 2) {
-    ORT_RETURN_IF_ERROR(ProcessConstantValue(qnn_model_wrapper, param_tensor_names, node_unit, inputs[2]));
-  }  // constant_value
+  std::vector<uint32_t> input_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");
 
   NodeAttrHelper node_helper(node_unit);
   std::string mode = node_helper.Get("mode", "constant");
@@ -216,6 +208,10 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   if ("constant" == mode) {
     mode_qnn_scalar.uint32Value = QNN_OP_PAD_SCHEME_CONSTANT;
   } else if ("reflect" == mode) {
+    for (size_t i = 0; i < input_shape.size(); i++) {
+      ORT_RETURN_IF(pad_amount[i * 2] > input_shape[i] - 1 || pad_amount[(i * 2) + 1] > input_shape[i] - 1,
+                    "Pad amount should not be greater than shape(input[0])[i] - 1");
+    }
     mode_qnn_scalar.uint32Value = QNN_OP_PAD_SCHEME_MIRROR_REFLECT;
   } else if ("edge" == mode) {
     mode_qnn_scalar.uint32Value = QNN_OP_PAD_SCHEME_EDGE;
@@ -223,9 +219,20 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Pad mode only support constant.");
   }
 
+  std::vector<uint32_t> pad_amount_dim{static_cast<uint32_t>(pad_amount.size() / 2), static_cast<uint32_t>(2)};
   QnnParamWrapper mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_PAD_PARAM_SCHEME, mode_qnn_scalar);
   param_tensor_names.push_back(mode_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(mode_param));
+
+  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), QNN_OP_PAD_PARAM_PAD_AMOUNT,
+                                  std::move(pad_amount_dim), std::move(pad_amount));
+  param_tensor_names.push_back(multiples_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(multiples_param));
+
+  // Process optional input constant_value
+  if (node_unit.Inputs().size() > 2) {
+    ORT_RETURN_IF_ERROR(ProcessConstantValue(qnn_model_wrapper, param_tensor_names, node_unit, inputs[2]));
+  }  // constant_value
 
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),

@@ -2422,14 +2422,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>When buffered past_key and past_value is used (present_key uses same tensor as past_key), requiredto specify past_sequence_length (could be 0). Otherwise, past_sequence_length inferred from past_key.</dd>
 </dl>
 
-#### Outputs (1 - 3)
+#### Outputs
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>present_key</tt> (optional) : T</dt>
+<dt><tt>present_key</tt> : T</dt>
 <dd>present state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
-<dt><tt>present_value</tt> (optional) : T</dt>
+<dt><tt>present_value</tt> : T</dt>
 <dd>present state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 </dl>
 
@@ -2580,8 +2580,30 @@ This version of the operator has been available since version 1 of the 'com.micr
        And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
     3. Input B's quantization constants or scales are specified by input 'absmax'.
   
-  Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
-  Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
+    Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
+    Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
+  
+  
+    1. (Default value) transB=True (Majorly used for forward pass)
+      Shape of A: [D0, D1, ..., Dn, K]
+      Shape of Dequanted B: [N, K], this is aligned with how PyTorch defined the linear weight, .e.g [out_features, in_features].
+  
+      The computation math:
+        dequant_B = dequant(B, absmax, quant_type, block_size)
+        transposed_dequant_B = dequant_B^T
+        output = A @ transposed_dequant_B
+  
+      Shape of output: [D0, D1, ..., Dn, N]
+  
+    2. transB=False (Majorly used for backward pass)
+      Shape of A: [D0, D1, ..., Dn, N]
+      Shape of Dequanted B: [N, K], this is aligned with how PyTorch defined the linear weight, .e.g [out_features, in_features].
+  
+      The computation math:
+        dequant_B = dequant(B, absmax, quant_type, block_size)
+        output = A @ dequant_B
+  
+      Shape of output: [D0, D1, ..., Dn, K]
   
 
 #### Version
@@ -2599,6 +2621,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>number of groupsize used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
 <dt><tt>quant_type</tt> : int (required)</dt>
 <dd>quantization data type. 0 for FP4, 1 for NF4.</dd>
+<dt><tt>training_mode</tt> : int</dt>
+<dd>Indicate if the ops run in training_mode, by default, False.</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed on the last two dimensions before doing multiplication. Default to be 1.</dd>
 </dl>
 
 #### Inputs
