@@ -33,6 +33,10 @@ class TestQuantUtil(unittest.TestCase):
         self.assertEqual(compute_scale_zp(-tiny_float, tiny_float, 0, 255, symmetric=True), [0, 1.0])
         self.assertEqual(compute_scale_zp(-tiny_float, 0.0, 0, 255, symmetric=False), [0, 1.0])
 
+        # Test enforcing a minimum floatint-point range.
+        self.assertEqual(compute_scale_zp(0.0, 0.0, 0, 255, symmetric=False, min_rrange=0.0001), [0, 0.0001 / 255])
+        self.assertEqual(compute_scale_zp(0.0, 0.0, -128, 127, symmetric=True, min_rrange=0.0001), [0, 0.0002 / 255])
+
     def test_load_external_model(self):
         input_name = "input"
         output_name = "output"
