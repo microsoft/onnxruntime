@@ -41,7 +41,7 @@ function(AddTest)
   if (MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd6330>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6330>")
-    #Abseil has a lot of C4127/C4324 warnings. 
+    #Abseil has a lot of C4127/C4324 warnings.
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4127>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4127>")
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4324>"
@@ -201,8 +201,18 @@ function(AddTest)
           list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
         endif()
 
+        # prefer Node from emsdk so the version is more deterministic
+        if (DEFINED ENV{EMSDK_NODE})
+          set(NODE_EXECUTABLE $ENV{EMSDK_NODE})
+        else()
+          # warning as we don't know what node version is being used and whether things like the TEST_NODE_FLAGS
+          # will be valid. e.g. "--experimental-wasm-simd" is not valid with node v20 or later.
+          message(WARNING "EMSDK_NODE environment variable was not set. Falling back to system `node`.")
+          set(NODE_EXECUTABLE node)
+        endif()
+
         add_test(NAME ${_UT_TARGET}
-          COMMAND node ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
+          COMMAND ${NODE_EXECUTABLE} ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
           WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
         )
       endif()
