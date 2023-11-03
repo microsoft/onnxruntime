@@ -142,6 +142,7 @@ const createBinaryOpProgramInfo =
 
       // TODO: deal with zero-sized tensors (eg. dims=[1,0])
 
+      cacheKey += isBroadcast;
       if (isBroadcast) {
         const calculatedShape = BroadcastUtil.calcShape(a.dims, b.dims, false);
         if (!calculatedShape) {
@@ -151,7 +152,8 @@ const createBinaryOpProgramInfo =
         outputSize = ShapeUtil.size(outputShape);
         const isAOneElement = ShapeUtil.size(a.dims) === 1;
         const isBOneElement = ShapeUtil.size(b.dims) === 1;
-
+        cacheKey += isAOneElement;
+        cacheKey += isBOneElement;
         // check whether vectorize can be enabled
         let sharedDimension = 1;
         for (let i = 1; i < outputShape.length; i++) {
@@ -170,7 +172,7 @@ const createBinaryOpProgramInfo =
         // element-wise
         vectorize = true;
       }
-
+      cacheKey += vectorize;
       const useShapesUniforms = isBroadcast && enableShapesUniforms(a.dims.length) &&
           enableShapesUniforms(b.dims.length) && enableShapesUniforms(outputShape.length);
       return {
