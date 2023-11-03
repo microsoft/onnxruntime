@@ -60,7 +60,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
 
-  void InitQnnGraphConfigs(qnn::QnnGraphConfigsHolder& configs_holder) const;
+  void InitQnnGraphConfigs(qnn::QnnGraphConfigsBuilder& configs_holder) const;
 
  private:
   ProviderOptions runtime_options_;

@@ -471,15 +471,15 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
   return Status::OK();
 }
 
-void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnGraphConfigsHolder& configs_holder) const {
+void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnGraphConfigsBuilder& configs_builder) const {
   if (qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::HTP &&
       htp_graph_finalization_opt_mode_ != qnn::HtpGraphFinalizationOptimizationMode::kDefault) {
-    QnnHtpGraph_CustomConfig_t& htp_graph_opt_config = configs_holder.PushHtpGraphCustomConfig();
+    QnnHtpGraph_CustomConfig_t& htp_graph_opt_config = configs_builder.PushHtpGraphCustomConfig();
     htp_graph_opt_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
     htp_graph_opt_config.optimizationOption.type = QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
     htp_graph_opt_config.optimizationOption.floatValue = static_cast<float>(htp_graph_finalization_opt_mode_);
 
-    QnnGraph_Config_t& graph_opt_config = configs_holder.PushGraphConfig(true /*is_last*/);
+    QnnGraph_Config_t& graph_opt_config = configs_builder.PushGraphConfig(true /*is_last*/);
     graph_opt_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
     graph_opt_config.customConfig = &htp_graph_opt_config;
   }
@@ -495,10 +495,10 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                qnn_backend_manager_.get());
 
-    qnn::QnnGraphConfigsHolder graph_configs_holder;
-    InitQnnGraphConfigs(graph_configs_holder);
+    qnn::QnnGraphConfigsBuilder graph_configs_builder;
+    InitQnnGraphConfigs(graph_configs_builder);
 
-    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, graph_configs_holder.GetQnnGraphConfigs()));
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, graph_configs_builder.GetQnnGraphConfigs()));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
