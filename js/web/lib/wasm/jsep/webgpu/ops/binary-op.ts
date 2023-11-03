@@ -154,7 +154,8 @@ const createBinaryOpProgramInfo =
         vectorize = true;
       }
       cacheKey += vectorize;
-      const useShapesUniforms = isBroadcast && enableShapesUniforms(a.dims.length) &&
+      // Don't need to use shape/stride uniforms if input/output tensors are vectorized.
+      const useShapesUniforms = !vectorize && enableShapesUniforms(a.dims.length) &&
           enableShapesUniforms(b.dims.length) && enableShapesUniforms(outputShape.length);
       return {
         name,
