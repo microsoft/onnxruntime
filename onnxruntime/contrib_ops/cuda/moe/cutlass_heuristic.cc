@@ -16,12 +16,6 @@
 
 #include "cutlass_heuristic.h"
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-//#include "cutlass/gemm/gemm.h"
-//#include "cutlass/numeric_types.h"
-#pragma GCC diagnostic pop
-
 #include <cuda_runtime_api.h>
 #include <vector>
 #include <stdexcept>

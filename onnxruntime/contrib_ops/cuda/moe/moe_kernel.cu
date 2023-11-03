@@ -30,7 +30,6 @@
 #pragma GCC diagnostic pop
 
 #include "moe_kernel.h"
-//#include "src/fastertransformer/utils/cuda_utils.h"
 
 #if CUDA_VERSION >= 11000
 #include <cub/cub.cuh>

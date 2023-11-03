@@ -17,7 +17,6 @@
 #include "cutlass/half.h"
 #include "cutlass/numeric_conversion.h"
 #include "cutlass/numeric_types.h"
-
 #include "cutlass/epilogue/thread/linear_combination.h"
 #include "cutlass/epilogue/thread/linear_combination_generic.h"
 #include "cutlass/epilogue/thread/linear_combination_relu.h"

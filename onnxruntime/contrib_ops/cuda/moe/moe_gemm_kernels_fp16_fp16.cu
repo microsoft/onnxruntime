@@ -17,7 +17,5 @@
 #include "moe_gemm_kernels_template.h"
 
 namespace fastertransformer {
-#ifdef ENABLE_BF16
-template class MoeGemmRunner<__nv_bfloat16, __nv_bfloat16>;
-#endif
+template class MoeGemmRunner<half, half>;
 }  // namespace fastertransformer

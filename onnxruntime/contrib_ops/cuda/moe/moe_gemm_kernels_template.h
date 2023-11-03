@@ -29,6 +29,7 @@
 #include "cutlass/arch/arch.h"
 #include "cutlass/epilogue/thread/linear_combination_relu.h"
 
+#include "compute_occupancy.h"
 #include "epilogue_helpers.h"
 #include "layout_traits_helper.h"
 #include "moe_cutlass_kernel.h"
@@ -140,11 +141,10 @@ void generic_moe_gemm_kernelLauncher(const T*          A,
 
     using GemmGrouped = cutlass::gemm::device::GemmGrouped<GemmKernel>;
 
-    // if (kernel_occupancy != nullptr) {
-    //     *kernel_occupancy = compute_occupancy_for_kernel<GemmKernel>();
-    //     ;
-    //     return;
-    // }
+    if (kernel_occupancy != nullptr) {
+        *kernel_occupancy = compute_occupancy_for_kernel<GemmKernel>();
+        return;
+    }
     int occupancy = std::min(2, GemmGrouped::maximum_active_blocks());
     if (occupancy == 0) {
         throw std::runtime_error(
@@ -604,9 +604,6 @@ void dispatch_moe_gemm_to_cutlass(const T*          A,
                                   cudaStream_t      stream,
                                   int*              occupancy = nullptr)
 {
-
-
-
     switch (gemm_config.tile_config) {
         case CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8:
             dispatch_gemm_config<T,

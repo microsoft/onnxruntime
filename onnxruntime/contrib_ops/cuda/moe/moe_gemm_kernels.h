@@ -15,6 +15,7 @@
  */
 
 #pragma once
+
 #include <cuda_runtime_api.h>
 #include "ft_gemm_configs.h"
 
