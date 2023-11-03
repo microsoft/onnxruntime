@@ -184,7 +184,7 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         return arr_fp32.astype(dtype)
 
 
-def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
+def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_rrange=None):
     """Calculate the scale s and zero point z for the quantization relation
     r = s(q-z), where r are the original values and q are the corresponding
     quantized values.
@@ -210,6 +210,10 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
     # type (i.e. to make sure qmin <= zero_point <= qmax)
     rmin = min(rmin, 0)
     rmax = max(rmax, 0)
+
+    # Ensure a minimum float-point range if specified.
+    if min_rrange is not None:
+        rmax = max(rmax, rmin + min_rrange)
 
     if symmetric:
         absmax = max(abs(rmin), abs(rmax))
@@ -254,7 +258,7 @@ def compute_scale_zp_float8(element_type, std):
     return [zero, scale]
 
 
-def quantize_data(data, qType, symmetric, reduce_range=False):
+def quantize_data(data, qType, symmetric, reduce_range=False, min_rrange=None):
     """
     :param data: data to quantize
     :param qType: data type to quantize to. Supported types UINT8 and INT8
@@ -301,7 +305,7 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     if qType in (TensorProto.INT8, TensorProto.UINT8, TensorProto.INT16, TensorProto.UINT16):
         if len(data):
             qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
-            zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+            zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_rrange)
         quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
         return rmin, rmax, zero_point, scale, quantized_data
 
