@@ -76,6 +76,22 @@ void QNNExecutionProvider::ParseHtpPerformanceMode(std::string htp_performance_m
   }
 }
 
+void QNNExecutionProvider::ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string) {
+  LOGS_DEFAULT(VERBOSE) << "HTP graph finalization optimization mode: "
+                        << htp_graph_finalization_opt_mode_string;
+
+  if (htp_graph_finalization_opt_mode_string == "1") {
+    htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kMode1;
+  } else if (htp_graph_finalization_opt_mode_string == "2") {
+    htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kMode2;
+  } else if (htp_graph_finalization_opt_mode_string == "3") {
+    htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kMode3;
+  } else {
+    LOGS_DEFAULT(WARNING) << "Invalid HTP graph finalization optimization mode: "
+                          << htp_graph_finalization_opt_mode_string;
+  }
+}
+
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const SessionOptions* session_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true},
@@ -138,6 +154,13 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   auto htp_performance_mode_pos = runtime_options_.find(HTP_PERFORMANCE_MODE);
   if (htp_performance_mode_pos != runtime_options_.end()) {
     ParseHtpPerformanceMode(htp_performance_mode_pos->second);
+  }
+
+  htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
+  static const std::string HTP_GRAPH_FINALIZATION_OPT_MODE = "htp_graph_finalization_optimization_mode";
+  auto htp_graph_finalization_opt_mode_pos = runtime_options_.find(HTP_GRAPH_FINALIZATION_OPT_MODE);
+  if (htp_graph_finalization_opt_mode_pos != runtime_options_.end()) {
+    ParseHtpGraphFinalizationOptimizationMode(htp_graph_finalization_opt_mode_pos->second);
   }
 
   // Enable use of QNN Saver if the user provides a path the QNN Saver backend library.
@@ -448,6 +471,20 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
   return Status::OK();
 }
 
+void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnGraphConfigsHolder& configs_holder) const {
+  if (qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::HTP &&
+      htp_graph_finalization_opt_mode_ != qnn::HtpGraphFinalizationOptimizationMode::kDefault) {
+    QnnHtpGraph_CustomConfig_t& htp_graph_opt_config = configs_holder.PushHtpGraphCustomConfig();
+    htp_graph_opt_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
+    htp_graph_opt_config.optimizationOption.type = QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
+    htp_graph_opt_config.optimizationOption.floatValue = static_cast<float>(htp_graph_finalization_opt_mode_);
+
+    QnnGraph_Config_t& graph_opt_config = configs_holder.PushGraphConfig(true /*is_last*/);
+    graph_opt_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+    graph_opt_config.customConfig = &htp_graph_opt_config;
+  }
+}
+
 Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                  std::vector<NodeComputeInfo>& node_compute_funcs,
                                                  const logging::Logger& logger) {
@@ -458,7 +495,10 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                qnn_backend_manager_.get());
 
-    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node));
+    qnn::QnnGraphConfigsHolder graph_configs_holder;
+    InitQnnGraphConfigs(graph_configs_holder);
+
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, graph_configs_holder.GetQnnGraphConfigs()));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs());
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 

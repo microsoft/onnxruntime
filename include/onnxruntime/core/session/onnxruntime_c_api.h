@@ -3604,6 +3604,11 @@ struct OrtApi {
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *   may alter model/EP partitioning. Use only for debugging.
+   *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend. Available options:
+   *     - "0": Default.
+   *     - "1": Faster preparation time, less optimal graph.
+   *     - "2": Longer preparation time, more optimal graph.
+   *     - "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific details.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",

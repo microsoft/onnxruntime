@@ -9,6 +9,7 @@
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
+#include "core/providers/qnn/builder/qnn_graph_configs_helper.h"
 
 namespace onnxruntime {
 
@@ -57,10 +58,15 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   void ParseHtpPerformanceMode(std::string htp_performance_mode_string);
 
+  void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
+
+  void InitQnnGraphConfigs(qnn::QnnGraphConfigsHolder& configs_holder) const;
+
  private:
   ProviderOptions runtime_options_;
   qnn::ProfilingLevel profiling_level_ = qnn::ProfilingLevel::OFF;
   qnn::HtpPerformanceMode htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
+  qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   uint32_t rpc_control_latency_ = 0;
