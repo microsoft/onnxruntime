@@ -736,7 +736,12 @@ void QnnBackendManager::ReleaseResources() {
     return;
   }
 
-  auto result = ReleaseContext();
+  auto result = DestroyHTPPowerConfigID();
+  if (Status::OK() != result) {
+    ORT_THROW("Failed to DestroyHTPPowerConfigID.");
+  }
+
+  result = ReleaseContext();
   if (Status::OK() != result) {
     ORT_THROW("Failed to ReleaseContext.");
   }
