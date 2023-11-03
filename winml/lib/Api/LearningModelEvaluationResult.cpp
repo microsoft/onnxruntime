@@ -5,34 +5,29 @@
 #include "LearningModelEvaluationResult.h"
 
 namespace WINMLP {
-hstring LearningModelEvaluationResult::CorrelationId() try {
-  return m_correlationId;
-}
+hstring LearningModelEvaluationResult::CorrelationId() try { return m_correlationId; }
 WINML_CATCH_ALL
 
 void LearningModelEvaluationResult::CorrelationId(const hstring& correlationId) {
   m_correlationId = correlationId;
 }
 
-int32_t LearningModelEvaluationResult::ErrorStatus() try {
-  return m_errorStatus;
-}
+int32_t LearningModelEvaluationResult::ErrorStatus() try { return m_errorStatus; }
 WINML_CATCH_ALL
 
 void LearningModelEvaluationResult::ErrorStatus(int32_t errorStatus) {
   m_errorStatus = errorStatus;
 }
 
-bool LearningModelEvaluationResult::Succeeded() try {
-  return m_succeeded;
-}
+bool LearningModelEvaluationResult::Succeeded() try { return m_succeeded; }
 WINML_CATCH_ALL
 
 void LearningModelEvaluationResult::Succeeded(bool succeeded) {
   m_succeeded = succeeded;
 }
 
-Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable> LearningModelEvaluationResult::Outputs() try {
+Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>
+LearningModelEvaluationResult::Outputs() try {
   std::unordered_map<hstring, Windows::Foundation::IInspectable> outputs;
 
   for (auto& output : m_outputs) {
@@ -45,7 +40,9 @@ Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspec
 }
 WINML_CATCH_ALL
 
-void LearningModelEvaluationResult::Outputs(Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable> outputs) {
+void LearningModelEvaluationResult::Outputs(
+  Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable> outputs
+) {
   m_outputs.clear();
 
   for (auto pair : outputs) {
@@ -55,10 +52,7 @@ void LearningModelEvaluationResult::Outputs(Windows::Foundation::Collections::IM
   }
 }
 
-HRESULT LearningModelEvaluationResult::GetOutput(
-    const wchar_t* name,
-    UINT32 cchName,
-    IUnknown** result) {
+HRESULT LearningModelEvaluationResult::GetOutput(const wchar_t* name, UINT32 cchName, IUnknown** result) {
   *result = nullptr;
 
   auto outputName = _winml::Strings::UTF8FromUnicode(name, cchName);
@@ -75,7 +69,8 @@ HRESULT LearningModelEvaluationResult::GetOutput(
 }
 
 HRESULT LearningModelEvaluationResult::SetOutputs(
-    std::unordered_map<std::string, Windows::Foundation::IInspectable>&& outputs) {
+  std::unordered_map<std::string, Windows::Foundation::IInspectable>&& outputs
+) {
   m_outputs = std::move(outputs);
   return S_OK;
 }

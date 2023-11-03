@@ -44,13 +44,13 @@ namespace Dml
             std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
             std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
             std::vector<DML_BUFFER_BINDING> initInputBindings,
-            std::vector<uint8_t>& isInputsUploadedByDmlEP,
-            std::vector<bool>& inputsUsed) :
+            std::vector<uint8_t>&& isInputsUploadedByDmlEP,
+            std::vector<bool>&& inputsUsed) :
         OpKernel(kernelInfo),
         m_compiledExecutionPlanOperator(compiledExecutionPlanOperator),
-        m_inputsUsed(inputsUsed),
+        m_inputsUsed(std::move(inputsUsed)),
         m_outputShapes(outputShapes),
-        m_isInputsUploadedByDmlEP(isInputsUploadedByDmlEP),
+        m_isInputsUploadedByDmlEP(std::move(isInputsUploadedByDmlEP)),
         m_nonOwnedGraphInputsFromInitializers(nonOwnedGraphInputsFromInitializers)
         {
             // Get the execution provider interfaces
@@ -461,8 +461,8 @@ namespace Dml
         std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
         std::vector<DML_BUFFER_BINDING> initInputBindings,
-        std::vector<uint8_t>& isInputsUploadedByDmlEP,
-        std::vector<bool>& inputsUsed
+        std::vector<uint8_t>&& isInputsUploadedByDmlEP,
+        std::vector<bool>&& inputsUsed
         )
     {
         return new FusedGraphKernel(
@@ -473,8 +473,8 @@ namespace Dml
             nonOwnedGraphInputsFromInitializers,
             initializeResourceRefs,
             initInputBindings,
-            isInputsUploadedByDmlEP,
-            inputsUsed
+            std::move(isInputsUploadedByDmlEP),
+            std::move(inputsUsed)
         );
     }
 } // namespace Dml

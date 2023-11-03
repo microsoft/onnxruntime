@@ -14,88 +14,88 @@ const OrtApi* GetVersion1Api();
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 static constexpr WinmlAdapterApi winml_adapter_api_1 = {
-    // Schema override
-    &winmla::OverrideSchema,
+  // Schema override
+  &winmla::OverrideSchema,
 
-    // OrtEnv methods
-    &winmla::EnvConfigureCustomLoggerAndProfiler,
+  // OrtEnv methods
+  &winmla::EnvConfigureCustomLoggerAndProfiler,
 
-    // OrtModel methods
-    &winmla::CreateModelFromPath,
-    &winmla::CreateModelFromData,
-    &winmla::CloneModel,
-    &winmla::ModelGetAuthor,
-    &winmla::ModelGetName,
-    &winmla::ModelSetName,
-    &winmla::ModelGetDomain,
-    &winmla::ModelGetDescription,
-    &winmla::ModelGetVersion,
-    &winmla::ModelGetInputCount,
-    &winmla::ModelGetOutputCount,
-    &winmla::ModelGetInputName,
-    &winmla::ModelGetOutputName,
-    &winmla::ModelGetInputDescription,
-    &winmla::ModelGetOutputDescription,
-    &winmla::ModelGetInputTypeInfo,
-    &winmla::ModelGetOutputTypeInfo,
-    &winmla::ModelGetMetadataCount,
-    &winmla::ModelGetMetadata,
-    &winmla::ModelEnsureNoFloat16,
-    &winmla::SaveModel,
+  // OrtModel methods
+  &winmla::CreateModelFromPath,
+  &winmla::CreateModelFromData,
+  &winmla::CloneModel,
+  &winmla::ModelGetAuthor,
+  &winmla::ModelGetName,
+  &winmla::ModelSetName,
+  &winmla::ModelGetDomain,
+  &winmla::ModelGetDescription,
+  &winmla::ModelGetVersion,
+  &winmla::ModelGetInputCount,
+  &winmla::ModelGetOutputCount,
+  &winmla::ModelGetInputName,
+  &winmla::ModelGetOutputName,
+  &winmla::ModelGetInputDescription,
+  &winmla::ModelGetOutputDescription,
+  &winmla::ModelGetInputTypeInfo,
+  &winmla::ModelGetOutputTypeInfo,
+  &winmla::ModelGetMetadataCount,
+  &winmla::ModelGetMetadata,
+  &winmla::ModelEnsureNoFloat16,
+  &winmla::SaveModel,
 
-    // OrtSessionOptions methods
-    &OrtSessionOptionsAppendExecutionProvider_CPU,
-    &winmla::OrtSessionOptionsAppendExecutionProviderEx_DML,
+  // OrtSessionOptions methods
+  &OrtSessionOptionsAppendExecutionProvider_CPU,
+  &winmla::OrtSessionOptionsAppendExecutionProviderEx_DML,
 
-    // OrtSession methods
-    &winmla::CreateSessionWithoutModel,
-    &winmla::SessionGetExecutionProvider,
-    &winmla::SessionInitialize,
-    &winmla::SessionRegisterGraphTransformers,
-    &winmla::SessionRegisterCustomRegistry,
-    &winmla::SessionLoadAndPurloinModel,
-    &winmla::SessionStartProfiling,
-    &winmla::SessionEndProfiling,
-    &winmla::SessionCopyOneInputAcrossDevices,
-    &winmla::SessionGetNumberOfIntraOpThreads,
-    &winmla::SessionGetIntraOpThreadSpinning,
-    &winmla::SessionGetNamedDimensionsOverrides,
+  // OrtSession methods
+  &winmla::CreateSessionWithoutModel,
+  &winmla::SessionGetExecutionProvider,
+  &winmla::SessionInitialize,
+  &winmla::SessionRegisterGraphTransformers,
+  &winmla::SessionRegisterCustomRegistry,
+  &winmla::SessionLoadAndPurloinModel,
+  &winmla::SessionStartProfiling,
+  &winmla::SessionEndProfiling,
+  &winmla::SessionCopyOneInputAcrossDevices,
+  &winmla::SessionGetNumberOfIntraOpThreads,
+  &winmla::SessionGetIntraOpThreadSpinning,
+  &winmla::SessionGetNamedDimensionsOverrides,
 
-    // Dml methods (TODO need to figure out how these need to move to session somehow...)
-    &winmla::DmlExecutionProviderFlushContext,
-    &winmla::DmlExecutionProviderReleaseCompletedReferences,
-    &winmla::DmlCopyTensor,
+  // Dml methods (TODO need to figure out how these need to move to session somehow...)
+  &winmla::DmlExecutionProviderFlushContext,
+  &winmla::DmlExecutionProviderReleaseCompletedReferences,
+  &winmla::DmlCopyTensor,
 
-    &winmla::GetProviderMemoryInfo,
-    &winmla::GetProviderAllocator,
-    &winmla::FreeProviderAllocator,
+  &winmla::GetProviderMemoryInfo,
+  &winmla::GetProviderAllocator,
+  &winmla::FreeProviderAllocator,
 
-    &winmla::ExecutionProviderSync,
+  &winmla::ExecutionProviderSync,
 
-    &winmla::CreateCustomRegistry,
+  &winmla::CreateCustomRegistry,
 
-    &winmla::ValueGetDeviceId,
-    &winmla::SessionGetInputRequiredDeviceId,
+  &winmla::ValueGetDeviceId,
+  &winmla::SessionGetInputRequiredDeviceId,
 
-    &winmla::CreateTensorTypeInfo,
-    &winmla::CreateSequenceTypeInfo,
-    &winmla::CreateMapTypeInfo,
-    &winmla::CreateModel,
-    &winmla::ModelAddInput,
-    &winmla::ModelAddConstantInput,
-    &winmla::ModelAddOutput,
-    &winmla::ModelAddOperator,
-    &winmla::ModelGetOpsetVersion,
-    &winmla::OperatorGetNumInputs,
-    &winmla::OperatorGetInputName,
-    &winmla::OperatorGetNumOutputs,
-    &winmla::OperatorGetOutputName,
-    &winmla::JoinModels,
-    &winmla::CreateThreadPool,
+  &winmla::CreateTensorTypeInfo,
+  &winmla::CreateSequenceTypeInfo,
+  &winmla::CreateMapTypeInfo,
+  &winmla::CreateModel,
+  &winmla::ModelAddInput,
+  &winmla::ModelAddConstantInput,
+  &winmla::ModelAddOutput,
+  &winmla::ModelAddOperator,
+  &winmla::ModelGetOpsetVersion,
+  &winmla::OperatorGetNumInputs,
+  &winmla::OperatorGetInputName,
+  &winmla::OperatorGetNumOutputs,
+  &winmla::OperatorGetOutputName,
+  &winmla::JoinModels,
+  &winmla::CreateThreadPool,
 
-    // Release
-    &winmla::ReleaseModel,
-    &winmla::ReleaseThreadPool,
+  // Release
+  &winmla::ReleaseModel,
+  &winmla::ReleaseThreadPool,
 };
 
 const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(_In_ uint32_t ort_version) NO_EXCEPTION {

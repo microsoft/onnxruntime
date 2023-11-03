@@ -7,8 +7,7 @@
 #include "winrt_headers.h"
 
 namespace APITest {
-static void LoadModel(const std::wstring& modelPath,
-                      winml::LearningModel& learningModel) {
+static void LoadModel(const std::wstring& modelPath, winml::LearningModel& learningModel) {
   std::wstring fullPath = FileHelpers::GetModulePath() + modelPath;
   learningModel = winml::LearningModel::LoadFromFilePath(fullPath);
 };

@@ -6,15 +6,26 @@
 # This script evaluates accuracy of ONNX models for question-answering task on SQuAD data set.
 # Example to evaluate raw and optimized model for CUDA in Linux:
 #   pip3 install datasets evaluate optimum transformers onnxruntime-gpu
-#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad
-#   python3 -m onnxruntime.transformers.optimizer --output optimized_fp16.onnx --num_heads 12 --hidden_size 768 \
-#           --input /home/$USER/.cache/huggingface/hub/distilbert-base-cased-distilled-squad/model.onnx \
-#           --use_mask_index --float16
-#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --onnx optimized_fp16.onnx
-
+#
+#   python3 eval_squad.py -m bert-large-uncased-whole-word-masking-finetuned-squad -s 384 -b 1 --use_io_binding
+#
+#   python3 -m onnxruntime.transformers.optimizer \
+#           --input ./bert-large-uncased-whole-word-masking-finetuned-squad/model.onnx \
+#           --output ./bert-large-uncased-whole-word-masking-finetuned-squad/optimized_model.onnx
+#
+#   python3 eval_squad.py -m bert-large-uncased-whole-word-masking-finetuned-squad -s 384 -b 1 --use_io_binding \
+#           --onnx ./bert-large-uncased-whole-word-masking-finetuned-squad/optimized_model.onnx
+#
+#   Snippet of example output in A100:
+#   {'exact': 86.65089877010406, 'f1': 92.99433524952254, 'total': 10570, 'HasAns_exact': 86.65089877010406
+#    'total_time_in_seconds': 81.69239814393222, 'samples_per_second': 129.387804008115,
+#    'latency_in_seconds': 0.007728703703304846, 'provider': 'CUDAExecutionProvider',
+#    'pretrained_model_name': 'bert-large-uncased-whole-word-masking-finetuned-squad',
+#    'batch_size': 1, 'sequence_length': 384, 'use_io_binding': True}
 import argparse
 import csv
 import os
+import time
 
 try:
     from importlib.metadata import PackageNotFoundError, version
@@ -24,12 +35,15 @@ except ImportError:
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import torch
 from datasets import load_dataset
 from evaluate import evaluator
 from optimum.onnxruntime import ORTModelForQuestionAnswering
-from optimum.onnxruntime.modeling_ort import ORTModel
+from optimum.version import __version__ as optimum_version
+from packaging import version as version_check
 from transformers import AutoTokenizer, pipeline
+
+if version_check.parse(optimum_version) < version_check.parse("1.13.1"):
+    raise ImportError(f"Please install optimum>=1.13.1. Current version: {optimum_version}.")
 
 PRETRAINED_SQUAD_MODELS = [
     "bert-large-uncased-whole-word-masking-finetuned-squad",
@@ -59,23 +73,24 @@ def load_onnx_model(
         model: ORTModel for the onnx model
         onnx_path: the path of onnx model
     """
-    model = ORTModelForQuestionAnswering.from_pretrained(model_id, from_transformers=True)
 
-    if onnx_path is not None:
-        model.latest_model_name = Path(onnx_path).name
-
-        if provider != "CPUExecutionProvider":
-            model.device = torch.device("cuda:0")
-            model.model = ORTModel.load_model(onnx_path, provider)
-        else:
-            model.device = torch.device("cpu")
-            model.model = ORTModel.load_model(onnx_path)
+    if onnx_path is None:
+        # Export onnx to a sub-directory named by the model id
+        model = ORTModelForQuestionAnswering.from_pretrained(
+            model_id, export=True, provider=provider, use_io_binding=use_io_binding
+        )
+        save_onnx_dir = os.path.join(".", model_id)
+        model.save_pretrained(save_onnx_dir)
+        onnx_path = os.path.join(save_onnx_dir, "model.onnx")
+        print("Model is exported to onnx file:", onnx_path)
     else:
-        onnx_path = os.path.join(model.model_save_dir.as_posix(), model.latest_model_name)
-        if provider != "CPUExecutionProvider":
-            model.to("cuda")
-
-    model.use_io_binding = use_io_binding
+        model = ORTModelForQuestionAnswering.from_pretrained(
+            os.path.dirname(onnx_path),
+            file_name=Path(onnx_path).name,
+            provider=provider,
+            use_io_binding=use_io_binding,
+            # provider_options={"enable_skip_layer_norm_strict_mode": True},
+        )
 
     return model, onnx_path
 
@@ -150,7 +165,7 @@ def output_summary(results: List[Dict[str, Any]], csv_filename: str, metric_name
         key_names = []
         for sequence_length in sequence_lengths:
             for batch_size in batch_sizes:
-                key_names.append(f"b{batch_size}_s{sequence_length}")  # noqa: PERF401
+                key_names.append(f"b{batch_size}_s{sequence_length}")
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + key_names)
         csv_writer.writeheader()
@@ -206,7 +221,12 @@ def main():
     for sequence_length in args.sequence_lengths:
         tokenizer.model_max_length = sequence_length
         tokenizer.doc_stride = min(sequence_length // 2, 128)
+        if args.onnx is None:
+            print("Exporting onnx model. It might take a few minutes...")
+        start_time = time.time()
         ort_model, onnx_path = load_onnx_model(pretrained_model_name, args.onnx, args.provider, args.use_io_binding)
+        latency = time.time() - start_time
+        print(f"Onnx model exported or loaded in {latency:.1f} seconds")
 
         print(ort_model.config)
         if sequence_length > ort_model.config.max_position_embeddings:
@@ -217,14 +237,22 @@ def main():
         )
 
         task_evaluator = evaluator("question-answering")
+        print("Loading dataset...")
+        start_time = time.time()
         squad_dataset = load_dataset("squad", split=f"validation[:{args.total}]" if args.total > 0 else "validation")
+        latency = time.time() - start_time
+        print(f"Dataset loaded in {latency:.1f} seconds")
 
+        print("Evaluating squad_v2 with ORT. It might take a few minutes...")
+        start_time = time.time()
         result = task_evaluator.compute(
             model_or_pipeline=qa_pipeline,
             data=squad_dataset,
             metric="squad_v2",
             squad_v2_format=True,
         )
+        latency = time.time() - start_time
+        print(f"Evaluation done in {latency:.1f} seconds")
 
         result["provider"] = args.provider
         result["disable_fused_attention"] = disable_fused_attention

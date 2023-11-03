@@ -96,7 +96,7 @@ def unregister():
     for name in _registered_ops:
         try:
             torch.onnx.unregister_custom_op_symbolic(name, _OPSET_VERSION)
-        except AttributeError:  # noqa: PERF203
+        except AttributeError:
             # The symbolic_registry module was removed in PyTorch 1.13.
             # We are importing it here for backwards compatibility
             # because unregister_custom_op_symbolic is not available before PyTorch 1.12

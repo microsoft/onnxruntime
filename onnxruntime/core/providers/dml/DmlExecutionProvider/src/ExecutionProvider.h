@@ -5,6 +5,7 @@
 
 #include "GraphTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/IExecutionProvider.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -34,7 +35,8 @@ namespace Dml
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
             ID3D12CommandQueue* queue,
-            bool enableMetacommands = true);
+            bool enableMetacommands,
+            bool enableDynamicGraphFusion);
 
         void ReleaseCompletedReferences();
 
@@ -151,6 +153,7 @@ namespace Dml
         STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;        
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
+        bool DynamicGraphFusionEnabled() const noexcept;
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
 
@@ -186,6 +189,7 @@ namespace Dml
         bool m_isMcdmDevice = false;
         bool m_areCustomHeapsSupported = false;
         bool m_areMetacommandsEnabled = true;
+        bool m_dynamicGraphFusionEnabled = false;
         bool m_native16BitShaderOpsSupported = false;
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
@@ -238,7 +242,8 @@ namespace Dml
         explicit ExecutionProvider(
             IDMLDevice* dmlDevice,
             ID3D12CommandQueue* commandQueue,
-            bool enableMetacommands = true
+            bool enableMetacommands,
+            bool enableDynamicGraphFusion
         );
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override
@@ -301,9 +306,9 @@ namespace Dml
             return m_impl.Get();
         }
 
-        void MetacommandsEnabled()
+        bool DynamicGraphFusionEnabled() const
         {
-            m_impl->MetacommandsEnabled();
+            return m_impl->DynamicGraphFusionEnabled();
         }
 
         virtual std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators() override

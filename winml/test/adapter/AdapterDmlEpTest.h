@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 
 #include "test.h"
-struct AdapterDmlEpTestApi
-{
+struct AdapterDmlEpTestApi {
   SetupTest AdapterDmlEpTestSetup;
   TeardownClass AdapterDmlEpTestTeardown;
   VoidTest DmlExecutionProviderFlushContext;

@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <string>
+
 #define API_AVAILABLE_OS_VERSIONS API_AVAILABLE(macos(10.15), ios(13))
 
 // Base requireed OS to run CoreML Specification Version 4 (Core ML 3)

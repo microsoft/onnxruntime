@@ -17,11 +17,11 @@ from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
-from ._io import _FlattenedModule, _InputInfo
-from ._logger import TimeTrackerPhase, TrackTime
+from ._io import _FlattenedModule, _InputInfo, unflatten_user_output
+from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
-from .graph_transformer_registry import GraphTransformerRegistry
+from .graph_optimizer_registry import GraphOptimizerRegistry
 from .options import DebugOptions, _SkipCheck
 
 
@@ -32,7 +32,11 @@ class TrainingManager(GraphExecutionManager):
     """
 
     def __init__(
-        self, model: _FlattenedModule, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger
+        self,
+        model: _FlattenedModule,
+        debug_options: DebugOptions,
+        fallback_manager: _FallbackManager,
+        logger: Logger,
     ):
         super().__init__(model, debug_options, fallback_manager, logger)
 
@@ -246,7 +250,7 @@ class TrainingManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
                 or not self._onnx_models.exported_model
             ):
-                self.time_tracker.start(TimeTrackerPhase.EndToEnd)
+                self.time_tracker.start(ORTModuleInitPhase.EndToEnd)
 
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
 
@@ -302,10 +306,13 @@ class TrainingManager(GraphExecutionManager):
                     self._runtime_options.enable_grad_acc_optimization, self._flattened_module, self._graph_info
                 )
 
-                self.time_tracker.end(TimeTrackerPhase.EndToEnd)
+                self.time_tracker.end(ORTModuleInitPhase.EndToEnd)
                 self._log_feature_stats()
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
+
+            if self._runtime_options.enable_zero_stage3_support:
+                self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
@@ -316,9 +323,10 @@ class TrainingManager(GraphExecutionManager):
                 kwargs,
                 self._device,
                 self._runtime_inspector,
+                self._zero_stage3_param_map,
             )
 
-            outputs = _io.unflatten_user_output(
+            outputs = unflatten_user_output(
                 self._module_output_schema,
                 self._forward_class.apply(*prepared_input_list),
             )
@@ -349,21 +357,19 @@ class TrainingManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
-    @TrackTime(TimeTrackerPhase.BUILD_GRAPH)
+    @TrackTime(ORTModuleInitPhase.BUILD_GRAPH)
+    @SuppressLogs(ORTModuleInitPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an optimized gradient graph using the module_graph_builder"""
 
         super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
-        self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
-            self._graph_builder.get_forward_model()
-        )
 
         # Apply registered graph transformers to the optimized model
         device_type = self._device.type
         if device_type == "cuda" and self.is_rocm_pytorch:
             device_type = "rocm"
-        GraphTransformerRegistry.transform_all(
+        GraphOptimizerRegistry.optimize_all(
             type(self._flattened_module._original_module).__name__, device_type, self._onnx_models.optimized_model.graph
         )
 
@@ -394,13 +400,14 @@ class TrainingManager(GraphExecutionManager):
             else:
                 self._gradient_map.append(-1)
 
-    @TrackTime(TimeTrackerPhase.CREATE_SESSION)
+    @TrackTime(ORTModuleInitPhase.CREATE_SESSION)
+    @SuppressLogs(ORTModuleInitPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
 
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
-        device_type = self._device if type(self._device) is str else self._device.type.lower()
+        device_type = self._device if type(self._device) is str else self._device.type.lower()  # noqa: E721
         if device_type == "ort":
             fw_outputs_device_info = [C.get_ort_device(self._device.index)] * (
                 len(self._graph_info.user_output_names) + len(self._graph_info.frontier_node_arg_map)
@@ -427,6 +434,7 @@ class TrainingManager(GraphExecutionManager):
             ] * len(bw_fetches_names)
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
+
         self._execution_agent = TrainingAgent(
             self._onnx_models.optimized_model.SerializeToString(),
             fw_feed_names,

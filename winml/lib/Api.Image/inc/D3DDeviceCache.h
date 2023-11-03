@@ -35,6 +35,11 @@ enum class PipelineStateCacheOperation : unsigned char {
   kCount = 2
 };
 
+template <typename E>
+constexpr auto underlying(E e) noexcept {
+  return static_cast<typename std::underlying_type<E>::type>(e);
+}
+
 class D3DDeviceCache {
  public:
   ~D3DDeviceCache();
@@ -52,7 +57,12 @@ class D3DDeviceCache {
 
   ID3D12RootSignature* GetTensorizeRootSignature();
   ID3D12RootSignature* GetDetensorizeRootSignature();
-  ID3D12PipelineState* GetCachedPipelineState(PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to, PipelineStateCacheOperation operation);
+  ID3D12PipelineState* GetCachedPipelineState(
+    PipelineStateCacheType type,
+    PipelineStateCacheFormat format_from,
+    PipelineStateCacheFormat format_to,
+    PipelineStateCacheOperation operation
+  );
 
   ID3D12Resource* GetDetensorizeVertexBuffer(_Out_ UINT* vertex_buffer_size);
 
@@ -81,8 +91,12 @@ class D3DDeviceCache {
   void EnsureSharedFences();
   void InitializeCommandQueue(ID3D12Device1* device);
 
-  ID3D12PipelineState* CreateTensorizePipelineState(PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to);
-  ID3D12PipelineState* CreateDetensorizePipelineState(PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to);
+  ID3D12PipelineState* CreateTensorizePipelineState(
+    PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to
+  );
+  ID3D12PipelineState* CreateDetensorizePipelineState(
+    PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to
+  );
 
   winrt::com_ptr<ID3D12Device1> device_;
   winrt::com_ptr<ID3D12CommandQueue> command_queue_;
@@ -95,7 +109,10 @@ class D3DDeviceCache {
   winrt::com_ptr<ID3D12RootSignature> tensorize_root_signature_;
   winrt::com_ptr<ID3D12RootSignature> detensorize_root_signature_;
 
-  winrt::com_ptr<ID3D12PipelineState> cached_pipeline_state[PipelineStateCacheType::kCount][PipelineStateCacheFormat::kCount][PipelineStateCacheFormat::kCount][PipelineStateCacheOperation::kCount];
+  // clang-format off
+  winrt::com_ptr<ID3D12PipelineState>
+    cached_pipeline_state[underlying(PipelineStateCacheType::kCount)][underlying(PipelineStateCacheFormat::kCount)]
+                         [underlying(PipelineStateCacheFormat::kCount)][underlying(PipelineStateCacheOperation::kCount)];
 
   winrt::com_ptr<ID3D12Resource> detensorize_vertex_buffer_;
 

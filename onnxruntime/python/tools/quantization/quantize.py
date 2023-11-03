@@ -7,7 +7,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
+from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import (
@@ -145,6 +145,16 @@ class StaticQuantConfig(QuantConfig):
                         a DeQuantizeLinear node. If False, it remains floating-point bias and does not insert
                         any quantization nodes associated with biases.
                         This extra option is only effective when quant_format is QuantFormat.QDQ.
+                    SmoothQuant = True/False :
+                        Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
+                        fake input channel quantization.
+                    SmoothQuantAlpha = float :
+                        Default is 0.5. It only works if SmoothQuant is True. It controls the difficulty of weight
+                        and activation quantization. A larger alpha value could be used on models with more significant
+                        activation outliers to migrate more quantization difficulty to weights.
+                    SmoothQuantFolding = True/False :
+                        Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
+                        SmoothQuant will be folded into the previous op if the previous op is foldable.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown
@@ -216,8 +226,24 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QUInt8:
         raise ValueError(
             "ONNXRuntime quantization doesn't support data format:"
-            "activation_type=QuantType.QInt8, weight_type = QuantType.QUInt8"
+            "activation_type=QuantType.QInt8, weight_type=QuantType.QUInt8"
         )
+    if activation_type != QuantType.QFLOAT8E4M3FN and weight_type == QuantType.QFLOAT8E4M3FN:
+        raise ValueError(
+            f"ONNXRuntime quantization doesn't support data format: activation_type={activation_type} "
+            f"!=QuantType.QFLOAT8E4M3FN, weight_type=QuantType.QFLOAT8E4M3FN."
+        )
+
+    if activation_type == QuantType.QFLOAT8E4M3FN and weight_type != QuantType.QFLOAT8E4M3FN:
+        raise ValueError(
+            "ONNXRuntime quantization doesn't support data format: activation_type=QuantType.QFLOAT8E4M3FN, "
+            f"weight_type={weight_type}!=QuantType.QFLOAT8E4M3FN"
+        )
+
+    q16_types = [QuantType.QInt16, QuantType.QUInt16]
+
+    if (activation_type in q16_types or weight_type in q16_types) and quant_format != QuantFormat.QDQ:
+        raise ValueError("Only QuantFormat.QDQ supports 16-bit quantization types.")
 
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QInt8 and quant_format != QuantFormat.QDQ:
         logging.warning(
@@ -325,7 +351,29 @@ def quantize_static(
                     Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                     minimum and maximum values. Effective only when the calibration method selected is MinMax and
                     when CalibMovingAverage is set to True.
+                CalibMaxIntermediateOutputs = Optional[int] :
+                    Default is None. If set to an integer, during calculation of the min-max range of the tensors
+                    it will load at max value number of outputs before computing and merging the range. This will
+                    produce the same result as all computing with None, but is more memory efficient.
+                SmoothQuant = True/False :
+                    Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
+                    fake input channel quantization.
+                SmoothQuantAlpha = float :
+                    Default is 0.5. It only works if SmoothQuant is True. It controls the difficulty of weight
+                    and activation quantization. A larger alpha value could be used on models with more significant
+                    activation outliers to migrate more quantization difficulty to weights.
+                SmoothQuantFolding = True/False :
+                    Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
+                    SmoothQuant will be folded into the previous op if the previous op is foldable.
+                UseQDQContribOps = True/False :
+                    Default is False. If enabled, the inserted QuantizeLinear and DequantizeLinear ops will have the
+                    `com.microsoft` domain, which forces use of ONNX Runtime's QuantizeLinear and DequantizeLinear
+                    contrib op implementations. The contrib op implementations may support features not standardized
+                    into the ONNX specification (e.g., 16-bit quantization types).
     """
+    if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
+        if calibrate_method != CalibrationMethod.Distribution:
+            raise ValueError("Only Distribution calibration method is supported for float quantization.")
 
     extra_options = extra_options or {}
     nodes_to_exclude = nodes_to_exclude or []
@@ -352,10 +400,43 @@ def quantize_static(
         ("CalibTensorRangeSymmetric", "symmetric"),
         ("CalibMovingAverage", "moving_average"),
         ("CalibMovingAverageConstant", "averaging_constant"),
+        ("CalibMaxIntermediateOutputs", "max_intermediate_outputs"),
     ]
     calib_extra_options = {
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
     }
+
+    if extra_options.get("SmoothQuant", False):
+        import importlib
+
+        try:
+            importlib.import_module("neural_compressor.adaptor.ox_utils.smooth_quant")
+        except Exception as e:
+            logging.error(f"{e}.")
+            raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.") from e
+
+        import copy
+
+        import onnx
+        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
+
+        def inc_dataloader():
+            data_reader = copy.deepcopy(calibration_data_reader)
+            for data in data_reader:
+                yield data, None
+
+        orig_nodes = [i.name for i in model.graph.node]
+        dataloader = inc_dataloader()
+        sq = ORTSmoothQuant(model_input, dataloader, reduce_range)
+        del dataloader
+        model = sq.transform(
+            extra_options.get("SmoothQuantAlpha", 0.5), extra_options.get("SmoothQuantFolding", True)
+        ).model
+        nodes_to_exclude.extend([i.name for i in model.graph.node if i.name not in orig_nodes])
+        sq_path = tempfile.TemporaryDirectory(prefix="ort.quant.")
+        model_input = Path(sq_path.name).joinpath("sq_model.onnx").as_posix()
+        onnx.save_model(model, model_input, save_as_external_data=True)
+        model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         calibrator = create_calibrator(
@@ -367,7 +448,11 @@ def quantize_static(
             extra_options=calib_extra_options,
         )
         calibrator.collect_data(calibration_data_reader)
-        tensors_range = calibrator.compute_range()
+        tensors_range = calibrator.compute_data()
+        if not isinstance(tensors_range, TensorsData):
+            raise TypeError(
+                f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
+            )
         del calibrator
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
@@ -411,6 +496,9 @@ def quantize_static(
             "https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification"
             "/cpu/ReadMe.md "
         )
+
+    if extra_options.get("SmoothQuant", False):
+        sq_path.cleanup()
 
 
 def quantize_dynamic(

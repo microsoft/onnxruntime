@@ -30,11 +30,11 @@ def process_file(onnx_file):
         if node.op_type == "ATen":
             for attr in node.attribute:
                 if attr.name == "operator":
-                    aten_ops.append(f"{node.name}: {attr.s.decode('utf-8')}")  # noqa: PERF401
+                    aten_ops.append(f"{node.name}: {attr.s.decode('utf-8')}")
         if node.op_type == "PythonOp":
             for attr in node.attribute:
                 if attr.name == "name":
-                    python_ops.append(f"{node.name}: {attr.s.decode('utf-8')}")  # noqa: PERF401
+                    python_ops.append(f"{node.name}: {attr.s.decode('utf-8')}")
 
         # Look for stand-alone Dropout node in *_execution_model_<mode>.onnx graph.
         # Examine whether it should be fused with surrounding Add ops into BiasDropout node.

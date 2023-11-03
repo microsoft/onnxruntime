@@ -11,7 +11,7 @@ steps:
       packageType: upack
       feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
       definition: '517c4f6f-5437-4392-a70d-4f15ec5be2f0'
-      version: 1.0.63
+      version: 1.0.107
       downloadPath: $(Build.BinariesDirectory)/deps
 
 # The private ADO project
@@ -22,7 +22,7 @@ steps:
       packageType: upack
       feed: '/4c7631f5-24c0-4307-8822-1aa8f180c325'
       definition: 'fd9dd5ad-b73e-4678-890e-edcf680dbc1a'
-      version: 1.0.63
+      version: 1.0.107
       downloadPath: $(Build.BinariesDirectory)/deps
 
 # You can add more ADO accounts at here.

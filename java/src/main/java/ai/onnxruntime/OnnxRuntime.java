@@ -434,7 +434,7 @@ final class OnnxRuntime {
    *
    * <p>Throws IllegalArgumentException if a provider isn't recognised (note this exception should
    * only happen during development of ONNX Runtime, if it happens at any other point, file an issue
-   * on Github).
+   * on <a href="https://github.com/microsoft/onnxruntime">GitHub</a>).
    *
    * @param ortApiHandle The API Handle.
    * @return The enum set.

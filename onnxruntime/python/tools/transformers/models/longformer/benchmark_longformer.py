@@ -43,15 +43,13 @@ from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, List
 
+import benchmark_helper
 import numpy as np
 import torch
 from longformer_helper import PRETRAINED_LONGFORMER_MODELS, LongformerHelper, LongformerInputs
 from transformers import LongformerModel
 
 import onnxruntime
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-import benchmark_helper  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -645,7 +643,7 @@ def run_tests(
 
                         args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
                         latency_results = launch_test(args)
-                    except KeyboardInterrupt as exc:  # noqa: PERF203
+                    except KeyboardInterrupt as exc:
                         raise RuntimeError("Keyboard Interrupted") from exc
                     except Exception:
                         traceback.print_exc()
@@ -687,7 +685,7 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
         data_names = []
         for sequence_length in sequence_lengths:
             for batch_size in batch_sizes:
-                data_names.append(f"b{batch_size}_s{sequence_length}")  # noqa: PERF401
+                data_names.append(f"b{batch_size}_s{sequence_length}")
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + data_names)
         csv_writer.writeheader()

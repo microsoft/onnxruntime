@@ -4,8 +4,8 @@
 
 namespace WINML_EXPERIMENTALP {
 
-struct LearningModelSessionOptionsExperimental : LearningModelSessionOptionsExperimentalT<LearningModelSessionOptionsExperimental>
-{
+struct LearningModelSessionOptionsExperimental
+  : LearningModelSessionOptionsExperimentalT<LearningModelSessionOptionsExperimental> {
   LearningModelSessionOptionsExperimental(const winml::LearningModelSessionOptions& options);
   LearningModelSessionOptionsExperimental(const winml::LearningModelSession& session);
 
@@ -21,8 +21,8 @@ struct LearningModelSessionOptionsExperimental : LearningModelSessionOptionsExpe
 
 namespace WINML_EXPERIMENTAL::factory_implementation {
 
-struct LearningModelSessionOptionsExperimental : LearningModelSessionOptionsExperimentalT<LearningModelSessionOptionsExperimental, implementation::LearningModelSessionOptionsExperimental>
-{
-};
+struct LearningModelSessionOptionsExperimental : LearningModelSessionOptionsExperimentalT<
+                                                   LearningModelSessionOptionsExperimental,
+                                                   implementation::LearningModelSessionOptionsExperimental> {};
 
-}
+}  // namespace WINML_EXPERIMENTAL::factory_implementation

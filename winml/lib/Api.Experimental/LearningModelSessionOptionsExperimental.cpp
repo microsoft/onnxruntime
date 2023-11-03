@@ -6,17 +6,20 @@
 #include "iengine.h"
 
 namespace WINML_EXPERIMENTALP {
-LearningModelSessionOptionsExperimental::LearningModelSessionOptionsExperimental(const winml::LearningModelSessionOptions& options) :
-  options_(options)
-{}
+LearningModelSessionOptionsExperimental::LearningModelSessionOptionsExperimental(
+  const winml::LearningModelSessionOptions& options
+)
+  : options_(options) {
+}
 
-LearningModelSessionOptionsExperimental::LearningModelSessionOptionsExperimental(const winml::LearningModelSession& session) :
-  options_(nullptr)
-{
+LearningModelSessionOptionsExperimental::LearningModelSessionOptionsExperimental(
+  const winml::LearningModelSession& session
+)
+  : options_(nullptr) {
   com_ptr<WINMLP::LearningModelSession> session_impl = session.as<WINMLP::LearningModelSession>();
   options_ = session_impl->Options();
 
-   _winml::IEngine* engine = session_impl->GetEngine();
+  _winml::IEngine* engine = session_impl->GetEngine();
   engine->GetNamedDimensionOverrides(overrides_);
 }
 

@@ -82,7 +82,7 @@ def _test_strided_batched_gemm(
         for i in range(batch):
             try:
                 np.testing.assert_allclose(my_c[i], ref_c[i], rtol=bounds[i])
-            except Exception as err:  # noqa: PERF203
+            except Exception as err:
                 header = "*" * 30 + impl + "*" * 30
                 print(header, bounds[i])
                 print(err)
@@ -167,14 +167,14 @@ class StridedBatchedGemmMetric(ke.ComputeMetric):
     batch: int
 
     def report(self):
-        prefix = (
-            f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} batch={self.batch:<3} "
+        common = (
+            f"{self.dtype} {transab_to_suffix((self.transa, self.transb))} "
+            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} batch={self.batch:<3} {self.name}"
         )
         if self.duration <= 0:
-            return prefix + "not supported"
+            return "not supported          " + common
 
-        return prefix + f"{self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
+        return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):

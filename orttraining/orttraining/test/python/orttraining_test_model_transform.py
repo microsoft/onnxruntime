@@ -13,7 +13,7 @@ def find_single_output_node(model, arg):
     for node in model.graph.node:
         for input in node.input:
             if input == arg:
-                result.append(node)  # noqa: PERF401
+                result.append(node)
     return result[0] if len(result) == 1 else None
 
 
@@ -63,7 +63,7 @@ def fix_transpose(model):
                 for n in model.graph.node:
                     for input in n.input:
                         if input == weight.name:
-                            result.append(n)  # noqa: PERF401
+                            result.append(n)
                 if len(result) > 1:
                     continue
                 perm = node.attribute[0]
@@ -93,7 +93,7 @@ def fix_transpose(model):
     old_ws = []
     for t in transpose:
         if find_single_output_node(model, t[1].name) is None:
-            old_ws.append(find_weight_index(model, t[1].name))  # noqa: PERF401
+            old_ws.append(find_weight_index(model, t[1].name))
     old_ws.sort(reverse=True)
     for w_i in old_ws:
         del model.graph.initializer[w_i]

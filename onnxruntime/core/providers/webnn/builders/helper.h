@@ -134,6 +134,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"ArgMax", "argMax"},
     {"ArgMin", "argMin"},
     {"AveragePool", "averagePool2d"},
+    {"BatchNormalization", "meanVarianceNormalization"},
     {"Cast", "cast"},
     {"Ceil", "ceil"},
     {"Clip", "clamp"},
@@ -153,6 +154,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Gemm", "gemm"},
     {"GlobalAveragePool", "averagePool2d"},
     {"GlobalMaxPool", "maxPool2d"},
+    {"GlobalLpPool", "l2Pool2d"},
     {"Greater", "greater"},
     {"GroupNormalization", "meanVarianceNormalization"},
     {"HardSigmoid", "hardSigmoid"},
@@ -162,8 +164,12 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"LayerNormalization", "meanVarianceNormalization"},
     {"LeakyRelu", "leakyRelu"},
     {"Less", "lesser"},
+    {"Log", "log"},
+    {"LpPool", "l2Pool2d"},
     {"MatMul", "matmul"},
+    {"Max", "max"},
     {"MaxPool", "maxPool2d"},
+    {"Min", "min"},
     {"Mul", "mul"},
     {"Neg", "neg"},
     {"Not", "logicalNot"},
@@ -171,8 +177,16 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Pow", "pow"},
     {"PRelu", "prelu"},
     {"Reciprocal", "reciprocal"},
+    {"ReduceL1", "reduceL1"},
+    {"ReduceL2", "reduceL2"},
+    {"ReduceLogSum", "reduceLogSum"},
+    {"ReduceLogSumExp", "reduceLogSumExp"},
     {"ReduceMax", "reduceMax"},
     {"ReduceMean", "reduceMean"},
+    {"ReduceMin", "reduceMin"},
+    {"ReduceProd", "reduceProduct"},
+    {"ReduceSum", "reduceSum"},
+    {"ReduceSumSquare", "reduceSumSquare"},
     {"Relu", "relu"},
     {"Reshape", "reshape"},
     {"Resize", "resample2d"},
@@ -217,5 +231,8 @@ bool IsSupportedDataType(const int32_t data_type, const WebnnDeviceType device_t
 bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
                                       std::vector<int64_t>& shape_b,
                                       const logging::Logger& logger);
+
+bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
+
 }  // namespace webnn
 }  // namespace onnxruntime

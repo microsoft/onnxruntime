@@ -12,8 +12,9 @@ import java.util.Objects;
 import java.util.logging.Logger;
 
 /**
- * The host object for the onnx-runtime system. Can create {@link OrtSession}s which encapsulate
- * specific models.
+ * The host object for the ONNX Runtime system. Can create {@link OrtSession}s which encapsulate
+ * specific models. This object should be instantiated before any other ONNX Runtime classes are
+ * created.
  *
  * <p>There can be at most one OrtEnvironment object created in a JVM lifetime. This class
  * implements {@link AutoCloseable} as before for backwards compatibility with 1.10 and earlier, but
@@ -24,6 +25,7 @@ public final class OrtEnvironment implements AutoCloseable {
 
   private static final Logger logger = Logger.getLogger(OrtEnvironment.class.getName());
 
+  /** The default name for ORT environments constructed from Java. */
   public static final String DEFAULT_NAME = "ort-java";
 
   static {
@@ -357,7 +359,7 @@ public final class OrtEnvironment implements AutoCloseable {
   /**
    * Turns on or off the telemetry.
    *
-   * @param sendTelemetry If true then send telemetry on onnxruntime usage.
+   * @param sendTelemetry If true then send telemetry on ONNX Runtime usage.
    * @throws OrtException If the call failed.
    */
   public void setTelemetry(boolean sendTelemetry) throws OrtException {

@@ -48,10 +48,10 @@ def Save(dir, func, feed, outputs):  # noqa: N802
             if actual_input_name.startswith(cntk_name):
                 cntk_to_actual_names[cntk_name] = actual_input_name
 
-    if type(feed) is not dict:
+    if type(feed) is not dict:  # noqa: E721
         feed = {func.arguments[0]: feed}
 
-    if type(outputs) is not dict:
+    if type(outputs) is not dict:  # noqa: E721
         outputs = {func.outputs[0]: outputs}
 
     test_data_dir = os.path.join(dir, data_dir)
@@ -213,7 +213,7 @@ def GenScan():  # noqa: N802
 
     for n in out_mp.graph.node:
         if n.op_type == "Scan":
-            body = [attr for attr in n.attribute if attr.name == "body"][0]
+            body = next(attr for attr in n.attribute if attr.name == "body")
             for vi in list(body.g.input) + list(body.g.output) + list(body.g.value_info):
                 dim = vi.type.tensor_type.shape.dim
                 dim[0].dim_param = "batch"

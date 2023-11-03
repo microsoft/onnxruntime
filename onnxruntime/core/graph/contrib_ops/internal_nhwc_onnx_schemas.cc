@@ -9,6 +9,8 @@
 #include "core/graph/contrib_ops/nhwc_inference_context.h"
 #include "core/graph/contrib_ops/ms_schema.h"  // contrib::GetOpSchema
 
+#ifndef ORT_MINIMAL_BUILD
+
 namespace onnxruntime {
 namespace contrib {
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearAveragePool);
@@ -88,12 +90,16 @@ void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPAC
 void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMESPACE::OpSchema&&)>& fn) {
   // if the operator may be fused with an activation, use the WITH_ACTIVATION variant to add optional attributes
   // for the activation parameters.
-  // For now we only register operators from opset 11 on. Models can easily have their opset updated using ONNX tools
+  // We mainly register operators from opset 11 on . Models can easily have their opset updated using ONNX tools
   // so supporting older opsets is unnecessary.
+  // Older opsets are included on a per-operator basis as needed.
 
   // NOTE: This should be in sync with GetLayoutSensitiveOps in
-  // /onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc
+  // /onnxruntime/core/optimizer/transpose_optimization/transpose_optimizer.cc
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 7);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 10);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 11);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 19);
 
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 9);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 14);
@@ -104,16 +110,18 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
 
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, InstanceNormalization, 6);
 
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, Conv, 1);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, Conv, 11);
 
-  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, ConvTranspose, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, ConvTranspose, 1);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, ConvTranspose, 11);
 
   REGISTER_NHWC_SCHEMA(fn, GlobalAveragePool, 1);
   REGISTER_NHWC_SCHEMA(fn, GlobalLpPool, 2);
   REGISTER_NHWC_SCHEMA(fn, GlobalMaxPool, 1);
 
   REGISTER_NHWC_SCHEMA(fn, GridSample, 16);
+  REGISTER_NHWC_SCHEMA(fn, GridSample, 20);
 
   REGISTER_NHWC_SCHEMA(fn, LRN, 1);
   REGISTER_NHWC_SCHEMA(fn, LRN, 13);
@@ -121,6 +129,9 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA(fn, LpPool, 11);
   REGISTER_NHWC_SCHEMA(fn, LpPool, 18);
 
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 1);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 8);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 10);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 12);
 
@@ -144,6 +155,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 11);
   REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 13);
   REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 18);
+  REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 19);
 
   // internal QLinear ops
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);
@@ -156,3 +168,5 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
 
 }  // namespace internal_nhwc_onnx
 }  // namespace onnxruntime
+
+#endif  // !ORT_MINIMAL_BUILD

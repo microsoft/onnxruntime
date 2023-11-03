@@ -67,10 +67,7 @@ stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: []
   variables:
-    ${{if or(eq(parameters.ort_build_pool_name, 'onnxruntime-gpu-winbuild-T4'), eq(parameters.ort_build_pool_name, 'onnxruntime-gpu-tensorrt8-winbuild-t4'))}}:
-      VSGenerator: 'Visual Studio 16 2019'
-    ${{else}}:
-      VSGenerator: 'Visual Studio 17 2022'
+    VSGenerator: 'Visual Studio 17 2022'
   jobs:
   - job:
     workspace:
@@ -88,6 +85,13 @@ stages:
 
       - template: telemetry-steps.yml
 
+      - ${{ if eq(parameters['buildJava'], 'true') }}:
+        - task: JavaToolInstaller@0
+          inputs:
+            versionSpec: "11"
+            jdkArchitectureOption: ${{ parameters.buildArch }}
+            jdkSourceOption: 'PreInstalled'
+
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.8'
@@ -97,14 +101,13 @@ stages:
       - task: NodeTool@0
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
-          versionSpec: '16.x'
+          versionSpec: '18.x'
 
-      - task: BatchScript@1
-        displayName: 'setup env'
-        inputs:
-          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
-          modifyEnvironment: true
-          workingFolder: '$(Build.BinariesDirectory)'
+      - template: jobs/set-winenv.yml
+        parameters:
+          EnvSetupScript: ${{ parameters.EnvSetupScript }}
+          ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+            DownloadCUDA: true
 
       - template: download-deps.yml
 
@@ -123,10 +126,6 @@ stages:
           arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
       - template: set-version-number-variables-step.yml
-
-      - ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-        - powershell: |
-           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
@@ -252,18 +251,6 @@ stages:
           artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}'
 
       - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-        - task: Semmle@0
-          condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-          inputs:
-            sourceCodeDirectory: '$(Build.SourcesDirectory)\java'
-            language: 'java'
-            cleanupBuildCommands: '$(Build.SourcesDirectory)\java\gradlew.bat -Dorg.gradle.daemon=false clean'
-            buildCommands: '$(Build.SourcesDirectory)\java\gradlew.bat -Dorg.gradle.daemon=false jar'
-            querySuite: 'Recommended'
-            timeout: '7200'
-            ram: '16384'
-            addProjectDirToScanningExclusionList: true
-
         - task: CredScan@3
           displayName: 'Run CredScan'
           inputs:
@@ -275,28 +262,6 @@ stages:
           inputs:
             AnalyzeTargetGlob: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\**\*.dll'
           continueOnError: true
-
-        - task: DeleteFiles@1
-          displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-          inputs:
-            SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-            Contents: |
-             **/*.obj
-             **/*.pdb
-             **/*.dll
-
-        #Manually set msBuildCommandline so that we can also set CAExcludePath
-        - task: SDLNativeRules@3
-          displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-          condition: and (succeeded(), eq(variables['msbuildPlatform'], 'x64'))
-          inputs:
-            msBuildArchitecture: amd64
-            setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-            ${{if eq(variables.VSGenerator, 'Visual Studio 16 2019')}}:
-              msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
-            ${{else}}:
-              msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
-            excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
 
         - task: PostAnalysis@2
           inputs:

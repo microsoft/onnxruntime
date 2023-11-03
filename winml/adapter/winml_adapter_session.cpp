@@ -28,27 +28,30 @@ namespace winmla = Windows::AI::MachineLearning::Adapter;
 // the protected methods used below.
 class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSession {
  public:
-  onnxruntime::common::Status
-  Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) {
+  onnxruntime::common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) {
     return onnxruntime::InferenceSession::LoadOnnxModel(std::move(p_model_proto));
   }
-  const onnxruntime::SessionState& GetSessionState() {
-    return onnxruntime::InferenceSession::GetSessionState();
-  }
+  const onnxruntime::SessionState& GetSessionState() { return onnxruntime::InferenceSession::GetSessionState(); }
 };
 
-ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
- _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session) {
+ORT_API_STATUS_IMPL(
+  winmla::CreateSessionWithoutModel,
+  _In_ OrtEnv* env,
+  _In_ const OrtSessionOptions* options,
+  _In_ OrtThreadPool* inter_op_thread_pool,
+  _In_ OrtThreadPool* intra_op_thread_pool,
+  _Outptr_ OrtSession** session
+) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> inference_session;
   try {
     // Create the inference session
-    inference_session =
-        std::make_unique<onnxruntime::InferenceSession>(
-            options->value,
-            env->GetEnvironment(),
-            reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(intra_op_thread_pool),
-            reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(inter_op_thread_pool));
+    inference_session = std::make_unique<onnxruntime::InferenceSession>(
+      options->value,
+      env->GetEnvironment(),
+      reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(intra_op_thread_pool),
+      reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(inter_op_thread_pool)
+    );
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
@@ -63,10 +66,14 @@ ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ co
         if (options->value.enable_mem_pattern) {
           // TODO Instead of returning an error, should we set mem pattern to false here and log a warning saying so?
           // Doing so would be inconsistent with the Python API that doesn't go through this code path.
-          return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider.");
+          return OrtApis::CreateStatus(
+            ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider."
+          );
         }
         if (options->value.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-          return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Sequential execution should be enabled when using DML execution provider.");
+          return OrtApis::CreateStatus(
+            ORT_INVALID_ARGUMENT, "Sequential execution should be enabled when using DML execution provider."
+          );
         }
       }
       provider_list.push_back(std::move(provider));
@@ -95,11 +102,15 @@ ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ co
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::SessionGetExecutionProvider, _In_ OrtSession* session, _In_ size_t index, _Out_ OrtExecutionProvider** ort_provider) {
+ORT_API_STATUS_IMPL(
+  winmla::SessionGetExecutionProvider,
+  _In_ OrtSession* session,
+  _In_ size_t index,
+  _Out_ OrtExecutionProvider** ort_provider
+) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
-  auto session_protected_load_accessor =
-      static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
+  auto session_protected_load_accessor = static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
   const auto& session_state = session_protected_load_accessor->GetSessionState();
   auto& provider_id = session_state.GetExecutionProviders().GetIds().at(index);
   const auto& provider = session_state.GetExecutionProviders().Get(provider_id);
@@ -123,8 +134,7 @@ ORT_API_STATUS_IMPL(winmla::SessionInitialize, _In_ OrtSession* session) {
 ORT_API_STATUS_IMPL(winmla::SessionLoadAndPurloinModel, _In_ OrtSession* session, _In_ OrtModel* model) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
-  auto session_protected_load_accessor =
-      static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
+  auto session_protected_load_accessor = static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
 
   auto status = session_protected_load_accessor->Load(model->DetachModelProto());
 
@@ -165,15 +175,13 @@ ORT_API_STATUS_IMPL(winmla::SessionRegisterGraphTransformers, _In_ OrtSession* s
   API_IMPL_END
 }
 
-inline std::list<std::shared_ptr<onnxruntime::CustomRegistry>>
-GetLotusCustomRegistries(IMLOperatorRegistry* registry) {
+inline std::list<std::shared_ptr<onnxruntime::CustomRegistry>> GetLotusCustomRegistries(IMLOperatorRegistry* registry) {
   if (registry != nullptr) {
 #ifdef USE_DML
     // Down-cast to the concrete type.
     // The only supported input is the AbiCustomRegistry type.
     // Other implementations of IMLOperatorRegistry are forbidden.
-    auto abi_custom_registry =
-        static_cast<winmla::AbiCustomRegistry*>(registry);
+    auto abi_custom_registry = static_cast<winmla::AbiCustomRegistry*>(registry);
 
     // Get the ORT registry
     return abi_custom_registry->GetRegistries();
@@ -182,7 +190,9 @@ GetLotusCustomRegistries(IMLOperatorRegistry* registry) {
   return {};
 }
 
-ORT_API_STATUS_IMPL(winmla::SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry) {
+ORT_API_STATUS_IMPL(
+  winmla::SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry
+) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   auto custom_registries = GetLotusCustomRegistries(registry);
@@ -210,17 +220,21 @@ ORT_API_STATUS_IMPL(winmla::CreateCustomRegistry, _Out_ IMLOperatorRegistry** re
 
 static OrtDevice GetSessionGetInputDevice(_In_ OrtSession* session, _In_ const char* const input_name) {
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
-  auto session_protected_load_accessor =
-      static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
+  auto session_protected_load_accessor = static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
   const onnxruntime::SessionState& session_state = session_protected_load_accessor->GetSessionState();
 
-  onnxruntime::InlinedVector<onnxruntime::SessionState::NodeInfo>node_info_vec;
+  onnxruntime::InlinedVector<onnxruntime::SessionState::NodeInfo> node_info_vec;
   ORT_THROW_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
   const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
   return *node_info.device;
 }
 
-ORT_API_STATUS_IMPL(winmla::SessionGetInputRequiredDeviceId, _In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id) {
+ORT_API_STATUS_IMPL(
+  winmla::SessionGetInputRequiredDeviceId,
+  _In_ OrtSession* session,
+  _In_ const char* const input_name,
+  _Out_ int16_t* device_id
+) {
   API_IMPL_BEGIN
   auto device = GetSessionGetInputDevice(session, input_name);
   *device_id = device.Id();
@@ -236,12 +250,16 @@ ORT_API_STATUS_IMPL(winmla::ValueGetDeviceId, _In_ OrtValue* ort_value, _Out_ in
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name,
-                    _In_ OrtValue* orig_value, _Outptr_ OrtValue** new_value) {
+ORT_API_STATUS_IMPL(
+  winmla::SessionCopyOneInputAcrossDevices,
+  _In_ OrtSession* session,
+  _In_ const char* const input_name,
+  _In_ OrtValue* orig_value,
+  _Outptr_ OrtValue** new_value
+) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
-  auto session_protected_load_accessor =
-      static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
+  auto session_protected_load_accessor = static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
   const onnxruntime::SessionState& session_state = session_protected_load_accessor->GetSessionState();
 
   auto ort_value = std::make_unique<OrtValue>();
@@ -261,9 +279,7 @@ ORT_API_STATUS_IMPL(winmla::SessionGetNumberOfIntraOpThreads, _In_ OrtSession* s
 
   struct ThreadPoolSessionInspector : public ::onnxruntime::InferenceSession {
    public:
-    onnxruntime::concurrency::ThreadPool* IntraOpThreadPool() const {
-      return GetIntraOpThreadPoolToUse();
-    }
+    onnxruntime::concurrency::ThreadPool* IntraOpThreadPool() const { return GetIntraOpThreadPoolToUse(); }
   };
 
   auto inference_session = reinterpret_cast<ThreadPoolSessionInspector*>(session);
@@ -283,14 +299,21 @@ ORT_API_STATUS_IMPL(winmla::SessionGetIntraOpThreadSpinning, _In_ OrtSession* se
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::SessionGetNamedDimensionsOverrides, _In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& named_dimension_overrides) {
+ORT_API_STATUS_IMPL(
+  winmla::SessionGetNamedDimensionsOverrides,
+  _In_ OrtSession* session,
+  _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& named_dimension_overrides
+) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   auto session_options = inference_session->GetSessionOptions();
-  winrt::Windows::Foundation::Collections::IMap<winrt::hstring, uint32_t> override_map = winrt::single_threaded_map<winrt::hstring, uint32_t>();
+  winrt::Windows::Foundation::Collections::IMap<winrt::hstring, uint32_t> override_map =
+    winrt::single_threaded_map<winrt::hstring, uint32_t>();
   for (auto freeDimOverride : session_options.free_dimension_overrides) {
     if (freeDimOverride.dim_identifer_type == onnxruntime::FreeDimensionOverrideType::Name) {
-      override_map.Insert(winrt::to_hstring(freeDimOverride.dim_identifier), static_cast<uint32_t>(freeDimOverride.dim_value));
+      override_map.Insert(
+        winrt::to_hstring(freeDimOverride.dim_identifier), static_cast<uint32_t>(freeDimOverride.dim_value)
+      );
     }
   }
   named_dimension_overrides = override_map.GetView();

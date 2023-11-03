@@ -14,6 +14,8 @@ import numpy as np
 import pytest
 from utils import dtype_to_suffix, matmul, softmax
 
+max_batch_size = int(os.environ.get("KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE", 64))
+
 
 def multinormal_distribution(num_distribution, num_element_per_dist):
     arrays = []
@@ -36,7 +38,7 @@ def get_ck_binding_name(dtype, biased: bool, masked: bool):
 
 
 dtypes = ["float16"]
-batches = [1, 64]
+batches = [1, max_batch_size]
 seqlens = [128, 512]
 total_seqlens = [128, 512]
 num_heads = [8, 12]
@@ -182,7 +184,7 @@ def _test_gemm_softmax_gemm_permute(
                 is_zero_tol, atol, rtol = 1e-3, 2e-2, 1e-2
                 not_close_to_zeros = np.abs(ref) > is_zero_tol
                 np.testing.assert_allclose(out[not_close_to_zeros], ref[not_close_to_zeros], atol=atol, rtol=rtol)
-        except Exception as err:  # noqa: PERF203
+        except Exception as err:
             header = "*" * 30 + impl + "*" * 30
             print(header)
             print(err)

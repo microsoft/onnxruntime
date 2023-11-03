@@ -117,7 +117,7 @@ def parse(graph: GraphProto) -> GraphDef:
     for node in graph.node:
         _attr = []
         for s in node.attribute:
-            _attr.append(" = ".join([str(f[1]) for f in s.ListFields()]))  # noqa: PERF401
+            _attr.append(" = ".join([str(f[1]) for f in s.ListFields()]))
         attr = ", ".join(_attr).encode(encoding="utf_8")
         shape_proto = None
         elem_type = 0
@@ -331,7 +331,7 @@ class ListUnpackTransformer(TransformerBase):
                 new_output = f"{get_prefix(node.output[0])}{node.op_type}_{idx!s}_output"
                 for output in node.output:
                     if len(output) > 0:
-                        new_nodes.append(helper.make_node("ListUnpack", [new_output], [output]))  # noqa: PERF401
+                        new_nodes.append(helper.make_node("ListUnpack", [new_output], [output]))
                 node.ClearField("output")
                 node.output.extend([new_output])
         if len(new_nodes) > 0:

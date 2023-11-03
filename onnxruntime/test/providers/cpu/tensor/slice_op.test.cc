@@ -49,6 +49,10 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
   SessionOptions so;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
 
+  if (onnx_shape_disagreement) {
+    excluded_providers.insert(kCoreMLExecutionProvider);
+  }
+
   if (!v10_only) {
     OpTester testv9("Slice", 9);
     testv9.AddAttribute("starts", starts);
@@ -257,15 +261,25 @@ TEST(SliceTest, Slice3D) {
                        332.0f, 333.0f});
 }
 
-TEST(SliceTest, Slice1D_Int) {
-  RunSliceTest<int32_t>({6},
-                        {0L, 1L, 2L, 3L, 4L, 5L},
-                        {2},
-                        {4},
-                        {0},
-                        {},
-                        {2},
-                        {2L, 3L});
+template <typename TInt>
+static void TestSlice1DIntData() {
+  static_assert(std::is_integral_v<TInt>);
+  RunSliceTest<TInt>({6},
+                     {0, 1, 2, 3, 4, 5},
+                     {2},
+                     {4},
+                     {0},
+                     {},
+                     {2},
+                     {2, 3});
+}
+
+TEST(SliceTest, Slice1D_Int32) {
+  TestSlice1DIntData<int32_t>();
+}
+
+TEST(SliceTest, Slice1D_Int64) {
+  TestSlice1DIntData<int64_t>();
 }
 
 TEST(SliceTest, Slice1D_String) {
@@ -548,7 +562,7 @@ TEST(SliceTest, Slice2D_ReverseAllAxes) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1, -1},
-                      {std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()},
+                      {std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::min()},
                       {0, 1},
                       {-1, -1},
                       {2, 2},
@@ -565,7 +579,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_1) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
-                      {std::numeric_limits<int64_t>::max()},
+                      {std::numeric_limits<int64_t>::min()},
                       {1},  // axis = 1 only
                       {-1},
                       {2, 2},
@@ -582,7 +596,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_2) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
-                      {std::numeric_limits<int64_t>::max()},  // end of dimension
+                      {std::numeric_limits<int64_t>::min()},  // end of dimension
                       {0},                                    // axis = 0 only
                       {-1},
                       {2, 2},
@@ -636,7 +650,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
-                      {std::numeric_limits<int64_t>::max()},
+                      {std::numeric_limits<int64_t>::min()},
                       {-1},  // axis = -1 only
                       {-1},
                       {2, 2},

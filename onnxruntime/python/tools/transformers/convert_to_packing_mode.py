@@ -9,7 +9,13 @@ import os
 from typing import List, Union
 
 import coloredlogs
-from constants import AttentionInputIDs, AttentionOutputIDs, Operators
+from constants import (
+    AttentionInputIDs,
+    AttentionOutputIDs,
+    MultiHeadAttentionInputIDs,
+    MultiHeadAttentionOutputIDs,
+    Operators,
+)
 from onnx import helper, load_model
 from onnx_model import NodeProto, OnnxModel
 from shape_infer_helper import SymbolicShapeInferenceHelper
@@ -17,33 +23,33 @@ from shape_infer_helper import SymbolicShapeInferenceHelper
 logger = logging.getLogger(__name__)
 
 
-class PackingMode:
-    def __init__(
-        self,
-        model: OnnxModel,
-    ):
+class PackingAttentionBase:
+    def __init__(self, model: OnnxModel, attention_op_type: str):
         self.model: OnnxModel = model
         self.nodes_to_remove: List = []
         self.nodes_to_add: List = []
         self.prune_graph: bool = False
         self.node_name_to_graph_name: dict = {}
         self.this_graph_name: str = self.model.model.graph.name
-        self.attention_nodes = self.model.get_nodes_by_op_type(Operators.ATTENTION)
+        self.attention_op_type = attention_op_type
+        self.attention_nodes = self.model.get_nodes_by_op_type(attention_op_type)
 
     def _try_getting_attention_mask(self) -> Union[str, None]:
+        mask_index = (
+            AttentionInputIDs.MASK_INDEX
+            if self.attention_op_type == Operators.ATTENTION
+            else MultiHeadAttentionInputIDs.KEY_PADDING_MASK
+        )
         first_attention_node = self._try_getting_first_attention()
         # check if attention has mask
-        if not first_attention_node or len(first_attention_node.input) <= AttentionInputIDs.MASK_INDEX:
+        if not first_attention_node or len(first_attention_node.input) <= mask_index:
             return None
 
-        attention_mask = first_attention_node.input[AttentionInputIDs.MASK_INDEX]
+        attention_mask = first_attention_node.input[mask_index]
 
         # check if all attention nodes have same mask
         for node in self.attention_nodes:
-            if (
-                len(node.input) <= AttentionInputIDs.MASK_INDEX
-                or node.input[AttentionInputIDs.MASK_INDEX] != attention_mask
-            ):
+            if len(node.input) <= mask_index or node.input[mask_index] != attention_mask:
                 return None
 
         return attention_mask
@@ -61,23 +67,8 @@ class PackingMode:
                 last_layernorm_node = node
         return last_layernorm_node
 
-    def _are_attentions_supportted(self) -> bool:
-        for node in self.attention_nodes:
-            if OnnxModel.get_node_attribute(node, "past_present_share_buffer") is not None:
-                return False
-            if OnnxModel.get_node_attribute(node, "do_rotary") is not None:
-                return False
-            unidirection_attr = OnnxModel.get_node_attribute(node, "unidirectional")
-            if unidirection_attr is not None and unidirection_attr != 0:
-                return False
-            if len(node.input) > AttentionInputIDs.PAST and not node.input[AttentionInputIDs.PAST]:
-                return False
-            if (
-                len(node.input) > AttentionInputIDs.PAST_SEQUENCE_LENGTH
-                and not node.input[AttentionInputIDs.PAST_SEQUENCE_LENGTH]
-            ):
-                return False
-        return True
+    def _are_attentions_supported(self) -> bool:
+        raise NotImplementedError()
 
     def _insert_removepadding_node(self, inputs: List[str], outputs: List[str]) -> None:
         new_node = helper.make_node(
@@ -104,37 +95,17 @@ class PackingMode:
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
     def _replace_attention_with_packing_attention(self, token_offset: str, cumulative_sequence_length: str) -> None:
-        for attention in self.attention_nodes:
-            packed_attention = helper.make_node(
-                Operators.PACKEDATTENTION,
-                inputs=[
-                    attention.input[AttentionInputIDs.INPUT],
-                    attention.input[AttentionInputIDs.WEIGHTS],
-                    attention.input[AttentionInputIDs.BIAS],
-                    token_offset,
-                    cumulative_sequence_length,
-                    attention.input[AttentionInputIDs.RELATIVE_POSITION_BIAS]
-                    if len(attention.input) > AttentionInputIDs.RELATIVE_POSITION_BIAS
-                    else "",
-                ],
-                outputs=[attention.output[AttentionOutputIDs.OUTPUT]],
-                name=self.model.create_node_name(Operators.PACKEDATTENTION),
-            )
+        raise NotImplementedError()
 
-            attributes = []
-            for attr in attention.attribute:
-                if attr.name in ["num_heads", "qkv_hidden_sizes", "scale"]:
-                    attributes.append(attr)  # noqa: PERF401
-
-            packed_attention.attribute.extend(attributes)
-            packed_attention.domain = "com.microsoft"
-            self.nodes_to_add.append(packed_attention)
-            self.nodes_to_remove.append(attention)
-            self.node_name_to_graph_name[packed_attention.name] = self.this_graph_name
+    def _get_input_to_remove_padding(self, first_attention_node) -> Union[str, None]:
+        if self.attention_op_type == Operators.ATTENTION:
+            return first_attention_node.input[AttentionInputIDs.INPUT]
+        return None
 
     def convert(self, use_symbolic_shape_infer: bool = True) -> None:
         logger.debug("start converting to packing model...")
-        if not self._are_attentions_supportted():
+
+        if not self._are_attentions_supported():
             return
 
         attention_mask = self._try_getting_attention_mask()
@@ -147,12 +118,14 @@ class PackingMode:
             return
 
         # insert RemovePadding
-        first_attention_input = first_attention_node.input[AttentionInputIDs.INPUT]
-        input_to_remove_padding = first_attention_input
-        output_without_padding = first_attention_input + "_no_padding"
-        token_offset = first_attention_input + "_token_offset"
-        cumulated_seq_len = first_attention_input + "_cumulated_seq_len"
-        max_seq_len = first_attention_input + "_max_seq_len"
+        input_to_remove_padding = self._get_input_to_remove_padding(first_attention_node)
+        if not input_to_remove_padding:
+            return
+
+        output_without_padding = input_to_remove_padding + "_no_padding"
+        token_offset = input_to_remove_padding + "_token_offset"
+        cumulated_seq_len = input_to_remove_padding + "_cumulated_seq_len"
+        max_seq_len = input_to_remove_padding + "_max_seq_len"
         self._insert_removepadding_node(
             [input_to_remove_padding, attention_mask],
             [output_without_padding, token_offset, cumulated_seq_len, max_seq_len],
@@ -166,9 +139,9 @@ class PackingMode:
         self.model.replace_output_of_all_nodes(last_layernorm_node.output[0], restorepadding_input)
         logger.debug(f"inserted RestorePadding after last {last_layernorm_node.op_type} layer")
 
-        # insert PackingAttention
+        # insert PackedAttention
         self._replace_attention_with_packing_attention(token_offset, cumulated_seq_len)
-        logger.debug("replaced Attention with PackedAttention")
+        logger.debug(f"replaced {self.attention_op_type} with Packed{self.attention_op_type}")
 
         self.model.remove_nodes(self.nodes_to_remove)
         self.model.add_nodes(self.nodes_to_add, self.node_name_to_graph_name)
@@ -185,6 +158,179 @@ class PackingMode:
             inferred_model = shape_infer_helper.infer_shapes(self.model.model, auto_merge=True, guess_output_rank=False)
             if inferred_model:
                 self.model.model = inferred_model
+
+
+class PackingAttention(PackingAttentionBase):
+    def __init__(self, model: OnnxModel):
+        super().__init__(model, Operators.ATTENTION)
+
+    def _are_attentions_supported(self) -> bool:
+        for node in self.attention_nodes:
+            if OnnxModel.get_node_attribute(node, "past_present_share_buffer") is not None:
+                return False
+            if OnnxModel.get_node_attribute(node, "do_rotary") is not None:
+                return False
+            unidirection_attr = OnnxModel.get_node_attribute(node, "unidirectional")
+            if unidirection_attr is not None and unidirection_attr != 0:
+                return False
+            if len(node.input) > AttentionInputIDs.PAST and not node.input[AttentionInputIDs.PAST]:
+                return False
+            if (
+                len(node.input) > AttentionInputIDs.PAST_SEQUENCE_LENGTH
+                and not node.input[AttentionInputIDs.PAST_SEQUENCE_LENGTH]
+            ):
+                return False
+        return True
+
+    def _replace_attention_with_packing_attention(self, token_offset: str, cumulative_sequence_length: str) -> None:
+        for attention in self.attention_nodes:
+            relative_pos_bias = (
+                attention.input[AttentionInputIDs.RELATIVE_POSITION_BIAS]
+                if len(attention.input) > AttentionInputIDs.RELATIVE_POSITION_BIAS
+                else ""
+            )
+            packed_attention = helper.make_node(
+                Operators.PACKEDATTENTION,
+                inputs=[
+                    attention.input[AttentionInputIDs.INPUT],
+                    attention.input[AttentionInputIDs.WEIGHTS],
+                    attention.input[AttentionInputIDs.BIAS],
+                    token_offset,
+                    cumulative_sequence_length,
+                    relative_pos_bias,
+                ],
+                outputs=[attention.output[AttentionOutputIDs.OUTPUT]],
+                name=self.model.create_node_name(Operators.PACKEDATTENTION),
+            )
+
+            attributes = []
+            for attr in attention.attribute:
+                if attr.name in ["num_heads", "qkv_hidden_sizes", "scale"]:
+                    attributes.append(attr)
+
+            packed_attention.attribute.extend(attributes)
+            packed_attention.domain = "com.microsoft"
+            self.nodes_to_add.append(packed_attention)
+            self.nodes_to_remove.append(attention)
+            self.node_name_to_graph_name[packed_attention.name] = self.this_graph_name
+
+        logger.info("Converted %d Attention nodes to PackedAttention.", len(self.attention_nodes))
+
+
+class PackingMultiHeadAttention(PackingAttentionBase):
+    def __init__(self, model: OnnxModel):
+        super().__init__(model, Operators.MULTI_HEAD_ATTENTION)
+
+    def _check_empty_input(self, node, index: int, name: str):
+        """Check a node does not have given input."""
+        if len(node.input) > index:
+            if len(node.input[index]) > 0:
+                logger.error(f"node input {index} ({name}) is not supported in PackedMultiHeadAttention: {node}")
+                return False
+        return True
+
+    def _check_empty_output(self, node, index: int, name: str):
+        """Check a node does not have given input."""
+        if len(node.output) > index:
+            if len(node.output[index]) > 0:
+                logger.error(f"node output {index} ({name}) is not supported in PackedMultiHeadAttention: {node}")
+                return False
+        return True
+
+    def _are_attentions_supported(self) -> bool:
+        for node in self.attention_nodes:
+            for attr in node.attribute:
+                if attr.name not in ["num_heads", "mask_filter_value", "scale"]:
+                    logger.error(f"node attribute {attr.name} is not supported in PackedMultiHeadAttention: {node}")
+                    return False
+
+            if node.input[MultiHeadAttentionInputIDs.KEY] and not node.input[MultiHeadAttentionInputIDs.VALUE]:
+                logger.error("packed kv format is not supported in PackedMultiHeadAttention")
+                return False
+
+            if not (
+                self._check_empty_input(node, MultiHeadAttentionInputIDs.PAST_KEY, "past_key")
+                and self._check_empty_input(node, MultiHeadAttentionInputIDs.PAST_VALUE, "past_key")
+                and self._check_empty_output(node, MultiHeadAttentionOutputIDs.PRESENT_KEY, "present_key")
+                and self._check_empty_output(node, MultiHeadAttentionOutputIDs.PRESENT_VALUE, "present_key")
+            ):
+                return False
+
+        return True
+
+    def _replace_attention_with_packing_attention(self, token_offset: str, cumulative_sequence_length: str) -> None:
+        gated_relative_pos_bias_count = 0
+        for mha in self.attention_nodes:
+            relative_pos_bias = (
+                mha.input[MultiHeadAttentionInputIDs.RELATIVE_POSITION_BIAS]
+                if len(mha.input) > MultiHeadAttentionInputIDs.RELATIVE_POSITION_BIAS
+                else ""
+            )
+            packed_mha = helper.make_node(
+                Operators.PACKED_MULTI_HEAD_ATTENTION,
+                inputs=[
+                    mha.input[MultiHeadAttentionInputIDs.QUERY],
+                    mha.input[MultiHeadAttentionInputIDs.KEY],
+                    mha.input[MultiHeadAttentionInputIDs.VALUE],
+                    mha.input[MultiHeadAttentionInputIDs.BIAS],
+                    token_offset,
+                    cumulative_sequence_length,
+                    relative_pos_bias,
+                ],
+                outputs=[mha.output[MultiHeadAttentionOutputIDs.OUTPUT]],
+                name=self.model.create_node_name(Operators.PACKED_MULTI_HEAD_ATTENTION),
+            )
+
+            attributes = []
+            for attr in mha.attribute:
+                if attr.name in ["num_heads", "mask_filter_value", "scale"]:
+                    attributes.append(attr)
+
+            packed_mha.attribute.extend(attributes)
+            packed_mha.domain = "com.microsoft"
+            self.nodes_to_add.append(packed_mha)
+            self.nodes_to_remove.append(mha)
+            self.node_name_to_graph_name[packed_mha.name] = self.this_graph_name
+
+            # Append token_offset input to GatedRelativePositionBias
+            if relative_pos_bias:
+                rel_pos_bias_node = self.model.get_parent(mha, MultiHeadAttentionInputIDs.RELATIVE_POSITION_BIAS)
+                if (
+                    rel_pos_bias_node
+                    and rel_pos_bias_node.op_type == "GatedRelativePositionBias"
+                    and len(rel_pos_bias_node.input) == 6
+                ):
+                    rel_pos_bias_node.input.append(token_offset)
+                    gated_relative_pos_bias_count += 1
+
+        logger.info("Converted %d MultiHeadAttention nodes to PackedMultiHeadAttention.", len(self.attention_nodes))
+        logger.info("Converted %d GatedRelativePositionBias nodes to packing mode.", gated_relative_pos_bias_count)
+
+    def _get_input_to_remove_padding(self, first_attention_node) -> Union[str, None]:
+        # When there are query, key and value inputs, we need to find the first input of the parent MatMul node.
+        matmul = self.model.get_parent(first_attention_node, 0)
+        if matmul and matmul.op_type == "MatMul":
+            return matmul.input[0]
+        return None
+
+
+class PackingMode:
+    def __init__(self, model: OnnxModel):
+        self.model = model
+
+    def convert(self, use_symbolic_shape_infer: bool = True) -> None:
+        if self.model.get_nodes_by_op_type(Operators.ATTENTION):
+            if self.model.get_nodes_by_op_type(Operators.MULTI_HEAD_ATTENTION):
+                logger.error("Packing mode does not support both Attention and MultiHeadAttention in same graph.")
+                return None
+            packing = PackingAttention(self.model)
+            return packing.convert(use_symbolic_shape_infer)
+        elif self.model.get_nodes_by_op_type(Operators.MULTI_HEAD_ATTENTION):
+            packing = PackingMultiHeadAttention(self.model)
+            return packing.convert(use_symbolic_shape_infer)
+        else:
+            logger.error("Packing mode requires either Attention or MultiHeadAttention node in onnx graph.")
+            return None
 
 
 def _parse_arguments():
@@ -226,7 +372,7 @@ def main():
 
     _setup_logger(args.verbose)
 
-    logger.debug("arguments:{args}")
+    logger.debug(f"arguments:{args}")
 
     if os.path.realpath(args.input) == os.path.realpath(args.output):
         logger.warning("Specified the same input and output path. Note that this may overwrite the original model")

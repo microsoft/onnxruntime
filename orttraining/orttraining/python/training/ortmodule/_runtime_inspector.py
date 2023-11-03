@@ -114,7 +114,7 @@ class InputDensityObserver:
     """
 
     def __init__(self, logger: Logger, log_steps=1):
-        self._logger: Logger = logger
+        self._logger = logger
         self._embedding_graph_input_to_padding_idx_map = {}
         self._loss_label_graph_input_to_ignore_idx_map = {}
         self._stats = []

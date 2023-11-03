@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Set, Tuple
 
 import sympy
-from onnx import NodeProto
+from onnx import NodeProto, helper
 
 from ._common import AutotuneConfigs, TensorInfo
 from ._ir import (
@@ -294,7 +294,7 @@ class GraphLowering:
                 producers[output] = node
             for input in node.input:
                 if input in producers:
-                    precessors[node.name].append(producers[input])  # noqa: PERF401
+                    precessors[node.name].append(producers[input])
         for value in precessors.values():
             value.sort(key=sorted_nodes.index, reverse=True)
         for idx in range(len(sorted_nodes) - 1, -1, -1):
@@ -378,7 +378,10 @@ class GraphLowering:
             return DropoutNode(inputs, outputs, offset_calc)
         if is_reduction_node(node):
             return ReduceNode(op_type, inputs, outputs, offset_calc)
-        return ComputeNode(op_type, inputs, outputs)
+        attributes = {}
+        for attr in node.attribute:
+            attributes[attr.name] = helper.get_attribute_value(attr)
+        return ComputeNode(op_type, inputs, outputs, attributes)
 
     def _analyze_kernel_io_list(self):
         cross_kernel_inputs = set()
@@ -441,9 +444,7 @@ class GraphLowering:
                 assert isinstance(sub_nodes[nxt], ReduceForLoopEnd)
                 for reduce_node in sub_nodes[nxt].reduce_nodes:
                     if reduce_node.outputs[0].name in output_name_map:
-                        reduce_store_nodes.append(  # noqa: PERF401
-                            IONode(reduce_node.outputs[0], kernel_node.offset_calc, False)
-                        )
+                        reduce_store_nodes.append(IONode(reduce_node.outputs[0], kernel_node.offset_calc, False))
                 new_sub_nodes.append(sub_nodes[nxt])
                 nxt += 1
             cur = nxt

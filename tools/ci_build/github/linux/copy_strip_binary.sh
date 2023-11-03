@@ -27,7 +27,10 @@ if [[ -f "$BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_cuda.so" ]]; then
 fi
 if [[ -f "$BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_tensorrt.so" ]]; then
     cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_tensorrt.so $BINARY_DIR/$ARTIFACT_NAME/lib
-    cp $SOURCE_DIR/include/onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h  $BINARY_DIR/$ARTIFACT_NAME/include
+fi
+if [[ -f "$BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_rocm.so" ]]; then
+    cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_shared.so $BINARY_DIR/$ARTIFACT_NAME/lib
+    cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_rocm.so $BINARY_DIR/$ARTIFACT_NAME/lib
 fi
 echo "Copy debug symbols in a separate file and strip the original binary."
 if [[ $LIB_NAME == *.dylib ]]
@@ -44,6 +47,7 @@ fi
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_c_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_cxx_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_cxx_inline.h  $BINARY_DIR/$ARTIFACT_NAME/include
+cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_float16.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/providers/cpu/cpu_provider_factory.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h  $BINARY_DIR/$ARTIFACT_NAME/include

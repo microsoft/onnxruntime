@@ -99,9 +99,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
   // CUDA: result mismatch due to not implementing NHWC support
   // TensorRT: results mismatch
   // ROCm: results mismatch
-  // QNN: conflict with layout transformer, need furture investigation
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider, kQnnExecutionProvider});
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
 //TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_uint8) {
@@ -218,6 +217,111 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
 //  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 //}
 
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+  std::vector<uint8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8,
+      9, 10, 11, 12,
+      13, 14, 15, 16};
+
+  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {8}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<uint8_t> Y = {7, 10, 10,
+                            12, 10, 10,
+                            10, 10, 10};
+
+  test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_int8) {
+  OpTester test("Resize", 13);
+  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
+  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("extrapolation_value", 10.0f);
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+  std::vector<int8_t> X = {
+      1, -2, 3, -4,
+      -5, 6, -7, 8,
+      9, -10, 11, -12,
+      -13, 14, -15, 16};
+
+  test.AddInput<int8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {8}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<int8_t> Y = {-2, 10, 10,
+                           0, 10, 10,
+                           10, 10, 10};
+
+  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_extrapolation_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
+  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+  std::vector<uint8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8,
+      9, 10, 11, 12,
+      13, 14, 15, 16};
+
+  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {8}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<uint8_t> Y = {7, 0, 0,
+                            12, 0, 0,
+                            0, 0, 0};
+
+  test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_extrapolation_int8) {
+  OpTester test("Resize", 13);
+  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
+  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+  std::vector<int8_t> X = {
+      1, -2, 3, -4,
+      -5, 6, -7, 8,
+      9, -10, 11, -12,
+      -13, 14, -15, 16};
+
+  test.AddInput<int8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {8}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<int8_t> Y = {-2, 0, 0,
+                           0, 0, 0,
+                           0, 0, 0};
+
+  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  test.Run();
+}
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   OpTester test("Resize", 13);
   std::vector<float> roi{};
@@ -261,9 +365,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
-  // QNN: conflict with layout transformer, need furture investigation
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider, kQnnExecutionProvider});
+           {kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
 //TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
@@ -311,6 +414,47 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
 //  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
 //  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 //}
+
+  test.AddAttribute("mode", "linear");
+
+  constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+  std::vector<uint8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8};
+
+  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<uint8_t> Y = {2, 4};
+
+  test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+
+  constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+  std::vector<int8_t> X = {
+      1, -2, 3, -4,
+      -5, 6, -7, 8};
+
+  test.AddInput<int8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<int8_t> Y = {0, 0};
+
+  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  test.Run();
+}
 
 // Since NNAPI(TFLite) only using the scale calculate using the input/output size
 // For the above test (ResizeOpLinearDownSampleTest_4DBilinear)
@@ -399,7 +543,9 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
     std::vector<float> Y = {1.0f, 4.0f};
 
     test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-    test.Run();
+
+    // QNN: result mismatch ("NaN" instead of 1.0f on QNN CPU backend)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
   };
 
   run_test(false);
@@ -411,66 +557,66 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
 #endif
 }
 
-//TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uint8) {
-//  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
-//  auto run_test = [](bool scales_in_initializer) {
-//    OpTester test("Resize", 13);
-//    std::vector<float> roi{};
-//    std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
-//
-//    test.AddAttribute("mode", "linear");
-//    test.AddAttribute("coordinate_transformation_mode", "align_corners");
-//
-//    constexpr int64_t N = 1, H = 2, W = 4, C = 1;
-//    std::vector<uint8_t> X = {
-//        1, 2, 3, 4,
-//        5, 6, 7, 8};
-//
-//    test.AddInput<uint8_t>("X", {N, H, W, C}, X);
-//    test.AddInput<float>("roi", {0}, roi);
-//    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
-//
-//    std::vector<uint8_t> Y = {1, 4};
-//
-//    test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-//    // CUDA: result mismatch due to not implementing NHWC support
-//    // ROCm: results mismatch
-//    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kQnnExecutionProvider});
-//  };
-//
-//  run_test(false);
-//  run_test(true);
-//}
-//
-//TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_int8) {
-//  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
-//  auto run_test = [](bool scales_in_initializer) {
-//    OpTester test("Resize", 13);
-//    std::vector<float> roi{};
-//    std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
-//
-//    test.AddAttribute("mode", "linear");
-//    test.AddAttribute("coordinate_transformation_mode", "align_corners");
-//
-//    constexpr int64_t N = 1, H = 2, W = 4, C = 1;
-//    std::vector<int8_t> X = {
-//        1, -2, 3, -4,
-//        -5, 6, -7, 8};
-//
-//    test.AddInput<int8_t>("X", {N, H, W, C}, X);
-//    test.AddInput<float>("roi", {0}, roi);
-//    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
-//
-//    std::vector<int8_t> Y = {1, -4};
-//
-//    test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-//    // TensorRT: results mismatch
-//    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
-//  };
-//
-//  run_test(false);
-//  run_test(true);
-//}
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uint8) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "align_corners");
+
+    constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+    std::vector<uint8_t> X = {
+        1, 2, 3, 4,
+        5, 6, 7, 8};
+
+    test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<uint8_t> Y = {1, 4};
+
+    test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+    // CUDA: result mismatch due to not implementing NHWC support
+    // ROCm: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_int8) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "align_corners");
+
+    constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+    std::vector<int8_t> X = {
+        1, -2, 3, -4,
+        -5, 6, -7, 8};
+
+    test.AddInput<int8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<int8_t> Y = {1, -4};
+
+    test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+    // TensorRT: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
   // TODO: Unskip when fixed #41968513
@@ -505,63 +651,63 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
 }
 
-//TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_uint8) {
-//  OpTester test("Resize", 13);
-//  std::vector<float> roi{};
-//  std::vector<float> scales{};
-//  std::vector<int64_t> sizes{1, 3, 1, 1};
-//
-//  test.AddAttribute("mode", "linear");
-//  test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
-//
-//  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
-//
-//  std::vector<uint8_t> X = {
-//      1, 2, 3, 4,
-//      5, 6, 7, 8,
-//      9, 10, 11, 12,
-//      13, 14, 15, 16};
-//
-//  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
-//  test.AddInput<float>("roi", {0}, roi);
-//  test.AddInput<float>("", {0}, scales);
-//  test.AddInput<int64_t>("sizes", {4}, sizes);
-//
-//  std::vector<uint8_t> Y = {1, 7, 12};
-//
-//  test.AddOutput<uint8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
-//  // CUDA: result mismatch due to not implementing NHWC support
-//  // ROCm: results mismatch
-//  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kQnnExecutionProvider});
-//}
-//
-//TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_int8) {
-//  OpTester test("Resize", 13);
-//  std::vector<float> roi{};
-//  std::vector<float> scales{};
-//  std::vector<int64_t> sizes{1, 3, 1, 1};
-//
-//  test.AddAttribute("mode", "linear");
-//  test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
-//
-//  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
-//
-//  std::vector<int8_t> X = {
-//      1, -2, 3, -4,
-//      -5, 6, -7, 8,
-//      9, -10, 11, -12,
-//      -13, 14, -15, 16};
-//
-//  test.AddInput<int8_t>("X", {N, H, W, C}, X);
-//  test.AddInput<float>("roi", {0}, roi);
-//  test.AddInput<float>("", {0}, scales);
-//  test.AddInput<int64_t>("sizes", {4}, sizes);
-//
-//  std::vector<int8_t> Y = {0, 2, -9};
-//
-//  test.AddOutput<int8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
-//  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});  // TensorRT: results mismatch
-//}
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 3, 1, 1};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+
+  std::vector<uint8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8,
+      9, 10, 11, 12,
+      13, 14, 15, 16};
+
+  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {4}, sizes);
+
+  std::vector<uint8_t> Y = {1, 7, 12};
+
+  test.AddOutput<uint8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_int8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 3, 1, 1};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+
+  std::vector<int8_t> X = {
+      1, -2, 3, -4,
+      -5, 6, -7, 8,
+      9, -10, 11, -12,
+      -13, 14, -15, 16};
+
+  test.AddInput<int8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {4}, sizes);
+
+  std::vector<int8_t> Y = {0, 2, -9};
+
+  test.AddOutput<int8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
+}
 
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric) {
   // To test NNAPI EP, we need the sclaes/sizes to be in initializers
@@ -603,92 +749,92 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric) {
   run_test(true);
 }
 
-//TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
-//  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
-//  auto run_test = [](bool scales_in_initializer) {
-//    OpTester test("Resize", 13);
-//    std::vector<float> roi{};
-//    std::vector<float> scales{1.0f, 2.0f, 4.0f, 1.0f};
-//
-//    test.AddAttribute("mode", "linear");
-//    test.AddAttribute("coordinate_transformation_mode", "asymmetric");
-//
-//    constexpr int64_t N = 2, H = 2, W = 2, C = 1;
-//    std::vector<uint8_t> X = {1, 3,
-//                              4, 8,
-//
-//                              6, 2,
-//                              7, 11};
-//
-//    test.AddInput<uint8_t>("X", {N, H, W, C}, X);
-//    test.AddInput<float>("roi", {0}, roi);
-//    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
-//
-//    std::vector<uint8_t> Y = {
-//        1, 1, 2, 2, 3, 3, 3, 3,
-//        2, 3, 4, 4, 5, 5, 5, 5,
-//        4, 5, 6, 7, 8, 8, 8, 8,
-//        4, 5, 6, 7, 8, 8, 8, 8,
-//
-//        6, 5, 4, 3, 2, 2, 2, 2,
-//        6, 6, 6, 6, 6, 6, 6, 6,
-//        7, 8, 9, 10, 11, 11, 11, 11,
-//        7, 8, 9, 10, 11, 11, 11, 11};
-//
-//    // Due to Xnnpack EP has a different rounding behavior, we need to allow a tolerance of 1
-//    // The tolerance only works for Xnnpack EP
-//    test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C},
-//                            Y, false, .0f, 1.0f);
-//    // CUDA: result mismatch due to not implementing NHWC support
-//    // ROCm: results mismatch
-//    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kQnnExecutionProvider});
-//  };
-//
-//  run_test(false);
-//  run_test(true);
-//}
-//
-//TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
-//  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
-//  auto run_test = [](bool scales_in_initializer) {
-//    OpTester test("Resize", 13);
-//    std::vector<float> roi{};
-//    std::vector<float> scales{1.0f, 2.0f, 4.0f, 1.0f};
-//
-//    test.AddAttribute("mode", "linear");
-//    test.AddAttribute("coordinate_transformation_mode", "asymmetric");
-//
-//    constexpr int64_t N = 2, H = 2, W = 2, C = 1;
-//    std::vector<int8_t> X = {1, -3,
-//                             -4, 8,
-//
-//                             6, -2,
-//                             -7, 11};
-//
-//    test.AddInput<int8_t>("X", {N, H, W, C}, X);
-//    test.AddInput<float>("roi", {0}, roi);
-//    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
-//
-//    std::vector<int8_t> Y = {
-//        1, 0, -1, -2, -3, -3, -3, -3,
-//        -1, 0, 0, 1, 2, 2, 2, 2,
-//        -4, -1, 2, 5, 8, 8, 8, 8,
-//        -4, -1, 2, 5, 8, 8, 8, 8,
-//
-//        6, 4, 2, 0, -2, -2, -2, -2,
-//        0, 0, 2, 3, 4, 4, 4, 4,
-//        -7, -2, 2, 6, 11, 11, 11, 11,
-//        -7, -2, 2, 6, 11, 11, 11, 11};
-//
-//    test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C},
-//                           Y, false, .0f, 1.0f);
-//    // TensorRT: results mismatch
-//    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
-//  };
-//
-//  run_test(false);
-//  run_test(true);
-//}
+TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 2.0f, 4.0f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+
+    constexpr int64_t N = 2, H = 2, W = 2, C = 1;
+    std::vector<uint8_t> X = {1, 3,
+                              4, 8,
+
+                              6, 2,
+                              7, 11};
+
+    test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<uint8_t> Y = {
+        1, 1, 2, 2, 3, 3, 3, 3,
+        2, 3, 4, 4, 5, 5, 5, 5,
+        4, 5, 6, 7, 8, 8, 8, 8,
+        4, 5, 6, 7, 8, 8, 8, 8,
+
+        6, 5, 4, 3, 2, 2, 2, 2,
+        6, 6, 6, 6, 6, 6, 6, 6,
+        7, 8, 9, 10, 11, 11, 11, 11,
+        7, 8, 9, 10, 11, 11, 11, 11};
+
+    // Due to Xnnpack EP has a different rounding behavior, we need to allow a tolerance of 1
+    // The tolerance only works for Xnnpack EP
+    test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C},
+                            Y, false, .0f, 1.0f);
+    // CUDA: result mismatch due to not implementing NHWC support
+    // ROCm: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 2.0f, 4.0f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+
+    constexpr int64_t N = 2, H = 2, W = 2, C = 1;
+    std::vector<int8_t> X = {1, -3,
+                             -4, 8,
+
+                             6, -2,
+                             -7, 11};
+
+    test.AddInput<int8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<int8_t> Y = {
+        1, 0, -1, -2, -3, -3, -3, -3,
+        -1, 0, 0, 1, 2, 2, 2, 2,
+        -4, -1, 2, 5, 8, 8, 8, 8,
+        -4, -1, 2, 5, 8, 8, 8, 8,
+
+        6, 4, 2, 0, -2, -2, -2, -2,
+        0, 0, 2, 3, 4, 4, 4, 4,
+        -7, -2, 2, 6, 11, 11, 11, 11,
+        -7, -2, 2, 6, 11, 11, 11, 11};
+
+    test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C},
+                           Y, false, .0f, 1.0f);
+    // TensorRT: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
 
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_align_corners) {
   OpTester test("Resize", 13);
@@ -780,7 +926,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_5DTrilinear_pytorch_half_pixel) {
 }
 
 TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -1079,7 +1225,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
                           13.0f, 13.0f, 13.0f, 14.0f, 14.0f, 15.0f, 15.0f, 16.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
+  test.Run();
 }
 
 TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims) {
@@ -1887,7 +2033,7 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
 
   test.AddOutput<T>("Y", output_shape, output_data);
   // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accurarcy issue.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ResizeOpTest, Antialias_Bilinear_No_ExcludeOutside) {

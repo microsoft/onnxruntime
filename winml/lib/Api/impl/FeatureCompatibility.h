@@ -15,24 +15,23 @@ namespace _winml {
 namespace error_strings {
 
 // This must be kept in sync with the TensorKind enum in Windows.AI.MachineLearning.idl
-__declspec(selectany) const char* SzTensorKind[] =
-    {
-        "Undefined",
-        "Float",
-        "UInt8",
-        "Int8",
-        "UInt16",
-        "Int16",
-        "Int32",
-        "Int64",
-        "String",
-        "Boolean",
-        "Float16",
-        "Double",
-        "UInt32",
-        "UInt64",
-        "Complex64",
-        "Complex128",
+__declspec(selectany) const char* SzTensorKind[] = {
+  "Undefined",
+  "Float",
+  "UInt8",
+  "Int8",
+  "UInt16",
+  "Int16",
+  "Int32",
+  "Int64",
+  "String",
+  "Boolean",
+  "Float16",
+  "Double",
+  "UInt32",
+  "UInt64",
+  "Complex64",
+  "Complex128",
 };
 
 static std::string ToString(winml::ILearningModelFeatureDescriptor descriptor);
@@ -51,9 +50,7 @@ static std::string ToString(wfc::IVectorView<int64_t> shape) {
   return ToString(shapeVec);
 }
 
-static std::string ToString(
-    winml::TensorKind kind,
-    wfc::IVectorView<int64_t> shape) {
+static std::string ToString(winml::TensorKind kind, wfc::IVectorView<int64_t> shape) {
   // Any unrecognized data type is considered "Undefined".
   if (static_cast<uint32_t>(kind) >= std::size(SzTensorKind)) {
     kind = winml::TensorKind::Undefined;
@@ -176,16 +173,18 @@ namespace compatibility_details {
 
 using K = winml::LearningModelFeatureKind;
 
-static void not_compatible_hr(HRESULT hr, winml::ILearningModelFeatureValue value,
-  winml::ILearningModelFeatureDescriptor descriptor) {
+static void not_compatible_hr(
+  HRESULT hr, winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor
+) {
   auto name = _winml::Strings::UTF8FromHString(descriptor.Name());
 
   WINML_THROW_IF_FAILED_MSG(
-      hr,
-      "Model variable %s, expects %s, but binding was attempted with an incompatible type %s.",
-      name.c_str(),
-      error_strings::ToString(descriptor).c_str(),
-      error_strings::ToString(value).c_str());
+    hr,
+    "Model variable %s, expects %s, but binding was attempted with an incompatible type %s.",
+    name.c_str(),
+    error_strings::ToString(descriptor).c_str(),
+    error_strings::ToString(value).c_str()
+  );
 }
 
 static void not_compatible(winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor) {
@@ -231,8 +230,8 @@ void verify(winml::ILearningModelFeatureValue value, winml::ILearningModelFeatur
 
 template <>
 void verify<K::Tensor, K::Tensor>(
-    winml::ILearningModelFeatureValue value,
-    winml::ILearningModelFeatureDescriptor descriptor) {
+  winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor
+) {
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce check = std::bind(enforce_not_false, std::placeholders::_1, std::placeholders::_2, fail);
 
@@ -262,8 +261,8 @@ void verify<K::Tensor, K::Tensor>(
 
 template <>
 void verify<K::Map, K::Map>(
-    winml::ILearningModelFeatureValue value,
-    winml::ILearningModelFeatureDescriptor descriptor) {
+  winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor
+) {
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce check = std::bind(enforce_not_false, std::placeholders::_1, std::placeholders::_2, fail);
   enforce_succeeded check_succeeded = std::bind(enforce_not_failed, std::placeholders::_1, fail);
@@ -283,8 +282,8 @@ void verify<K::Map, K::Map>(
 
 template <>
 void verify<K::Sequence, K::Sequence>(
-    winml::ILearningModelFeatureValue value,
-    winml::ILearningModelFeatureDescriptor descriptor) {
+  winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor
+) {
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce_succeeded check_succeeded = std::bind(enforce_not_failed, std::placeholders::_1, fail);
 
@@ -299,8 +298,8 @@ void verify<K::Sequence, K::Sequence>(
 
 template <>
 void verify<K::Image, K::Image>(
-    winml::ILearningModelFeatureValue value,
-    winml::ILearningModelFeatureDescriptor descriptor) {
+  winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor
+) {
   // No check is needed here. Because:
   // For batchSize==1, no matter what shape the input has (smaller or larger), we support to bind it.
   // For batchSize > 1,
@@ -313,8 +312,8 @@ void verify<K::Image, K::Image>(
 
 template <>
 void verify<K::Tensor, K::Image>(
-    winml::ILearningModelFeatureValue value,
-    winml::ILearningModelFeatureDescriptor descriptor) {
+  winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor
+) {
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce check = std::bind(enforce_not_false, std::placeholders::_1, std::placeholders::_2, fail);
   enforce_succeeded check_succeeded = std::bind(enforce_not_failed, std::placeholders::_1, fail);
@@ -357,8 +356,8 @@ void verify<K::Tensor, K::Image>(
     */
 template <>
 void verify<K::Image, K::Tensor>(
-    winml::ILearningModelFeatureValue value,
-    winml::ILearningModelFeatureDescriptor descriptor) {
+  winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor
+) {
   thrower fail = std::bind(not_compatible_hr, std::placeholders::_1, value, descriptor);
   enforce check = std::bind(enforce_not_false, std::placeholders::_1, std::placeholders::_2, fail);
 
@@ -371,23 +370,27 @@ void verify<K::Image, K::Tensor>(
   check(WINML_ERR_SIZE_MISMATCH, 4 == tensorDescriptorShape.Size());
 }
 
-static void (*FeatureKindCompatibilityMatrix[4][4])(winml::ILearningModelFeatureValue, winml::ILearningModelFeatureDescriptor) =
-    {
-        //                 Tensor,                          Sequence,                           Map,                    Image
-        /* Tensor */       {verify<K::Tensor, K::Tensor>,   not_compatible,                     not_compatible,         verify<K::Tensor, K::Image>},
-        /* Sequence */     {not_compatible,                 verify<K::Sequence, K::Sequence>,   not_compatible,         not_compatible},
-        /* Map */          {not_compatible,                 not_compatible,                     verify<K::Map, K::Map>, not_compatible},
-        /* Image */        {verify<K::Image, K::Tensor>,    not_compatible,                     not_compatible,         verify<K::Image, K::Image>}};
+static void (*FeatureKindCompatibilityMatrix[4][4])(
+  winml::ILearningModelFeatureValue, winml::ILearningModelFeatureDescriptor
+) = {
+  //                 Tensor,                          Sequence,                           Map,                    Image
+  /* Tensor */ {verify<K::Tensor, K::Tensor>, not_compatible, not_compatible, verify<K::Tensor, K::Image>},
+ /* Sequence */
+  {not_compatible, verify<K::Sequence, K::Sequence>, not_compatible, not_compatible},
+ /* Map */
+  {not_compatible, not_compatible, verify<K::Map, K::Map>, not_compatible},
+ /* Image */
+  {verify<K::Image, K::Tensor>, not_compatible, not_compatible, verify<K::Image, K::Image>}
+};
 }  // namespace compatibility_details
 
 inline void VerifyFeatureValueCompatibleWithDescriptor(
-    winml::ILearningModelFeatureValue value,
-    winml::ILearningModelFeatureDescriptor descriptor) {
+  winml::ILearningModelFeatureValue value, winml::ILearningModelFeatureDescriptor descriptor
+) {
   using namespace compatibility_details;
 
   auto pfnAreKindsCompatible =
-      FeatureKindCompatibilityMatrix
-          [static_cast<unsigned>(value.Kind())][static_cast<unsigned>(descriptor.Kind())];
+    FeatureKindCompatibilityMatrix[static_cast<unsigned>(value.Kind())][static_cast<unsigned>(descriptor.Kind())];
 
   pfnAreKindsCompatible(value, descriptor);
 }

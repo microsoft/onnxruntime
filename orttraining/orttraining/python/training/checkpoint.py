@@ -145,7 +145,7 @@ def _order_paths(paths, D_groups, H_groups):
     world_rank = _utils.state_dict_trainer_options_world_rank_key()
 
     for path in paths:
-        trainer_options_path_tuples.append(  # noqa: PERF401
+        trainer_options_path_tuples.append(
             (_checkpoint_storage.load(path, key=_utils.state_dict_trainer_options_key()), path)
         )
 
@@ -365,7 +365,7 @@ def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world
     for data_group_id in range(num_data_groups):
         data_group_ranks = []
         for r in range(data_parallel_size):
-            data_group_ranks.append(data_group_id + horizontal_parallel_size * r)  # noqa: PERF401
+            data_group_ranks.append(data_group_id + horizontal_parallel_size * r)
         data_groups.append(data_group_ranks)
 
     num_horizontal_groups = world_size // horizontal_parallel_size
@@ -373,7 +373,7 @@ def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world
     for hori_group_id in range(num_horizontal_groups):
         hori_group_ranks = []
         for r in range(horizontal_parallel_size):
-            hori_group_ranks.append(hori_group_id * horizontal_parallel_size + r)  # noqa: PERF401
+            hori_group_ranks.append(hori_group_id * horizontal_parallel_size + r)
         horizontal_groups.append(hori_group_ranks)
 
     return data_groups, horizontal_groups

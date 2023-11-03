@@ -73,6 +73,18 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer();
 
 #endif
 
+#ifdef USE_DML
+
+AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id);
+
+void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes);
+
+void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction();
+
+#endif
+
 #ifdef USE_CANN
 
 void CpuToCannMemCpy(void* dst, const void* src, size_t num_bytes);

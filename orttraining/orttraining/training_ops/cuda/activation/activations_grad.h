@@ -79,5 +79,20 @@ class TanhGrad final : public BinaryElementwise<ShouldNotBroadcast> {
  private:
   MAKE_FUNC_CTX_NULL()
 };
+
+template <typename T>
+class LeakyReluGrad final : public BinaryElementwise<ShouldNotBroadcast> {
+ public:
+  LeakyReluGrad(const OpKernelInfo& info) : BinaryElementwise(info) {
+    alpha_ = info.GetAttrOrDefault<float>("alpha", 0.01f);
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  MAKE_FUNC_CTX_ALPHA()
+  float alpha_;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

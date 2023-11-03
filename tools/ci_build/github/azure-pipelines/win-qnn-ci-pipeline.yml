@@ -1,9 +1,38 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 parameters:
 
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.12.1.230626_win
+  default: qnn-v2.14.1.230828_win
 
 jobs:
 - job: 'build'
@@ -17,7 +46,8 @@ jobs:
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
     QNN_SDK_ROOT: 'C:\data\qnnsdk\${{parameters.QnnSdk}}'
-  timeoutInMinutes: 150
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+  timeoutInMinutes: 120
   workspace:
     clean: all
   steps:
@@ -41,39 +71,28 @@ jobs:
   # '_Ret &std::_Visit_strategy<1>::_Visit2<_Ret,_ListOfIndexVectors,_Callable,const
   # std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver>&>(size_t,_Callable &&,
   # const std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver> &)'
-  - task: PythonScript@0
-    displayName: 'Generate cmake config'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --compile_no_warning_as_error --update --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
-      workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: VSBuild@1
-    displayName: 'Build'
-    inputs:
-      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-      platform: 'x64'
-      configuration: $(BuildConfig)
-      msbuildArgs: $(MsbuildArguments)
-      msbuildArchitecture: $(buildArch)
-      maximumCpuCount: true
-      logProjectEvents: false
-      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-      createLogFile: true
+  - template: templates/jobs/win-ci-build-steps.yml
+    parameters:
+      WithCache: True
+      Today: $(TODAY)
+      AdditionalKey: "win-qnn | $(BuildConfig)"
+      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --compile_no_warning_as_error --update --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
+      MsbuildArguments: $(MsbuildArguments)
+      BuildArch: $(buildArch)
+      Platform: 'x64'
+      BuildConfig: $(BuildConfig)
 
   - powershell: |
      python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests
-
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run unit tests'
 
   - script: |
-    .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\lib\x86_64-windows-msvc\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
+      .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\lib\x86_64-windows-msvc\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run ONNX Tests'
 
   - script: |
-    .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\lib\x86_64-windows-msvc\QnnCpu.dll" C:\data\float32_models
+      .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\lib\x86_64-windows-msvc\QnnCpu.dll" C:\data\float32_models
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run float32 model tests'
-
