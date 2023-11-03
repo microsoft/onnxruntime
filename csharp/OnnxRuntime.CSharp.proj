@@ -17,8 +17,12 @@ CMake creates a target to this project
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>
     <IsReleaseBuild Condition=" '$(IsReleaseBuild)' == '' ">false</IsReleaseBuild>
     <ReleaseVersionSuffix></ReleaseVersionSuffix>
-    <IsLinuxBuild Condition=" '$(IsLinuxBuild)' == '' ">false</IsLinuxBuild>
+    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild>
+    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild>
     <ExecutionProvider Condition=" '$(ExecutionProvider)' == '' ">None</ExecutionProvider>
+
+    <!-- include Xamarin/MAUI Android and iOS target frameworks? Command line property overrides this value. -->
+    <IncludeMobileTargets>true</IncludeMobileTargets>
 
     <!--internal build related properties-->
     <OnnxRuntimeSourceDirectory Condition="'$(OnnxRuntimeSourceDirectory)'==''">..</OnnxRuntimeSourceDirectory>
@@ -30,13 +34,15 @@ CMake creates a target to this project
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\build\Linux</OnnxRuntimeBuildDirectory>
     <OnnxRuntimePackagesDirectory Condition="'$(OnnxRuntimePackagesDirectory)'==''">$(OnnxRuntimeBuildDirectory)\packages</OnnxRuntimePackagesDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+    <PythonExe>python3</PythonExe>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(IsLinuxBuild)'=='false'">
+  <PropertyGroup Condition="'$(IsWindowsBuild)'=='true'">
     <!--internal build related properties for Windows -->
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\build\Windows</OnnxRuntimeBuildDirectory>
     <OnnxRuntimePackagesDirectory Condition="'$(OnnxRuntimePackagesDirectory)'==''">$(OnnxRuntimeBuildDirectory)\packages</OnnxRuntimePackagesDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+    <PythonExe>python</PythonExe>
   </PropertyGroup>
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
@@ -86,28 +92,48 @@ CMake creates a target to this project
   </Target>
 
   <Target Name="CreatePackage">
-    <Message Importance="High" Text="Bundling managed assemblies into a NuGet package ..." />
+    <!-- Create Microsoft.ML.OnnxRuntime.Managed with the C# bindings using the C# project -->
+    <Message Importance="High" Text="Creating Microsoft.ML.OnnxRuntime.Managed nuget package..." />
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="CopyMiscFiles;Pack"
-            Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);SelectedTargets=All"/>
+            Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);IncludeMobileTargets=$(IncludeMobileTargets)"/>
 
-    <Message Importance="High" Text="Generating nuspec for the native Nuget package ..." />
-    <Exec ContinueOnError="False" Command="python $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider)" ConsoleToMSBuild="true">
+    <!-- Manually create the nuspec for the native Microsoft.ML.OnnxRuntime package -->
+    <Message Importance="High" Text="Generating nuspec for the native Microsoft.ML.OnnxRuntime nuget package..." />
+    <Exec Command="$(PythonExe) $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider)" 
+          ContinueOnError="False" 
+          ConsoleToMSBuild="true">
         <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
     </Exec>
 
-    <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
-    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' == 'Windows_NT'">
+    <!-- run `nuget pack` on Windows or `dotnet pack` on Linux to create the native nupkg -->
+    <Message Importance="High" Text="Bundling native shared library artifacts into Microsoft.ML.OnnxRuntime nuget package..." />
+    <Exec Condition=" '$(IsWindowsBuild)' == 'true'"
+          Command="$(NugetExe) pack NativeNuget.nuspec" 
+          WorkingDirectory="$(NativeBuildOutputDirAbs)"
+          ContinueOnError="False" 
+          ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
 
-    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' != 'Windows_NT'">
+    <!-- build.py uses dotnet to build on linux so we know it's available.
+         nuget needs to be run using mono to work correctly, but installing mono on WSL breaks interop
+         (see https://github.com/microsoft/WSL/issues/8531). in order to play nicely with both we use `dotnet pack`
+         to pack the native nuget package using a stub csproj to provide the nuspec file path. 
+    -->
+    <Exec Condition="'$(IsLinuxBuild)' == 'true'"
+          Command="dotnet pack tools/linux_pack/LinuxPackNativeNuget.csproj /p:Configuration=$(Configuration) /p:OnnxRuntimeBuildDirectory=$(NativeBuildOutputDirAbs)" 
+          ContinueOnError="False" 
+          ConsoleToMSBuild="true" >
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
+    <!-- copy the nupkg to the build output directory so its location is consistent on all platforms -->
+    <Copy Condition="'$(IsLinuxBuild)' == 'true'"
+          SourceFiles="tools/linux_pack/bin/$(Configuration)/$(OrtPackageId).$(PackageVersion).nupkg"
+          DestinationFolder="$(NativeBuildOutputDirAbs)" />
 
-    <Copy
-    SourceFiles="$(NativeBuildOutputDirAbs)\$(OrtPackageId).$(PackageVersion).nupkg"
-    DestinationFolder="$(NativeBuildOutputDirAbs)\nuget-local-artifacts"
+    <Copy SourceFiles="$(NativeBuildOutputDirAbs)\$(OrtPackageId).$(PackageVersion).nupkg"
+          DestinationFolder="$(NativeBuildOutputDirAbs)\nuget-local-artifacts"
     />
   </Target>
 

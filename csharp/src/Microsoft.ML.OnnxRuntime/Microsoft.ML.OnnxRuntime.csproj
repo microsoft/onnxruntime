@@ -4,65 +4,52 @@
     <OrtPackageId Condition="'$(OrtPackageId)' == ''">Microsoft.ML.OnnxRuntime</OrtPackageId>
   </PropertyGroup>
 
-  <!--
-  Temporary setup until official Visual Studio 2022 release supports .net6, as the CIs require the official release.
-  We will be able to build all targets with VS once that happens.
-
-  Until then, we need to build the pre-.net6 targets with VS and the .net6 targets with dotnet.
-
-  The pre-.net6 Xamarin targets are optional and only included if the machine has the required workloads.
-
-  We have 3 scenarios
-    1) Build pre-net6 targets with VS - SelectedTargets=PreNet6
-    2) Build net6 targets - SelectedTargets=Net6
-    3) Run 'Pack' target to create nuget package from combination of 1 and 2 - SelectedTargets=All
-
-  Default is PreNet6 so that existing projects and CI builds will do the same thing unless explicitly updated.
-  -->
   <PropertyGroup>
-    <SelectedTargets>PreNet6</SelectedTargets>
-    <BaseTargets>netstandard2.0;netcoreapp3.1;net6.0</BaseTargets>
+    <IncludeMobileTargets>true</IncludeMobileTargets>
+    <BaseTargets>netstandard2.0</BaseTargets>
+    <MobileTargets></MobileTargets>
   </PropertyGroup>
 
-  <!-- only set the Xamarin mobile targets if we're building an ORT package,
-       and only if the mobile workloads are installed -->
+  <!-- special case the DesktopOnly solution -->
+  <PropertyGroup Condition="'$(SolutionName)' == 'OnnxRuntime.DesktopOnly.CSharp'">
+    <IncludeMobileTargets>false</IncludeMobileTargets>
+  </PropertyGroup>
+
+  <!-- add Xamarin mobile targets if we're building an ORT package and the Xamarin workloads are installed
+
+       NOTE: We include in a build of the managed package when creating Microsoft.ML.OnnxRuntime.Gpu as both
+             the CPU and GPU packaging pipelines can publish Microsoft.ML.OnnxRuntime.Managed, and we need the targets
+             to be consistent in both.
+  -->
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
                              '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu') AND
-                             Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND
-                             Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
-    <XamarinTargets>xamarinios10;monoandroid11.0</XamarinTargets>
+                            '$(IncludeMobileTargets)' == 'true' AND
+                            Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND
+                            Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
+    <MobileTargets>xamarinios10;monoandroid11.0</MobileTargets>
   </PropertyGroup>
 
-  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training') AND
-                             Exists('$(MSBuildExtensionsPath)\Xamarin\Android')">
-    <XamarinTargetsForTraining>monoandroid11.0</XamarinTargetsForTraining>
+  <PropertyGroup Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training' AND
+                            '$(IncludeMobileTargets)' == 'true' AND
+                            Exists('$(MSBuildExtensionsPath)\Xamarin\Android')">
+    <MobileTargets>monoandroid11.0</MobileTargets>
   </PropertyGroup>
 
-  <!-- only set the .net6 targets if we're building an ORT package.
-       we can add .net6 support to other packages later as needed -->
+  <!-- add MAUI targets if building ORT package -->
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
-                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Azure' OR
-                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu')">
-    <Net6Targets>net6.0;net6.0-android;net6.0-ios;net6.0-macos</Net6Targets>
+                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Azure') AND
+                            '$(IncludeMobileTargets)' == 'true'">
+    <MobileTargets>$(MobileTargets);net6.0-android;net6.0-ios</MobileTargets>
   </PropertyGroup>
 
-  <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training')">
-    <Net6TargetsForTrainingPackage>net6.0;net6.0-android</Net6TargetsForTrainingPackage>
+  <PropertyGroup Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training' AND
+                            '$(IncludeMobileTargets)' == 'true'">
+    <MobileTargets>$(MobileTargets);net6.0-android</MobileTargets>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(SelectedTargets)'=='PreNet6'">
-    <TargetFrameworks>$(BaseTargets);$(XamarinTargets);$(XamarinTargetsForTraining)</TargetFrameworks>
+  <PropertyGroup>
+    <TargetFrameworks>$(BaseTargets);$(MobileTargets)</TargetFrameworks>
   </PropertyGroup>
-
-  <PropertyGroup Condition="'$(SelectedTargets)'=='Net6'">
-    <TargetFrameworks>$(Net6Targets);$(Net6TargetsForTrainingPackage)</TargetFrameworks>
-  </PropertyGroup>
-
-  <!-- nuget package creation -->
-  <PropertyGroup Condition="'$(SelectedTargets)'=='All'">
-    <TargetFrameworks>$(BaseTargets);$(XamarinTargets);$(XamarinTargetsForTraining);$(Net6Targets);$(Net6TargetsForTrainingPackage)</TargetFrameworks>
-  </PropertyGroup>
-
 
   <PropertyGroup>
     <Platforms>AnyCPU;x86</Platforms>
@@ -204,8 +191,9 @@
     <DefineConstants>$(DefineConstants);$(OrtConstants)</DefineConstants>
   </PropertyGroup>
 
-  <!-- debug output - makes finding/fixing any issues with the the conditions easy.
+  <!-- debug output - makes finding/fixing any issues with the the conditions easy.  -->
   <Target Name="DumpValues" BeforeTargets="PreBuildEvent">
+    <Message Text="SolutionName='$(SolutionName)'" />
     <Message Text="TargetPlatform='$(TargetPlatform)' TargetPlatformIdentifier='$(TargetPlatformIdentifier)' " />
     <Message Text="TargetFramework='$(TargetFramework)' TargetFrameworkIdentifier='$(TargetFrameworkIdentifier)' " />
     <Message Text="[MSBuild]::GetTargetPlatformIdentifier(TargetFramework)='$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))' " />
@@ -214,7 +202,6 @@
     <Message Text="OrtConstants='$(OrtConstants)' " />
     <Message Text="TargetFrameworks='$(TargetFrameworks)' " />
   </Target>
-  -->
 
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"

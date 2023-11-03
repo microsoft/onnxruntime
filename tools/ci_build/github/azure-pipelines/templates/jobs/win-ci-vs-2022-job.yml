@@ -169,7 +169,7 @@ jobs:
   - task: MSBuild@1
     displayName: 'Restore NuGet Packages'
     inputs:
-      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
       platform: 'Any CPU'
       configuration: '${{ parameters.BuildConfig }}'
       msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
@@ -178,7 +178,7 @@ jobs:
   - task: MSBuild@1
     displayName: 'Build C#'
     inputs:
-      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
       configuration: '${{ parameters.BuildConfig }}'
       platform: 'Any CPU'
       msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
@@ -197,7 +197,7 @@ jobs:
           command: test
           projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
           configuration: '${{ parameters.BuildConfig }}'
-          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) --blame'
+          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IncludeMobileTargets=false --blame'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - ${{ if eq(parameters.EnablePython, true) }}:
