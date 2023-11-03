@@ -503,6 +503,10 @@
         "test_scan_sum_cpu", // Disabled due to output mismatch with tolerance.
         "test_scan9_sum_cpu" // Disabled due to output mismatch with tolerance.
     ],
+    "current_failing_tests_OPENVINO_NPU_FP16": [
+        "^test_prelu_broadcast",
+        "test_loop11_cpu"
+    ],
     "current_failing_tests_OPENVINO_opset18": [
         // pending opset 18 support, RUNTIME_EXCEPTION : Encountered unknown exception in Initialize()
         "^test_center_crop_pad_crop_axes_chw",

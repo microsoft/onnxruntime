@@ -6,15 +6,16 @@
 #include <memory>
 
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/openvino/contexts.h"
-#include "core/providers/openvino/ibackend.h"
-#include "core/providers/openvino/ov_interface.h"
 #include <vector>
 #include <iostream>
 #include <string>
 #include <condition_variable>
 #include <mutex>
+
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/ibackend.h"
+#include "core/providers/openvino/ov_interface.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -29,7 +30,7 @@ class BasicBackend : public IBackend {
   void Infer(OrtKernelContext* context) override;
 
  private:
-  bool ImportBlob(std::string hw_target, bool vpu_status);
+  bool ImportBlob(std::string hw_target, bool npu_status);
   void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
   void PopulateConfigValue(ov::AnyMap& device_config);

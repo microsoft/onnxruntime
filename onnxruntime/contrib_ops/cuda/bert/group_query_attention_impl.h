@@ -14,19 +14,28 @@ namespace cuda {
 
 template <typename T>
 struct GroupQueryAttentionData {
+  // Input Tensors
   const T* query = nullptr;
   const T* key = nullptr;
   const T* value = nullptr;
   const T* past_key = nullptr;
   const T* past_value = nullptr;
+  // Flash buffers
   T* softmax_lse = nullptr;
   T* softmax_lse_accum = nullptr;
   T* out_accum = nullptr;
   int* seqlens_k = nullptr;
+  // Memory Efficient buffers
+  T* fmha_buffer = nullptr;
+  T* k = nullptr;
+  T* v = nullptr;
+  // Output Tensors
   T* output = nullptr;
   T* present_key = nullptr;
   T* present_value = nullptr;
+  // Kernel Flags
   bool use_flash_attention = false;
+  bool use_memory_efficient_attention = false;
 };
 
 template <typename T>

@@ -26,11 +26,7 @@ WebNNExecutionProvider::WebNNExecutionProvider(
     ORT_THROW("Failed to get ml from navigator.");
   }
   emscripten::val context_options = emscripten::val::object();
-  // Currently WebNN implementation in Chromium temporarily reuses the MLContextOptions
-  // defined in Model Loader API, which uses MLDevicePreference instead of MLDeviceType
-  // defined in WebNN. Because there's an ongoing spec discussion to simplify this API at
-  // https://github.com/webmachinelearning/webnn/issues/302.
-  context_options.set("devicePreference", emscripten::val(webnn_device_flags));
+  context_options.set("deviceType", emscripten::val(webnn_device_flags));
   // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
   if (webnn_device_flags.compare("cpu") == 0) {
     preferred_layout_ = DataLayout::NHWC;

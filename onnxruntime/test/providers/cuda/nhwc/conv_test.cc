@@ -21,7 +21,7 @@ struct ConvOp {
   std::unique_ptr<CompareOpTester> get_test() {
     RandomValueGenerator random{};
 
-    auto test = std::make_unique<CompareOpTester>("Conv", 7);
+    auto test = std::make_unique<CompareOpTester>("Conv", 11);  // internal NHWC domain starts at opset 11
     std::vector<T> input_data = random.Uniform<T>(input_dims, 0.0f, 1.0f);
 
     std::vector<int64_t> weight_dims{channels, input_dims[1] / group, kernel_shape[0], kernel_shape[1]};
