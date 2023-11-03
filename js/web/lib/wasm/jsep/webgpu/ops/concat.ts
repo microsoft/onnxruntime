@@ -147,7 +147,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-      programUniforms: programUniforms as ProgramUniform[],
+      programUniforms,
     }),
     getShaderSource,
   };
