@@ -84,7 +84,7 @@ stages:
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         ORT_EP_NAME: DML
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: onnxruntime-Win2022-GPU-dml-A10
 
 - stage: kernelDocumentation
