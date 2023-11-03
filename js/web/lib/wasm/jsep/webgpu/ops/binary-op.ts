@@ -30,7 +30,6 @@ const createBinaryOpProgramShader =
         expressionVector = funcCall.vector;
       }
 
-      let broadcastImpl = '';
       const inputAShapeOrRank = useShapesUniforms ? dimsA.length : dimsA;
       const inputBShapeOrRank = useShapesUniforms ? dimsB.length : dimsB;
       const outputShapeOrRank = useShapesUniforms ? dimsOutput.length : dimsOutput;
@@ -104,7 +103,6 @@ const createBinaryOpProgramShader =
         ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(a, b, output)}
 
         ${additionalImplementation ?? ''}
-        ${broadcastImpl}
 
         ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
