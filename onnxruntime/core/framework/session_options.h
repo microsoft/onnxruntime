@@ -194,16 +194,15 @@ inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_
      << " thread_pool_allow_spinning:" << session_options.thread_pool_allow_spinning
      << " use_deterministic_compute:" << session_options.use_deterministic_compute
      << " config_options: { " << session_options.config_options << " }"
-     //<< " initializers_to_share_map:"          << session_options.initializers_to_share_map
+  //<< " initializers_to_share_map:"          << session_options.initializers_to_share_map
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-     //<< " external_initializers:"             << session_options.external_initializers
+  //<< " external_initializers:"             << session_options.external_initializers
 #endif
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-     //<< " custom_op_libs:" << session_options.custom_op_libs
+  //<< " custom_op_libs:" << session_options.custom_op_libs
 #endif
      << " }";
   return os;
 }
-
 
 }  // namespace onnxruntime

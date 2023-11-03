@@ -380,11 +380,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       TraceLoggingBoolean(session_options.intra_op_param.set_denormal_as_zero, "set_denormal_as_zero"));
 
   for (const auto& config_pair : session_options.config_options.configurations) {
-      TraceLoggingWrite(
-          telemetry_provider_handle,
-          "SessionOptions_ConfigEntry",
-          TraceLoggingString(config_pair.first.c_str(), "Key"),
-          TraceLoggingString(config_pair.second.c_str(), "Value"));
+    TraceLoggingWrite(
+        telemetry_provider_handle,
+        "SessionOptions_ConfigEntry",
+        TraceLoggingString(config_pair.first.c_str(), "Key"),
+        TraceLoggingString(config_pair.second.c_str(), "Value"));
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
