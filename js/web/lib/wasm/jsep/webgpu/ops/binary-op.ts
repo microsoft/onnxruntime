@@ -121,7 +121,7 @@ const createBinaryOpProgramInfo =
 
       // TODO: deal with zero-sized tensors (eg. dims=[1,0])
 
-      cacheKey += isBroadcast;
+      let cacheKeyAux = [isBroadcast];
       if (isBroadcast) {
         const calculatedShape = BroadcastUtil.calcShape(a.dims, b.dims, false);
         if (!calculatedShape) {
@@ -131,8 +131,8 @@ const createBinaryOpProgramInfo =
         outputSize = ShapeUtil.size(outputShape);
         const isAOneElement = ShapeUtil.size(a.dims) === 1;
         const isBOneElement = ShapeUtil.size(b.dims) === 1;
-        cacheKey += isAOneElement;
-        cacheKey += isBOneElement;
+        cacheKeyAux.push(isAOneElement);
+        cacheKeyAux.push(isBOneElement);
         // check whether vectorize can be enabled
         let sharedDimension = 1;
         for (let i = 1; i < outputShape.length; i++) {
@@ -151,14 +151,14 @@ const createBinaryOpProgramInfo =
         // element-wise
         vectorize = true;
       }
-      cacheKey += vectorize;
+      cacheKeyAux.push(vectorize);
       // Don't need to use shape/stride uniforms if input/output tensors are vectorized.
       const useShapesUniforms = !vectorize && enableShapesUniforms(a.dims.length) &&
           enableShapesUniforms(b.dims.length) && enableShapesUniforms(outputShape.length);
       return {
         name,
         shaderCache: {
-          hint: cacheKey,
+          hint: cacheKey + cacheKeyAux.map((x) => x.toString()).join('_'),
           inputDependencies: useShapesUniforms ? ['rank', 'rank'] : ['dims', 'dims'],
         },
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
