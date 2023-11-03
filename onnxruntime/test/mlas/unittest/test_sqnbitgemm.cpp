@@ -249,6 +249,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 DEFINE_MLAS_TESTER(4, 16);
 DEFINE_MLAS_TESTER(4, 32);
 DEFINE_MLAS_TESTER(4, 64);
+DEFINE_MLAS_TESTER(4, 128);
 
 #undef DEFINE_MLAS_TESTER
 
@@ -258,6 +259,7 @@ static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   count += SQNBitGemmShortExecuteTest<4, 16>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 32>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 64>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<4, 128>::RegisterShortExecuteTests();
 
   return count;
 }
