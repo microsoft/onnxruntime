@@ -86,11 +86,11 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
   params1.ldc = N;
   params1.B = B1_packed.data();
   params1.OutputProcessor = nullptr;
-
-  MlasJblasQ4GemmBatch(M, N, K, 1, &params1, tp.get());
+  std::vector<int8_t> workspace(size_t(M) * K * 4);
+  MlasJblasQ4GemmBatch(M, N, K, 1, &params1, workspace.data(), tp.get());
 
   for (auto _ : state) {
-    MlasJblasQ4GemmBatch(M, N, K, 1, &params1, tp.get());
+    MlasJblasQ4GemmBatch(M, N, K, 1, &params1, workspace.data(), tp.get());
   }
 }
 
