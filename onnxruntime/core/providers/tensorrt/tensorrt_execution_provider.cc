@@ -3192,7 +3192,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         trt_context = trt_state->context->get();
       }
 
-    // Get input and output binding names
+      // Get input and output binding names
       int total_bindings = trt_engine->getNbIOTensors();
       std::vector<char const*> input_binding_names, output_binding_names;
       for (int i = 0, end = total_bindings; i < end; ++i) {
