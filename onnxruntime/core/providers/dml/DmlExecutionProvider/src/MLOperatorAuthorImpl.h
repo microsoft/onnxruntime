@@ -204,6 +204,11 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept;
 
+    HRESULT STDMETHODCALLTYPE TryGetConstantInputTensor(
+        uint32_t inputIndex,
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept;
+
  protected:
     // Lifetime is managed by the caller and guaranteed to outlive this class
     const onnxruntime::OpNodeProtoHelper<NodeInfoImpl_t>* m_impl = nullptr;
