@@ -352,7 +352,7 @@ Status GemmFloat8::ComputeGemm(
       ". Check NVIDIA documentation to see what combination is valid: ",
       "https://docs.nvidia.com/cuda/cublas/"
       "index.html?highlight=cublasLtMatmulAlgoGetHeuristic#"
-      "cublasltmatmulalgogetheuristic.");
+      "cublasltmatmulalgogetheuristic. CUDA>=11.8 is required to use float 8 types.");
 
   void* workspace = nullptr;
   if (workspaceSize > 0) {
@@ -388,7 +388,8 @@ Status GemmFloat8::ComputeGemm(
       ", shape_A=", shape_A[0], "x", shape_A[1], ", shape_B=", shape_B[0], "x",
       shape_B[1], ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb,
       ", ldd=", ldd, ", workspaceSize=", workspaceSize,
-      ", rowMajorCompute=", (row_major_compute ? 1 : 0), ".");
+      ", rowMajorCompute=", (row_major_compute ? 1 : 0),
+      ". CUDA>=11.8 is required to use float 8 types.");
 
   if (workspaceSize > 0) {
     CUDA_RETURN_IF_ERROR(cudaFree(workspace));

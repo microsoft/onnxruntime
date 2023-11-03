@@ -18,10 +18,8 @@ from pathlib import Path
 def version_to_tuple(version: str) -> tuple:
     v = []
     for s in version.split("."):
-        try:
+        with contextlib.suppress(ValueError):
             v.append(int(s))
-        except ValueError:
-            pass
     return tuple(v)
 
 
