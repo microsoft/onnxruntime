@@ -42,6 +42,7 @@
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_expand.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_reduce.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_unsqueeze.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_squeeze.cc"
       )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
