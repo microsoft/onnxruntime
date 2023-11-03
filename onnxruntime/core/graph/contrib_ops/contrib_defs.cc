@@ -2028,6 +2028,7 @@ no offset
 
                                   matmulQ4ShapeInference(ctx, 0, 1, 2, blk_quant_type);
                                 }));
+#endif
 
 
 constexpr const char* TransposeMatMul_doc = R"DOC(
