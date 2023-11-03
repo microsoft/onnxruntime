@@ -889,7 +889,7 @@ class TestDistributedUnsqueeze(unittest.TestCase):
         assert "S" not in input_shard_specs[1], "Shape should not be sharded."
 
         expected = data_tensor.copy()
-        for axis in axes:
+        for axis in sorted(axes):
             expected = np.expand_dims(expected, axis=axis)
 
         local_expected = shard_tensor_per_spec(expected, rank, output_shard_specs[0], output_device_meshes[0])
@@ -951,6 +951,110 @@ class TestDistributedUnsqueeze(unittest.TestCase):
             input_shard_specs=("RR", "R"),
             output_device_meshes=[np.array([0, 1])],
             output_shard_specs=("RRR",),
+        )
+
+
+class TestDistributedSqueeze(unittest.TestCase):
+    def _check_distributed_squeeze(
+        self,
+        shape: Tuple[int, ...],
+        axes: Tuple[int, ...],
+        input_device_meshes: np.ndarray,
+        input_shard_specs: Tuple[str, ...],
+        output_device_meshes: np.ndarray,
+        output_shard_specs: Tuple[str, ...],
+    ):
+        assert len(input_device_meshes) == len(input_shard_specs)
+        assert len(output_device_meshes) == len(output_shard_specs)
+
+        input_device_mesh_shapes, input_device_mesh_elements = translate_all_device_meshes(input_device_meshes)
+        output_device_mesh_shapes, output_device_mesh_elements = translate_all_device_meshes(output_device_meshes)
+
+        @onnxscript.script()
+        def distributed_squeeze_instance(data_tensor: FLOAT, axes_tensor: INT64):
+            return MICROSOFT_OPSET.DistributedSqueeze(
+                data_tensor,
+                axes_tensor,
+                input_device_mesh_shapes=input_device_mesh_shapes,
+                input_device_mesh_elements=input_device_mesh_elements,
+                input_shard_specs=input_shard_specs,
+                output_device_mesh_shapes=output_device_mesh_shapes,
+                output_device_mesh_elements=output_device_mesh_elements,
+                output_shard_specs=output_shard_specs,
+            )
+
+        rank = comm.Get_rank()
+        data_tensor = np.arange(np.prod(shape), dtype=np.float32).reshape(*shape)
+        axes_tensor = np.array(axes, dtype=np.int64)
+
+        local_data_tensor = shard_tensor_per_spec(data_tensor, rank, input_shard_specs[0], input_device_meshes[0])
+        assert "S" not in input_shard_specs[1], "Shape should not be sharded."
+
+        expected = data_tensor.copy()
+        for axis in sorted(axes, reverse=True):
+            expected = np.squeeze(expected, axis=axis)
+
+        local_expected = shard_tensor_per_spec(expected, rank, output_shard_specs[0], output_device_meshes[0])
+
+        onnx_model = distributed_squeeze_instance.to_model_proto(
+            input_types=[FLOAT[tuple(local_data_tensor.shape)], INT64[tuple(axes_tensor.shape)]],
+            output_types=[FLOAT[tuple(local_expected.shape)]],
+        )
+
+        # Each MPI process owns a sharded model.
+        sess = ort.InferenceSession(
+            onnx_model.SerializeToString(),
+            providers=["CUDAExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}],
+        )
+
+        # Each MPI process executes its sharded model.
+        # The result is `local` tensor stored on a specific MPI rank
+        # instead of `logical` tensor.
+        result = sess.run(
+            None,
+            {
+                "data_tensor": local_data_tensor,
+                "axes_tensor": axes_tensor,
+            },
+        )
+
+        # Compare local tensor and the corresponding logical sub-tensor
+        # obtained by sharding logical tensor following output's sharding spec.
+        np.testing.assert_allclose(result[0], local_expected, rtol=1e-5, atol=1e-8)
+
+    def test_squeeze_sharded(self):
+        # data: shape=[8,1], spec=(RR, [0,1])
+        # shape: shape=[2], spec=(R, [0,1]), value=[1,4]
+        # output: shape=[8,4], spec=(RS, [0,1])
+        self._check_distributed_squeeze(
+            shape=(
+                1,
+                2,
+            ),
+            axes=(0,),
+            input_device_meshes=[np.array([0, 1])] * 2,
+            input_shard_specs=("RS[0]", "R"),
+            output_device_meshes=[np.array([0, 1])],
+            output_shard_specs=("S[0]",),
+        )
+
+    def test_squeeze_not_sharded(self):
+        # data: shape=[8,1], spec=(RR, [0,1])
+        # shape: shape=[2], spec=(R, [0,1]), value=[1,4]
+        # output: shape=[8,4], spec=(RS, [0,1])
+        self._check_distributed_squeeze(
+            shape=(
+                8,
+                1,
+                1,
+                1,
+            ),
+            axes=(1, 3,),
+            input_device_meshes=[np.array([0, 1])] * 2,
+            input_shard_specs=("RRRR", "R"),
+            output_device_meshes=[np.array([0, 1])],
+            output_shard_specs=("R",),
         )
 
 
