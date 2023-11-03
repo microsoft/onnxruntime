@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <codecvt>
 #include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/config_options.h"
@@ -170,5 +171,39 @@ struct SessionOptions {
   OrtLoggingFunction user_logging_function = nullptr;
   void* user_logging_param = nullptr;
 };
+
+inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {
+  os << "Session Options { "
+     << " execution_mode:" << session_options.execution_mode
+     << " execution_order:" << session_options.execution_order
+     << " enable_profiling:" << session_options.enable_profiling
+     << " optimized_model_filepath:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.optimized_model_filepath)
+     << " enable_mem_pattern:" << session_options.enable_mem_pattern
+     << " enable_mem_reuse:" << session_options.enable_mem_reuse
+     << " enable_cpu_mem_arena:" << session_options.enable_cpu_mem_arena
+     << " profile_file_prefix:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.profile_file_prefix)
+     << " session_logid:" << session_options.session_logid
+     << " session_log_severity_level:" << session_options.session_log_severity_level
+     << " session_log_verbosity_level:" << session_options.session_log_verbosity_level
+     << " max_num_graph_transformation_steps:" << session_options.max_num_graph_transformation_steps
+     << " graph_optimization_level:" << static_cast<int>(session_options.graph_optimization_level)
+     << " intra_op_param:" << session_options.intra_op_param
+     << " inter_op_param:" << session_options.inter_op_param
+     //<< " free_dimension_overrides:"           << session_options.free_dimension_overrides
+     << " use_per_session_threads:" << session_options.use_per_session_threads
+     << " thread_pool_allow_spinning:" << session_options.thread_pool_allow_spinning
+     << " use_deterministic_compute:" << session_options.use_deterministic_compute
+     << " config_options: { " << session_options.config_options << " }"
+     //<< " initializers_to_share_map:"          << session_options.initializers_to_share_map
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+     //<< " external_initializers:"             << session_options.external_initializers
+#endif
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+     //<< " custom_op_libs:" << session_options.custom_op_libs
+#endif
+     << " }";
+  return os;
+}
+
 
 }  // namespace onnxruntime

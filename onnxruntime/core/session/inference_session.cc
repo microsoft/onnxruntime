@@ -10,7 +10,6 @@
 #include <string>
 #include <thread>
 #include <queue>
-#include <codecvt>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
@@ -49,6 +48,7 @@
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
+#include "core/platform/tracing.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
@@ -345,35 +345,47 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // after the invocation of FinalizeSessionOptions.
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
 
-  LOGS(*session_logger_, INFO) << "Session Options { "
-                               << " execution_mode:" << session_options_.execution_mode
-                               << " execution_order:" << session_options_.execution_order
-                               << " enable_profiling:" << session_options_.enable_profiling
-                               << " optimized_model_filepath:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options_.optimized_model_filepath)
-                               << " enable_mem_pattern:" << session_options_.enable_mem_pattern
-                               << " enable_mem_reuse:" << session_options_.enable_mem_reuse
-                               << " enable_cpu_mem_arena:" << session_options_.enable_cpu_mem_arena
-                               << " profile_file_prefix:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options_.profile_file_prefix)
-                               << " session_logid:" << session_options_.session_logid
-                               << " session_log_severity_level:" << session_options_.session_log_severity_level
-                               << " session_log_verbosity_level:" << session_options_.session_log_verbosity_level
-                               << " max_num_graph_transformation_steps:" << session_options_.max_num_graph_transformation_steps
-                               << " graph_optimization_level:" << static_cast<int>(session_options_.graph_optimization_level)
-                               << " intra_op_param:" << session_options_.intra_op_param
-                               << " inter_op_param:" << session_options_.inter_op_param
-                               //<< " free_dimension_overrides:"           << session_options_.free_dimension_overrides
-                               << " use_per_session_threads:" << session_options_.use_per_session_threads
-                               << " thread_pool_allow_spinning:" << session_options_.thread_pool_allow_spinning
-                               << " use_deterministic_compute:" << session_options_.use_deterministic_compute
-                               << " config_options: { " << session_options_.config_options << " }"
-  //<< " initializers_to_share_map:"          << session_options_.initializers_to_share_map
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-  //<< " external_initializers:"             << session_options_.external_initializers
-#endif
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  //<< " custom_op_libs:" << session_options_.custom_op_libs
-#endif
-                               << " }";
+  LOGS(*session_logger_, INFO) << session_options;
+  // const Env& env = Env::Default();
+  // env.GetTelemetryProvider().LogSessionOptions(session_options);
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "SessionOptions",
+                    TraceLoggingUInt8(static_cast<UINT8>(session_options.execution_mode), "execution_mode"),
+                    TraceLoggingUInt8(static_cast<UINT8>(session_options.execution_order), "execution_order"),
+                    TraceLoggingBoolean(session_options.enable_profiling, "enable_profiling"),
+                    TraceLoggingString(ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.optimized_model_filepath).c_str(), "optimized_model_filepath"),
+                    TraceLoggingBoolean(session_options.enable_mem_pattern, "enable_mem_pattern"),
+                    TraceLoggingBoolean(session_options.enable_mem_reuse, "enable_mem_reuse"),
+                    TraceLoggingBoolean(session_options.enable_cpu_mem_arena, "enable_cpu_mem_arena"),
+                    TraceLoggingString(ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.profile_file_prefix).c_str(), "profile_file_prefix"),
+                    TraceLoggingString(session_options.session_logid.c_str(), "session_logid"),
+                    TraceLoggingInt8(static_cast<INT8>(session_options.session_log_severity_level), "session_log_severity_level"),
+                    TraceLoggingInt8(static_cast<INT8>(session_options.session_log_verbosity_level), "session_log_verbosity_level"),
+                    TraceLoggingUInt32(session_options.max_num_graph_transformation_steps, "max_num_graph_transformation_steps"),
+                    TraceLoggingUInt8(static_cast<UINT8>(session_options.graph_optimization_level), "graph_optimization_level"),
+                    TraceLoggingBoolean(session_options.use_per_session_threads, "use_per_session_threads"),
+                    TraceLoggingBoolean(session_options.thread_pool_allow_spinning, "thread_pool_allow_spinning"),
+                    TraceLoggingBoolean(session_options.use_deterministic_compute, "use_deterministic_compute"));
+
+  TraceLoggingWrite(
+      telemetry_provider_handle,
+      "SessionOptions_IntraOrtThreadPoolParams",
+      TraceLoggingInt32(session_options.intra_op_param.thread_pool_size, "thread_pool_size"),
+      TraceLoggingBoolean(session_options.intra_op_param.auto_set_affinity, "auto_set_affinity"),
+      TraceLoggingBoolean(session_options.intra_op_param.allow_spinning, "allow_spinning"),
+      TraceLoggingInt32(session_options.intra_op_param.dynamic_block_base_, "dynamic_block_base_"),
+      TraceLoggingUInt32(session_options.intra_op_param.stack_size, "stack_size"),
+      TraceLoggingString(!session_options.intra_op_param.affinity_str.empty() ? session_options.intra_op_param.affinity_str.c_str() : "", "affinity_str"),
+      TraceLoggingBoolean(session_options.intra_op_param.set_denormal_as_zero, "set_denormal_as_zero"));
+
+  for (const auto& config_pair : session_options.config_options.configurations) {
+      TraceLoggingWrite(
+          telemetry_provider_handle,
+          "SessionOptions_ConfigEntry",
+          TraceLoggingString(config_pair.first.c_str(), "Key"),
+          TraceLoggingString(config_pair.second.c_str(), "Value"));
+  }
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
