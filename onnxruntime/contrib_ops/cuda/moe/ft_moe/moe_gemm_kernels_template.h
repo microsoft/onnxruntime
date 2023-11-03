@@ -826,7 +826,34 @@ void MoeGemmRunner<T, WeightType>::moe_gemm_bias_act(const T*          A,
                                            num_experts,
                                            stream);
             break;
+        case ActivationType::Silu:
+            run_gemm<EpilogueOpBiasSilu>(A,
+                                         B,
+                                         weight_scales,
+                                         biases,
+                                         C,
+                                         total_rows_before_expert,
+                                         total_rows,
+                                         gemm_n,
+                                         gemm_k,
+                                         num_experts,
+                                         stream);
+            break;
+        case ActivationType::Identity:
+            run_gemm<EpilogueOpBias>(A,
+                                     B,
+                                     weight_scales,
+                                     biases,
+                                     C,
+                                     total_rows_before_expert,
+                                     total_rows,
+                                     gemm_n,
+                                     gemm_k,
+                                     num_experts,
+                                     stream);
+            break;
         case ActivationType::InvalidType:
+            std::runtime_error("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");
             break;
         default: {
             std::runtime_error("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");

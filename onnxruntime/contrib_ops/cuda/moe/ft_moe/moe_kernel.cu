@@ -854,7 +854,11 @@ __global__ void finalize_moe_routing_kernel(const T*   expanded_permuted_rows,
     const int original_row    = blockIdx.x;
     const int num_rows        = gridDim.x;
     T*        reduced_row_ptr = reduced_unpermuted_output + original_row * cols;
-    const T*  skip_1_row_ptr  = skip_1 + original_row * cols;
+
+    const T*  skip_1_row_ptr;
+    if (RESIDUAL_NUM == 1) {
+        skip_1_row_ptr = skip_1 + original_row * cols;
+    }
     const T*  skip_2_row_ptr;
     if (RESIDUAL_NUM == 2) {
         skip_2_row_ptr = skip_2 + original_row * cols;
@@ -862,7 +866,10 @@ __global__ void finalize_moe_routing_kernel(const T*   expanded_permuted_rows,
 
     for (int tid = threadIdx.x; tid < cols; tid += blockDim.x) {
         T thread_output;
-        if (RESIDUAL_NUM == 1) {
+        if (RESIDUAL_NUM == 0) {
+            thread_output = T(0);
+        }
+        else if (RESIDUAL_NUM == 1) {
             thread_output = skip_1_row_ptr[tid];
         }
         else if (RESIDUAL_NUM == 2) {
@@ -883,6 +890,32 @@ __global__ void finalize_moe_routing_kernel(const T*   expanded_permuted_rows,
         }
         reduced_row_ptr[tid] = thread_output;
     }
+}
+
+template<typename T>
+void finalize_moe_routing_kernelLauncher(const T*     expanded_permuted_rows,
+                                         T*           reduced_unpermuted_output,
+                                         const T*     bias,
+                                         const T*     scales,
+                                         const int*   expanded_source_row_to_expanded_dest_row,
+                                         const int*   expert_for_source_row,
+                                         const int    num_rows,
+                                         const int    cols,
+                                         const int    k,
+                                         cudaStream_t stream)
+{
+    const int blocks  = num_rows;
+    const int threads = std::min(cols, 1024);
+    finalize_moe_routing_kernel<T, 0><<<blocks, threads, 0, stream>>>(expanded_permuted_rows,
+                                                                      reduced_unpermuted_output,
+                                                                      nullptr,
+                                                                      nullptr,
+                                                                      bias,
+                                                                      scales,
+                                                                      expanded_source_row_to_expanded_dest_row,
+                                                                      expert_for_source_row,
+                                                                      cols,
+                                                                      k);
 }
 
 template<typename T>
@@ -971,6 +1004,26 @@ template void initialize_moe_routing_kernelLauncher(
     const half*, half*, const int*, int*, const int, const int, const int, const int, cudaStream_t);
 
 // ==================== Specializations for final routing ===================================
+template void finalize_moe_routing_kernelLauncher(const float*,
+                                                  float*,
+                                                  const float*,
+                                                  const float*,
+                                                  const int*,
+                                                  const int*,
+                                                  const int,
+                                                  const int,
+                                                  const int,
+                                                  cudaStream_t);
+template void finalize_moe_routing_kernelLauncher(const half*,
+                                                  half*,
+                                                  const half*,
+                                                  const half*,
+                                                  const int*,
+                                                  const int*,
+                                                  const int,
+                                                  const int,
+                                                  const int,
+                                                  cudaStream_t);
 template void finalize_moe_routing_kernelLauncher(const float*,
                                                   float*,
                                                   const float*,
