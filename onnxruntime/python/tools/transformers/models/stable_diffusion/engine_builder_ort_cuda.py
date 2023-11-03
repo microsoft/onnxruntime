@@ -144,7 +144,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
         self._configure(
             "unetxl",
             onnx_opset_version=onnx_opset_version,
-            use_cuda_graph=False,  # TODO: fix Runtime Error with cuda graph
+            use_cuda_graph=self.use_cuda_graph,
         )
 
         self._configure(
@@ -195,7 +195,9 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 continue
 
             onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
-            onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True)
+            onnx_fp32_path = self.get_onnx_path(model_name, engine_dir, opt=True, suffix=".fp32")
+            onnx_fp16_path = self.get_onnx_path(model_name, engine_dir, opt=True, suffix=".fp16")
+            onnx_opt_path = onnx_fp16_path if self.model_config[model_name].fp16 else onnx_fp32_path
             if not os.path.exists(onnx_opt_path):
                 if not os.path.exists(onnx_path):
                     print("----")
@@ -225,13 +227,31 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 else:
                     logger.info("Found cached model: %s", onnx_path)
 
-                # Run graph optimization and convert to mixed precision (computation in FP16)
+                # Fp32 optimized model.
+                # If final target is fp16 model, we save fp32 optimized model so that it is easy to tune
+                # fp16 conversion. That could save a lot of time in developing.
+                if not os.path.exists(onnx_fp32_path):
+                    print("------")
+                    logger.info("Generating optimized model: %s", onnx_fp32_path)
+
+                    # There is risk that some ORT fused ops fp32 only. So far, we have not encountered such issue.
+                    model_obj.optimize_ort(
+                        onnx_path,
+                        onnx_fp32_path,
+                        to_fp16=False,
+                        fp32_op_list=self.model_config[model_name].force_fp32_ops,
+                        optimize_by_ort=self.model_config[model_name].optimize_by_ort,
+                    )
+                else:
+                    logger.info("Found cached optimized model: %s", onnx_fp32_path)
+
+                # Fp16 optimized model
                 if not os.path.exists(onnx_opt_path):
                     print("------")
                     logger.info("Generating optimized model: %s", onnx_opt_path)
 
                     model_obj.optimize_ort(
-                        onnx_path,
+                        onnx_fp32_path,
                         onnx_opt_path,
                         to_fp16=self.model_config[model_name].fp16,
                         fp32_op_list=self.model_config[model_name].force_fp32_ops,
@@ -245,7 +265,9 @@ class OrtCudaEngineBuilder(EngineBuilder):
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
 
-            onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True)
+            onnx_fp32_path = self.get_onnx_path(model_name, engine_dir, opt=True, suffix=".fp32")
+            onnx_fp16_path = self.get_onnx_path(model_name, engine_dir, opt=True, suffix=".fp16")
+            onnx_opt_path = onnx_fp16_path if self.model_config[model_name].fp16 else onnx_fp32_path
 
             use_cuda_graph = self.model_config[model_name].use_cuda_graph
 
