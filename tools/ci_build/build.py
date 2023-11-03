@@ -6,7 +6,6 @@ import argparse
 import contextlib
 import json
 import os
-import packaging.version as pv
 import platform
 import re
 import shlex
@@ -14,6 +13,17 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+
+def version_to_tuple(version: str) -> tuple:
+    v = []
+    for s in version.split("."):
+        try:
+            v.append(int(s))
+        except ValueError:
+            pass
+    return tuple(v)
+
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -1085,7 +1095,7 @@ def generate_build_tree(
         nvcc_threads = number_of_nvcc_threads(args)
         cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
         if not disable_float8_types and args.cuda_version:
-            if pv.Version(args.cuda_version) < pv.Version("11.8"):
+            if version_to_tuple(args.cuda_version) < (11, 8):
                 raise BuildError(
                     f"Float 8 types require CUDA>=11.8. They must be disabled on CUDA=={args.cuda_version}. "
                     f"See option disable_types."
