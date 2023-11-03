@@ -706,7 +706,7 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
  *
  *  Note: Please see more details about "EPContext" contrib op in contrib_defs.cc
  */
-bool HasPrecompiledEngine(const GraphViewer& graph) {
+bool IsFusedGraphHasCtxNode(const GraphViewer& graph) {
   if (graph.NumberOfNodes() == 1) {
     for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
       auto node = graph.GetNode(i);
@@ -739,7 +739,7 @@ std::filesystem::path LocateEnginePath(const onnxruntime::Path& model_path, std:
 /*
  * The sanity check for EP context contrib op.
  */
-bool IsValidEPContextNode(const GraphViewer& graph) {
+bool IsValidCtxNode(const GraphViewer& graph) {
   assert(graph.NumberOfNodes() == 1);
   assert(graph.GetNode(0)->OpType() == EP_CONTEXT_OP_TYPE);
   auto node = graph.GetNode(0);

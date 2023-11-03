@@ -2199,13 +2199,14 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and 
   // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
   // So, simply return the ComputeCapability here.
-  if (HasPrecompiledEngine(graph)) {
-    if (IsValidEPContextNode(graph)) {
+  if (IsFusedGraphHasCtxNode(graph)) {
+    if (IsValidCtxNode(graph)) {
       SubGraph_t supported_node_vector = {{0}, false};
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+    } else {
+      LOGS_DEFAULT(ERROR) << "[TensorRT EP] It's not a valid EP context contrib op";
     }
-    LOGS_DEFAULT(ERROR) << "[TensorRT EP] It's not a valid EP context contrib op";
     return result;
   }
 
@@ -3674,7 +3675,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     Status status;
-    if (HasPrecompiledEngine(graph_body_viewer)) {
+    if (IsFusedGraphHasCtxNode(graph_body_viewer)) {
       status = CreateNodeComputeFromPrecompiledEngine(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
     } else {
       status = CreateNodeComputeFromOrtGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
