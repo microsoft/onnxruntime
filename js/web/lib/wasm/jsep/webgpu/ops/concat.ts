@@ -102,7 +102,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
     enableInputShapesUniforms.push(enableShapesUniforms(inputs[i].dims.length));
     inputShapeOrRanks.push(enableInputShapesUniforms[i] ? inputs[i].dims.length : inputs[i].dims);
     inputVars[i] = inputVariable(`input${i}`, dataType, inputShapeOrRanks[i]);
-    inputDependencies.push('rank');
+    inputDependencies.push(enableInputShapesUniforms[i] ? 'rank' : 'dims');
   }
   programUniforms.push({type: 'uint32', data: sizeInConcatAxis});
   for (let i = 0; i < inputs.length; ++i) {
