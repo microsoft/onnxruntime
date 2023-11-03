@@ -946,7 +946,11 @@ class TestDistributedUnsqueeze(unittest.TestCase):
                 8,
                 2,
             ),
-            axes=(4, 1, 0,),
+            axes=(
+                4,
+                1,
+                0,
+            ),
             input_device_meshes=[np.array([0, 1])] * 2,
             input_shard_specs=("RS[0]", "R"),
             output_device_meshes=[np.array([0, 1])],

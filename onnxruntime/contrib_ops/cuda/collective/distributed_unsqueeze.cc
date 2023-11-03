@@ -46,8 +46,7 @@ Status DistributedUnsqueeze<T, Tind>::ComputeInternal(OpKernelContext* context) 
       output_spec == native_output_spec,
       "Re-sharding is required but not supported yet for this case. ",
       "Specified: ", output_spec.ToString(),
-      " Actual: ", native_output_spec.ToString()
-  );
+      " Actual: ", native_output_spec.ToString());
   auto output_tensor = context->Output(0, dims);
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
       output_tensor->MutableDataRaw(),

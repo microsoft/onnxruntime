@@ -31,8 +31,8 @@ Status DistributedSqueeze<T, Tind>::ComputeInternal(OpKernelContext* context) co
 
   // Non-negative collection of axes to drop.
   std::vector<Tind> axes;
-  for (const auto axis: axes_span) {
-    axes.push_back(axis >= 0? axis : axis + input_tensor->Shape().NumDimensions());
+  for (const auto axis : axes_span) {
+    axes.push_back(axis >= 0 ? axis : axis + input_tensor->Shape().NumDimensions());
   }
   // Shape after dropping axes.
   auto dims = input_tensor->Shape().AsShapeVector();
@@ -44,8 +44,7 @@ Status DistributedSqueeze<T, Tind>::ComputeInternal(OpKernelContext* context) co
   }
   auto native_output_spec = TensorPartitionSpec::CreateByDropAxes(
       input_spec,
-      axes
-  );
+      axes);
   ORT_ENFORCE(
       output_spec == native_output_spec,
       "Re-sharding is required but not supported yet for this case.");
