@@ -21,7 +21,7 @@ struct CudaContext : public CustomOpContext {
   cublasHandle_t cublas_handle = {};
   OrtAllocator* deferred_cpu_allocator = {};
 
-  void Init(const OrtKernelContext& kernel_ctx) override {
+  void Init(const OrtKernelContext& kernel_ctx) {
     const auto& ort_api = Ort::GetApi();
     void* resource = {};
     OrtStatus* status = nullptr;
