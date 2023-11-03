@@ -12,6 +12,7 @@ from fusion_biassplitgelu import FusionBiasSplitGelu
 from fusion_group_norm import FusionGroupNorm
 from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions
+from fusion_skip_group_norm import FusionSkipGroupNorm
 from fusion_transpose import FusionInsertTranspose, FusionTranspose
 from onnx import ModelProto
 from onnx_model import OnnxModel
@@ -57,8 +58,8 @@ class UnetOnnxModel(BertOnnxModel):
             logger.info("Removed %d Div nodes", len(nodes_to_remove))
 
     def convert_conv_to_nhwc(self):
-        # Do not update weight here since save external data has a bug
-        conv_to_nhwc_conv = FusionNhwcConv(self, update_weight=False)
+        # Transpose weights in offline might help since ORT does not apply constant-folding on Transpose nodes.
+        conv_to_nhwc_conv = FusionNhwcConv(self, update_weight=True)
         conv_to_nhwc_conv.apply()
 
     def merge_adjacent_transpose(self):
@@ -127,9 +128,9 @@ class UnetOnnxModel(BertOnnxModel):
 
         self.fuse_reshape()
 
+        group_norm_channels_last = (options is None) or options.group_norm_channels_last
         if (options is None) or options.enable_group_norm:
-            channels_last = (options is None) or options.group_norm_channels_last
-            group_norm_fusion = FusionGroupNorm(self, channels_last)
+            group_norm_fusion = FusionGroupNorm(self, group_norm_channels_last)
             group_norm_fusion.apply()
 
             insert_transpose_fusion = FusionInsertTranspose(self)
@@ -149,6 +150,10 @@ class UnetOnnxModel(BertOnnxModel):
 
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
         self.utils.remove_useless_reshape_nodes()
+
+        if (options is None) or options.enable_skip_group_norm:
+            skip_group_norm_fusion = FusionSkipGroupNorm(self)
+            skip_group_norm_fusion.apply()
 
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
@@ -181,6 +186,7 @@ class UnetOnnxModel(BertOnnxModel):
             "SkipLayerNormalization",
             "BiasSplitGelu",
             "GroupNorm",
+            "SkipGroupNorm",
             "NhwcConv",
             "BiasAdd",
         ]

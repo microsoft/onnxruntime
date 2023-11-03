@@ -27,7 +27,7 @@ class FusionSkipLayerNormalization(Fusion):
     ):
         super().__init__(model, fused_op_type, search_op_types)
         # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
-        self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
+        self.shape_infer_helper = self.model.infer_runtime_shape(update=True)
 
         if self.shape_infer_helper is None:
             # TODO(tianleiwu): support subgraph in shape inference or add broadcasting in SkipLayerNormalization op.
