@@ -374,6 +374,7 @@ Status EfficientAttention(
   p.num_heads = parameters.num_heads;
   p.sequence_length = parameters.sequence_length;
   p.kv_sequence_length = parameters.total_sequence_length;
+  p.max_sequence_length = parameters.total_sequence_length;
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
   p.causal = parameters.is_unidirectional;
@@ -395,6 +396,7 @@ Status EfficientAttention(
   p.attn_bias = nullptr == data.relative_position_bias ? nullptr : data.relative_position_bias;
   p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
   p.output = data.output;
+  p.is_kv_bsnh = true;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(parameters.v_head_size, sizeof(T) == sizeof(float))
                     ? data.scratch
                     : nullptr;
