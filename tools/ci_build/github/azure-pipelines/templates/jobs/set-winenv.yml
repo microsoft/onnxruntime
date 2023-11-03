@@ -4,6 +4,10 @@ parameters:
   - name: DownloadCUDA
     type: boolean
     default: false
+  - name: DownloadTRT
+    type: boolean
+    default: false
+
   - name: PrimaryCUDAVersion
     type: string
     default: '11.8'
