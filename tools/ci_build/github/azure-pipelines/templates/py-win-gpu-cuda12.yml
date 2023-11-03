@@ -65,7 +65,7 @@ jobs:
         parameters:
           EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
           DownloadCUDA: true
-          ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+          ${{ if contains(parameters.BUILD_PY_PARAMETERS, 'use_tensorrt') }}:
             DownloadTRT: true
 
       - task: PythonScript@0
