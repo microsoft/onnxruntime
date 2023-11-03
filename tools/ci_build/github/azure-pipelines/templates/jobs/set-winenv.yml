@@ -12,7 +12,7 @@ parameters:
     default: '12.2'
 
 steps:
-  - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
+  - ${{ if or(eq(parameters.DownloadCUDA, 'true'), eq(parameters.DownloadTRT, 'true')) }}:
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.PrimaryCUDAVersion }}" $(Agent.TempDirectory)
         displayName: 'Download Primary CUDA SDK v${{ parameters.PrimaryCUDAVersion }}'
