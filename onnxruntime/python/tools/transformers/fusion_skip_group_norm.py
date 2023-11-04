@@ -242,7 +242,7 @@ class FusionSkipGroupNorm(Fusion):
         skip_group_norm.domain = "com.microsoft"
 
         self.increase_counter(
-            f"SkipGroupNorm(add_out={len(outputs) > 1} bias={bias is not None} broadcast={broadcast})"
+            f"SkipGroupNorm(add_out={int(len(outputs) > 1)} bias={int(bias is not None)} broadcast={int(broadcast)})"
         )
 
         # Pass attributes from GroupNorm node to SkipGroupNorm

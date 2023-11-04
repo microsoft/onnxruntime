@@ -91,13 +91,6 @@ class OrtStableDiffusionOptimizer:
         if keep_outputs:
             m.prune_graph(outputs=keep_outputs)
 
-        if float16:
-            logger.info("Convert to float16 ...")
-            m.convert_float_to_float16(
-                keep_io_types=keep_io_types,
-                op_block_list=fp32_op_list,
-            )
-
         use_external_data_format = m.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF
 
         # Note that ORT < 1.16 could not save model larger than 2GB.
@@ -109,6 +102,13 @@ class OrtStableDiffusionOptimizer:
 
         if optimize_by_ort and (version.parse(ort_version) >= version.parse("1.16.0") or not use_external_data_format):
             m = self.optimize_by_ort(m, use_external_data_format=use_external_data_format)
+
+        if float16:
+            logger.info("Convert to float16 ...")
+            m.convert_float_to_float16(
+                keep_io_types=keep_io_types,
+                op_block_list=fp32_op_list,
+            )
 
         m.get_operator_statistics()
         m.get_fused_operator_statistics()

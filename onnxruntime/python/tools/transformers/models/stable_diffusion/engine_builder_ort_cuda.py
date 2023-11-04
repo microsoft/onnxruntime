@@ -164,6 +164,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
         opt_batch_size: int = 1,
         force_engine_rebuild: bool = False,
         device_id: int = 0,
+        save_fp32_intermediate_model=False,
     ):
         self.torch_device = torch.device("cuda", device_id)
         self.load_models(framework_model_dir)
@@ -230,35 +231,38 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 # Generate fp32 optimized model.
                 # If final target is fp16 model, we save fp32 optimized model so that it is easy to tune
                 # fp16 conversion. That could save a lot of time in developing.
-                if not os.path.exists(onnx_fp32_path):
-                    print("------")
-                    logger.info("Generating optimized model: %s", onnx_fp32_path)
+                use_fp32_intermediate = save_fp32_intermediate_model and self.model_config[model_name].fp16
+                if use_fp32_intermediate:
+                    if not os.path.exists(onnx_fp32_path):
+                        print("------")
+                        logger.info("Generating optimized model: %s", onnx_fp32_path)
 
-                    # There is risk that some ORT fused ops fp32 only. So far, we have not encountered such issue.
-                    model_obj.optimize_ort(
-                        onnx_path,
-                        onnx_fp32_path,
-                        to_fp16=False,
-                        fp32_op_list=self.model_config[model_name].force_fp32_ops,
-                        optimize_by_ort=self.model_config[model_name].optimize_by_ort,
-                    )
-                else:
-                    logger.info("Found cached optimized model: %s", onnx_fp32_path)
+                        # There is risk that some ORT fused ops fp32 only. So far, we have not encountered such issue.
+                        model_obj.optimize_ort(
+                            onnx_path,
+                            onnx_fp32_path,
+                            to_fp16=False,
+                            fp32_op_list=self.model_config[model_name].force_fp32_ops,
+                            optimize_by_ort=self.model_config[model_name].optimize_by_ort,
+                        )
+                    else:
+                        logger.info("Found cached optimized model: %s", onnx_fp32_path)
 
-                # Generate fp16 optimized model.
+                # Generate the final optimized model.
                 if not os.path.exists(onnx_opt_path):
                     print("------")
                     logger.info("Generating optimized model: %s", onnx_opt_path)
 
-                    # The input is fp32 optimized model, so we need not run fusion again in this step.
-                    # This step will convert model to fp16, then run ORT optimization to fuse fp16 ops if possible.
+                    # When there is fp32 intermediate optimized model, this will just convert model from fp32 to fp16.
+                    optimize_by_ort = False if use_fp32_intermediate else self.model_config[model_name].optimize_by_ort
+
                     model_obj.optimize_ort(
-                        onnx_fp32_path,
+                        onnx_fp32_path if use_fp32_intermediate else onnx_path,
                         onnx_opt_path,
                         to_fp16=self.model_config[model_name].fp16,
                         fp32_op_list=self.model_config[model_name].force_fp32_ops,
-                        optimize_by_ort=self.model_config[model_name].optimize_by_ort,
-                        optimize_by_fusion=False,
+                        optimize_by_ort=optimize_by_ort,
+                        optimize_by_fusion=not use_fp32_intermediate,
                     )
                 else:
                     logger.info("Found cached optimized model: %s", onnx_opt_path)
