@@ -146,7 +146,7 @@
 <div class="container mx-auto px-10 my-10">
 	<div class="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-10">
 		<div class="col-span-2">
-			<h1 class="text-4xl">On-Device Training</h1>
+			<h1 class="text-4xl" id = "on-device-training">On-Device Training</h1>
 			<br /><br />
 			<p class="text-xl">
 				On-Device Training refers to the process of training a model on an edge device, such as
