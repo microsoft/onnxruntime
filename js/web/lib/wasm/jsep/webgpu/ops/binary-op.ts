@@ -33,9 +33,9 @@ const createBinaryOpProgramShader =
       const inputAShapeOrRank = useShapesUniforms ? dimsA.length : dimsA;
       const inputBShapeOrRank = useShapesUniforms ? dimsB.length : dimsB;
       const outputShapeOrRank = useShapesUniforms ? dimsOutput.length : dimsOutput;
-      const output = outputVariable('outputData', typeOutput, outputShapeOrRank, 4, vectorize && !doBroadcast);
-      const a = inputVariable('aData', typeA, inputAShapeOrRank, 4, vectorize && !doBroadcast);
-      const b = inputVariable('bData', typeB, inputBShapeOrRank, 4, vectorize && !doBroadcast);
+      const output = outputVariable('outputData', typeOutput, outputShapeOrRank, 4);
+      const a = inputVariable('aData', typeA, inputAShapeOrRank, 4);
+      const b = inputVariable('bData', typeB, inputBShapeOrRank, 4);
 
       let assignment: string;
       if (vectorize) {
