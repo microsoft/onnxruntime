@@ -67,7 +67,7 @@ class TestQuantMinRealRangeOption(unittest.TestCase):
 
     def test_default(self):
         """
-        Test default behavior without specifing the QuantMinRealRange option.
+        Test default behavior without specifying the QuantMinRealRange option.
         """
         act_zp, act_sc, wgt_zp, wgt_sc = self.perform_quantization(
             self.zero_range_activations,
