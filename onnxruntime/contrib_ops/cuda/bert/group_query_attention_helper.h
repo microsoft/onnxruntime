@@ -190,7 +190,7 @@ Status CheckInputs(const Tensor* query,
     if (attention_mask_shape[1] == kv_sequence_length) {
       is_prompt = true;
     }
-    mask_sequence_length = attention_mask_shape[1];
+    mask_sequence_length = int(attention_mask_shape[1]);
     has_mask = true;
   }
 
