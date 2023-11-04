@@ -55,6 +55,7 @@ struct AttentionParameters {
   int v_hidden_size;          // hidden size of V
   int v_head_size;            // hidden size per head of V
   int num_heads;
+  int num_splits;
   bool is_unidirectional;
   bool past_present_share_buffer;
   bool do_rotary;
@@ -96,12 +97,12 @@ struct GroupQueryAttentionParameters {
   int head_size;
   int kv_hidden_size;
   int kv_num_heads;
+  int num_splits;          // number of splits for splitkv
   bool has_mask;
   bool is_unidirectional;  // causal
   bool kv_share_buffer;
   bool is_prompt; // determines if seqlens_k is past or kv sequence length tensor
   float scale;
-  int num_splits;  // number of splits for splitkv
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
 };
