@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <vector>
+#include <unordered_map>
+#include <string>
 #include "ov_interface.h"
 
 namespace onnxruntime {
@@ -12,7 +15,7 @@ namespace openvino_ep {
 struct GlobalContext {
   OVCore ie_core;
   bool is_wholly_supported_graph = false;
-  bool enable_vpu_fast_compile = false;
+  bool enable_npu_fast_compile = false;
   bool enable_opencl_throttling = false;
   bool enable_dynamic_shapes = false;
   size_t num_of_threads;
@@ -34,7 +37,7 @@ struct GlobalContext {
 struct SubGraphContext {
   bool has_dynamic_input_shape = false;
   bool enable_batching = false;
-  bool set_vpu_config = false;
+  bool set_npu_config = false;
   bool is_constant = false;
   void* context = 0;
   std::string subgraph_name;

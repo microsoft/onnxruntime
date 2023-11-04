@@ -29,12 +29,12 @@ const createElementwiseProgramShader =
       const output = outputVariable('outputData', outputDataType, [vecSize], 4);
 
       return `
-  ${shaderHelper.declareVariables(input, output)}
+      ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(input, output)}
 
   ${additionalImplementation ?? ''}
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
 
     let a = ${input.getByOffset('global_idx')};
     ${output.setByOffset('global_idx', expression)}
@@ -45,13 +45,16 @@ const createElementwiseProgramInfo =
     (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
      cacheKey?: string, outputDataType: number = input.dataType): ProgramInfo => ({
       name,
-      shaderCache: {hint: cacheKey},
+      shaderCache: {hint: cacheKey, inputDependencies: ['type']},
       getShaderSource: shaderHelper => createElementwiseProgramShader(
           shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall, additionalImplementation),
       getRunData: (inputTensors) => ({
         outputs: [{dims: input.dims, dataType: outputDataType}],
         dispatchGroup:
-            {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)}
+            {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
+        programUniforms: [
+          {type: 'uint32', data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
+        ],
       })
     });
 
