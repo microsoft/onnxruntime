@@ -825,9 +825,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
       } else {
         if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
-          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and
-                     cuDNN as mentioned in the GPU requirements page
-                    (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements),
+          ORT_THROW("CUDA_PATH is set but CUDA wasnt able to be loaded. Please install the correct version of CUDA and \
+                     cuDNN as mentioned in the GPU requirements page \
+                    (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), \
                     make sure they're in the PATH, and that your GPU is supported.");
         }
       }
