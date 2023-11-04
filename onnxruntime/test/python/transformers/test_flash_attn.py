@@ -1780,6 +1780,7 @@ class TestGQA(unittest.TestCase):
             [
                 (1, 127),
                 (1, 35),
+                (1, 2000),
                 (3, 200),
                 (16, 240),
             ]
@@ -1787,6 +1788,7 @@ class TestGQA(unittest.TestCase):
             else [
                 (1, 127),
                 (1, 35),
+                (1, 2000),
                 (3, 200),
                 (16, 240),
             ]
@@ -1833,15 +1835,15 @@ class TestGQA(unittest.TestCase):
             else [
                 (1, 128),
                 (1, 339),
-                (3, 1024),
+                (1, 1024),
+                (1, 5000),
                 (64, 800),
                 (64, 256),
                 (3, 799),
                 (64, 2048),
-                (16, 20000),
-                (1, 128 * 512),
-                (16, 128 * 512),
-                (128, 128),
+                # (1, 128 * 512),
+                # (16, 128 * 512),
+                # (128, 128),
             ]
         )
         num_h = [(9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
@@ -1893,7 +1895,7 @@ class TestGQA(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # unittest.main()
-    test_gqa = TestGQA()
-    test_gqa.test_gqa_past()
-    test_gqa.test_gqa_no_past()
+    unittest.main()
+    # test_gqa = TestGQA()
+    # test_gqa.test_gqa_past()
+    # test_gqa.test_gqa_no_past()

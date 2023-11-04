@@ -137,6 +137,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
+ORT_ENFORCE(use_flash_attention);
+
 #if USE_MEMORY_EFFICIENT_ATTENTION
   int sm = (device_prop.major * 10) + device_prop.minor;
   bool use_memory_efficient_attention =
