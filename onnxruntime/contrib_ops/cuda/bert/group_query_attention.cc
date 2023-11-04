@@ -159,12 +159,14 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
   // seqstart pointer for memory efficient
   size_t seqstart_k_bytes = 0;
-  if (past_key != nullptr || parameters.has_mask) {
-    seqstart_k_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
-  }
   size_t seqstart_q_bytes = 0;
-  if (past_key != nullptr || parameters.has_mask) {
-    seqstart_q_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
+  if (use_memory_efficient_attention) {
+    if (past_key != nullptr || parameters.has_mask) {
+      seqstart_k_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
+    }
+    if (past_key != nullptr || parameters.has_mask) {
+      seqstart_q_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
+    }
   }
   auto k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
   auto v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());

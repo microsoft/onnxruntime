@@ -33,7 +33,7 @@ Status CheckInputs(const Tensor* query,
   ORT_UNUSED_PARAMETER(value);
 
   AttentionQkvFormat qkv_format = Q_K_V_BSNH;
-  AttentionQkvFormat past_kv_format = Q_K_V_BSNH;
+  AttentionQkvFormat past_kv_format = is_past_bsnh ? Q_K_V_BSNH : Q_K_V_BNSH;
 
   const auto& query_dims = query->Shape().GetDims();
   const auto& key_dims = key->Shape().GetDims();
@@ -81,7 +81,6 @@ Status CheckInputs(const Tensor* query,
 
     // BNSH
     if (!is_past_bsnh) {
-      past_kv_format = Q_K_V_BNSH;
       if (past_key_dims[2] != past_value_dims[2]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "BNSH Input 'past_key' and 'past_value' should have same dimension 2 (max sequence"
@@ -103,7 +102,6 @@ Status CheckInputs(const Tensor* query,
       }
       // BSNH
     } else {
-      past_kv_format = Q_K_V_BSNH;
       if (past_key_dims[1] != past_value_dims[1]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "BNSH Input 'past_key' and 'past_value' should have same dimension 1 (max sequence"

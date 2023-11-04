@@ -594,9 +594,6 @@ Status FlashAttention(
                             "Past and present kv shall share the same tensor when kv_share_buffer is on.");
     }
 
-    DUMP_TENSOR_INIT();
-    DUMP_TENSOR("seqlens_k", data.seqlens_k, batch_size, 1);
-
     void* seqlens_k = reinterpret_cast<void*>(data.seqlens_k);
 
     if (parameters.is_prompt) {
@@ -607,6 +604,9 @@ Status FlashAttention(
 
     void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
     void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
+
+    DUMP_TENSOR_INIT();
+    DUMP_TENSOR("seqlens_k", data.seqlens_k, batch_size, 1);
 
     bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
@@ -629,8 +629,15 @@ Status FlashAttention(
 
       void* seqlens_k = reinterpret_cast<void*>(data.seqlens_k);
 
+      if (!parameters.is_prompt) {
+        ORT_RETURN_IF_ERROR(LaunchPastToTotalSeqlen(parameters, data.seqlens_k, stream, 256));
+      }
+
       void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
       void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
+
+      DUMP_TENSOR_INIT();
+      DUMP_TENSOR("seqlens_k", data.seqlens_k, batch_size, 1);
 
       bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
       ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
