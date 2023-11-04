@@ -706,7 +706,7 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
  *
  *  Note: Please see more details about "EPContext" contrib op in contrib_defs.cc
  */
-bool IsFusedGraphHasCtxNode(const GraphViewer& graph) {
+bool GraphHasCtxNode(const GraphViewer& graph) {
   if (graph.NumberOfNodes() == 1) {
     for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
       auto node = graph.GetNode(i);
