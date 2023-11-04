@@ -152,8 +152,8 @@ const createBinaryOpProgramInfo =
         vectorize = true;
       }
       cacheKeyAux.push(vectorize);
-      const useShapesUniforms = enableShapesUniforms(a.dims.length) &&
-          enableShapesUniforms(b.dims.length) && enableShapesUniforms(outputShape.length);
+      const useShapesUniforms = enableShapesUniforms(a.dims.length) && enableShapesUniforms(b.dims.length) &&
+          enableShapesUniforms(outputShape.length);
       return {
         name,
         shaderCache: {
