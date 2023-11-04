@@ -805,7 +805,7 @@ MlasBlockwiseQuantizedBufferSizes(
 {
     q_data_size_in_bytes = q_scale_num_elements = 0;
     if (q_zero_point_size_in_bytes) {
-        q_zero_point_size_in_bytes = 0;
+        *q_zero_point_size_in_bytes = 0;
     }
 
     if (qbits == 4) {
