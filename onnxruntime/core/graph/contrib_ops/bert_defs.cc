@@ -1000,12 +1000,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc(GroupQueryAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
-        .Attr("unidirectional",
-              "Whether every token can only attend to previous tokens. Default value is 1.",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
         .Attr("is_past_bsnh",
               "Whether past kv uses BSNH, otherwise BNSH. Default value is 1 (BSNH).",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("kv_share_buffer",
+              "Whether past kv shares tensor with present kv.",
               AttributeProto::INT,
               static_cast<int64_t>(1))
         .Attr("scale",
@@ -1037,10 +1037,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T",
                OpSchema::Optional)
         .Input(5,
-               "past_sequence_length",
-               "When buffered past_key and past_value is used (present_key uses same tensor as past_key), required"
-               "to specify past_sequence_length (could be 0). Otherwise, past_sequence_length inferred from past_key."
-               "Can be a scalar tensor or a tensor of shape (batch_size) indicating the length of each sequence.",
+               "attention_mask",
+               "2d Tensor of shape (batch_size, past_sequence_length + sequence_length). Must be a right padding mask.",
                "M",
                OpSchema::Optional)
         .Output(0,
@@ -1060,7 +1058,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "kv_sequence_length.",
                 "T")
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
-        .TypeConstraint("M", {"tensor(int32)", "tensor(int64)"}, "Constrain past sequence length to int tensor.")
+        .TypeConstraint("M", {"tensor(int64)"}, "Constrain past sequence length to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);
         }));

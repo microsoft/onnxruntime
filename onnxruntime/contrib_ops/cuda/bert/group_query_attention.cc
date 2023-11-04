@@ -26,10 +26,9 @@ namespace cuda {
       kCudaExecutionProvider,                                                                                    \
       (*KernelDefBuilder::Create())                                                                              \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                                                 \
-          .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}) \
+          .TypeConstraint("M", {DataTypeImpl::GetTensorType<int64_t>()}) \
           .MayInplace(3, 1)                                                                                      \
-          .MayInplace(4, 2)                                                                                      \
-          .InputMemoryType(OrtMemTypeCPUInput, 5),                                                               \
+          .MayInplace(4, 2),                                                                                     \
       GroupQueryAttention<T>);
 
 // REGISTER_KERNEL_TYPED(float)
@@ -44,7 +43,8 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() && kv_num_heads > 0 && num_heads % kv_num_heads == 0);
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
-  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 1) == 1;
+  is_unidirectional_ = true;
+  kv_share_buffer_ = info.GetAttrOrDefault<int64_t>("kv_share_buffer", 1) == 1;
   is_past_bsnh_ = info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -70,7 +70,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* past_key = context->Input<Tensor>(3);
   const Tensor* past_value = context->Input<Tensor>(4);
-  const Tensor* past_seq_len = context->Input<Tensor>(5);
+  const Tensor* attention_mask = context->Input<Tensor>(5);
 
   auto& device_prop = GetDeviceProp();
   GroupQueryAttentionParameters parameters;
@@ -85,8 +85,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 &parameters,
                                                                 num_heads_,
                                                                 kv_num_heads_,
-                                                                past_seq_len,
+                                                                attention_mask,
                                                                 is_past_bsnh_,
+                                                                kv_share_buffer_,
                                                                 scale_,
                                                                 device_prop.maxThreadsPerBlock));
   parameters.is_unidirectional = is_unidirectional_;
@@ -108,7 +109,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t softmax_lse_bytes = 0;
   size_t softmax_lse_accum_bytes = 0;
   size_t out_accum_bytes = 0;
-  size_t seqlens_k_bytes = 0;
   if (use_flash_attention) {
     softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
     // split kv buffers
@@ -126,21 +126,15 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       out_accum_bytes = onnxruntime::flash::get_out_accum_size(
           parameters.num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, head_size_rounded);
     }
-    // seqlens_k buffer
-    if (!parameters.has_seqlens_k && past_key != nullptr) {
-      seqlens_k_bytes = sizeof(int) * parameters.batch_size;
-    }
   }
   auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
   auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
-  auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
   auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());        // nullptr
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
-  auto seqlens_k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -157,21 +151,41 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // need a buffer if we must ungroup kv
   const bool needs_buff = (parameters.num_heads != parameters.kv_num_heads);
   if (use_memory_efficient_attention && needs_buff) {
-    kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * (parameters.past_sequence_length + parameters.kv_sequence_length) * parameters.head_size);
+    kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.present_sequence_length * parameters.head_size);
   }
   size_t fmha_buffer_bytes = 0;
   if (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float))) {
     fmha_buffer_bytes = (parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size * sizeof(float));
   }
+  // seqstart pointer for memory efficient
+  size_t seqstart_k_bytes = 0;
+  if (past_key != nullptr || parameters.has_mask) {
+    seqstart_k_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
+  }
+  size_t seqstart_q_bytes = 0;
+  if (past_key != nullptr || parameters.has_mask) {
+    seqstart_q_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
+  }
   auto k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
   auto v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
   auto fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, context->GetComputeStream());
+  auto seqstart_k_buffer = GetScratchBuffer<void>(seqstart_k_bytes, context->GetComputeStream());
+  auto seqstart_q_buffer = GetScratchBuffer<void>(seqstart_q_bytes, context->GetComputeStream());
 #else
   constexpr bool use_memory_efficient_attention = false;
   auto k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto v_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto fmha_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
+  auto seqstart_k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
+  auto seqstart_q_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
 #endif
+
+  // seqlens_k buffer
+  size_t seqlens_k_bytes = 0;
+  if (past_key != nullptr || parameters.has_mask) {
+    seqlens_k_bytes = sizeof(int) * parameters.batch_size;
+  }
+  auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
 
   std::vector<int64_t> present_dims;
   if (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH) {
@@ -204,10 +218,17 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (out_accum_buffer != nullptr) {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
-  if (parameters.has_seqlens_k) {
-    data.seqlens_k = reinterpret_cast<int*>(past_seq_len->Data<int>());
-  } else if (seqlens_k_buffer != nullptr) {
+  if (parameters.has_mask) {
+    data.attention_mask = const_cast<int64_t*>(attention_mask->Data<int64_t>());
+  }
+  if (seqlens_k_buffer != nullptr) {
     data.seqlens_k = reinterpret_cast<int*>(seqlens_k_buffer.get());
+    if (seqstart_k_buffer != nullptr) {
+      data.seqstart_k = reinterpret_cast<int32_t*>(seqstart_k_buffer.get());
+    }
+    if (seqstart_q_buffer != nullptr) {
+      data.seqstart_q = reinterpret_cast<int32_t*>(seqstart_q_buffer.get());
+    }
   }
   if (k_buffer != nullptr) {
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
