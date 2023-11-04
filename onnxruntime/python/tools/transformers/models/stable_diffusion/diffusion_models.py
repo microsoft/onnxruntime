@@ -502,7 +502,7 @@ class CLIP(BaseModel):
                 optimize_by_ort=optimize_by_ort,
                 optimize_by_fusion=optimize_by_fusion,
             )
-        else:
+        elif optimize_by_fusion:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 # Save to a temporary file so that we can load it with Onnx Runtime.
                 logger.info("Saving a temporary model to add hidden_states to graph output ...")
@@ -520,6 +520,17 @@ class CLIP(BaseModel):
                     optimize_by_ort=optimize_by_ort,
                     optimize_by_fusion=optimize_by_fusion,
                 )
+        else:  # input is optimized model, there is no need to add hidden states.
+            optimizer.optimize(
+                input_onnx_path,
+                optimized_onnx_path,
+                float16=to_fp16,
+                keep_io_types=[],
+                fp32_op_list=fp32_op_list,
+                keep_outputs=["text_embeddings", "hidden_states"],
+                optimize_by_ort=optimize_by_ort,
+                optimize_by_fusion=optimize_by_fusion,
+            )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
         onnx_graph = onnx.load(input_onnx_path)
