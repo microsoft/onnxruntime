@@ -163,11 +163,6 @@ class MlasQLinearMulTest : public MlasQLinearBinaryOpTest {
   }
 };
 
-template <>
-MlasQLinearAddTest* MlasTestFixture<MlasQLinearAddTest>::mlas_tester(nullptr);
-template <>
-MlasQLinearMulTest* MlasTestFixture<MlasQLinearMulTest>::mlas_tester(nullptr);
-
 static bool UNUSED_VARIABLE added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
