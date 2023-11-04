@@ -17,18 +17,18 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                 \
-      GroupQueryAttention,                                                                                       \
-      kMSDomain,                                                                                                 \
-      1,                                                                                                         \
-      T,                                                                                                         \
-      kCudaExecutionProvider,                                                                                    \
-      (*KernelDefBuilder::Create())                                                                              \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                                                 \
+#define REGISTER_KERNEL_TYPED(T)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+      GroupQueryAttention,                                               \
+      kMSDomain,                                                         \
+      1,                                                                 \
+      T,                                                                 \
+      kCudaExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                      \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
           .TypeConstraint("M", {DataTypeImpl::GetTensorType<int64_t>()}) \
-          .MayInplace(3, 1)                                                                                      \
-          .MayInplace(4, 2),                                                                                     \
+          .MayInplace(3, 1)                                              \
+          .MayInplace(4, 2),                                             \
       GroupQueryAttention<T>);
 
 // REGISTER_KERNEL_TYPED(float)
@@ -131,7 +131,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
-ORT_ENFORCE(use_flash_attention);
+  ORT_ENFORCE(use_flash_attention);
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   int sm = (device_prop.major * 10) + device_prop.minor;

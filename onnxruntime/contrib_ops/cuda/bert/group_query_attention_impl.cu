@@ -583,7 +583,7 @@ Status FlashAttention(
   } else {
     // Launch kernel to copy seqlen
     int thr_per_blk = 256;
-    int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
+    int blk_in_grid = int(ceil(float(batch_size) / thr_per_blk));
     repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
   }
 
@@ -693,7 +693,7 @@ Status EfficientAttention(
   if (!parameters.has_mask) {
     // Launch kernel to copy seqlen
     int thr_per_blk = 256;
-    int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
+    int blk_in_grid = int(ceil(float(batch_size) / thr_per_blk));
     repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k, parameters.past_sequence_length, batch_size);
   } else {
     ORT_RETURN_IF_ERROR(LaunchGetCacheSeqlens(parameters, data.attention_mask, data.seqlens_k, parameters.is_prompt, stream, 256));

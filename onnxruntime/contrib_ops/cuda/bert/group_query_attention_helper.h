@@ -185,7 +185,7 @@ Status CheckInputs(const Tensor* query,
     const auto& attention_mask_shape = attention_mask->Shape().GetDims();
     if (attention_mask_shape[0] != batch_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "attention_mask dim 0 must be batch_size.");
+                             "attention_mask dim 0 must be batch_size.");
     }
     if (attention_mask_shape[1] == kv_sequence_length) {
       is_prompt = true;
@@ -197,7 +197,7 @@ Status CheckInputs(const Tensor* query,
   if (kv_share_buffer) {
     if (attention_mask == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "attention_mask tensor must be present when kv-share buffer is on.");
+                             "attention_mask tensor must be present when kv-share buffer is on.");
     }
     present_sequence_length = max_sequence_length;
   } else {
@@ -208,11 +208,11 @@ Status CheckInputs(const Tensor* query,
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
-    output_parameters->sequence_length = sequence_length; // sequence length of Q
-    output_parameters->past_sequence_length = past_sequence_length; // max sequence length of past kv tensors
-    output_parameters->kv_sequence_length = kv_sequence_length; // max sequence length of new kv tensors
-    output_parameters->present_sequence_length = present_sequence_length; // max sequence length of present kv tensors
-    output_parameters->max_sequence_length = max_sequence_length; // max sequence length of kv buffer tensors TODO(aciddelgado): always same as present, remove
+    output_parameters->sequence_length = sequence_length;                  // sequence length of Q
+    output_parameters->past_sequence_length = past_sequence_length;        // max sequence length of past kv tensors
+    output_parameters->kv_sequence_length = kv_sequence_length;            // max sequence length of new kv tensors
+    output_parameters->present_sequence_length = present_sequence_length;  // max sequence length of present kv tensors
+    output_parameters->max_sequence_length = max_sequence_length;          // max sequence length of kv buffer tensors TODO(aciddelgado): always same as present, remove
     output_parameters->mask_sequence_length = mask_sequence_length;
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->num_heads = num_heads;

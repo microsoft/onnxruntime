@@ -24,7 +24,7 @@ class GroupQueryAttention final : public CudaKernel {
   int kv_num_heads_;  // different for k and v for group query attention
   int past_sequence_length_;
   bool is_unidirectional_;  // causal
-  bool kv_share_buffer_;  // kv-cache
+  bool kv_share_buffer_;    // kv-cache
   bool is_past_bsnh_;
   float scale_;
   bool disable_flash_attention_;
