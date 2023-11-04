@@ -336,7 +336,7 @@ export const sumVector = (name: string, components: number) => {
  */
 const createIndicesHelper =
     (name: string, tensorType: number, shapeOrRank: number|readonly number[], isInput: boolean, components: 1|2|3|4,
-     skip_shape_strides_variables = false): IndicesHelper => {
+     vectorize = false): IndicesHelper => {
       const useUniform = typeof shapeOrRank === 'number';
       const rank = useUniform ? shapeOrRank : shapeOrRank.length;
       const rankIdentity = [...new Array(rank).keys()];
@@ -568,7 +568,7 @@ const createIndicesHelper =
 
       const impl = () => {
         const impls = [];
-        if (!useUniform && !skip_shape_strides_variables) {
+        if (!useUniform && !vectorize) {
           impls.push(`const ${shape} = ${type.indices}(${shapeOrRank.join(',')});`);
           impls.push(`const ${strides} = ${type.indices}(${ShapeUtil.computeStrides(shapeOrRank).join(',')});`);
         }
@@ -630,8 +630,8 @@ const createIndicesHelper =
  * @returns an IndicesHelper for the input.
  */
 export const inputVariable =
-    (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1, skip_shape_strides_variables = false):
-        IndicesHelper => createIndicesHelper(name, type, shapeOrRank, true, components, skip_shape_strides_variables);
+    (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1, vectorize = false):
+        IndicesHelper => createIndicesHelper(name, type, shapeOrRank, true, components, vectorize);
 
 /**
  * Create a IndicesHelper for an output.
@@ -643,8 +643,8 @@ export const inputVariable =
  * @returns an IndicesHelper for the output.
  */
 export const outputVariable =
-    (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1, skip_shape_strides_variables = false):
-        IndicesHelper => createIndicesHelper(name, type, shapeOrRank, false, components, skip_shape_strides_variables);
+    (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1, vectorize = false):
+        IndicesHelper => createIndicesHelper(name, type, shapeOrRank, false, components, vectorize);
 
 /**
  * A ShaderHelper is a helper class for generating WGSL code.
