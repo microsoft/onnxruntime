@@ -66,23 +66,13 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
-  if (MlasIsSQNBitGemmAvailable(nbits_, block_size_) && nbits_ == 4) {
-    int qparam_rows, qparam_cols;  // quantization parameter (i.e., scale and zero point) dimensions
-    MlasBlockwiseQuantMetaShape<float>(gsl::narrow_cast<int>(block_size_), /* columnwise */ true,
-                                       gsl::narrow_cast<int>(K), gsl::narrow_cast<int>(N),
-                                       qparam_rows, qparam_cols);
-    ORT_RETURN_IF(qparam_rows == 0 || qparam_cols == 0,
-                  "Unsupported block size: ", block_size_);
-
-    int qdata_rows, qdata_cols;
-    MlasBlockwiseQuantizedShape<float>(gsl::narrow_cast<int>(block_size_), /* columnwise */ true,
-                                       gsl::narrow_cast<int>(K), gsl::narrow_cast<int>(N),
-                                       qdata_rows, qdata_cols);
-
+  if (MlasIsSQNBitGemmAvailable(nbits_, block_size_)) {
     // number of bytes or elements between adjacent matrices
-    const size_t b_data_matrix_stride = SafeInt<size_t>(qdata_rows) * qdata_cols;
-    const size_t b_scale_matrix_stride = SafeInt<size_t>(qparam_rows) * qparam_cols;
-    const size_t b_zero_point_matrix_stride = qparam_rows * ((SafeInt<size_t>(qparam_cols) + 1) / 2);
+    size_t b_data_matrix_stride_in_bytes, b_scale_matrix_stride, b_zero_point_matrix_stride_in_bytes;
+    MlasBlockwiseQuantizedBufferSizes(nbits_, block_size_, /* columnwise */ true,
+                                      static_cast<int>(K), static_cast<int>(N),
+                                      b_data_matrix_stride_in_bytes, b_scale_matrix_stride,
+                                      &b_zero_point_matrix_stride_in_bytes);
 
     const size_t b_matrix_size = K * N;
 
@@ -92,10 +82,10 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 
       data[i].A = a_data + helper.LeftOffsets()[i];
       data[i].lda = lda;
-      data[i].QuantBData = b_data + b_matrix_offset * b_data_matrix_stride;
+      data[i].QuantBData = b_data + b_matrix_offset * b_data_matrix_stride_in_bytes;
       data[i].QuantBScale = scales_data + b_matrix_offset * b_scale_matrix_stride;
       data[i].QuantBZeroPoint = zero_points_data != nullptr
-                                    ? zero_points_data + b_matrix_offset * b_zero_point_matrix_stride
+                                    ? zero_points_data + b_matrix_offset * b_zero_point_matrix_stride_in_bytes
                                     : nullptr;
       data[i].C = y_data + helper.OutputOffsets()[i];
       data[i].ldc = N;

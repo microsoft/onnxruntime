@@ -23,10 +23,11 @@ void SQNBITGEMM(benchmark::State& state) {
   const size_t K = static_cast<size_t>(state.range(2));
   const size_t threads = static_cast<size_t>(state.range(3));
 
-  size_t QuantBDataSize, QuantBScaleSize, QuantBZeroPointSize;
-  MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::GetPackedBSizes(
-      N, K,
-      QuantBDataSize, QuantBScaleSize, &QuantBZeroPointSize);
+  size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
+  MlasBlockwiseQuantizedBufferSizes(
+      BlkBitWidth, BlkLen, /* columnwise */ true,
+      static_cast<int>(K), static_cast<int>(N),
+      QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
 
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = static_cast<int>(threads);
@@ -40,14 +41,15 @@ void SQNBITGEMM(benchmark::State& state) {
   auto B = RandomVectorUniform(static_cast<size_t>(K * N), -1.0f, 1.0f);
   std::vector<float> C(static_cast<size_t>(M * N));
 
-  std::vector<uint8_t> QuantBData(QuantBDataSize);
+  std::vector<uint8_t> QuantBData(QuantBDataSizeInBytes);
   std::vector<float> QuantBScale(QuantBScaleSize);
-  std::vector<uint8_t> QuantBZeroPoint(Symmetric ? 0 : QuantBZeroPointSize);
+  std::vector<uint8_t> QuantBZeroPoint(Symmetric ? 0 : QuantBZeroPointSizeInBytes);
 
-  MlasQuantizeBlockwise<float>(QuantBData.data(), QuantBScale.data(), Symmetric ? nullptr : QuantBZeroPoint.data(),
-                               B.data(), BlkLen,
-                               /* columnwise */ true, static_cast<int>(K), static_cast<int>(N), static_cast<int>(N),
-                               tp.get());
+  MlasQuantizeBlockwise<float, BlkBitWidth>(QuantBData.data(), QuantBScale.data(),
+                                            Symmetric ? nullptr : QuantBZeroPoint.data(),
+                                            B.data(), BlkLen, /* columnwise */ true,
+                                            static_cast<int>(K), static_cast<int>(N), static_cast<int>(N),
+                                            tp.get());
 
   MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
   params.A = A.data();

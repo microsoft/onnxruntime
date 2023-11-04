@@ -71,10 +71,9 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                          const float* Bias,
                          float* C) {
     float* DequantizedBData = BufferDequantizedB.GetBuffer(K * N);
-    static_assert(BlkBitWidth == 4);
-    MlasDequantizeBlockwise<float>(DequantizedBData, QuantBData, QuantBScale, QuantBZeroPoint, BlkLen,
-                                   /* columnwise */ true, static_cast<int>(K), static_cast<int>(N),
-                                   GetMlasThreadPool());
+    MlasDequantizeBlockwise<float, BlkBitWidth>(
+        DequantizedBData, QuantBData, QuantBScale, QuantBZeroPoint, BlkLen, /* columnwise */ true,
+        static_cast<int>(K), static_cast<int>(N), GetMlasThreadPool());
     // Note: DequantizedBData is in column major layout.
 
     for (size_t m = 0; m < M; m++) {
@@ -132,18 +131,23 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     float* QuantBScale = nullptr;
     uint8_t* QuantBZeroPoint = nullptr;
     {
-      size_t QuantBDataSize, QuantBScaleSize, QuantBZeroPointSize;
-      MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::GetPackedBSizes(
-          N, K, QuantBDataSize, QuantBScaleSize, &QuantBZeroPointSize);
+      size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
+      MlasBlockwiseQuantizedBufferSizes(BlkBitWidth, BlkLen, /* columnwise */ true,
+                                        static_cast<int>(K), static_cast<int>(N),
+                                        QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
 
-      QuantBData = BufferQuantBData.GetBuffer(QuantBDataSize);
+      QuantBData = BufferQuantBData.GetBuffer(QuantBDataSizeInBytes);
       QuantBScale = BufferQuantBScale.GetBuffer(QuantBScaleSize);
       if (Symmetric) {
-        QuantBZeroPoint = BufferQuantBZeroPoint.GetBuffer(QuantBZeroPointSize);
+        QuantBZeroPoint = BufferQuantBZeroPoint.GetBuffer(QuantBZeroPointSizeInBytes);
       }
 
-      MlasReferenceQNBitPacking<BlkBitWidth, BlkLen>::PackB(N, K, B, /* ldb */ N,
-                                                            QuantBData, QuantBScale, QuantBZeroPoint);
+      MlasQuantizeBlockwise<float, 4>(QuantBData, QuantBScale, QuantBZeroPoint,
+                                      B, BlkLen,
+                                      /* columnwise */ true,
+                                      static_cast<int>(K), static_cast<int>(N),
+                                      static_cast<int>(N),
+                                      GetMlasThreadPool());
     }
 
     CallGemm(M, N, K, A, /* lda */ K, QuantBData, QuantBScale, QuantBZeroPoint, Bias, C, /* ldc */ N, Threadpool);
@@ -245,17 +249,6 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   size_t M_, N_, K_;
   bool WithThreadpool_, Symmetric_, WithBias_;
 };
-
-#define DEFINE_MLAS_TESTER(BlkBitWidth, BlkLen) \
-  template <>                                   \
-  MlasSQNBitGemmTest<BlkBitWidth, BlkLen>* MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>>::mlas_tester(nullptr)
-
-DEFINE_MLAS_TESTER(4, 16);
-DEFINE_MLAS_TESTER(4, 32);
-DEFINE_MLAS_TESTER(4, 64);
-DEFINE_MLAS_TESTER(4, 128);
-
-#undef DEFINE_MLAS_TESTER
 
 static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
