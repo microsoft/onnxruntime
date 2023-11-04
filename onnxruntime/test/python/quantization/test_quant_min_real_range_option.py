@@ -82,6 +82,9 @@ class TestQuantMinRealRangeOption(unittest.TestCase):
         self.assertEqual(wgt_sc, 1.0)
 
     def test_min_real_range(self):
+        """
+        Test a QuantMinRealRange value of 0.0001.
+        """
         quant_min_rrange = 0.0001
 
         act_zp, act_sc, wgt_zp, wgt_sc = self.perform_quantization(
