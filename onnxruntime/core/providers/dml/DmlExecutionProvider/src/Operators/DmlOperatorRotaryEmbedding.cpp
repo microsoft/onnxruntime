@@ -78,8 +78,21 @@ public:
         const bool interleaved = gsl::narrow_cast<bool>(kernelInfo.GetOptionalAttribute<int64_t>(AttrName::Interleaved, 0));
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
         const MLOperatorTensorDataType dataType = kernelInfo.GetInputEdgeDescription(inputDataIndex).tensorDataType;
+
+        // Splitting the hiddenSize into numHeads and headSize dimensions makes it easier for DML to handle
+        const std::array<uint32_t, 4> inputOutputShape = {batchSize, sequenceLength, numHeads, headSize};
+        TensorDesc inputOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, inputOutputShape);
+        const DML_TENSOR_DESC inputOutputDmlTensorDesc = inputOutputTensorDesc.GetDmlDesc();
+
+        // Copy the input to preserve its real input shape in the graph without reshaping it. This will disappear during DML's graph compilation phase.
+        DML_SCALE_BIAS scaleBias = {1.0f, 0.0f};
+
+        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC copyInputDesc{};
+        copyInputDesc.InputTensor = &inputOutputDmlTensorDesc;
+        copyInputDesc.OutputTensor = &inputOutputDmlTensorDesc;
+        copyInputDesc.ScaleBias = &scaleBias;
+        const DML_OPERATOR_DESC copyInputDmlDesc = {DML_OPERATOR_ELEMENT_WISE_IDENTITY, &copyInputDesc};
 
         // Split the input data into 2 equal parts
         const std::vector<uint32_t> inputDataTensorShape = interleaved
@@ -213,9 +226,9 @@ public:
 
         // Add the multiplied cos and sin values together
         DML_ELEMENT_WISE_ADD_OPERATOR_DESC addDesc{};
-        addDesc.ATensor = &outputDescs[0];
-        addDesc.BTensor = &outputDescs[0];
-        addDesc.OutputTensor = &outputDescs[0];
+        addDesc.ATensor = &inputOutputDmlTensorDesc;
+        addDesc.BTensor = &inputOutputDmlTensorDesc;
+        addDesc.OutputTensor = &inputOutputDmlTensorDesc;
         const DML_OPERATOR_DESC addDmlDesc = {DML_OPERATOR_ELEMENT_WISE_ADD, &addDesc};
 
         // Construct the graph
@@ -224,6 +237,7 @@ public:
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
 
         std::vector<const DML_OPERATOR_DESC*> opDescs = {
+            &copyInputDmlDesc, // Copy the input data to preseve the real input shape
             &splitInputDmlDesc, // Split the input data
             &gatherCosSinDmlDesc, // Gather cos
             &gatherCosSinDmlDesc, // Gather sin
@@ -238,6 +252,7 @@ public:
 
         enum NodeIndex : uint32_t
         {
+            copyInputOpIndex,
             splitInputOpIndex,
             gatherCosOpIndex,
             gatherSinOpIndex,
@@ -301,11 +316,11 @@ public:
             inputEdges.push_back(positionIdsToGatherSinEdge);
         }
 
-        DML_INPUT_GRAPH_EDGE_DESC inputToSplitEdge = {};
-        inputToSplitEdge.GraphInputIndex = inputDataIndex;
-        inputToSplitEdge.ToNodeIndex = splitInputOpIndex;
-        inputToSplitEdge.ToNodeInputIndex = 0;
-        inputEdges.push_back(inputToSplitEdge);
+        DML_INPUT_GRAPH_EDGE_DESC inputToCopyInputEdge = {};
+        inputToCopyInputEdge.GraphInputIndex = inputDataIndex;
+        inputToCopyInputEdge.ToNodeIndex = copyInputOpIndex;
+        inputToCopyInputEdge.ToNodeInputIndex = 0;
+        inputEdges.push_back(inputToCopyInputEdge);
 
         DML_INPUT_GRAPH_EDGE_DESC cosToGatherEdge = {};
         cosToGatherEdge.GraphInputIndex = cosCacheIndex;
@@ -319,11 +334,19 @@ public:
         sinToGatherEdge.ToNodeInputIndex = 0;
         inputEdges.push_back(sinToGatherEdge);
 
-        DML_INPUT_GRAPH_EDGE_DESC nonRotatedDataToMulEdge = {};
-        nonRotatedDataToMulEdge.GraphInputIndex = inputDataIndex;
+        DML_INTERMEDIATE_GRAPH_EDGE_DESC inputToSplitEdge = {};
+        inputToSplitEdge.FromNodeIndex = copyInputOpIndex;
+        inputToSplitEdge.FromNodeOutputIndex = 0;
+        inputToSplitEdge.ToNodeIndex = splitInputOpIndex;
+        inputToSplitEdge.ToNodeInputIndex = 0;
+        intermediateEdges.push_back(inputToSplitEdge);
+
+        DML_INTERMEDIATE_GRAPH_EDGE_DESC nonRotatedDataToMulEdge = {};
+        nonRotatedDataToMulEdge.FromNodeIndex = copyInputOpIndex;
+        nonRotatedDataToMulEdge.FromNodeOutputIndex = 0;
         nonRotatedDataToMulEdge.ToNodeIndex = mulCosOpIndex;
         nonRotatedDataToMulEdge.ToNodeInputIndex = 0;
-        inputEdges.push_back(nonRotatedDataToMulEdge);
+        intermediateEdges.push_back(nonRotatedDataToMulEdge);
 
         DML_INTERMEDIATE_GRAPH_EDGE_DESC secondHalfDataToJoinEdge = {};
         secondHalfDataToJoinEdge.FromNodeIndex = splitInputOpIndex;
