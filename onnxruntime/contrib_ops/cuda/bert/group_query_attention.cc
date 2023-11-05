@@ -44,7 +44,6 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_unidirectional_ = true;
-  // kv_share_buffer_ = info.GetAttrOrDefault<int64_t>("kv_share_buffer", 1) == 1;
   is_past_bsnh_ = false;  // info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -114,7 +113,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     // split kv buffer
     using namespace std;
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
+        parameters.batch_size, parameters.sequence_length, parameters.sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
     parameters.num_splits = num_splits;
     softmax_lse_accum_bytes = slse_accum_bytes;
@@ -140,7 +139,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       !use_flash_attention &&
       !disable_memory_efficient_attention_ &&
       (parameters.head_size & 7) == 0 &&
-      parameters.sequence_length <= parameters.past_sequence_length + parameters.kv_sequence_length &&
+      parameters.sequence_length <= parameters.seqlen_past_kv_cache + parameters.sequence_length &&
       (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2);
   // allocate buffers
@@ -148,7 +147,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // need a buffer if we must ungroup kv
   const bool needs_buff = (parameters.num_heads != parameters.kv_num_heads);
   if (use_memory_efficient_attention && needs_buff) {
-    kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.present_sequence_length * parameters.head_size);
+    kv_buffer_bytes = (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.seqlen_present_kv_cache * parameters.head_size);
   }
   size_t fmha_buffer_bytes = 0;
   if (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float))) {
@@ -158,12 +157,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t seqstart_k_bytes = 0;
   size_t seqstart_q_bytes = 0;
   if (use_memory_efficient_attention) {
-    if (past_key != nullptr || parameters.has_mask) {
-      seqstart_k_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
-    }
-    if (past_key != nullptr || parameters.has_mask) {
-      seqstart_q_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
-    }
+    seqstart_k_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
+    seqstart_q_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
   }
   auto k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
   auto v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
@@ -181,18 +176,16 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // seqlens_k buffer
   size_t seqlens_k_bytes = 0;
-  if (past_key != nullptr || parameters.has_mask) {
-    seqlens_k_bytes = sizeof(int) * parameters.batch_size;
-  }
+  seqlens_k_bytes = sizeof(int) * parameters.batch_size;
   auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
 
   std::vector<int64_t> present_dims;
   if (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH) {
     present_dims = {
-        parameters.batch_size, parameters.present_sequence_length, parameters.kv_num_heads, parameters.head_size};
+        parameters.batch_size, parameters.seqlen_present_kv_cache, parameters.kv_num_heads, parameters.head_size};
   } else {  // BNSH
     present_dims = {
-        parameters.batch_size, parameters.kv_num_heads, parameters.present_sequence_length, parameters.head_size};
+        parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache, parameters.head_size};
   }
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(1, present_shape);
@@ -217,9 +210,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (out_accum_buffer != nullptr) {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
-  if (parameters.has_mask) {
-    data.attention_mask = const_cast<int64_t*>(attention_mask->Data<int64_t>());
-  }
+  data.attention_mask = const_cast<int64_t*>(attention_mask->Data<int64_t>());
   if (seqlens_k_buffer != nullptr) {
     data.seqlens_k = reinterpret_cast<int*>(seqlens_k_buffer.get());
     if (seqstart_k_buffer != nullptr) {

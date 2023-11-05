@@ -22,13 +22,13 @@ Status CheckInputs(const Tensor* query,
                    const Tensor* attention_mask,
                    bool is_past_bsnh,
                    float scale) {
-  // Note: Here S* is max_sequence_length, S- is past_sequence_length, S+ is kv_sequence_length
-  //     past_key                   : (B, S*, N_k, H) or (B, N_k, S*, H) or (B, S-, N_k, H) or (B, N_k, S-, H)
-  //     past_value                 : (B, S*, N_k, H) or (B, N_k, S*, H) or (B, S-, N_k, H) or (B, N_k, S-, H)
+  // Note: Here S* is cache_sequence_length, S- is past_sequence_length, S+ is sequence_length
+  //     past_key                   : (B, N_k, S*, H) or (B, N_k, S-, H)
+  //     past_value                 : (B, N_k, S*, H) or (B, N_k, S-, H)
   // no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
-  //     key              (K)       : (B, S+, D_kv)
-  //     value            (V)       : (B, S+, D_kv)
+  //     key              (K)       : (B, S, D_kv)
+  //     value            (V)       : (B, S, D_kv)
   ORT_UNUSED_PARAMETER(value);
 
   AttentionQkvFormat qkv_format = Q_K_V_BSNH;
@@ -47,11 +47,10 @@ Status CheckInputs(const Tensor* query,
   int q_hidden_size = static_cast<int>(query_dims[2]);
   int head_size = static_cast<int>(q_hidden_size) / num_heads;
 
-  int kv_sequence_length = static_cast<int>(key_dims[1]);
   int kv_hidden_size = static_cast<int>(key_dims[2]);
 
   int32_t past_sequence_length = 0;
-  int max_sequence_length = 0;
+  int cache_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     const auto& past_key_dims = past_key->Shape().GetDims();
     const auto& past_value_dims = past_value->Shape().GetDims();
@@ -96,7 +95,7 @@ Status CheckInputs(const Tensor* query,
       }
       // We assume all sequence in past kv are right-padded to max or past sequence length
       past_sequence_length = static_cast<int>(past_key_dims[2]);
-      max_sequence_length = static_cast<int>(past_key_dims[2]);
+      cache_sequence_length = static_cast<int>(past_key_dims[2]);
       // BSNH
     } else {
       if (past_key_dims[1] != past_value_dims[1]) {
@@ -115,7 +114,7 @@ Status CheckInputs(const Tensor* query,
       }
       // We assume all sequence in past kv are right-padded to max or past sequence length
       past_sequence_length = static_cast<int>(past_key_dims[1]);
-      max_sequence_length = static_cast<int>(past_key_dims[1]);
+      cache_sequence_length = static_cast<int>(past_key_dims[1]);
     }
 
     if (past_key_dims[3] != head_size) {
@@ -163,9 +162,9 @@ Status CheckInputs(const Tensor* query,
                            "Input 'query' and 'value' shall have same dim 0 (batch_size)");
   }
 
-  if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
+  if (static_cast<int64_t>(sequence_length) != value_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
+                           "Input 'query,' 'key,' and 'value' shall have the same dim 1 (sequence_length)");
   }
 
   if (value_dims[2] != kv_hidden_size) {
@@ -173,45 +172,24 @@ Status CheckInputs(const Tensor* query,
   }
 
   // Surmise total sequence lengths and is_prompt from the attention_mask.
-  int present_sequence_length = kv_sequence_length;
-  int mask_sequence_length = 0;
-  bool has_mask = false;
   bool is_prompt = false;
-  if (attention_mask != nullptr) {
-    const auto& attention_mask_shape = attention_mask->Shape().GetDims();
-    if (attention_mask_shape[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "attention_mask dim 0 must be batch_size.");
-    }
-    if (attention_mask_shape[1] == kv_sequence_length) {
-      is_prompt = true;
-    }
-    mask_sequence_length = int(attention_mask_shape[1]);
-    present_sequence_length = int(attention_mask_shape[1]);
-    past_sequence_length = present_sequence_length - kv_sequence_length;
-    present_sequence_length = std::max(present_sequence_length, max_sequence_length);
-    has_mask = true;
+  const auto& attention_mask_shape = attention_mask->Shape().GetDims();
+  if (attention_mask_shape[0] != batch_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "attention_mask dim 0 must be batch_size.");
   }
-
-  // if (kv_share_buffer) {
-  //   if (attention_mask == nullptr) {
-  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-  //                            "attention_mask tensor must be present when kv-share buffer is on.");
-  //   }
-  //   present_sequence_length = max_sequence_length;
-  // } else {
-  //   present_sequence_length = past_sequence_length + kv_sequence_length;
-  //   max_sequence_length = present_sequence_length;
-  // }
+  if (attention_mask_shape[1] == sequence_length) {
+    is_prompt = true;
+  }
+  int mask_sequence_length = int(attention_mask_shape[1]);
+  int present_sequence_length = std::max(mask_sequence_length, cache_sequence_length);
 
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
     output_parameters->sequence_length = sequence_length;                  // sequence length of Q
-    output_parameters->past_sequence_length = past_sequence_length;        // max sequence length of past kv tensors
-    output_parameters->kv_sequence_length = kv_sequence_length;            // max sequence length of new kv tensors
-    output_parameters->present_sequence_length = present_sequence_length;  // max sequence length of present kv tensors
-    output_parameters->max_sequence_length = max_sequence_length;          // max sequence length of kv buffer tensors TODO(aciddelgado): always same as present, remove
+    output_parameters->seqlen_past_kv_cache = past_sequence_length;        // max sequence length of past kv tensors
+    output_parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
     output_parameters->mask_sequence_length = mask_sequence_length;
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->num_heads = num_heads;
@@ -219,7 +197,6 @@ Status CheckInputs(const Tensor* query,
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->is_unidirectional = true;
-    output_parameters->has_mask = has_mask;
     output_parameters->is_prompt = is_prompt;
     output_parameters->scale = scale;
     output_parameters->qkv_format = qkv_format;
