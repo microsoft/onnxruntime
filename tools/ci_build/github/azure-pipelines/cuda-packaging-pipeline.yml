@@ -326,13 +326,13 @@ stages:
         versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'
         workingDirectory: '$(Build.SourcesDirectory)\onnxruntime'
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Combined GPU'
+      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-cuda
       inputs:
         artifactName: 'onnxruntime-win-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
 
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Combined GPU'
+      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-tensorrt'
       inputs:
         artifactName: 'onnxruntime-win-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
@@ -586,34 +586,34 @@ stages:
     - checkout: self
       submodules: true
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - NuGet'
+      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-cuda'
       inputs:
         artifactName: 'onnxruntime-win-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - NuGet'
+      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-tensorrt'
       inputs:
         artifactName: 'onnxruntime-win-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - NuGet'
+      displayName: 'Download Pipeline Artifact - onnxruntime-linux-x64-cuda'
       inputs:
         artifactName: 'onnxruntime-linux-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - NuGet'
+      displayName: 'Download Pipeline Artifact - onnxruntime-linux-x64-tensorrt'
       inputs:
         artifactName: 'onnxruntime-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-#    - task: DownloadPipelineArtifact@2
-#      displayName: 'Download Pipeline Artifact - NuGet'
-#      inputs:
-#        artifactName: 'drop-extra'
-#        targetPath: '$(Build.BinariesDirectory)/extra-artifact'
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Pipeline Artifact - drop-extra'
+      inputs:
+        artifactName: 'drop-extra'
+        targetPath: '$(Build.BinariesDirectory)/extra-artifact'
 
     # Reconstruct the build dir
     - task: PowerShell@2
