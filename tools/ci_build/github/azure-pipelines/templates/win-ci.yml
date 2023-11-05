@@ -184,7 +184,7 @@ stages:
       #Upload protoc.exe, which will be used in nuget build for generating C# files
       - task: PublishPipelineArtifact@1
         displayName: Publish protoc as drop-extra
-        condition: and(succeeded(), startsWith('${{ parameters.packageName}}', 'x64'),)
+        condition: and(succeeded(), startsWith('${{ parameters.packageName}}', 'x64'))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
           artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
