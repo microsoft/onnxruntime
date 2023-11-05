@@ -62,14 +62,11 @@ jobs:
       - template: download-deps.yml
 
       - template: jobs/set-winenv.yml
-        EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-        ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
-          parameters:
-            DownloadCUDA: true
-            DownloadTRT: true
-        ${{ else }}:
-          parameters:
-            DownloadCUDA: true
+        parameters:
+          EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
+          DownloadCUDA: true
+      - ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
+          DownloadTRT: true
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
