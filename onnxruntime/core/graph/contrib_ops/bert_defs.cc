@@ -1000,14 +1000,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc(GroupQueryAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
-        .Attr("is_past_bsnh",
-              "Whether past kv uses BSNH, otherwise BNSH. Default value is 1 (BSNH).",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
-        .Attr("kv_share_buffer",
-              "Whether past kv shares tensor with present kv.",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,

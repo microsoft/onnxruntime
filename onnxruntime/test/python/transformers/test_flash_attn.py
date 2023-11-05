@@ -291,8 +291,8 @@ def create_group_query_attention_graph_prompt(
             "GroupQueryAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
-            is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
-            kv_share_buffer=1 if share_buffer else 0,
+            # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
+            # kv_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
         ),
     ]
@@ -416,8 +416,8 @@ def create_group_query_attention_graph_past(
             "GroupQueryAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
-            is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
-            kv_share_buffer=1 if share_buffer else 0,
+            # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
+            # kv_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
         ),
     ]
@@ -1793,8 +1793,8 @@ class TestGQA(unittest.TestCase):
                 (16, 240),
             ]
         )
-        num_h = [(9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+        num_h = [(32, 32), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         if major < 5 or (major == 5 and minor < 3):
             return
         # print("------- MEMORY EFFICIENT ATTENTION (PROMPT CASE) ---------")
@@ -1814,7 +1814,7 @@ class TestGQA(unittest.TestCase):
             for sq, skv in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
-                        for past_kv_format in [Formats.BNSH, Formats.BSNH]:
+                        for past_kv_format in [Formats.BNSH]:
                             config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
                             parity_check_gqa_prompt(config, past_format=past_kv_format)
                             parity_check_gqa_prompt_no_buff(config, past_format=past_kv_format)
@@ -1846,8 +1846,8 @@ class TestGQA(unittest.TestCase):
                 # (128, 128),
             ]
         )
-        num_h = [(9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+        num_h = [(32, 32), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         random.seed(69)
         # for b in batches:
         #     for s, s2 in seqs:
@@ -1877,7 +1877,7 @@ class TestGQA(unittest.TestCase):
             for s, s2 in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
-                        for past_kv_format in [Formats.BNSH, Formats.BSNH]:
+                        for past_kv_format in [Formats.BNSH]:
                             sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                             config = Config(b, s, s2, sp, n, n2, h)
                             parity_check_gqa_past(

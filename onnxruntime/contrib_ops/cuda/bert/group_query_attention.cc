@@ -44,8 +44,8 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_unidirectional_ = true;
-  kv_share_buffer_ = info.GetAttrOrDefault<int64_t>("kv_share_buffer", 1) == 1;
-  is_past_bsnh_ = info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
+  // kv_share_buffer_ = info.GetAttrOrDefault<int64_t>("kv_share_buffer", 1) == 1;
+  is_past_bsnh_ = false; // info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
 #if USE_FLASH_ATTENTION
@@ -87,7 +87,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 kv_num_heads_,
                                                                 attention_mask,
                                                                 is_past_bsnh_,
-                                                                kv_share_buffer_,
                                                                 scale_,
                                                                 device_prop.maxThreadsPerBlock));
   parameters.is_unidirectional = is_unidirectional_;
@@ -241,6 +240,12 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
   if (fmha_buffer != nullptr) {
     data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
+  }
+
+  if (data.past_key == data.present_key){
+    parameters.kv_share_buffer = true;
+  } else {
+    parameters.kv_share_buffer = false;
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);

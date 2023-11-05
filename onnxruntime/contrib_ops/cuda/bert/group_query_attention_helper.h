@@ -21,7 +21,6 @@ Status CheckInputs(const Tensor* query,
                    int kv_num_heads,
                    const Tensor* attention_mask,
                    bool is_past_bsnh,
-                   bool kv_share_buffer,
                    float scale) {
   // Note: Here S* is max_sequence_length, S- is past_sequence_length, S+ is kv_sequence_length
   //     past_key                   : (B, S*, N_k, H) or (B, N_k, S*, H) or (B, S-, N_k, H) or (B, N_k, S-, H)
@@ -97,9 +96,7 @@ Status CheckInputs(const Tensor* query,
       }
       // We assume all sequence in past kv are right-padded to max or past sequence length
       past_sequence_length = static_cast<int>(past_key_dims[2]);
-      if (kv_share_buffer) {
-        max_sequence_length = static_cast<int>(past_key_dims[2]);
-      }
+      max_sequence_length = static_cast<int>(past_key_dims[2]);
       // BSNH
     } else {
       if (past_key_dims[1] != past_value_dims[1]) {
@@ -118,9 +115,7 @@ Status CheckInputs(const Tensor* query,
       }
       // We assume all sequence in past kv are right-padded to max or past sequence length
       past_sequence_length = static_cast<int>(past_key_dims[1]);
-      if (kv_share_buffer) {
-        max_sequence_length = static_cast<int>(past_key_dims[1]);
-      }
+      max_sequence_length = static_cast<int>(past_key_dims[1]);
     }
 
     if (past_key_dims[3] != head_size) {
@@ -136,10 +131,11 @@ Status CheckInputs(const Tensor* query,
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
-  } else if (kv_share_buffer && past_key == nullptr && past_value == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' and 'past_value' shall be present when kv_share_buffer is on.");
   }
+  // } else if (kv_share_buffer && past_key == nullptr && past_value == nullptr) {
+  //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                          "Input 'past_key' and 'past_value' shall be present when kv_share_buffer is on.");
+  // }
 
   if (key_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
@@ -191,19 +187,22 @@ Status CheckInputs(const Tensor* query,
       is_prompt = true;
     }
     mask_sequence_length = int(attention_mask_shape[1]);
+    present_sequence_length = int(attention_mask_shape[1]);
+    past_sequence_length = present_sequence_length - kv_sequence_length;
+    present_sequence_length = std::max(present_sequence_length, max_sequence_length);
     has_mask = true;
   }
 
-  if (kv_share_buffer) {
-    if (attention_mask == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "attention_mask tensor must be present when kv-share buffer is on.");
-    }
-    present_sequence_length = max_sequence_length;
-  } else {
-    present_sequence_length = past_sequence_length + kv_sequence_length;
-    max_sequence_length = present_sequence_length;
-  }
+  // if (kv_share_buffer) {
+  //   if (attention_mask == nullptr) {
+  //     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                            "attention_mask tensor must be present when kv-share buffer is on.");
+  //   }
+  //   present_sequence_length = max_sequence_length;
+  // } else {
+  //   present_sequence_length = past_sequence_length + kv_sequence_length;
+  //   max_sequence_length = present_sequence_length;
+  // }
 
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
@@ -219,7 +218,6 @@ Status CheckInputs(const Tensor* query,
     output_parameters->head_size = q_hidden_size / num_heads;
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->kv_num_heads = kv_num_heads;
-    output_parameters->kv_share_buffer = kv_share_buffer;
     output_parameters->is_unidirectional = true;
     output_parameters->has_mask = has_mask;
     output_parameters->is_prompt = is_prompt;
@@ -242,14 +240,13 @@ Status CheckInputs(const T* query,
                    int kv_num_heads,
                    const T* attention_mask,
                    bool is_past_bsnh,
-                   bool kv_share_buffer,
                    float scale,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, attention_mask, is_past_bsnh, kv_share_buffer, scale);
+  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, attention_mask, is_past_bsnh, scale);
 }
 
 }  // namespace group_query_attention_helper
