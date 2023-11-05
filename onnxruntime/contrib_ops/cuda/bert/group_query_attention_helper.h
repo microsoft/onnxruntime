@@ -22,7 +22,7 @@ Status CheckInputs(const Tensor* query,
                    const Tensor* attention_mask,
                    bool is_past_bsnh,
                    float scale) {
-  // Note: Here S* is cache_sequence_length, S- is past_sequence_length, S+ is sequence_length
+  // Note: Here S* is past_cache_sequence_length, S- is past_sequence_length, S+ is sequence_length
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S-, H)
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S-, H)
   // no packing for q/k/v:
@@ -50,7 +50,6 @@ Status CheckInputs(const Tensor* query,
   int kv_hidden_size = static_cast<int>(key_dims[2]);
 
   int32_t past_sequence_length = 0;
-  int cache_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     const auto& past_key_dims = past_key->Shape().GetDims();
     const auto& past_value_dims = past_value->Shape().GetDims();
@@ -95,7 +94,6 @@ Status CheckInputs(const Tensor* query,
       }
       // We assume all sequence in past kv are right-padded to max or past sequence length
       past_sequence_length = static_cast<int>(past_key_dims[2]);
-      cache_sequence_length = static_cast<int>(past_key_dims[2]);
       // BSNH
     } else {
       if (past_key_dims[1] != past_value_dims[1]) {
@@ -114,7 +112,6 @@ Status CheckInputs(const Tensor* query,
       }
       // We assume all sequence in past kv are right-padded to max or past sequence length
       past_sequence_length = static_cast<int>(past_key_dims[1]);
-      cache_sequence_length = static_cast<int>(past_key_dims[1]);
     }
 
     if (past_key_dims[3] != head_size) {
@@ -176,13 +173,13 @@ Status CheckInputs(const Tensor* query,
   const auto& attention_mask_shape = attention_mask->Shape().GetDims();
   if (attention_mask_shape[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "attention_mask dim 0 must be batch_size.");
+                           "attention_mask dim 0 must be batch_size.");
   }
   if (attention_mask_shape[1] == sequence_length) {
     is_prompt = true;
   }
   int mask_sequence_length = int(attention_mask_shape[1]);
-  int present_sequence_length = std::max(mask_sequence_length, cache_sequence_length);
+  int present_sequence_length = std::max(mask_sequence_length, past_sequence_length);
 
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
