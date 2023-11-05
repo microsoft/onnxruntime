@@ -1126,7 +1126,9 @@ class OnnxModel:
             op = (node.domain + ":" if include_domain and node.domain else "") + node.op_type
             op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
 
-        logger.info(f"Operators:{op_count}")
+        # Sorted by count in the descending order, then by key in alphabetical order.
+        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv:(-kv[1], kv[0]))}")
+
         return op_count
 
     @staticmethod

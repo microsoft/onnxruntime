@@ -84,9 +84,9 @@ class EngineBuilder:
             model_name += "_inpaint"
         return model_name
 
-    def get_onnx_path(self, model_name, onnx_dir, opt=True):
+    def get_onnx_path(self, model_name, onnx_dir, opt=True, suffix=""):
         engine_name = self.engine_type.name.lower()
-        directory_name = self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "")
+        directory_name = self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "") + suffix
         onnx_model_dir = os.path.join(onnx_dir, directory_name)
         os.makedirs(onnx_model_dir, exist_ok=True)
         return os.path.join(onnx_model_dir, "model.onnx")
