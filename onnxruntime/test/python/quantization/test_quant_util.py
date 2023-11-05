@@ -37,7 +37,9 @@ class TestQuantUtil(unittest.TestCase):
         self.assertEqual(compute_scale_zp(0.0, 0.0, 0, 255, symmetric=False, min_rrange=0.0001), [0, 0.0001 / 255])
         self.assertEqual(compute_scale_zp(0.0, 0.0, -128, 127, symmetric=True, min_rrange=0.0001), [0, 0.0002 / 255])
         self.assertEqual(compute_scale_zp(0.0, 0.0, 0, 65535, symmetric=False, min_rrange=0.0001), [0, 0.0001 / 65535])
-        self.assertEqual(compute_scale_zp(0.0, 0.0, -32768, 32767, symmetric=True, min_rrange=0.0001), [0, 0.0002 / 65535])
+        self.assertEqual(
+            compute_scale_zp(0.0, 0.0, -32768, 32767, symmetric=True, min_rrange=0.0001), [0, 0.0002 / 65535]
+        )
 
     def test_load_external_model(self):
         input_name = "input"

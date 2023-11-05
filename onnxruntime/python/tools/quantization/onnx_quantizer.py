@@ -1211,8 +1211,9 @@ class ONNXQuantizer:
                 rmin, rmax = td.range_value
                 qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
 
-                zero, scale = compute_scale_zp(rmin, rmax, qmin, qmax, self.is_activation_symmetric,
-                                               self.quant_min_rrange)
+                zero, scale = compute_scale_zp(
+                    rmin, rmax, qmin, qmax, self.is_activation_symmetric, self.quant_min_rrange
+                )
             quantization_params[tensor_name] = QuantizationParams(zero_point=zero, scale=scale)
 
         return quantization_params
