@@ -1031,8 +1031,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(5,
                "attention_mask",
                "2d Tensor of shape (batch_size, past_sequence_length + sequence_length). Must be a right padding mask.",
-               "M",
-               OpSchema::Optional)
+               "M")
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
@@ -1050,7 +1049,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "kv_sequence_length.",
                 "T")
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
-        .TypeConstraint("M", {"tensor(int64)"}, "Constrain past sequence length to int tensor.")
+        .TypeConstraint("M", {"tensor(int64)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);
         }));

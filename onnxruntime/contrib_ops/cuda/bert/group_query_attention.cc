@@ -45,7 +45,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_unidirectional_ = true;
   // kv_share_buffer_ = info.GetAttrOrDefault<int64_t>("kv_share_buffer", 1) == 1;
-  is_past_bsnh_ = false; // info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
+  is_past_bsnh_ = false;  // info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
 #if USE_FLASH_ATTENTION
@@ -130,7 +130,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
-  ORT_ENFORCE(use_flash_attention);
+  if (!use_flash_attention) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GroupQueryAttention is only supported on ampere gpu and above");
+  }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   int sm = (device_prop.major * 10) + device_prop.minor;
@@ -238,11 +240,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
     data.v = reinterpret_cast<CudaT*>(v_buffer.get());
   }
-  if (fmha_buffer != nullptr) {
-    data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
-  }
 
-  if (data.past_key == data.present_key){
+  if (data.past_key == data.present_key) {
     parameters.kv_share_buffer = true;
   } else {
     parameters.kv_share_buffer = false;
