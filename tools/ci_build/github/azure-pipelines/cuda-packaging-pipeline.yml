@@ -326,7 +326,7 @@ stages:
         versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'
         workingDirectory: '$(Build.SourcesDirectory)\onnxruntime'
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-cuda
+      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-cuda'
       inputs:
         artifactName: 'onnxruntime-win-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
