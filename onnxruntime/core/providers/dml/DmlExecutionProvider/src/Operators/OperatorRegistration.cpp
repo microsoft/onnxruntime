@@ -320,6 +320,8 @@ DML_OP_EXTERN_CREATION_FUNCTION(GlobalMaxPool);
 DML_OP_EXTERN_CREATION_FUNCTION(LpPool);
 DML_OP_EXTERN_CREATION_FUNCTION(GlobalLpPool);
 DML_OP_EXTERN_CREATION_FUNCTION(MaxRoiPool);
+DML_OP_EXTERN_CREATION_FUNCTION(QLinearAveragePool);
+DML_OP_EXTERN_CREATION_FUNCTION(QLinearGlobalAveragePool);
 DML_OP_EXTERN_CREATION_FUNCTION(RoiAlign10);
 DML_OP_EXTERN_CREATION_FUNCTION(RoiAlign16);
 DML_OP_EXTERN_CREATION_FUNCTION(InstanceNormalization);
@@ -629,6 +631,10 @@ constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQLinea
     SupportedTensorDataTypes::Float32,
     SupportedTensorDataTypes::Ints8Bit,
     SupportedTensorDataTypes::Ints8Bit|SupportedTensorDataTypes::Float32,
+};
+
+constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListQLinearAveragePool = {
+    SupportedTensorDataTypes::Ints8Bit
 };
 
 template<typename... Args>
@@ -1036,6 +1042,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  MaxUnpool,                          typeNameListTwo,                supportedTypeListMaxUnpool,             DmlGraphSupport::Supported,      requiredConstantCpuInputs(2))},
     {REG_INFO(     11,  MaxUnpool,                          typeNameListTwo,                supportedTypeListMaxUnpool,             DmlGraphSupport::Supported,      requiredConstantCpuInputs(2))},  // 11 is identical to 9.
 
+    {REG_INFO_MS(  1,   QLinearAveragePool,                 typeNameListDefault,            supportedTypeListQLinearAveragePool,    DmlGraphSupport::Supported)},
+    {REG_INFO_MS(  1,   QLinearGlobalAveragePool,           typeNameListDefault,            supportedTypeListQLinearAveragePool,    DmlGraphSupport::Supported)},
     {REG_INFO_MS(  1,   QLinearAdd,                         typeNameListDefault,            supportedTypeListInteger8,              DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearConv,                        typeNameListFour,               supportedTypeListQLinearConv,           DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,         DmlGraphSupport::Supported)},
