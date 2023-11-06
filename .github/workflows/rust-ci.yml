@@ -1,0 +1,204 @@
+name: Rust
+
+on: [pull_request]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_LOG: onnxruntime=debug,onnxruntime-sys=debug
+  RUST_BACKTRACE: 1
+
+jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - run: rustup component add rustfmt
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+  download:
+    name: Download prebuilt ONNX Runtime archive from build.rs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - run: rustup target install x86_64-unknown-linux-gnu
+      - run: rustup target install x86_64-apple-darwin
+      - run: rustup target install i686-pc-windows-msvc
+      - run: rustup target install x86_64-pc-windows-msvc
+      # ******************************************************************
+      - name: Download prebuilt archive (CPU, x86_64-unknown-linux-gnu)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target x86_64-unknown-linux-gnu
+      - name: Verify prebuilt archive downloaded (CPU, x86_64-unknown-linux-gnu)
+        run: ls -lh target/x86_64-unknown-linux-gnu/debug/build/onnxruntime-sys-*/out/onnxruntime-linux-x64-1.*.tgz
+      # ******************************************************************
+      - name: Download prebuilt archive (CPU, x86_64-apple-darwin)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target x86_64-apple-darwin
+      - name: Verify prebuilt archive downloaded (CPU, x86_64-apple-darwin)
+        run: ls -lh target/x86_64-apple-darwin/debug/build/onnxruntime-sys-*/out/onnxruntime-osx-x64-1.*.tgz
+      # ******************************************************************
+      - name: Download prebuilt archive (CPU, i686-pc-windows-msvc)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target i686-pc-windows-msvc
+      - name: Verify prebuilt archive downloaded (CPU, i686-pc-windows-msvc)
+        run: ls -lh target/i686-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-x86-1.*.zip
+      # ******************************************************************
+      - name: Download prebuilt archive (CPU, x86_64-pc-windows-msvc)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target x86_64-pc-windows-msvc
+      - name: Verify prebuilt archive downloaded (CPU, x86_64-pc-windows-msvc)
+        run: ls -lh target/x86_64-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-x64-1.*.zip
+      # ******************************************************************
+      - name: Download prebuilt archive (GPU, x86_64-unknown-linux-gnu)
+        uses: actions-rs/cargo@v1
+        env:
+          ORT_USE_CUDA: "yes"
+        with:
+          command: build
+          args: --target x86_64-unknown-linux-gnu
+      - name: Verify prebuilt archive downloaded (GPU, x86_64-unknown-linux-gnu)
+        run: ls -lh target/x86_64-unknown-linux-gnu/debug/build/onnxruntime-sys-*/out/onnxruntime-linux-x64-gpu-1.*.tgz
+      # ******************************************************************
+      - name: Download prebuilt archive (GPU, x86_64-pc-windows-msvc)
+        uses: actions-rs/cargo@v1
+        env:
+          ORT_USE_CUDA: "yes"
+        with:
+          command: build
+          args: --target x86_64-pc-windows-msvc
+      - name: Verify prebuilt archive downloaded (GPU, x86_64-pc-windows-msvc)
+        run: ls -lh target/x86_64-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-gpu-x64-1.*.zip
+
+  test:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          [
+            x86_64-unknown-linux-gnu,
+            x86_64-apple-darwin,
+            x86_64-pc-windows-msvc,
+            i686-pc-windows-msvc,
+          ]
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: i686-pc-windows-msvc
+            os: windows-latest
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+      - name: Install additional packages (macOS)
+        if: contains(matrix.target, 'x86_64-apple-darwin')
+        run: brew install libomp
+      - name: Build (cargo build)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --all
+      - name: Build tests (cargo test)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-run
+      - name: Build onnxruntime with 'model-fetching' feature
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          # Use --manifest-path instead of --package. See https://github.com/actions-rs/cargo/issues/86
+          args: --manifest-path onnxruntime/Cargo.toml --features model-fetching
+      - name: Test onnxruntime-sys
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --package onnxruntime-sys -- --test-threads=1 --nocapture
+      - name: Test onnxruntime
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          # Use --manifest-path instead of --package. See https://github.com/actions-rs/cargo/issues/86
+          args: --manifest-path onnxruntime/Cargo.toml --features model-fetching -- --test-threads=1 --nocapture
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - run: rustup component add clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-features -- -D warnings
+
+  coverage:
+    name: Code coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build (required to download libonnxruntime)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --package onnxruntime-sys
+      - name: Copy libonnxruntime.*.dylib to /usr/lib/
+        run: sudo cp -r target/debug/build/onnxruntime-sys-*/out/onnxruntime/onnxruntime-*/lib/libonnxruntime.* /usr/lib/
+      - name: Run cargo-tarpaulin
+        uses: actions-rs/tarpaulin@v0.1
+        with:
+          args: "--ignore-tests"
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v1
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+      - name: Archive code coverage results
+        uses: actions/upload-artifact@v1
+        with:
+          name: code-coverage-report
+          path: cobertura.xml
