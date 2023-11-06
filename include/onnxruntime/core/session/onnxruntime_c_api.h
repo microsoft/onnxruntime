@@ -29,6 +29,9 @@
  */
 
 #pragma once
+
+//#include "interface/provider/providers.h"
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -4516,6 +4519,8 @@ struct OrtApi {
   ORT_API2_STATUS(RegisterCustomEP, _In_ const char* library_path, _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys, _In_ OrtSessionOptions* options);
 
   ORT_API2_STATUS(LoadExecutionProviderInfo, _In_ OrtEnv* env, _In_ const char* execution_provider_type, _In_ const char* library_path);
+
+  ORT_API2_STATUS(RegisterExecutionProvider, _In_ OrtEnv* env, _In_ const char* execution_provider_type, _In_ void* execution_provider);
 };
 
 /*

@@ -110,6 +110,8 @@ class Environment {
 
   Status LoadExternalExecutionProvider(const std::string& provider_type, const std::string& library_path);
 
+  Status RegisterExecutionProvider(const std::string& provider_type, interface::ExecutionProvider* provider);
+
   interface::ExecutionProvider* CreateExternalEPInstance(const std::string& provider_type, const std::unordered_map<std::string, std::string>& provider_options);
 
  private:
@@ -124,5 +126,6 @@ class Environment {
   bool create_global_thread_pools_{false};
   std::vector<AllocatorPtr> shared_allocators_;
   std::unordered_map<std::string, std::unique_ptr<ProviderLibrary2>> external_ep_libs_;
+  std::unordered_map<std::string, interface::ExecutionProvider*> internal_ep_libs_;
 };
 }  // namespace onnxruntime

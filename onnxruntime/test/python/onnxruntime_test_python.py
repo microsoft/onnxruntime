@@ -1708,6 +1708,26 @@ class TestInferenceSession(unittest.TestCase):
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
 
+    def test_custom_ep(self):
+
+        model_path = 'testdata/identity_celu.onnx'
+        shared_lib_path = None
+        if sys.platform == 'win32':
+            shared_lib_path = 'custom_ep.dll'
+        elif sys.platform == 'linux':
+            shared_lib_path = 'libcustom_ep.so'
+        if not shared_lib_path:
+            return
+        onnxrt.load_execution_provider_info('CustomEp', shared_lib_path)
+        sess_options = onnxrt.SessionOptions()
+        sess_options.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL
+        session = onnxrt.InferenceSession(model_path, sess_options,
+            providers=['CustomEp'], provider_options=[{'int_property':'3', 'str_property':'strval'}])
+        x = np.array([1,2,-3]).astype(np.float32)
+        expected_y = np.array([1.0,2.0,1.0], dtype=np.float32)
+        y = np.array(session.run(None, {'X': x})[0], dtype=np.float32)
+        self.assertTrue(np.array_equal(y, expected_y))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

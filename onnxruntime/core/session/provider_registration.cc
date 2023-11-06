@@ -49,6 +49,15 @@ OrtStatus* ParseProviderOptions(_In_reads_(num_keys) const char* const* provider
  *
  * EPs that use the provider bridge are handled in provider_bridge_ort.cc
  */
+//
+//struct UnknownProviderFactory : public IExecutionProviderFactory {
+//  UnknownProviderFactory(const std::string& provider_name) : provider_name_(provider_name) {
+//  }
+//  std::unique_ptr<IExecutionProvider> CreateProvider() override {
+//    return {};
+//  }
+//  const std::string provider_name_;
+//};
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                     _In_ OrtSessionOptions* options,
@@ -134,6 +143,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     status = create_not_supported_status();
 #endif
   } else {
+    // options->provider_factories.push_back(std::make_shared<UnknownProviderFactory>(provider_name));
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' and 'AZURE'");

@@ -114,3 +114,7 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocatorV2(const std::stri
 onnxruntime::common::Status OrtEnv::LoadExternalExecutionProvider(const std::string& provider_type, const std::string& library_path) {
   return value_->LoadExternalExecutionProvider(provider_type, library_path);
 }
+
+onnxruntime::common::Status OrtEnv::RegisterExecutionProvider(const std::string& provider_type, onnxruntime::interface::ExecutionProvider* provider) {
+  return value_->RegisterExecutionProvider(provider_type, provider);
+}

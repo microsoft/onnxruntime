@@ -539,6 +539,11 @@ inline Env& Env::CreateAndRegisterAllocatorV2(const std::string& provider_type, 
   return *this;
 }
 
+inline Env& Env::RegisterCustomEp(const std::string& provider_type, void* provider) {
+  ThrowOnError(GetApi().RegisterExecutionProvider(p_, provider_type.c_str(), provider));
+  return *this;
+}
+
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }

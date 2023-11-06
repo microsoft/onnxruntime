@@ -56,6 +56,9 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 
+#include "custom_ep.h"
+#include "core/framework/provider_adapter.h"
+
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -2994,6 +2997,50 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
   VerifyThreadPoolWithDenormalAsZero(session2.GetIntraOpThreadPoolToUse(), false);
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
+}
+
+TEST(CustomEpTest, InTree) {
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.session_logid = "CustomEpTestInTree";
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+
+  auto custom_ep = std::make_unique<CustomEp>(CustomEpInfo{1, std::string{"1"}});
+  auto custom_ep_adapter = std::make_shared<ExecutionProviderAdapter>(custom_ep.release());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(custom_ep_adapter));
+  ASSERT_STATUS_OK(session_object.Load("testdata/identity_celu.onnx"));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunOptions run_options;
+
+  // prepare inputs
+  std::vector<int64_t> dims_x = {6};
+  std::vector<float> values_x = {1.6f, -0.6f, -0.5f, -1.0f, 0.8f, -2.3f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x,&ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("Y");
+  std::vector<OrtValue> fetches;
+
+  // Now run
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+  const auto& output_tensor = fetches[0].Get<onnxruntime::Tensor>();
+  const float* output_floats = output_tensor.Data<float>();
+  ASSERT_EQ(output_floats[0], 1.6f);
+  ASSERT_EQ(output_floats[1], 1.f); // -0.6 trimmed by CustomEP Celu to 1.f, not 0.f
 }
 
 }  // namespace test

@@ -216,11 +216,13 @@ class ExecutionProviderAdapter : public IExecutionProvider {
     external_ep_impl_->RegisterStreamHandlers(stream_handle_registry, ort_allocators);
   }
 
-//  virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
-//    return IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
-//  }
+  virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
+    return IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
+  }
 
-virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
+  /*
+  * disable logic below to skip stack segfault returning vec object
+  virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
   AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
   ApiGraphView api_graph_view(graph_viewer.GetGraph(), std::move(cpu_allocator));
   std::vector<std::unique_ptr<SubGraphDef>> sub_graphs = external_ep_impl_->GetCapability(&api_graph_view);
@@ -243,7 +245,7 @@ virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const Grap
     ret.push_back(std::make_unique<ComputeCapability>(std::move(sb)));
   }
   return ret;
-}
+}*/
 
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
     std::vector<std::unique_ptr<interface::GraphViewRef>> fused_node_as_graph;

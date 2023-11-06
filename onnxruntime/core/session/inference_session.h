@@ -524,6 +524,8 @@ class InferenceSession {
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+  //Environment& Env() const { return const_cast<Environment&>(environment_); }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 

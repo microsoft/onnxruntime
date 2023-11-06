@@ -93,9 +93,17 @@ Status Environment::LoadExternalExecutionProvider(const std::string& provider_ty
   return Status::OK();
 }
 
+Status Environment::RegisterExecutionProvider(const std::string& provider_type, interface::ExecutionProvider* provider) {
+  internal_ep_libs_.insert({provider_type, provider});
+  return Status::OK();
+}
+
 interface::ExecutionProvider* Environment::CreateExternalEPInstance(const std::string& provider_type, const std::unordered_map<std::string, std::string>& provider_options) {
   if (auto it = external_ep_libs_.find(provider_type); it != external_ep_libs_.end()) {
     return it->second->CreateExternalEPInstance(provider_options);
+  }
+  if (auto it = internal_ep_libs_.find(provider_type); it != internal_ep_libs_.end()) {
+    return it->second;
   }
   return nullptr;
 }

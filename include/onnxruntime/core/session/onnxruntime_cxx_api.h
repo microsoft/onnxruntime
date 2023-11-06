@@ -25,6 +25,7 @@
 #pragma once
 #include "onnxruntime_c_api.h"
 #include "onnxruntime_float16.h"
+//#include "interface/provider/provider.h"
 
 #include <cstddef>
 #include <cstdio>
@@ -721,6 +722,8 @@ struct Env : detail::Base<OrtEnv> {
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 
   Env& CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo* mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocatorV2
+
+  Env& RegisterCustomEp(const std::string& provider_type, void* provider);
 };
 
 /** \brief Custom Op Domain

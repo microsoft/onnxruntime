@@ -502,4 +502,6 @@ ORT_API_STATUS_IMPL(SetSymbolicDimensions, _In_ OrtTensorTypeAndShapeInfo* info,
 ORT_API_STATUS_IMPL(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(RegisterCustomEP, _In_ const char* library_path, _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(LoadExecutionProviderInfo, _In_ OrtEnv* env, _In_ const char* execution_provider_type, _In_ const char* library_path);
+
+ORT_API_STATUS_IMPL(RegisterExecutionProvider, _In_ OrtEnv* env, _In_ const char* execution_provider_type, _In_ void* execution_provider);
 }  // namespace OrtApis

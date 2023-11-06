@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include <cassert>
 #include <numeric>
 #include "interface/common/data_types.h"
-#include "interface/framework/tensor.h"
 #include "core/common/status.h"
 
 namespace onnxruntime {
@@ -66,7 +66,7 @@ struct TensorView : public ITensor {
 
 template <typename T>
 struct Tensor : public ITensor {
-  Tensor(IKernelContext* ctx, size_t index) : ITensor(ctx, index) {}
+  Tensor(IKernelContext* ctx, int index) : ITensor(ctx, index) {}
   Tensor(T* data, const TensorShape& shape) : data_(data) {
     shape_ = shape;
   };
@@ -189,7 +189,7 @@ struct IKernelBuilder {
   }
 
   template <typename K, typename... Args>
-  IKernelBuilder& ParseStruct(onnxruntime::Status (K::*compute_fn)(Args...)) {
+  IKernelBuilder& ParseStruct(onnxruntime::Status (K::*)(Args...)) {
     using KernelType = StructKernel<K>;
     create_kernel_fn_ = [&](const IKernelInfo& info) {
       return std::make_unique<KernelType>(info);

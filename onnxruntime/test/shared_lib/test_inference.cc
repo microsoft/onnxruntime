@@ -3666,3 +3666,31 @@ TEST(CApiTest, RunAsyncFail) {
   Ort::RunOptions run_options;
   EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
 }
+
+//#include "custom_ep/custom_ep.h"
+//static constexpr PATH_TYPE CUSTOM_EP_TEST_MODEL = TSTR("testdata/identity_celu.onnx");
+//
+//TEST(CustomEpTest, Intree) {
+//  auto& ort_api = Ort::GetApi();
+//  ort_api.LoadExecutionProviderInfo((OrtEnv*)(ort_env.get()), "CustomEp", "custom_ep.dll");
+//
+//  Ort::SessionOptions session_options;
+//  session_options.AppendExecutionProvider("CustomEP",{});
+//  
+//  Ort::Session session(*ort_env, CUSTOM_EP_TEST_MODEL, session_options);
+//  const char* input_names[] = {"X"};
+//
+//  float x_value[] = {1.0f, -2.0f, 3.0f, -4.0f, 5.0f, 6.0f};
+//  int64_t x_dim[] = {6};
+//
+//  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+//  Ort::Value input_tensors[1] = {
+//      Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 1),
+//  };
+//
+//  const char* output_names[] = {"Y"};
+//  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr},
+//                                                    input_names, input_tensors, 1,
+//                                                    output_names, 1);
+//  ASSERT_TRUE(ort_outputs[0].GetTensorData<float>()[1] == 2.0f);
+//}

@@ -2392,6 +2392,14 @@ ORT_API_STATUS_IMPL(OrtApis::LoadExecutionProviderInfo, _In_ OrtEnv* env, _In_ c
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProvider, _In_ OrtEnv* env, _In_ const char* execution_provider_type, _In_ void* execution_provider) {
+  auto st = env->RegisterExecutionProvider(execution_provider_type, reinterpret_cast<onnxruntime::interface::ExecutionProvider*>(execution_provider));
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Cannot register EP");
+  }
+  return nullptr;
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -2762,6 +2770,7 @@ static constexpr OrtApi ort_api_1_to_17 = {
 
     &OrtApis::RegisterCustomEP,
     &OrtApis::LoadExecutionProviderInfo,
+    &OrtApis::RegisterExecutionProvider,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

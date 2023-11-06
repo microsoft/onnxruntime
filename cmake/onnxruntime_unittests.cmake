@@ -462,6 +462,9 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc)
 
+# intree-build custom ep
+# list(APPEND onnxruntime_shared_lib_test_SRC ${TEST_SRC_DIR}/testdata/custom_ep/custom_ep.cc)
+
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
 endif()
@@ -1280,6 +1283,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             LIBS ${onnxruntime_shared_lib_test_LIBS}
             DEPENDS ${all_dependencies}
     )
+    # include custom ep header
+    target_include_directories(onnxruntime_shared_lib_test PRIVATE ${TEST_SRC_DIR}/testdata)
+
     if (onnxruntime_USE_CUDA)
       target_include_directories(onnxruntime_shared_lib_test PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
       target_sources(onnxruntime_shared_lib_test PRIVATE ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
@@ -1730,3 +1736,10 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
 endif()
 
 include(onnxruntime_fuzz_test.cmake)
+
+####################################################################################################
+add_library(custom_ep SHARED ${TEST_SRC_DIR}/testdata/custom_ep/custom_ep_lib.cc ${TEST_SRC_DIR}/framework/custom_ep.cc)
+target_include_directories(custom_ep PRIVATE ${TEST_SRC_DIR})
+target_link_directories(custom_ep PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(custom_ep PUBLIC onnxruntime)
+add_dependencies(onnxruntime_shared_lib_test custom_ep)

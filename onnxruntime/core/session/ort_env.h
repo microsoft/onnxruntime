@@ -9,6 +9,7 @@
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "interface/provider/provider.h"
 
 namespace onnxruntime {
 class Environment;
@@ -65,6 +66,9 @@ struct OrtEnv {
   ~OrtEnv();
   onnxruntime::common::Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
   onnxruntime::common::Status LoadExternalExecutionProvider(const std::string& provider_type, const std::string& library_path);
+  ///////////////////////////////////////////////// For Intree EP /////////////////////////////////////////////////
+  // Q: should we manage its lifetime?
+  onnxruntime::common::Status RegisterExecutionProvider(const std::string& provider_type, onnxruntime::interface::ExecutionProvider* provider);
 
  private:
   static std::unique_ptr<OrtEnv> p_instance_;
