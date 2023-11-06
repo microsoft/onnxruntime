@@ -22,7 +22,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
-          args: --all -- --check
+          args: --all --manifest-path ${{ github.workspace }}/rust/Cargo.toml -- --check
 
   download:
     name: Download prebuilt ONNX Runtime archive from build.rs
