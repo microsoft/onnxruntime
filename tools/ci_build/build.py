@@ -1839,8 +1839,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             # For CUDA or DML enabled builds test IOBinding feature
             if args.use_cuda or args.use_dml:
                 log.info("Testing IOBinding feature")
-                run_subprocess([sys.executable, "-m", "pip", "uninstall", "--yes", "onnx"], cwd=cwd, dll_path=dll_path)
-                run_subprocess([sys.executable, "-m", "pip", "install", "-q", "onnx"], cwd=cwd, dll_path=dll_path)
+                if args.use_dml:
+                    run_subprocess([sys.executable, "-m", "pip", "uninstall", "--yes", "onnx"], cwd=cwd, dll_path=dll_path)
+                    run_subprocess([sys.executable, "-m", "pip", "install", "-q", "onnx"], cwd=cwd, dll_path=dll_path)
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_cuda:
