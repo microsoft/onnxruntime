@@ -45,6 +45,30 @@ def dict_to_args(dct):
     return ",".join([f"{k}={v}" for k, v in dct.items()])
 
 
+def fetch_ep_node_info(ep_node_info, model, ep):
+    found_all = False
+    keyphraze_all = "All nodes placed on ["
+    keyphraze_each = "Node(s) placed on ["
+    with open(f"VERBOSE_{model}_{ep}.log", "r") as f:
+        logger.info(f"Loading VERBOSE_{model}_{ep}.log...")
+        for line in f:
+            # Filter out prefix
+            if keyphraze_all in line:
+                info = line.split(keyphraze_all)[1]
+                found_all = True
+            elif keyphraze_each in line:
+                info = line.split(keyphraze_each)[1]
+            else:
+                continue
+            # Parse number of nodes running on ep
+            sub_ep = info.split("]")[0]
+            num_of_nodes = int(info.split(": ")[-1])
+            ep_node_info[model][ep][sub_ep] = num_of_nodes
+            logger.info(f"{model} #node run on {sub_ep}: {num_of_nodes}")
+            if found_all:
+                return
+
+
 def main():
     args = parse_arguments()  # noqa: F405
     setup_logger(False)  # noqa: F405
@@ -62,6 +86,7 @@ def main():
     parse_models_helper(args, models)  # noqa: F405
 
     model_to_fail_ep = {}
+    ep_node_info = {model:{ep: {} for ep in ep_list} for model in models}
 
     benchmark_fail_csv = fail_name + csv_ending  # noqa: F405
     benchmark_metrics_csv = metrics_name + csv_ending  # noqa: F405
@@ -133,7 +158,9 @@ def main():
                     ]
                 )
 
-            p = subprocess.run(command, stderr=subprocess.PIPE)  # noqa: F405
+            with open(f"VERBOSE_{model}_{ep}.log", "w") as f:
+                p = subprocess.run(command, stdout=f, stderr=subprocess.PIPE)
+
             logger.info("Completed subprocess %s ", " ".join(p.args))  # noqa: F405
             logger.info("Return code: %d", p.returncode)  # noqa: F405
 
@@ -148,6 +175,8 @@ def main():
                 update_fail_model_map(model_to_fail_ep, model, ep, error_type, error_message)  # noqa: F405
                 write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)  # noqa: F405
                 logger.info(model_to_fail_ep)  # noqa: F405
+
+            fetch_ep_node_info(ep_node_info, model, ep)
 
         os.remove(model_list_file)
 
@@ -164,7 +193,7 @@ def main():
 
         if os.path.exists(METRICS_FILE):  # noqa: F405
             model_to_metrics = read_map_from_file(METRICS_FILE)  # noqa: F405
-            output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))  # noqa: F405
+            output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv), ep_node_info)  # noqa: F405
             logger.info(f"\nSaved model metrics results to {benchmark_metrics_csv}")  # noqa: F405
 
     if benchmark:

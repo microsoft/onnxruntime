@@ -1505,7 +1505,7 @@ def output_latency(results, csv_filename):
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
 
 
-def output_metrics(model_to_metrics, csv_filename):
+def output_metrics(model_to_metrics, csv_filename, ep_node_info={}):
     with open(csv_filename, mode="w", newline="") as csv_file:
         column_names = [
             "Model",
@@ -1516,6 +1516,7 @@ def output_metrics(model_to_metrics, csv_filename):
             "Total TRT execution time",
             "Total execution time",
             "% TRT execution time",
+            "# nodes on ep",
         ]
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(column_names)
@@ -1571,6 +1572,8 @@ def output_metrics(model_to_metrics, csv_filename):
 
             results.append(result)
             results.append(result_fp16)
+            
+            num_of_nodes = json.dumps(ep_node_info[model]) if model in ep_node_info else " "
 
         for value in results:
             row = [
@@ -1584,6 +1587,7 @@ def output_metrics(model_to_metrics, csv_filename):
                 value["total_trt_execution_time"] if "total_trt_execution_time" in value else "  ",
                 value["total_execution_time"] if "total_execution_time" in value else "  ",
                 value["ratio_of_execution_time_in_trt"] if "ratio_of_execution_time_in_trt" in value else "  ",
+                num_of_nodes,
             ]
             csv_writer.writerow(row)
 
@@ -1974,6 +1978,9 @@ def validate_model_on_ep(
     options.enable_profiling = True
     options.profile_file_prefix = f"ort_profile_{model_name}_{exec_provider}"
     options.graph_optimization_level = get_graph_opt_level(args.graph_enablement)
+    options.log_verbosity_level = 1
+    options.log_severity_level = 1
+    options.logid = f"VERBOSE_{model_name}_{exec_provider}"
 
     providers = ep_to_provider_list[exec_provider]
     provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
