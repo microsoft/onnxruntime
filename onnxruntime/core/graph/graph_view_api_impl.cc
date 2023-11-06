@@ -148,6 +148,16 @@ std::optional<std::vector<int64_t>> ApiNodeView::GetAttributeInts(std::string_vi
 int ApiNodeView::SinceVersion() const {
   return node_.SinceVersion();
 }
+
+std::vector<std::unique_ptr<interface::GraphViewRef>> ApiNodeView::GetSubgraphs() const {
+  std::vector<std::unique_ptr<interface::GraphViewRef>> ret;
+  for (const auto& sub_graph : node_.GetSubgraphs()) {
+    AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+    std::unique_ptr<ApiGraphView> graph_view = std::make_unique<ApiGraphView>(*sub_graph, std::move(cpu_allocator));
+    ret.emplace_back(std::move(graph_view));
+  }
+  return ret;
+}
 // </ApiNodeView>
 
 std::unique_ptr<interface::TensorRef> CreateApiTensor(const onnx::TensorProto* tensor, const Path& path, AllocatorPtr cpu_allocator) {
@@ -168,7 +178,7 @@ std::optional<int64_t> ApiGraphView::Opset(std::string_view domain) const {
 }
 
 std::vector<std::unique_ptr<interface::NodeViewRef>> ApiGraphView::NodeViews() const {
-  GraphViewer graph_viewer(graph_);
+  GraphViewer graph_viewer(graph_, isg_);
   std::vector<std::unique_ptr<interface::NodeViewRef>> nodes;
   const auto& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
   nodes.reserve(sorted_nodes.size());

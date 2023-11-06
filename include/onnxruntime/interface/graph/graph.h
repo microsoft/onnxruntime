@@ -41,6 +41,7 @@ enum class DataType : int32_t {
 };
 
 namespace interface {
+class GraphViewRef;
 /// <summary>
 /// An interface for a constant tensor value used by initializers
 /// </summary>
@@ -145,6 +146,9 @@ class NodeViewRef {
   /// <returns>since version or default value -1</returns>
   virtual int SinceVersion() const = 0;
 
+  // TODO: Shall we add this API to support subgraph access? looks it contradicts with the comment of GraphRef: No ability to access subgraphs is provided
+  virtual std::vector<std::unique_ptr<GraphViewRef>> GetSubgraphs() const = 0;
+
   virtual ~NodeViewRef(){};
 };
 
@@ -173,6 +177,8 @@ class GraphViewRef {
   virtual std::unique_ptr<ValueInfoViewRef> GetValueInfoView(std::string_view name) const = 0;
 
   virtual std::unique_ptr<NodeViewRef> GetNodeViewProducingOutput(std::string_view name) const = 0;
+
+  virtual bool IsSubGraph() const = 0;
 
 #ifdef INTREE_EP
   virtual onnx::ModelProto ToModelProto() = 0;

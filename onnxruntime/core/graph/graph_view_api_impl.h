@@ -74,6 +74,7 @@ class ApiNodeView : virtual public interface::NodeViewRef {
   std::optional<std::string> GetAttributeString(std::string_view name) const override;
   std::optional<std::vector<int64_t>> GetAttributeInts(std::string_view name) const override;
   int SinceVersion() const override;
+  std::vector<std::unique_ptr<interface::GraphViewRef>> GetSubgraphs() const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNodeView);
@@ -82,16 +83,18 @@ class ApiNodeView : virtual public interface::NodeViewRef {
 class ApiGraphView : virtual public interface::GraphViewRef {
  private:
   const Graph& graph_;
+  const IndexedSubGraph* isg_;
  protected:
   AllocatorPtr cpu_allocator_;
  public:
-  explicit ApiGraphView(const Graph& graph, AllocatorPtr cpu_allocator) : graph_(graph), cpu_allocator_(std::move(cpu_allocator)) {}
+  explicit ApiGraphView(const Graph& graph, AllocatorPtr cpu_allocator, const IndexedSubGraph* isg = nullptr) : graph_(graph), isg_(isg), cpu_allocator_(std::move(cpu_allocator)) {}
 
   std::optional<int64_t> Opset(std::string_view domain = "") const override;
   std::vector<std::unique_ptr<interface::NodeViewRef>> NodeViews() const override;
   std::unique_ptr<interface::TensorRef> GetConstant(std::string_view name) const override;
   std::unique_ptr<interface::ValueInfoViewRef> GetValueInfoView(std::string_view name) const override;
   std::unique_ptr<interface::NodeViewRef> GetNodeViewProducingOutput(std::string_view name) const override;
+  bool IsSubGraph() const override { return graph_.IsSubgraph(); }
 #ifdef INTREE_EP
   onnx::ModelProto ToModelProto() override;
 #endif
