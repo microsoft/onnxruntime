@@ -8,6 +8,7 @@ ARG BASEIMAGE=nvidia/cuda:12.2.2-cudnn8-devel-ubi8
 ARG DEVTOOLSET_ROOTPATH=/usr
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64
 ARG PREPEND_PATH=/usr/local/cuda/binet
+ARG TRT_VERSION=8.6.1.6-1.cuda12.0
 
 #Build manylinux docker image begin
 FROM $BASEIMAGE AS runtime_base
