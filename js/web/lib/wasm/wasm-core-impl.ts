@@ -52,7 +52,9 @@ export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
   initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
 
-  if (!BUILD_DEFS.DISABLE_WEBGPU) {
+  const wasmBackend = BUILD_DEFS.DISABLE_TRAINING ? require('../backend-wasm-inference').wasmBackend :
+                                                    require('../backend-wasm-training').wasmBackend;
+  if (wasmBackend.name === 'webgpu') {
     // init JSEP if available
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires

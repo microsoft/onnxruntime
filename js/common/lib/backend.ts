@@ -71,6 +71,8 @@ export interface Backend {
       (checkpointStateUriOrBuffer: TrainingSession.URIorBuffer, trainModelUriOrBuffer: TrainingSession.URIorBuffer,
        evalModelUriOrBuffer: TrainingSession.URIorBuffer, optimizerModelUriOrBuffer: TrainingSession.URIorBuffer,
        options: InferenceSession.SessionOptions): Promise<TrainingSessionHandler>;
+
+  name: string;
 }
 
 export {registerBackend} from './backend-impl.js';

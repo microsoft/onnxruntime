@@ -86,6 +86,7 @@ export const resolveBackend = async(backendHints: readonly string[]): Promise<Ba
         }
         await backendInfo.initPromise;
         backendInfo.initialized = true;
+        backendInfo.backend.name = backendName;
         return backendInfo.backend;
       } catch (e) {
         if (!isInitializing) {
