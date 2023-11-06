@@ -201,7 +201,7 @@ stages:
 
       #To be used in test_win.yml
       - task: PublishPipelineArtifact@1
-        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
+        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64-cuda'))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
           artifactName: 'drop-nuget${{ parameters.artifact_name_suffix }}'

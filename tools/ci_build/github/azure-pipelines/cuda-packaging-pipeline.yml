@@ -789,6 +789,7 @@ stages:
     AgentPool : Onnxruntime-Linux-GPU
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
+    CustomOpArtifactName: onnxruntime-linux-x64-gpu
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
