@@ -181,10 +181,11 @@ stages:
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}'
             DoEsrp: ${{ parameters.DoEsrp }}
 
-      #Upload protoc.exe, which will be used in nuget build for generating C# files
+      # Upload protoc.exe, which will be used in nuget build for generating C# files
+      # TODO: We need to make this step independent of the packageName, so that it can be used in test_win.yml
       - task: PublishPipelineArtifact@1
         displayName: Publish protoc as drop-extra
-        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
+        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64-cuda'))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
           artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
