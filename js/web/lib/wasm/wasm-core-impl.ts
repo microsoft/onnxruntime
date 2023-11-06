@@ -52,6 +52,10 @@ export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
   initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
 
+  /* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports */
+  // We use "require" instead of "import" here because import statement must be put in top level. Our current code does
+  // not allow bundler to tree-shaking code as expected because some codes are treated as having side effects.
+  // So we import code inside the if-clause to allow bundler remove the code safely.
   const wasmBackend = BUILD_DEFS.DISABLE_TRAINING ? require('../backend-wasm-inference').wasmBackend :
                                                     require('../backend-wasm-training').wasmBackend;
   if (wasmBackend.name === 'webgpu') {
