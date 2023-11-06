@@ -194,6 +194,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.config,
             args.batch_size,
             seq_len=args.sequence_length,
+            max_seq_len=args.sequence_length,
             use_fp16=args.use_fp16,
             use_cache_branch=False,
         )
@@ -201,6 +202,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.config,
             args.batch_size,
             seq_len=1,
+            max_seq_len=args.sequence_length,
             use_fp16=args.use_fp16,
             use_cache_branch=True,
         )
@@ -246,7 +248,7 @@ def get_model(args: argparse.Namespace):
     elif args.benchmark_type == "ort-dml":
         sess_options = ort.SessionOptions()
         sess_options.enable_profiling = args.profile
-        sess_options.add_free_dimension_override_by_name("max_seq_len", args.sequence_length)
+        sess_options.add_free_dimension_override_by_name("max_seq_len", 256)
         sess_options.add_free_dimension_override_by_name("seq_len_increment", 1)
         sess_options.log_severity_level = 3
         if args.verbose:
