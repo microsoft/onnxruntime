@@ -128,10 +128,6 @@ Status CheckInputs(const Tensor* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
   }
-  // } else if (kv_share_buffer && past_key == nullptr && past_value == nullptr) {
-  //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-  //                          "Input 'past_key' and 'past_value' shall be present when kv_share_buffer is on.");
-  // }
 
   if (key_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
