@@ -26,7 +26,10 @@ jobs:
   timeoutInMinutes: 240
   workspace:
     clean: all
-  pool: ${{ parameters.MACHINE_POOL }}
+  pool:
+    name: ${{ parameters.MACHINE_POOL }}
+    demands:
+      - ImageVersionOverride -equals 1.0.367516
   variables:
     VSGenerator: 'Visual Studio 17 2022'
   steps:
