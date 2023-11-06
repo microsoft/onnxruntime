@@ -81,7 +81,7 @@ ComputeDotProducts(
 {
     static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
 
-    const int8x8_t LowMask = vdup_n_s8(0x0F);
+    const uint8x8_t LowMask = vdup_n_u8(0x0F);
 
     float32x4_t acc[NCols]{};
 
