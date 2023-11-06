@@ -1,3 +1,20 @@
+/*++
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
+
+Module Name:
+
+    mlas_gemm_postprocessor.h
+
+Abstract:
+
+    This module contains a base class for custom postprocessing following a
+    GEMM.
+
+--*/
+
 #pragma once
 
 template<typename T>
