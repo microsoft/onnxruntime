@@ -51,9 +51,17 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
   if (embed_mode) {
+    // Get engine from byte stream
     const std::string& context_binary = attrs.at(EP_CACHE_CONTEXT).s();
-    std::cout << context_binary << std::endl;
+    *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(const_cast<char*>(context_binary.c_str()),
+                                                                                                static_cast<size_t>(context_binary.length())));
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Read engine as binary data from \"ep_cache_context\" attribute of ep context node and deserialized it";
+    if (!(*trt_engine_)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT EP could not deserialize engine from binary data");
+    }
   } else {
+    // Get engine from cache file
     std::ifstream engine_file(engine_cache_path_.string(), std::ios::binary | std::ios::in);
     engine_file.seekg(0, std::ios::end);
     size_t engine_size = engine_file.tellg();
