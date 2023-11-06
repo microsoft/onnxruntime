@@ -451,11 +451,11 @@ __global__ void GetCacheSeqlens(const int64_t* attention_mask,
   __shared__ typename BlockReduceT::TempStorage temp_storage;
 
   const int b = blockIdx.x;
-	int mask_offset = b * mask_seqlen;
+  int mask_offset = b * mask_seqlen;
   int sum = 0;
-	for(int i = threadIdx.x; i < mask_seqlen; i += blockDim.x) {
-		sum += attention_mask[mask_offset + i];
-	}
+  for (int i = threadIdx.x; i < mask_seqlen; i += blockDim.x) {
+    sum += attention_mask[mask_offset + i];
+  }
 
   int total_sum = BlockReduceT(temp_storage).Sum(sum);
   if (threadIdx.x == 0) {
@@ -506,12 +506,12 @@ Status LaunchPastToTotalSeqlen(contrib::GroupQueryAttentionParameters& parameter
 }
 
 __global__ void FillSeqstartQ(int32_t* seqlens_q,
-                             const int q_seqlen) {
+                              const int q_seqlen) {
   seqlens_q[threadIdx.x] = q_seqlen * threadIdx.x;
 }
 
 Status LaunchFillSeqstartQ(contrib::GroupQueryAttentionParameters& parameters, int32_t* seqlens_q, cudaStream_t stream,
-                          const int threads_per_block) {
+                           const int threads_per_block) {
   if (parameters.is_prompt) {
     return Status::OK();
   }
@@ -529,12 +529,12 @@ Status LaunchFillSeqstartQ(contrib::GroupQueryAttentionParameters& parameters, i
 }
 
 __global__ void FillSeqstartK(int32_t* seqlens_k,
-                             const int kv_seqlen) {
+                              const int kv_seqlen) {
   seqlens_k[threadIdx.x] = kv_seqlen * threadIdx.x;
 }
 
 Status LaunchFillSeqstartK(contrib::GroupQueryAttentionParameters& parameters, int32_t* seqlens_k, cudaStream_t stream,
-                          const int threads_per_block) {
+                           const int threads_per_block) {
   if (parameters.is_prompt) {
     return Status::OK();
   }
@@ -578,13 +578,20 @@ Status FlashAttention(
   bool is_causal = parameters.is_unidirectional;
 
   // Note: seqlens_k is past sequence length for flash
-  ORT_RETURN_IF_ERROR(LaunchGetCacheSeqlens(parameters, data.attention_mask, data.seqlens_k, parameters.is_prompt, stream, 256));
+  if (parameters.is_prompt) {
+    // Launch kernel to copy seqlen
+    int thr_per_blk = 256;
+    int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
+    repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k, parameters.mask_sequence_length, batch_size);
+  } else {
+    ORT_RETURN_IF_ERROR(LaunchGetCacheSeqlens(parameters, data.attention_mask, data.seqlens_k, parameters.is_prompt, stream, 256));
+  }
 
   if (parameters.kv_share_buffer) {
     // Share buffer case
     if (data.past_key == nullptr || data.past_key != data.present_key) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Past and present kv shall share the same tensor when kv_share_buffer is on.");
+                             "Past and present kv shall share the same tensor when kv_share_buffer is on.");
     }
 
     void* seqlens_k = reinterpret_cast<void*>(data.seqlens_k);
@@ -613,7 +620,7 @@ Status FlashAttention(
     // Note that Flash Attention kv-caching operates in place on a buffer... therefore this path is inneficient
     if (data.past_key != nullptr && data.past_key == data.present_key) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Past and present kv share the same tensor but kv_share_buffer is not on.");
+                             "Past and present kv share the same tensor but kv_share_buffer is not on.");
     }
 
     // Mask tensor given case
@@ -674,7 +681,7 @@ Status EfficientAttention(
     // Share buffer case
     if (data.past_key == nullptr || data.past_key != data.present_key) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Past and present kv shall share the same tensor when kv_share_buffer is on.");
+                             "Past and present kv shall share the same tensor when kv_share_buffer is on.");
     }
     // Concatenate new kv in place
     ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(parameters, data, stream, max_threads_per_block));
@@ -682,7 +689,7 @@ Status EfficientAttention(
     // Not share buffer case
     if (data.past_key != nullptr && data.past_key == data.present_key) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Past and present kv share the same tensor but kv_share_buffer is not on.");
+                             "Past and present kv share the same tensor but kv_share_buffer is not on.");
     }
     // Copy past and concat new KV to present buffer
     ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block));
@@ -706,7 +713,7 @@ Status EfficientAttention(
     value = reinterpret_cast<const void*>(data.v);
   }
 
-  int* seqlens_k = nullptr; // built from past and kv seqlens buffers
+  int* seqlens_k = nullptr;  // built from past and kv seqlens buffers
   ORT_RETURN_IF_ERROR(LaunchPastToTotalSeqlen(parameters, data.seqlens_k, stream, 256));
   ORT_RETURN_IF_ERROR(LaunchFillSeqstartQ(parameters, data.seqstart_q, stream, 256));
   ORT_RETURN_IF_ERROR(LaunchFillSeqstartK(parameters, data.seqstart_k, stream, 256));
@@ -723,15 +730,15 @@ Status EfficientAttention(
   p.batch_size = batch_size;
   p.num_heads = num_heads;
   p.sequence_length = sequence_length;
-  p.kv_sequence_length = present_sequence_length; // TOTALLY UNNECESSARY IF WE HAVE SEQLENS_K, maybe remove
+  p.kv_sequence_length = present_sequence_length;  // TOTALLY UNNECESSARY IF WE HAVE SEQLENS_K, maybe remove
   p.max_sequence_length = present_sequence_length;
   p.qk_head_size = head_size;
   p.v_head_size = head_size;
   p.causal = parameters.is_unidirectional;
   p.scale = scale;
-  p.seqlen_k_ptr = seqlens_k; // Note: seqlens_k is total sequence length for efficient
+  p.seqlen_k_ptr = seqlens_k;  // Note: seqlens_k is total sequence length for efficient
   p.seqstart_q_ptr = data.seqstart_q;
-  p.seqstart_k_ptr = data.seqstart_k; // TODO(aciddelgado): need zero tensor here?
+  p.seqstart_k_ptr = data.seqstart_k;  // TODO(aciddelgado): need zero tensor here?
   p.query = query;
   p.key = key;
   p.value = value;
