@@ -18,38 +18,38 @@ class GridSample final : public OpKernel {
     int start_version = info.node().SinceVersion();
     if (start_version >= 20) {
       std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "linear");
-      ORT_ENFORCE(mode_str == "linear" || mode_str == "nearest" || mode_str == "cubic",
-                  "mode \"", mode_str, "\" not supported, expect linear, nearest or cubic");
       if (mode_str == "cubic") {
         mode_ = Cubic;
       } else if (mode_str == "nearest") {
         mode_ = Nearest;
-      } else {
+      } else if (mode_str == "linear") {
         mode_ = Linear;
+      } else {
+        ORT_THROW("mode \"", mode_str, "\" not supported, expect linear, nearest or cubic");
       }
     } else {
       std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear");
-      ORT_ENFORCE(mode_str == "bilinear" || mode_str == "nearest" || mode_str == "bicubic",
-                  "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
       if (mode_str == "bicubic") {
         mode_ = Cubic;
       } else if (mode_str == "nearest") {
         mode_ = Nearest;
-      } else {
+      } else if (mode_str == "bilinear") {
         mode_ = Linear;
+      } else {
+        ORT_THROW("mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
       }
     }
 
     std::string padding_mode_str = info.GetAttrOrDefault<std::string>("padding_mode", "zeros");
     align_corners_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("align_corners", 0));
-    ORT_ENFORCE(padding_mode_str == "zeros" || padding_mode_str == "border" || padding_mode_str == "reflection",
-                "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
     if (padding_mode_str == "reflection") {
       padding_mode_ = Reflection;
     } else if (padding_mode_str == "border") {
       padding_mode_ = Border;
-    } else {
+    } else if (padding_mode_str == "zeros") {
       padding_mode_ = Zeros;
+    } else {
+      ORT_THROW("padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
     }
   }
 
