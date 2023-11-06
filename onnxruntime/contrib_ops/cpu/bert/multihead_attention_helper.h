@@ -21,6 +21,7 @@ Status CheckInputs(const T* query,
                    const T* past_key,
                    const T* past_value,
                    const T* past_seq_len,
+                   const T* positional_embedding,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
@@ -204,6 +205,13 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "'bias' is not allowed for packed kv. ");
       }
     }
+
+    if (positional_embedding != nullptr) {
+      const auto& positional_embedding_dims = positional_embedding->Shape().GetDims();
+      if (positional_embedding_dims.size() != 4) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'positional_embedding' is expected to have 4 dimensions, got", positional_embedding_dims.size());
+      }
+    }
   }
 
   int total_sequence_length = past_sequence_length + kv_sequence_length;
@@ -338,6 +346,7 @@ Status CheckInputs(const T* query,
                    const T* past_key,
                    const T* past_value,
                    const T* past_seq_len,
+                   const T* positional_embedding,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
@@ -350,7 +359,7 @@ Status CheckInputs(const T* query,
   }
 
   return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value,
-                     past_seq_len, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer,
+                     past_seq_len, positional_embedding, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer,
                      dmmha_packing);
 }
 

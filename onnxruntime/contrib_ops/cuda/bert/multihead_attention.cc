@@ -89,6 +89,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
   const Tensor* past_key = context->Input<Tensor>(6);
   const Tensor* past_value = context->Input<Tensor>(7);
+  const Tensor* positional_embedding = context->Input<Tensor>(8);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
@@ -101,6 +102,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       past_key,
                                                                       past_value,
                                                                       nullptr,  // past_seq_len
+                                                                      positional_embedding,
                                                                       &parameters,
                                                                       num_heads_,
                                                                       mask_filter_value_,

@@ -62,6 +62,7 @@ struct AttentionData {
   const T* past_key = nullptr;
   const T* past_value = nullptr;
   const T* relative_position_bias = nullptr;
+  const T* positional_embedding = nullptr;
 
   bool has_qkv_workspace = false;
   T* workspace = nullptr;
@@ -87,6 +88,8 @@ struct AttentionData {
   T* k = nullptr;
   T* v = nullptr;
   T* scratch = nullptr;
+  T* positional_embed = nullptr;
+  T* transposed_positional_embed = nullptr;
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
 
   // Flash buffers

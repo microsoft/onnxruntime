@@ -966,6 +966,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past state for self attention value with shape (batch_size, num_heads, past_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
+        .Input(8,
+               "positional_embedding",
+               "positional embedding of shape (sequence_length, batch_size * num_heads, total_sequence_length)",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
@@ -1129,7 +1134,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* RotaryEmbedding_ver1_doc = R"DOC(
-RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices 
+RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices
 that are multiplied to query and key before the inner product of query and key is taken.
 )DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(
