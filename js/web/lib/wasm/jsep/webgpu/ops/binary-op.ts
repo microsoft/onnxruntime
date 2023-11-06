@@ -158,7 +158,10 @@ const createBinaryOpProgramInfo =
         name,
         shaderCache: {
           hint: cacheKey + cacheKeyAux.map((x) => x.toString()).join('_'),
-          inputDependencies: useShapesUniforms ? ['rank', 'rank'] : ['dims', 'dims'],
+          // If the input is scalar then use type instead of dims because useShapesUniforms is false.
+          inputDependencies: useShapesUniforms ?
+              ['rank', 'rank'] :
+              [a.dims.length > 0 ? 'dims' : 'type', b.dims.length > 0 ? 'dims' : 'type'],
         },
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
             shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, a.dataType, b.dataType,
