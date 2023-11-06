@@ -106,7 +106,7 @@ fn generate_bindings(include_dir: &Path) {
 
     let generated_file = PathBuf::from(env::var("OUT_DIR").unwrap()).join("bindings.rs");
     bindings
-        .write_to_file(&generated_file)
+        .write_to_file(generated_file)
         .expect("Couldn't write bindings!");
 }
 
@@ -144,7 +144,7 @@ fn extract_archive(filename: &Path, output: &Path) {
 }
 
 fn extract_tgz(filename: &Path, output: &Path) {
-    let file = fs::File::open(&filename).unwrap();
+    let file = fs::File::open(filename).unwrap();
     let buf = io::BufReader::new(file);
     let tar = flate2::read::GzDecoder::new(buf);
     let mut archive = tar::Archive::new(tar);
@@ -152,7 +152,7 @@ fn extract_tgz(filename: &Path, output: &Path) {
 }
 
 fn extract_zip(filename: &Path, outpath: &Path) {
-    let file = fs::File::open(&filename).unwrap();
+    let file = fs::File::open(filename).unwrap();
     let buf = io::BufReader::new(file);
     let mut archive = zip::ZipArchive::new(buf).unwrap();
     for i in 0..archive.len() {
@@ -168,7 +168,7 @@ fn extract_zip(filename: &Path, outpath: &Path) {
             );
             if let Some(p) = outpath.parent() {
                 if !p.exists() {
-                    fs::create_dir_all(&p).unwrap();
+                    fs::create_dir_all(p).unwrap();
                 }
             }
             let mut outfile = fs::File::create(&outpath).unwrap();
