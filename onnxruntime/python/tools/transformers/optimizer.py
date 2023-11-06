@@ -546,7 +546,11 @@ def main():
     if args.input_int32:
         optimizer.change_graph_inputs_to_int32()
 
-    if "bert" in args.model_type and optimizer.is_fully_optimized():
+    # Print the operator statistics might help end user.
+    optimizer.get_operator_statistics()
+
+    fused_op_count = optimizer.get_fused_operator_statistics()
+    if "bert" in args.model_type and optimizer.is_fully_optimized(fused_op_count):
         logger.info("The model has been fully optimized.")
     else:
         logger.info("The model has been optimized.")
