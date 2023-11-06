@@ -68,7 +68,7 @@ def parse_arguments(is_xl: bool, description: str):
         "--scheduler",
         type=str,
         default="DDIM",
-        choices=["DDIM", "EulerA", "UniPC"],
+        choices=["DDIM", "UniPC"] if is_xl else ["DDIM", "EulerA", "UniPC"],
         help="Scheduler for diffusion process",
     )
 
