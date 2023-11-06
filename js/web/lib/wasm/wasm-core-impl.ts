@@ -59,8 +59,6 @@ export const initRuntime = async(env: Env): Promise<void> => {
   const wasmBackend = BUILD_DEFS.DISABLE_TRAINING ? require('../backend-wasm-inference').wasmBackend :
                                                     require('../backend-wasm-training').wasmBackend;
   if (wasmBackend.name === 'webgpu') {
-    // init JSEP if available
-
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
     await initJsep(getInstance(), env);
