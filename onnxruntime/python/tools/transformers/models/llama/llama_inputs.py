@@ -211,23 +211,22 @@ def get_dml_sample_inputs(
 ):
     np_dtype = np.float16 if use_fp16 else np.float32
     head_size = config.hidden_size // config.num_attention_heads
-    max_seq_len = 2048
 
     ort_inputs = {
-        "x": np.random.rand(batch_size, seq_len, config.hidden_size).astype(np_dtype),
-        "x_increment": np.random.rand(batch_size, 1, config.hidden_size).astype(np_dtype),
-        "attn_mask": (-10000.0 * np.triu(np.ones((batch_size, max_seq_len, max_seq_len)), k=1)).astype(np.int32),
-        "cos": np.random.rand(1, max_seq_len, 1, 64).astype(np_dtype),
-        "sin": np.random.rand(1, max_seq_len, 1, 64).astype(np_dtype),
+        "tokens": np.random.rand(batch_size, seq_len).astype(np.int64),
+        "tokens_increment": np.random.rand(batch_size, 1).astype(np.int64),
+        "position_ids": np.ones((batch_size, seq_len), dtype=np.int64),
+        "position_ids_increment": np.ones((batch_size, 1), dtype=np.int64),
+        "attn_mask": np.ones((batch_size, seq_len), dtype=np.int32),
         "use_cache_branch": np.ones([1], dtype=np.bool_) if use_cache_branch else np.zeros([1], dtype=np.bool_)
     }
 
     for layer_idx in range(config.num_hidden_layers):
         ort_inputs[f"cache.{layer_idx}.key"] = np.random.rand(
-            batch_size, config.num_attention_heads, max_seq_len, head_size
+            batch_size, config.num_attention_heads, seq_len, head_size
         ).astype(np_dtype)
         ort_inputs[f"cache.{layer_idx}.value"] = np.random.rand(
-            batch_size, config.num_attention_heads, max_seq_len, head_size
+            batch_size, config.num_attention_heads, seq_len, head_size
         ).astype(np_dtype)
 
     return ort_inputs

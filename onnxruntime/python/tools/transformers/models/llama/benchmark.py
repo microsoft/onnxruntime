@@ -246,7 +246,8 @@ def get_model(args: argparse.Namespace):
     elif args.benchmark_type == "ort-dml":
         sess_options = ort.SessionOptions()
         sess_options.enable_profiling = args.profile
-        sess_options.add_free_dimension_override_by_name("max_seq_len", 2048)
+        sess_options.add_free_dimension_override_by_name("max_seq_len", args.sequence_length)
+        sess_options.add_free_dimension_override_by_name("seq_len_increment", 1)
         sess_options.log_severity_level = 3
         if args.verbose:
             sess_options.log_verbosity_level = 1
@@ -317,8 +318,11 @@ def time_fn(args, fn, inputs):
         fn(inputs)
 
     # Benchmark
-    if args.device != "cpu" and args.device != "dml":
+    if args.device == "dml":
+        inputs.synchronize_outputs()
+    elif args.device != "cpu":
         torch.cuda.synchronize()
+
     start_time = time.time()
 
     bench_range = (
@@ -329,8 +333,11 @@ def time_fn(args, fn, inputs):
     for _ in bench_range:
         fn(inputs)
 
-    if args.device != "cpu" and args.device != "dml":
+    if args.device == "dml":
+        inputs.synchronize_outputs()
+    elif args.device != "cpu":
         torch.cuda.synchronize()
+
     end_time = time.time()
 
     # Newline print after trange in order to print metrics on new lines without progress bar on same line
