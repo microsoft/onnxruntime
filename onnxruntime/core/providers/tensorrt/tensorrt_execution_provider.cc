@@ -11,6 +11,7 @@
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
 #include "tensorrt_execution_provider_custom_ops.h"
+#include "onnx_ctx_model_helper.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
@@ -2199,14 +2200,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and 
   // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
   // So, simply return the ComputeCapability here.
-  if (GraphHasCtxNode(graph)) {
-    if (IsValidCtxNode(graph)) {
-      SubGraph_t supported_node_vector = {{0}, false};
-      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
-      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-    } else {
-      LOGS_DEFAULT(ERROR) << "[TensorRT EP] It's not a valid EP context contrib op";
-    }
+  if (graph.NumberOfNodes() == 1 && GraphHasCtxNode(graph)) {
+    SubGraph_t supported_node_vector = {{0}, false};
+    std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
+    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     return result;
   }
 
@@ -2386,9 +2383,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
                                                                          std::unordered_map<std::string, size_t>& input_map,
                                                                          std::unordered_map<std::string, size_t>& output_map,
                                                                          std::vector<NodeComputeInfo>& node_compute_funcs) {
-  auto node = graph_body_viewer.GetNode(0);
-  auto& attrs = node->GetAttributes();
-
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
   std::unordered_map<std::string, size_t> input_indexes;  // TRT engine input name -> ORT kernel context input index
@@ -2396,25 +2390,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
   std::unordered_map<std::string, size_t> output_types;   // TRT engine output name -> ORT output tensor type
 
   // Deserialize engine
-  // 
-  // Get serialized engine from the payload of the ep context if embed_mode=1, or path to the engine cache if embed_mode=0
-  if (attrs.at(EP_CONTEXT_ATTR_EMBED_MODE).i() == 0) {
-    std::filesystem::path engine_cache_path = LocateEnginePath(GetModelPath(graph_body_viewer), attrs.at(EP_CONTEXT_ATTR_CACHE_CTX).s());
-    if (!std::filesystem::exists(engine_cache_path)) {
-      engine_cache_path = engine_cache_path.assign(attrs.at(EP_CONTEXT_ATTR_CACHE_CTX).s());
-    }
-    std::ifstream engine_file(engine_cache_path.string(), std::ios::binary | std::ios::in);
-    engine_file.seekg(0, std::ios::end);
-    size_t engine_size = engine_file.tellg();
-    engine_file.seekg(0, std::ios::beg);
-    std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-    engine_file.read((char*)engine_buf.get(), engine_size);
-    trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
-    if (!trt_engine) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP could not deserialize engine from cache: " + engine_cache_path.string());
-    }
+  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get());
+  if (!trt_cache_model_handler.ValidateEPCtxNode(graph_body_viewer)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "It's not a valid EP Context node");
+  }
+  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
+  if (status != Status::OK()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
   }
 
   // Build context
@@ -2680,7 +2662,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
   return Status::OK();
 }
 
-Status TensorrtExecutionProvider::CreateNodeComputeFromOrtGraph(const GraphViewer& graph_body_viewer,
+Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& graph_body_viewer,
                                                                 const Node& fused_node,
                                                                 std::unordered_map<std::string, size_t>& input_map,
                                                                 std::unordered_map<std::string, size_t>& output_map,
@@ -3678,7 +3660,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     if (GraphHasCtxNode(graph_body_viewer)) {
       status = CreateNodeComputeFromPrecompiledEngine(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
     } else {
-      status = CreateNodeComputeFromOrtGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
+      status = CreateNodeComputeFromGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
     }
     if (status != Status::OK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());

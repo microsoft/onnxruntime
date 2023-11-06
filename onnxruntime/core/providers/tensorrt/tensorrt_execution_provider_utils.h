@@ -14,10 +14,6 @@
 #include "core/common/path_string.h"
 #include "core/framework/murmurhash3.h"
 
-static const std::string EP_CONTEXT_OP_TYPE = "EPContext";
-static const std::string EP_CONTEXT_ATTR_EMBED_MODE = "embed_mode";
-static const std::string EP_CONTEXT_ATTR_CACHE_CTX = "ep_cache_context";
-
 namespace fs = std::experimental::filesystem;
 
 namespace onnxruntime {
@@ -697,66 +693,6 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << shape_string;
   }
 
-  return true;
-}
-
-/*
- *  Check whether the graph has the EP context contrib op.
- *  The op can contain the precompiled engine info for TRT EP to directly load the engine.
- *
- *  Note: Please see more details about "EPContext" contrib op in contrib_defs.cc
- */
-bool GraphHasCtxNode(const GraphViewer& graph) {
-  if (graph.NumberOfNodes() == 1) {
-    for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
-      auto node = graph.GetNode(i);
-      if (node != nullptr && node->OpType() == EP_CONTEXT_OP_TYPE) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-const onnxruntime::Path& GetModelPath(const GraphViewer& graph_viewer) {
-  // find the top level graph
-  const Graph* cur_graph = &graph_viewer.GetGraph();
-  while (cur_graph->IsSubgraph()) {
-    cur_graph = cur_graph->ParentGraph();
-  }
-
-  const Graph& main_graph = *cur_graph;
-  return main_graph.ModelPath();
-}
-
-std::filesystem::path LocateEnginePath(const onnxruntime::Path& model_path, std::string ep_cache_context) {
-  std::filesystem::path path(model_path.ToPathString());
-  std::filesystem::path parent_path = path.parent_path();
-  std::filesystem::path engine_path = parent_path.append(ep_cache_context);
-  return engine_path;
-}
-
-/*
- * The sanity check for EP context contrib op.
- */
-bool IsValidCtxNode(const GraphViewer& graph) {
-  assert(graph.NumberOfNodes() == 1);
-  assert(graph.GetNode(0)->OpType() == EP_CONTEXT_OP_TYPE);
-  auto node = graph.GetNode(0);
-  auto& attrs = node->GetAttributes();
-
-  // "embed_mode" attr and "ep_cache_context" attr should be present
-  if (attrs.count(EP_CONTEXT_ATTR_EMBED_MODE) > 0 && attrs.count(EP_CONTEXT_ATTR_CACHE_CTX) > 0) {
-    // ep_cache_context: payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0
-    if (attrs.at(EP_CONTEXT_ATTR_EMBED_MODE).i() == 0) {
-      std::filesystem::path engine_path_default = LocateEnginePath(GetModelPath(graph), attrs.at(EP_CONTEXT_ATTR_CACHE_CTX).s());
-      std::filesystem::path engine_path(attrs.at(EP_CONTEXT_ATTR_CACHE_CTX).s()); 
-      if (!std::filesystem::exists(engine_path_default) && !std::filesystem::exists(engine_path)) {
-        LOGS_DEFAULT(ERROR) << "Can't find " << engine_path_default.string() << " or " << engine_path.string() << " TensorRT engine";
-        return false;
-      }
-    }
-  }
   return true;
 }
 }  // namespace onnxruntime
