@@ -124,8 +124,8 @@ std::optional<at::Tensor> try_to_get_tensor_owning_context(const py::tuple& forw
 void get_materialize_grads_once(const py::tuple& forward_output_tensors,
                                 bool need_materialize_grads,
                                 CustomFuncOpKernelInfo& kernel_info) {
+  kernel_info.materialize_grads = need_materialize_grads;
   if (need_materialize_grads) {
-    kernel_info.materialize_grads = need_materialize_grads;
     for (size_t i = 0; i < forward_output_tensors.size(); ++i) {
       PyObject* obj = forward_output_tensors[i].ptr();
       if (!THPVariable_Check(obj)) {
@@ -134,13 +134,13 @@ void get_materialize_grads_once(const py::tuple& forward_output_tensors,
       at::Tensor t = THPVariable_Unpack(obj);
       kernel_info.materialize_grads_config.insert({i, {t.sizes().vec(), t.options()}});
     }
-  }
 
-  static std::once_flag log_warning;
-  std::call_once(log_warning, []() {
-    std::cerr << "First time run initialize kernel info including materialize_grads and materialize_grads_config."
-              << std::endl;
-  });
+    static std::once_flag log_warning;
+    std::call_once(log_warning, []() {
+      std::cerr << "First-time run initialize kernel info including materialize_grads and materialize_grads_config."
+                << std::endl;
+    });
+  }
 }
 
 py::object finalize_training_mode_forward(
@@ -181,6 +181,7 @@ py::object finalize_training_mode_forward(
   }
 
   if (kernel_info.is_first_run) {
+    std::cout << "666666666666666666666666.  py_fn->materialize_grads:" << py_fn->materialize_grads << std::endl;
     get_materialize_grads_once(forward_output_tensors, py_fn->materialize_grads, kernel_info);
 
     if (kernel_info.safe_run_enabled) {
