@@ -273,6 +273,129 @@ void RegisterCollectiveOps() {
           OpSchema::NonDifferentiable)
       .Output(0, "output", "Output tensor", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
       .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "Constrain input and output types to all tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DistributedReduceSum)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("input_device_mesh_elements",
+            "device_mesh_elements[i] defines the device mesh's value for the i-th input. "
+            "E.g., device_mesh_elements=[\"[0, 1]\", \"[0, 1]\"] means the 1st and the 2nd "
+            " inputs are stored on the 0-th and the 1st devices, respectively.",
+            AttributeProto::STRINGS)
+      .Attr("input_device_mesh_shapes",
+            "device_mesh_shape[i] defines the device mesh's shape for the i-th input.",
+            AttributeProto::STRINGS)
+      .Attr("input_shard_specs",
+            "The sharding spec of inputs. "
+            "E.g., if input_shard_specs[i] is \"RRR\", the i-th input is a unsharded 3-D tensor.",
+            AttributeProto::STRINGS)
+      .Attr("output_device_mesh_elements",
+            "Similar to input_device_mesh_elments but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("output_device_mesh_shapes",
+            "Similar to input_device_mesh_shapes but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("output_shard_specs",
+            "Similar to input_shard_specs but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("keepdims",
+            "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Input(0, "input", "Input tensor", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(
+          1,
+          "shape",
+          "A 1-D tensor indicates the shape you want to expand to, following the broadcast rule",
+          "tensor(int64)",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(0, "output", "Output tensor", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "Constrain input and output types to all tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DistributedReduceMax)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("input_device_mesh_elements",
+            "device_mesh_elements[i] defines the device mesh's value for the i-th input. "
+            "E.g., device_mesh_elements=[\"[0, 1]\", \"[0, 1]\"] means the 1st and the 2nd "
+            " inputs are stored on the 0-th and the 1st devices, respectively.",
+            AttributeProto::STRINGS)
+      .Attr("input_device_mesh_shapes",
+            "device_mesh_shape[i] defines the device mesh's shape for the i-th input.",
+            AttributeProto::STRINGS)
+      .Attr("input_shard_specs",
+            "The sharding spec of inputs. "
+            "E.g., if input_shard_specs[i] is \"RRR\", the i-th input is a unsharded 3-D tensor.",
+            AttributeProto::STRINGS)
+      .Attr("output_device_mesh_elements",
+            "Similar to input_device_mesh_elments but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("output_device_mesh_shapes",
+            "Similar to input_device_mesh_shapes but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("output_shard_specs",
+            "Similar to input_shard_specs but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("keepdims",
+            "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Input(0, "input", "Input tensor", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(
+          1,
+          "shape",
+          "A 1-D tensor indicates the shape you want to expand to, following the broadcast rule",
+          "tensor(int64)",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(0, "output", "Output tensor", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "Constrain input and output types to all tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DistributedReduceMean)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("input_device_mesh_elements",
+            "device_mesh_elements[i] defines the device mesh's value for the i-th input. "
+            "E.g., device_mesh_elements=[\"[0, 1]\", \"[0, 1]\"] means the 1st and the 2nd "
+            " inputs are stored on the 0-th and the 1st devices, respectively.",
+            AttributeProto::STRINGS)
+      .Attr("input_device_mesh_shapes",
+            "device_mesh_shape[i] defines the device mesh's shape for the i-th input.",
+            AttributeProto::STRINGS)
+      .Attr("input_shard_specs",
+            "The sharding spec of inputs. "
+            "E.g., if input_shard_specs[i] is \"RRR\", the i-th input is a unsharded 3-D tensor.",
+            AttributeProto::STRINGS)
+      .Attr("output_device_mesh_elements",
+            "Similar to input_device_mesh_elments but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("output_device_mesh_shapes",
+            "Similar to input_device_mesh_shapes but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("output_shard_specs",
+            "Similar to input_shard_specs but for outputs.",
+            AttributeProto::STRINGS)
+      .Attr("keepdims",
+            "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Input(0, "input", "Input tensor", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(
+          1,
+          "shape",
+          "A 1-D tensor indicates the shape you want to expand to, following the broadcast rule",
+          "tensor(int64)",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(0, "output", "Output tensor", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "Constrain input and output types to all tensors.");
 }
 
 }  // namespace contrib
