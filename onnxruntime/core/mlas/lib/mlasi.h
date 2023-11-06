@@ -905,7 +905,6 @@ extern const MLAS_Q8Q4GEMM_DISPATCH MlasQ8Q4GemmDispatchAvx512vnni;
 struct MLAS_FPQ4GEMM_DISPATCH;
 
 extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
-extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchNeon;
 
 //
 // Float/quantized n-bit integer matrix/matrix multiply dispatch structure.
