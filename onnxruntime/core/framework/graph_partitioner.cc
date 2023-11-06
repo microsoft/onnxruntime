@@ -799,6 +799,15 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                             const ExecutionProviders& execution_providers,
                                             const KernelRegistryManager& kernel_registry_manager) const {
+
+  // To enhance compatibility with some EPs we choose not to inline anything
+  // including schema based functions when the model does not have any local functions defined.
+  const bool is_there_local_functions = !model.GetModelLocalFunctionTemplates().empty();
+
+  if (!is_there_local_functions) {
+    return Status::OK();
+  }
+
   auto& graph = model.MainGraph();
   InlinedHashSet<std::string> not_inlined;
   do {
