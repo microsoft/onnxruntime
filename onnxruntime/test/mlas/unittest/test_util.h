@@ -178,8 +178,6 @@ bool AddTestRegister(TestRegister test_register);
 template <typename TMlasTester>
 class MlasTestFixture : public testing::Test {
  public:
-  using MlasTesterType = TMlasTester;
-
   static void SetUpTestSuite() {
     mlas_tester = new TMlasTester();
   };

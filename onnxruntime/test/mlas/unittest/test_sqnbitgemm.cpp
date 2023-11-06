@@ -184,7 +184,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   }
 
   void TestBody() override {
-    MlasTestFixture<MlasTesterType>::mlas_tester->Test(
+    MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>>::mlas_tester->Test(
         M_, N_, K_, WithThreadpool_, Symmetric_, WithBias_);
   }
 
@@ -198,14 +198,14 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasTesterType::GetTestSuiteName(),
+        MlasSQNBitGemmTest<BlkBitWidth, BlkLen>::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasTesterType>* {
+        [=]() -> MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>>* {
           return new SQNBitGemmShortExecuteTest(
               M, N, K, WithThreadpool, Symmetric, WithBias);
         });
