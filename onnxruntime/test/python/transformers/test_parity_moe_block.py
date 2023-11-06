@@ -15,11 +15,11 @@ import unittest
 import numpy
 import numpy as np
 import onnx
-import onnxruntime
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import onnxruntime
 
 
 def create_moe_onnx_graph(
@@ -129,6 +129,12 @@ def onnx_inference(
     from onnxruntime import InferenceSession, SessionOptions
 
     sess_options = SessionOptions()
+
+    cuda_providers = ["CUDAExecutionProvider"]
+    if cuda_providers[0] not in onnxruntime.get_available_providers():
+        return None
+
+    # TODO: move this to session creation
     sess_options.log_severity_level = 2
     ort_session = InferenceSession(onnx_model_path, sess_options, providers=["CUDAExecutionProvider"])
 
@@ -267,7 +273,7 @@ class MoEBlock(nn.Module):
 
         x = x * scores
         x = x.reshape(B, T, C)
-        #print(x)
+        # print(x)
         return x, torch.sum(x)
 
     def onnx_forward(self):
@@ -282,7 +288,7 @@ class MoEBlock(nn.Module):
             "gated_output": numpy.ascontiguousarray(logits.detach().numpy().astype(numpy.float16)),
         }
         ort_output = onnx_inference(self.moe_onnx_graph, ort_inputs)
-        #print(ort_output)
+        # print(ort_output)
         return ort_output
 
 

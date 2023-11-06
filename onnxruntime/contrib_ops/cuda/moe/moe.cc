@@ -57,12 +57,12 @@ Status MoEBlock<T>::ComputeInternal(OpKernelContext* context) const {
   size_t expanded_source_row_to_expanded_dest_row_size = k_ * num_rows * sizeof(int);
   size_t expert_for_source_row_size = k_ * num_rows * sizeof(int);
 
-  //TODO: check shape
+  // TODO: check shape
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
-  //TODO: allocate once and reuse
+  // TODO: allocate once and reuse
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, ws_size, false, stream);
   IAllocatorUniquePtr<void> fc2_output = IAllocator::MakeUniquePtr<void>(allocator, fc2_output_size, false, stream);
   IAllocatorUniquePtr<void> expert_scales = IAllocator::MakeUniquePtr<void>(allocator, expert_scales_size, false, stream);

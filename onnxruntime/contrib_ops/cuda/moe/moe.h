@@ -16,7 +16,7 @@ using namespace onnxruntime::cuda;
 template <typename T>
 class MoEBlock final : public CudaKernel {
  public:
-  explicit MoEBlock(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info){
+  explicit MoEBlock(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
 
     std::string activation_type_str;
