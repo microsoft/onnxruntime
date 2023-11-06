@@ -192,24 +192,9 @@ class TestOpGemm(unittest.TestCase):
         check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
         data_reader.rewind()
         if activation_type_str == "f8e4m3fn" and weight_type_str == "f8e4m3fn":
-            # QGemm is not implemented for CPU.
-            try:
-                check_model_correctness(
-                    self,
-                    model_fp32_path,
-                    model_int8_path,
-                    data_reader.get_next(),
-                    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-                    is_gemm=True,
-                )
-            except Exception as e:
-                if (
-                    "Type 'tensor(float8e4m3fn)' of input parameter (input_quantized) of operator (QGemm) in node () is invalid."
-                    in str(e)
-                ):
-                    warnings.warn("Fix this test when QGemm is implemented.")
-                    return
-                raise e
+            # QGemm for float 8 is not implemented. The test should be updated when it is.
+            warnings.warn("Fix this test when QGemm is implemented for float 8 types.")
+            return
         else:
             check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next(), is_gemm=True)
 

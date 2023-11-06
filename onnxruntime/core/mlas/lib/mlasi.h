@@ -1077,6 +1077,23 @@ MlasTrySimpleParallel(
     const std::function<void(std::ptrdiff_t tid)>& Work
     );
 
+
+/**
+ * @brief Distribute many iterations of work over a thread pool if supported.
+ * This function is for small workloads in non-performance critical situation.
+ *
+ * @param ThreadPool [IN]          Optional thread pool. Ignored when using OpenMP
+ * @param Iterations [IN]          Total number of iterations
+ * @param Work [IN]                Logic for computing a range of iterations [begin, end)
+ */
+void
+MlasTryBatchParallel(
+	MLAS_THREADPOOL * ThreadPool,
+	const std::ptrdiff_t Iterations,
+	const std::function<void(std::ptrdiff_t tid)>& Work
+    );
+
+
 inline
 ptrdiff_t
 MlasGetMaximumThreadCount(

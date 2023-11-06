@@ -56,7 +56,7 @@ def profile_matmul_fp_int4_func(m, n, k, dtype, func, is_symmetric):
     a = np.random.rand(m, k).astype(dtype)
     b = np.random.randint(low=0, high=127, size=(n, (k + 31) // 32, 16)).astype("uint8")
     scales = np.random.rand(n * ((k + 31) // 32)).astype(dtype)
-    zeropoints = np.random.rand((n * ((k + 31) // 32) + 1) // 2).astype(dtype)
+    zeropoints = np.random.rand(n * (((k + 31) // 32 + 1) // 2)).astype(dtype)
 
     output_d = ke.DeviceArray(output)
     a_d = ke.DeviceArray(a)
