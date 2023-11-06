@@ -169,6 +169,8 @@ def post_processing_enable_zero_stage3_compat(
     exported_model.graph.input.insert(offset, new_input)
     exported_model.graph.node.insert(0, weight_pull_node)
 
+    patch_export_functions(zero_stage3_named_params)
+
     return exported_model
 
 
@@ -361,81 +363,27 @@ def _update_python_op_input_related_attributes(
     node.attribute.append(helper.make_attribute("input_tensor_types", input_tensor_dtypes))
 
 
-def _unregister_stage3_specific_custom_export_function(onnx_opset_version: int):
-    from torch.onnx import unregister_custom_op_symbolic
-
-    try:
-        unregister_custom_op_symbolic("aten::t", onnx_opset_version)
-        unregister_custom_op_symbolic("aten::numpy_T", onnx_opset_version)
-        unregister_custom_op_symbolic("aten::linear", onnx_opset_version)
-
-    except Exception:
-        pass
-
-
-def register_stage3_specific_custom_export_function(
-    zero_stage3_named_params: Dict[str, torch.nn.parameter.Parameter], onnx_opset_version: int
-):
+def patch_export_functions(zero_stage3_named_params: Dict[str, torch.nn.parameter.Parameter]):
     import torch.onnx.symbolic_helper as sym_help
-    from torch.onnx import register_custom_op_symbolic, symbolic_helper
+    from torch.onnx._internal import _beartype
 
-    def t(g, self):
-        rank = symbolic_helper._get_tensor_rank(self)
-
-        ### Adapted from
-        # https://github.com/pytorch/pytorch/blob/bd9be877e4459d7889e5e3c8051caaffdfe21c85/torch/onnx/symbolic_opset9.py#L931
+    @_beartype.beartype
+    def _get_tensor_rank(x) -> Optional[int]:
+        ### Adapted from https://github.com/pytorch/pytorch/blob/185515368bcd7d94ac06ab1634f22b747b03c6d9/torch/onnx/symbolic_helper.py#L561
         # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).
-        input_name = self.debugName()
+        import typing
+
+        from torch import _C
+
+        input_name = x.debugName()
         if input_name in zero_stage3_named_params:
             rank = len(zero_stage3_named_params[input_name].ds_shape)
-        ### Adaptor ends
+            return rank
 
-        if rank is None or rank < 2:
-            # The transpose of a 1d or 0d tensor is itself. ONNX does not define the behavior
-            # clearly and onnxruntime fails on these cases. So we add an Identity node to
-            # mirror the behavior of eager mode.
-            return g.op("Identity", self)
-        return g.op("Transpose", self, perm_i=(1, 0))
+        if not sym_help._is_tensor(x) or x.type() is None:
+            return None
+        x_type = x.type()
+        x_type = typing.cast(_C.TensorType, x_type)
+        return x_type.dim()
 
-    def numpy_T(g, self):  # noqa: N802
-        # Numpy-style `a.T`: returns the tensor
-        # with dims reversed
-        rank = sym_help._get_tensor_rank(self)
-
-        ### Adapted from
-        # https://github.com/microsoft/onnxruntime/blob/dfafcb58aa5fb262b4ff964ccdcc3271672032c0/orttraining/orttraining/python/training/ortmodule/_custom_op_symbolic_registry.py#L281
-        # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).
-        input_name = self.debugName()
-        if input_name in zero_stage3_named_params:
-            rank = len(zero_stage3_named_params[input_name].ds_shape)
-        ### Adaptor ends
-
-        if rank is not None:
-            axes = list(reversed(range(rank)))
-            return g.op("Transpose", self, perm_i=axes)
-        else:
-            # if we don't have dim information we cannot
-            # output a permute so use ATen instead
-            return g.op("org.pytorch.aten::ATen", self, operator_s="numpy_T")
-
-    def linear(g, input, weight, bias):
-        from torch.onnx.symbolic_opset9 import add, addmm, matmul
-
-        rank = symbolic_helper._get_tensor_rank(input)
-        weight = t(g, weight)
-        if rank == 2 and not bias.node().mustBeNone():
-            alpha = g.op("Constant", value_t=torch.tensor(1, dtype=torch.int64))
-            beta = g.op("Constant", value_t=torch.tensor(1, dtype=torch.int64))
-            output = addmm(g, bias, input, weight, alpha, beta)  # todo: addmm need a change also.
-        else:
-            output = matmul(g, input, weight)
-            if not bias.node().mustBeNone():
-                output = add(g, bias, output)
-
-        return output
-
-    _unregister_stage3_specific_custom_export_function(onnx_opset_version)
-
-    register_custom_op_symbolic("aten::t", t, onnx_opset_version)
-    register_custom_op_symbolic("aten::numpy_T", numpy_T, onnx_opset_version)
-    register_custom_op_symbolic("aten::linear", linear, onnx_opset_version)
+    torch.onnx.symbolic_helper._get_tensor_rank = _get_tensor_rank
