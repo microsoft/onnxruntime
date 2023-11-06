@@ -365,6 +365,46 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
   return std::unique_lock<OrtMutex>(singleton);
 }
 
+Status GetShapeOfShapeTensor(Ort::ConstValue& input_tensor,
+                             std::vector<int32_t>& shape_values,
+                             nvinfer1::ICudaEngine* trt_engine,
+                             int binding_index,
+                             cudaStream_t stream) {
+  auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+  const auto tensor_shapes = tensor_info.GetShape();
+  const auto tensor_type = tensor_info.GetElementType();
+  nvinfer1::Dims dims = trt_engine->getBindingDimensions(static_cast<int>(binding_index));
+  int nb_dims = dims.nbDims;
+  int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);  // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
+  shape_values.resize(shape_size, 1);
+
+  switch (tensor_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+      auto input = std::make_unique<int32_t[]>(shape_size);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int32_t>(), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+      for (int j = 0; j < shape_size; ++j) {
+        shape_values[j] = input[j];
+      }
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+      auto input = std::make_unique<int64_t[]>(shape_size);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int64_t>(), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+      for (int j = 0; j < shape_size; ++j) {
+        shape_values[j] = static_cast<int32_t>(input[j]);
+      }
+      break;
+    }
+    default: {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.");
+    }
+  }
+  return Status::OK();
+}
+
 /*
  * Apply TensorRT optimization profile shapes from provider options.
  *
@@ -404,7 +444,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
 
     // Shape tensor
     if (input->isShapeTensor()) {
-      auto shape_size = nb_dims;
+      int shape_size = nb_dims == 0 ? 1 : static_cast<int>(profile_min_shapes[input_name][i].size());
       std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
 
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] shape size of this shape tensor is " << shape_size;
@@ -824,6 +864,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
     }
+    // use a more global cache if given
+    if (timing_cache_enable_) {
+      if (!info.timing_cache_path.empty()) {
+        global_cache_path_ = info.timing_cache_path;
+      } else {
+        global_cache_path_ = cache_path_;
+      }
+    }
     engine_decryption_enable_ = info.engine_decryption_enable;
     if (engine_decryption_enable_) {
       engine_decryption_lib_path_ = info.engine_decryption_lib_path;
@@ -928,6 +976,15 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
           LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
         }
       }
+      if (timing_cache_enable_) {
+        std::string timing_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCachePath);
+        // use a more global cache if given
+        if (!timing_cache_path.empty()) {
+          global_cache_path_ = timing_cache_path;
+        } else {
+          global_cache_path_ = cache_path_;
+        }
+      }
 
       const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionEnable);
       if (!engine_decryption_enable_env.empty()) {
@@ -1019,6 +1076,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         throw std::runtime_error("Failed to create directory " + cache_path_);
       }
     }
+    if (!global_cache_path_.empty() && !fs::is_directory(global_cache_path_)) {
+      if (!fs::create_directory(global_cache_path_)) {
+        throw std::runtime_error("Failed to create directory " + global_cache_path_);
+      }
+    }
     {
       auto lock = GetApiLock();
       runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
@@ -1104,6 +1166,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_dump_subgraphs: " << dump_subgraphs_
                         << ", trt_engine_cache_enable: " << engine_cache_enable_
                         << ", trt_cache_path: " << cache_path_
+                        << ", trt_global_cache_path: " << global_cache_path_
                         << ", trt_engine_decryption_enable: " << engine_decryption_enable_
                         << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
                         << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
@@ -2199,7 +2262,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::string timing_cache_path = "";
       bool engine_update = false;
       if (timing_cache_enable_) {
-        timing_cache_path = GetTimingCachePath(cache_path_, prop);
+        timing_cache_path = GetTimingCachePath(global_cache_path_, prop);
       }
       {
         // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
@@ -2398,7 +2461,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
-            force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
+            global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
             builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics};
       *state = p.release();
       return 0;
@@ -2460,7 +2523,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
       if (timing_cache_enable_) {
-        timing_cache_path = GetTimingCachePath(cache_path_, prop);
+        timing_cache_path = GetTimingCachePath(global_cache_path_, prop);
       }
 
       // Load serialized engine
@@ -2735,7 +2798,17 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         int nb_dims = dimensions.nbDims;
         if (input_names.count(input_name) == 1) {
           if (trt_engine->isShapeBinding(binding_index)) {
-            trt_context->setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
+            // Get shape of the shape tensor
+            std::vector<int32_t> shape_values;
+            if (!tensor_shape_values[input_name].empty()) {
+              shape_values = tensor_shape_values[input_name];
+            } else {
+              auto status = GetShapeOfShapeTensor(input_tensor, shape_values, trt_engine, binding_index, stream);
+              if (status != Status::OK()) {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+              }
+            }
+            trt_context->setInputShapeBinding(binding_index, &shape_values[0]);
           } else {
             for (int j = 0, end = nb_dims; j < end; ++j) {
               dimensions.d[j] = static_cast<int32_t>(tensor_shapes[j]);

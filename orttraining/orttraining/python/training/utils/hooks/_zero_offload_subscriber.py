@@ -18,9 +18,9 @@ from onnxruntime.training.utils import (
     ORTModelInputOutputType,
     extract_data_and_schema,
     nvtx_function_decorator,
-    pytorch_dtype_to_onnx,
     torch_nvtx_range_pop,
     torch_nvtx_range_push,
+    pytorch_type_to_onnx_dtype,
     unflatten_data_using_schema,
 )
 
@@ -323,7 +323,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         start_offset = len(tensor_input_shapes) - len(partitioned_params)
         for index, param in enumerate(partitioned_params):
             tensor_output_shapes[start_offset + index] = list(param.ds_shape)
-            tensor_output_dtypes[start_offset + index] = int(pytorch_dtype_to_onnx(param.dtype))
+            tensor_output_dtypes[start_offset + index] = int(pytorch_type_to_onnx_dtype(param.dtype))
         assert len(tensor_output_shapes) == len(tensor_input_shapes)
         assert len(tensor_output_dtypes) == len(tensor_input_dtypes)
 

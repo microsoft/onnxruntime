@@ -14,7 +14,7 @@ from onnxruntime.capi._pybind_state import (
     register_shape_inference_function,
     register_torch_autograd_function,
 )
-from onnxruntime.training.utils import pytorch_dtype_to_onnx
+from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
 from ._custom_autograd_function_exporter import register_custom_function_schema_supplementary
 from ._utils import get_fully_qualified_class_name
@@ -157,7 +157,7 @@ def post_processing_enable_zero_stage3_compat(
                 c,
                 graph_input.name,
                 len(zero_stage3_named_params[graph_input.name].ds_shape),  # new rank
-                pytorch_dtype_to_onnx(zero_stage3_named_params[graph_input.name].dtype),  # new data type
+                pytorch_type_to_onnx_dtype(zero_stage3_named_params[graph_input.name].dtype),  # new data type
             )
 
     # Delete exported_model.graph.input

@@ -4198,6 +4198,7 @@ Return true if all elements are true and false otherwise.
       .Attr("func_name", "Function name of the Python Triton kernel.", AttributeProto::STRING, std::string(""))
       .Attr("onnx_key", "The hash key for the ONNX graph.", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("onnx_string", "The onnx string of the triton kernel.", AttributeProto::STRING, std::string(""))
+      .AllowUncheckedAttributes()
       .Input(0, "inputs",
              "Input tensors. If to call an existing Python Triton kernel, "
              "the input count and order should match the arguments of the function. If to compute an ONNX graph, "
