@@ -36,6 +36,7 @@ from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo
 from ._runtime_inspector import RuntimeInspector
 from ._utils import check_function_has_param, get_rank
+from ._zero_stage3_compatibility import stage3_export_context
 from .options import DebugOptions, LogLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
@@ -145,10 +146,6 @@ class GraphExecutionManager(GraphExecutionInterface):
             # Cannot toggle feature enabling/disabling after the first time enabled.
 
             configure_ort_compatible_zero_stage3(debug=False, stats_output_dir="ort_output", stats_overwrite=True)
-
-            from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params
-
-            self._zero_stage3_param_map = _get_all_zero_stage3_params(self._flattened_module)
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
@@ -371,7 +368,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            with torch.no_grad():
+            with torch.no_grad(), stage3_export_context(self._runtime_options.enable_zero_stage3_support, self):
                 required_export_kwargs = {
                     "input_names": self._input_info.names,
                     "output_names": output_names,
