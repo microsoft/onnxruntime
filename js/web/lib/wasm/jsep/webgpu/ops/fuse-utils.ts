@@ -15,7 +15,8 @@ export const getActivationSnippet = (attributes: InternalActivationAttributes, i
 } => {
   switch (attributes.activation) {
     case 'Relu':
-      return {activationFunction: '', applyActivation: 'value = max(value, 0.0);'};
+      return {activationFunction: '',
+        applyActivation: isVec4 ? 'value = max(value, vec4(0.0));' : 'value = max(value, 0.0);'};
     case 'Sigmoid':
       return {activationFunction: '', applyActivation: 'value = (1.0 / (1.0 + exp(-value)));'};
     case 'Clip':
