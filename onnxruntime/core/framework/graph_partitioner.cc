@@ -798,12 +798,14 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 
 Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                             const ExecutionProviders& execution_providers,
-                                            const KernelRegistryManager& kernel_registry_manager) const {
+                                            const KernelRegistryManager& kernel_registry_manager,
+                                            const logging::Logger& logger) const {
   // To enhance compatibility with some EPs we choose not to inline anything
   // including schema based functions when the model does not have any local functions defined.
   const bool is_there_local_functions = !model.GetModelLocalFunctionTemplates().empty();
 
   if (!is_there_local_functions) {
+    LOGS(logger, INFO) << "This model does not have any local functions defined. AOT Inlining is not performed";
     return Status::OK();
   }
 
@@ -825,6 +827,8 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
   } while (true);
 
   model.RemoveLocalFunctionsProtos(not_inlined);
+
+  LOGS(logger, INFO) << "AOT inlining completed. Inlined local function definitions have been pruned.";
 
   return Status::OK();
 }
