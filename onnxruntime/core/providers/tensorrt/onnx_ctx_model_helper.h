@@ -16,6 +16,7 @@ static const std::string MAIN_CONTEXT = "main_context";
 static const std::string EMBED_MODE = "embed_mode";
 static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
 static const std::string EP_SDK_VER = "ep_sdk_version";
+static const std::string COMPUTE_CAPABILITY = "compute_capability";
 static const std::string PARTITION_NAME = "partition_name";
 static const std::string SOURCE = "source";
 
@@ -34,9 +35,12 @@ public:
 
   Status GetEpContextFromGraph(const GraphViewer& graph_viewer);
 
+  std::string& GetComputeCapability();
+
 private:
   std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine_;
   nvinfer1::IRuntime* trt_runtime_;
   std::filesystem::path engine_cache_path_;
+  std::string compute_capability_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime

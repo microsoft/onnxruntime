@@ -79,6 +79,11 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
   auto node = graph_viewer.GetNode(0);
   auto& attrs = node->GetAttributes();
 
+  // Get "compute_capability" if it's present
+  if (attrs.count(COMPUTE_CAPABILITY) > 0) {
+    compute_capability_ = attrs.at(COMPUTE_CAPABILITY).s();
+  }
+
   // "embed_mode" attr and "ep_cache_context" attr should be present
   if (attrs.count(EMBED_MODE) > 0 && attrs.count(EP_CACHE_CONTEXT) > 0) {
     // ep_cache_context: payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0
@@ -100,5 +105,9 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
     }
   }
   return true;
+}
+
+std::string& TensorRTCacheModelHandler::GetComputeCapability() {
+  return compute_capability_;
 }
 }  // namespace onnxruntime

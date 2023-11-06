@@ -3210,6 +3210,11 @@ void RegisterContribSchemas() {
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
+          "compute_capability",
+          "(Optional) Compute capability of the GPU.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
           "partition_name",
           "(Optional) partitioned graph name.",
           AttributeProto::STRING,

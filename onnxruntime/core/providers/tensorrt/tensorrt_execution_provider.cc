@@ -2390,10 +2390,20 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
   std::unordered_map<std::string, size_t> output_types;   // TRT engine output name -> ORT output tensor type
 
   // Deserialize engine
+  //
+  // Create cache model handler to check compute capability, get engine buffer and deserialize engine 
   auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get());
   if (!trt_cache_model_handler.ValidateEPCtxNode(graph_body_viewer)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "It's not a valid EP Context node");
   }
+
+  std::string compute_capability = trt_cache_model_handler.GetComputeCapability();
+  cudaDeviceProp prop;
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+  if (!compute_capability.empty() && compute_capability != GetComputeCapacity(prop)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "The compute capability of the engine cache doesn't match with the GPU's compute capability");
+  }
+
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
