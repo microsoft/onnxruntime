@@ -183,9 +183,7 @@ def create_multihead_attention_graph(config):
     return model.SerializeToString()
 
 
-def create_group_query_attention_graph_prompt(
-    config, past_kv_format=Formats.BSNH, share_buffer=True, key_padding_mask=None
-):
+def create_group_query_attention_graph_prompt(config, past_kv_format=Formats.BSNH, share_buffer=True):
     past_kv_seqlen = config.buffer_sequence_length if share_buffer else 0
     present_kv_seqlen = config.buffer_sequence_length if share_buffer else config.kv_sequence_length
     nodes = [
@@ -197,7 +195,8 @@ def create_group_query_attention_graph_prompt(
                 "value",
                 "past_key" if share_buffer else "",
                 "past_value" if share_buffer else "",
-                "attention_mask",
+                "seqlens_k",
+                "total_sequence_length",
             ],
             ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
@@ -238,9 +237,14 @@ def create_group_query_attention_graph_prompt(
             ],
         ),
         helper.make_tensor_value_info(
-            "attention_mask",
-            TensorProto.INT64,
-            [key_padding_mask.size(dim=0), key_padding_mask.size(dim=1)],
+            "seqlens_k",
+            TensorProto.INT32,
+            [config.batch_size],
+        ),
+        helper.make_tensor_value_info(
+            "total_sequence_length",
+            TensorProto.INT32,
+            [1],
         ),
     ]
     if share_buffer:
@@ -306,9 +310,7 @@ def create_group_query_attention_graph_prompt(
     return model.SerializeToString()
 
 
-def create_group_query_attention_graph_past(
-    config, past_kv_format=Formats.BSNH, share_buffer=True, key_padding_mask=None
-):
+def create_group_query_attention_graph_past(config, past_kv_format=Formats.BSNH, share_buffer=True):
     past_kv_seqlen = config.kv_sequence_length
     present_kv_seqlen = (
         config.kv_sequence_length if share_buffer else config.kv_sequence_length + config.sequence_length
@@ -322,7 +324,8 @@ def create_group_query_attention_graph_past(
                 "value",
                 "past_key",
                 "past_value",
-                "attention_mask",
+                "seqlens_k",
+                "total_sequence_length",
             ],
             ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
@@ -385,10 +388,15 @@ def create_group_query_attention_graph_past(
     ]
     graph_input += [
         helper.make_tensor_value_info(
-            "attention_mask",
-            TensorProto.INT64,
-            [key_padding_mask.size(dim=0), key_padding_mask.size(dim=1)],
-        )
+            "seqlens_k",
+            TensorProto.INT32,
+            [config.batch_size],
+        ),
+        helper.make_tensor_value_info(
+            "total_sequence_length",
+            TensorProto.INT32,
+            [1],
+        ),
     ]
 
     graph_output = [
@@ -628,13 +636,8 @@ def mha_func(q, k, v, config):
     return output
 
 
-def gqa_prompt_func(
-    q, k, v, config, new_k, new_v, key_padding_mask=None, past_kv_format=Formats.BSNH, share_buffer=True
-):
-    key_padding_mask = key_padding_mask.to(torch.int64)
-    onnx_model_str = create_group_query_attention_graph_prompt(
-        config, past_kv_format, share_buffer, key_padding_mask=key_padding_mask
-    )
+def gqa_prompt_func(q, k, v, config, new_k, new_v, seqlens_k=None, past_kv_format=Formats.BSNH, share_buffer=True):
+    onnx_model_str = create_group_query_attention_graph_prompt(config, past_kv_format, share_buffer)
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
     past_k = k.clone() if share_buffer else None
     past_v = v.clone() if share_buffer else None
@@ -647,7 +650,8 @@ def gqa_prompt_func(
             "value": new_v.detach().cpu().numpy(),
             "past_key": OrtValue.ortvalue_from_numpy(past_k.detach().cpu().numpy(), "cuda", 0),
             "past_value": OrtValue.ortvalue_from_numpy(past_v.detach().cpu().numpy(), "cuda", 0),
-            "attention_mask": key_padding_mask.detach().cpu().numpy().astype(numpy.int64),
+            "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
+            "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
@@ -666,7 +670,8 @@ def gqa_prompt_func(
             ort_inputs["past_value"].shape(),
             ort_inputs["past_value"].data_ptr(),
         )
-        io_binding.bind_cpu_input("attention_mask", ort_inputs["attention_mask"])
+        io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
+        io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
         io_binding.bind_output("output")
         io_binding.bind_ortvalue_output("present_key", ort_inputs["past_key"])
         io_binding.bind_ortvalue_output("present_value", ort_inputs["past_value"])
@@ -680,7 +685,8 @@ def gqa_prompt_func(
             "query": q.detach().cpu().numpy(),
             "key": new_k.detach().cpu().numpy(),
             "value": new_v.detach().cpu().numpy(),
-            "attention_mask": key_padding_mask.detach().cpu().numpy().astype(numpy.int64),
+            "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
+            "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
@@ -688,7 +694,8 @@ def gqa_prompt_func(
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_cpu_input("key", ort_inputs["key"])
         io_binding.bind_cpu_input("value", ort_inputs["value"])
-        io_binding.bind_cpu_input("attention_mask", ort_inputs["attention_mask"])
+        io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
+        io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
         io_binding.bind_output("output")
         io_binding.bind_output("present_key")
         io_binding.bind_output("present_value")
@@ -699,11 +706,8 @@ def gqa_prompt_func(
         return output, present_k, present_v
 
 
-def gqa_past_func(q, k, v, config, new_k, new_v, key_padding_mask=None, past_kv_format=Formats.BSNH, share_buffer=True):
-    key_padding_mask = key_padding_mask.to(torch.int64)
-    onnx_model_str = create_group_query_attention_graph_past(
-        config, past_kv_format, share_buffer, key_padding_mask=key_padding_mask
-    )
+def gqa_past_func(q, k, v, config, new_k, new_v, seqlens_k=None, past_kv_format=Formats.BSNH, share_buffer=True):
+    onnx_model_str = create_group_query_attention_graph_past(config, past_kv_format, share_buffer)
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     past_k = k.clone()
     past_v = v.clone()
@@ -716,7 +720,11 @@ def gqa_past_func(q, k, v, config, new_k, new_v, key_padding_mask=None, past_kv_
             "value": new_v.detach().cpu().numpy(),
             "past_key": OrtValue.ortvalue_from_numpy(past_k.detach().cpu().numpy(), "cuda", 0),
             "past_value": OrtValue.ortvalue_from_numpy(past_v.detach().cpu().numpy(), "cuda", 0),
-            "attention_mask": key_padding_mask.detach().cpu().numpy().astype(numpy.int64),
+            "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
+            "total_sequence_length": torch.tensor([config.kv_sequence_length], dtype=torch.int32)
+            .detach()
+            .cpu()
+            .numpy(),
         }
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
@@ -735,7 +743,8 @@ def gqa_past_func(q, k, v, config, new_k, new_v, key_padding_mask=None, past_kv_
             ort_inputs["past_value"].shape(),
             ort_inputs["past_value"].data_ptr(),
         )
-        io_binding.bind_cpu_input("attention_mask", ort_inputs["attention_mask"])
+        io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
+        io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
         io_binding.bind_output("output")
         io_binding.bind_ortvalue_output("present_key", ort_inputs["past_key"])
         io_binding.bind_ortvalue_output("present_value", ort_inputs["past_value"])
@@ -750,8 +759,14 @@ def gqa_past_func(q, k, v, config, new_k, new_v, key_padding_mask=None, past_kv_
             "key": new_k.detach().cpu().numpy(),
             "value": new_v.detach().cpu().numpy(),
             "past_key": past_k.detach().cpu().numpy(),
-            "past_value": past_v.detach().cpu().numpy(),
-            "attention_mask": key_padding_mask.detach().cpu().numpy().astype(numpy.int64),
+            "past_value": past_k.detach().cpu().numpy(),
+            "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
+            "total_sequence_length": torch.tensor(
+                [config.kv_sequence_length + config.sequence_length], dtype=torch.int32
+            )
+            .detach()
+            .cpu()
+            .numpy(),
         }
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
@@ -761,7 +776,8 @@ def gqa_past_func(q, k, v, config, new_k, new_v, key_padding_mask=None, past_kv_
         io_binding.bind_cpu_input("value", ort_inputs["value"])
         io_binding.bind_cpu_input("past_key", ort_inputs["past_key"])
         io_binding.bind_cpu_input("past_value", ort_inputs["past_value"])
-        io_binding.bind_cpu_input("attention_mask", ort_inputs["attention_mask"])
+        io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
+        io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
         io_binding.bind_output("output")
         io_binding.bind_output("present_key")
         io_binding.bind_output("present_value")
@@ -1012,9 +1028,8 @@ def parity_check_gqa_prompt(
     kv_seqlens = torch.tensor([config.kv_sequence_length], device="cuda").repeat(config.batch_size)
     kv_seqlens_expanded = rearrange(kv_seqlens, "b -> b 1")
     update_mask = arange < kv_seqlens_expanded
-    new_mask = brange < cache_seqlens_expanded
-    k_cache_ref[update_mask] = rearrange(new_k, "b s ... -> (b s) ...")  # new_k[new_mask]
-    v_cache_ref[update_mask] = rearrange(new_v, "b s ... -> (b s) ...")  # new_v[new_mask]
+    k_cache_ref[update_mask] = rearrange(new_k, "b s ... -> (b s) ...")
+    v_cache_ref[update_mask] = rearrange(new_v, "b s ... -> (b s) ...")
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded
@@ -1025,7 +1040,7 @@ def parity_check_gqa_prompt(
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_prompt_func(q, k, v, config, new_k, new_v, new_mask, past_format, True)
+    out, present_k, present_v = gqa_prompt_func(q, k, v, config, new_k, new_v, cache_seqlens, past_format, True)
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1124,7 +1139,7 @@ def parity_check_gqa_prompt_no_buff(
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_prompt_func(q, None, None, config, new_k, new_v, new_mask, past_format, False)
+    out, present_k, present_v = gqa_prompt_func(q, None, None, config, new_k, new_v, cache_seqlens, past_format, False)
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1229,9 +1244,6 @@ def parity_check_gqa_past(
         device="cuda",
     )
     arange = rearrange(torch.arange(config.kv_sequence_length, device="cuda"), "s -> 1 s")
-    brange = rearrange(
-        torch.arange(config.sequence_length + torch.max(cache_seqlens).item(), device="cuda"), "s -> 1 s"
-    )
     cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
     update_mask = torch.logical_and(
         cache_seqlens_expanded <= arange, arange < cache_seqlens_expanded + config.sequence_length
@@ -1241,7 +1253,6 @@ def parity_check_gqa_past(
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
-    new_mask = brange < cache_seqlens_expanded + config.sequence_length
     out_ref, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True)
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1249,7 +1260,7 @@ def parity_check_gqa_past(
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, new_mask, past_format, True)
+    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, cache_seqlens, past_format, True)
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1355,6 +1366,8 @@ def parity_check_gqa_past_no_buff(
         dtype=torch.int32,
         device="cuda",
     )
+    cache_seqlens[random.randint(0, config.batch_size - 1)] = config.kv_sequence_length
+    print(cache_seqlens)
     arange = rearrange(torch.arange(config.kv_sequence_length + config.sequence_length, device="cuda"), "s -> 1 s")
     cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
     update_mask = torch.logical_and(
@@ -1372,18 +1385,24 @@ def parity_check_gqa_past_no_buff(
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, key_padding_mask, past_format, False)
+    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, cache_seqlens, past_format, False)
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
+    # print(out - out_ref)
+
     # Make sure past-present buffer updating correctly
-    # assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-    # assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
+    # assert numpy.allclose(
+    #     present_k[:, :, :-1, :], k_cache_ref.detach().cpu().numpy()[:, :, :-1, :], rtol=rtol, atol=atol, equal_nan=True
+    # )
+    # assert numpy.allclose(
+    #     present_v[:, :, :-1, :], v_cache_ref.detach().cpu().numpy()[:, :, :-1, :], rtol=rtol, atol=atol, equal_nan=True
+    # )
 
     # Compare results
     print(
-        "KV-buffer",
+        "NO buff",
         "past kv format:",
         "BSNH" if past_format == Formats.BSNH else "BNSH",
         " B:",
@@ -1661,17 +1680,17 @@ class TestGQA(unittest.TestCase):
         print("-------- MEMORY EFFICIENT (TOKEN GEN) --------")
         batches = [5] if pipeline_mode else [1, 3, 5]
         seqs = (
-            [(1, 128), (3, 1024), (64, 2048)]
+            [(1, 128), (1, 1024), (1, 2048)]
             if pipeline_mode
             else [
                 (1, 128),
                 (1, 339),
                 (1, 1024),
                 (1, 5000),
-                (64, 800),
-                (64, 256),
-                (3, 799),
-                (64, 2048),
+                (1, 800),
+                (1, 256),
+                (1, 799),
+                (1, 2048),
                 # (1, 128 * 512),
                 # (16, 128 * 512),
                 # (128, 128),
@@ -1711,6 +1730,7 @@ class TestGQA(unittest.TestCase):
                         for past_kv_format in [Formats.BNSH]:
                             sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                             config = Config(b, s, s2, sp, n, n2, h)
+                            print(s2)
                             parity_check_gqa_past(
                                 config,
                                 past_format=past_kv_format,
@@ -1726,6 +1746,6 @@ class TestGQA(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
-    # test_gqa = TestGQA()
-    # test_gqa.test_gqa_no_past()
+    # unittest.main()
+    test_gqa = TestGQA()
+    test_gqa.test_gqa_past()

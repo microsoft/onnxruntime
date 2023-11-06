@@ -1004,6 +1004,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("left_padding_last_token",
+              "Copy last token to last index of buffer. Default is 0; 1 when true.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size)",
@@ -1029,8 +1033,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T",
                OpSchema::Optional)
         .Input(5,
-               "attention_mask",
-               "2d Tensor of shape (batch_size, past_sequence_length + sequence_length). Must be a right padding mask.",
+               "seqlens_k",
+               "1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.",
+               "M")
+        .Input(6,
+               "total_sequence_length",
+               "Scalar tensor of total sequence length (past + new).",
                "M")
         .Output(0,
                 "output",
@@ -1049,7 +1057,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "kv_sequence_length.",
                 "T")
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
-        .TypeConstraint("M", {"tensor(int64)"}, "Constrain mask to int tensor.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);
         }));

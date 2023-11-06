@@ -440,54 +440,38 @@ Status LaunchUngroup(contrib::GroupQueryAttentionParameters& parameters,
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Kernel to get past or total sequence length from attention mask
-template <const int BLOCK_THREADS>
-__global__ void GetCacheSeqlens(const int64_t* attention_mask,
-                                int* seqlens_k,
-                                const int mask_seqlen,
-                                const int sub_seqlen) {
-  // Specialize BlockReduce type for our thread block
-  typedef cub::BlockReduce<int, BLOCK_THREADS> BlockReduceT;
-  __shared__ typename BlockReduceT::TempStorage temp_storage;
+// // Kernel to get past or total sequence length from attention mask
+// template <const int BLOCK_THREADS>
+// __global__ void GetCacheSeqlens(const int64_t* attention_mask,
+//                                 int* seqlens_k,
+//                                 const int mask_seqlen,
+//                                 const int sub_seqlen) {
+//   // Specialize BlockReduce type for our thread block
+//   typedef cub::BlockReduce<int, BLOCK_THREADS> BlockReduceT;
+//   __shared__ typename BlockReduceT::TempStorage temp_storage;
 
-  const int b = blockIdx.x;
-  int mask_offset = b * mask_seqlen;
-  int sum = 0;
-  for (int i = threadIdx.x; i < mask_seqlen; i += blockDim.x) {
-    sum += attention_mask[mask_offset + i];
-  }
+//   const int b = blockIdx.x;
+//   int mask_offset = b * mask_seqlen;
+//   int sum = 0;
+//   for (int i = threadIdx.x; i < mask_seqlen; i += blockDim.x) {
+//     sum += attention_mask[mask_offset + i];
+//   }
 
-  int total_sum = BlockReduceT(temp_storage).Sum(sum);
-  if (threadIdx.x == 0) {
-    total_sum -= sub_seqlen;
-    seqlens_k[b] = total_sum;
-  }
-}
-
-// Convert Attention Mask to Seqlens tensor.
-Status LaunchGetCacheSeqlens(contrib::GroupQueryAttentionParameters& parameters,
-                             const int64_t* attention_mask, int* seqlens_k_buffer,
-                             const bool is_prompt, cudaStream_t stream, const int threads_per_block) {
-  const int batch_size = parameters.batch_size;
-  const int mask_seqlen = parameters.mask_sequence_length;
-  const int sub_seqlen = is_prompt ? 0 : parameters.sequence_length;
-
-  const dim3 grid(batch_size, 1, 1);
-  const dim3 block(threads_per_block, 1, 1);
-
-  // TODO(aciddelgado): small version
-  GetCacheSeqlens<256><<<grid, block, 0, stream>>>(attention_mask, seqlens_k_buffer, mask_seqlen, sub_seqlen);
-
-  return CUDA_CALL(cudaGetLastError());
-}
+//   int total_sum = BlockReduceT(temp_storage).Sum(sum);
+//   if (threadIdx.x == 0) {
+//     total_sum -= sub_seqlen;
+//     seqlens_k[b] = total_sum;
+//   }
+// }
 
 __global__ void PastToTotalSeqlen(int32_t* seqlens_k,
+                                  int32_t* seqlens_k_buff,
                                   const int add_seqlen) {
-  seqlens_k[threadIdx.x] += add_seqlen;
+  seqlens_k_buff[threadIdx.x] = seqlens_k[threadIdx.x] + add_seqlen;
 }
 
 // Convert Past to Total sequence length tensor
-Status LaunchPastToTotalSeqlen(contrib::GroupQueryAttentionParameters& parameters, int32_t* seqlens_k, cudaStream_t stream,
+Status LaunchPastToTotalSeqlen(contrib::GroupQueryAttentionParameters& parameters, int32_t* seqlens_k, int32_t* seqlens_k_buff, cudaStream_t stream,
                                const int threads_per_block) {
   if (parameters.is_prompt) {
     return Status::OK();
@@ -500,7 +484,7 @@ Status LaunchPastToTotalSeqlen(contrib::GroupQueryAttentionParameters& parameter
   const dim3 block(batch_size, 1, 1);
 
   // TODO(aciddelgado): small version
-  PastToTotalSeqlen<<<grid, block, 0, stream>>>(seqlens_k, add_seqlen);
+  PastToTotalSeqlen<<<grid, block, 0, stream>>>(seqlens_k, seqlens_k_buff, add_seqlen);
 
   return CUDA_CALL(cudaGetLastError());
 }
@@ -582,16 +566,14 @@ Status FlashAttention(
     // Launch kernel to copy seqlen
     int thr_per_blk = 256;
     int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
-    repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k, parameters.mask_sequence_length, batch_size);
-  } else {
-    ORT_RETURN_IF_ERROR(LaunchGetCacheSeqlens(parameters, data.attention_mask, data.seqlens_k, parameters.is_prompt, stream, 256));
+    repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k_buff, parameters.sequence_length, batch_size);
   }
 
   if (parameters.kv_share_buffer) {
     // Share buffer case
     if (data.past_key == nullptr || data.past_key != data.present_key) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Past and present kv shall share the same tensor when kv_share_buffer is on.");
+                            "Past and present kv shall share the same tensor when kv_share_buffer is on.");
     }
 
     void* seqlens_k = reinterpret_cast<void*>(data.seqlens_k);
@@ -623,20 +605,20 @@ Status FlashAttention(
                              "Past and present kv share the same tensor but kv_share_buffer is not on.");
     }
 
-    // Mask tensor given case
     ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block));
 
     void* seqlens_k = reinterpret_cast<void*>(data.seqlens_k);
 
     if (!parameters.is_prompt) {
-      ORT_RETURN_IF_ERROR(LaunchPastToTotalSeqlen(parameters, data.seqlens_k, stream, 256));
+      ORT_RETURN_IF_ERROR(LaunchPastToTotalSeqlen(parameters, data.seqlens_k, data.seqlens_k_buff, stream, 256));
+      seqlens_k = reinterpret_cast<void*>(data.seqlens_k_buff);
     }
 
     void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
     void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
 
     DUMP_TENSOR_INIT();
-    DUMP_TENSOR("seqlens_k", data.seqlens_k, batch_size, 1);
+    DUMP_TENSOR("seqlens_k", reinterpret_cast<int*>(seqlens_k), batch_size, 1);
 
     bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
@@ -675,8 +657,6 @@ Status EfficientAttention(
   const void* key = reinterpret_cast<const void*>(data.key);
   const void* value = reinterpret_cast<const void*>(data.value);
 
-  ORT_RETURN_IF_ERROR(LaunchGetCacheSeqlens(parameters, data.attention_mask, data.seqlens_k, parameters.is_prompt, stream, 256));
-
   if (parameters.kv_share_buffer) {
     // Share buffer case
     if (data.past_key == nullptr || data.past_key != data.present_key) {
@@ -714,7 +694,7 @@ Status EfficientAttention(
   }
 
   int* seqlens_k = nullptr;  // built from past and kv seqlens buffers
-  ORT_RETURN_IF_ERROR(LaunchPastToTotalSeqlen(parameters, data.seqlens_k, stream, 256));
+  ORT_RETURN_IF_ERROR(LaunchPastToTotalSeqlen(parameters, data.seqlens_k, data.seqlens_k_buff, stream, 256));
   ORT_RETURN_IF_ERROR(LaunchFillSeqstartQ(parameters, data.seqstart_q, stream, 256));
   ORT_RETURN_IF_ERROR(LaunchFillSeqstartK(parameters, data.seqstart_k, stream, 256));
   seqlens_k = data.seqlens_k;
