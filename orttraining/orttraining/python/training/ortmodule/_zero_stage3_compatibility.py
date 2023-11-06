@@ -365,8 +365,9 @@ def _unregister_stage3_specific_custom_export_function(onnx_opset_version: int):
     from torch.onnx import unregister_custom_op_symbolic
 
     try:
-        unregister_custom_op_symbolic("aten::t", 9)
+        unregister_custom_op_symbolic("aten::t", onnx_opset_version)
         unregister_custom_op_symbolic("aten::numpy_T", onnx_opset_version)
+        unregister_custom_op_symbolic("aten::linear", onnx_opset_version)
 
     except Exception:
         pass
@@ -417,7 +418,24 @@ def register_stage3_specific_custom_export_function(
             # output a permute so use ATen instead
             return g.op("org.pytorch.aten::ATen", self, operator_s="numpy_T")
 
-    _unregister_stage3_specific_custom_export_function()
+    def linear(g, input, weight, bias):
+        from torch.onnx.symbolic_opset9 import add, addmm, matmul
 
-    register_custom_op_symbolic("aten::t", t, 9)
+        rank = symbolic_helper._get_tensor_rank(input)
+        weight = t(g, weight)
+        if rank == 2 and not bias.node().mustBeNone():
+            alpha = g.op("Constant", value_t=torch.tensor(1, dtype=torch.int64))
+            beta = g.op("Constant", value_t=torch.tensor(1, dtype=torch.int64))
+            output = addmm(g, bias, input, weight, alpha, beta)  # todo: addmm need a change also.
+        else:
+            output = matmul(g, input, weight)
+            if not bias.node().mustBeNone():
+                output = add(g, bias, output)
+
+        return output
+
+    _unregister_stage3_specific_custom_export_function(onnx_opset_version)
+
+    register_custom_op_symbolic("aten::t", t, onnx_opset_version)
     register_custom_op_symbolic("aten::numpy_T", numpy_T, onnx_opset_version)
+    register_custom_op_symbolic("aten::linear", linear, onnx_opset_version)

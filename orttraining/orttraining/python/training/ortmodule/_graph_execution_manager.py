@@ -150,14 +150,6 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             self._zero_stage3_param_map = _get_all_zero_stage3_params(self._flattened_module)
 
-            from onnxruntime.training.ortmodule._zero_stage3_compatibility import (
-                register_stage3_specific_custom_export_function,
-            )
-
-            register_stage3_specific_custom_export_function(
-                self._zero_stage3_param_map, self._runtime_options.onnx_opset_version
-            )
-
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -378,6 +370,15 @@ class GraphExecutionManager(GraphExecutionInterface):
         # For example, the Dropout node in a model is dropped under eval mode.
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
+        if self._runtime_options.enable_zero_stage3_support:
+            from onnxruntime.training.ortmodule._zero_stage3_compatibility import (
+                register_stage3_specific_custom_export_function,
+            )
+            # todo(pengwa) find a better place for this registration.
+            register_stage3_specific_custom_export_function(
+                self._zero_stage3_param_map, self._runtime_options.onnx_opset_version
+            )
+
         try:
             with torch.no_grad():
                 required_export_kwargs = {
@@ -429,8 +430,12 @@ class GraphExecutionManager(GraphExecutionInterface):
             exported_model = post_process_enabling_autograd_function(exported_model)
 
         if self._runtime_options.enable_zero_stage3_support:
-            from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat
+            from ._zero_stage3_compatibility import (
+                _unregister_stage3_specific_custom_export_function,
+                post_processing_enable_zero_stage3_compat,
+            )
 
+            _unregister_stage3_specific_custom_export_function(self._runtime_options.onnx_opset_version)
             exported_model = post_processing_enable_zero_stage3_compat(
                 exported_model,
                 self._zero_stage3_param_map,
