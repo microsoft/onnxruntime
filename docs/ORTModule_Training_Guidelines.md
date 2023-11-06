@@ -49,6 +49,7 @@ More options for **developers**.
 ```
 Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/options.py) for more details.
 
+#### Log Level Explainations
 
 <table>
 <tr>
@@ -56,8 +57,14 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 <th>Description</th>
 </tr>
 <tr>
-<td>FATAL | ERROR | WARNING (For Users)</td>
 <td>
+<div>FATAL | ERROR | WARNING (For Users)</div>
+<br>
+<div>`WARNING` is default and recommended level for users to use.</div>
+</td>
+<td>
+
+
 
 - ONNX Runtime backend log level - `FATAL` | `ERROR` | `WARNING`.
 - ORTModule log level - `FATAL` | `ERROR` | `WARNING`.
