@@ -690,6 +690,14 @@ TEST(MathOpTest, Neg_int64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser: Int64 not allowed as input to this layer
 }
 
+TEST(MathOpTest, Neg_bfloat16) {
+  OpTester test("Neg");
+  std::vector<int64_t> dims{4};
+  test.AddInput<BFloat16>("X", dims, {1.0f, -2.0f, 0.0f, -10.0f});
+  test.AddOutput<BFloat16>("Y", dims, {-1.0f, 2.0f, 0.0f, 10.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser: Int64 not allowed as input to this layer
+}
+
 TEST(MathOpTest, Floor) {
   OpTester test("Floor");
   std::vector<int64_t> dims{2, 2};
