@@ -359,3 +359,65 @@ def _update_python_op_input_related_attributes(
     node.attribute.remove(dtype_attr)
     node.attribute.append(helper.make_attribute("input_tensor_ranks", input_tensor_ranks))
     node.attribute.append(helper.make_attribute("input_tensor_types", input_tensor_dtypes))
+
+
+def _unregister_stage3_specific_custom_export_function(onnx_opset_version: int):
+    from torch.onnx import unregister_custom_op_symbolic
+
+    try:
+        unregister_custom_op_symbolic("aten::t", 9)
+        unregister_custom_op_symbolic("aten::numpy_T", onnx_opset_version)
+
+    except Exception:
+        pass
+
+
+def register_stage3_specific_custom_export_function(
+    zero_stage3_named_params: Dict[str, torch.nn.parameter.Parameter], onnx_opset_version: int
+):
+    import torch.onnx.symbolic_helper as sym_help
+    from torch.onnx import register_custom_op_symbolic, symbolic_helper
+
+    def t(g, self):
+        rank = symbolic_helper._get_tensor_rank(self)
+
+        ### Adapted from
+        # https://github.com/pytorch/pytorch/blob/bd9be877e4459d7889e5e3c8051caaffdfe21c85/torch/onnx/symbolic_opset9.py#L931
+        # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).
+        input_name = self.debugName()
+        if input_name in zero_stage3_named_params:
+            rank = len(zero_stage3_named_params[input_name].ds_shape)
+        ### Adaptor ends
+
+        if rank is None or rank < 2:
+            # The transpose of a 1d or 0d tensor is itself. ONNX does not define the behavior
+            # clearly and onnxruntime fails on these cases. So we add an Identity node to
+            # mirror the behavior of eager mode.
+            return g.op("Identity", self)
+        return g.op("Transpose", self, perm_i=(1, 0))
+
+    def numpy_T(g, self):  # noqa: N802
+        # Numpy-style `a.T`: returns the tensor
+        # with dims reversed
+        rank = sym_help._get_tensor_rank(self)
+
+        ### Adapted from
+        # https://github.com/microsoft/onnxruntime/blob/dfafcb58aa5fb262b4ff964ccdcc3271672032c0/orttraining/orttraining/python/training/ortmodule/_custom_op_symbolic_registry.py#L281
+        # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).
+        input_name = self.debugName()
+        if input_name in zero_stage3_named_params:
+            rank = len(zero_stage3_named_params[input_name].ds_shape)
+        ### Adaptor ends
+
+        if rank is not None:
+            axes = list(reversed(range(rank)))
+            return g.op("Transpose", self, perm_i=axes)
+        else:
+            # if we don't have dim information we cannot
+            # output a permute so use ATen instead
+            return g.op("org.pytorch.aten::ATen", self, operator_s="numpy_T")
+
+    _unregister_stage3_specific_custom_export_function()
+
+    register_custom_op_symbolic("aten::t", t, 9)
+    register_custom_op_symbolic("aten::numpy_T", numpy_T, onnx_opset_version)
