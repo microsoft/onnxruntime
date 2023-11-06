@@ -6,6 +6,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_LOG: onnxruntime=debug,onnxruntime-sys=debug
   RUST_BACKTRACE: 1
+  MANIFEST_PATH: ${{ github.workspace }}/rust/Cargo.toml
 
 jobs:
   fmt:
@@ -22,7 +23,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
-          args: --all --manifest-path ${{ github.workspace }}/rust/Cargo.toml -- --check
+          args: --all --manifest-path $MANIFEST_PATH -- --check
 
   download:
     name: Download prebuilt ONNX Runtime archive from build.rs
@@ -43,7 +44,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --target x86_64-unknown-linux-gnu
+          args: --target x86_64-unknown-linux-gnu --manifest-path $MANIFEST_PATH
       - name: Verify prebuilt archive downloaded (CPU, x86_64-unknown-linux-gnu)
         run: ls -lh target/x86_64-unknown-linux-gnu/debug/build/onnxruntime-sys-*/out/onnxruntime-linux-x64-1.*.tgz
       # ******************************************************************
@@ -51,7 +52,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --target x86_64-apple-darwin
+          args: --target x86_64-apple-darwin --manifest-path $MANIFEST_PATH
       - name: Verify prebuilt archive downloaded (CPU, x86_64-apple-darwin)
         run: ls -lh target/x86_64-apple-darwin/debug/build/onnxruntime-sys-*/out/onnxruntime-osx-x64-1.*.tgz
       # ******************************************************************
@@ -59,7 +60,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --target i686-pc-windows-msvc
+          args: --target i686-pc-windows-msvc --manifest-path $MANIFEST_PATH
       - name: Verify prebuilt archive downloaded (CPU, i686-pc-windows-msvc)
         run: ls -lh target/i686-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-x86-1.*.zip
       # ******************************************************************
@@ -67,7 +68,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --target x86_64-pc-windows-msvc
+          args: --target x86_64-pc-windows-msvc  --manifest-path $MANIFEST_PATH
       - name: Verify prebuilt archive downloaded (CPU, x86_64-pc-windows-msvc)
         run: ls -lh target/x86_64-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-x64-1.*.zip
       # ******************************************************************
@@ -77,7 +78,7 @@ jobs:
           ORT_USE_CUDA: "yes"
         with:
           command: build
-          args: --target x86_64-unknown-linux-gnu
+          args: --target x86_64-unknown-linux-gnu --manifest-path $MANIFEST_PATH
       - name: Verify prebuilt archive downloaded (GPU, x86_64-unknown-linux-gnu)
         run: ls -lh target/x86_64-unknown-linux-gnu/debug/build/onnxruntime-sys-*/out/onnxruntime-linux-x64-gpu-1.*.tgz
       # ******************************************************************
@@ -87,7 +88,7 @@ jobs:
           ORT_USE_CUDA: "yes"
         with:
           command: build
-          args: --target x86_64-pc-windows-msvc
+          args: --target x86_64-pc-windows-msvc  --manifest-path $MANIFEST_PATH
       - name: Verify prebuilt archive downloaded (GPU, x86_64-pc-windows-msvc)
         run: ls -lh target/x86_64-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-gpu-x64-1.*.zip
 
@@ -131,18 +132,18 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --all
+          args: --all --manifest-path $MANIFEST_PATH
       - name: Build tests (cargo test)
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-run
+          args: --no-run --manifest-path $MANIFEST_PATH
       - name: Build onnxruntime with 'model-fetching' feature
         uses: actions-rs/cargo@v1
         with:
           command: build
           # Use --manifest-path instead of --package. See https://github.com/actions-rs/cargo/issues/86
-          args: --manifest-path onnxruntime/Cargo.toml --features model-fetching
+          args: --manifest-path $MANIFEST_PATH --features model-fetching
       - name: Test onnxruntime-sys
         uses: actions-rs/cargo@v1
         with:
@@ -153,7 +154,7 @@ jobs:
         with:
           command: test
           # Use --manifest-path instead of --package. See https://github.com/actions-rs/cargo/issues/86
-          args: --manifest-path onnxruntime/Cargo.toml --features model-fetching -- --test-threads=1 --nocapture
+          args: --manifest-path $MANIFEST_PATHl --features model-fetching -- --test-threads=1 --nocapture
 
   clippy:
     name: Clippy
@@ -169,7 +170,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-features -- -D warnings
+          args: --all-features --manifest-path $MANIFEST_PATH -- -D warnings
 
   coverage:
     name: Code coverage
@@ -186,7 +187,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --package onnxruntime-sys
+          args: --package onnxruntime-sys  --manifest-path $MANIFEST_PATH
       - name: Copy libonnxruntime.*.dylib to /usr/lib/
         run: sudo cp -r target/debug/build/onnxruntime-sys-*/out/onnxruntime/onnxruntime-*/lib/libonnxruntime.* /usr/lib/
       - name: Run cargo-tarpaulin
