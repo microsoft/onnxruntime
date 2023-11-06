@@ -11,6 +11,7 @@ from types import ModuleType
 from typing import List, Tuple
 
 import onnx
+import sympy
 from torch._C import _from_dlpack
 from torch.utils.dlpack import to_dlpack
 
@@ -31,20 +32,49 @@ def _gen_module_internal(sorted_graph: SortedGraph) -> Tuple[str, str, ModuleTyp
     return func_name, src_code, PyCodeCache().load(src_code)
 
 
-def _gen_key(onnx_key: int, onnx_str: bytes, shapes: List[List[int]]) -> int:
+class _ShapeCache:
+    """
+    Cache the shapes of the inputs. The inputs are the concrete shapes of inputs from each step for a given ONNX model.
+    For those dimensions that the concrete shape is not changed, we use the same concrete shape.
+    For those dimensions that the concrete shape is changed between different steps, we use a symbolic shape.
+    """
+
+    cache = dict()  # noqa: RUF012
+    clear = staticmethod(cache.clear)
+
+    @classmethod
+    def get_shape(cls, onnx_key: int, shapes: List[List[sympy.Expr]]) -> List[List[sympy.Expr]]:
+        if onnx_key not in cls.cache:
+            cls.cache[onnx_key] = shapes
+        else:
+            changed = False
+            for i, shape in enumerate(shapes):
+                for j, dim in enumerate(shape):
+                    if dim != cls.cache[onnx_key][i][j] and cls.cache[onnx_key][i][j].is_number:
+                        shape[j] = sympy.Symbol(f"i{i}_dim{j}")
+                        changed = True
+                    elif not cls.cache[onnx_key][i][j].is_number:
+                        shape[j] = cls.cache[onnx_key][i][j]
+            if changed:
+                cls.cache[onnx_key] = shapes
+        return cls.cache[onnx_key]
+
+
+def _gen_key(onnx_key: int, onnx_str: bytes, shapes: List[List[sympy.Expr]]) -> int:
+    # pylint: disable=unused-argument
     return hash(f"{onnx_key}|{str(shapes).replace(' ', '')}") % (10**8)
 
 
-def _gen_module(onnx_key: int, onnx_str: bytes, shapes: List[List[int]]) -> Tuple[str, ModuleType]:
+def _gen_module(onnx_key: int, onnx_str: bytes, shapes: List[List[sympy.Expr]]) -> Tuple[str, ModuleType]:
     model = onnx.load_model_from_string(onnx_str)
-    sorted_graph = SortedGraph(model, [parse_shape(shape) for shape in shapes])
+    sorted_graph = SortedGraph(model, shapes)
     if _DEBUG_MODE:
         os.makedirs(os.path.dirname("triton_debug/"), exist_ok=True)
         sorted_graph.save_onnx(f"triton_debug/{onnx_key}")
     func_name, src_code, mod = _gen_module_internal(sorted_graph)
     if _DEBUG_MODE:
         py_file_path = f"triton_debug/{func_name}_{onnx_key}.py"
-        with open(py_file_path, "w") as f:
+        with open(py_file_path, "w", encoding="UTF-8") as f:
             f.write(src_code)
     return func_name, mod
 
@@ -89,8 +119,9 @@ def call_triton_by_onnx(onnx_key: int, onnx_str: bytes, *tensors):
 
     assert all(tensor is not None for tensor in tensors)
     torch_tensors = [_from_dlpack(tensor) for tensor in tensors]
-    concrete_shapes = [list(tensor.size()) for tensor in torch_tensors]
-    func_name, mod = ModuleCache.load(_gen_key, _gen_module, onnx_key, onnx_str, concrete_shapes)
+    concrete_shapes = [parse_shape(list(tensor.size())) for tensor in torch_tensors]
+    shapes = _ShapeCache.get_shape(onnx_key, concrete_shapes)
+    func_name, mod = ModuleCache.load(_gen_key, _gen_module, onnx_key, onnx_str, shapes)
     func = getattr(mod, func_name)
     output = func(*torch_tensors)
     if isinstance(output, tuple):
