@@ -49,6 +49,68 @@ More options for **developers**.
 ```
 Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/options.py) for more details.
 
+
+<table>
+<tr>
+<th>Log Level</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>FATAL | ERROR | WARNING (For Users)</td>
+<td>
+
+- ONNX Runtime backend log level - `FATAL` | `ERROR` | `WARNING`.
+- ORTModule log level - `FATAL` | `ERROR` | `WARNING`.
+- Rank-0 log filtering is `ON` (e.g. logging on rank-0-only).
+- PyTorch exporter export logs filtering is `ON`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `ON`.
+
+</td>
+</tr>
+
+
+<tr>
+<td>INFO (For Users | ORT Developers)</td>
+<td>
+
+- ONNX Runtime backend log level - `WARNING`.
+- ORTModule log level - `INFO`.
+- Rank-0 log filtering is `ON` (e.g. logging on rank-0-only).
+- PyTorch exporter export logs filtering is `ON`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
+
+</td>
+</tr>
+
+<tr>
+<td>DEVINFO (For ORT Developers)</td>
+<td>
+
+- ONNX Runtime backend `INFO` log level.
+- ORTModule `INFO` log level.
+- Rank-0 log filtering is `OFF` (e.g. logging on all ranks).
+- PyTorch exporter export logs filtering is `OFF`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
+
+</td>
+</tr>
+
+<tr>
+<td>VERBOSE (For ORT Developers)</td>
+<td>
+
+- ONNX Runtime backend `VERBOSE` log level.
+- ORTModule `VERBOSE` log level.
+- Rank-0 log filtering is `OFF` (e.g. logging on all ranks).
+- PyTorch exporter export logs filtering is `OFF`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
+
+</td>
+</tr>
+
+</table>
+
+
 ### 2.1 Environment Variables
 
 `ORTModule` provides environment variables targeting different use cases.
