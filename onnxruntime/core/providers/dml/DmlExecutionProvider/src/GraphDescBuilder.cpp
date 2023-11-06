@@ -149,7 +149,7 @@ namespace Dml::GraphDescBuilder
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
-        const void* executionHandle,
+        const ExecutionProviderImpl* executionHandle,
         const onnxruntime::Path& modelPath,
         gsl::span<const onnxruntime::Node* const> subgraphNodes,
         gsl::span<const onnxruntime::NodeArg* const> subgraphInputs,
@@ -198,7 +198,7 @@ namespace Dml::GraphDescBuilder
         const uint32_t minNodeCountToReuseCommandList = 5;
         bool reuseCommandList = false;
 
-        if (subgraphNodes.size() >= minNodeCountToReuseCommandList)
+        if (subgraphNodes.size() >= minNodeCountToReuseCommandList || executionHandle->IsMcdmDevice())
         {
             reuseCommandList = true;
         }
@@ -232,14 +232,22 @@ namespace Dml::GraphDescBuilder
             {
                 ComPtr<IMLOperatorTensor> tensor = nullptr;
 
-                // Check whether this specific node requested support for constant CPU inputs
-                if (std::find(requiredConstantCpuInputs.begin(), requiredConstantCpuInputs.end(), inputIndex) != requiredConstantCpuInputs.end())
+                auto inputDefs = node.InputDefs();
+
+                if (inputIndex < inputDefs.size())
                 {
-                    auto inputDefs = node.InputDefs();
-                    if (inputIndex < inputDefs.size())
+                    const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
+                    tensor = constantCpuGraphInputGetter(arg->Name());
+
+                    if (tensor == nullptr)
                     {
-                        const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
-                        tensor = constantCpuGraphInputGetter(arg->Name());
+                        bool inputRequiredAsConstant = std::find(
+                            requiredConstantCpuInputs.begin(),
+                            requiredConstantCpuInputs.end(),
+                            inputIndex) != requiredConstantCpuInputs.end();
+
+                        // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
+                        ORT_THROW_HR_IF(E_UNEXPECTED, inputRequiredAsConstant);
                     }
                 }
 
@@ -339,7 +347,11 @@ namespace Dml::GraphDescBuilder
                             // This is a highly inefficient approach to generating constant nodes.  It duplicates constant data 
                             // across the graph input as well as every consumer's unique constant node.  However it is currently 
                             // only used for small inputs.
-                            uint32_t c_maxConstNodeDataSize = 64;
+                            
+                            // TODO: Rework this to create DML constant nodes with the minimum data size actually used by consuming
+                            // nodes.  This would allow this size to be reduced while handling the case that 1D scale and zero point
+                            // values that have been de-duplicated with conversion to scalars in kernels.
+                            uint32_t c_maxConstNodeDataSize = 1024 * 1024;
 
                             ComPtr<OnnxTensorWrapper> constantInput = constantCpuGraphInputGetter(arg->Name());
 
@@ -432,6 +444,15 @@ namespace Dml::GraphDescBuilder
                     auto& opDesc = graphNodeCreateInfo.nodesAsOperatorDesc[i];
 
                     DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc(*opDesc, &allocator);
+
+                    // TODO: Change as new header is ingested
+                    if (dmlDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING)
+                        dmlDesc.Type = (DML_OPERATOR_TYPE) 169;
+                
+                    // TODO: Change as new header is ingested
+                    if (dmlDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT)
+                        dmlDesc.Type = (DML_OPERATOR_TYPE) 170;
+
                     ComPtr<IDMLOperator> op;
                     ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
                     allocator.Reset();

@@ -103,6 +103,36 @@ namespace DmlGraphFusionHelper
         ORT_THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
     }
 
+    std::tuple<std::unique_ptr<std::byte[]>, std::vector<uint8_t>, std::byte*, size_t> UnpackInitializer(
+        const onnxruntime::Graph& graph,
+        const ONNX_NAMESPACE::TensorProto* initializer)
+    {
+        std::unique_ptr<std::byte[]> unpackedTensor;
+        std::vector<uint8_t> unpackedExternalTensor;
+        std::byte* tensorPtr = nullptr;
+        size_t tensorByteSize = 0;
+
+        // The tensor may be stored as raw data or in typed fields.
+        if (initializer->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
+        {
+            THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*initializer, graph.ModelPath(), unpackedExternalTensor));
+            tensorPtr = reinterpret_cast<std::byte*>(unpackedExternalTensor.data());
+            tensorByteSize = unpackedExternalTensor.size();
+        }
+        else if (initializer->has_raw_data())
+        {
+            tensorPtr = (std::byte*)(initializer->raw_data().c_str());
+            tensorByteSize = initializer->raw_data().size();
+        }
+        else
+        {
+            std::tie(unpackedTensor, tensorByteSize) = Windows::AI::MachineLearning::Adapter::UnpackTensor(*initializer, graph.ModelPath());
+            tensorPtr = unpackedTensor.get();
+        }
+
+        return std::make_tuple(std::move(unpackedTensor), std::move(unpackedExternalTensor), tensorPtr, tensorByteSize);
+    }
+
     void ProcessInputData(
         const ExecutionProviderImpl* providerImpl,
         const std::vector<uint8_t>& isInputsUploadedByDmlEP,
@@ -161,32 +191,11 @@ namespace DmlGraphFusionHelper
             auto iter = initializerNameToInitializerMap.find(subGraphInputArgNames[i]);
             if (iter != initializerNameToInitializerMap.end())
             {
-                std::byte* tensorPtr = nullptr;
-                size_t tensorByteSize = 0;
-                std::vector<uint8_t> unpackedExternalTensor;
-
-                std::unique_ptr<std::byte[]> unpackedTensor;
-
-                //auto& initializer = iter->second;
                 auto* initializer = iter->second.first;
+                auto [unpackedTensor, unpackedExternalTensor, tensorPtr, tensorByteSize] = UnpackInitializer(graph, initializer);
 
-                // The tensor may be stored as raw data or in typed fields.
-                if (initializer->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
+                if (initializer->data_location() != onnx::TensorProto_DataLocation_EXTERNAL && !initializer->has_raw_data())
                 {
-                    THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*initializer, graph.ModelPath(), unpackedExternalTensor));
-                    tensorPtr = reinterpret_cast<std::byte*>(unpackedExternalTensor.data());
-                    tensorByteSize = unpackedExternalTensor.size();
-                }
-                else if (initializer->has_raw_data())
-                {
-                    tensorPtr = (std::byte*)(initializer->raw_data().c_str());
-                    tensorByteSize = initializer->raw_data().size();
-                }
-                else
-                {
-                    std::tie(unpackedTensor, tensorByteSize) = Windows::AI::MachineLearning::Adapter::UnpackTensor(*initializer, graph.ModelPath());
-                    tensorPtr = unpackedTensor.get();
-
                     // Free the initializer if this is the last usage of it.
                     if (initializerToLastInputIndexMap[initializer] == i)
                     {
@@ -217,8 +226,7 @@ namespace DmlGraphFusionHelper
                 {
                     ComPtr<ID3D12Resource> initializeInputBuffer;
 
-                    // D3D_FEATURE_LEVEL_1_0_CORE doesn't support Custom heaps
-                    if (providerImpl->IsMcdmDevice())
+                    if (!providerImpl->CustomHeapsSupported())
                     {
                         initializeInputBuffer = CreateResource(providerImpl, tensorPtr, tensorByteSize);
                     }
@@ -284,11 +292,6 @@ namespace DmlGraphFusionHelper
         DML_PREVIEW_OPERATOR_FIRST = 0xC0000000,
     };
 
-    enum DML_GRAPH_NODE_TYPE_PREVIEW
-    { 
-        DML_GRAPH_NODE_TYPE_CONSTANT_DATA = 0xCC000000,  
-    }; 
-
     struct DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW 
     { 
         const BYTE* data;
@@ -325,7 +328,8 @@ namespace DmlGraphFusionHelper
                 nodeInfo.name.data()
                 };
 
-                dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{(DML_GRAPH_NODE_TYPE) DML_GRAPH_NODE_TYPE_CONSTANT_DATA, &dmlConstantGraphNodes[i]};
+                // TODO: Change as new header is ingested
+                dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{(DML_GRAPH_NODE_TYPE) 2, &dmlConstantGraphNodes[i]};
             }
         }
 
@@ -627,9 +631,11 @@ namespace DmlGraphFusionHelper
 
         for (auto& kvp : isInitializerTransferable)
         {
+            auto [unpackedTensor, unpackedExternalTensor, tensorPtr, tensorByteSize] = UnpackInitializer(graph, kvp.second.first);
+
             ONNX_NAMESPACE::TensorProto tensorProto;
             tensorProto.set_data_type(kvp.second.first->data_type());
-            tensorProto.set_raw_data(kvp.second.first->raw_data());
+            tensorProto.set_raw_data(tensorPtr, tensorByteSize);
             tensorProto.set_name(kvp.second.first->name());
 
             for (int i = 0; i < kvp.second.first->dims_size(); ++i)
