@@ -164,7 +164,10 @@ async function initializeSession(
       session = await ort.InferenceSession.create(modelFilePath, sessionConfig);
     }
   } catch (e) {
-    Logger.error('TestRunner', `Failed to load model from file: ${modelFilePath}. Error: ${inspect(e)}`);
+    Logger.error(
+        'TestRunner',
+        `Failed to load model from file: ${modelFilePath}. ` +
+            `Error: ${e.message} @ ${e.fileName}:${e.lineNumber}`);
     throw e;
   }
 
