@@ -169,17 +169,14 @@ Status CheckInputs(const Tensor* query,
   }
 
   // Surmise total sequence lengths and is_prompt from the attention_mask.
-  bool is_prompt = false;
+  bool is_prompt = sequence_length != 1;
   const auto& attention_mask_shape = attention_mask->Shape().GetDims();
   if (attention_mask_shape[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "attention_mask dim 0 must be batch_size.");
   }
-  if (attention_mask_shape[1] == sequence_length) {
-    is_prompt = true;
-  }
   int mask_sequence_length = int(attention_mask_shape[1]);
-  int present_sequence_length = std::max(mask_sequence_length, past_sequence_length);
+  int present_sequence_length = std::max(mask_sequence_length + (is_prompt ? 0 : 1), past_sequence_length);
 
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);

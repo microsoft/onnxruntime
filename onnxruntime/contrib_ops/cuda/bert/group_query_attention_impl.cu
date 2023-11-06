@@ -444,8 +444,7 @@ Status LaunchUngroup(contrib::GroupQueryAttentionParameters& parameters,
 template <const int BLOCK_THREADS>
 __global__ void GetCacheSeqlens(const int64_t* attention_mask,
                                 int* seqlens_k,
-                                const int mask_seqlen,
-                                const int sub_seqlen) {
+                                const int mask_seqlen) {
   // Specialize BlockReduce type for our thread block
   typedef cub::BlockReduce<int, BLOCK_THREADS> BlockReduceT;
   __shared__ typename BlockReduceT::TempStorage temp_storage;
@@ -459,7 +458,6 @@ __global__ void GetCacheSeqlens(const int64_t* attention_mask,
 
   int total_sum = BlockReduceT(temp_storage).Sum(sum);
   if (threadIdx.x == 0) {
-    total_sum -= sub_seqlen;
     seqlens_k[b] = total_sum;
   }
 }
@@ -470,13 +468,12 @@ Status LaunchGetCacheSeqlens(contrib::GroupQueryAttentionParameters& parameters,
                              const bool is_prompt, cudaStream_t stream, const int threads_per_block) {
   const int batch_size = parameters.batch_size;
   const int mask_seqlen = parameters.mask_sequence_length;
-  const int sub_seqlen = is_prompt ? 0 : parameters.sequence_length;
 
   const dim3 grid(batch_size, 1, 1);
   const dim3 block(threads_per_block, 1, 1);
 
   // TODO(aciddelgado): small version
-  GetCacheSeqlens<256><<<grid, block, 0, stream>>>(attention_mask, seqlens_k_buffer, mask_seqlen, sub_seqlen);
+  GetCacheSeqlens<256><<<grid, block, 0, stream>>>(attention_mask, seqlens_k_buffer, mask_seqlen);
 
   return CUDA_CALL(cudaGetLastError());
 }
