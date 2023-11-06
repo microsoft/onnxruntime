@@ -913,13 +913,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_USE_JSEP)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js\"")
   endif()
-
-  ###
-  ### if you want to investigate or debug a test failure in onnxruntime_test_all, replace the following line.
-  ### those flags slow down the CI test significantly, so we don't use them by default.
-  ###
-  #   set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2")
+  if (onnxruntime_POST_MERGE_WASM_TESTING)
+      set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2")
+  else ()
   set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=1")
+  endif ()
 endif()
 
 if (onnxruntime_ENABLE_ATEN)
