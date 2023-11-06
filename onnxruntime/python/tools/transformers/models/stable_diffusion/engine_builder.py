@@ -73,6 +73,10 @@ class EngineBuilder:
         self.models = {}
         self.engines = {}
         self.torch_models = {}
+        self.use_vae_slicing = False
+
+    def enable_vae_slicing(self):
+        self.use_vae_slicing = True
 
     def teardown(self):
         for engine in self.engines.values():
@@ -160,11 +164,12 @@ class EngineBuilder:
         for model_name, obj in self.models.items():
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
+            slice_size = 1 if (model_name == "vae" and self.use_vae_slicing) else batch_size
             self.engines[model_name].allocate_buffers(
-                shape_dict=obj.get_shape_dict(batch_size, image_height, image_width), device=self.torch_device
+                shape_dict=obj.get_shape_dict(slice_size, image_height, image_width), device=self.torch_device
             )
 
-    def vae_decode(self, latents):
+    def _vae_decode(self, latents):
         if self.vae_torch_fallback:
             if not self.custom_fp16_vae:
                 latents = latents.to(dtype=torch.float32)
@@ -174,6 +179,14 @@ class EngineBuilder:
             images = self.run_engine("vae", {"latent": latents})["images"]
 
         return images
+
+    def vae_decode(self, latents):
+        if self.use_vae_slicing:
+            # The output tensor points to same buffer. Need clone it to avoid overwritten.
+            decoded_slices = [self._vae_decode(z_slice).clone() for z_slice in latents.split(1)]
+            return torch.cat(decoded_slices)
+
+        return self._vae_decode(latents)
 
 
 def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType):

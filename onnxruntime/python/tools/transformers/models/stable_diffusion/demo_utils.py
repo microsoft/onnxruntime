@@ -145,6 +145,9 @@ def parse_arguments(is_xl: bool, description: str):
     parser.add_argument("--seed", type=int, default=None, help="Seed for random generator to get consistent results.")
     parser.add_argument("--disable-cuda-graph", action="store_true", help="Disable cuda graph.")
 
+    group = parser.add_argument_group("Options for ORT_CUDA engine only")
+    group.add_argument("--enable-vae-slicing", action="store_true", help="True will feed only one image to VAE once.")
+
     # TensorRT only options
     group = parser.add_argument_group("Options for TensorRT (--engine=TRT) only")
     group.add_argument("--onnx-refit-dir", help="ONNX models to load the weights from.")
