@@ -609,11 +609,11 @@ stages:
         artifactName: 'onnxruntime-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - drop-extra'
-      inputs:
-        artifactName: 'drop-extra'
-        targetPath: '$(Build.BinariesDirectory)/extra-artifact'
+#    - task: DownloadPipelineArtifact@2
+#      displayName: 'Download Pipeline Artifact - drop-extra'
+#      inputs:
+#        artifactName: 'drop-extra'
+#        targetPath: '$(Build.BinariesDirectory)/extra-artifact'
 
     # Reconstruct the build dir
     - task: PowerShell@2
