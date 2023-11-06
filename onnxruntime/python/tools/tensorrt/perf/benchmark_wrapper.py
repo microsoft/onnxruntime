@@ -52,6 +52,7 @@ def fetch_ep_node_info(ep_node_info, model, ep):
     with open(f"VERBOSE_{model}_{ep}.log", "r") as f:
         logger.info(f"Loading VERBOSE_{model}_{ep}.log...")
         for line in f:
+            logger.info(line)
             # Filter out prefix
             if keyphraze_all in line:
                 info = line.split(keyphraze_all)[1]
