@@ -134,21 +134,24 @@ ComputeDotProducts(
             UnrolledLoop<4>([&](size_t i) { av[i] = vld1q_f32(a_segment + i * 4); });
 
             // load B column vectors
-            int8x8_t bv_packed[NCols];
-            UnrolledLoop<NCols>([&](size_t i) { bv_packed[i] = vld1_s8(b_data[i]); });
+            uint8x8_t bv_packed[NCols];
+            UnrolledLoop<NCols>([&](size_t i) { bv_packed[i] = vld1_u8(b_data[i]); });
 
-            int8x8_t bv_bytes_unzipped[NCols][2];
+            uint8x8_t bv_bytes_unzipped[NCols][2];
             UnrolledLoop<NCols>([&](size_t i) {
-                bv_bytes_unzipped[i][0] = vand_s8(bv_packed[i], LowMask);
-                bv_bytes_unzipped[i][1] = vand_s8(vshr_n_s8(bv_packed[i], 4), LowMask);
+                bv_bytes_unzipped[i][0] = vand_u8(bv_packed[i], LowMask);
+                bv_bytes_unzipped[i][1] = vand_u8(vshr_n_u8(bv_packed[i], 4), LowMask);
             });
 
             int8x16_t bv_bytes[NCols];
             UnrolledLoop<NCols>([&](size_t i) {
-                bv_bytes[i] = vcombine_s8(
-                    vzip1_s8(bv_bytes_unzipped[i][0], bv_bytes_unzipped[i][1]),
-                    vzip2_s8(bv_bytes_unzipped[i][0], bv_bytes_unzipped[i][1])
-                );
+                bv_bytes[i] =
+                    vreinterpretq_s8_u8(
+                        vcombine_u8(
+                            vzip1_u8(bv_bytes_unzipped[i][0], bv_bytes_unzipped[i][1]),
+                            vzip2_u8(bv_bytes_unzipped[i][0], bv_bytes_unzipped[i][1])
+                        )
+                    );
             });
 
             // dequantize B
@@ -209,7 +212,7 @@ ComputeDotProducts(
 
         vst1q_f32(SumPtr, sum);
     } else {
-        for (int i = 0; i < NCols; ++i) {
+        for (size_t i = 0; i < NCols; ++i) {
             SumPtr[i] = vaddvq_f32(acc[i]);
             if (BiasPtr != nullptr) {
                 SumPtr[i] += BiasPtr[i];
@@ -241,7 +244,7 @@ MlasSQNBitGemmKernelNeon(
     const float* Bias
 )
 {
-    auto impl0_reference = [&]() {
+    [[maybe_unused]] auto impl0_reference = [&]() {
         static_assert(BlkBitWidth == 4);
 
         for (size_t m = 0; m < CountM; ++m) {
