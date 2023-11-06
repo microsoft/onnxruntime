@@ -80,7 +80,9 @@ void QNNExecutionProvider::ParseHtpGraphFinalizationOptimizationMode(const std::
   LOGS_DEFAULT(VERBOSE) << "HTP graph finalization optimization mode: "
                         << htp_graph_finalization_opt_mode_string;
 
-  if (htp_graph_finalization_opt_mode_string == "1") {
+  if (htp_graph_finalization_opt_mode_string.empty() || htp_graph_finalization_opt_mode_string == "0") {
+    htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
+  } else if (htp_graph_finalization_opt_mode_string == "1") {
     htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kMode1;
   } else if (htp_graph_finalization_opt_mode_string == "2") {
     htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kMode2;

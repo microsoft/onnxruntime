@@ -60,7 +60,7 @@ void usage() {
       "\t    0 means dump the QNN context binary into separate bin file and set the path in the Onnx skeleton model.\n"
       "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
       "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: \n"
-      "\t    'default', '1', '2', '3', default is 'default'.\n"
+      "\t    '0', '1', '2', '3', default is '0'.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
@@ -491,7 +491,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         } else if (key == "qnn_saver_path") {
           // no validation
         } else if (key == "htp_graph_finalization_optimization_mode") {
-          std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"default", "1", "2", "3"};
+          std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
           if (supported_htp_graph_final_opt_modes.find(value) == supported_htp_graph_final_opt_modes.end()) {
             std::ostringstream str_stream;
             std::copy(supported_htp_graph_final_opt_modes.begin(), supported_htp_graph_final_opt_modes.end(),

@@ -309,7 +309,11 @@ TEST_F(QnnHTPBackendTests, QnnSaver_OutputFiles) {
 
 // Test that models run with various HTP graph finalization optimization modes.
 TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
-  constexpr std::array<const char*, 4> graph_opt_modes = {"", "1", "2", "3"};
+  constexpr std::array<const char*, 5> graph_opt_modes = {"",    // No explicit mode specified
+                                                          "0",   // Explicit default mode
+                                                          "1",   // Mode 1
+                                                          "2",   // Mode 2
+                                                          "3"};  // Mode 3
   for (auto mode : graph_opt_modes) {
     RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
                        true,   // use_htp

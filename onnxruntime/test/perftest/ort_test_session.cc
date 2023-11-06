@@ -359,7 +359,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       } else if (key == "qnn_saver_path") {
         // no validation
       } else if (key == "htp_graph_finalization_optimization_mode") {
-        std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"default", "1", "2", "3"};
+        std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
         if (supported_htp_graph_final_opt_modes.find(value) == supported_htp_graph_final_opt_modes.end()) {
           std::ostringstream str_stream;
           std::copy(supported_htp_graph_final_opt_modes.begin(), supported_htp_graph_final_opt_modes.end(),
