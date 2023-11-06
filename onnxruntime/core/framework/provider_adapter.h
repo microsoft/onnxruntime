@@ -224,7 +224,7 @@ class ExecutionProviderAdapter : public IExecutionProvider {
   * disable logic below to skip stack segfault returning vec object
   virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
   AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
-  ApiGraphView api_graph_view(graph_viewer.GetGraph(), std::move(cpu_allocator));
+  ApiGraphView api_graph_view(graph_viewer.GetGraph(), std::move(cpu_allocator), graph_viewer.GetFilterInfo());
   std::vector<std::unique_ptr<SubGraphDef>> sub_graphs = external_ep_impl_->GetCapability(&api_graph_view);
   if (sub_graphs.size() == 0) return IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
 
@@ -255,7 +255,7 @@ class ExecutionProviderAdapter : public IExecutionProvider {
       const Node& fused_node = fused_node_graph.fused_node;
 
       AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
-      fused_node_as_graph.push_back(std::make_unique<ApiGraphView>(graph_viewer.GetGraph(), std::move(cpu_allocator)));
+      fused_node_as_graph.push_back(std::make_unique<ApiGraphView>(graph_viewer.GetGraph(), std::move(cpu_allocator), graph_viewer.GetFilterInfo()));
       fused_node_view.push_back(std::make_unique<ApiNodeView>(fused_node));
     }
     common::Status ret = external_ep_impl_->Compile(fused_node_as_graph, fused_node_view, node_compute_funcs);

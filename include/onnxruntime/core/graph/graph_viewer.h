@@ -36,6 +36,8 @@ class GraphViewer {
   */
   explicit GraphViewer(const Graph& graph, const IndexedSubGraph& filter_info);
 
+  GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info);
+
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;
 
@@ -193,7 +195,6 @@ class GraphViewer {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
-  GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info);
 
   const Graph* graph_;
   ConstGraphNodes graph_nodes_;
