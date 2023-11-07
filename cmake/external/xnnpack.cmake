@@ -25,17 +25,23 @@ set(FXDIV_SOURCE_DIR ${fxdiv_SOURCE_DIR})
 
 FetchContent_Declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool})
 onnxruntime_fetchcontent_makeavailable(pthreadpool)
-FetchContent_Declare(googlexnnpack URL ${DEP_URL_googlexnnpack}  URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
-PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch)
 
+FetchContent_Declare(googlexnnpack URL ${DEP_URL_googlexnnpack} URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
+                     PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch
+                    )
 onnxruntime_fetchcontent_makeavailable(googlexnnpack)
 set(XNNPACK_DIR ${googlexnnpack_SOURCE_DIR})
 set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
 
 set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
 
+
 # the XNNPACK CMake setup doesn't include the WASM kernels so we have to manually set those up
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  # See source lists in _deps/googlexnnpack-src/BUILD.bazel for wasm_prod_microkernels
+  message("Adding WebAssembly Source Files to XNNPACK")
+  set(wasm_srcs "")
+
   file(READ "${XNNPACK_DIR}/BUILD.bazel" xnnpack_bazel_config)
 
   # Replace newlines with semicolon so that it is treated as a list by CMake
@@ -70,25 +76,23 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(${target_srcs} ${bazel_srcs} PARENT_SCOPE)
   endfunction()
 
-  GetSrcListFromBazel("PROD_SCALAR_WASM_MICROKERNEL_SRCS" prod_scalar_wasm_srcs)
-  GetSrcListFromBazel("ALL_WASM_MICROKERNEL_SRCS" all_wasm_srcs)
-  GetSrcListFromBazel("WASM32_ASM_MICROKERNEL_SRCS" wasm32_asm_srcs)
+  GetSrcListFromBazel("OPERATOR_SRCS" operator_srcs)
+  GetSrcListFromBazel("TABLE_SRCS" table_srcs)
+  list(APPEND wasm_srcs ${operator_srcs} ${table_srcs})
 
-  message(DEBUG "prod_scalar_wasm_srcs: ${prod_scalar_wasm_srcs}\n")
-  message(DEBUG "all_wasm_srcs: ${all_wasm_srcs}\n")
-  message(DEBUG "wasm32_asm_srcs: ${wasm32_asm_srcs}\n")
-
-  message("Adding WebAssembly Source Files to XNNPACK")
-  set(wasm_srcs "")
-  list(APPEND wasm_srcs ${prod_scalar_wasm_srcs})
-  list(APPEND wasm_srcs ${all_wasm_srcs})
-  list(APPEND wasm_srcs ${wasm32_asm_srcs})
-
-  target_sources(XNNPACK PRIVATE ${wasm_srcs})
+  # kernels
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/scalar.c)
+  list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/wasm.c)
 
   if(onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-    GetSrcListFromBazel("ALL_WASMSIMD_MICROKERNEL_SRCS" all_wasmsimd_srcs)
-    message(DEBUG "all_wasmsimd_srcs: ${all_wasmsimd_srcs}")
-    target_sources(XNNPACK PRIVATE ${all_wasmsimd_srcs})
+    list(APPEND wasm_srcs ${XNNPACK_DIR}/src/amalgam/gen/wasmsimd.c)
+    target_compile_options(XNNPACK PRIVATE "-msimd128")
   endif()
+
+  message(DEBUG "wasm_srcs: ${wasm_srcs}\n")
+  target_sources(XNNPACK PRIVATE ${wasm_srcs})
+
+  # add flags from BAZEL.build
+  target_compile_options(XNNPACK PRIVATE "-fno-fast-math")
+  target_compile_options(XNNPACK PRIVATE "-fno-math-errno")
 endif()

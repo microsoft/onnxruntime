@@ -5,8 +5,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
-#include "dequantize_blockwise.h"
-#include "core/mlas/inc/mlas.h"
+#include "core/mlas/inc/mlas_q4.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -18,6 +17,9 @@ class MatMulNBits final : public OpKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
+    ORT_ENFORCE(nbits_ == 4,
+                "Only 4b quantization is supported for MatMulNBits op,"
+                " additional bits support is planned.");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -27,6 +29,7 @@ class MatMulNBits final : public OpKernel {
   int64_t N_;
   int64_t block_size_;
   int64_t nbits_;
+  bool column_wise_quant_{true};
 };
 
 Status MatMulNBits::Compute(OpKernelContext* ctx) const {
@@ -46,15 +49,18 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   auto status = ctx->GetTempSpaceAllocator(&allocator);
   ORT_RETURN_IF_ERROR(status);
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
-  DequantizeBlockwise<float>(tmp_b_data_ptr.get(),
-                             b_data,
-                             scales_data,
-                             zero_points_data,
-                             static_cast<int32_t>(block_size_),
-                             static_cast<int32_t>(nbits_),
-                             static_cast<int32_t>(N_),
-                             static_cast<int32_t>(K_),
-                             thread_pool);
+
+  // dequantize b, only 4b quantization is supported for now
+  MlasDequantizeBlockwise<float, 4>(
+      tmp_b_data_ptr.get(),               // dequantized output
+      b_data,                             // quantized input
+      scales_data,                        // quantization scales
+      zero_points_data,                   // quantization zero points
+      static_cast<int32_t>(block_size_),  // quantization block size
+      column_wise_quant_,                 // columnwise quantization or row-wise
+      static_cast<int32_t>(K_),           // number of rows in quantized input
+      static_cast<int32_t>(N_),           // number of columns in quantized input
+      thread_pool);
 
 #if 0  // for debug
   auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
