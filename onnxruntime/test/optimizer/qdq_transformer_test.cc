@@ -1222,7 +1222,7 @@ static void RunDropSplitQDQTestCase(const std::vector<int64_t>& input_shape, int
                     check_graph,
                     TransformerLevel::Level1,
                     TransformerLevel::Level2,
-                    {12, 18, 19});
+                    {12, 13, 18, 19});
 }
 
 // Test that DQ -> Split -> Q (many) is replaced with just Split for various quantization types.
