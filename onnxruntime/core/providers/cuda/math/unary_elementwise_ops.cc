@@ -124,9 +124,9 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
   UNARY_OP_TYPED(name, ver, float)     \
   UNARY_OP_TYPED(name, ver, double)
 
-#define UNARY_OP_HFDB(name, ver)        \
+#define UNARY_OP_HFDB(name, ver)\
   UNARY_OP_TYPED(name, ver, MLFloat16) \
-  UNARY_OP_TYPED(name, ver, BFloat16) \
+  UNARY_OP_TYPED(name, ver, BFloat16)\
   UNARY_OP_TYPED(name, ver, float)     \
   UNARY_OP_TYPED(name, ver, double)
 
