@@ -56,7 +56,7 @@ def configure_ortmodule_logger(log_level: LogLevel) -> logging.Logger:
     """
     rank_info = f".rank-{get_rank()}" if get_world_size() > 1 else ""
     logger = logging.getLogger(f"orttraining{rank_info}")
-    # Disable the logger for non-zero ranks when level >= info
+    # Disable the logger for non-zero ranks when level >= INFO
     logger.disabled = log_level >= LogLevel.INFO and get_rank() != 0
     logger.setLevel(ortmodule_loglevel_to_python_loglevel(log_level))
     return logger

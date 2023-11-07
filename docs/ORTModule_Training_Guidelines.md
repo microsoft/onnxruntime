@@ -49,7 +49,7 @@ More options for **developers**.
 ```
 Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/options.py) for more details.
 
-#### Log Level Explainations
+#### Log Level Explanations
 
 <table>
 <tr>
@@ -78,7 +78,10 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 
 
 <tr>
-<td>INFO (For Users | ORT Developers)</td>
+<td>
+
+`INFO` (For Users | ORT Developers)
+</td>
 <td>
 
 - ONNX Runtime backend log level - `WARNING`.
@@ -91,7 +94,9 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 </tr>
 
 <tr>
-<td>DEVINFO (For ORT Developers)</td>
+<td>
+
+`DEVINFO` (For ORT Developers)</td>
 <td>
 
 - ONNX Runtime backend `INFO` log level.
@@ -104,7 +109,9 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 </tr>
 
 <tr>
-<td>VERBOSE (For ORT Developers)</td>
+<td>
+
+`VERBOSE` (For ORT Developers)</td>
 <td>
 
 - ONNX Runtime backend `VERBOSE` log level.
