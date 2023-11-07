@@ -352,6 +352,7 @@ class WhisperHelper:
 
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
+        prompt_ids_list = [config.decoder_start_token_id, 50259, 50359, 50363]
 
         batch_size, max_length, min_length, num_beams, num_return_sequences = 1, 26, 0, 5, 1
         length_penalty, repetition_penalty = 1.0, 1.0
@@ -389,7 +390,7 @@ class WhisperHelper:
             elif name == "prefix_vocab_mask":
                 inputs[name] = np.ones((batch_size, config.vocab_size), dtype=ort_to_np[dtype])
             elif name == "decoder_input_ids":
-                inputs[name] = np.array([[config.decoder_start_token_id, 50259, 50359, 50363]], dtype=ort_to_np[dtype])
+                inputs[name] = np.array([prompt_ids_list], dtype=ort_to_np[dtype])
             elif name == "logits_processor":
                 inputs[name] = np.array([1], dtype=ort_to_np[dtype])
             else:
