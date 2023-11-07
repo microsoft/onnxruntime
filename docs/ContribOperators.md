@@ -2395,6 +2395,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
+<dt><tt>left_padding_last_token</tt> : int</dt>
+<dd>Copy last token to last index of buffer. Default is 0; 1 when true.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -2414,8 +2416,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>past state key with support for format BNSH. When past_key uses same tensor as present_key(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
 <dt><tt>past_value</tt> (optional) : T</dt>
 <dd>past state value with support for format BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
-<dt><tt>attention_mask</tt> : M</dt>
-<dd>2d Tensor of shape (batch_size, past_sequence_length + sequence_length). Must be a right padding mask.</dd>
+<dt><tt>seqlens_k</tt> : M</dt>
+<dd>1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.</dd>
+<dt><tt>total_sequence_length</tt> : M</dt>
+<dd>Scalar tensor of total sequence length (past + new).</dd>
 </dl>
 
 #### Outputs
@@ -2434,7 +2438,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16)</dt>
 <dd>Constrain input and output to float tensors.</dd>
-<dt><tt>M</tt> : tensor(int64)</dt>
+<dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to int tensor.</dd>
 </dl>
 

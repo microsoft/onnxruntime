@@ -30,8 +30,6 @@ struct GroupQueryAttentionData {
   T* fmha_buffer = nullptr;
   T* k = nullptr;
   T* v = nullptr;
-  int32_t* seqstart_q = nullptr;
-  int32_t* seqstart_k = nullptr;
   // Output Tensors
   T* output = nullptr;
   T* present_key = nullptr;
