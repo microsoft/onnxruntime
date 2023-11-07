@@ -37,7 +37,7 @@ stages:
     timeoutInMinutes:  180
     pool: 'Onnxruntime-Linux-GPU'
     variables:
-      CUDA_VERSION: '11.8'
+      CUDA_VERSION: '12.2'
     steps:
       - checkout: self
         clean: true
