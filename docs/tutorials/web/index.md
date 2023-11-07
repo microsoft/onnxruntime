@@ -41,7 +41,7 @@ For more detail on the steps below, see the [build a web application](./build-we
      * **The model is too large** and requires higher hardware specs. In order to do inference on the client you need to have a model that is small enough to run efficiently on less powerful hardware.
      * You don't want the model to be downloaded onto the device.
 
-     You can also use the onnxruntime-node package in the backend of an elctron app.
+     You can also use the onnxruntime-node package in the backend of an electron app.
 
    * Inference on server using other language APIs. Use the ONNX Runtime packages for C/C++ and other languages.
 
