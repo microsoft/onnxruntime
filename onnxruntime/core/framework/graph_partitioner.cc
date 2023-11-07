@@ -800,9 +800,8 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                             const ExecutionProviders& execution_providers,
                                             const KernelRegistryManager& kernel_registry_manager,
                                             const logging::Logger& logger) const {
-  // To enhance compatibility with models exported via torchscript we choose to not inline model local functions. Schema based functions get inlined as before during partitioning.
-  // including schema based functions when the model does not have any local functions defined.
-  const bool is_there_local_functions = !model.GetModelLocalFunctionTemplates().empty();
+  const auto local_functions_num = model.GetModelLocalFunctionTemplates().size();
+  const bool is_there_local_functions = local_functions_num > 0;
 
   if (!is_there_local_functions) {
     LOGS(logger, INFO) << "This model does not have any local functions defined. AOT Inlining is not performed";
@@ -828,7 +827,11 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
 
   model.RemoveLocalFunctionsProtos(not_inlined);
 
-  LOGS(logger, INFO) << "AOT inlining completed. Inlined local function definitions have been pruned.";
+  LOGS(logger, INFO)
+      << "AOT inlining completed. (" << (local_functions_num - model.GetModelLocalFunctionTemplates().size())
+      << ") functions of ("
+      << local_functions_num
+      << ") pruned.";
 
   return Status::OK();
 }
