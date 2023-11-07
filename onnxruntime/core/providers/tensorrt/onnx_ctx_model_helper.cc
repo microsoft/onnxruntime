@@ -6,6 +6,8 @@
 #include <filesystem>
 
 #include "onnx_ctx_model_helper.h"
+#include "tensorrt_execution_provider_utils.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
 
@@ -44,8 +46,9 @@ std::filesystem::path LocateEngineRelativeToPath(std::string engine_cache_path, 
 }
 
 Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer) {
-  assert(graph_viewer.NumberOfNodes() == 1);
-  assert(graph_viewer.GetNode(0)->OpType() == EPCONTEXT_OP);
+  if (!ValidateEPCtxNode(graph_viewer)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "It's not a valid EP Context node");
+  }
   auto node = graph_viewer.GetNode(0);
   auto& attrs = node->GetAttributes();
 
@@ -87,9 +90,15 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
   auto node = graph_viewer.GetNode(0);
   auto& attrs = node->GetAttributes();
 
-  // Get "compute_capability" if it's present
+  // Check "compute_capability" if it's present
   if (attrs.count(COMPUTE_CAPABILITY) > 0) {
-    compute_capability_ = attrs.at(COMPUTE_CAPABILITY).s();
+    std::string model_compute_capability = attrs.at(COMPUTE_CAPABILITY).s();
+    cudaDeviceProp prop;
+    CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+    if (model_compute_capability != GetComputeCapacity(prop)) {
+      LOGS_DEFAULT(ERROR) << "The compute capability of the engine cache doesn't match with the GPU's compute capability";
+      return false;
+    }
   }
 
   // "embed_mode" attr and "ep_cache_context" attr should be present
@@ -113,9 +122,5 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
     }
   }
   return true;
-}
-
-std::string& TensorRTCacheModelHandler::GetComputeCapability() {
-  return compute_capability_;
 }
 }  // namespace onnxruntime

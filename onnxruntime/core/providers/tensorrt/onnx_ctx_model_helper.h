@@ -27,7 +27,8 @@ std::filesystem::path LocateEngineRelativeToPath(std::string engine_cache_path, 
 class TensorRTCacheModelHandler {
 public:
   TensorRTCacheModelHandler(std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine,
-                            nvinfer1::IRuntime* trt_runtime) : trt_engine_(trt_engine), trt_runtime_(trt_runtime) {
+                            nvinfer1::IRuntime* trt_runtime,
+                            int device_id = 0) : trt_engine_(trt_engine), trt_runtime_(trt_runtime), device_id_(device_id) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
 
@@ -41,6 +42,6 @@ private:
   std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine_;
   nvinfer1::IRuntime* trt_runtime_;
   std::filesystem::path engine_cache_path_;
-  std::string compute_capability_;
+  int device_id_ = 0;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime
