@@ -218,6 +218,10 @@ void RegisterCollectiveOps() {
   ONNX_DISTRIBUTED_OPERATOR_SCHEMA(DistributedReduceSum)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
+      .Attr("keepdims",
+            "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
       .Input(0, "input", "Input tensor", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
       .Input(
           1,
