@@ -138,7 +138,8 @@ Do not modify directly.*
 |||[7, 8]|**T** = tensor(double), tensor(float)<br/> **T1** = tensor(bool)|
 |GreaterOrEqual|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|16+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T1** = tensor(bool)|
 |||[12, 15]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T1** = tensor(bool)|
-|GridSample|*in* X:**T1**<br> *in* grid:**T2**<br> *out* Y:**T1**|16+|**T1** = tensor(float)<br/> **T2** = tensor(float)|
+|GridSample|*in* X:**T1**<br> *in* grid:**T2**<br> *out* Y:**T1**|20+|**T1** = tensor(double), tensor(float)<br/> **T2** = tensor(double), tensor(float)|
+|||[16, 19]|**T1** = tensor(float)<br/> **T2** = tensor(float)|
 |HammingWindow|*in* size:**T1**<br> *out* output:**T2**|17+|**T1** = tensor(int32), tensor(int64)<br/> **T2** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |HannWindow|*in* size:**T1**<br> *out* output:**T2**|17+|**T1** = tensor(int32), tensor(int64)<br/> **T2** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |HardSigmoid|*in* X:**T**<br> *out* Y:**T**|6+|**T** = tensor(float)|
