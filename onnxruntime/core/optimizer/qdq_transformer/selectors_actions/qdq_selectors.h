@@ -115,6 +115,19 @@ class VariadicNodeGroupSelector : public NodeGroupSelector {
   bool allow_16bit_;
 };
 
+// DQ node -> Split -> Q nodes with equal quantization parameters.
+class SplitNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit SplitNodeGroupSelector(bool allow_16bit = true) : allow_16bit_(allow_16bit) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+
+  bool allow_16bit_;
+};
+
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvNodeGroupSelector : public NodeGroupSelector {
  public:
@@ -288,10 +301,11 @@ class InputVariadicSelector : public BaseSelector {
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
 
-//  DQ -> node -> Variadic Q nodes
-class OutputVariadicSelector : public BaseSelector {
+//  DQ -> Split -> variadic Q nodes
+class SplitSelector : public BaseSelector {
  public:
-  OutputVariadicSelector() : BaseSelector(std::make_unique<VariadicNodeGroupSelector>()) {}
+  SplitSelector(bool allow_16bit = false)
+      : BaseSelector(std::make_unique<SplitNodeGroupSelector>(allow_16bit)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
