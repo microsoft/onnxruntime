@@ -474,10 +474,10 @@ __global__ void LeftPadLast(const int max_seqlen,
                             T* kv_buff,
                             const int* seqlens_k) {  // refers to kv buff; otherwise bnsh
   const int h = threadIdx.x;
-  const int n = blockIdx.y;
-  const int b = blockIdx.x;
+  const int n = blockIdx.x;
+  const int b = blockIdx.y;
 
-  const int num_heads = gridDim.y;
+  const int num_heads = gridDim.x;
   const int H = blockDim.x;
 
   const int present_batch_stride = max_seqlen * num_heads * H;
@@ -487,7 +487,7 @@ __global__ void LeftPadLast(const int max_seqlen,
   // kv_buff:     BTNH or BNTH with buffered memory for new
   // new_kv:      BLNH
 
-  const int s = seqlens_k[b] - 1;
+  const int s = seqlens_k[b];
 
   const int in_offset = b * present_batch_stride + s * present_row_stride + n * present_head_stride + h;
   const int out_offset = b * present_batch_stride + (max_seqlen - 1) * present_row_stride + n * present_head_stride + h;
@@ -509,7 +509,7 @@ Status LaunchLeftPadLast(contrib::GroupQueryAttentionParameters& parameters,
   const int* seqlens_k = reinterpret_cast<const int*>(data.seqlens_k);
 
   const int H = head_size / 4;
-  const dim3 grid(batch_size, num_heads, 1);
+  const dim3 grid(num_heads, batch_size, 1);
   const dim3 block(H, 1, 1);
   LeftPadLast<float2><<<grid, block, 0, stream>>>(sequence_length,
                                                   reinterpret_cast<float2*>(data.output),
