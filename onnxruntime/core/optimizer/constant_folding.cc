@@ -4,6 +4,7 @@
 #include <limits>
 
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
@@ -95,51 +96,25 @@ static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Log
   folded = false;
   // First, find out which subgraph to inline
   // We need to fetch the constant argument.
-  ORT_ENFORCE(if_node.InputDefs().size() == 1, "Expecting one input");
+  assert(if_node.InputDefs().size() == 1);
   const auto* condition_def = if_node.InputDefs()[0];
 
   // We need to check if the condition is a constant.
   constexpr bool check_outer_scope_true = true;
-  const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(condition_def->Name(), check_outer_scope_true);
+  const ONNX_NAMESPACE::TensorProto* initializer =
+      graph.GetConstantInitializer(condition_def->Name(), check_outer_scope_true);
   if (initializer == nullptr) {
     return Status::OK();
   }
 
   // This is a boolean initializer with a single element.
-  const auto proto_shape = utils::GetTensorShapeFromTensorProto(*initializer);
-  // This must be pre-allocated
-  Tensor tensor{
-      DataTypeImpl::TensorTypeFromONNXEnum(initializer->data_type())->GetElementType(),
-      proto_shape,
-      std::make_shared<CPUAllocator>()};
+  Initializer condition{*initializer};
+  ORT_RETURN_IF_NOT(condition.size() == 1, "If node condition initializer: `", condition_def->Name(),
+                    "' is expected to have a single boolean element");
 
-  Status status = utils::TensorProtoToTensor(Env::Default(), graph.ModelPath().ToPathString().c_str(), *initializer, tensor);
-  if (!status.IsOK()) {
-    LOGS(logger, WARNING) << "Unable to constant fold. Can't fetch constant value tensor for 'If' "
-                          << " node '" << if_node.Name() << "': "
-                          << status.ErrorMessage();
-    return Status::OK();
-  }
+  const bool condition_value = *condition.data<bool>();
 
-  const bool condition_value = *tensor.Data<bool>();
-
-  static const std::string then_branch{"then_branch"};
-  static const std::string else_branch{"else_branch"};
-  const Graph* graph_to_inline;
-  if (condition_value) {
-    graph_to_inline = if_node.GetGraphAttribute(then_branch);
-  } else {
-    graph_to_inline = if_node.GetGraphAttribute(else_branch);
-  }
-
-  if (graph_to_inline == nullptr) {
-    auto str = MakeString("Unable to constant fold If node: '", if_node.Name(), "' Unable to fetch: ",
-                          (condition_value ? then_branch : else_branch));
-    LOGS(logger, WARNING) << str;
-    return Status::OK();
-  }
-
-  status = graph.InlineIfSubgraph(*graph_to_inline, if_node);
+  auto status = graph.InlineIfSubgraph(condition_value, if_node, logger);
 
   if (!status.IsOK()) {
     LOGS(logger, WARNING) << "Unable to constant fold. InlineIfSubgraph failed "
@@ -148,8 +123,8 @@ static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Log
     return status;
   }
 
-  LOGS(logger, INFO) << "Constant folded (inlined) " << (condition_value ? then_branch : else_branch)
-                     << " for If node: " << if_node.Name();
+  graph_utils::RemoveNodeOutputEdges(graph, if_node);
+  graph.RemoveNode(if_node.Index());
 
   folded = true;
   return status;
@@ -188,14 +163,12 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // but inlines the nodes of the corresponding branch graph.
       // It does not convert the node to a constant in a common sense.
       // We call it constant folding because the `If` node constant condition
-      // may enable use to inline the corresponding branch graph.
+      // may enable us to inline the corresponding branch graph.
       bool folded = false;
       ORT_RETURN_IF_ERROR(ConstantFoldIfNode(graph, *node, logger, folded));
       if (folded) {
-        graph_utils::RemoveNodeOutputEdges(graph, *node);
-        graph.RemoveNode(node->Index());
+        // Node removal is done within ConstantFoldIfNode()
         modified = true;
-        // Have shape inference rerun there.
         have_updated_nodes = true;
       }
     } else if (node->OpType().compare("Shape") == 0) {
@@ -364,10 +337,6 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       modified = true;
       have_updated_nodes = true;
     }
-  }
-
-  if (graph.ParentGraph() != nullptr && have_updated_nodes) {
-    graph.RegenerateNodeProtos();
   }
 
   return Status::OK();

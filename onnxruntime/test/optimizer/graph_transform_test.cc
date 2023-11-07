@@ -1123,11 +1123,20 @@ TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInlining) {
   /*
     <
        ir_version: 8,
-       opset_import: ["" : 16, "local" : 1, "com.microsoft.nchwc" : 1, "ai.onnx.ml" : 4, "com.ms.internal.nhwc" : 20, "ai.onnx.training" : 1, "ai.onnx.preview.training" : 1, "com.microsoft" : 1, "com.microsoft.experimental" : 1, "org.pytorch.aten" : 1]
+       opset_import: ["" : 16, "local" : 1,
+         "com.microsoft.nchwc" : 1,
+          "ai.onnx.ml" : 4,
+          "com.ms.internal.nhwc" : 20,
+          "ai.onnx.training" : 1,
+          "ai.onnx.preview.training" : 1,
+          "com.microsoft" : 1,
+          "com.microsoft.experimental" : 1,
+          "org.pytorch.aten" : 1]
     >
     agraph (float[128] x, float[128] x1) => (float[128] y) {
        _if_elseGraph_10__inlfunc_aten_gather_tmp_9 = Size (x1)
-       _if_elseGraph_10__inlfunc_aten_gather_cond_11 = Equal (_if_elseGraph_10__inlfunc_aten_gather_tmp_9, ortshared_7_0_1_0_token_10)
+       _if_elseGraph_10__inlfunc_aten_gather_cond_11 =
+                                  Equal (_if_elseGraph_10__inlfunc_aten_gather_tmp_9, ortshared_7_0_1_0_token_10)
        y = If (_if_elseGraph_10__inlfunc_aten_gather_cond_11) <then_branch: graph = thenGraph_15 () => (float[128] _inlfunc_aten_gather_result_12) {
           _inlfunc_aten_gather_result_12 = Cast <to: int = 1> (x1)
        }, else_branch: graph = elseGraph_15 () => (float[128] _inlfunc_aten_gather_result_14) {

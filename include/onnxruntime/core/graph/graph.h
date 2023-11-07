@@ -398,14 +398,8 @@ class Node {
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
 
-  /** Gets the NodeProto representation of this Node.
-  @param update_subgraphs Update the GraphProto values for any subgraphs in the returned NodeProto.
-                          If graph optimization has been run this is most likely required
-                          to ensure the complete Graph is valid.
-                          The function does not update subgraphs in the minimal builds due
-                          to ToGraphProto() not being available.
-  */
-  void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
+  /** Gets the Node's mutable attributes. */
+  NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -416,8 +410,6 @@ class Node {
   int PruneRemovableAttributes(gsl::span<const std::string> removable_attributes);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  /** Gets the Node's mutable attributes. */
-  NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
 
   /** Gets the Graph instance that is instantiated from a GraphProto attribute during Graph::Resolve.
   @param attr_name Attribute name for the GraphProto attribute.
@@ -451,6 +443,13 @@ class Node {
     return attr_to_subgraph_map_;
   }
 
+  /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
+   * @returns a mutable map of mutable subgraphs.
+   */
+  std::unordered_map<std::string, gsl::not_null<Graph*>>& GetMutableAttributeNameToSubgraphMap() {
+    return attr_to_subgraph_map_;
+  }
+
   /** Gets a map of attribute name to the const Graph instances for all subgraphs of the Node.
   @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance.
            nullptr if the Node has no subgraphs.
@@ -478,6 +477,13 @@ class Node {
   @param replacements Map of current NodeArg to replacement NodeArg.
   */
   void ReplaceDefs(const std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*>& replacements);
+
+  /** Gets the NodeProto representation of this Node.
+  @param update_subgraphs Update the GraphProto values for any subgraphs in the returned NodeProto.
+                          If graph optimization has been run this is most likely required
+                          to ensure the complete Graph is valid.
+  */
+  void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
 
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<onnxruntime::fbs::Node>& fbs_node) const;
@@ -589,7 +595,7 @@ class Node {
   // create a Graph instance for an attribute that contains a GraphProto
   void CreateSubgraph(const std::string& attr_name);
 
-  const std::vector<std::unique_ptr<Graph>>& MutableSubgraphs() noexcept { return subgraphs_; }
+  std::vector<std::unique_ptr<Graph>>& MutableSubgraphs() noexcept { return subgraphs_; }
 
   // validate and update the input arg count
   common::Status UpdateInputArgCount();
@@ -985,17 +991,6 @@ class Graph {
   */
   bool RemoveNode(NodeIndex node_index);
 
-  /** The function regenerates NodeProto list in a topological order of the Graph
-  nodes instance and replaces it in the graph_proto_. This is necessary for subgraphs
-  that were subjected to constnat folding and some nodes were removed from Graph, but
-  not from graph_proto. This causes problems when a node is promoted in the outer scope
-  when its subraph is being inlined. In this case any node that has subgbraphs regnerates
-  them off the subgraph node protos list and the folded nodes are being resurrected resulting
-  in the duplicate name definitions. This is necessary to call after constant folding for non-main graphs.
-  The function does not update any subgraph protos.
-  */
-  void RegenerateNodeProtos();
-
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
@@ -1161,10 +1156,12 @@ class Graph {
     The function will process any subgraphs in each of the nodes being inlined,
     and will rename any references to the new names introduced.
 
-    @param callnode - the node that contains the graph_to_inline. This node is going
+    @param If condition value
+    @param if_node - the node that contains the graph_to_inline. This node is going
     to be deleted and replaced by the corresponding graph (either then or else)
+    @param logger
   */
-  Status InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node);
+  Status InlineIfSubgraph(bool condition_value, Node& if_node, const logging::Logger& logger);
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.

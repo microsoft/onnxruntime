@@ -946,51 +946,6 @@ bool Node::ClearAttribute(const std::string& attr_name) {
   return attributes_.erase(attr_name) > 0;
 }
 
-void Node::ToProto(NodeProto& proto, bool
-#if !defined(ORT_MINIMAL_BUILD)
-                                         update_subgraphs
-#endif
-) const {
-  proto.set_name(name_);
-  proto.set_op_type(op_type_);
-
-  if (!domain_.empty())
-    proto.set_domain(domain_);
-
-  if (!description_.empty())
-    proto.set_doc_string(description_);
-
-  // Checks an attribute was not removed.
-  if (!can_be_saved_) {
-    ORT_THROW("Removable attributes were removed before the conversion is started.");
-  }
-
-  // Set attributes.
-  proto.clear_attribute();
-  for (const auto& attribute : attributes_) {
-    const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
-    *attr = attribute.second;  // copy
-#if !defined(ORT_MINIMAL_BUILD)
-    if (update_subgraphs && attr->has_g()) {
-      attr->clear_g();
-      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
-    }
-#endif
-  }
-
-  // Set inputs' definitions.
-  proto.clear_input();
-  for (auto& input_def : definitions_.input_defs) {
-    proto.add_input(input_def->Name());
-  }
-
-  // Set outputs' definitions.
-  proto.clear_output();
-  for (auto& output_def : definitions_.output_defs) {
-    proto.add_output(output_def->Name());
-  }
-}
-
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 int Node::PruneRemovableAttributes(gsl::span<const std::string> removable_attributes) {
@@ -3109,6 +3064,45 @@ SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std:
   return builder.CreateVector(vec);
 }
 
+void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
+  proto.set_name(name_);
+  proto.set_op_type(op_type_);
+
+  if (!domain_.empty())
+    proto.set_domain(domain_);
+
+  if (!description_.empty())
+    proto.set_doc_string(description_);
+
+  // Checks an attribute was not removed.
+  if (!can_be_saved_) {
+    ORT_THROW("Removable attributes were removed before the conversion is started.");
+  }
+
+  // Set attributes.
+  proto.clear_attribute();
+  for (const auto& attribute : attributes_) {
+    const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
+    *attr = attribute.second;  // copy
+    if (update_subgraphs && attr->has_g()) {
+      attr->clear_g();
+      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+    }
+  }
+
+  // Set inputs' definitions.
+  proto.clear_input();
+  for (auto& input_def : definitions_.input_defs) {
+    proto.add_input(input_def->Name());
+  }
+
+  // Set outputs' definitions.
+  proto.clear_output();
+  for (auto& output_def : definitions_.output_defs) {
+    proto.add_output(output_def->Name());
+  }
+}
+
 common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Graph>& fbs_graph) const {
   auto inputs = SaveInputsOutputsToOrtFormat(builder, graph_inputs_including_initializers_);
@@ -3310,23 +3304,6 @@ bool Graph::RemoveNode(NodeIndex p_index) {
 
   return ReleaseNode(p_index);
 }
-
-void Graph::RegenerateNodeProtos() {
-  GraphViewer graph(*this);
-  google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::NodeProto> replacement_nodes;
-  for (auto node_idx : graph.GetNodesInTopologicalOrder()) {
-    auto* node = GetNode(node_idx);
-    if (node != nullptr) {
-      auto* node_proto = replacement_nodes.Add();
-      // We do not need to update subgraphs and the functionality
-      // is not there in MINIMAL builds.
-      constexpr bool update_subgraphs_false = false;
-      node->ToProto(*node_proto, update_subgraphs_false);
-    }
-  }
-  graph_proto_->mutable_node()->Swap(&replacement_nodes);
-}
-
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -4071,44 +4048,50 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
 }
 
 static void RenameSubgraphDependentNames(const InlinedHashMap<std::string, std::string>& name_mapping,
-                                         ONNX_NAMESPACE::GraphProto& graph_proto) {
-  for (auto& node : *graph_proto.mutable_node()) {
-    for (auto& attr : *node.mutable_attribute()) {
-      if (attr.has_g()) {
-        RenameSubgraphDependentNames(name_mapping, *attr.mutable_g());
-      }
-
-      for (auto& subgraph : *attr.mutable_graphs()) {
-        RenameSubgraphDependentNames(name_mapping, subgraph);
+                                         Graph& graph) {
+  for (auto& node : graph.Nodes()) {
+    if (node.ContainsSubgraph()) {
+      for (auto& [name, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
+        RenameSubgraphDependentNames(name_mapping, *subgraph);
       }
     }
 
-    for (auto& input : *node.mutable_input()) {
-      auto hit = name_mapping.find(input);
+    // NodeArgs need to be updated
+    auto input_defs = node.MutableInputDefs();
+    for (auto& input_def : node.MutableInputDefs()) {
+      auto hit = name_mapping.find(input_def->Name());
       if (hit != name_mapping.cend()) {
-        input = hit->second;
+        input_def = graph.GetNodeArgIncludingParentGraphs(hit->second);
       }
     }
   }
 }
 
-static void RenameNodeAttributesSubgraphDependentNames(const InlinedHashMap<std::string, std::string>& name_mapping,
-                                                       NodeAttributes& attributes) {
-  for (auto& attribute : attributes) {
-    auto& attr_proto = attribute.second;
-    if (attr_proto.has_g()) {
-      RenameSubgraphDependentNames(name_mapping, *attr_proto.mutable_g());
-    }
-
-    for (auto& subgraph : *attr_proto.mutable_graphs()) {
-      RenameSubgraphDependentNames(name_mapping, subgraph);
-    }
+Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const logging::Logger& logger) {
+  static const std::string then_branch{"then_branch"};
+  static const std::string else_branch{"else_branch"};
+  Graph* sub_graph;
+  if (condition_value) {
+    sub_graph = if_node.GetMutableGraphAttribute(then_branch);
+  } else {
+    sub_graph = if_node.GetMutableGraphAttribute(else_branch);
   }
-}
 
-Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
+  if (sub_graph == nullptr) {
+    auto str = MakeString("Unable to constant fold If node: '", if_node.Name(), "' Unable to fetch: ",
+                          (condition_value ? then_branch : else_branch));
+    LOGS(logger, WARNING) << str;
+    return Status::OK();
+  }
+
+  Graph& graph_to_inline = *sub_graph;
+
   std::string unique_id{if_node.Name()};
-  unique_id.append("_if_").append(graph_to_inline.Name());
+  if (condition_value) {
+    unique_id.append(then_branch);
+  } else {
+    unique_id.append(else_branch);
+  }
 
   unique_id = GenerateNodeName(unique_id);
 
@@ -4118,18 +4101,16 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
 
   // Check if the name is an input or implicit input.
   // These are not renamed.
-  InlinedHashSet<std::string_view> if_all_inputs;
-  const auto if_inputs = if_node.InputDefs();
+  // Implicit inputs would cover both If node input and implicit inputs.
+  // Reason: there are no explicit inputs to the subgraphs, and the subgraph's
+  // implicit inputs must be covered by the implicit inputs of the If node.
+  InlinedHashSet<std::string_view> outer_scope_values;
   const auto if_implicit_inputs = if_node.ImplicitInputDefs();
-  if_all_inputs.reserve(if_inputs.size() + if_implicit_inputs.size());
-  for (const auto* input : if_inputs) {
-    const auto& name = input->Name();
-    ORT_IGNORE_RETURN_VALUE(if_all_inputs.emplace(name));
-  }
+  outer_scope_values.reserve(if_implicit_inputs.size());
 
   for (const auto* input : if_implicit_inputs) {
     const auto& name = input->Name();
-    ORT_IGNORE_RETURN_VALUE(if_all_inputs.emplace(name));
+    ORT_IGNORE_RETURN_VALUE(outer_scope_values.emplace(name));
   }
 
   // Name mapping from the graph to inline to the graph we are inlining into
@@ -4140,45 +4121,38 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
   // They are assumed to be in the same order.
   const auto node_output_defs = if_node.OutputDefs();
   const auto graph_output_defs = graph_to_inline.GetOutputs();
-  ORT_ENFORCE(node_output_defs.size() >= graph_output_defs.size());
   for (size_t i = 0; i < graph_output_defs.size(); ++i) {
     name_mapping.emplace(graph_output_defs[i]->Name(), node_output_defs[i]->Name());
   }
 
-  // Process constant nodes and initializers first
-  // to create defs from them to retain the type, and make renaming easier
-  for (const auto& node : graph_to_inline.Nodes()) {
-    if (node.OpType() == kConstant) {
-      // Copy constant nodes _value to name_to_initial_tensor_
-      ONNX_NAMESPACE::NodeProto constant_node_proto{};
-      node.ToProto(constant_node_proto);
+  // we would like to move the entries that can be potentially big
+  for (int i = 0, limit = graph_to_inline.graph_proto_->initializer_size(); i < limit; ++i) {
+    auto* initializer = graph_to_inline.graph_proto_->mutable_initializer(i);
+    const std::string src_name = initializer->name();
 
-      const auto& constant_name = constant_node_proto.output(0);
-      // Check if this is an output of the graph
-      std::string new_name;
-      auto hit = name_mapping.find(constant_name);
-      if (hit != name_mapping.cend()) {
-        new_name = hit->second;
-      } else {
-        new_name = GenerateNodeArgName(make_unique(constant_name));
-        name_mapping.emplace(constant_name, new_name);
+#if !defined(DISABLE_SPARSE_TENSORS)
+    bool has_sparse_origin = false;
+    if (!graph_to_inline.sparse_tensor_names_.empty()) {
+      auto hit = graph_to_inline.sparse_tensor_names_.find(src_name);
+      if (hit != graph_to_inline.sparse_tensor_names_.cend()) {
+        has_sparse_origin = true;
+        // Erase the entry that will be invalidated
+        graph_to_inline.sparse_tensor_names_.erase(hit);
       }
-      ORT_RETURN_IF_ERROR(AddConstantProtoAsInitializer(constant_node_proto, new_name));
     }
-  }
+#endif
 
-  for (const auto& init : graph_to_inline.name_to_initial_tensor_) {
+    graph_to_inline.name_to_initial_tensor_.erase(src_name);
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-    *tensor = *init.second;
+    *tensor = std::move(*initializer);
 
-    const auto& init_name = init.second->name();
     // Check if this is an output of the graph
-    auto hit = name_mapping.find(init_name);
+    auto hit = name_mapping.find(src_name);
     if (hit != name_mapping.cend()) {
       tensor->set_name(hit->second);
     } else {
-      auto new_name = GenerateNodeArgName(make_unique(init_name));
-      ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(init_name, new_name));
+      auto new_name = GenerateNodeArgName(make_unique(src_name));
+      ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(src_name, new_name));
       tensor->set_name(std::move(new_name));
     }
 
@@ -4186,13 +4160,12 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
     ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " from graph: ",
                 graph_to_inline.Name(), " conflicts with graph initializer. Check Specializing code.");
 
-    const NodeArg* node_arg = graph_to_inline.GetNodeArg(init_name);
-    ORT_ENFORCE(node_arg != nullptr,
-                "The graph being inlined is expected to have NodeArg for initializer: ", init.second->name());
+    const NodeArg* node_arg = graph_to_inline.GetNodeArg(src_name);
+    assert(node_arg != nullptr);
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), node_arg->TypeAsProto()));
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-    if (graph_to_inline.IsSparseInitializer(init.first)) {
+    if (has_sparse_origin) {
       ORT_IGNORE_RETURN_VALUE(sparse_tensor_names_.emplace(tensor->name()));
     }
 #endif
@@ -4203,31 +4176,31 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
   // a different order.
   GraphViewer graph(graph_to_inline);
   for (const auto node_idx : graph.GetNodesInTopologicalOrder()) {
-    const auto* node = graph_to_inline.GetNode(node_idx);
-    if (node == nullptr || node->OpType() == kConstant) {
-      continue;
-    }
+    // GraphViewer filters out nullptrs
+    auto* node = graph_to_inline.GetNode(node_idx);
+    assert(node->OpType() != kConstant);
 
     InlinedVector<NodeArg*> new_node_input_defs;
     for (const auto* input_def : node->InputDefs()) {
-      // Check if this is one of the implicit graph inputs
-      // then leave the name as is and reuse the NodeArg
-      const auto& input_name = input_def->Name();
-      if (if_all_inputs.count(input_name) > 0) {
-        auto* node_arg = GetNodeArgIncludingParentGraphs(input_name);
-        ORT_ENFORCE(node_arg != nullptr,
-                    "Implicit or explicit input is expected to have existing node_arg: ", input_name);
-        new_node_input_defs.push_back(node_arg);
-      } else {
-        auto hit = name_mapping.find(input_name);
-        if (hit != name_mapping.cend()) {
-          // This is other node output, constant node or initializer that was renamed.
-          auto* node_arg = GetNodeArg(hit->second);
-          ORT_ENFORCE(node_arg != nullptr,
-                      "Expecting to exist node_arg: ", input_name);
+      if (input_def->Exists()) {
+        // Check if this is one of the implicit graph inputs
+        // then leave the name as is and reuse the NodeArg
+        const auto& input_name = input_def->Name();
+        if (outer_scope_values.count(input_name) > 0) {
+          auto* node_arg = GetNodeArgIncludingParentGraphs(input_name);
+          assert(node_arg != nullptr);
           new_node_input_defs.push_back(node_arg);
         } else {
-          ORT_THROW("Node's: ", node->Name(), " input: ", input_name, " is not If node's input or previous node output in this subgraph");
+          auto hit = name_mapping.find(input_name);
+          if (hit != name_mapping.cend()) {
+            // This is other node output, constant node or initializer that was renamed.
+            auto* node_arg = GetNodeArg(hit->second);
+            assert(node_arg != nullptr);
+            new_node_input_defs.push_back(node_arg);
+          } else {
+            ORT_THROW("Node's: ", node->Name(), " input: ", input_name,
+                      " is not If node's input or previous node output in this subgraph");
+          }
         }
       }
     }
@@ -4252,24 +4225,47 @@ Status Graph::InlineIfSubgraph(const Graph& graph_to_inline, Node& if_node) {
     }
 
     const auto new_node_name = GenerateNodeName(make_unique(node->Name()));
+    Node& new_node = AddNode(new_node_name, node->OpType(), node->Description(),
+                             new_node_input_defs,
+                             new_node_output_defs,
+                             nullptr,
+                             node->Domain());
+
+    new_node.SetSinceVersion(node->SinceVersion());
+    new_node.op_ = node->op_;
+
     if (node->ContainsSubgraph()) {
-      // Make a copy
-      auto attributes = node->GetAttributes();
-      RenameNodeAttributesSubgraphDependentNames(name_mapping, attributes);
-      AddNode(new_node_name, node->OpType(), node->Description(),
-              new_node_input_defs,
-              new_node_output_defs,
-              &attributes,
-              node->Domain());
-    } else {
-      // we simply copy the attributes to the new node
-      AddNode(new_node_name, node->OpType(), node->Description(),
-              new_node_input_defs,
-              new_node_output_defs,
-              &node->GetAttributes(),
-              node->Domain());
+      auto& subgraphs = node->MutableSubgraphs();
+
+      // Check if any of this node implicit inputs of this graph is in the renaming map
+      bool rename_subgraph_names = false;
+      for (const auto* input_def : node->ImplicitInputDefs()) {
+        if (name_mapping.count(input_def->Name()) > 0) {
+          rename_subgraph_names = true;
+          break;
+        }
+      }
+
+      for (auto& subgraph : subgraphs) {
+        if (rename_subgraph_names) {
+          // We need to rename the subgraph node names
+          // because they may refer to the implicit inputs
+          // that were renamed.
+          RenameSubgraphDependentNames(name_mapping, *subgraph);
+        }
+        subgraph->parent_node_ = &new_node;
+        subgraph->parent_graph_ = this;
+      }
+
+      new_node.MutableSubgraphs() = std::move(subgraphs);
+      new_node.GetMutableAttributeNameToSubgraphMap() = std::move(node->GetMutableAttributeNameToSubgraphMap());
     }
+
+    new_node.GetMutableAttributes() = std::move(node->GetMutableAttributes());
   }
+
+  LOGS(logger, INFO) << "Constant folded (inlined) " << (condition_value ? then_branch : else_branch)
+                     << " for If node: " << if_node.Name();
 
   return Status::OK();
 }
