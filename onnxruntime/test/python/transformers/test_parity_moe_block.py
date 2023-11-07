@@ -16,8 +16,25 @@ import numpy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from onnx import TensorProto, helper
 
 import onnxruntime
+
+torch.manual_seed(0)
+numpy.random.seed(0)
+
+
+ORT_DTYPE = TensorProto.FLOAT16
+
+
+def value_string_of(numpy_array):
+    arr = numpy_array.flatten()
+    lines = ["f, ".join([str(v) for v in arr[i : min(i + 8, arr.size)]]) for i in range(0, arr.size, 8)]
+    return "{\n    " + "f,\n    ".join(lines) + "f}"
+
+
+def print_tensor(name, numpy_array):
+    print(f"const std::vector<float> {name} = {value_string_of(numpy_array)};")
 
 
 def create_moe_onnx_graph(
@@ -30,8 +47,6 @@ def create_moe_onnx_graph(
     fc1_experts_bias,
     fc2_experts_bias,
 ):
-    from onnx import TensorProto, helper
-
     nodes = [
         helper.make_node(
             "MoEBlock",
@@ -57,14 +72,14 @@ def create_moe_onnx_graph(
     initializers = [
         helper.make_tensor(
             "fc1_experts_weights",
-            TensorProto.FLOAT16,
+            ORT_DTYPE,
             fc1_shape,
             fc1_experts_weights.to(torch.float16).flatten().tolist(),
             raw=False,
         ),
         helper.make_tensor(
             "fc2_experts_weights",
-            TensorProto.FLOAT16,
+            ORT_DTYPE,
             fc2_shape,
             fc2_experts_weights.to(torch.float16).flatten().tolist(),
             raw=False,
@@ -77,14 +92,14 @@ def create_moe_onnx_graph(
         [
             helper.make_tensor(
                 "fc1_experts_bias",
-                TensorProto.FLOAT16,
+                ORT_DTYPE,
                 fc1_bias_shape,
                 fc1_experts_bias.to(torch.float16).flatten().tolist(),
                 raw=False,
             ),
             helper.make_tensor(
                 "fc2_experts_bias",
-                TensorProto.FLOAT16,
+                ORT_DTYPE,
                 fc2_bias_shape,
                 fc2_experts_bias.to(torch.float16).flatten().tolist(),
                 raw=False,
@@ -93,19 +108,19 @@ def create_moe_onnx_graph(
     )
 
     graph_inputs = [
-        helper.make_tensor_value_info("input", TensorProto.FLOAT16, [num_rows, hidden_size]),
+        helper.make_tensor_value_info("input", ORT_DTYPE, [num_rows, hidden_size]),
     ]
 
     graph_inputs.append(
         helper.make_tensor_value_info(
             "gated_output",
-            TensorProto.FLOAT16,
+            ORT_DTYPE,
             [num_rows, num_experts],
         )
     )
 
     graph_outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT16, [num_rows, hidden_size]),
+        helper.make_tensor_value_info("output", ORT_DTYPE, [num_rows, hidden_size]),
     ]
 
     graph = helper.make_graph(
@@ -118,26 +133,6 @@ def create_moe_onnx_graph(
 
     model = helper.make_model(graph)
     return model.SerializeToString()
-
-
-def onnx_inference(
-    onnx_model_path,
-    ort_inputs,
-):
-    from onnxruntime import InferenceSession, SessionOptions
-
-    sess_options = SessionOptions()
-
-    cuda_providers = ["CUDAExecutionProvider"]
-    if cuda_providers[0] not in onnxruntime.get_available_providers():
-        return None
-
-    # TODO: move this to session creation
-    sess_options.log_severity_level = 2
-    ort_session = InferenceSession(onnx_model_path, sess_options, providers=["CUDAExecutionProvider"])
-
-    ort_output = ort_session.run(None, ort_inputs)
-    return ort_output
 
 
 def get_activation_fn(activation):
@@ -191,11 +186,11 @@ class MoERuntimeExperts(nn.Module):
         assert drop == 0.0, "Current drop is not supported"
         assert chunk_size == -1, "Current chunk is not supported"
 
-        self.weight1 = nn.Parameter(torch.Tensor(num_experts, in_features, hidden_features))
-        self.weight2 = nn.Parameter(torch.Tensor(num_experts, hidden_features, out_features))
+        self.weight1 = nn.Parameter(torch.rand(num_experts, in_features, hidden_features))
+        self.weight2 = nn.Parameter(torch.rand(num_experts, hidden_features, out_features))
 
-        self.bias1 = nn.Parameter(torch.Tensor(num_experts, hidden_features)) if bias else None
-        self.bias2 = nn.Parameter(torch.Tensor(num_experts, in_features)) if bias else None
+        self.bias1 = nn.Parameter(torch.rand(num_experts, hidden_features)) if bias else None
+        self.bias2 = nn.Parameter(torch.rand(num_experts, in_features)) if bias else None
 
         self.act = act_layer()
 
@@ -244,7 +239,7 @@ class MoEBlock(nn.Module):
         )
 
         self.moe_onnx_graph = create_moe_onnx_graph(
-            num_rows,
+            batch_size * num_rows,
             num_experts,
             in_features,
             hidden_features,
@@ -254,7 +249,23 @@ class MoEBlock(nn.Module):
             self.moe_experts.bias2,
         )
 
+        self.ort_sess = self.create_ort_session()
+
         self.torch_input = torch.randn(batch_size, num_rows, in_features)
+
+    def create_ort_session(self):
+        from onnxruntime import InferenceSession, SessionOptions
+
+        sess_options = SessionOptions()
+
+        cuda_providers = ["CUDAExecutionProvider"]
+        if cuda_providers[0] not in onnxruntime.get_available_providers():
+            return None
+
+        sess_options.log_severity_level = 2
+        ort_session = InferenceSession(self.moe_onnx_graph, sess_options, providers=["CUDAExecutionProvider"])
+
+        return ort_session
 
     def torch_forward(self):
         x = self.torch_input
@@ -269,8 +280,8 @@ class MoEBlock(nn.Module):
         x = self.moe_experts(x, indices_s)
 
         x = x * scores
-        x = x.reshape(b, t, c)
-        # print(x)
+        x = x.reshape(b * t, c)
+
         return x, torch.sum(x)
 
     def onnx_forward(self):
@@ -280,28 +291,44 @@ class MoEBlock(nn.Module):
         y = x.reshape(-1, c)
         logits = self.gate(y)
 
+        np_type = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
+
         ort_inputs = {
-            "input": numpy.ascontiguousarray(y.detach().numpy().astype(numpy.float16)),
-            "gated_output": numpy.ascontiguousarray(logits.detach().numpy().astype(numpy.float16)),
+            "input": numpy.ascontiguousarray(y.detach().numpy().astype(np_type)),
+            "gated_output": numpy.ascontiguousarray(logits.detach().numpy().astype(np_type)),
         }
-        ort_output = onnx_inference(self.moe_onnx_graph, ort_inputs)
-        # print(ort_output)
+
+        ort_output = None
+        if self.ort_sess is not None:
+            ort_output = self.ort_sess.run(None, ort_inputs)
+
+        # print_tensor("input", ort_inputs["input"])
+        # print_tensor("gated_output", ort_inputs["gated_output"])
+        # print_tensor("fc1_experts_weights", self.moe_experts.weight1.detach().numpy())
+        # print_tensor("fc2_experts_weights", self.moe_experts.weight2.detach().numpy())
+        # print_tensor("fc1_experts_bias", self.moe_experts.bias1.detach().numpy())
+        # print_tensor("fc2_experts_bias", self.moe_experts.bias2.detach().numpy())
+        # print_tensor("output", ort_output[0])
+
         return ort_output
 
 
 class TestMoEBlock(unittest.TestCase):
     def test_moe_block(self):
         rt = MoEBlock(
-            batch_size=1,
-            num_rows=64,
-            num_experts=32,
-            in_features=256,
-            hidden_features=2048,
-            out_features=256,
+            batch_size=2,
+            num_rows=2,
+            num_experts=4,
+            in_features=8,
+            hidden_features=16,
+            out_features=8,
         )
-        # TODO: assertion
-        rt.torch_forward()
-        rt.onnx_forward()
+
+        torch_out = rt.torch_forward()
+        ort_out = rt.onnx_forward()
+        if ort_out is not None:
+            # print("max diff", numpy.max(numpy.abs(torch_out[0].detach().numpy() - ort_out[0])))
+            assert numpy.allclose(torch_out[0].detach().numpy(), ort_out[0], rtol=3e-2, atol=3e-2)
 
 
 if __name__ == "__main__":
