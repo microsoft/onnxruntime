@@ -79,7 +79,7 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
             latents = self.denoise_latent(latents, text_embeddings, guidance=guidance)
 
             # VAE decode latent
-            images = self.decode_latent(latents)
+            images = self.decode_latent(latents / self.vae_scaling_factor)
 
             torch.cuda.synchronize()
             e2e_toc = time.perf_counter()

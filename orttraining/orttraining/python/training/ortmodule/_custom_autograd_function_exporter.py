@@ -399,7 +399,14 @@ def post_process_enabling_autograd_function(exported_model: ModelProto) -> Model
 @register_high_priority_handler("bitsandbytes.autograd._functions.MatMul4Bit")
 def _matmul4bit_export(g, n, *args, **kwargs):
     cconv = n.cconv()
-    can_converted = cconv[0] == "d" and cconv[1] == "d" and cconv[2] == "c" and cconv[3] == "c" and cconv[4] == "c"
+    can_converted = (
+        len(cconv) >= 5
+        and cconv[0] == "d"
+        and cconv[1] == "d"
+        and cconv[2] == "c"
+        and cconv[3] == "c"
+        and cconv[4] == "c"
+    )
     can_converted = can_converted and (args[2] is None and args[3] is None and args[4] is not None)
     if not can_converted:
         return None
