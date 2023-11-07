@@ -303,7 +303,15 @@ class BaseModel:
         """
         return []
 
-    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True, fp32_op_list=None, optimize_by_ort=True):
+    def optimize_ort(
+        self,
+        input_onnx_path,
+        optimized_onnx_path,
+        to_fp16=True,
+        fp32_op_list=None,
+        optimize_by_ort=True,
+        optimize_by_fusion=True,
+    ):
         optimizer = self.get_ort_optimizer()
         optimizer.optimize(
             input_onnx_path,
@@ -312,6 +320,7 @@ class BaseModel:
             keep_io_types=self.fp32_input_output_names(),
             fp32_op_list=fp32_op_list,
             optimize_by_ort=optimize_by_ort,
+            optimize_by_fusion=optimize_by_fusion,
         )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
@@ -471,7 +480,15 @@ class CLIP(BaseModel):
         onnx_model.add_node(cast_node)
         onnx_model.save_model_to_file(optimized_onnx_path, use_external_data_format=use_external_data_format)
 
-    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True, fp32_op_list=None, optimize_by_ort=True):
+    def optimize_ort(
+        self,
+        input_onnx_path,
+        optimized_onnx_path,
+        to_fp16=True,
+        fp32_op_list=None,
+        optimize_by_ort=True,
+        optimize_by_fusion=True,
+    ):
         optimizer = self.get_ort_optimizer()
 
         if not self.output_hidden_state:
@@ -483,8 +500,9 @@ class CLIP(BaseModel):
                 fp32_op_list=fp32_op_list,
                 keep_outputs=["text_embeddings"],
                 optimize_by_ort=optimize_by_ort,
+                optimize_by_fusion=optimize_by_fusion,
             )
-        else:
+        elif optimize_by_fusion:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 # Save to a temporary file so that we can load it with Onnx Runtime.
                 logger.info("Saving a temporary model to add hidden_states to graph output ...")
@@ -500,7 +518,19 @@ class CLIP(BaseModel):
                     fp32_op_list=fp32_op_list,
                     keep_outputs=["text_embeddings", "hidden_states"],
                     optimize_by_ort=optimize_by_ort,
+                    optimize_by_fusion=optimize_by_fusion,
                 )
+        else:  # input is optimized model, there is no need to add hidden states.
+            optimizer.optimize(
+                input_onnx_path,
+                optimized_onnx_path,
+                float16=to_fp16,
+                keep_io_types=[],
+                fp32_op_list=fp32_op_list,
+                keep_outputs=["text_embeddings", "hidden_states"],
+                optimize_by_ort=optimize_by_ort,
+                optimize_by_fusion=optimize_by_fusion,
+            )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
         onnx_graph = onnx.load(input_onnx_path)
