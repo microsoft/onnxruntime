@@ -26,6 +26,22 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(FunctionTest, Profiling) {
+  // const ORTCHAR_T* model_path = ORT_TSTR("D:\\dev\\data\\FunctionsConverterProfling\\HF_Mobile_Bert\\dynamo_onnx.onnx");
+  // const ORTCHAR_T* model_path = ORT_TSTR("D:\\dev\\data\\FunctionsConverterProfling\\HF_Bart\\hf_Bart_dynamo.onnx");
+  const ORTCHAR_T* model_path = ORT_TSTR("D:\\dev\\data\\FunctionsConverterProfling\\Affine\\model.onnx");
+  SessionOptions session_options;
+  session_options.intra_op_param.thread_pool_size = 1;
+  session_options.session_log_severity_level = 1;
+
+  // session_options.optimized_model_filepath = ORT_TSTR("D:\\dev\\data\\FunctionsConverterProfling\\HF_Mobile_Bert\\dynamo_onnx_if.onnx");
+  // session_options.optimized_model_filepath = ORT_TSTR("D:\\dev\\data\\FunctionsConverterProfling\\HF_Bart\\hf_Bart_dynamo_if.onnx");
+  session_options.optimized_model_filepath = ORT_TSTR("D:\\dev\\data\\FunctionsConverterProfling\\Affine\\model_if.onnx");
+  InferenceSession session_object(session_options, GetEnvironment(), model_path);
+  ASSERT_STATUS_OK(session_object.Load());
+  ASSERT_STATUS_OK(session_object.Initialize());
+}
+
 // Convert source-representation of model to ModelProto:
 static void ParseOnnxSource(const char* source, std::string& result) {
   ONNX_NAMESPACE::OnnxParser parser(source);

@@ -632,6 +632,45 @@ void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
   func_template_ = &func_template;
 }
 
+void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
+  proto.set_name(name_);
+  proto.set_op_type(op_type_);
+
+  if (!domain_.empty())
+    proto.set_domain(domain_);
+
+  if (!description_.empty())
+    proto.set_doc_string(description_);
+
+  // Checks an attribute was not removed.
+  if (!can_be_saved_) {
+    ORT_THROW("Removable attributes were removed before the conversion is started.");
+  }
+
+  // Set attributes.
+  proto.clear_attribute();
+  for (const auto& attribute : attributes_) {
+    const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
+    *attr = attribute.second;  // copy
+    if (update_subgraphs && attr->has_g()) {
+      attr->clear_g();
+      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+    }
+  }
+
+  // Set inputs' definitions.
+  proto.clear_input();
+  for (auto& input_def : definitions_.input_defs) {
+    proto.add_input(input_def->Name());
+  }
+
+  // Set outputs' definitions.
+  proto.clear_output();
+  for (auto& output_def : definitions_.output_defs) {
+    proto.add_output(output_def->Name());
+  }
+}
+
 Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                              flatbuffers::Offset<fbs::Node>& fbs_node) const {
   // if type is Primitive it's an ONNX function and currently we have kernel implementations for all those
@@ -3064,45 +3103,6 @@ SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std:
   return builder.CreateVector(vec);
 }
 
-void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
-  proto.set_name(name_);
-  proto.set_op_type(op_type_);
-
-  if (!domain_.empty())
-    proto.set_domain(domain_);
-
-  if (!description_.empty())
-    proto.set_doc_string(description_);
-
-  // Checks an attribute was not removed.
-  if (!can_be_saved_) {
-    ORT_THROW("Removable attributes were removed before the conversion is started.");
-  }
-
-  // Set attributes.
-  proto.clear_attribute();
-  for (const auto& attribute : attributes_) {
-    const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
-    *attr = attribute.second;  // copy
-    if (update_subgraphs && attr->has_g()) {
-      attr->clear_g();
-      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
-    }
-  }
-
-  // Set inputs' definitions.
-  proto.clear_input();
-  for (auto& input_def : definitions_.input_defs) {
-    proto.add_input(input_def->Name());
-  }
-
-  // Set outputs' definitions.
-  proto.clear_output();
-  for (auto& output_def : definitions_.output_defs) {
-    proto.add_output(output_def->Name());
-  }
-}
-
 common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Graph>& fbs_graph) const {
   auto inputs = SaveInputsOutputsToOrtFormat(builder, graph_inputs_including_initializers_);
@@ -4047,21 +4047,22 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   return Status::OK();
 }
 
-static void RenameSubgraphDependentNames(const InlinedHashMap<std::string, std::string>& name_mapping,
-                                         Graph& graph) {
+static void ReassignSubgraphDependentNodeArgs(const InlinedHashMap<std::string, std::string>& name_mapping,
+                                              Graph& graph) {
   for (auto& node : graph.Nodes()) {
     if (node.ContainsSubgraph()) {
       for (auto& [name, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
-        RenameSubgraphDependentNames(name_mapping, *subgraph);
+        ReassignSubgraphDependentNodeArgs(name_mapping, *subgraph);
       }
     }
 
     // NodeArgs need to be updated
-    auto input_defs = node.MutableInputDefs();
     for (auto& input_def : node.MutableInputDefs()) {
-      auto hit = name_mapping.find(input_def->Name());
-      if (hit != name_mapping.cend()) {
-        input_def = graph.GetNodeArgIncludingParentGraphs(hit->second);
+      if (input_def->Exists()) {
+        auto hit = name_mapping.find(input_def->Name());
+        if (hit != name_mapping.cend()) {
+          input_def = graph.GetNodeArgIncludingParentGraphs(hit->second);
+        }
       }
     }
   }
@@ -4158,7 +4159,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
 
     auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
     ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " from graph: ",
-                graph_to_inline.Name(), " conflicts with graph initializer. Check Specializing code.");
+                graph_to_inline.Name(), " conflicts with graph initializer. Check name generation above.");
 
     const NodeArg* node_arg = graph_to_inline.GetNodeArg(src_name);
     assert(node_arg != nullptr);
@@ -4251,14 +4252,14 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
           // We need to rename the subgraph node names
           // because they may refer to the implicit inputs
           // that were renamed.
-          RenameSubgraphDependentNames(name_mapping, *subgraph);
+          ReassignSubgraphDependentNodeArgs(name_mapping, *subgraph);
         }
         subgraph->parent_node_ = &new_node;
         subgraph->parent_graph_ = this;
       }
 
       new_node.MutableSubgraphs() = std::move(subgraphs);
-      new_node.GetMutableAttributeNameToSubgraphMap() = std::move(node->GetMutableAttributeNameToSubgraphMap());
+      new_node.GetMutableMapOfAttributeNameToSubgraph() = std::move(node->GetMutableMapOfAttributeNameToSubgraph());
     }
 
     new_node.GetMutableAttributes() = std::move(node->GetMutableAttributes());

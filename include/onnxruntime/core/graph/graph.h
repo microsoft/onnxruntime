@@ -446,7 +446,7 @@ class Node {
   /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
    * @returns a mutable map of mutable subgraphs.
    */
-  std::unordered_map<std::string, gsl::not_null<Graph*>>& GetMutableAttributeNameToSubgraphMap() {
+  std::unordered_map<std::string, gsl::not_null<Graph*>>& GetMutableMapOfAttributeNameToSubgraph() {
     return attr_to_subgraph_map_;
   }
 
@@ -1156,7 +1156,7 @@ class Graph {
     The function will process any subgraphs in each of the nodes being inlined,
     and will rename any references to the new names introduced.
 
-    @param If condition value
+    @param condition_value If condition value
     @param if_node - the node that contains the graph_to_inline. This node is going
     to be deleted and replaced by the corresponding graph (either then or else)
     @param logger
