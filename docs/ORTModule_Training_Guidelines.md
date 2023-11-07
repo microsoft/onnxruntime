@@ -58,9 +58,10 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 </tr>
 <tr>
 <td>
-<div>FATAL | ERROR | WARNING (For Users)</div>
-<br>
-<div>`WARNING` is default and recommended level for users to use.</div>
+
+`FATAL` | `ERROR` | `WARNING` (For Users)
+
+`WARNING` is the default and recommended level for users to use.
 </td>
 <td>
 
