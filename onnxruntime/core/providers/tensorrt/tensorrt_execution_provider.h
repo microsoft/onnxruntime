@@ -531,10 +531,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                                 std::unordered_map<std::string, size_t>& output_map,
                                                 std::vector<NodeComputeInfo>& node_compute_funcs);
   Status CreateNodeComputeFromGraph(const GraphViewer& graph_body_viewer,
-                                       const Node& fused_node,
-                                       std::unordered_map<std::string, size_t>& input_map, 
-                                       std::unordered_map<std::string, size_t>& output_map,
-                                       std::vector<NodeComputeInfo>& node_compute_funcs);
+                                    const Node& fused_node,
+                                    std::unordered_map<std::string, size_t>& input_map,
+                                    std::unordered_map<std::string, size_t>& output_map,
+                                    std::vector<NodeComputeInfo>& node_compute_funcs);
 
   bool IsGraphCaptureAllowed() const;
   void CaptureBegin();

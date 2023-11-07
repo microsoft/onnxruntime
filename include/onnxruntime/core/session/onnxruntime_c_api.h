@@ -4512,7 +4512,7 @@ struct OrtApi {
    * \since Version 1.17.
    */
   ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
-  
+
   /** \brief Used for custom operators, set an output of a kernel
    *
    * \see ::OrtCustomOp

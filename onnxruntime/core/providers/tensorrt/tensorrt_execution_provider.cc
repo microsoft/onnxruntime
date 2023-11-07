@@ -367,7 +367,7 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
 }
 
 /*
- * Get the shape of "shape tensor" input 
+ * Get the shape of "shape tensor" input
  */
 Status GetShapeOfShapeTensor(Ort::ConstValue& input_tensor,
                              std::vector<int32_t>& shape_values,
@@ -585,7 +585,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
     if (input->isShapeTensor()) {
       // Get shape values for shape tensor input
       const auto tensor_type = tensor_info.GetElementType();
-      int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]); // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
+      int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);  // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
       tensor_shape_values[input_name].resize(shape_size);
       switch (tensor_type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
@@ -695,7 +695,7 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
 
 /*
  * Set TensorRT execution context input.
- * 
+ *
  * There are two types of input tensor: (1) shape tensor and (2) execution tensor.
  * The input buffer binding needs to be handled differently.
  *
@@ -705,11 +705,10 @@ Status BindContextInput(Ort::KernelContext& ctx,
                         nvinfer1::IExecutionContext* trt_context,
                         const char* input_name,
                         size_t input_index,
-                        std::vector<int32_t>& shape_values, // only for "shape tensor"
+                        std::vector<int32_t>& shape_values,  // only for "shape tensor"
                         std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                         OrtAllocator* alloc,
                         cudaStream_t stream) {
-
   auto input_tensor = ctx.GetInput(input_index);
   auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
   const auto tensor_shapes = tensor_info.GetShape();
@@ -862,10 +861,10 @@ Status BindContextInput(Ort::KernelContext& ctx,
 
 /*
  * Set TensorRT execution context output.
- * 
+ *
  * Please note that the "data-depedent shape" output needs corresponding allocator provided.
- * 
- * 
+ *
+ *
  * param ctx - ORT kernel context
  * param trt_context - A pointer to TensorRT Execution context object
  * param output_name - Output tensor name
@@ -894,7 +893,6 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                          std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                          OrtAllocator* alloc,
                          std::unordered_map<char const*, void*>& buffers) {
-    
   // Get output shape
   nvinfer1::Dims dims = trt_context->getTensorShape(output_name);
   int nb_dims = dims.nbDims;
@@ -2197,7 +2195,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and 
+  // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and
   // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
   // So, simply return the ComputeCapability here.
   if (graph.NumberOfNodes() == 1 && GraphHasCtxNode(graph)) {
@@ -2385,9 +2383,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
                                                                          std::vector<NodeComputeInfo>& node_compute_funcs) {
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
-  std::unordered_map<std::string, size_t> input_indexes;  // TRT engine input name -> ORT kernel context input index
-  std::unordered_map<std::string, size_t> output_indexes; // TRT engine output name -> ORT kernel context output index
-  std::unordered_map<std::string, size_t> output_types;   // TRT engine output name -> ORT output tensor type
+  std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index
+  std::unordered_map<std::string, size_t> output_indexes;  // TRT engine output name -> ORT kernel context output index
+  std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
 
   // Get engine binary data and deserialize it
   auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), device_id_);
@@ -2397,7 +2395,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
   }
 
   // Build context
-  // 
+  //
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   if (context_memory_sharing_enable_) {
@@ -2414,7 +2412,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
                            "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
   }
 
-  
   // Create input/output to index maps
   for (int32_t i = 0; i < trt_engine->getNbIOTensors(); ++i) {
     auto const& name = trt_engine->getIOTensorName(i);
@@ -2490,7 +2487,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
-    //int num_inputs = static_cast<int>(input_indexes.size());
+    // int num_inputs = static_cast<int>(input_indexes.size());
     int num_outputs = static_cast<int>(output_indexes.size());
 
     OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id_), device_id_);
@@ -2654,16 +2651,16 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
 
     return Status::OK();
   };
-  
+
   node_compute_funcs.push_back(compute_info);
   return Status::OK();
 }
 
 Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& graph_body_viewer,
-                                                                const Node& fused_node,
-                                                                std::unordered_map<std::string, size_t>& input_map,
-                                                                std::unordered_map<std::string, size_t>& output_map,
-                                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
+                                                             const Node& fused_node,
+                                                             std::unordered_map<std::string, size_t>& input_map,
+                                                             std::unordered_map<std::string, size_t>& output_map,
+                                                             std::vector<NodeComputeInfo>& node_compute_funcs) {
   // Reconstruct graph proto from fused node's function body
   auto model = graph_body_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
@@ -3171,7 +3168,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
     delete static_cast<TensorrtFuncState*>(state);
   };
 
-    // Create compute function
+  // Create compute function
   compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
     Ort::KernelContext ctx(context);
 

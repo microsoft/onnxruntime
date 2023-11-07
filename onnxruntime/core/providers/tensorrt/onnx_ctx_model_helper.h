@@ -23,10 +23,10 @@ static const std::string SOURCE = "source";
 bool GraphHasCtxNode(const GraphViewer& graph_viewer);
 const onnxruntime::Path& GetModelPath(const GraphViewer& graph_viewer);
 std::filesystem::path LocateEngineRelativeToPath(std::string engine_cache_path, const onnxruntime::Path& path);
-std::string GetComputeCapacity(const cudaDeviceProp& prop); 
+std::string GetComputeCapacity(const cudaDeviceProp& prop);
 
 class TensorRTCacheModelHandler {
-public:
+ public:
   TensorRTCacheModelHandler(std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine,
                             nvinfer1::IRuntime* trt_runtime,
                             int device_id = 0) : trt_engine_(trt_engine), trt_runtime_(trt_runtime), device_id_(device_id) {
@@ -39,7 +39,7 @@ public:
 
   std::string& GetComputeCapability();
 
-private:
+ private:
   std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine_;
   nvinfer1::IRuntime* trt_runtime_;
   std::filesystem::path engine_cache_path_;
