@@ -27,6 +27,12 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Status GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
+                             const NodeUnit& node_unit,
+                             const logging::Logger& logger,
+                             const std::vector<std::string>& input_names,
+                             size_t output_index,
+                             OnnxInputInfo& output_info) const override ORT_MUST_USE_RESULT;
 
  private:
   Status ExplicitOpCheck(const NodeUnit& node_unit) const;
@@ -275,16 +281,6 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     ORT_RETURN_IF_ERROR(ProcessGridSampleAttributes(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
-  if (op_type == "Sigmoid" || op_type == "Tanh") {
-    // QNN requires 16-bit QDQ Sigmoid and Tanh to use specific output scale and zero-point values
-    // regardless of floating-point range.
-    return ProcessSigmoidOrTanhOutput(qnn_model_wrapper,
-                                      node_unit,
-                                      std::move(input_names),
-                                      std::move(param_tensor_names),
-                                      logger, do_op_validation);
-  }
-
   return ProcessOutputs(qnn_model_wrapper, node_unit,
                         std::move(input_names),
                         std::move(param_tensor_names),
@@ -338,60 +334,44 @@ static bool OverrideQuantParams(const std::string& op_type, Qnn_DataType_t qnn_d
   return quant_params.offset != orig_offset || quant_params.scale != orig_scale;
 }
 
-/**
- * Processes the output for Sigmoid or Tanh operators and creates the corresponding QNN operator.
- * These operator types are handled separately because QNN requires 16-bit QDQ Sigmoid and Tanh operators to use
- * specific scale and zero-point values regardless of floating-point range.
- *
- * \param qnn_model_wrapper The QNN model wrapper object.
- * \param node_unit The QDQ node unit for the Sigmoid or Tanh node.
- * \param input_names List of input names.
- * \param param_tensor_names List of param tensor names.
- * \param logger Logger used to report information.
- * \param do_op_validation True if the new QNN node should be validated.
- */
-Status SimpleOpBuilder::ProcessSigmoidOrTanhOutput(QnnModelWrapper& qnn_model_wrapper,
-                                                   const NodeUnit& node_unit,
-                                                   std::vector<std::string>&& input_names,
-                                                   std::vector<std::string>&& param_tensor_names,
-                                                   const logging::Logger& logger,
-                                                   bool do_op_validation) const {
+Status SimpleOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
+                                            const NodeUnit& node_unit,
+                                            const logging::Logger& logger,
+                                            const std::vector<std::string>& input_names,
+                                            size_t output_index,
+                                            OnnxInputInfo& output_info) const {
   const std::string& op_type = node_unit.OpType();
-  const auto& output = node_unit.Outputs()[0];
-  const std::string& output_name = output.node_arg.Name();
 
-  OnnxInputInfo output_info = {};
+  // Override output quantization parameters for uint16 QDQ Sigmoid or Tanh.
+  // QNN requires 16-bit QDQ Sigmoid and Tanh to use specific output scale and zero-point values
+  // regardless of floating-point range.
+  if (op_type == "Sigmoid" || op_type == "Tanh") {
+    const auto& outputs = node_unit.Outputs();
+    ORT_RETURN_IF_NOT(output_index < outputs.size(),
+                      "Invalid output index in GetOutputTensorInfo for op ", op_type.c_str());
 
-  // TODO(adrianlizarraga): Rename GetOnnxInputInfo() since it can be used for outputs as well.
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(output, output_info));
+    const auto& output = node_unit.Outputs()[0];
+    const std::string& output_name = output.node_arg.Name();
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(output, output_info));
 
-  if (output_info.quant_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
-    if (OverrideQuantParams(op_type, output_info.qnn_data_type, output_info.quant_param.scaleOffsetEncoding)) {
-      const int32_t offset = output_info.quant_param.scaleOffsetEncoding.offset;
-      const float scale = output_info.quant_param.scaleOffsetEncoding.scale;
+    if (output_info.quant_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
+      if (OverrideQuantParams(op_type, output_info.qnn_data_type, output_info.quant_param.scaleOffsetEncoding)) {
+        const int32_t offset = output_info.quant_param.scaleOffsetEncoding.offset;
+        const float scale = output_info.quant_param.scaleOffsetEncoding.scale;
 
-      LOGS(logger, VERBOSE) << "QNN requires that 16-bit quantized " << op_type << " operators use offset/scale values "
-                            << "of <" << offset << ", " << scale << ">. QNN EP will override the original values for output "
-                            << output_name;
+        LOGS(logger, VERBOSE) << "QNN requires that 16-bit quantized " << op_type
+                              << " operators use offset/scale values "
+                              << "of <" << offset << ", " << scale
+                              << ">. QNN EP will override the original values for output " << output_name;
+        ORT_RETURN_IF(qnn_model_wrapper.IsQnnTensorWrapperExist(output_name),
+                      "QNN EP is unable to override output quantization parameters for ", op_type.c_str(),
+                      " operator. Node name: ", node_unit.Name().c_str(), ", output name: ", output_name.c_str());
+      }
     }
+  } else {
+    ORT_RETURN_IF_ERROR(BaseOpBuilder::GetOutputTensorInfo(qnn_model_wrapper, node_unit, logger, input_names,
+                                                           output_index, output_info));
   }
-
-  ORT_RETURN_IF(qnn_model_wrapper.IsQnnTensorWrapperExist(output_name),
-                "QNN EP is unable to override output quantization parameters for ", op_type.c_str(),
-                " operator. Node name: ", node_unit.Name().c_str(), ", output name: ", output_name.c_str());
-  Qnn_TensorType_t tensor_type = qnn_model_wrapper.IsGraphOutput(output_name) ? QNN_TENSOR_TYPE_APP_READ
-                                                                              : QNN_TENSOR_TYPE_NATIVE;
-  QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, output_info.qnn_data_type, output_info.quant_param,
-                                        std::move(output_info.shape));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                    GetQnnOpType(op_type),
-                                                    std::move(input_names),
-                                                    {output_name},
-                                                    std::move(param_tensor_names),
-                                                    do_op_validation),
-                    "Failed to add node.");
 
   return Status::OK();
 }

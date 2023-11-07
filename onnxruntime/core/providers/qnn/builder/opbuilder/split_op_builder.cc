@@ -30,6 +30,13 @@ class SplitOpBuilder : public BaseOpBuilder {
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
+                             const NodeUnit& node_unit,
+                             const logging::Logger& logger,
+                             const std::vector<std::string>& input_names,
+                             size_t output_index,
+                             OnnxInputInfo& output_info) const override ORT_MUST_USE_RESULT;
 };
 
 Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -117,6 +124,34 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
                                      std::move(input_names),
                                      std::move(param_tensor_names),
                                      logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+
+  return Status::OK();
+}
+
+Status SplitOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
+                                           const NodeUnit& node_unit,
+                                           const logging::Logger& logger,
+                                           const std::vector<std::string>& input_names,
+                                           size_t output_index,
+                                           OnnxInputInfo& output_info) const {
+  // Force Split outputs to use the same quantization parameters as the input.
+  //
+  // The quantization tool assigns equal qparams to the input and outputs, and the NodeUnit selectors
+  // now require QDQ Split units to have the same qparams. However, Sigmoid/Tanh may override they output qparms,
+  // which requires us to explicitly handle this in case a Split is consumer of a Sigmoid/Tanh node.
+  ORT_UNUSED_PARAMETER(logger);
+  const auto& outputs = node_unit.Outputs();
+  ORT_RETURN_IF_NOT(output_index < outputs.size(), "Invalid output index in GetOutputQuantInfo");
+
+  const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
+  const auto& output = outputs[output_index];
+
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output.node_arg, output_info.shape),
+                    "Cannot get Split output's shape");
+  output_info.is_initializer = false;
+  output_info.initializer_tensor = nullptr;
+  output_info.qnn_data_type = input_tensor_wrapper.GetTensorDataType();
+  output_info.quant_param = GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor());
 
   return Status::OK();
 }

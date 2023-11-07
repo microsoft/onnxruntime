@@ -58,6 +58,13 @@ class BaseOpBuilder : public IOpBuilder {
                                 bool do_op_validation,
                                 const std::string& qnn_op_type) const ORT_MUST_USE_RESULT;
 
+  virtual Status GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
+                                     const NodeUnit& node_unit,
+                                     const logging::Logger& logger,
+                                     const std::vector<std::string>& input_names,
+                                     size_t output_index,
+                                     OnnxInputInfo& output_info) const ORT_MUST_USE_RESULT;
+
   Status ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                       const NodeUnitIODef& input,
                       const logging::Logger& logger,
