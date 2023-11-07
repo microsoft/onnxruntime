@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
+import {biasAdd} from './ops/bias-add';
+import {biasSplitGelu} from './ops/bias-split-gelu';
 import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
@@ -16,6 +18,7 @@ import {layerNorm, parseLayerNormAttributes} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
 import {pad, parsePadAttributes} from './ops/pad';
 import * as pool from './ops/pool';
+import {range} from './ops/range';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
 import {parseSkipLayerNormAttributes, skipLayerNorm} from './ops/skip-layer-norm';
@@ -25,6 +28,7 @@ import {parseSplitAttributes, split} from './ops/split';
 import {tile} from './ops/tile';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
+import {where} from './ops/where';
 import {ComputeContext} from './types';
 
 export type RunFunction = (context: ComputeContext, attribute?: unknown) => void;
@@ -44,6 +48,8 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Atanh', [unaryOps.atanh]],
   // TODO: support new attributes for AveragePool-10
   ['AveragePool', [pool.averagePool, pool.parseAveragePoolAttributes]],
+  ['BiasAdd', [biasAdd]],
+  ['BiasSplitGelu', [biasSplitGelu]],
   ['Cast', [unaryOps.cast, unaryOps.parseCastAttributes]],
   ['Ceil', [unaryOps.ceil]],
   ['ClipV10', [unaryOps.clipV10]],
@@ -61,6 +67,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Exp', [unaryOps.exp]],
   ['Expand', [expand]],
   ['Floor', [unaryOps.floor]],
+  ['FusedConv', [conv, parseConvAttributes]],
   ['Gather', [gather, parseGatherAttributes]],
   ['GatherElements', [gatherElements, parseGatherElementsAttributes]],
   ['Gelu', [unaryOps.gelu]],
@@ -83,6 +90,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Not', [unaryOps.not]],
   ['Pad', [pad, parsePadAttributes]],
   ['Pow', [binaryOps.pow]],
+  ['Range', [range]],
   ['Reciprocal', [unaryOps.reciprocal]],
   ['ReduceMin', [reduceMin, parseReduceAttributes]],
   ['ReduceMean', [reduceMean, parseReduceAttributes]],
@@ -110,4 +118,5 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['ThresholdedRelu', [unaryOps.thresholdedRelu, unaryOps.parseAlphaAttributes]],
   ['Tile', [tile]],
   ['Transpose', [transpose, parseTransposeAttributes]],
+  ['Where', [where]],
 ]);

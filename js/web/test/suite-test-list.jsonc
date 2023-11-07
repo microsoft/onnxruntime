@@ -885,10 +885,10 @@
       // // "test_qlinearmatmul_3D",
       // // "test_quantizelinear_axis",
       // // "test_quantizelinear",
-      // "test_range_float_type_positive_delta_expanded",
-      // "test_range_float_type_positive_delta",
-      // "test_range_int32_type_negative_delta_expanded",
-      // "test_range_int32_type_negative_delta",
+      "test_range_float_type_positive_delta_expanded",
+      "test_range_float_type_positive_delta",
+      "test_range_int32_type_negative_delta_expanded",
+      "test_range_int32_type_negative_delta",
       "test_reciprocal_example",
       "test_reciprocal",
       "test_reduce_l1_default_axes_keepdims_example",
@@ -1336,6 +1336,8 @@
       "add_int32.jsonc",
       //"and.jsonc",
       "asin.jsonc",
+      "bias-add.jsonc",
+      "bias-split-gelu.jsonc",
       "ceil.jsonc",
       "concat.jsonc",
       "concat_int32.jsonc",
@@ -1386,7 +1388,10 @@
       "tan.jsonc",
       "tile.jsonc",
       "transpose.jsonc",
-      "transpose_int32_uint32.jsonc"
+      "transpose_int32_uint32.jsonc",
+      "where.jsonc"
+      // Turn on this when https://github.com/microsoft/onnxruntime/issues/17405 is fixed.
+      //"where_broadcast.jsonc",
       //"xor.jsonc"
     ]
   },

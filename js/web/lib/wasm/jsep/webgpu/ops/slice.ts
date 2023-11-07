@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata, TensorInfo} from '../types';
+import {ComputeContext, ProgramInfo, TensorInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -94,58 +94,56 @@ const calculateInputIndicesImpl =
           return inputIndices;
       }`;
 
-const createSliceProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfo => {
-      const inputShape = inputs[0].dims;
-      const inputSize = ShapeUtil.size(inputShape);
-      const axes = (attributes.axes.length > 0) ? ShapeUtil.normalizeAxes(attributes.axes, inputShape.length) :
-                                                  [...Array(inputShape.length).keys()];
-      let steps = readInput(inputs, 4);
-      steps.forEach((step) => step !== 0 || (() => {
-                                throw new Error('step cannot be 0');
-                              }));
-      if (steps.length === 0) {
-        steps = Array(axes.length).fill(1);
+const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfo => {
+  const inputShape = inputs[0].dims;
+  const inputSize = ShapeUtil.size(inputShape);
+  const axes = (attributes.axes.length > 0) ? ShapeUtil.normalizeAxes(attributes.axes, inputShape.length) :
+                                              [...Array(inputShape.length).keys()];
+  let steps = readInput(inputs, 4);
+  steps.forEach((step) => step !== 0 || (() => {
+                            throw new Error('step cannot be 0');
+                          }));
+  if (steps.length === 0) {
+    steps = Array(axes.length).fill(1);
+  }
+  const starts = attributes.starts.map((start, i) => fixStartEndValues(start, i, inputShape, axes, steps));
+
+  const ends = attributes.ends.map((end, i) => fixStartEndValues(end, i, inputShape, axes, steps));
+
+  if (axes.length !== inputShape.length) {
+    for (let i = 0; i < inputShape.length; ++i) {
+      if (!axes.includes(i)) {
+        starts.splice(i, 0, 0);
+        ends.splice(i, 0, inputShape[i]);
+        steps.splice(i, 0, 1);
       }
-      const starts = attributes.starts.map((start, i) => fixStartEndValues(start, i, inputShape, axes, steps));
+    }
+  }
+  const signs = steps.map(step => Math.sign(step));
+  // Convert negative steps to positive steps and reverse starts and ends
+  steps.forEach((step, i, array) => {
+    if (step < 0) {
+      const numSteps = (ends[i] - starts[i]) / step;
+      const newEnd = starts[i];
+      const newStart = newEnd + numSteps * steps[i];
+      starts[i] = newStart;
+      ends[i] = newEnd;
+      array[i] = -step;
+    }
+  });
 
-      const ends = attributes.ends.map((end, i) => fixStartEndValues(end, i, inputShape, axes, steps));
+  const outputShape = inputShape.slice(0);
+  axes.forEach((axis, _) => {
+    outputShape[axis] = Math.ceil((ends[axis] - starts[axis]) / steps[axis]);
+  });
 
-      if (axes.length !== inputShape.length) {
-        for (let i = 0; i < inputShape.length; ++i) {
-          if (!axes.includes(i)) {
-            starts.splice(i, 0, 0);
-            ends.splice(i, 0, inputShape[i]);
-            steps.splice(i, 0, 1);
-          }
-        }
-      }
-      const signs = steps.map(step => Math.sign(step));
-      // Convert negative steps to positive steps and reverse starts and ends
-      steps.forEach((step, i, array) => {
-        if (step < 0) {
-          const numSteps = (ends[i] - starts[i]) / step;
-          const newEnd = starts[i];
-          const newStart = newEnd + numSteps * steps[i];
-          starts[i] = newStart;
-          ends[i] = newEnd;
-          array[i] = -step;
-        }
-      });
+  const outputTensorInfo: TensorInfo = {dims: outputShape, dataType: inputs[0].dataType};
 
-      const outputShape = inputShape.slice(0);
-      axes.forEach((axis, _) => {
-        outputShape[axis] = Math.ceil((ends[axis] - starts[axis]) / steps[axis]);
-      });
+  const output = outputVariable('output', inputs[0].dataType, outputShape);
+  const input = inputVariable('input', inputs[0].dataType, inputShape);
+  const outputSize = ShapeUtil.size(outputShape);
 
-      const outputTensorInfo:
-          TensorInfo = {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default};
-
-      const output = outputVariable('output', inputs[0].dataType, outputShape);
-      const input = inputVariable('input', inputs[0].dataType, inputShape);
-      const outputSize = ShapeUtil.size(outputShape);
-
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${shaderHelper.declareVariables(input, output)}
         const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});
         const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});
@@ -160,35 +158,27 @@ const createSliceProgramInfo =
           let inputIndices = calculateInputIndices(outputIndices);
           ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
       }`;
-      return {
-        ...metadata,
-        getShaderSource,
-        outputs: [outputTensorInfo],
-        dispatchGroup: () => ({x: Math.ceil(inputSize / 64 /* workgroup size */)})
-      };
-    };
-
-const createSliceProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfoLoader => {
-      const updatedAttributes = createSliceAttributesFromInputs(inputs, attributes);
-      const metadata: ProgramMetadata = {
-        name: 'Slice',
-        inputTypes: [GpuDataType.default],
-        cacheHint: updatedAttributes.cacheKey + (inputs.length > 4 ? 'steps_' + inputs[4].dims.toString() : '')
-      };
-      return {...metadata, get: () => createSliceProgramInfo(metadata, inputs, updatedAttributes)};
-    };
+  return {
+    name: 'Slice',
+    shaderCache: {hint: `${attributes.cacheKey}|${inputs[4]?.dims ?? ''}`},
+    getShaderSource,
+    getRunData: () => ({
+      outputs: [outputTensorInfo],
+      dispatchGroup: {x: Math.ceil(inputSize / 64 /* workgroup size */)},
+    })
+  };
+};
 
 export const slice = (context: ComputeContext, attributes: SliceAttributes): void => {
   validateInputs(context.inputs, attributes);
-  const programInfoLoader = createSliceProgramInfoLoader(context.inputs, attributes);
-  const program = programInfoLoader.get();
-  if (ShapeUtil.size(program.outputs[0].dims) > 0) {
-    context.compute(programInfoLoader, {inputs: [0]});
-  } else {
-    // TODO: support empty output
-    throw new Error('slice: output size is 0');
-  }
+  const updatedAttributes = createSliceAttributesFromInputs(context.inputs, attributes);
+  context.compute(createSliceProgramInfo(context.inputs, updatedAttributes), {inputs: [0]});
+  // if (ShapeUtil.size(program.outputs[0].dims) > 0) {
+  //   context.compute(programInfoLoader, {inputs: [0]});
+  // } else {
+  //   // TODO: support empty output
+  //   throw new Error('slice: output size is 0');
+  // }
 };
 
 export const parseSliceAttributes = (attributes: Record<string, unknown>): SliceAttributes => {

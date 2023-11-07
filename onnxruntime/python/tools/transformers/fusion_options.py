@@ -26,6 +26,7 @@ class FusionOptions:
         self.enable_gelu = True
         self.enable_layer_norm = True
         self.enable_attention = True
+        self.enable_rotary_embeddings = True
 
         # Use MultiHeadAttention instead of Attention operator. The difference:
         # (1) Attention has merged weights for Q/K/V projection, which might be faster in some cases since 3 MatMul is
@@ -60,6 +61,7 @@ class FusionOptions:
         if model_type in ["unet", "vae", "clip"]:
             self.enable_nhwc_conv = True
             self.enable_group_norm = True
+            self.enable_skip_group_norm = True
             self.enable_bias_splitgelu = True
             self.enable_packed_qkv = True
             self.enable_packed_kv = True
@@ -81,6 +83,8 @@ class FusionOptions:
             options.enable_gelu = False
         if args.disable_layer_norm:
             options.enable_layer_norm = False
+        if args.disable_rotary_embeddings:
+            options.enable_rotary_embeddings = False
         if args.disable_attention:
             options.enable_attention = False
         if args.use_multi_head_attention:
@@ -113,6 +117,8 @@ class FusionOptions:
                 options.enable_nhwc_conv = False
             if args.disable_group_norm:
                 options.enable_group_norm = False
+            if args.disable_skip_group_norm:
+                options.enable_skip_group_norm = False
             if args.disable_bias_splitgelu:
                 options.enable_bias_splitgelu = False
             if args.disable_packed_qkv:
@@ -248,6 +254,14 @@ class FusionOptions:
         parser.set_defaults(disable_group_norm=False)
 
         parser.add_argument(
+            "--disable_skip_group_norm",
+            required=False,
+            action="store_true",
+            help="not fuse Add + GroupNorm to SkipGroupNorm. Only works for model_type=unet or vae",
+        )
+        parser.set_defaults(disable_skip_group_norm=False)
+
+        parser.add_argument(
             "--disable_packed_kv",
             required=False,
             action="store_true",
@@ -294,3 +308,10 @@ class FusionOptions:
             help="Use channels_first (NCHW) instead of channels_last (NHWC) for GroupNorm. Only works for model_type=unet or vae",
         )
         parser.set_defaults(use_group_norm_channels_first=False)
+
+        parser.add_argument(
+            "--disable_rotary_embeddings",
+            required=False,
+            action="store_true",
+            help="Do not fuse rotary embeddings into RotaryEmbedding op",
+        )

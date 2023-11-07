@@ -74,7 +74,7 @@ stages:
       displayName: 'Checkout submodule onnx'
     - task: NodeTool@0
       inputs:
-        versionSpec: '16.x'
+        versionSpec: '18.x'
     - template: linux-web-init-and-check.yml
     - task: Bash@3
       displayName: 'Extract commit SHA and save to __commit.txt'

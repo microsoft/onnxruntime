@@ -39,6 +39,10 @@ def get_pipeline_names():
         "orttraining-ortmodule-distributed",
         # checks
         "onnxruntime-binary-size-checks-ci-pipeline",
+        # not currently required, but running ensures we're hitting all mobile platforms
+        "Android CI Pipeline",
+        "iOS CI Pipeline",
+        "ONNX Runtime React Native CI Pipeline",
     ]
 
     return pipelines

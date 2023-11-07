@@ -9,6 +9,8 @@
 #include <vector>
 #include <string>
 
+#include "core/util/qmath.h"
+
 namespace onnxruntime {
 namespace qnn {
 class QnnOpConfigWrapper;
@@ -47,6 +49,38 @@ static bool ArrayHasString(const std::array<std::string_view, N>& strings, std::
 
   return false;
 }
+
+std::pair<float, float> CheckMinMax(float rmin, float rmax);
+
+template <typename T>
+Status GetQminQmax(const Qnn_DataType_t qnn_data_type, T& qmin, T& qmax);
+
+template <typename T>
+inline T Saturate(const T qmax,
+                  const T qmin,
+                  const T quant_value) {
+  if (quant_value > qmax) {
+    return qmax;
+  } else if (quant_value < qmin) {
+    return qmin;
+  } else {
+    return quant_value;
+  }
+}
+
+Status GetQuantParams(float rmin,
+                      float rmax,
+                      const Qnn_DataType_t qnn_data_type,
+                      float& scale,
+                      int& zero_point);
+
+double Dequantize(int32_t offset, float scale, const double quant_value);
+
+Status Quantize(const double double_value,
+                const float scale,
+                const int zero_point,
+                const Qnn_DataType_t qnn_data_type,
+                int& quant_value);
 
 }  // namespace utils
 }  // namespace qnn

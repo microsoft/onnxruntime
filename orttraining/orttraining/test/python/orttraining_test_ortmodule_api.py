@@ -1773,13 +1773,17 @@ def test_aten_upsample_nearest(input_rank, use_factor):
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
-def test_aten_upsample_bilinear():
+@pytest.mark.parametrize("interpolate_size_scale", ({"size": (8, 12)}, {"scale_factor": 4.7}))
+@pytest.mark.parametrize("align_corners", (True, False))
+def test_resize_grad_correctness_bilinear_2d(interpolate_size_scale, align_corners):
     class _NeuralNetUpsampleBilinear(torch.nn.Module):
         def __init__(self):
             super().__init__()
 
         def forward(self, input):
-            return torch.nn.functional.interpolate(input, size=(8, 12), mode="bilinear")
+            return torch.nn.functional.interpolate(
+                input, align_corners=align_corners, mode="bilinear", **interpolate_size_scale
+            )
 
     device = "cuda"
     pt_model = _NeuralNetUpsampleBilinear().to(device)
@@ -3900,9 +3904,9 @@ def test_primitive_inputs(bool_argument, int_argument, float_argument):
                 out = self.relu(out)
             return out
 
-    assert type(bool_argument) is bool
-    assert type(int_argument) is int
-    assert type(float_argument) is float
+    assert type(bool_argument) is bool  # noqa: E721
+    assert type(int_argument) is int  # noqa: E721
+    assert type(float_argument) is float  # noqa: E721
 
     device = "cuda"
     N, D_in, H, D_out = 32, 784, 500, 10  # noqa: N806
@@ -3938,8 +3942,8 @@ def test_changing_bool_input_re_exports_model(bool_arguments):
                 out = self.relu(out)
             return out
 
-    assert type(bool_arguments[0]) is bool
-    assert type(bool_arguments[1]) is bool
+    assert type(bool_arguments[0]) is bool  # noqa: E721
+    assert type(bool_arguments[1]) is bool  # noqa: E721
 
     device = "cuda"
     N, D_in, H, D_out = 32, 784, 500, 10  # noqa: N806
@@ -5904,7 +5908,7 @@ def test_ops_for_padding_elimination(test_cases):
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
-    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "PadAndUnflatten"][0]
+    gathergrad_node = next(node for node in training_model.graph.node if node.op_type == "PadAndUnflatten")
 
     def find_input_node_type(model, arg):
         result = []

@@ -31,7 +31,7 @@ steps:
     architecture: ${{parameters.BuildArch}}
 
 - script: |
-    python -m pip install -q setuptools wheel numpy flatbuffers
+    python -m pip install --upgrade "setuptools>=68.2.2" wheel numpy flatbuffers
   workingDirectory: '$(Build.BinariesDirectory)'
   displayName: 'Install python modules'
 

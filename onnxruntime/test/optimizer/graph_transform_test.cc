@@ -31,6 +31,8 @@
 #include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
+#include "core/optimizer/matmul_bn_fusion.h"
+#include "core/optimizer/pad_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
@@ -1000,6 +1002,26 @@ TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   ASSERT_TRUE(op_to_count.size() == 0U);
 }
 
+// Test we don't fail when constant folding hits a string initializer
+TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "gh_issue_17392.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count.size(), 0U) << "Identity node should have been removed";
+}
+
 // Check transformations in the case of a subgraph with constant inputs.
 TEST_F(GraphTransformationTests, SubgraphWithConstantInputs) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "constant-subgraph.onnx";
@@ -1057,6 +1079,425 @@ TEST_F(GraphTransformationTests, FuseConvBNNoBias) {
           << "fusion should produce the same output name as the last node";
     }
   }
+}
+
+TEST_F(GraphTransformationTests, FusePadWithConv) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-pad-conv.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::vector<int64_t> expected_pads;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "Pad") {
+      const auto* pads_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      Initializer pads{*pads_proto, graph.ModelPath()};
+      gsl::span<const int64_t> pads_values = pads.DataAsSpan<int64_t>();
+      expected_pads.resize(pads_values.size() - 4);
+
+      for (uint32_t pads_index = 2, index = 0; pads_index < pads_values.size() / 2; pads_index++, index++) {
+        expected_pads[index] = pads_values[pads_index];
+        expected_pads[index + (expected_pads.size() / 2)] = pads_values[pads_index + (pads_values.size() / 2)];
+      }
+    } else if (node.OpType() == "Conv") {
+      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
+      for (uint32_t index = 0; index < expected_pads.size(); index++) {
+        expected_pads[index] += child_pads->Get(index);
+      }
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Pad"], 0);
+  ASSERT_EQ(op_to_count["Conv"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
+      ASSERT_EQ(child_pads->size(), static_cast<int32_t>(expected_pads.size()))
+          << "fusion should produce the same size of pads integer as the Conv node";
+      for (uint32_t index = 0; index < expected_pads.size(); index++) {
+        ASSERT_EQ(expected_pads[index], child_pads->Get(index))
+            << "fusion does not produce correct padding value";
+      }
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, FusePadWithMaxPool) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-pad-maxpool.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::vector<int64_t> expected_pads;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "Pad") {
+      const auto* pads_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      Initializer pads{*pads_proto, graph.ModelPath()};
+      gsl::span<const int64_t> pads_values = pads.DataAsSpan<int64_t>();
+      expected_pads.resize(pads_values.size() - 4);
+
+      for (uint32_t pads_index = 2, index = 0; pads_index < pads_values.size() / 2; pads_index++, index++) {
+        expected_pads[index] = pads_values[pads_index];
+        expected_pads[index + (expected_pads.size() / 2)] = pads_values[pads_index + (pads_values.size() / 2)];
+      }
+    } else if (node.OpType() == "MaxPool") {
+      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
+      for (uint32_t index = 0; index < expected_pads.size(); index++) {
+        expected_pads[index] += child_pads->Get(index);
+      }
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Pad"], 0);
+  ASSERT_EQ(op_to_count["MaxPool"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "MaxPool") {
+      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
+      ASSERT_EQ(child_pads->size(), static_cast<int32_t>(expected_pads.size()))
+          << "fusion should produce the same size of pads integer as the MaxPool node";
+      for (uint32_t index = 0; index < expected_pads.size(); index++) {
+        ASSERT_EQ(expected_pads[index], child_pads->Get(index))
+            << "fusion does not produce correct padding value";
+      }
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, FusePadWithMaxPoolOpsetLessThan11) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-pad-maxpool-opset8.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::vector<int64_t> expected_pads;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "Pad") {
+      gsl::span<const int64_t> pads_values = node.GetAttributes().at("pads").ints();
+      expected_pads.resize(pads_values.size() - 4);
+
+      for (uint32_t pads_index = 2, index = 0; pads_index < pads_values.size() / 2; pads_index++, index++) {
+        expected_pads[index] = pads_values[pads_index];
+        expected_pads[index + (expected_pads.size() / 2)] = pads_values[pads_index + (pads_values.size() / 2)];
+      }
+    } else if (node.OpType() == "MaxPool") {
+      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
+      for (uint32_t index = 0; index < expected_pads.size(); index++) {
+        expected_pads[index] += child_pads->Get(index);
+      }
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Pad"], 0);
+  ASSERT_EQ(op_to_count["MaxPool"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "MaxPool") {
+      auto child_pads = node.GetMutableAttributes()["pads"].mutable_ints();
+      ASSERT_EQ(child_pads->size(), static_cast<int32_t>(expected_pads.size()))
+          << "fusion should produce the same size of pads integer as the MaxPool node";
+      for (uint32_t index = 0; index < expected_pads.size(); index++) {
+        ASSERT_EQ(expected_pads[index], child_pads->Get(index))
+            << "fusion does not produce correct padding value";
+      }
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, FuseMatmulBNWithInBetweenNodes) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-with-reshape.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::string expected_output_name;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "MatMul") {
+      expected_output_name = node.OutputDefs()[0]->Name();
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["BatchNormalization"], 0);
+  ASSERT_EQ(op_to_count["MatMul"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
+      ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
+          << "fusion should produce the same output name as the MatMul node";
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, FuseMatmulBNWithEmptyOptionalOutputWithInBetweenNodes) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-with-reshape.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::string expected_output_name;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "MatMul") {
+      expected_output_name = node.OutputDefs()[0]->Name();
+    } else if (node.OpType() == "BatchNormalization") {
+      node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg("", nullptr));
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["BatchNormalization"], 0);
+  ASSERT_EQ(op_to_count["MatMul"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
+      ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
+          << "fusion should produce the same output name as the MatMul node";
+    }
+  }
+}
+
+// should not fuse
+TEST_F(GraphTransformationTests, FuseMatmulBNWithOptionalOutputWithInBetweenNodes) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-with-reshape.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "BatchNormalization") {
+      // additional non-empty output to batchNormalization
+      ONNX_NAMESPACE::TypeProto optional_output_tensor_type;
+      optional_output_tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TypeProto::kTensorType);
+      auto& arg = graph.GetOrCreateNodeArg("bn_optional_output", &optional_output_tensor_type);
+      node.MutableOutputDefs().push_back(&arg);
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["BatchNormalization"], 1);
+  ASSERT_EQ(op_to_count["MatMul"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 0);
+}
+
+TEST_F(GraphTransformationTests, FuseMatmulBNDirectly) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-directly.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::string expected_output_name;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "BatchNormalization") {
+      expected_output_name = node.OutputDefs()[0]->Name();
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["BatchNormalization"], 0);
+  ASSERT_EQ(op_to_count["MatMul"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
+      ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
+          << "fusion should produce the same output name as the last node";
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyReshape) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-only-reshape.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::string expected_output_name;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "MatMul") {
+      expected_output_name = node.OutputDefs()[0]->Name();
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["BatchNormalization"], 0);
+  ASSERT_EQ(op_to_count["MatMul"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
+      ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
+          << "fusion should produce the same output name as the MatMul node";
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyTranspose) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-only-transpose.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::string expected_output_name;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "MatMul") {
+      expected_output_name = node.OutputDefs()[0]->Name();
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["BatchNormalization"], 0);
+  ASSERT_EQ(op_to_count["MatMul"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
+      ASSERT_EQ(node.OutputDefs()[0]->Name(), expected_output_name)
+          << "fusion should produce the same output name as the MatMul node";
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, FuseMatmulBNWithoutBatchNormalization) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-only-transpose.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "BatchNormalization") {
+      graph_utils::RemoveNode(graph, node);
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["MatMul"], 1);
+}
+
+// should not fuse
+TEST_F(GraphTransformationTests, FuseMatmulBNWithNonIgnorableNode) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-non-ignorable-node.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["BatchNormalization"], 1);
+  ASSERT_EQ(op_to_count["MatMul"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 0);
 }
 
 TEST_F(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
@@ -1155,7 +1596,7 @@ TEST_F(GraphTransformationTests, NotWhereFusion) {
   ASSERT_TRUE(op_to_count["Not"] == 1);  // can't remove Not if it is graph output/ has consumer that's not where
 }
 
-#if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
+#if (defined(USE_CUDA) || defined(USE_JSEP)) && !defined(DISABLE_CONTRIB_OPS)
 // Conv->Add->Relu will be transformed to FusedConv
 TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_add_relu.onnx";
@@ -1335,6 +1776,10 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
     for (auto& node : p_model->MainGraph().Nodes()) {
       node.SetExecutionProviderType(kCudaExecutionProvider);
     }
+#elif defined(USE_JSEP)
+    for (auto& node : p_model->MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kJsExecutionProvider);
+    }
 #endif
     std::map<std::string, int> op_to_count_before_fusion = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count_before_fusion[model.second] >= 1);
@@ -1348,6 +1793,13 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
     std::set<std::string> cuda_rocm_supported = {"Relu"};
     if (cuda_rocm_supported.find(model.second) == cuda_rocm_supported.end()) {
+      ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
+    } else {
+      ASSERT_EQ(op_to_count_after_fusion[model.second], 0);
+    }
+#elif defined(USE_JSEP)
+    std::set<std::string> js_supported = {"Relu", "Clip", "Sigmoid", "Tanh", "LeakyRelu"};
+    if (js_supported.find(model.second) == js_supported.end()) {
       ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
     } else {
       ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
@@ -6280,7 +6732,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
 TEST_F(GraphTransformationTests, GatherToSplitFusion) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* data_arg = builder.MakeInput<float>({{54}});
-    auto* shape_arg = builder.MakeInput<int64_t>({{1}});
+    auto* shape_arg = builder.MakeInput<int64_t>({{4}});
     auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 3, 3}});
     auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
     auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
@@ -6393,7 +6845,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
 TEST_F(GraphTransformationTests, GatherToSplitFusion_NoSqueeze) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* data_arg = builder.MakeInput<float>({{54}});
-    auto* shape_arg = builder.MakeInput<int64_t>({{1}});
+    auto* shape_arg = builder.MakeInput<int64_t>({{4}});
     auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 3, 3}});
     auto* gather_index_1 = builder.MakeInitializer<int64_t>({1}, {static_cast<int64_t>(0)});
     auto* gather_index_2 = builder.MakeInitializer<int64_t>({1}, {static_cast<int64_t>(1)});

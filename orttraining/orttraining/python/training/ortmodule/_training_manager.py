@@ -21,7 +21,7 @@ from ._io import _FlattenedModule, _InputInfo, unflatten_user_output
 from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
-from .graph_transformer_registry import GraphTransformerRegistry
+from .graph_optimizer_registry import GraphOptimizerRegistry
 from .options import DebugOptions, _SkipCheck
 
 
@@ -369,7 +369,7 @@ class TrainingManager(GraphExecutionManager):
         device_type = self._device.type
         if device_type == "cuda" and self.is_rocm_pytorch:
             device_type = "rocm"
-        GraphTransformerRegistry.transform_all(
+        GraphOptimizerRegistry.optimize_all(
             type(self._flattened_module._original_module).__name__, device_type, self._onnx_models.optimized_model.graph
         )
 
@@ -407,7 +407,7 @@ class TrainingManager(GraphExecutionManager):
 
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
-        device_type = self._device if type(self._device) is str else self._device.type.lower()
+        device_type = self._device if type(self._device) is str else self._device.type.lower()  # noqa: E721
         if device_type == "ort":
             fw_outputs_device_info = [C.get_ort_device(self._device.index)] * (
                 len(self._graph_info.user_output_names) + len(self._graph_info.frontier_node_arg_map)

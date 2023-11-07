@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
@@ -29,12 +29,12 @@ const createElementwiseProgramShader =
       const output = outputVariable('outputData', outputDataType, [vecSize], 4);
 
       return `
-  ${shaderHelper.declareVariables(input, output)}
+      ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(input, output)}
 
   ${additionalImplementation ?? ''}
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
 
     let a = ${input.getByOffset('global_idx')};
     ${output.setByOffset('global_idx', expression)}
@@ -42,51 +42,47 @@ const createElementwiseProgramShader =
     };
 
 const createElementwiseProgramInfo =
-    (metadata: ProgramMetadata, input: TensorView, outputDataType: number, funcCall: ElementwiseFunctionCall,
-     additionalImplementation?: string): ProgramInfo => ({
-      ...metadata,
+    (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
+     cacheKey?: string, outputDataType: number = input.dataType): ProgramInfo => ({
+      name,
+      shaderCache: {hint: cacheKey, inputDependencies: ['type']},
       getShaderSource: shaderHelper => createElementwiseProgramShader(
           shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall, additionalImplementation),
-      outputs: [{dims: input.dims, dataType: outputDataType, gpuDataType: GpuDataType.default}],
-      dispatchGroup: (inputTensors) =>
-          ({x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)})
+      getRunData: (inputTensors) => ({
+        outputs: [{dims: input.dims, dataType: outputDataType}],
+        dispatchGroup:
+            {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
+        programUniforms: [
+          {type: 'uint32', data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
+        ],
+      })
     });
 
-const createElementwiseProgramInfoLoader =
-    (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
-     cacheKey?: string, outputDataType: number = input.dataType): ProgramInfoLoader => {
-      const metadata: ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint: cacheKey};
-      return {
-        ...metadata,
-        get: () => createElementwiseProgramInfo(metadata, input, outputDataType, funcCall, additionalImplementation)
-      };
-    };
-
 export const abs = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Abs', 'abs'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Abs', 'abs'));
 };
 
 export const acos = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Acos', 'acos'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Acos', 'acos'));
 };
 
 export const acosh = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Acosh', 'acosh'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Acosh', 'acosh'));
 };
 
 export const asin = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Asin', 'asin'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Asin', 'asin'));
 };
 
 export const asinh = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Asinh', 'asinh'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Asinh', 'asinh'));
 };
 
 export const atan = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Atan', 'atan'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Atan', 'atan'));
 };
 export const atanh = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Atanh', 'atanh'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Atanh', 'atanh'));
 };
 
 export interface CastAttributes extends AttributeWithCacheKey {
@@ -119,8 +115,8 @@ export const cast = (context: ComputeContext, attributes: CastAttributes): void 
     default:
       throw new RangeError(`not supported type (specified in attribute 'to' from 'Cast' operator): ${attributes.to}`);
   }
-  context.compute(createElementwiseProgramInfoLoader(
-      context.inputs[0], 'Cast', func, undefined, attributes.cacheKey, attributes.to));
+  context.compute(
+      createElementwiseProgramInfo(context.inputs[0], 'Cast', func, undefined, attributes.cacheKey, attributes.to));
 };
 
 export interface ClipAttributes extends AttributeWithCacheKey {
@@ -131,7 +127,7 @@ export interface ClipAttributes extends AttributeWithCacheKey {
 export const clipV10 = (context: ComputeContext, attributes: ClipAttributes): void => {
   const dataType = tensorTypeToWsglStorageType(context.inputs[0].dataType);
   context.compute(
-      createElementwiseProgramInfoLoader(
+      createElementwiseProgramInfo(
           context.inputs[0], 'Clip', a => `clamp(${a}, clip_min_, clip_max_)`, `
     const clip_min_: vec4<${dataType}> = vec4(${dataType}(${attributes.min}));
     const clip_max_: vec4<${dataType}> = vec4(${dataType}(${attributes.max}));
@@ -151,15 +147,15 @@ export const clip = (context: ComputeContext): void => {
 };
 
 export const ceil = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Ceil', 'ceil'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Ceil', 'ceil'));
 };
 
 export const cos = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Cos', 'cos'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Cos', 'cos'));
 };
 
 export const cosh = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Cosh', 'cosh'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Cosh', 'cosh'));
 };
 
 export interface AlphaAttributes extends AttributeWithCacheKey {
@@ -170,7 +166,7 @@ export const parseAlphaAttributes = (attributes: Record<string, unknown>): Alpha
     createAttributeWithCacheKey(attributes as {alpha: number});
 
 export const elu = (context: ComputeContext, attributes: AlphaAttributes): void => {
-  context.compute(createElementwiseProgramInfoLoader(
+  context.compute(createElementwiseProgramInfo(
       context.inputs[0], 'Elu', a => `elu_vf32(${a})`, `
   const elu_alpha_: f32 = f32(${attributes.alpha});
 
@@ -200,79 +196,79 @@ fn erf_vf32(v: ${dataType}) -> ${dataType} {
 
 export const erf = (context: ComputeContext): void => {
   const dataType = tensorTypeToWsglStorageType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfoLoader(
+  context.compute(createElementwiseProgramInfo(
       context.inputs[0], 'Erf', a => `erf_vf32(${a})`, erfImpl(`vec4<${dataType}>`, dataType)));
 };
 
 export const exp = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Exp', 'exp'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Exp', 'exp'));
 };
 
 export const floor = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Floor', 'floor'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Floor', 'floor'));
 };
 
 export const gelu = (context: ComputeContext): void => {
   const dataType = tensorTypeToWsglStorageType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfoLoader(
+  context.compute(createElementwiseProgramInfo(
       context.inputs[0], 'Gelu', a => `0.5 * ${a} * (1.0 + erf_vf32(${a} * 0.7071067811865475))`,
       erfImpl(`vec4<${dataType}>`, dataType)));
 };
 
 export const leakyRelu = (context: ComputeContext, attributes: AlphaAttributes): void => {
-  context.compute(createElementwiseProgramInfoLoader(
+  context.compute(createElementwiseProgramInfo(
       context.inputs[0], 'LeakyRelu', a => `select(leaky_relu_alpha_ * ${a}, ${a}, ${a} >= vec4<f32>(0.0))`,
       `const leaky_relu_alpha_: f32 = f32(${attributes.alpha});`, attributes.cacheKey));
 };
 
 export const not = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Not', a => `!${a}`));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Not', a => `!${a}`));
 };
 
 export const neg = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Neg', a => `-${a}`));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Neg', a => `-${a}`));
 };
 
 export const reciprocal = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Reciprocal', a => `1.0/${a}`));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Reciprocal', a => `1.0/${a}`));
 };
 
 export const relu = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(
+  context.compute(createElementwiseProgramInfo(
       context.inputs[0], 'Relu', a => `select(vec4<f32>(0.0), ${a}, ${a} > vec4<f32>(0.0))`));
 };
 
 export const sigmoid = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sigmoid', a => `(1.0 / (1.0 + exp(-${a})))`));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Sigmoid', a => `(1.0 / (1.0 + exp(-${a})))`));
 };
 
 export const sin = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sin', 'sin'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Sin', 'sin'));
 };
 
 export const sinh = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sinh', 'sinh'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Sinh', 'sinh'));
 };
 
 export const sqrt = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sqrt', 'sqrt'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Sqrt', 'sqrt'));
 };
 
 export const tan = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Tan', 'tan'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Tan', 'tan'));
 };
 
 export const tanh = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Tanh', 'tanh'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Tanh', 'tanh'));
 };
 
 export const thresholdedRelu = (context: ComputeContext, attributes: AlphaAttributes): number => {
-  context.compute(createElementwiseProgramInfoLoader(
+  context.compute(createElementwiseProgramInfo(
       context.inputs[0], 'ThresholdedRelu', a => `select(vec4<f32>(0.0), ${a}, ${a} > thresholded_relu_alpha_)`,
       `const thresholded_relu_alpha_: vec4<f32> = vec4<f32>(${attributes.alpha});`, attributes.cacheKey));
   return 0;
 };
 
 export const log = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Log', 'log'));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Log', 'log'));
 };
