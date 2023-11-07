@@ -52,11 +52,10 @@ def main():
     ctx_embed_mode = args.embed_mode
     engine_cache_path = args.trt_engine_cache_path
 
-    # Get engine buffer from engine cache
-    with open(engine_cache_path, "rb") as file:
-        engine_buffer = file.read()
-
     if ctx_embed_mode:
+        # Get engine buffer from engine cache
+        with open(engine_cache_path, "rb") as file:
+            engine_buffer = file.read()
         ep_cache_context_content = engine_buffer
     else:
         ep_cache_context_content = engine_cache_path
@@ -77,7 +76,7 @@ def main():
     # Get type and shape of each input/output
     for b_index in range(num_bindings):
         tensor_name = engine.get_tensor_name(b_index)
-        tensor_shape = engine.get_binding_shape(tensor_name)
+        tensor_shape = engine.get_tensor_shape(tensor_name)
         tensor_type = engine.get_tensor_dtype(tensor_name)
         if engine.get_tensor_mode(tensor_name) == trt.TensorIOMode.INPUT:
             input_tensors.append(tensor_name)
