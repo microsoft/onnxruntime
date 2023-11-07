@@ -22,16 +22,16 @@ from ._utils import get_rank, get_world_size
 class LogLevel(IntEnum):
     VERBOSE = 0
     DEVINFO = 1  # For ORT developers.
-    INFO = 1  # For ORT users.
-    WARNING = 2
-    ERROR = 3
-    FATAL = 4
+    INFO = 2  # For ORT users.
+    WARNING = 3
+    ERROR = 4
+    FATAL = 5
 
 
 ORTMODULE_LOG_LEVEL_MAP: Dict[LogLevel, List[int]] = {
     LogLevel.VERBOSE: [Severity.VERBOSE, logging.DEBUG],
     LogLevel.DEVINFO: [Severity.INFO, logging.INFO],
-    # ONNX Runtime has too many INFO logs, so we map it to WARNING for better user experience.
+    # ONNX Runtime has too many INFO logs, so we map it to WARNING for a better user experience.
     LogLevel.INFO: [Severity.WARNING, logging.INFO],
     LogLevel.WARNING: [Severity.WARNING, logging.WARNING],
     LogLevel.ERROR: [Severity.ERROR, logging.ERROR],
