@@ -6,7 +6,6 @@
 #include <filesystem>
 
 #include "onnx_ctx_model_helper.h"
-#include "tensorrt_execution_provider_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {

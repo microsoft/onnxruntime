@@ -23,6 +23,7 @@ static const std::string SOURCE = "source";
 bool GraphHasCtxNode(const GraphViewer& graph_viewer);
 const onnxruntime::Path& GetModelPath(const GraphViewer& graph_viewer);
 std::filesystem::path LocateEngineRelativeToPath(std::string engine_cache_path, const onnxruntime::Path& path);
+std::string GetComputeCapacity(const cudaDeviceProp& prop); 
 
 class TensorRTCacheModelHandler {
 public:
