@@ -44,13 +44,6 @@ MlasQ4BlkScale(const uint8_t* BlkPtr)
 }
 
 template <typename T>
-constexpr bool
-MlasQ4BlkHasZeroPoint()
-{
-    return false;
-}
-
-template <typename T>
 uint8_t&
 MlasQ4BlkZeroPoint(uint8_t* BlkPtr);
 
@@ -106,13 +99,6 @@ struct MLAS_Q4TYPE_BLK1 {
     static constexpr size_t BlkLen = MLAS_QUANT4_BLK_UNIT;
     static constexpr size_t BlobSize = BlkLen / 2 + sizeof(float) + sizeof(uint8_t);
 };
-
-template <>
-constexpr bool
-MlasQ4BlkHasZeroPoint<MLAS_Q4TYPE_BLK1>()
-{
-    return true;
-}
 
 template<>
 inline uint8_t&
