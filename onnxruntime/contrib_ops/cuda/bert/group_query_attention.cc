@@ -26,9 +26,10 @@ namespace cuda {
       kCudaExecutionProvider,                                            \
       (*KernelDefBuilder::Create())                                      \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
-          .TypeConstraint("M", {DataTypeImpl::GetTensorType<int64_t>()}) \
+          .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>()}) \
           .MayInplace(3, 1)                                              \
-          .MayInplace(4, 2),                                             \
+          .MayInplace(4, 2)                                             \
+          .InputMemoryType(OrtMemTypeCPUInput, 6),                       \
       GroupQueryAttention<T>);
 
 // REGISTER_KERNEL_TYPED(float)
@@ -44,6 +45,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_unidirectional_ = true;
+  left_padding_ = info.GetAttrOrDefault<int64_t>("left_padding_last_token", 0) == 1;
   is_past_bsnh_ = false;  // info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -69,7 +71,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* past_key = context->Input<Tensor>(3);
   const Tensor* past_value = context->Input<Tensor>(4);
-  const Tensor* attention_mask = context->Input<Tensor>(5);
+  const Tensor* seqlens_k = context->Input<Tensor>(5);
+  const Tensor* total_seqlen = context->Input<Tensor>(6);
 
   auto& device_prop = GetDeviceProp();
   GroupQueryAttentionParameters parameters;
@@ -84,11 +87,13 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 &parameters,
                                                                 num_heads_,
                                                                 kv_num_heads_,
-                                                                attention_mask,
+                                                                seqlens_k,
+                                                                total_seqlen,
                                                                 is_past_bsnh_,
                                                                 scale_,
                                                                 device_prop.maxThreadsPerBlock));
   parameters.is_unidirectional = is_unidirectional_;
+  parameters.left_padding = left_padding_;
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);
@@ -184,8 +189,15 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
+  data.seqlens_k = const_cast<int*>(seqlens_k->Data<int>());
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  if (data.past_key == data.present_key) {
+    parameters.kv_share_buffer = true;
+  } else {
+    parameters.kv_share_buffer = false;
+  }
+  // Flash Buffers
   if (softmax_lse_buffer != nullptr) {
     data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
   }
@@ -195,9 +207,15 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (out_accum_buffer != nullptr) {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
-  data.attention_mask = const_cast<int64_t*>(attention_mask->Data<int64_t>());
   if (seqlens_k_buffer != nullptr) {
-    data.seqlens_k = reinterpret_cast<int*>(seqlens_k_buffer.get());
+    data.seqlens_k_buff = reinterpret_cast<int*>(seqlens_k_buffer.get());
+  }
+  // Memory Efficient Buffers
+  if (seqstart_k_buffer != nullptr) {
+    data.seqstart_k = reinterpret_cast<int32_t*>(seqstart_k_buffer.get());
+  }
+  if (seqstart_q_buffer != nullptr) {
+    data.seqstart_q = reinterpret_cast<int32_t*>(seqstart_q_buffer.get());
   }
   if (k_buffer != nullptr) {
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
@@ -209,12 +227,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (k_buffer != nullptr) {
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
     data.v = reinterpret_cast<CudaT*>(v_buffer.get());
-  }
-
-  if (data.past_key == data.present_key) {
-    parameters.kv_share_buffer = true;
-  } else {
-    parameters.kv_share_buffer = false;
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);

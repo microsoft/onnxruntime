@@ -89,7 +89,6 @@ struct GroupQueryAttentionParameters {
   int sequence_length;          // sequence length of input query, key, value
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
-  int mask_sequence_length;     // max sequence length of mask (should be max past + max new sequence lengths)
   int hidden_size;
   int num_heads;
   int head_size;
@@ -99,6 +98,7 @@ struct GroupQueryAttentionParameters {
   bool is_unidirectional;  // causal
   bool kv_share_buffer;
   bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
+  bool left_padding; // copies last token to last index if true
   float scale;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;

@@ -19,7 +19,8 @@ Status CheckInputs(const Tensor* query,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   const Tensor* attention_mask,
+                   const Tensor* seqlens_k,
+                   const Tensor* total_seqlen,
                    bool is_past_bsnh,
                    float scale) {
   // Note: Here S* is past_cache_sequence_length, S- is past_sequence_length, S+ is sequence_length
@@ -164,18 +165,22 @@ Status CheckInputs(const Tensor* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
   }
 
-  // Surmise total sequence lengths and is_prompt from the attention_mask.
-  bool is_prompt = false;
-  const auto& attention_mask_shape = attention_mask->Shape().GetDims();
-  if (attention_mask_shape[0] != batch_size) {
+  // Check seqlens_k tensor (holding past seqlen for token gen)
+  const auto& seqlens_dim = seqlens_k->Shape().GetDims();
+  if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "attention_mask dim 0 must be batch_size.");
+                          "seqlens_k must be shape (batch_size).");
   }
-  if (attention_mask_shape[1] == sequence_length) {
-    is_prompt = true;
+
+  // Set present sequence length and kv_share_buffer from input total_seqlen tensor
+  if (!onnxruntime::IsScalarOr1ElementVector(total_seqlen)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                          "total_sequence_length tensor must be of one element.");
   }
-  int mask_sequence_length = int(attention_mask_shape[1]);
-  int present_sequence_length = std::max(mask_sequence_length, past_sequence_length);
+  int total_sequence_length = *((*total_seqlen).template Data<int32_t>());
+  int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
+
+  bool is_prompt = sequence_length != 1;
 
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
@@ -183,7 +188,6 @@ Status CheckInputs(const Tensor* query,
     output_parameters->sequence_length = sequence_length;                  // sequence length of Q
     output_parameters->seqlen_past_kv_cache = past_sequence_length;        // max sequence length of past kv tensors
     output_parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
-    output_parameters->mask_sequence_length = mask_sequence_length;
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->num_heads = num_heads;
     output_parameters->head_size = q_hidden_size / num_heads;
@@ -199,16 +203,16 @@ Status CheckInputs(const Tensor* query,
   return Status::OK();
 }
 
-template <typename T>
-Status CheckInputs(const T* query,
-                   const T* key,
-                   const T* value,
-                   const T* past_key,
-                   const T* past_value,
+Status CheckInputs(const Tensor* query,
+                   const Tensor* key,
+                   const Tensor* value,
+                   const Tensor* past_key,
+                   const Tensor* past_value,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   const T* attention_mask,
+                   const Tensor* seqlens_k,
+                   const Tensor* total_seqlen,
                    bool is_past_bsnh,
                    float scale,
                    int max_threads_per_block) {
@@ -216,7 +220,7 @@ Status CheckInputs(const T* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, attention_mask, is_past_bsnh, scale);
+  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, is_past_bsnh, scale);
 }
 
 }  // namespace group_query_attention_helper
