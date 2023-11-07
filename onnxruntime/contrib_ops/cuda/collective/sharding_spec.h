@@ -257,15 +257,25 @@ class TensorPartitionSpec {
     return TensorPartitionSpec::Create(axis_specs, device_mesh);
   }
 
-  static TensorPartitionSpec CreateByDropOneAxis(
-      const TensorPartitionSpec& TensorPartitionSpec, const size_t axis_to_drop) {
+  static TensorPartitionSpec CreateByDropAxes(
+      const TensorPartitionSpec& spec, const std::vector<int64_t>& axes_to_drop) {
     std::vector<AxisPartitionSpec> axis_specs;
-    for (size_t i = 0; i < TensorPartitionSpec.axis_specs.size(); ++i) {
-      if (i != axis_to_drop) {
-        axis_specs.push_back(TensorPartitionSpec.axis_specs[i]);
+    for (size_t i = 0; i < spec.axis_specs.size(); ++i) {
+      if (std::find(axes_to_drop.begin(), axes_to_drop.end(), i) != axes_to_drop.end()) {
+        // This axis, i, is in axes_to_drop. Let's not copy its spec.
+        continue;
       }
+      axis_specs.push_back(spec.axis_specs[i]);
     }
-    return TensorPartitionSpec::Create(axis_specs, TensorPartitionSpec.device_mesh);
+    return TensorPartitionSpec::Create(axis_specs, spec.device_mesh);
+  }
+
+  static TensorPartitionSpec CreateByInsertOneAxis(
+      const TensorPartitionSpec& spec,
+      const size_t axis_to_insert) {
+    std::vector<AxisPartitionSpec> axis_specs(spec.axis_specs);
+    axis_specs.insert(axis_specs.begin() + axis_to_insert, AxisPartitionSpec::CreateReplica());
+    return TensorPartitionSpec::Create(axis_specs, spec.device_mesh);
   }
 
   // Helper to debug and generate error message; e.g.,
