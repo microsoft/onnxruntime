@@ -58,6 +58,22 @@ class BaseOpBuilder : public IOpBuilder {
                                 bool do_op_validation,
                                 const std::string& qnn_op_type) const ORT_MUST_USE_RESULT;
 
+  /**
+   * Returns the data type, shape, and quantization parameters for a specific node output.
+   * Called by BaseOpBuilder::ProcessOutputs().
+   *
+   * Can be overridden by derived OpBuilder classes that need to enforce specific values for quantization
+   * parameters, data type, etc. Example: 16-bit QDQ Sigmoid must have specific output scale/zero-point
+   * values on QNN.
+   *
+   * \param qnn_model_wrapper The QNN model that is being built.
+   * \param node_unit The node unit for which to return output information.
+   * \param logger The logger.
+   * \param input_names Names of all inputs consumed by this QNN node.
+   * \param output_index The index in node_unit.Outputs() of the output for which to return information.
+   * \param output_info The object into which to write the desired output information.
+   * \return An onnxruntime::Status object indicating failure or success.
+   */
   virtual Status GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      const logging::Logger& logger,
