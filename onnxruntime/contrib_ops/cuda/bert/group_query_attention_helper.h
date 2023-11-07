@@ -169,13 +169,13 @@ Status CheckInputs(const Tensor* query,
   const auto& seqlens_dim = seqlens_k->Shape().GetDims();
   if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                          "seqlens_k must be shape (batch_size).");
+                           "seqlens_k must be shape (batch_size).");
   }
 
   // Set present sequence length and kv_share_buffer from input total_seqlen tensor
   if (!onnxruntime::IsScalarOr1ElementVector(total_seqlen)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                          "total_sequence_length tensor must be of one element.");
+                           "total_sequence_length tensor must be of one element.");
   }
   int total_sequence_length = *((*total_seqlen).template Data<int32_t>());
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);

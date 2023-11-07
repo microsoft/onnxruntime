@@ -28,7 +28,7 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
           .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>()}) \
           .MayInplace(3, 1)                                              \
-          .MayInplace(4, 2)                                             \
+          .MayInplace(4, 2)                                              \
           .InputMemoryType(OrtMemTypeCPUInput, 6),                       \
       GroupQueryAttention<T>);
 

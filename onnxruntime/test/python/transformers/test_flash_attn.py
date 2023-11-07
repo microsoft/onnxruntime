@@ -1022,7 +1022,7 @@ def parity_check_gqa_prompt(
     #     device="cuda",
     # )
     # cache_seqlens[random.randint(0, cache_seqlens.size(dim=0) - 1)] = config.kv_sequence_length
-    brange = rearrange(torch.arange(config.kv_sequence_length, device="cuda"), "s -> 1 s")
+    rearrange(torch.arange(config.kv_sequence_length, device="cuda"), "s -> 1 s")
     arange = rearrange(torch.arange(config.buffer_sequence_length, device="cuda"), "s -> 1 s")
     cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
     kv_seqlens = torch.tensor([config.kv_sequence_length], device="cuda").repeat(config.batch_size)

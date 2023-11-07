@@ -20,9 +20,9 @@ class GroupQueryAttention final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  int num_heads_;     // number of attention heads
-  int kv_num_heads_;  // different for k and v for group query attention
-  bool left_padding_; // shifts last token to end of buffer
+  int num_heads_;           // number of attention heads
+  int kv_num_heads_;        // different for k and v for group query attention
+  bool left_padding_;       // shifts last token to end of buffer
   bool is_unidirectional_;  // causal
   bool is_past_bsnh_;
   float scale_;

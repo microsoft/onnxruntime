@@ -97,8 +97,8 @@ struct GroupQueryAttentionParameters {
   int num_splits;          // number of splits for splitkv
   bool is_unidirectional;  // causal
   bool kv_share_buffer;
-  bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
-  bool left_padding; // copies last token to last index if true
+  bool is_prompt;     // determines if seqlens_k is past or kv sequence length tensor
+  bool left_padding;  // copies last token to last index if true
   float scale;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
