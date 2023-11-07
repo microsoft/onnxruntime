@@ -1,37 +1,38 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/math/matmul_helper.h"
-#include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_qnbit.h"
 #include "core/mlas/inc/mlas_q4.h"
+#include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 class MatMulNBits final : public OpKernel {
  public:
-  MatMulNBits(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("K", &K_));
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
+  MatMulNBits(const OpKernelInfo& info)
+      : OpKernel(info),
+        K_{narrow<size_t>(info.GetAttr<int64_t>("K"))},
+        N_{narrow<size_t>(info.GetAttr<int64_t>("N"))},
+        block_size_{narrow<size_t>(info.GetAttr<int64_t>("block_size"))},
+        nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))} {
     ORT_ENFORCE(nbits_ == 4,
-                "Only 4b quantization is supported for MatMulNBits op,"
-                " additional bits support is planned.");
+                "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  int64_t K_;
-  int64_t N_;
-  int64_t block_size_;
-  int64_t nbits_;
-  bool column_wise_quant_{true};
+  const size_t K_;
+  const size_t N_;
+  const size_t block_size_;
+  const size_t nbits_;
+  const bool column_wise_quant_{true};
 };
 
 Status MatMulNBits::Compute(OpKernelContext* ctx) const {
@@ -47,7 +48,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const auto* scales_data = scales->Data<float>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
 
-  TensorShape b_shape({N_, K_});
+  TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
 
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
