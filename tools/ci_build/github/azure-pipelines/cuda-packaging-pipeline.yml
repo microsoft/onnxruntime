@@ -139,14 +139,14 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build and Test'
 
-    - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          arch: 'linux-x64'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-x64-cuda'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
-          nativeLibraryName: 'libonnxruntime4j_jni.so'
+#    - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
+#      parameters:
+#          arch: 'linux-x64'
+#          buildConfig: 'Release'
+#          artifactName: 'onnxruntime-java-linux-x64-cuda'
+#          version: '$(OnnxRuntimeVersion)'
+#          libraryName: 'libonnxruntime.so'
+#          nativeLibraryName: 'libonnxruntime4j_jni.so'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -164,9 +164,9 @@ stages:
   parameters:
       artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
       artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
-      buildJava: true
+      buildJava: false
       buildJavaOption: '--build_java'
-      buildNodejs: true
+      buildNodejs: false
       buildNodejsOption: '--build_nodejs'
 # Windows CUDA without TensorRT Packaging
 - template: templates/win-ci.yml
@@ -179,9 +179,9 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.CudaVersion }} --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
+    buildparameter: --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.CudaVersion }} --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: true
+    buildJava: false
     java_artifact_id: onnxruntime_gpu
 # Windows CUDA with TensorRT Packaging
 - template: templates/win-ci.yml
@@ -194,9 +194,9 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-${{ parameters.WindowsTensorRT }} --cuda_home=$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-${{ parameters.WindowsTensorRT }} --cuda_home=$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}  --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: true
+    buildJava: false
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
 
