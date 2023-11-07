@@ -119,8 +119,9 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
   UNARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t)   \
   UNARY_OP_VERSIONED_CSILHFD(name, startver, endver)
 
-#define UNARY_OP_HFD(name, ver)        \
+#define UNARY_OP_HFDB(name, ver)        \
   UNARY_OP_TYPED(name, ver, MLFloat16) \
+  UNARY_OP_TYPED(name, ver, BFloat16) \
   UNARY_OP_TYPED(name, ver, float)     \
   UNARY_OP_TYPED(name, ver, double)
 
@@ -129,7 +130,7 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
   UNARY_OP_TYPED(name, ver, int16_t) \
   UNARY_OP_TYPED(name, ver, int32_t) \
   UNARY_OP_TYPED(name, ver, int64_t) \
-  UNARY_OP_HFD(name, ver)
+  UNARY_OP_HFDB(name, ver)
 
 #define UNARY_OP_BWUZCSILHFD(name, ver) \
   UNARY_OP_TYPED(name, ver, uint8_t)    \
