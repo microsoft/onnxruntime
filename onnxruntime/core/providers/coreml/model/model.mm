@@ -336,10 +336,17 @@ NS_ASSUME_NONNULL_BEGIN
                           "Non-contiguous output MLMultiArray is not currently supported");
         __block const void* model_output_buffer = nil;
         __block unsigned long coreml_buffer_size = 0;
-        [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
-          model_output_buffer = bytes;
-          coreml_buffer_size = size;
-        }];
+        bool skip_buffer_size_check = false;
+        if (@available(macOS 12.3, iOS 15.4, *)) {
+          [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
+            model_output_buffer = bytes;
+            coreml_buffer_size = size;
+          }];
+        } else {
+          model_output_buffer = data.dataPointer;
+          // disable size check as old API does not return buffer length
+          skip_buffer_size_check = true;
+        }
 
         if (model_output_buffer == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_buffer has no data for ", output_name);
@@ -349,14 +356,14 @@ NS_ASSUME_NONNULL_BEGIN
         switch (onnx_data_type) {
           case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
             const auto output_data_byte_size = num_elements * sizeof(float);
-            ORT_RETURN_IF_NOT(coreml_buffer_size == output_data_byte_size,
+            ORT_RETURN_IF_NOT(skip_buffer_size_check || coreml_buffer_size == output_data_byte_size,
                               "CoreML output buffer size and expected output size differ");
             memcpy(output_buffer, model_output_buffer, output_data_byte_size);
             break;
           }
           case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
             const auto output_data_byte_size = num_elements * sizeof(int32_t);
-            ORT_RETURN_IF_NOT(coreml_buffer_size == output_data_byte_size,
+            ORT_RETURN_IF_NOT(skip_buffer_size_check || coreml_buffer_size == output_data_byte_size,
                               "CoreML output buffer size and expected output size differ");
             memcpy(output_buffer, model_output_buffer, output_data_byte_size);
             break;
@@ -367,7 +374,7 @@ NS_ASSUME_NONNULL_BEGIN
           case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
             ORT_RETURN_IF_NOT(data.dataType == MLMultiArrayDataTypeInt32,
                               "CoreML output data type is not MLMultiArrayDataTypeInt32");
-            ORT_RETURN_IF_NOT(coreml_buffer_size == num_elements * sizeof(int32_t),
+            ORT_RETURN_IF_NOT(skip_buffer_size_check || coreml_buffer_size == num_elements * sizeof(int32_t),
                               "CoreML output buffer size and expected output size differ");
             const auto model_output_span = gsl::span{static_cast<const int32_t*>(model_output_buffer), num_elements};
             const auto output_span = gsl::span{static_cast<int64_t*>(output_buffer), num_elements};
