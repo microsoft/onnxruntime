@@ -16,6 +16,135 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+template <typename AttentionKernel, int kQueriesPerBlock>
+struct RightPaddingBatchHook {
+  using scalar_t = typename AttentionKernel::scalar_t;
+  using accum_t = typename AttentionKernel::accum_t;
+  using lse_scalar_t = typename AttentionKernel::lse_scalar_t;
+  using output_t = typename AttentionKernel::output_t;
+  using output_accum_t = typename AttentionKernel::output_accum_t;
+
+  static constexpr bool kSupportsDropout = AttentionKernel::kSupportsDropout;
+  static constexpr bool kSupportsBias = AttentionKernel::kSupportsBias;
+  static constexpr int kKeysPerBlock = AttentionKernel::kKeysPerBlock;
+  static constexpr int kMaxK = AttentionKernel::kMaxK;
+  static constexpr bool kIsAligned = AttentionKernel::isAligned;
+  static constexpr bool kSingleValueIteration = AttentionKernel::kSingleValueIteration;
+  static constexpr int32_t kAlignLSE = AttentionKernel::kAlignLSE;  // block size of backward
+  static constexpr bool kIsHalf = AttentionKernel::kIsHalf;
+  static constexpr bool kPreloadV = AttentionKernel::kPreloadV;
+  static constexpr bool kKeepOutputInRF = AttentionKernel::kKeepOutputInRF;
+  static constexpr bool kNeedsOutputAccumulatorBuffer = AttentionKernel::kNeedsOutputAccumulatorBuffer;
+
+  template <typename Params>
+  static CUTLASS_DEVICE bool AdvanceToBlockForGQA(Params& p) {
+    auto batch_id = blockIdx.z;
+    auto head_id = blockIdx.y;
+    auto query_start = blockIdx.x * kQueriesPerBlock;
+
+    auto lse_dim = ceil_div((int32_t)(p.num_queries), kAlignLSE) * kAlignLSE;
+
+    // Advance to current batch - in case of different sequence lengths
+    if (p.seqlen_k_ptr) {
+      p.num_keys = p.seqlen_k_ptr[batch_id];
+    }
+
+    if (query_start >= p.num_queries) {
+      return false;
+    }
+
+    // Advance to the current batch / head / query_start
+    p.query_ptr += batch_id * p.q_strideB + query_start * p.q_strideM + head_id * p.q_strideH;
+    p.key_ptr += batch_id * p.k_strideB + head_id * p.k_strideH;
+    p.value_ptr += batch_id * p.v_strideB + head_id * p.v_strideH;
+    p.output_ptr += int64_t(batch_id * p.num_queries) * p.o_strideM + int64_t(query_start) * p.o_strideM + head_id * p.head_dim_value;
+
+    if (kSupportsBias && p.attn_bias_ptr != nullptr) {
+      p.attn_bias_ptr += (batch_id * p.bias_strideB) + (head_id * p.bias_strideH);
+    }
+    if (p.output_accum_ptr != nullptr) {
+      p.output_accum_ptr += int64_t(batch_id * p.num_queries) * (p.head_dim_value * p.num_heads) +
+                            int64_t(query_start) * (p.head_dim_value * p.num_heads) +
+                            head_id * p.head_dim_value;
+    } else {
+      // Accumulate directly in the destination buffer (eg for f32)
+      p.output_accum_ptr = (accum_t*)(p.output_ptr);
+    }
+
+    if (p.logsumexp_ptr != nullptr) {
+      // lse[batch_id, head_id, query_start]
+      p.logsumexp_ptr +=
+          batch_id * lse_dim * p.num_heads + head_id * lse_dim + query_start;
+    }
+
+    // Custom masking
+    if (p.causal_diagonal_ptr) {
+      p.causal_diagonal_offset = p.causal_diagonal_ptr[batch_id];
+    }
+    if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
+      p.causal_diagonal_offset += p.num_keys - p.num_queries;
+    }
+    if (p.custom_mask_type == AttentionKernel::CausalFromTopLeft ||
+        p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
+      // the bottom row of the current block is query_start + kQueriesPerBlock
+      // the last active key is then query_start + causal_diagonal_offset +
+      // kQueriesPerBlock so num_keys is the min between actual num_keys and
+      // this to avoid extra computations
+      p.num_keys = cutlass::fast_min(
+          int32_t(query_start + p.causal_diagonal_offset + kQueriesPerBlock),
+          p.num_keys);
+    }
+
+    p.num_queries -= query_start;
+    p.num_batches = 0;  // no longer used after
+
+    // If num_queries == 1, and there is only one key head we're wasting
+    // 15/16th of tensor core compute In that case :
+    //  - we only launch kernels for head_id % kQueriesPerBlock == 0
+    //  - we iterate over heads instead of queries (strideM = strideH)
+    if (p.num_queries == 1 && p.k_strideH == 0 && p.v_strideH == 0) {
+      if (head_id % kQueriesPerBlock != 0)
+        return false;
+      p.q_strideM = p.q_strideH;
+      p.num_queries = p.num_heads;
+      p.num_heads = 1;  // unused but here for intent
+      // remove causal since n_query = 1
+      // otherwise, offset would change with head !
+      p.custom_mask_type = AttentionKernel::NoCustomMask;
+      p.o_strideM = p.head_dim_value;
+    }
+
+    // Make sure the compiler knows these variables are the same on all
+    // the threads of the warp.
+    p.query_ptr = warp_uniform(p.query_ptr);
+    p.key_ptr = warp_uniform(p.key_ptr);
+    p.value_ptr = warp_uniform(p.value_ptr);
+    if (kSupportsBias) {
+      p.attn_bias_ptr = warp_uniform(p.attn_bias_ptr);
+    }
+    p.output_ptr = warp_uniform(p.output_ptr);
+    p.output_accum_ptr = warp_uniform(p.output_accum_ptr);
+    p.logsumexp_ptr = warp_uniform(p.logsumexp_ptr);
+    p.num_queries = warp_uniform(p.num_queries);
+    p.num_keys = warp_uniform(p.num_keys);
+    p.num_heads = warp_uniform(p.num_heads);
+    p.head_dim = warp_uniform(p.head_dim);
+    p.head_dim_value = warp_uniform(p.head_dim_value);
+    p.o_strideM = warp_uniform(p.o_strideM);
+    p.custom_mask_type = warp_uniform(p.custom_mask_type);
+    return true;
+  }
+};
+
+template <typename AK, int kQueriesPerBlock>
+__global__ void __launch_bounds__(AK::kNumThreads, AK::kMinBlocksPerSm)
+    attention_kernel_batched_impl_right_padding(typename AK::Params p) {
+  if (!RightPaddingBatchHook<AK, kQueriesPerBlock>::AdvanceToBlockForGQA(p)) {
+    return;
+  }
+  AK::attention_kernel(p);
+}
+
 template <typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block, bool single_value_iteration>
 void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, single_value_iteration>;
@@ -92,7 +221,11 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     }
   }
 
-  constexpr auto kernel_fn = attention_kernel_batched_impl<Attention>;
+  auto kernel_fn = attention_kernel_batched_impl<Attention>;
+  if (params.has_custom_right_padding) {
+    kernel_fn = attention_kernel_batched_impl_right_padding<Attention, queries_per_block>;
+  }
+
   int smem_bytes = sizeof(typename Attention::SharedStorage);
   if (smem_bytes > 0xc000) {
     ORT_ENFORCE(params.sm >= 70, "This kernel requires too much shared memory on this machine!");

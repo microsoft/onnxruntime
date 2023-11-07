@@ -675,7 +675,14 @@ Status EfficientAttention(
   const void* key = reinterpret_cast<const void*>(data.key);
   const void* value = reinterpret_cast<const void*>(data.value);
 
-  ORT_RETURN_IF_ERROR(LaunchGetCacheSeqlens(parameters, data.attention_mask, data.seqlens_k, parameters.is_prompt, stream, 256));
+  if (parameters.is_prompt) {
+    // Launch kernel to copy seqlen
+    int thr_per_blk = 256;
+    int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
+    repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k, parameters.mask_sequence_length, batch_size);
+  } else {
+    ORT_RETURN_IF_ERROR(LaunchGetCacheSeqlens(parameters, data.attention_mask, data.seqlens_k, parameters.is_prompt, stream, 256));
+  }
 
   if (parameters.kv_share_buffer) {
     // Share buffer case
@@ -715,14 +722,10 @@ Status EfficientAttention(
 
   int* seqlens_k = nullptr;  // built from past and kv seqlens buffers
   ORT_RETURN_IF_ERROR(LaunchPastToTotalSeqlen(parameters, data.seqlens_k, stream, 256));
-  ORT_RETURN_IF_ERROR(LaunchFillSeqstartQ(parameters, data.seqstart_q, stream, 256));
-  ORT_RETURN_IF_ERROR(LaunchFillSeqstartK(parameters, data.seqstart_k, stream, 256));
   seqlens_k = data.seqlens_k;
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("seqlens_k", data.seqlens_k, batch_size, 1);
-  DUMP_TENSOR("seqstart_k", data.seqstart_k, batch_size + 1, 1);
-  DUMP_TENSOR("seqstart_q", data.seqstart_q, batch_size + 1, 1);
 
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
@@ -737,8 +740,6 @@ Status EfficientAttention(
   p.causal = parameters.is_unidirectional;
   p.scale = scale;
   p.seqlen_k_ptr = seqlens_k;  // Note: seqlens_k is total sequence length for efficient
-  p.seqstart_q_ptr = data.seqstart_q;
-  p.seqstart_k_ptr = data.seqstart_k;  // TODO(aciddelgado): need zero tensor here?
   p.query = query;
   p.key = key;
   p.value = value;
@@ -750,6 +751,7 @@ Status EfficientAttention(
                     ? data.fmha_buffer
                     : nullptr;
   p.stream = stream;
+  p.has_custom_right_padding = true;
   run_memory_efficient_attention(p);
 
   // DUMP_TENSOR_INIT();
