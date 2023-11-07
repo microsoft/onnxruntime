@@ -63,15 +63,15 @@ bool is_valid_split_k_factor(const int64_t m,
       return false;
     }
 
-    const int k_elements_per_split = k / split_k_factor;
+    const int k_elements_per_split = static_cast<int>(k / split_k_factor);
     if ((k_elements_per_split % k_tile) != 0) {
       return false;
     }
   }
 
   // Check that the workspace has sufficient space for this split-k factor
-  const int ctas_in_m_dim = (m + tile_shape.m - 1) / tile_shape.m;
-  const int ctas_in_n_dim = (n + tile_shape.n - 1) / tile_shape.n;
+  const int ctas_in_m_dim = static_cast<int>((m + tile_shape.m - 1) / tile_shape.m);
+  const int ctas_in_n_dim = static_cast<int>((n + tile_shape.n - 1) / tile_shape.n);
   const int required_ws_bytes = split_k_factor == 1 ? 0 : sizeof(int) * ctas_in_m_dim * ctas_in_n_dim;
 
   if (required_ws_bytes > workspace_bytes) {
@@ -151,8 +151,8 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
       continue;
     }
 
-    const int ctas_in_m_dim = (m + tile_shape.m - 1) / tile_shape.m;
-    const int ctas_in_n_dim = (n + tile_shape.n - 1) / tile_shape.n;
+    const int ctas_in_m_dim = static_cast<int>((m + tile_shape.m - 1) / tile_shape.m);
+    const int ctas_in_n_dim = static_cast<int>((n + tile_shape.n - 1) / tile_shape.n);
 
     for (int split_k_factor = 1; split_k_factor <= max_split_k; ++split_k_factor) {
       if (is_valid_split_k_factor(m, n, k, tile_shape, split_k_factor, workspace_bytes, is_weight_only)) {

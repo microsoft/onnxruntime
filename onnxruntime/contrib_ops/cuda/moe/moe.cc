@@ -51,7 +51,11 @@ Status MoEBlock<T>::ComputeInternal(OpKernelContext* context) const {
 
   fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner;
 
-  size_t ws_size = moe_runner.getWorkspaceSize(num_rows, hidden_size, inter_size, num_experts, k_);
+  size_t ws_size = moe_runner.getWorkspaceSize(static_cast<int>(num_rows),
+                                               static_cast<int>(hidden_size),
+                                               static_cast<int>(inter_size),
+                                               static_cast<int>(num_experts),
+                                               static_cast<int>(k_));
   size_t fc2_output_size = k_ * num_rows * hidden_size * sizeof(CudaT);
   size_t expert_scales_size = k_ * num_rows * sizeof(CudaT);
   size_t expanded_source_row_to_expanded_dest_row_size = k_ * num_rows * sizeof(int);
