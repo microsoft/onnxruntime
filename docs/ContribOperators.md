@@ -2395,8 +2395,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
-<dt><tt>left_padding_last_token</tt> : int</dt>
-<dd>Copy last token to last index of buffer. Default is 0; 1 when true.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
 <dt><tt>scale</tt> : float</dt>
