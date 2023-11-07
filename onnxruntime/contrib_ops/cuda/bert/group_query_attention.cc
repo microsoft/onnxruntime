@@ -45,7 +45,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_unidirectional_ = true;
-  left_padding_ = info.GetAttrOrDefault<int64_t>("left_padding_last_token", 0) == 1;
+  // left_padding_ = info.GetAttrOrDefault<int64_t>("left_padding_last_token", 0) == 1;
   is_past_bsnh_ = false;  // info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -93,7 +93,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 scale_,
                                                                 device_prop.maxThreadsPerBlock));
   parameters.is_unidirectional = is_unidirectional_;
-  parameters.left_padding = left_padding_;
+  // parameters.left_padding = left_padding_;
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);

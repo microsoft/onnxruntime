@@ -1004,10 +1004,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
-        .Attr("left_padding_last_token",
-              "Copy last token to last index of buffer. Default is 0; 1 when true.",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
+        // .Attr("left_padding_last_token",
+        //       "Copy last token to last index of buffer. Default is 0; 1 when true.",
+        //       AttributeProto::INT,
+        //       OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size)",
