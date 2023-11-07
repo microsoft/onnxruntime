@@ -13,8 +13,6 @@
 import unittest
 
 import numpy
-import numpy as np
-import onnx
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -213,7 +211,6 @@ class MoERuntimeExperts(nn.Module):
         return x
 
     def bmm(self, x, weight, indices_s):
-        S, _, __ = x.shape
         x = torch.bmm(x, weight[indices_s])  # S x 1 x hidden_features
         return x
 
@@ -262,8 +259,8 @@ class MoEBlock(nn.Module):
     def torch_forward(self):
         x = self.torch_input
 
-        B, T, C = x.shape
-        x = x.reshape(-1, C)
+        b, t, c = x.shape
+        x = x.reshape(-1, c)
         logits = self.gate(x)
         gates = torch.nn.functional.softmax(logits, dim=1)
         ret = torch.max(gates, dim=1)
@@ -272,15 +269,15 @@ class MoEBlock(nn.Module):
         x = self.moe_experts(x, indices_s)
 
         x = x * scores
-        x = x.reshape(B, T, C)
+        x = x.reshape(b, t, c)
         # print(x)
         return x, torch.sum(x)
 
     def onnx_forward(self):
         x = self.torch_input
 
-        _, _, C = x.shape
-        y = x.reshape(-1, C)
+        _, _, c = x.shape
+        y = x.reshape(-1, c)
         logits = self.gate(y)
 
         ort_inputs = {

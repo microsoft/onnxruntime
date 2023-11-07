@@ -567,7 +567,7 @@ size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(
     total_ws_bytes += padded_experts * sizeof(int64_t);        // Hold total_rows_before_expert_
     total_ws_bytes += num_softmax_outs * sizeof(T);
     const int bytes_for_fc1_result = interbuf_size * sizeof(T);
-    const int sorter_ws_size_bytes = static_cast<const int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(num_rows)));
+    const int sorter_ws_size_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(num_rows)));
     sorter_.update_num_experts(num_experts);
 
     int bytes_for_intermediate_and_sorting = bytes_for_fc1_result;
@@ -584,10 +584,10 @@ template<typename T, typename WeightType, typename Enable>
 void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(
     char* ws_ptr, const int num_rows, const int hidden_size, const int inter_size, const int num_experts, const int k)
 {
-    const int buf_size       = static_cast<const int>(pad_to_multiple_of_16(k * num_rows * hidden_size));
-    const int interbuf_size  = static_cast<const int>(pad_to_multiple_of_16(k * num_rows * inter_size));
-    const int padded_experts = static_cast<const int>(pad_to_multiple_of_16(num_experts));
-    const int num_moe_inputs = static_cast<const int>(pad_to_multiple_of_16(k * num_rows));
+    const int buf_size       = static_cast<int>(pad_to_multiple_of_16(k * num_rows * hidden_size));
+    const int interbuf_size  = static_cast<int>(pad_to_multiple_of_16(k * num_rows * inter_size));
+    const int padded_experts = static_cast<int>(pad_to_multiple_of_16(num_experts));
+    const int num_moe_inputs = static_cast<int>(pad_to_multiple_of_16(k * num_rows));
     // const int num_softmax_outs = pad_to_multiple_of_16(num_rows * num_experts);
 
     source_rows_      = (int*)ws_ptr;
@@ -667,7 +667,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(const T*          inp
                                           k,
                                           stream);
 
-    const int sorter_ws_size_bytes = static_cast<const int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(k * num_rows)));
+    const int sorter_ws_size_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(k * num_rows)));
     sorter_.run((void*)fc1_result_,
                 sorter_ws_size_bytes,
                 expert_for_source_row,
@@ -856,7 +856,7 @@ __global__ void finalize_moe_routing_kernel(const T*,
                                             const int,
                                             const int)
 {
-    throw std::runtime_error("This kernel is not supported on pre-Kepler GPUs");
+    ;
 }
 #else
 template<typename T, int RESIDUAL_NUM>
