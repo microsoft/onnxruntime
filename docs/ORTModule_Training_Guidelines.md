@@ -79,7 +79,7 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 
 `INFO` (For Users | ORT Developers)
 
-<sup>`INFO` is the used for collecting experimental
+<sup>`INFO` is used for collecting experimental
 <br>feature stats, or a little bit more error messages.</sup>
 </td>
 <td>
