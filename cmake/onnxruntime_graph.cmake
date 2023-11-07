@@ -20,6 +20,8 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_deprecated_operators.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/shape_inference_functions.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/shape_inference_functions.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/function_template.h"
     "${ONNXRUNTIME_ROOT}/core/graph/function_utils.h"
     "${ONNXRUNTIME_ROOT}/core/graph/function_utils.cc"
