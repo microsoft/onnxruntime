@@ -48,6 +48,14 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpBalanced,
 };
 
+enum class ContextPriority : uint8_t {
+  LOW = 0,
+  NORMAL,
+  NORMAL_HIGH,
+  HIGH,
+  UNDEFINED
+};
+
 enum class QnnBackendType : uint8_t {
   CPU = 0,
   GPU,

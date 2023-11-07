@@ -3604,6 +3604,7 @@ struct OrtApi {
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *   may alter model/EP partitioning. Use only for debugging.
+   *   "qnn_context_priority": QNN context priority, options: "low", "normal", "normal_high", "high".
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",

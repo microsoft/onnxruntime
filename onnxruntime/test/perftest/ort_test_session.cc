@@ -356,9 +356,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Supported htp_performance_mode: " + str);
         }
+      } else if (key == "qnn_context_priority") {
+        std::set<std::string> supported_qnn_context_priority = {"low", "normal", "normal_high", "high"};
+        if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
+          ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
+        }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable',
-'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'htp_performance_mode'])");
+'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'htp_performance_mode', 'qnn_context_priority'])");
       }
 
       qnn_options[key] = value;
