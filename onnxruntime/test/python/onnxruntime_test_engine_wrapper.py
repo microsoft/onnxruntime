@@ -1,17 +1,17 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import os
 import unittest
 from typing import Dict, List
 
-import os
-
 import numpy as np
+import onnx
 from helper import get_name
+from onnx import TensorProto, helper
 
 import onnxruntime as onnxrt
-import onnx
-from onnx import TensorProto, helper
+
 
 class TestInferenceSessionWithCtxNode(unittest.TestCase):
     trt_engine_cache_path_ = "./trt_engine_cache"
@@ -19,7 +19,12 @@ class TestInferenceSessionWithCtxNode(unittest.TestCase):
 
     def test_ctx_node(self):
         if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
-            providers = [("TensorrtExecutionProvider", {"trt_engine_cache_enable": True, "trt_engine_cache_path": self.trt_engine_cache_path_})]
+            providers = [
+                (
+                    "TensorrtExecutionProvider",
+                    {"trt_engine_cache_enable": True, "trt_engine_cache_path": self.trt_engine_cache_path_},
+                )
+            ]
             self.run_model(providers)
 
     def create_ctx_node(self, ctx_embed_mode=0, cache_path=""):
@@ -51,7 +56,7 @@ class TestInferenceSessionWithCtxNode(unittest.TestCase):
             ],
             [  # output
                 helper.make_tensor_value_info("Y", TensorProto.FLOAT, ["N", 1]),
-            ]
+            ],
         )
         model = helper.make_model(graph)
         onnx.save(model, self.ctx_node_model_name_)
@@ -61,8 +66,11 @@ class TestInferenceSessionWithCtxNode(unittest.TestCase):
 
         session = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=providers)
 
-        # One regular run to create engine cache 
-        session.run(["Y"], {"X": x},)
+        # One regular run to create engine cache
+        session.run(
+            ["Y"],
+            {"X": x},
+        )
 
         cache_name = ""
         for f in os.listdir(self.trt_engine_cache_path_):
@@ -70,16 +78,23 @@ class TestInferenceSessionWithCtxNode(unittest.TestCase):
                 cache_name = f
         print(cache_name)
 
-        # Second run to test ctx node with engine cache path 
+        # Second run to test ctx node with engine cache path
         self.create_ctx_node(cache_path=os.path.join(self.trt_engine_cache_path_, cache_name))
         providers = [("TensorrtExecutionProvider", {})]
         session = onnxrt.InferenceSession(get_name(self.ctx_node_model_name_), providers=providers)
-        session.run(["Y"], {"X": x},)
+        session.run(
+            ["Y"],
+            {"X": x},
+        )
 
-        # Third run to test ctx node with engine binary content 
+        # Third run to test ctx node with engine binary content
         self.create_ctx_node(ctx_embed_mode=1, cache_path=os.path.join(self.trt_engine_cache_path_, cache_name))
         session = onnxrt.InferenceSession(get_name(self.ctx_node_model_name_), providers=providers)
-        session.run(["Y"], {"X": x},)
+        session.run(
+            ["Y"],
+            {"X": x},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
