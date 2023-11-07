@@ -800,7 +800,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                             const ExecutionProviders& execution_providers,
                                             const KernelRegistryManager& kernel_registry_manager,
                                             const logging::Logger& logger) const {
-  // To enhance compatibility with some EPs we choose not to inline anything
+  // To enhance compatibility with models exported via torchscript we choose to not inline model local functions. Schema based functions get inlined as before during partitioning.
   // including schema based functions when the model does not have any local functions defined.
   const bool is_there_local_functions = !model.GetModelLocalFunctionTemplates().empty();
 
