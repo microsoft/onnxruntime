@@ -437,6 +437,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_BiasAdd = 1;
         static const int sc_sinceVer_QuickGelu = 1;
         static const int sc_sinceVer_GroupNorm = 1;
+        static const int sc_sinceVer_RotaryEmbedding = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper
