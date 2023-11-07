@@ -208,7 +208,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
   if (seqlens_k_buffer != nullptr) {
-    data.seqlens_k_buff = reinterpret_cast<int*>(seqlens_k_buffer.get());
+    data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
   }
   // Memory Efficient Buffers
   if (k_buffer != nullptr) {
