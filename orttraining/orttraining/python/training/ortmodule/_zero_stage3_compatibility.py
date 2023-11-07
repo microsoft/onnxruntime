@@ -364,7 +364,13 @@ def _update_python_op_input_related_attributes(
 
 @contextmanager
 def stage3_export_context(enable: bool, graph_execution_manager):
-    if enable is False:
+    """Context manager for stage3 specific model export.
+    Some export functions are overridden when entering the context; the original functions are restored when
+    exiting the context.
+
+    Also collect the zero stage3 parameter maps for graph execution manager.
+    """
+    if not enable:
         yield
 
     else:
@@ -384,7 +390,7 @@ def stage3_export_context(enable: bool, graph_execution_manager):
             def _get_tensor_rank(x) -> Optional[int]:
                 ### Adapted from https://github.com/pytorch/pytorch/blob/185515368bcd7d94ac06ab1634f22b747b03c6d9/torch/onnx/symbolic_helper.py#L561
                 # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).
-                import typing
+                from typing import cast as typing_cast
 
                 from torch import _C
                 from torch.onnx.symbolic_helper import _is_tensor
@@ -397,7 +403,7 @@ def stage3_export_context(enable: bool, graph_execution_manager):
                 if not _is_tensor(x) or x.type() is None:
                     return None
                 x_type = x.type()
-                x_type = typing.cast(_C.TensorType, x_type)
+                x_type = typing_cast(_C.TensorType, x_type)
                 return x_type.dim()
 
             torch.onnx.symbolic_helper._get_tensor_rank = _get_tensor_rank
