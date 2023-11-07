@@ -80,6 +80,8 @@ stages:
 - stage: Setup
   jobs:
   - job: Set_Variables
+    pool:
+      vmImage: ubuntu-latest
     steps:
     - checkout: none
     - bash: |
@@ -100,6 +102,8 @@ stages:
   dependsOn: Setup
   jobs:
   - job: D1
+    pool:
+      vmImage: ubuntu-latest
     variables:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     steps:
