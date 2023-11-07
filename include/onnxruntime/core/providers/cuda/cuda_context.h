@@ -1,5 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+// This header is to expose a context for cuda custom ops.
+// By the context, a custom cuda operator could fetch existing resources,
+// such as cuda stream and cudnn handle, for reusing.
+
+// For concrete usage, pls find page here:
+// https://onnxruntime.ai/docs/reference/operators/add-custom-op.html#custom-ops-for-cuda-and-rocm
+
 #pragma once
 
 #define ORT_CUDA_CTX
