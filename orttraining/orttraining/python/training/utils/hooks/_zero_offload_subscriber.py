@@ -18,9 +18,9 @@ from onnxruntime.training.utils import (
     ORTModelInputOutputType,
     extract_data_and_schema,
     nvtx_function_decorator,
+    pytorch_type_to_onnx_dtype,
     torch_nvtx_range_pop,
     torch_nvtx_range_push,
-    pytorch_type_to_onnx_dtype,
     unflatten_data_using_schema,
 )
 
