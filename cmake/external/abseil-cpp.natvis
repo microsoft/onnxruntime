@@ -30,6 +30,7 @@
     <Intrinsic Name="_capacity" Expression="_commonfields().capacity_"/>
     <Intrinsic Name="_control" Expression="_commonfields().control_"/>
     <Intrinsic Name="_slots" Expression="(slot_type*)(_commonfields().slots_)"/>
+    <DisplayString Condition="_size() == 0">empty</DisplayString>
     <DisplayString IncludeView="noparens">size={ _size() }</DisplayString>
     <DisplayString ExcludeView="noparens">size=({_size()})</DisplayString>
     <Expand>
