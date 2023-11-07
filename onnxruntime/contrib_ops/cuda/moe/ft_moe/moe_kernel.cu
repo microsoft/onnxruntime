@@ -104,6 +104,20 @@ __launch_bounds__(TPB) __global__ void moe_softmax(const T* input, const bool* f
     }
 }
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
+template<typename T, int TPB>
+__launch_bounds__(TPB) __global__ void moe_top_k(const T*,
+                                                 const bool*,
+                                                 T*,
+                                                 int*,
+                                                 int*,
+                                                 const int,
+                                                 const int)
+{
+    // Does not support pre-Kepler architectures
+    ;
+}
+#else
 template<typename T, int TPB>
 __launch_bounds__(TPB) __global__ void moe_top_k(const T*    inputs_after_softmax,
                                                  const bool* finished,
@@ -113,7 +127,6 @@ __launch_bounds__(TPB) __global__ void moe_top_k(const T*    inputs_after_softma
                                                  const int   num_experts,
                                                  const int   k)
 {
-
     using cub_kvp     = cub::KeyValuePair<int, T>;
     using BlockReduce = cub::BlockReduce<cub_kvp, TPB>;
     __shared__ typename BlockReduce::TempStorage tmpStorage;
@@ -157,6 +170,7 @@ __launch_bounds__(TPB) __global__ void moe_top_k(const T*    inputs_after_softma
         __syncthreads();
     }
 }
+#endif
 
 // ====================== TopK softmax things ===============================
 
@@ -856,6 +870,7 @@ __global__ void finalize_moe_routing_kernel(const T*,
                                             const int,
                                             const int)
 {
+    // Does not support pre-Kepler architectures
     ;
 }
 #else
