@@ -96,7 +96,8 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
       }
     }
 
-    MlasDequantizeBlockwise(dequant_buf, elements, scales, zp, block_size, columnwise, rows, columns, threadpool_ptr);
+    MlasDequantizeBlockwise<float, 4>(dequant_buf, elements, scales, zp, block_size,
+                                      columnwise, rows, columns, threadpool_ptr);
 
     MlasTranspose(dequant_buf, transposed, columns, rows);
 
@@ -104,7 +105,8 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
     float* o_scales = OutputScales.GetBuffer(meta_rows * meta_cols);
     uint8_t* o_zp = symmetric ? nullptr : OutputOffsets.GetBuffer(((meta_rows + 1) / 2) * meta_cols, true);
 
-    MlasQuantizeBlockwise(o_elements, o_scales, o_zp, transposed, block_size, columnwise, rows, columns, columns, threadpool_ptr);
+    MlasQuantizeBlockwise<float, 4>(o_elements, o_scales, o_zp, transposed, block_size,
+                                    columnwise, rows, columns, columns, threadpool_ptr);
 
     for (int c = 0; c < columns; c++) {
       for (int r = 0; r < rows; r += 2) {
@@ -193,9 +195,6 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
 
   MlasBlockwiseQdqTest() = default;
 };
-
-template <>
-MlasBlockwiseQdqTest* MlasTestFixture<MlasBlockwiseQdqTest>::mlas_tester(nullptr);
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
