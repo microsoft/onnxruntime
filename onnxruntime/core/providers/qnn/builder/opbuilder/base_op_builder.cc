@@ -186,7 +186,8 @@ Status BaseOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
   ORT_UNUSED_PARAMETER(logger);
   ORT_UNUSED_PARAMETER(input_names);
   const auto& outputs = node_unit.Outputs();
-  ORT_RETURN_IF_NOT(output_index < outputs.size(), "Invalid output index in GetOutputQuantInfo");
+  ORT_RETURN_IF_NOT(output_index < outputs.size(), "Invalid output index in GetOutputTensorInfo for op ",
+                    node_unit.OpType().c_str());
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[output_index], output_info));
 
   return Status::OK();

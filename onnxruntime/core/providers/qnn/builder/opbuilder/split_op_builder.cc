@@ -141,7 +141,7 @@ Status SplitOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
   // which requires us to explicitly handle this in case a Split is consumer of a Sigmoid/Tanh node.
   ORT_UNUSED_PARAMETER(logger);
   const auto& outputs = node_unit.Outputs();
-  ORT_RETURN_IF_NOT(output_index < outputs.size(), "Invalid output index in GetOutputQuantInfo");
+  ORT_RETURN_IF_NOT(output_index < outputs.size(), "Invalid output index in GetOutputTensorInfo for Split operator.");
 
   const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
   const auto& output = outputs[output_index];
