@@ -137,7 +137,7 @@ Status SplitOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
   // Force Split outputs to use the same quantization parameters as the input.
   //
   // The quantization tool assigns equal qparams to the input and outputs, and the NodeUnit selectors
-  // now require QDQ Split units to have the same qparams. However, Sigmoid/Tanh may override they output qparms,
+  // now require QDQ Split units to have the same qparams. However, Sigmoid/Tanh may override their output qparms,
   // which requires us to explicitly handle this in case a Split is consumer of a Sigmoid/Tanh node.
   ORT_UNUSED_PARAMETER(logger);
   const auto& outputs = node_unit.Outputs();

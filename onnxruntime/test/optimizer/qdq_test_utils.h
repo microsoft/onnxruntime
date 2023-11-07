@@ -484,6 +484,7 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     std::vector<NodeArg*> split_inputs;
     split_inputs.push_back(dq_output);
 
+    // Use the optional 'split' input when testing Split 13
     int opset = builder.DomainToVersionMap().find(kOnnxDomain)->second;
     if (opset >= 13 && opset < 18) {
       int64_t dim = input_shape[axis];
@@ -497,6 +498,8 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     auto* split_output_3 = builder.MakeIntermediate();
     Node& split_node = builder.AddNode("Split", split_inputs, {split_output_1, split_output_2, split_output_3});
     split_node.AddAttribute("axis", axis);
+
+    // Use the 'num_outputs' attribute when testing Split >= 18
     if (opset >= 18) {
       split_node.AddAttribute("num_outputs", static_cast<int64_t>(3));
     }
