@@ -272,7 +272,7 @@ void QnnBackendManager::InitializeQnnLog() {
 
 Status QnnBackendManager::InitializeBackend() {
   if (true == backend_initialized_) {
-    LOGS_DEFAULT(INFO) << "Backend intialized already.";
+    LOGS_DEFAULT(INFO) << "Backend initialized already.";
     return Status::OK();
   }
 
@@ -312,7 +312,7 @@ bool QnnBackendManager::IsDevicePropertySupported() {
 
 Status QnnBackendManager::CreateDevice() {
   if (true == device_created_) {
-    LOGS_DEFAULT(INFO) << "Device intialized already.";
+    LOGS_DEFAULT(INFO) << "Device initialized already.";
     return Status::OK();
   }
 
@@ -797,7 +797,7 @@ Status QnnBackendManager::ExtractProfilingSubEvents(QnnProfile_EventId_t profile
 Status QnnBackendManager::ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id) {
   QnnProfile_EventData_t event_data;
   auto result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get provile event data.");
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile event data.");
 
   LOGS(*logger_, VERBOSE) << "Profiling Event Info - Event Type: " << event_data.type
                           << ", Event Value: " << event_data.value
