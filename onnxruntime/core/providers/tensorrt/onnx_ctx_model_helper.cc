@@ -44,6 +44,15 @@ std::filesystem::path LocateEngineRelativeToPath(std::string engine_cache_path, 
   return engine_path;
 }
 
+/*
+ * Get compute capability
+ *
+ */
+std::string GetComputeCapacityString(const cudaDeviceProp& prop) {
+  const std::string compute_capability = std::to_string(prop.major) + "." + std::to_string(prop.minor);
+  return compute_capability;
+}
+
 Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer) {
   if (!ValidateEPCtxNode(graph_viewer)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "It's not a valid EP Context node");
@@ -94,8 +103,10 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
     std::string model_compute_capability = attrs.at(COMPUTE_CAPABILITY).s();
     cudaDeviceProp prop;
     CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-    if (model_compute_capability != GetComputeCapacity(prop)) {
+    if (model_compute_capability != GetComputeCapacityString(prop)) {
       LOGS_DEFAULT(ERROR) << "The compute capability of the engine cache doesn't match with the GPU's compute capability";
+      LOGS_DEFAULT(ERROR) << "The compute capability of the engine cache: " << model_compute_capability;
+      LOGS_DEFAULT(ERROR) << "The compute capability of the GPU: " << GetComputeCapacityString(prop);
       return false;
     }
   }
