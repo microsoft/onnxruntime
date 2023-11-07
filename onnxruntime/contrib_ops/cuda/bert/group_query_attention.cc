@@ -129,10 +129,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
-  if (!use_flash_attention) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GroupQueryAttention is only supported on ampere gpu and above");
-  }
-
 #if USE_MEMORY_EFFICIENT_ATTENTION
   int sm = (device_prop.major * 10) + device_prop.minor;
   bool use_memory_efficient_attention =
@@ -153,25 +149,14 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float))) {
     fmha_buffer_bytes = (parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size * sizeof(float));
   }
-  // seqstart pointer for memory efficient
-  size_t seqstart_k_bytes = 0;
-  size_t seqstart_q_bytes = 0;
-  if (use_memory_efficient_attention) {
-    seqstart_k_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
-    seqstart_q_bytes = sizeof(int32_t) * (parameters.batch_size + 1);
-  }
   auto k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
   auto v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
   auto fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, context->GetComputeStream());
-  auto seqstart_k_buffer = GetScratchBuffer<void>(seqstart_k_bytes, context->GetComputeStream());
-  auto seqstart_q_buffer = GetScratchBuffer<void>(seqstart_q_bytes, context->GetComputeStream());
 #else
   constexpr bool use_memory_efficient_attention = false;
   auto k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto v_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto fmha_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
-  auto seqstart_k_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
-  auto seqstart_q_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
 #endif
 
   // seqlens_k buffer
@@ -213,12 +198,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.attention_mask = const_cast<int64_t*>(attention_mask->Data<int64_t>());
   if (seqlens_k_buffer != nullptr) {
     data.seqlens_k = reinterpret_cast<int*>(seqlens_k_buffer.get());
-    if (seqstart_k_buffer != nullptr) {
-      data.seqstart_k = reinterpret_cast<int32_t*>(seqstart_k_buffer.get());
-    }
-    if (seqstart_q_buffer != nullptr) {
-      data.seqstart_q = reinterpret_cast<int32_t*>(seqstart_q_buffer.get());
-    }
   }
   if (k_buffer != nullptr) {
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
