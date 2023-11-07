@@ -27,11 +27,9 @@ struct RightPaddingBatchHook {
   static constexpr bool kSupportsDropout = AttentionKernel::kSupportsDropout;
   static constexpr bool kSupportsBias = AttentionKernel::kSupportsBias;
   static constexpr int kKeysPerBlock = AttentionKernel::kKeysPerBlock;
-  static constexpr int kMaxK = AttentionKernel::kMaxK;
-  static constexpr bool kIsAligned = AttentionKernel::isAligned;
+  static constexpr bool kIsAligned = AttentionKernel::kIsAligned;
   static constexpr bool kSingleValueIteration = AttentionKernel::kSingleValueIteration;
   static constexpr int32_t kAlignLSE = AttentionKernel::kAlignLSE;  // block size of backward
-  static constexpr bool kIsHalf = AttentionKernel::kIsHalf;
   static constexpr bool kPreloadV = AttentionKernel::kPreloadV;
   static constexpr bool kKeepOutputInRF = AttentionKernel::kKeepOutputInRF;
   static constexpr bool kNeedsOutputAccumulatorBuffer = AttentionKernel::kNeedsOutputAccumulatorBuffer;

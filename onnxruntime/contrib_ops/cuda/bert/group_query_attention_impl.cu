@@ -546,8 +546,8 @@ Status FlashAttention(
   // Note: seqlens_k is past sequence length for flash
   if (parameters.is_prompt) {
     // Launch kernel to copy seqlen
-    int thr_per_blk = 256;
-    int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
+    constexpr int thr_per_blk = 256;
+    int blk_in_grid = (batch_size + thr_per_blk -1) / thr_per_blk;
     repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k_total, parameters.sequence_length, batch_size);
   }
 
@@ -648,8 +648,8 @@ Status EfficientAttention(
 
   if (parameters.is_prompt) {
     // Launch kernel to copy seqlen
-    int thr_per_blk = 256;
-    int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
+    constexpr int thr_per_blk = 256;
+    int blk_in_grid = (batch_size + thr_per_blk - 1) / thr_per_blk;
     repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k_total, parameters.sequence_length, batch_size);
   } else {
     ORT_RETURN_IF_ERROR(LaunchGetSeqlenBuff(parameters, data.seqlens_k, data.seqlens_k_total, true, stream, 256));
