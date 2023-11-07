@@ -468,49 +468,52 @@ Status LaunchGetSeqlenBuff(contrib::GroupQueryAttentionParameters& parameters, i
   return CUDA_CALL(cudaGetLastError());
 }
 
-__global__ void FillSeqstartQ(int32_t* seqlens_q,
-                              const int q_seqlen) {
-  seqlens_q[threadIdx.x] = q_seqlen * threadIdx.x;
+// Kernel to append new kv to kv buffer in place
+template <typename T>
+__global__ void LeftPadLast(const int max_seqlen,
+                            T* kv_buff,
+                            const int* seqlens_k) {  // refers to kv buff; otherwise bnsh
+  const int h = threadIdx.x;
+  const int n = threadIdx.y;
+  const int b = blockIdx.x;
+
+  const int num_heads = blockDim.y;
+  const int H = blockDim.x;
+
+  const int present_batch_stride = max_seqlen * num_heads * H;
+  const int present_row_stride = num_heads * H;
+  const int present_head_stride = H;
+
+  // kv_buff:     BTNH or BNTH with buffered memory for new
+  // new_kv:      BLNH
+
+  const int s = seqlens_k[b] - 1;
+
+  const int in_offset = b * present_batch_stride + s * present_row_stride + n * present_head_stride + h;
+  const int out_offset = b * present_batch_stride + (max_seqlen - 1) * present_row_stride + n * present_head_stride + h;
+  kv_buff[out_offset] = kv_buff[in_offset];
 }
 
-Status LaunchFillSeqstartQ(contrib::GroupQueryAttentionParameters& parameters, int32_t* seqlens_q, cudaStream_t stream,
-                           const int threads_per_block) {
-  if (parameters.is_prompt) {
-    return Status::OK();
-  }
-  const int batch_size = parameters.batch_size + 1;
-  const int q_seqlen = parameters.sequence_length;
+// Concat new to kv buffer in place
+template <typename T>
+Status LaunchLeftPadLast(contrib::GroupQueryAttentionParameters& parameters,
+                             GroupQueryAttentionData<T>& data,
+                             cudaStream_t stream,
+                             const int max_threads_per_block) {
+  const int batch_size = parameters.batch_size;
+  const int sequence_length = parameters.sequence_length;
+  const int num_heads = parameters.num_heads;
+  const int head_size = parameters.head_size;
 
-  const dim3 grid(1, 1, 1);
-  // TODO(aciddelgado): unlikely but could have a bigger batch_size than max_threads
-  const dim3 block(batch_size, 1, 1);
+  // Indicates past sequence_length of each sequence
+  const int* seqlens_k = reinterpret_cast<const int*>(data.seqlens_k);
 
-  // TODO(aciddelgado): small version
-  FillSeqstartQ<<<grid, block, 0, stream>>>(seqlens_q, q_seqlen);
-
-  return CUDA_CALL(cudaGetLastError());
-}
-
-__global__ void FillSeqstartK(int32_t* seqlens_k,
-                              const int kv_seqlen) {
-  seqlens_k[threadIdx.x] = kv_seqlen * threadIdx.x;
-}
-
-Status LaunchFillSeqstartK(contrib::GroupQueryAttentionParameters& parameters, int32_t* seqlens_k, cudaStream_t stream,
-                           const int threads_per_block) {
-  if (parameters.is_prompt) {
-    return Status::OK();
-  }
-  const int batch_size = parameters.batch_size + 1;
-  const int kv_seqlen = parameters.seqlen_present_kv_cache;
-
-  const dim3 grid(1, 1, 1);
-  // TODO(aciddelgado): unlikely but could have a bigger batch_size than max_threads
-  const dim3 block(batch_size, 1, 1);
-
-  // TODO(aciddelgado): small version
-  FillSeqstartK<<<grid, block, 0, stream>>>(seqlens_k, kv_seqlen);
-
+  const int H = head_size / 4;
+  const dim3 grid(batch_size, 1);
+  const dim3 block(H, num_heads, 1);
+  LeftPadLast<float2><<<grid, block, 0, stream>>>(sequence_length,
+                                                  reinterpret_cast<float2*>(data.output),
+                                                  seqlens_k);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -642,10 +645,12 @@ Status EfficientAttention(
     // Launch kernel to copy seqlen
     int thr_per_blk = 256;
     int blk_in_grid = ceil(float(batch_size) / thr_per_blk);
-    repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k, parameters.mask_sequence_length, batch_size);
+    repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k_buff, parameters.sequence_length, batch_size);
   } else {
-    ORT_RETURN_IF_ERROR(LaunchGetCacheSeqlens(parameters, data.attention_mask, data.seqlens_k, parameters.is_prompt, stream, 256));
+    ORT_RETURN_IF_ERROR(LaunchGetSeqlenBuff(parameters, data.seqlens_k, data.seqlens_k_buff, false, stream, 256));
   }
+
+  int* seqlens_k = data.seqlens_k_buff;
 
   if (parameters.kv_share_buffer) {
     // Share buffer case
@@ -683,12 +688,12 @@ Status EfficientAttention(
     value = reinterpret_cast<const void*>(data.v);
   }
 
-  int* seqlens_k = nullptr;  // built from past and kv seqlens buffers
-  ORT_RETURN_IF_ERROR(LaunchPastToTotalSeqlen(parameters, data.seqlens_k, stream, 256));
-  seqlens_k = data.seqlens_k;
+  if (!parameters.is_prompt) {
+    ORT_RETURN_IF_ERROR(LaunchGetSeqlenBuff(parameters, data.seqlens_k, data.seqlens_k_buff, true, stream, 256));
+  }
 
   DUMP_TENSOR_INIT();
-  DUMP_TENSOR("seqlens_k", data.seqlens_k, batch_size, 1);
+  DUMP_TENSOR("seqlens_k", data.seqlens_k_buff, batch_size, 1);
 
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
@@ -747,6 +752,10 @@ Status QkvToContext(
     return EfficientAttention(device_prop, stream, parameters, data, scale);
   }
 #endif
+
+  if (parameters.left_padding && parameters.is_prompt) {
+    ORT_RETURN_IF_ERROR(LaunchLeftPadLast(parameters, data, stream, device_prop.maxThreadsPerBlock));
+  }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Group Query Attention not implemented yet.");
 }

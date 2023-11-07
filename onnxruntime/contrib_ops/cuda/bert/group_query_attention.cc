@@ -211,12 +211,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.seqlens_k_buff = reinterpret_cast<int*>(seqlens_k_buffer.get());
   }
   // Memory Efficient Buffers
-  if (seqstart_k_buffer != nullptr) {
-    data.seqstart_k = reinterpret_cast<int32_t*>(seqstart_k_buffer.get());
-  }
-  if (seqstart_q_buffer != nullptr) {
-    data.seqstart_q = reinterpret_cast<int32_t*>(seqstart_q_buffer.get());
-  }
   if (k_buffer != nullptr) {
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
     data.v = reinterpret_cast<CudaT*>(v_buffer.get());
