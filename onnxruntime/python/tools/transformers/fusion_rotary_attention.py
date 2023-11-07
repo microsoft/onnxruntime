@@ -29,7 +29,13 @@ class FusionRotaryAttention(FusionAttention):
             hidden_size,
             num_heads,
             use_multi_head_attention=True,
-            search_op_types=["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization", "Add"],
+            search_op_types=[
+                "SimplifiedLayerNormalization",
+                "SkipSimplifiedLayerNormalization",
+                "LayerNormalization",
+                "SkipLayerNormalization",
+                "Add",
+            ],
         )
 
     def create_mha_node(
@@ -318,7 +324,7 @@ class FusionRotaryAttention(FusionAttention):
         return True
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
+        if normalize_node.op_type not in {"SkipSimplifiedLayerNormalization", "SkipLayerNormalization", "Add"}:
             return
 
         # qkv_nodes_1 is for LLaMA-2 Microsoft
