@@ -4773,11 +4773,11 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(1)
       .SetDoc(
           "FlattenAndUnpad operator flattens the first two dims of input tensor, and unpad according to given indices."
-          "This is used by padding elimination graph transformers.")
-      .Input(0, "input", "input data of rank N, shape is [M1, M2, d2, ..., dN]", "T")
+          "This is used by padding elimination graph transformer.")
+      .Input(0, "input", "input data of rank N + 1, shape is [M1, M2, d2, ..., dN]", "T")
       .Input(1, "indices", "1D Tensor of int32/int64 indices, shape is [d1], each element's value ranges in [0, M1*M2).",
              "T_INT")
-      .Output(0, "output", "output data of rank N-1, [d1, d2, ..., dN]", "T")
+      .Output(0, "output", "output data of rank N, [d1, d2, ..., dN]", "T")
       .Output(1, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
       .TypeConstraint(
           "T_INT",

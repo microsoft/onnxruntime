@@ -61,7 +61,7 @@ void PadAndUnflattenImpl(cudaStream_t stream,
       output_data);
 }
 
-#define SPECIALIZED_RESTORE_FROM_MASK_IMPL(T)                                       \
+#define PAD_AND_UNFLATTEN_FROM_MASK_IMPL(T)                                       \
   template void PadAndUnflattenImpl<T>(cudaStream_t stream,                         \
                                        const int64_t total_element_count,           \
                                        const fast_divmod output_element_stride_fdm, \
@@ -70,12 +70,12 @@ void PadAndUnflattenImpl(cudaStream_t stream,
                                        const int64_t* indices_data,                 \
                                        T* output_data);
 
-SPECIALIZED_RESTORE_FROM_MASK_IMPL(float)
-SPECIALIZED_RESTORE_FROM_MASK_IMPL(double)
-SPECIALIZED_RESTORE_FROM_MASK_IMPL(half)
-SPECIALIZED_RESTORE_FROM_MASK_IMPL(BFloat16)
+PAD_AND_UNFLATTEN_FROM_MASK_IMPL(float)
+PAD_AND_UNFLATTEN_FROM_MASK_IMPL(double)
+PAD_AND_UNFLATTEN_FROM_MASK_IMPL(half)
+PAD_AND_UNFLATTEN_FROM_MASK_IMPL(BFloat16)
 
-#undef SPECIALIZED_RESTORE_FROM_MASK_IMPL
+#undef PAD_AND_UNFLATTEN_FROM_MASK_IMPL
 
 }  // namespace cuda
 }  // namespace onnxruntime

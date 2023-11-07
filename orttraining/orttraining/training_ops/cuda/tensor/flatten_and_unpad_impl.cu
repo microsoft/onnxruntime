@@ -61,7 +61,7 @@ void FlattenAndUnpadImpl(cudaStream_t stream,
       output_data);
 }
 
-#define SPECIALIZED_RESTORE_FROM_MASK_IMPL(T)                                       \
+#define FLATTEN_AND_UNPAD_FROM_MASK_IMPL(T)                                       \
   template void FlattenAndUnpadImpl<T>(cudaStream_t stream,                         \
                                        const int64_t total_element_count,           \
                                        const fast_divmod output_element_stride_fdm, \
@@ -70,14 +70,14 @@ void FlattenAndUnpadImpl(cudaStream_t stream,
                                        const int64_t* indices_data,                 \
                                        T* output_data);
 
-SPECIALIZED_RESTORE_FROM_MASK_IMPL(float)
-SPECIALIZED_RESTORE_FROM_MASK_IMPL(double)
-SPECIALIZED_RESTORE_FROM_MASK_IMPL(half)
-SPECIALIZED_RESTORE_FROM_MASK_IMPL(BFloat16)
-SPECIALIZED_RESTORE_FROM_MASK_IMPL(int32_t)
-SPECIALIZED_RESTORE_FROM_MASK_IMPL(int64_t)
+FLATTEN_AND_UNPAD_FROM_MASK_IMPL(float)
+FLATTEN_AND_UNPAD_FROM_MASK_IMPL(double)
+FLATTEN_AND_UNPAD_FROM_MASK_IMPL(half)
+FLATTEN_AND_UNPAD_FROM_MASK_IMPL(BFloat16)
+FLATTEN_AND_UNPAD_FROM_MASK_IMPL(int32_t)
+FLATTEN_AND_UNPAD_FROM_MASK_IMPL(int64_t)
 
-#undef SPECIALIZED_RESTORE_FROM_MASK_IMPL
+#undef FLATTEN_AND_UNPAD_FROM_MASK_IMPL
 
 }  // namespace cuda
 }  // namespace onnxruntime

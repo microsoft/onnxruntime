@@ -45,12 +45,15 @@ struct FlattenAndUnpadFunctor {
 Status FlattenAndUnpad::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_tensor = context->Input<Tensor>(0);
   const Tensor* indices_tensor = context->Input<Tensor>(1);
+  ORT_ENFORCE(input_tensor->Shape().NumDimensions() >= 2,
+              "input_tensor tensor must have at least 2 dimensions.", input_tensor->Shape().NumDimensions());
   ORT_ENFORCE(indices_tensor->Shape().NumDimensions() == 1,
               "indices_tensor tensor must be 1-D.", indices_tensor->Shape().NumDimensions());
 
-  std::vector<int64_t> output_shape_vec;
-  output_shape_vec.push_back(indices_tensor->Shape()[0]);
   const auto& input_shape = input_tensor->Shape();
+  std::vector<int64_t> output_shape_vec;
+  output_shape_vec.reserve(input_shape.NumDimensions() - 1);
+  output_shape_vec.push_back(indices_tensor->Shape()[0]);
   int64_t element_stride = 1;
   for (size_t i = 2; i < input_shape.NumDimensions(); ++i) {
     output_shape_vec.push_back(input_shape[i]);
@@ -62,6 +65,7 @@ Status FlattenAndUnpad::ComputeInternal(OpKernelContext* context) const {
   Tensor* output_tensor = context->Output(0, output_shape);
 
   std::vector<int64_t> unflatten_dims_vec;
+  unflatten_dims_vec.reserve(2);
   unflatten_dims_vec.push_back(input_shape[0]);
   unflatten_dims_vec.push_back(input_shape[1]);
   const int64_t index_value_upper_bound = input_shape[0] * input_shape[1];

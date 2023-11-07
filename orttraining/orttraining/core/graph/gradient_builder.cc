@@ -793,7 +793,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetPadAndUnflattenGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef{"FlattenAndUnpad", kMSDomain, 1},
               {GO(0), I(1)},
-              {GI(0), IA("No_use")})};
+              {GI(0), IA("Unflatten_dims")})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetFlattenAndUnpadGradient) {

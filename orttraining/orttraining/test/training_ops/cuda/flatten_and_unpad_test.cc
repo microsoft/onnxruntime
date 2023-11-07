@@ -9,7 +9,7 @@ namespace test {
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 
-TEST(FlattenAndUnpadTest, Int32Type1D) {
+TEST(FlattenAndUnpadTest, Int32Type2D) {
   std::vector<int32_t> input = {1, 1, 3, 2, 0, 3, 0, 4,
                                 0, 5, 0, 6, 0, 0, 0};
   std::vector<int64_t> indices = {1, 3, 5, 7, 9, 11};
@@ -25,7 +25,7 @@ TEST(FlattenAndUnpadTest, Int32Type1D) {
   test.Run();
 }
 
-TEST(FlattenAndUnpadTest, Int32Type2D) {
+TEST(FlattenAndUnpadTest, Int32Type3D) {
   std::vector<int32_t> input = {0, 0, 0, 1, 2, 3, 0, 0, 0,
                                 4, 5, 6, 7, 8, 9, 0, 0, 0};
   std::vector<int64_t> indices = {1, 3, 4};
@@ -41,7 +41,7 @@ TEST(FlattenAndUnpadTest, Int32Type2D) {
   test.Run();
 }
 
-TEST(FlattenAndUnpadTest, Int64Type1D) {
+TEST(FlattenAndUnpadTest, Int64Type2D) {
   std::vector<int64_t> input = {1, 1, 3, 2, 0, 3, 0, 4,
                                 0, 5, 0, 6, 0, 0, 0};
   std::vector<int64_t> indices = {1, 3, 5, 7, 9, 11};
@@ -57,7 +57,7 @@ TEST(FlattenAndUnpadTest, Int64Type1D) {
   test.Run();
 }
 
-TEST(FlattenAndUnpadTest, Int64Type2D) {
+TEST(FlattenAndUnpadTest, Int64Type3D) {
   std::vector<int64_t> input = {0, 0, 0, 1, 2, 3, 0, 0, 0,
                                 4, 5, 6, 7, 8, 9, 0, 0, 0};
   std::vector<int64_t> indices = {1, 3, 4};
@@ -73,7 +73,7 @@ TEST(FlattenAndUnpadTest, Int64Type2D) {
   test.Run();
 }
 
-TEST(FlattenAndUnpadTest, FloatType1D) {
+TEST(FlattenAndUnpadTest, FloatType2D) {
   std::vector<float> input = {1.0f, 1.0f, 3.0f, 2.0f, 0.0f, 3.0f, 0.0f, 4.0f,
                               0.0f, 5.0f, 0.0f, 6.0f, 0.0f, 0.0f, 0.0f};
   std::vector<int64_t> indices = {1, 3, 5, 7, 9, 11};
@@ -89,7 +89,7 @@ TEST(FlattenAndUnpadTest, FloatType1D) {
   test.Run();
 }
 
-TEST(FlattenAndUnpadTest, FloatType2D) {
+TEST(FlattenAndUnpadTest, FloatType3D) {
   std::vector<float> input = {0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 0.0f, 0.0f, 0.0f,
                               4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 0.0f, 0.0f, 0.0f};
   std::vector<int64_t> indices = {1, 3, 4};
@@ -105,7 +105,7 @@ TEST(FlattenAndUnpadTest, FloatType2D) {
   test.Run();
 }
 
-TEST(FlattenAndUnpadTest, MLFloat16Type1D) {
+TEST(FlattenAndUnpadTest, MLFloat16Type2D) {
   std::vector<float> input = {0.0f, 1.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 4.0f,
                               0.0f, 5.0f, 0.0f, 6.0f, 0.0f, 0.0f, 0.0f};
   std::vector<int64_t> indices = {1, 3, 5, 7, 9, 11};
@@ -128,7 +128,7 @@ TEST(FlattenAndUnpadTest, MLFloat16Type1D) {
   test.Run();
 }
 
-TEST(FlattenAndUnpadTest, MLFloat16Type2D) {
+TEST(FlattenAndUnpadTest, MLFloat16Type3D) {
   std::vector<float> input = {0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 0.0f, 0.0f, 0.0f,
                               4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 0.0f, 0.0f, 0.0f};
   std::vector<int64_t> indices = {1, 3, 4};
