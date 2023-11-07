@@ -488,16 +488,22 @@ class BertOnnxModel(OnnxModel):
         logger.info(f"Optimized operators: {op_count}")
         return op_count
 
-    def is_fully_optimized(self):
+    def is_fully_optimized(self, fused_op_count=None):
         """
         Returns True when the model is fully optimized.
         """
-        op_count = self.get_fused_operator_statistics()
-        embed = op_count["EmbedLayerNormalization"]
-        attention = op_count["Attention"] + op_count["MultiHeadAttention"] + op_count["QOrderedAttention"]
-        gelu = op_count["Gelu"] + op_count["BiasGelu"] + op_count["FastGelu"]
-        layer_norm = op_count["LayerNormalization"] + op_count["SkipLayerNormalization"]
-        simple_layer_norm = op_count["SimplifiedLayerNormalization"] + op_count["SkipSimplifiedLayerNormalization"]
+        if fused_op_count is None:
+            fused_op_count = self.get_fused_operator_statistics()
+
+        def op_count(op_name: str):
+            return fused_op_count.get(op_name) or 0
+
+        embed = op_count("EmbedLayerNormalization")
+        attention = op_count("Attention") + op_count("MultiHeadAttention") + op_count("QOrderedAttention")
+        gelu = op_count("Gelu") + op_count("BiasGelu") + op_count("FastGelu")
+        layer_norm = op_count("LayerNormalization") + op_count("SkipLayerNormalization")
+        simple_layer_norm = op_count("SimplifiedLayerNormalization") + op_count("SkipSimplifiedLayerNormalization")
+
         is_perfect = (
             (embed > 0)
             and (attention > 0)
@@ -512,13 +518,13 @@ class BertOnnxModel(OnnxModel):
             logger.debug("Simple Layer Normalization not fused")
 
         if gelu == 0:
-            logger.debug("Gelu/FastGelu not fused")
+            logger.debug("Gelu (or FastGelu) not fused")
 
         if embed == 0:
-            logger.debug("Embed Layer not fused")
+            logger.debug("EmbedLayerNormalization not fused")
 
         if attention == 0:
-            logger.warning("Attention not fused")
+            logger.warning("Attention (or MultiHeadAttention) not fused")
 
         return is_perfect
 
