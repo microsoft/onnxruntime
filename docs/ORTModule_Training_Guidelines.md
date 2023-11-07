@@ -54,7 +54,7 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 <table>
 <tr>
 <th style="width:20%">Log Level</th>
-<th style="width:60%">Description</th>
+<th style="width:80%">Description</th>
 </tr>
 <tr>
 <td>
