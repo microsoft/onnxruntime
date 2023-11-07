@@ -61,6 +61,9 @@ if __name__ == "__main__":
         _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
         pipeline.backend.activate_engines(shared_device_memory)
 
+    if engine_type == EngineType.ORT_CUDA and args.enable_vae_slicing:
+        pipeline.backend.enable_vae_slicing()
+
     pipeline.load_resources(image_height, image_width, batch_size)
 
     def run_inference(warmup=False):

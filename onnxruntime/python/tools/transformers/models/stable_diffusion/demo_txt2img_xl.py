@@ -70,6 +70,14 @@ def run_demo():
         base.backend.activate_engines(shared_device_memory)
         refiner.backend.activate_engines(shared_device_memory)
 
+    if engine_type == EngineType.ORT_CUDA:
+        enable_vae_slicing = args.enable_vae_slicing
+        if batch_size > 4 and not enable_vae_slicing:
+            print("Updating enable_vae_slicing to be True to avoid cuDNN error for batch size > 4.")
+            enable_vae_slicing = True
+        if enable_vae_slicing:
+            refiner.backend.enable_vae_slicing()
+
     base.load_resources(image_height, image_width, batch_size)
     refiner.load_resources(image_height, image_width, batch_size)
 

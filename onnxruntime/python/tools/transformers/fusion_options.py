@@ -61,6 +61,7 @@ class FusionOptions:
         if model_type in ["unet", "vae", "clip"]:
             self.enable_nhwc_conv = True
             self.enable_group_norm = True
+            self.enable_skip_group_norm = True
             self.enable_bias_splitgelu = True
             self.enable_packed_qkv = True
             self.enable_packed_kv = True
@@ -116,6 +117,8 @@ class FusionOptions:
                 options.enable_nhwc_conv = False
             if args.disable_group_norm:
                 options.enable_group_norm = False
+            if args.disable_skip_group_norm:
+                options.enable_skip_group_norm = False
             if args.disable_bias_splitgelu:
                 options.enable_bias_splitgelu = False
             if args.disable_packed_qkv:
@@ -249,6 +252,14 @@ class FusionOptions:
             help="not fuse GroupNorm. Only works for model_type=unet or vae",
         )
         parser.set_defaults(disable_group_norm=False)
+
+        parser.add_argument(
+            "--disable_skip_group_norm",
+            required=False,
+            action="store_true",
+            help="not fuse Add + GroupNorm to SkipGroupNorm. Only works for model_type=unet or vae",
+        )
+        parser.set_defaults(disable_skip_group_norm=False)
 
         parser.add_argument(
             "--disable_packed_kv",

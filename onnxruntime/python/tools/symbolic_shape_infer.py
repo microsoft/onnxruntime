@@ -154,6 +154,8 @@ class SymbolicShapeInference:
             "MatMulInteger16": self._infer_MatMulInteger,
             "MaxPool": self._infer_Pool,
             "Max": self._infer_symbolic_compute_ops,
+            "MemcpyFromHost": self._pass_on_shape_and_type,
+            "MemcpyToHost": self._pass_on_shape_and_type,
             "Min": self._infer_symbolic_compute_ops,
             "Mul": self._infer_symbolic_compute_ops,
             "NonMaxSuppression": self._infer_NonMaxSuppression,
