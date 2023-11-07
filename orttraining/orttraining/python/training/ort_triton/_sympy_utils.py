@@ -9,6 +9,12 @@ from typing import Any, List
 import sympy
 
 
+def extract_shape_from_symbol(symbol: sympy.Symbol) -> int:
+    match = re.match(r"i(\d+)_dim(\d+)_(\d+)", symbol.name)
+    assert match
+    return int(match.group(3))
+
+
 def sympy_dot(seq1: List[sympy.Expr], seq2: List[sympy.Expr]) -> sympy.Expr:
     assert len(seq1) == len(seq2)
     return sympy.expand(sum(a * b for a, b in zip(seq1, seq2)))

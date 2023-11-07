@@ -19,8 +19,8 @@ from ._cache import ModuleCache, PyCodeCache
 from ._codegen import codegen
 from ._op_config import get_supported_ops
 from ._sorted_graph import SortedGraph
-from ._sympy_utils import parse_shape
-from ._utils import gen_unique_name
+from ._sympy_utils import extract_shape_from_symbol, parse_shape
+from ._utils import gen_unique_name, next_power_of_2
 
 _DEBUG_MODE = "ORTMODULE_TRITON_DEBUG" in os.environ and int(os.getenv("ORTMODULE_TRITON_DEBUG")) == 1
 
@@ -51,10 +51,16 @@ class _ShapeCache:
             for i, shape in enumerate(shapes):
                 for j, dim in enumerate(shape):
                     if dim != cls.cache[onnx_key][i][j] and cls.cache[onnx_key][i][j].is_number:
-                        shape[j] = sympy.Symbol(f"i{i}_dim{j}")
+                        max_dim = max(int(dim), int(cls.cache[onnx_key][i][j]))
+                        shape[j] = sympy.Symbol(f"i{i}_dim{j}_{next_power_of_2(max_dim)}")
                         changed = True
-                    elif not cls.cache[onnx_key][i][j].is_number:
-                        shape[j] = cls.cache[onnx_key][i][j]
+                    elif cls.cache[onnx_key][i][j].is_symbol:
+                        pre = extract_shape_from_symbol(cls.cache[onnx_key][i][j])
+                        if pre >= int(dim):
+                            shape[j] = cls.cache[onnx_key][i][j]
+                        else:
+                            shape[j] = sympy.Symbol(f"i{i}_dim{j}_{next_power_of_2(int(dim))}")
+                            changed = True
             if changed:
                 cls.cache[onnx_key] = shapes
         return cls.cache[onnx_key]

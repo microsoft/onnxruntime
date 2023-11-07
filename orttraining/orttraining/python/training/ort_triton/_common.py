@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Tuple
 import sympy
 from onnx import GraphProto, NodeProto, TensorProto
 
+from ._sympy_utils import extract_shape_from_symbol
 from ._utils import get_attribute, get_reduce_info, next_power_of_2
 
 
@@ -205,10 +206,29 @@ class AutotuneConfigs:
     """
 
     def __init__(self, x_numel: sympy.Expr, r_numel: sympy.Expr, contiguous: bool):
-        x_numel_int = int(x_numel) if x_numel.is_number else 1024
-        r_numel_int = int(r_numel) if r_numel.is_number else 2048
+        x_numel_int = (
+            int(x_numel)
+            if x_numel.is_number
+            else int(
+                x_numel.subs(
+                    {symbol: sympy.Integer(extract_shape_from_symbol(symbol)) for symbol in x_numel.free_symbols}
+                )
+            )
+        )
+        r_numel_int = (
+            int(r_numel)
+            if r_numel.is_number
+            else int(
+                r_numel.subs(
+                    {symbol: sympy.Integer(extract_shape_from_symbol(symbol)) for symbol in r_numel.free_symbols}
+                )
+            )
+        )
         self.configs: List[Tuple[int, int, int]] = self._gen_autotune_configs(x_numel_int, r_numel_int, contiguous)
-        self.requires_for_loop: bool = not r_numel.is_number or any(config[1] < r_numel_int for config in self.configs)
+        # If there is symbolic shape, we will not tune the kernel.
+        if not x_numel.is_number or not r_numel.is_number:
+            self.configs = self.configs[-1:]
+        self.requires_for_loop: bool = any(config[1] < r_numel_int for config in self.configs)
 
     def _num_warps(self, x: int, r: int) -> int:
         return min(max(x * r // 256, 2), 8)
