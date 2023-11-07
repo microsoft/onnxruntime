@@ -20,8 +20,8 @@ from onnx import TensorProto, helper
 
 import onnxruntime
 
-torch.manual_seed(0)
-numpy.random.seed(0)
+torch.manual_seed(42)
+numpy.random.seed(42)
 
 
 ORT_DTYPE = TensorProto.FLOAT16
