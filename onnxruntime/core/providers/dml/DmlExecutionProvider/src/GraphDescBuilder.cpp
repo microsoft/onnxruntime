@@ -297,7 +297,7 @@ namespace Dml::GraphDescBuilder
             std::unordered_map<uint32_t, uint32_t> operatorGraphNodeIndexToMainGraphNodeIndexMap;
             uint32_t graphNodeCount = gsl::narrow_cast<uint32_t>(graphNodes.size());
             const bool isNodeAsOpDesc = graphNodeCreateInfo.nodesAsOperatorDesc.size() > 0;
-            size_t firstOpDescGraphNode = graphNodes.size();
+            size_t firstOpDescGraphNodeIndex = graphNodes.size();
 
             if (isNodeAsOpDesc)
             {
@@ -357,11 +357,8 @@ namespace Dml::GraphDescBuilder
 
                             if (constantInput && constantInput->GetTensorByteSize() < c_maxConstNodeDataSize)
                             {
-                                std::vector<uint8_t> tensorData;
-                                tensorData.insert(
-                                    tensorData.begin(), 
-                                    static_cast<const uint8_t*>(constantInput->GetData()), 
-                                    static_cast<const uint8_t*>(constantInput->GetData()) + constantInput->GetTensorByteSize());
+                                auto data = static_cast<const uint8_t*>(constantInput->GetData());
+	                            std::vector<uint8_t> tensorData(data, data + constantInput->GetTensorByteSize());
                                     
                                 NodeInfo nodeInfo = {};
                                 nodeInfo.nodeDef = std::move(tensorData);
@@ -460,7 +457,7 @@ namespace Dml::GraphDescBuilder
                     NodeInfo nodeInfo = {};
                     nodeInfo.nodeDef = std::move(op);
                     nodeInfo.name = node.Name();
-                    graphNodes[firstOpDescGraphNode + i] = std::move(nodeInfo);
+                    graphNodes[firstOpDescGraphNodeIndex + i] = std::move(nodeInfo);
                 }
             }
         }

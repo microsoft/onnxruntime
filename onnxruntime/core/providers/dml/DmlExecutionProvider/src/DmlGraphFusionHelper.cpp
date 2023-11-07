@@ -322,11 +322,12 @@ namespace DmlGraphFusionHelper
             }
             else
             {
-                dmlConstantGraphNodes[i] = DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW{
-                std::get<std::vector<uint8_t>>(nodeInfo.nodeDef).data(), 
-                std::get<std::vector<uint8_t>>(nodeInfo.nodeDef).size(), 
-                nodeInfo.name.data()
-                };
+                auto& nodeDefinitionData = std::get<std::vector<uint8_t>>(nodeInfo.nodeDef);
+	                dmlConstantGraphNodes[i] = DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW{
+	                    nodeDefinitionData.data(),
+	                    nodeDefinitionData.size(),
+	                    nodeInfo.name.data()
+	                };
 
                 // TODO: Change as new header is ingested
                 dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{(DML_GRAPH_NODE_TYPE) 2, &dmlConstantGraphNodes[i]};
