@@ -15,8 +15,10 @@
  */
 
 // Ignore CUTLASS warnings about type punning
+#ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
 
 #include "cutlass/array.h"
 #include "cutlass/numeric_conversion.h"
@@ -34,7 +36,9 @@
 #include "layout_traits_helper.h"
 #include "moe_cutlass_kernel.h"
 
+#ifdef __GNUC__
 #pragma GCC diagnostic pop
+#endif
 
 #include "cutlass_heuristic.h"
 #include "moe_gemm_kernels.h"

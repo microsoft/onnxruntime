@@ -18,16 +18,21 @@
 #include <cuda_fp16.h>
 #include <math.h>
 #include <sstream>
+#include <algorithm>
 
 // Ignore CUTLASS warnings about type punning
+#ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
 
 #include "cutlass/array.h"
 #include "cutlass/numeric_conversion.h"
 #include "cutlass/numeric_types.h"
 
+#ifdef __GNUC__
 #pragma GCC diagnostic pop
+#endif
 
 #include "moe_kernel.h"
 
@@ -354,7 +359,7 @@ template<typename T, int EXPERTS, int BYTES_PER_LDG>
 struct TopkConstants {
     static constexpr int ELTS_PER_LDG = BYTES_PER_LDG / sizeof(T);
     static_assert(EXPERTS / (ELTS_PER_LDG * WARP_SIZE) == 0 || EXPERTS % (ELTS_PER_LDG * WARP_SIZE) == 0, "");
-    static constexpr int VECs_PER_THREAD = std::max(1, EXPERTS / (ELTS_PER_LDG * WARP_SIZE));
+    static constexpr int VECs_PER_THREAD = std::max(1, (int)EXPERTS / (ELTS_PER_LDG * WARP_SIZE));
     static constexpr int VPT             = VECs_PER_THREAD * ELTS_PER_LDG;
     static constexpr int THREADS_PER_ROW = EXPERTS / VPT;
     static constexpr int ROWS_PER_WARP   = WARP_SIZE / THREADS_PER_ROW;
@@ -374,7 +379,7 @@ void topk_gating_softmax_launcher_helper(const T*     input,
 {
     static constexpr unsigned long MAX_BYTES_PER_LDG = 16;
 
-    static constexpr int BYTES_PER_LDG = std::min(MAX_BYTES_PER_LDG, sizeof(T) * EXPERTS);
+    static constexpr int BYTES_PER_LDG = std::min((int)MAX_BYTES_PER_LDG, (int)sizeof(T) * EXPERTS);
     using Constants                    = detail::TopkConstants<T, EXPERTS, BYTES_PER_LDG>;
     static constexpr int VPT           = Constants::VPT;
     static constexpr int ROWS_PER_WARP = Constants::ROWS_PER_WARP;
@@ -472,7 +477,7 @@ size_t CubKeyValueSorter::getWorkspaceSize(const size_t num_key_value_pairs)
     size_t required_storage = 0;
     int*   null_int         = nullptr;
     cub::DeviceRadixSort::SortPairs(
-        NULL, required_storage, null_int, null_int, null_int, null_int, num_key_value_pairs, 0, num_bits_);
+        NULL, required_storage, null_int, null_int, null_int, null_int, (int)num_key_value_pairs, 0, num_bits_);
     return required_storage;
 }
 
@@ -497,7 +502,7 @@ void CubKeyValueSorter::run(void*        workspace,
         throw std::runtime_error(err_ss.str());
     }
     cub::DeviceRadixSort::SortPairs(
-        workspace, actual_ws_size, keys_in, keys_out, values_in, values_out, num_key_value_pairs, 0, num_bits_, stream);
+        workspace, actual_ws_size, keys_in, keys_out, values_in, values_out, (int)num_key_value_pairs, 0, num_bits_, stream);
 }
 
 // ============================== Infer GEMM sizes =================================
@@ -544,15 +549,15 @@ template<typename T, typename WeightType, typename Enable>
 size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(
     const int num_rows, const int hidden_size, const int inter_size, const int num_experts, const int k)
 {
-    const int buf_size         = pad_to_multiple_of_16(k * num_rows * hidden_size);
-    const int interbuf_size    = pad_to_multiple_of_16(k * num_rows * inter_size);
-    const int padded_experts   = pad_to_multiple_of_16(num_experts);
-    const int num_moe_inputs   = pad_to_multiple_of_16(k * num_rows);
+    const int buf_size         = static_cast<int>(pad_to_multiple_of_16(k * num_rows * hidden_size));
+    const int interbuf_size    = static_cast<int>(pad_to_multiple_of_16(k * num_rows * inter_size));
+    const int padded_experts   = static_cast<int>(pad_to_multiple_of_16(num_experts));
+    const int num_moe_inputs   = static_cast<int>(pad_to_multiple_of_16(k * num_rows));
     int       num_softmax_outs = 0;
 
     const bool is_pow_2 = (num_experts != 0) && ((num_experts & (num_experts - 1)) == 0);
     if (!is_pow_2 || num_experts > 256) {
-        num_softmax_outs = pad_to_multiple_of_16(num_rows * num_experts);
+        num_softmax_outs = static_cast<int>(pad_to_multiple_of_16(num_rows * num_experts));
     }
 
     // softmax output, permuted_rows and permuted_experts have moved to outside of moe kernel, allocate them
@@ -562,12 +567,12 @@ size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(
     total_ws_bytes += padded_experts * sizeof(int64_t);        // Hold total_rows_before_expert_
     total_ws_bytes += num_softmax_outs * sizeof(T);
     const int bytes_for_fc1_result = interbuf_size * sizeof(T);
-    const int sorter_ws_size_bytes = pad_to_multiple_of_16(sorter_.getWorkspaceSize(num_rows));
+    const int sorter_ws_size_bytes = static_cast<const int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(num_rows)));
     sorter_.update_num_experts(num_experts);
 
     int bytes_for_intermediate_and_sorting = bytes_for_fc1_result;
     if (sorter_ws_size_bytes > bytes_for_fc1_result) {
-        int remaining_bytes = pad_to_multiple_of_16(sorter_ws_size_bytes - bytes_for_fc1_result);
+        int remaining_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_ws_size_bytes - bytes_for_fc1_result));
         bytes_for_intermediate_and_sorting += remaining_bytes;
     }
 
@@ -579,10 +584,10 @@ template<typename T, typename WeightType, typename Enable>
 void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(
     char* ws_ptr, const int num_rows, const int hidden_size, const int inter_size, const int num_experts, const int k)
 {
-    const int buf_size       = pad_to_multiple_of_16(k * num_rows * hidden_size);
-    const int interbuf_size  = pad_to_multiple_of_16(k * num_rows * inter_size);
-    const int padded_experts = pad_to_multiple_of_16(num_experts);
-    const int num_moe_inputs = pad_to_multiple_of_16(k * num_rows);
+    const int buf_size       = static_cast<const int>(pad_to_multiple_of_16(k * num_rows * hidden_size));
+    const int interbuf_size  = static_cast<const int>(pad_to_multiple_of_16(k * num_rows * inter_size));
+    const int padded_experts = static_cast<const int>(pad_to_multiple_of_16(num_experts));
+    const int num_moe_inputs = static_cast<const int>(pad_to_multiple_of_16(k * num_rows));
     // const int num_softmax_outs = pad_to_multiple_of_16(num_rows * num_experts);
 
     source_rows_      = (int*)ws_ptr;
@@ -662,7 +667,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(const T*          inp
                                           k,
                                           stream);
 
-    const int sorter_ws_size_bytes = pad_to_multiple_of_16(sorter_.getWorkspaceSize(k * num_rows));
+    const int sorter_ws_size_bytes = static_cast<const int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(k * num_rows)));
     sorter_.run((void*)fc1_result_,
                 sorter_ws_size_bytes,
                 expert_for_source_row,
@@ -838,6 +843,22 @@ void initialize_moe_routing_kernelLauncher(const T*     unpermuted_input,
 
 // Final kernel to unpermute and scale
 // This kernel unpermutes the original data, does the k-way reduction and performs the final skip connection.
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
+template<typename T, int RESIDUAL_NUM>
+__global__ void finalize_moe_routing_kernel(const T*,
+                                            T*,
+                                            const T*,
+                                            const T*,
+                                            const T*,
+                                            const T*,
+                                            const int*,
+                                            const int*,
+                                            const int,
+                                            const int)
+{
+    throw std::runtime_error("This kernel is not supported on pre-Kepler GPUs");
+}
+#else
 template<typename T, int RESIDUAL_NUM>
 __global__ void finalize_moe_routing_kernel(const T*   expanded_permuted_rows,
                                             T*         reduced_unpermuted_output,
@@ -855,11 +876,11 @@ __global__ void finalize_moe_routing_kernel(const T*   expanded_permuted_rows,
     const int num_rows        = gridDim.x;
     T*        reduced_row_ptr = reduced_unpermuted_output + original_row * cols;
 
-    const T*  skip_1_row_ptr;
+    const T* skip_1_row_ptr = nullptr;
     if (RESIDUAL_NUM == 1) {
         skip_1_row_ptr = skip_1 + original_row * cols;
     }
-    const T*  skip_2_row_ptr;
+    const T* skip_2_row_ptr = nullptr;
     if (RESIDUAL_NUM == 2) {
         skip_2_row_ptr = skip_2 + original_row * cols;
     }
@@ -891,6 +912,7 @@ __global__ void finalize_moe_routing_kernel(const T*   expanded_permuted_rows,
         reduced_row_ptr[tid] = thread_output;
     }
 }
+#endif
 
 template<typename T>
 void finalize_moe_routing_kernelLauncher(const T*     expanded_permuted_rows,
