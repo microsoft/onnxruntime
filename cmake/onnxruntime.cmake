@@ -95,7 +95,7 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   else() #macos
     configure_file(
       ${REPO_ROOT}/tools/ci_build/github/apple/framework_info_macos.json.template
-      ${CMAKE_CURRENT_BINARY_DIR}/framework_info.json)
+      ${CMAKE_CURRENT_BINARY_DIR}/framework_info_macos.json)
   endif()
   set_target_properties(onnxruntime PROPERTIES
     FRAMEWORK TRUE

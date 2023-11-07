@@ -64,6 +64,7 @@ def parse_args():
     )
 
     build_framework_group.add_argument("--include-ops-by-config")
+    build_framework_group.add_argument("--build-for-macosx")
     build_framework_group.add_argument(
         "--build-settings-file", required=True, help="The positional argument of build_ios_framework.py."
     )
@@ -114,6 +115,11 @@ def main():
     if args.include_ops_by_config is not None:
         build_ios_framework_args += ["--include_ops_by_config", args.include_ops_by_config]
 
+    framework_info_macos_file = None
+    if args.build_for_macosx:
+        framework_info_macos_file = build_dir / "framework_info_macos.json"
+        build_ios_framework_args += ["--build_for_macosx"]
+
     build_ios_framework_args += ["--build_dir", str(build_dir), args.build_settings_file]
 
     run(build_ios_framework_args)
@@ -148,6 +154,7 @@ def main():
             framework_dir=build_dir / "framework_out" / "onnxruntime.xcframework",
             public_headers_dir=build_dir / "framework_out" / "Headers",
             package_variant=package_variant,
+            framework_info_macos_file=framework_info_macos_file,
         )
 
         if args.test:

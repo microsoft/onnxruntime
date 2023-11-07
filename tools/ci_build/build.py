@@ -1749,7 +1749,12 @@ def run_ios_tests(args, source_dir, config, cwd):
 
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, "tools", "ci_build", "github", "apple", "test_ios_packages.py")
-        framework_info_file = os.path.join(cwd, "framework_info.json")
+        framework_info_file_path = os.path.join(cwd, "framework_info.json")
+        framework_info_file = ""
+        if os.path.exists(framework_info_file_path):
+            framework_info_file = os.path.join(cwd, "framework_info.json")
+        else:
+            framework_info_file = os.path.join(cwd, "framework_info_macos.json")
         dynamic_framework_dir = os.path.join(cwd, config + "-" + args.ios_sysroot)
         static_framework_dir = os.path.join(cwd, config + "-" + args.ios_sysroot, "static_framework")
         # test dynamic framework
