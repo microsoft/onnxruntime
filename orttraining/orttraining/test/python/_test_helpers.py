@@ -1,31 +1,13 @@
 import copy
 import os
 
-import numpy as np
 import torch
 from numpy.testing import assert_allclose
 
-from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.training import orttrainer
-
-try:
-    from onnxruntime.training.ortmodule import ORTModule
-    from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
-    from onnxruntime.training.ortmodule._graph_execution_manager_factory import (  # noqa: F401
-        GraphExecutionManagerFactory,
-    )
-except ImportError:
-    # Some pipelines do not contain ORTModule
-    pass
-except Exception as e:
-    from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
-
-    if isinstance(e, ORTModuleInitException):
-        # ORTModule is present but not ready to run
-        # That is OK because this file is also used by ORTTrainer tests
-        pass
-    raise
-
+from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule._graph_execution_manager_factory import (  # noqa: F401
+    GraphExecutionManagerFactory,
+)
 
 def is_all_or_nothing_fallback_enabled(model, policy=None):
     from onnxruntime.training.ortmodule import ORTMODULE_FALLBACK_POLICY
@@ -64,103 +46,6 @@ def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
 
     # for idx in range(len(output_a)):
     assert_allclose(output_a, output_b, rtol=rtol, atol=atol, err_msg="Model output value mismatch")
-
-
-def assert_onnx_weights(model_a, model_b, verbose=False, rtol=1e-7, atol=0):
-    r"""Asserts whether weight difference between models a and b differences are within specified tolerance
-
-    Compares the weights of two different ONNX models (model_a and model_b)
-    and raises AssertError when they diverge by more than atol or rtol
-
-    Args:
-        model_a, model_b (ORTTrainer): Two instances of ORTTrainer with the same model structure
-        verbose (bool, default is False): if True, prints absolute difference for each weight
-        rtol (float, default is 1e-7): Max relative difference
-        atol (float, default is 1e-4): Max absolute difference
-    """
-    assert isinstance(model_a, orttrainer.ORTTrainer) and isinstance(model_b, orttrainer.ORTTrainer)
-    state_dict_a, state_dict_b = model_a._training_session.get_state(), model_b._training_session.get_state()
-    assert len(state_dict_a.items()) == len(state_dict_b.items())
-    _assert_state_dict_weights(state_dict_a, state_dict_b, verbose, rtol, atol)
-
-
-def assert_legacy_onnx_weights(model_a, model_b, verbose=False, rtol=1e-7, atol=0):
-    r"""Asserts whether weight difference between models a and b differences are within specified tolerance
-
-    Compares the weights of a legacy model model_a and experimental model_b model
-    and raises AssertError when they diverge by more than atol or rtol.
-
-    Args:
-        model_a (ORTTrainer): Instance of legacy ORTTrainer
-        model_b (ORTTrainer): Instance of experimental ORTTrainer
-        verbose (bool, default is False): if True, prints absolute difference for each weight.
-        rtol (float, default is 1e-7): Max relative difference
-        atol (float, default is 1e-4): Max absolute difference
-    """
-    assert isinstance(model_a, orttrainer.ORTTrainer) and isinstance(model_b, Legacy_ORTTrainer)
-    state_dict_a, state_dict_b = model_a._training_session.get_state(), model_b.session.get_state()
-    assert len(state_dict_a.items()) == len(state_dict_b.items())
-    _assert_state_dict_weights(state_dict_a, state_dict_b, verbose, rtol, atol)
-
-
-def _assert_state_dict_weights(state_dict_a, state_dict_b, verbose, rtol, atol):
-    r"""Asserts whether dicts a and b value differences are within specified tolerance
-
-    Compares the weights of two model's state_dict dicts and raises AssertError
-    when they diverge by more than atol or rtol
-
-    Args:
-        model_a (ORTTrainer): Instance of legacy ORTTrainer
-        model_b (ORTTrainer): Instance of experimental ORTTrainer
-        verbose (bool, default is False): if True, prints absolute difference for each weight.
-        rtol (float, default is 1e-7): Max relative difference
-        atol (float, default is 1e-4): Max absolute difference
-    """
-
-    for (a_name, a_val), (_b_name, b_val) in zip(state_dict_a.items(), state_dict_b.items()):
-        np_a_vals = np.array(a_val).flatten()
-        np_b_vals = np.array(b_val).flatten()
-        assert np_a_vals.shape == np_b_vals.shape
-        if verbose:
-            print(f"Weight name: {a_name}: absolute difference: {np.abs(np_a_vals-np_b_vals).max()}")
-        assert_allclose(a_val, b_val, rtol=rtol, atol=atol, err_msg=f"Weight mismatch for {a_name}")
-
-
-def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
-    r"""Asserts whether optimizer state differences are within specified tolerance
-
-    Compares the expected and actual optimizer states of dicts and raises AssertError
-    when they diverge by more than atol or rtol.
-    The optimizer dict is of the form:
-        model_weight_name:
-            {
-                "Moment_1": moment1_tensor,
-                "Moment_2": moment2_tensor,
-                "Update_Count": update_tensor # if optimizer is adam, absent otherwise
-            },
-        ...
-        "shared_optimizer_state": # if optimizer is shared, absent otherwise.
-                                    So far, only lamb optimizer uses this.
-        {
-            "step": step_tensor # int array of size 1
-        }
-
-    Args:
-        expected_state (dict(dict())): Expected optimizer state
-        actual_state (dict(dict())): Actual optimizer state
-        rtol (float, default is 1e-7): Max relative difference
-        atol (float, default is 0): Max absolute difference
-    """
-    assert expected_state.keys() == actual_state.keys()
-    for param_name, a_state in actual_state.items():
-        for k, v in a_state.items():
-            assert_allclose(
-                v,
-                expected_state[param_name][k],
-                rtol=rtol,
-                atol=atol,
-                err_msg=f"Optimizer state mismatch for param {param_name}, key {k}",
-            )
 
 
 def is_dynamic_axes(model):

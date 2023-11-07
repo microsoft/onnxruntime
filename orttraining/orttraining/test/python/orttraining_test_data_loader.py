@@ -4,8 +4,6 @@ from enum import Enum
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from onnxruntime.capi.ort_trainer import generate_sample
-
 global_rng = random.Random()
 
 
@@ -40,6 +38,14 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
 
     return torch.tensor(data=values, dtype=torch.float).view(shape).contiguous()
 
+def generate_sample(desc, device=None):
+    """Generate a sample based on the description"""
+    # symbolic dimensions are described with strings. set symbolic dimensions to be 1
+    size = [s if isinstance(s, (int)) else 1 for s in desc.shape_]
+    if desc.num_classes_:
+        return torch.randint(0, desc.num_classes_, size, dtype=desc.dtype_).to(device)
+    else:
+        return torch.randn(size, dtype=desc.dtype_).to(device)
 
 class OrtTestDataset(Dataset):
     def __init__(self, input_desc, seq_len, dataset_len, device):
