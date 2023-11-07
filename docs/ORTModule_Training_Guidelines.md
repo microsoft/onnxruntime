@@ -62,7 +62,7 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 `FATAL` | `ERROR` | `WARNING` (For Users)
 
 <sup>`WARNING` is the default and recommended level for
-users.</sup>
+<br>users.</sup>
 </td>
 <td>
 
@@ -80,7 +80,7 @@ users.</sup>
 `INFO` (For Users | ORT Developers)
 
 <sup>`INFO` is the used for collecting experimental
-feature stats, or a little bit more error messages.</sup>
+<br>feature stats, or a little bit more error messages.</sup>
 </td>
 <td>
 
@@ -98,7 +98,7 @@ feature stats, or a little bit more error messages.</sup>
 `DEVINFO` (For ORT Developers)
 
 <sup>`DEVINFO` is the recommended level for
-debugging purposes.</sup>
+<br>debugging purposes.</sup>
 </td>
 <td>
 
@@ -117,7 +117,7 @@ debugging purposes.</sup>
 `VERBOSE` (For ORT Developers)
 
 <sup>`VERBOSE` is the last resort for debugging
-hard problems.</sup>
+<br>hard problems.</sup>
 </td>
 <td>
 
