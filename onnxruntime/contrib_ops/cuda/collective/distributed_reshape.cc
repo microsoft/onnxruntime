@@ -720,6 +720,16 @@ Status DistributedReshape<T>::ComputeInternal(OpKernelContext* context) const {
         allow_zero_,
         output_tensor);
   } else {
+    // Debug info.
+    //
+    // std::cout << "data shape: " << data_tensor->Shape() << std::endl;
+    // for (auto dim: shape_tensor->template DataAsSpan<int64_t>()) {
+    //   std::cout << "target dim: " << dim << std::endl;
+    // }
+    // std::cout << "data_sharding_spec: " << data_sharding_spec.ToString() << std::endl;
+    // std::cout << "shape_sharding_spec: " << shape_sharding_spec.ToString() << std::endl;
+    // std::cout << "output_sharding_spec: " << output_sharding_spec.ToString() << std::endl;
+
     ORT_ENFORCE(shape_sharding_spec.HasNoShard(),
                 "Shape tensor should not be sharded because it will trigger communication. "
                 "If sharding shape is needed, please request this feature on Github.");

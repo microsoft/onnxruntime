@@ -13,6 +13,33 @@ using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ONNX_NAMESPACE::TypeProto;
 
+// void SetTensorShardingAttributes(OpSchema& schema) {
+//   schema.Attr("input_device_mesh_elements",
+//         "device_mesh_elements[i] defines the device mesh's value for the i-th input. "
+//         "E.g., device_mesh_elements=[\"[0, 1]\", \"[0, 1]\"] means the 1st and the 2nd "
+//         "inputs are stored on the 0-th and the 1st devices, respectively. "
+//         "For non-tensor input, use empty string to indicate no sharding.",
+//         AttributeProto::STRINGS)
+//   .Attr("input_device_mesh_shapes",
+//         "device_mesh_shape[i] defines the device mesh's shape for the i-th input. "
+//         "For non-tensor input, use empty string to indicate no sharding.",
+//         AttributeProto::STRINGS)
+//   .Attr("input_shard_specs",
+//         "The sharding spec of inputs. "
+//         "E.g., if input_shard_specs[i] is \"RRR\", the i-th input is a unsharded 3-D tensor. "
+//         "For non-tensor input, use empty string to indicate no sharding.",
+//         AttributeProto::STRINGS)
+//   .Attr("output_device_mesh_elements",
+//         "Similar to input_device_mesh_elments but for outputs.",
+//         AttributeProto::STRINGS)
+//   .Attr("output_device_mesh_shapes",
+//         "Similar to input_device_mesh_shapes but for outputs.",
+//         AttributeProto::STRINGS)
+//   .Attr("output_shard_specs",
+//         "Similar to input_shard_specs but for outputs.",
+//         AttributeProto::STRINGS)
+// }
+
 void RegisterCollectiveOps() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(AllReduce)
       .SetDomain(kMSDomain)

@@ -82,6 +82,39 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     DistributedSqueeze,
     kMSDomain,
     1,
+    bool,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()),
+    DistributedSqueeze<bool, int64_t>);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    DistributedSqueeze,
+    kMSDomain,
+    1,
+    int8_t,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()),
+    DistributedSqueeze<int8_t, int64_t>);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    DistributedSqueeze,
+    kMSDomain,
+    1,
+    uint8_t,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
+    DistributedSqueeze<uint8_t, int64_t>);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    DistributedSqueeze,
+    kMSDomain,
+    1,
     int64_t,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
