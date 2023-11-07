@@ -53,19 +53,17 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 
 <table>
 <tr>
-<th>Log Level</th>
-<th>Description</th>
+<th style="width:20%">Log Level</th>
+<th style="width:60%">Description</th>
 </tr>
 <tr>
 <td>
 
 `FATAL` | `ERROR` | `WARNING` (For Users)
 
-`WARNING` is the default and recommended level for users to use.
+<sup>`WARNING` is the default and recommended level for users.</sup>
 </td>
 <td>
-
-
 
 - ONNX Runtime backend log level - `FATAL` | `ERROR` | `WARNING`.
 - ORTModule log level - `FATAL` | `ERROR` | `WARNING`.
@@ -75,12 +73,12 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 
 </td>
 </tr>
-
-
 <tr>
 <td>
 
 `INFO` (For Users | ORT Developers)
+
+<sup>`INFO` is the used for collecting experimental feature stats, or a little bit more error messages.</sup>
 </td>
 <td>
 
@@ -92,15 +90,17 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 
 </td>
 </tr>
-
 <tr>
 <td>
 
-`DEVINFO` (For ORT Developers)</td>
+`DEVINFO` (For ORT Developers)
+
+<sup>`DEVINFO` is the recommended level for debugging purposes.</sup>
+</td>
 <td>
 
-- ONNX Runtime backend `INFO` log level.
-- ORTModule `INFO` log level.
+- ONNX Runtime backend log level - `INFO`.
+- ORTModule log level - `INFO`.
 - Rank-0 log filtering is `OFF` (e.g. logging on all ranks).
 - PyTorch exporter export logs filtering is `OFF`.
 - PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
@@ -111,11 +111,14 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 <tr>
 <td>
 
-`VERBOSE` (For ORT Developers)</td>
+`VERBOSE` (For ORT Developers)
+
+<sup>`VERBOSE` is the last resort for debugging hard problems.</sup>
+</td>
 <td>
 
-- ONNX Runtime backend `VERBOSE` log level.
-- ORTModule `VERBOSE` log level.
+- ONNX Runtime backend log level - `VERBOSE`.
+- ORTModule log level - `VERBOSE`.
 - Rank-0 log filtering is `OFF` (e.g. logging on all ranks).
 - PyTorch exporter export logs filtering is `OFF`.
 - PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
