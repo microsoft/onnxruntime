@@ -456,7 +456,7 @@ class TritonCodegen(NodeVisitor):
         for input in node.inputs:
             for idx, dim in enumerate(input.shape):
                 if dim.is_symbol and dim not in seen_symbolic_shape:
-                    code_buffer += f"{space_indent}{str(dim)} = {context.get_variable_name(input.name)}.size()[{idx}]\n"
+                    code_buffer += f"{space_indent}{dim} = {context.get_variable_name(input.name)}.size()[{idx}]\n"
                     seen_symbolic_shape.add(dim)
 
         if node.has_dropout:

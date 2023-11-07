@@ -12,13 +12,13 @@ from onnx import GraphProto, NodeProto, TensorProto
 from ._sympy_utils import extract_shape_from_symbol
 from ._utils import get_attribute, get_reduce_info, next_power_of_2
 
+_SPECIAL_FLOATS: List[str] = ["inf", "-inf"]
+
 
 class CodegenContext:
     """
     record variable name mapping in term of IRnodes.
     """
-
-    _special_floats = ["inf", "-inf"]
 
     def __init__(self, var_map: Dict[str, str]):
         self._var_map: Dict[str, str] = {**var_map}
@@ -31,7 +31,7 @@ class CodegenContext:
     def get_internal_variable_name(self, name: str) -> str:
         var_name = self._var_map[name]
         var_name = self._var_map[var_name] if var_name in self._var_map else var_name
-        return f'float("{var_name}")' if var_name in self._special_floats else var_name
+        return f'float("{var_name}")' if var_name in _SPECIAL_FLOATS else var_name
 
 
 class CodeBuffer:
