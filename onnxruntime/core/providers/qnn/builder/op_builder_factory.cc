@@ -161,6 +161,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreatePadOpBuilder("Pad", *this);
   }
+
+  {
+    CreateExpandOpBuilder("Expand", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {
