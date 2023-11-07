@@ -79,7 +79,7 @@ class BaseOpBuilder : public IOpBuilder {
                                      const logging::Logger& logger,
                                      const std::vector<std::string>& input_names,
                                      size_t output_index,
-                                     OnnxInputInfo& output_info) const ORT_MUST_USE_RESULT;
+                                     TensorInfo& output_info) const ORT_MUST_USE_RESULT;
 
   Status ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                       const NodeUnitIODef& input,

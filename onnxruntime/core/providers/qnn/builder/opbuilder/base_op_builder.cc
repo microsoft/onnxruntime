@@ -56,8 +56,8 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
     return Status::OK();
   }
 
-  OnnxInputInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(input, input_info));
+  TensorInfo input_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
 
   std::vector<uint8_t> unpacked_tensor;
   if (input_info.is_initializer) {
@@ -126,7 +126,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   for (size_t output_i = 0; output_i < output_count; ++output_i) {
     const auto& output_name = outputs[output_i].node_arg.Name();
 
-    OnnxInputInfo output_info = {};
+    TensorInfo output_info = {};
     ORT_RETURN_IF_ERROR(GetOutputTensorInfo(qnn_model_wrapper, node_unit, logger, input_names, output_i, output_info));
 
     Qnn_DataType_t supported_qnn_data_type = GetSupportedOutputDataType(output_i, output_info.qnn_data_type);
@@ -182,12 +182,12 @@ Status BaseOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
                                           const logging::Logger& logger,
                                           const std::vector<std::string>& input_names,
                                           size_t output_index,
-                                          OnnxInputInfo& output_info) const {
+                                          TensorInfo& output_info) const {
   ORT_UNUSED_PARAMETER(logger);
   ORT_UNUSED_PARAMETER(input_names);
   const auto& outputs = node_unit.Outputs();
   ORT_RETURN_IF_NOT(output_index < outputs.size(), "Invalid output index in GetOutputQuantInfo");
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(node_unit.Outputs()[output_index], output_info));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[output_index], output_info));
 
   return Status::OK();
 }

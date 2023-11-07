@@ -36,7 +36,7 @@ class SplitOpBuilder : public BaseOpBuilder {
                              const logging::Logger& logger,
                              const std::vector<std::string>& input_names,
                              size_t output_index,
-                             OnnxInputInfo& output_info) const override ORT_MUST_USE_RESULT;
+                             TensorInfo& output_info) const override ORT_MUST_USE_RESULT;
 };
 
 Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -133,7 +133,7 @@ Status SplitOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
                                            const logging::Logger& logger,
                                            const std::vector<std::string>& input_names,
                                            size_t output_index,
-                                           OnnxInputInfo& output_info) const {
+                                           TensorInfo& output_info) const {
   // Force Split outputs to use the same quantization parameters as the input.
   //
   // The quantization tool assigns equal qparams to the input and outputs, and the NodeUnit selectors
