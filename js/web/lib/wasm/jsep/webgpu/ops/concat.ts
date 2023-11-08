@@ -96,7 +96,7 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
   const inputDependencies: ProgramInputTensorInfoDependency[] = [];
   const inputShapeOrRanks = [];
   const enableInputShapesUniforms = [];
-  let programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
+  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
   for (let i = 0; i < inputs.length; ++i) {
     previousSum += inputs[i].dims[adjustedAxis];
     sizeInConcatAxis[i] = previousSum;
@@ -125,12 +125,12 @@ const createConcatProgramInfo = (inputs: readonly TensorView[], axis: number): P
       Array.from(Array(sizeInConcatAxis.length).keys()).map(i => `uniforms.sizeInConcatAxis${i}`).join(',');
   const getShaderSource = (shaderHelper: ShaderHelper) => `
 
-  ${(function() {
+  ${(() => {
     shaderHelper.registerUniform('outputSize', 'u32');
     for (let i = 0; i < inputs.length; i++) {
       shaderHelper.registerUniform(`sizeInConcatAxis${i}`, 'u32');
     }
-    return shaderHelper.declareVariables(...inputVars, output)
+    return shaderHelper.declareVariables(...inputVars, output);
   })()}
 
   ${calculateInputIndexImpl(sizeInConcatAxis.length, sizeInConcatAxisStr)}
