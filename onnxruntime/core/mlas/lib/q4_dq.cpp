@@ -364,7 +364,7 @@ range2scalezp(float min, float max, ScaleT& scale, uint8_t& zp)
     } else {
         zp = (uint8_t)roundf(zero_point_fp);
     }
-    scale = static_cast<ScaleT>(scale_f);
+    scale = ScaleT(scale_f);
 }
 
 template <typename ScaleT, int qbits>
@@ -377,7 +377,7 @@ range2scale(float min, float max, ScaleT& scale)
 
     max = fabsf(max) > fabsf(min) ? max : min;
 
-    scale = static_cast<ScaleT>(max / mid_fp);
+    scale = ScaleT(max / mid_fp);
 };
 
 
@@ -773,7 +773,7 @@ MlasBlockwiseQuantizedShape<float>(
     );
 
 
-template <typename T>
+template <typename T, int qbits>
 void
 MlasQuantizeBlockwise(
     uint8_t* dst,
@@ -791,50 +791,50 @@ MlasQuantizeBlockwise(
     switch (block_size) {
         case 16:
             if (columnwise) {
-                BlockwiseQuantizer<T, 16, 4, true>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 16, qbits, true>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 16, 4, false>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 16, qbits, false>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             }
             break;
 
         case 32:
             if (columnwise) {
-                BlockwiseQuantizer<T, 32, 4, true>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 32, qbits, true>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 32, 4, false>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 32, qbits, false>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             }
             break;
 
         case 64:
             if (columnwise) {
-                BlockwiseQuantizer<T, 64, 4, true>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 64, qbits, true>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 64, 4, false>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 64, qbits, false>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             }
             break;
 
         case 128:
             if (columnwise) {
-                BlockwiseQuantizer<T, 128, 4, true>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 128, qbits, true>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 128, 4, false>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 128, qbits, false>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             }
             break;
 
         case 256:
             if (columnwise) {
-                BlockwiseQuantizer<T, 256, 4, true>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 256, qbits, true>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 256, 4, false>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 256, qbits, false>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             }
             break;
@@ -847,7 +847,7 @@ MlasQuantizeBlockwise(
 
 template
 void
-MlasQuantizeBlockwise<float>(
+MlasQuantizeBlockwise<float, 4>(
     uint8_t* dst,
     float* scales,
     uint8_t* zero_points,
@@ -860,8 +860,23 @@ MlasQuantizeBlockwise<float>(
     MLAS_THREADPOOL* thread_pool
     );
 
+template
+void
+MlasQuantizeBlockwise<MLAS_FP16, 4>(
+    uint8_t* dst,
+    MLAS_FP16* scales,
+    uint8_t* zero_points,
+    const MLAS_FP16* src,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int leading_dimension,
+    MLAS_THREADPOOL* thread_pool
+    );
 
-template <typename T>
+
+template <typename T, int qbits>
 void
 MlasDequantizeBlockwise(
     T* dst,
@@ -878,46 +893,46 @@ MlasDequantizeBlockwise(
     switch (block_size) {
         case 16:
             if (columnwise) {
-                BlockwiseQuantizer<T, 16, 4, true>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 16, qbits, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                columns, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 16, 4, false>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 16, qbits, false>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
             }
             break;
         case 32:
             if (columnwise) {
-                BlockwiseQuantizer<T, 32, 4, true>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 32, qbits, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                columns, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 32, 4, false>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 32, qbits, false>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
             }
             break;
         case 64:
             if (columnwise) {
-                BlockwiseQuantizer<T, 64, 4, true>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 64, qbits, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                columns, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 64, 4, false>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 64, qbits, false>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
             }
             break;
         case 128:
             if (columnwise) {
-                BlockwiseQuantizer<T, 128, 4, true>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 128, qbits, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 128, 4, false>::dequantize(dst, src, scales, zero_points,
+                BlockwiseQuantizer<T, 128, qbits, false>::dequantize(dst, src, scales, zero_points,
                                                                  rows, columns, thread_pool);
             }
             break;
         case 256:
             if (columnwise) {
-                BlockwiseQuantizer<T, 256, 4, true>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 256, qbits, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 256, 4, false>::dequantize(dst, src, scales, zero_points,
+                BlockwiseQuantizer<T, 256, qbits, false>::dequantize(dst, src, scales, zero_points,
                                                                  rows, columns, thread_pool);
             }
             break;
@@ -929,7 +944,7 @@ MlasDequantizeBlockwise(
 
 template
 void
-MlasDequantizeBlockwise<float>(
+MlasDequantizeBlockwise<float, 4>(
     float* dst,
     const uint8_t* src,
     const float* scales,

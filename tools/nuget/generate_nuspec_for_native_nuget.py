@@ -557,7 +557,7 @@ def generate_files(line_list, args):
         files_list.append(
             "<file src="
             + '"'
-            + os.path.join(args.native_build_path, "nuget-staging/usr/local/lib", "libonnxruntime.so")
+            + os.path.join(args.native_build_path, "libonnxruntime.so")
             + '" target="runtimes\\linux-'
             + args.target_architecture
             + '\\native" />'
@@ -793,8 +793,10 @@ def generate_files(line_list, args):
                 "<file src=" + '"' + os.path.join(args.native_build_path, nuget_dependencies["tvm"]) + runtimes + " />"
             )
 
-        # Some tools to be packaged in nightly build only, should not be released
+        # Some tools to be packaged in nightly debug build only, should not be released
         # These are copied to the runtimes folder for convenience of loading with the dlls
+        # NOTE: nuget gives a spurious error on linux if these aren't in a separate directory to the library so
+        #       we add them to a tools folder for that reason.
         if (
             args.is_release_build.lower() != "true"
             and args.target_architecture == "x64"
@@ -804,7 +806,10 @@ def generate_files(line_list, args):
                 "<file src="
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["onnxruntime_perf_test"])
-                + runtimes
+                + runtimes[:-1]
+                + "\\tools\\"
+                + nuget_dependencies["onnxruntime_perf_test"]
+                + '"'
                 + " />"
             )
 
@@ -817,7 +822,10 @@ def generate_files(line_list, args):
                 "<file src="
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["onnx_test_runner"])
-                + runtimes
+                + runtimes[:-1]
+                + "\\tools\\"
+                + nuget_dependencies["onnx_test_runner"]
+                + '"'
                 + " />"
             )
 
@@ -871,7 +879,6 @@ def generate_files(line_list, args):
         os.system(copy_command + " " + source_props + " " + target_props)
         files_list.append("<file src=" + '"' + target_props + '" target="build\\native" />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard1.1" />')
             files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard2.0" />')
 
         # Process targets file
@@ -890,7 +897,6 @@ def generate_files(line_list, args):
         os.system(copy_command + " " + source_targets + " " + target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="build\\native" />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard1.1" />')
             files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard2.0" />')
 
         # Process xamarin targets files
