@@ -90,12 +90,8 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
   if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
     configure_file(
-      ${REPO_ROOT}/tools/ci_build/github/apple/framework_info_ios.json.template
+      ${REPO_ROOT}/tools/ci_build/github/apple/framework_info.json.template
       ${CMAKE_CURRENT_BINARY_DIR}/framework_info.json)
-  else() #macos
-    configure_file(
-      ${REPO_ROOT}/tools/ci_build/github/apple/framework_info_macos.json.template
-      ${CMAKE_CURRENT_BINARY_DIR}/framework_info_macos.json)
   endif()
   set_target_properties(onnxruntime PROPERTIES
     FRAMEWORK TRUE
