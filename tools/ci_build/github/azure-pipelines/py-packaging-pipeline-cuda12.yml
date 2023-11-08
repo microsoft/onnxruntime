@@ -1,16 +1,39 @@
 trigger: none
 
+parameters:
+  - name: enable_linux_gpu
+    type: boolean
+    default: true
+  - name: enable_windows_gpu
+    type: boolean
+    default: true
+  - name: cmake_build_type
+    type: string
+    default: 'Release'
+    values:
+      - Debug
+      - Release
+      - RelWithDebInfo
+      - MinSizeRel
+  - name: cuda_version
+    type: string
+    default: '12.2'
+    values:
+      - 11.8
+      - 12.2
+
 resources:
   repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
+    - repository: manylinux
+      type: Github
+      endpoint: Microsoft
+      name: pypa/manylinux
+      ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- template: templates/py-packaging-stage-cuda12.yml
-  parameters:
-    enable_linux_gpu: true
-    enable_windows_gpu: true
-    cmake_build_type: Release
+  - template: templates/py-packaging-stage-cuda12.yml
+    parameters:
+      enable_linux_gpu: parameters.enable_linux_gpu
+      enable_windows_gpu: parameters.enable_windows_gpu
+      cmake_build_type: parameters.cmake_build_type
+      cuda_version: parameters.cuda_version
