@@ -256,9 +256,6 @@ class MlasActivationTest : public MlasTestBase {
   }
 };
 
-template <>
-MlasActivationTest* MlasTestFixture<MlasActivationTest>::mlas_tester(nullptr);
-
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute ? MlasDirectShortExecuteTests<MlasActivationTest>::RegisterShortExecute() : 0;
 });
