@@ -167,11 +167,6 @@ class DebugOptions:
     @property
     def onnxruntime_log_filter(self):
         """Accessor for the filter onnxruntime logs configuration."""
-        if self.log_level >= LogLevel.INFO:
-            return [
-                "CleanUnusedInitializersAndNodeArgs] Removing initializer",
-                "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED",
-            ]
         return None
 
 
