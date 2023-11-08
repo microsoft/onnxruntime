@@ -5702,7 +5702,6 @@ TEST(ReductionOpTest, empty_set_ReduceL2_13) {
 
   test_empty_set("ReduceL2", 13, false, 0);
 }
-empty_set_ReduceLogSumExp
 
 TEST(ReductionOpTest, empty_set_ReduceLogSum) {
   if (DefaultDnnlExecutionProvider().get() != nullptr) {
