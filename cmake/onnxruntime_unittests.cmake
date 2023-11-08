@@ -918,7 +918,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   ### if you want to investigate or debug a test failure in onnxruntime_test_all, replace the following line.
   ### those flags slow down the CI test significantly, so we don't use them by default.
   ###
-  set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2 -s PTHREADS_DEBUG=1 -s SAFE_HEAP_LOG=1")
+  set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2 -s PTHREADS_DEBUG=1 -s SAFE_HEAP_LOG=1 -s RUNTIME_DEBUG=1")
   # set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=1")
 endif()
 
