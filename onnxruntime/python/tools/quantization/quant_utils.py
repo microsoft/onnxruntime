@@ -199,7 +199,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     :parameter rmax: maximum value of r
     :parameter qmin: minimum value representable by the target quantization data type
     :parameter qmax: maximum value representable by the target quantization data type
-    :parameter symmetric: True if the floating point range should be made symmetric. Defaults to False.
+    :parameter symmetric: True if the floating-point range should be made symmetric. Defaults to False.
     :parameter min_real_range: Minimum floating-point range (i.e., rmax - rmin) to enforce. Defaults to None.
     :return: zero and scale [z, s]
 
