@@ -33,7 +33,7 @@ resources:
 stages:
   - template: templates/py-packaging-stage-cuda12.yml
     parameters:
-      enable_linux_gpu: parameters.enable_linux_gpu
-      enable_windows_gpu: parameters.enable_windows_gpu
-      cmake_build_type: parameters.cmake_build_type
-      cuda_version: parameters.cuda_version
+      enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
+      enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
+      cmake_build_type: ${{ parameters.cmake_build_type }}
+      cuda_version: ${{ parameters.cuda_version }}
