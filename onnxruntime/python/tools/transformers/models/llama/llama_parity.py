@@ -6,6 +6,7 @@ from typing import List
 
 import numpy as np
 import torch
+from benchmark_helper import setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
     add_io_bindings,
@@ -15,10 +16,9 @@ from llama_inputs import (
     get_sample_with_past_kv_inputs,
 )
 from llama_torch import setup_torch_model
-from transformers import LlamaConfig, LlamaForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM
 
 import onnxruntime as ort
-from onnxruntime.transformers.benchmark_helper import setup_logger
 
 logger = logging.getLogger("")
 
@@ -30,7 +30,7 @@ def get_sequence_lengths(args: argparse.Namespace):
     return past_sequence_length, curr_sequence_length, max_sequence_length
 
 
-def get_inputs(args: argparse.Namespace, config: LlamaConfig):
+def get_inputs(args: argparse.Namespace, config: AutoConfig):
     # Dummy values for parity
     world_size = get_size()
     batch_size = 2
@@ -45,6 +45,7 @@ def get_inputs(args: argparse.Namespace, config: LlamaConfig):
             past_seq_len=past_sequence_length,
             max_seq_len=max_sequence_length,
             use_fp16=args.use_fp16,
+            use_gqa=args.use_gqa,
             return_dict=True,
             world_size=world_size,
         )
@@ -64,7 +65,9 @@ def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     return inputs
 
 
-def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: LlamaForCausalLM, kv_cache_ortvalues: dict):
+def verify_parity(
+    args: argparse.Namespace, config: AutoConfig, pt_model: AutoModelForCausalLM, kv_cache_ortvalues: dict
+):
     inputs = get_inputs(args, config)
 
     # Run inference with PyTorch
@@ -82,8 +85,7 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
     past_sequence_length, _, max_sequence_length = get_sequence_lengths(args)
     inputs = convert_inputs_for_ort(
         inputs,
-        use_fp16=args.use_fp16,
-        use_buffer_share=args.use_fp16,
+        use_gqa=args.use_gqa,
         past_seq_len=past_sequence_length,
         max_seq_len=max_sequence_length,
         device=args.execution_provider,
@@ -102,7 +104,12 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
     # Add IO bindings for non-CPU execution providers
     if args.execution_provider != "cpu":
         io_binding, kv_cache_ortvalues = add_io_bindings(
-            ort_model, inputs, args.execution_provider, int(args.rank), kv_cache_ortvalues
+            ort_model,
+            inputs,
+            args.execution_provider,
+            int(args.rank),
+            args.use_gqa,
+            kv_cache_ortvalues,
         )
 
         io_binding.synchronize_inputs()
@@ -182,6 +189,14 @@ def get_args(argv: List[str]):
         help="Use past key and past value as inputs to the model. Necessary for decoder_with_past_model.onnx models.",
     )
     parser.set_defaults(use_past_kv=False)
+
+    parser.add_argument(
+        "-g",
+        "--use_gqa",
+        action="store_true",
+        help="Use if model has GroupQueryAttention",
+    )
+    parser.set_defaults(use_gqa=False)
 
     parser.add_argument(
         "--merged",
