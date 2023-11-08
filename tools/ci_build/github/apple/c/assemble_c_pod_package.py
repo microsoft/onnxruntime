@@ -53,7 +53,6 @@ def assemble_c_pod_package(
     :param public_headers_dir Path to the public headers directory to include in the pod.
     :param framework_dir Path to the onnxruntime framework directory to include in the pod.
     :param package_variant The pod package variant.
-    :param Optional framework_info_macos_file Path to the framework_info_macos.json file containing additional values for the podspec.
     :return Tuple of (package name, path to the podspec file).
     """
     staging_dir = staging_dir.resolve()
@@ -87,7 +86,7 @@ def assemble_c_pod_package(
         "ORT_C_HEADERS_DIR": public_headers_dir.name,
         "SUMMARY": pod_config["summary"],
         "VERSION": pod_version,
-        "WEAK_FRAMEWORK": framework_info["macosx"]["WEAK_FRAMEWORK"],
+        "WEAK_FRAMEWORK": framework_info["iphoneos"]["WEAK_FRAMEWORK"],
     }
 
     podspec_template = _script_dir / "c.podspec.template"
