@@ -61,7 +61,7 @@ void PadAndUnflattenImpl(cudaStream_t stream,
       output_data);
 }
 
-#define PAD_AND_UNFLATTEN_FROM_MASK_IMPL(T)                                       \
+#define PAD_AND_UNFLATTEN_IMPL(T)                                       \
   template void PadAndUnflattenImpl<T>(cudaStream_t stream,                         \
                                        const int64_t total_element_count,           \
                                        const fast_divmod output_element_stride_fdm, \
@@ -70,10 +70,10 @@ void PadAndUnflattenImpl(cudaStream_t stream,
                                        const int64_t* indices_data,                 \
                                        T* output_data);
 
-PAD_AND_UNFLATTEN_FROM_MASK_IMPL(float)
-PAD_AND_UNFLATTEN_FROM_MASK_IMPL(double)
-PAD_AND_UNFLATTEN_FROM_MASK_IMPL(half)
-PAD_AND_UNFLATTEN_FROM_MASK_IMPL(BFloat16)
+PAD_AND_UNFLATTEN_IMPL(float)
+PAD_AND_UNFLATTEN_IMPL(double)
+PAD_AND_UNFLATTEN_IMPL(half)
+PAD_AND_UNFLATTEN_IMPL(BFloat16)
 
 #undef PAD_AND_UNFLATTEN_FROM_MASK_IMPL
 
