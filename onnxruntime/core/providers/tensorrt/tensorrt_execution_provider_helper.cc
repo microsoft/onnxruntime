@@ -7,6 +7,20 @@
 
 namespace onnxruntime {
 
+// It's passible that two graphs have the same graph.Name()
+// Get the unique name from graph.Name() + first node's name
+std::string GetUniqueGraphName(const Graph& graph) {
+  std::string first_node_name;
+  for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
+    auto node = graph.GetNode(i);
+    if (node == nullptr) {
+      continue;
+    }
+    first_node_name = node->Name();
+  }
+  return graph.Name() + "_" + first_node_name;
+}
+
 // The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
 // Graph::ResolveContext::IsInputInitializerOrOutput(). We have to implement this fuction again.
 bool TensorrtExecutionProvider::IsInputInitializerOrOutput(const Graph& graph,
@@ -31,10 +45,11 @@ bool TensorrtExecutionProvider::IsOuterScopeValue(const Graph& graph,
 // Graph::ResolveContext::IsLocalValue(). We have to implement this function again.
 bool TensorrtExecutionProvider::IsLocalValue(const Graph& graph,
                                              const std::string& name) const {
-  if (subgraph_context_map_.find(graph.Name()) == subgraph_context_map_.end()) {
+  std::string unique_graph_name = GetUniqueGraphName(graph);
+  if (subgraph_context_map_.find(unique_graph_name) == subgraph_context_map_.end()) {
     return false;
   }
-  SubGraphContext* context = subgraph_context_map_.at(graph.Name()).get();
+  SubGraphContext* context = subgraph_context_map_.at(unique_graph_name).get();
   return context->output_args.find(name) != context->output_args.cend() ||
          context->inputs_and_initializers.find(name) != context->inputs_and_initializers.cend();
 }
@@ -59,13 +74,15 @@ void TensorrtExecutionProvider::BuildSubGraphContext(const Graph& graph) const {
     }
   }
 
+  std::string unique_graph_name = GetUniqueGraphName(graph);
+
   // Subgraph context has been built before, no need to do it again
-  if (subgraph_context_map_.find(graph.Name()) != subgraph_context_map_.end()) {
+  if (subgraph_context_map_.find(unique_graph_name) != subgraph_context_map_.end()) {
     return;
   }
 
-  subgraph_context_map_.emplace(graph.Name(), std::make_unique<SubGraphContext>());
-  SubGraphContext* context = subgraph_context_map_.at(graph.Name()).get();
+  subgraph_context_map_.emplace(unique_graph_name, std::make_unique<SubGraphContext>());
+  SubGraphContext* context = subgraph_context_map_.at(unique_graph_name).get();
 
   // Collect all nodes' outputs and nodes' name
   for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
@@ -138,13 +155,14 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph& graph_b
     while (top_level_graph->MutableParentGraph()) {
       top_level_graph = top_level_graph->MutableParentGraph();
     }
-    if (subgraph_context_map_.find(top_level_graph->Name()) == subgraph_context_map_.end()) {
+    std::string unique_graph_name = GetUniqueGraphName(*top_level_graph);
+    if (subgraph_context_map_.find(unique_graph_name) == subgraph_context_map_.end()) {
       LOGS_DEFAULT(ERROR) << "[TensorRT EP] Can't find top-level graph context. \
                               Please check BuildSubGraphContext() has built the graph context correctly.";
       return;
     }
 
-    SubGraphContext* context = subgraph_context_map_.at(top_level_graph->Name()).get();
+    SubGraphContext* context = subgraph_context_map_.at(unique_graph_name).get();
 
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Subgraph name is " << graph_build.Name();
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Its parent node is " << graph.ParentNode()->Name();
@@ -197,12 +215,13 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph& graph_b
 void TensorrtExecutionProvider::SetAllGraphInputs(Graph& graph) const {
   // If ORT TRT doesn't manully set graph input in TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(),
   // Graph::Resolve() will help set graph inputs in Graph::SetGraphInputsOutputs(), so no need to set graph inputs here.
-  if (subgraph_context_map_.find(graph.Name()) == subgraph_context_map_.end() ||
-      subgraph_context_map_[graph.Name()].get()->manually_added_graph_inputs.size() == 0) {
+  std::string unique_graph_name = GetUniqueGraphName(graph);
+  if (subgraph_context_map_.find(unique_graph_name) == subgraph_context_map_.end() ||
+      subgraph_context_map_[unique_graph_name].get()->manually_added_graph_inputs.size() == 0) {
     return;
   }
 
-  SubGraphContext* context = subgraph_context_map_[graph.Name()].get();
+  SubGraphContext* context = subgraph_context_map_[unique_graph_name].get();
   std::vector<const NodeArg*> graph_inputs_including_initializers;
   std::unordered_set<std::string> graph_inputs_including_initializers_set;
 
