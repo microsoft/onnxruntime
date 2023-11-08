@@ -53,6 +53,7 @@ UNARY_OPS()
 // F: float
 // D: double
 // O: bool
+// X: BFloat16
 
 #define SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(name) \
   SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, half)     \
