@@ -69,7 +69,8 @@ struct NullOperatorFactory : winrt::implements<NullOperatorFactory, IMLOperatorK
     std::vector<MLOperatorEdgeDescription> allowedEdges{
       CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
       CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
-      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)
+    };
     typeConstraint.allowedTypes = allowedEdges.data();
     typeConstraint.allowedTypeCount = static_cast<uint32_t>(allowedEdges.size());
 

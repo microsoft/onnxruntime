@@ -63,7 +63,7 @@ class OnnxRuntimeBackend(Backend):
                         error_message = (
                             "Skipping this test as only released onnx opsets are supported."
                             "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
-                            " Got Domain '{}' version '{}'.".format(domain, opset.version)
+                            f" Got Domain '{domain}' version '{opset.version}'."
                         )
                         return False, error_message
                 except AttributeError:
@@ -74,7 +74,7 @@ class OnnxRuntimeBackend(Backend):
                         error_message = (
                             "Skipping this test as only released onnx opsets are supported."
                             "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
-                            " Got Domain '{}' version '{}'.".format(domain, opset.version)
+                            f" Got Domain '{domain}' version '{opset.version}'."
                         )
                         return False, error_message
         return True, ""

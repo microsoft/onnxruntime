@@ -157,7 +157,8 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     std::vector<MLOperatorEdgeDescription> allowedEdges{
       CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
       CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
-      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)
+    };
     typeConstraint.allowedTypes = allowedEdges.data();
     typeConstraint.allowedTypeCount = static_cast<uint32_t>(allowedEdges.size());
 
@@ -194,7 +195,8 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     noisyReluVarianceAttributeValue.floats = defaultVariance;
 
     std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue};
+      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue
+    };
     noisyReluSchema.defaultAttributes = attributeDefaultValues.data();
     noisyReluSchema.defaultAttributeCount = static_cast<uint32_t>(attributeDefaultValues.size());
 
@@ -216,7 +218,8 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     std::vector<MLOperatorEdgeDescription> allowedEdges{
       CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
       CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
-      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)
+    };
     typeConstraint.allowedTypes = allowedEdges.data();
     typeConstraint.allowedTypeCount = static_cast<uint32_t>(allowedEdges.size());
 
@@ -239,7 +242,8 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     noisyReluVarianceAttributeValue.floats = defaultVariance;
 
     std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue};
+      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue
+    };
     kernelDescription.defaultAttributes = attributeDefaultValues.data();
     kernelDescription.defaultAttributeCount = static_cast<uint32_t>(attributeDefaultValues.size());
     kernelDescription.options = MLOperatorKernelOptions::None;
