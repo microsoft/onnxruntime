@@ -99,6 +99,7 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
 // F: float
 // D: double
 // O: bool
+// X: BFloat16
 
 #define UNARY_OP_VERSIONED_HFD(name, startver, endver)        \
   UNARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
