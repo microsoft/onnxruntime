@@ -733,7 +733,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     LOGS_DEFAULT(WARNING) << "Failed to create "
                           << type
                           << ". Please reference "
-                          << "https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+                          << "https://onnxruntime.ai/docs/execution-providers/"
+                          << "TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
@@ -760,8 +761,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             params.migraphx_fp16_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be \
-                                                                       'True' or 'False'. Default value is 'False'.\n");
+                "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_enable") {
           if (option.second == "True" || option.second == "true") {
@@ -770,8 +771,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             params.migraphx_int8_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be \
-                                                                       'True' or 'False'. Default value is 'False'.\n");
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_calibration_table_name") {
           if (!option.second.empty()) {
@@ -779,8 +780,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             params.migraphx_int8_calibration_table_name = calibration_table.c_str();
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a \
-                                                                                       file name i.e. 'cal_table'.\n");
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a "
+                "file name i.e. 'cal_table'.\n");
           }
         } else if (option.first == "migraphx_use_native_calibration_table") {
           if (option.second == "True" || option.second == "true") {
@@ -789,8 +790,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             params.migraphx_use_native_calibration_table = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be \
-                                                                      'True' or 'False'. Default value is 'False'.\n");
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else {
           ORT_THROW("Invalid MIGraphX EP option: ", option.first);
@@ -826,10 +827,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       } else {
         if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
           ORT_THROW(
-              "CUDA_PATH is set but CUDA wasnt able to be loaded. Please install the correct version of CUDA and \
-                     cuDNN as mentioned in the GPU requirements page \
-                    (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), \
-                    make sure they're in the PATH, and that your GPU is supported.");
+              "CUDA_PATH is set but CUDA wasnt able to be loaded. Please install the correct version of CUDA and"
+              "cuDNN as mentioned in the GPU requirements page "
+              " (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), "
+              " make sure they're in the PATH, and that your GPU is supported.");
         }
       }
     }

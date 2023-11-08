@@ -5,10 +5,10 @@
 #include <string.h>
 #include <miopen/miopen.h>
 #include <rocblas/rocblas.h>
-#include "core/providers/shared_library/provider_api.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
-#include "migraphx_call.h"
+#include "core/providers/shared_library/provider_api.h"
+#include "core/providers/migraphx/migraphx_call.h"
 
 namespace onnxruntime {
 

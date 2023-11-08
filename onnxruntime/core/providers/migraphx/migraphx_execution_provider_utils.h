@@ -152,7 +152,7 @@ bool canEvalNodeArgument(const GraphViewer& graph,
   return true;
 }
 
-float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
+float ConvertSinglePrecisionIEEE754ToFloat(uint32_t input) {
   int s = (input >> 31) & 0x01;
   int e = ((input & 0x7f800000) >> 23) - 127;
   int p = -1;

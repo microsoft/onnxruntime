@@ -3,15 +3,17 @@
 
 #pragma once
 
-#include <map>
-#include <unordered_map>
 #include <miopen/miopen.h>
 #include <rocblas/rocblas.h>
+
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
-#include "migraphx_execution_provider_info.h"
-#include "migraphx_inc.h"
+#include "core/providers/migraphx/migraphx_execution_provider_info.h"
+#include "core/providers/migraphx/migraphx_inc.h"
+
+#include <map>
+#include <unordered_map>
 // TODO: find a better way to share this
 // #include "core/providers/cuda/rocm_stream_handle.h"
 
