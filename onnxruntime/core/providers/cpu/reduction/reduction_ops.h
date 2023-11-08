@@ -14,6 +14,7 @@
 #include "core/framework/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/cpu/reduction/reduction_kernel_base.h"
 #include "core/common/safeint.h"
 #include <cmath>
 
@@ -916,35 +917,6 @@ template <typename AGG>
 void CommonReduce2Loops(OpKernelContext* ctx,
                         const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                         bool noop_with_empty_axes = false);
-
-template <bool allow_multi_axes>
-class ReduceKernelBase {
- protected:
-  ReduceKernelBase(const OpKernelInfo& info, optional<int64_t> keepdims_override = {}) {
-    if (allow_multi_axes) {
-      axes_ = ToShapeVector(info.GetAttrsOrDefault<int64_t>("axes"));
-    } else {
-      auto v = info.GetAttrOrDefault<int64_t>("axis", 0);
-      axes_.push_back(v);
-    }
-    int64_t keepdims = 1;
-    if (keepdims_override.has_value()) {
-      keepdims = *keepdims_override;
-    } else {
-      ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
-    }
-    keepdims_ = (keepdims == 1);
-    int64_t noop_with_empty_axes = info.GetAttrOrDefault<int64_t>("noop_with_empty_axes", 0);
-    noop_with_empty_axes_ = (noop_with_empty_axes == 1);
-    int64_t select_last_index = info.GetAttrOrDefault<int64_t>("select_last_index", 0);
-    select_last_index_ = (select_last_index != 0);
-  }
-
-  TensorShapeVector axes_;
-  bool keepdims_;
-  bool noop_with_empty_axes_;
-  bool select_last_index_;
-};
 
 template <bool allow_multi_axes>
 class ReduceKernel : public OpKernel, public ReduceKernelBase<allow_multi_axes> {
