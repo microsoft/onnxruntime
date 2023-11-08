@@ -14,6 +14,8 @@ from onnx import onnx_pb as onnx_proto
 from sympy import Symbol, simplify
 from sympy.parsing.sympy_parser import parse_expr
 
+from onnxruntime.training.utils import PTable
+
 from ._execution_agent import TrainingAgent
 
 
@@ -681,3 +683,70 @@ class MemoryObserver:
 
     def _normalize(self, mem_size_in_bytes: Union[float, int]) -> str:
         return f"{float(mem_size_in_bytes) / MemoryObserver.NORMALIZER_FACTOR:.0f}"
+
+    def display_memory_optimization_plans(self, memory_optimizer_config) -> Tuple[List[str], PTable]:
+        mem_plan_count = len(self.cluster_id_combination_to_saving_symbolics_map)
+
+        if mem_plan_count > 0:
+            mem_tbl = PTable()
+            mem_tbl.add_row(["", "", "", "", "Configs", "Freq", "Max Saving(Bytes)", "Saving Symbolic(Bytes)"])
+
+            index = 1
+
+            def _get_user_config_without_freq(configs: str):
+                if len(configs) == 0:
+                    return []
+                config_list = configs.split(",")
+                configs_with_out_freq = []
+                for config in config_list:
+                    config_values = config.split(":")
+                    freq = int(config_values[2])
+                    if freq == 0:
+                        continue
+                    configs_with_out_freq.append(config_values[0] + ":" + config_values[1])
+
+                return configs_with_out_freq
+
+            user_configs_with_out_freq = _get_user_config_without_freq(memory_optimizer_config)
+
+            for (
+                cluster_id,
+                saving_symbolic,
+            ) in self.cluster_id_combination_to_saving_symbolics_map.items():
+                saving_bytes = saving_symbolic.evaluated_saving
+                if isinstance(saving_bytes, float):
+                    saving_bytes = f"{saving_bytes:,.0f}"
+
+                cluster_ids_without_freq = _get_user_config_without_freq(cluster_id)
+
+                mem_tbl.add_row(
+                    [
+                        f" - Plan {index}",
+                        ":",
+                        "ON"
+                        if all(cluster_id in user_configs_with_out_freq for cluster_id in cluster_ids_without_freq)
+                        else "OFF",
+                        ":",
+                        cluster_id,
+                        saving_symbolic.freq,
+                        saving_bytes,
+                        saving_symbolic.simplified_symbolic_saving_expr,
+                    ]
+                )
+
+                index += 1
+
+            saving_recommendation = "use comma to enable multiple memory optimization plans at the same time:\n"
+            saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
+
+            notes = []
+            notes.append(saving_recommendation)
+
+            saving_recommendation = "memory saving is calculated based on the 1st batch symbolic dim values:\n"
+            for dim_param, dim_value in self.symbolic_dim_name_to_value_map.items():
+                saving_recommendation += f"  {dim_param}={dim_value},"
+            notes.append(saving_recommendation)
+
+            return notes, mem_tbl
+
+        return [], None
