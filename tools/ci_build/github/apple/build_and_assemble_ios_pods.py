@@ -58,13 +58,15 @@ def parse_args():
 
     parser.add_argument("--test", action="store_true", help="Run tests on the framework and pod package files.")
 
+    parser.add_argument("--build-for-macosx", action="store_true", help="Enable macos arch for pod package.")
+
     build_framework_group = parser.add_argument_group(
         title="iOS framework build arguments",
         description="See the corresponding arguments in build_ios_framework.py for details.",
     )
 
     build_framework_group.add_argument("--include-ops-by-config")
-    build_framework_group.add_argument("--build-for-macosx")
+
     build_framework_group.add_argument(
         "--build-settings-file", required=True, help="The positional argument of build_ios_framework.py."
     )
