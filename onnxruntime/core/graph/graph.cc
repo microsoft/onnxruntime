@@ -4047,21 +4047,21 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   return Status::OK();
 }
 
-static void ReassignSubgraphDependentNodeArgs(const InlinedHashMap<std::string, std::string>& name_mapping,
+static void ReassignSubgraphDependentNodeArgs(const InlinedHashMap<std::string, NodeArg*>& name_to_nodearg,
                                               Graph& graph) {
   for (auto& node : graph.Nodes()) {
     if (node.ContainsSubgraph()) {
       for (auto& [name, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
-        ReassignSubgraphDependentNodeArgs(name_mapping, *subgraph);
+        ReassignSubgraphDependentNodeArgs(name_to_nodearg, *subgraph);
       }
     }
 
     // NodeArgs need to be updated
     for (auto& input_def : node.MutableInputDefs()) {
       if (input_def->Exists()) {
-        auto hit = name_mapping.find(input_def->Name());
-        if (hit != name_mapping.cend()) {
-          input_def = graph.GetNodeArgIncludingParentGraphs(hit->second);
+        auto hit = name_to_nodearg.find(input_def->Name());
+        if (hit != name_to_nodearg.cend()) {
+          input_def = hit->second;
         }
       }
     }
@@ -4101,29 +4101,29 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
   };
 
   // Check if the name is an input or implicit input.
-  // These are not renamed.
+  // These are not renamed, and we do not need to adjust subgraphs for them.
   // Implicit inputs would cover both If node input and implicit inputs.
   // Reason: there are no explicit inputs to the subgraphs, and the subgraph's
   // implicit inputs must be covered by the implicit inputs of the If node.
-  InlinedHashSet<std::string_view> outer_scope_values;
-  const auto if_implicit_inputs = if_node.ImplicitInputDefs();
+  InlinedHashMap<std::string_view, NodeArg*> outer_scope_values;
+  const auto if_implicit_inputs = if_node.MutableImplicitInputDefs();
   outer_scope_values.reserve(if_implicit_inputs.size());
 
-  for (const auto* input : if_implicit_inputs) {
+  for (auto* input : if_implicit_inputs) {
     const auto& name = input->Name();
-    ORT_IGNORE_RETURN_VALUE(outer_scope_values.emplace(name));
+    ORT_IGNORE_RETURN_VALUE(outer_scope_values.emplace(name, input));
   }
 
   // Name mapping from the graph to inline to the graph we are inlining into
   // we also use this to process any subgraphs in the graph we are inlining
-  InlinedHashMap<std::string, std::string> name_mapping;
+  InlinedHashMap<std::string, NodeArg*> name_to_nodearg;
 
   // We are going to map the outputs of the graph to inline to the outputs of the If node.
   // They are assumed to be in the same order.
-  const auto node_output_defs = if_node.OutputDefs();
+  const auto node_output_defs = if_node.MutableOutputDefs();
   const auto graph_output_defs = graph_to_inline.GetOutputs();
   for (size_t i = 0; i < graph_output_defs.size(); ++i) {
-    name_mapping.emplace(graph_output_defs[i]->Name(), node_output_defs[i]->Name());
+    name_to_nodearg.emplace(graph_output_defs[i]->Name(), node_output_defs[i]);
   }
 
   // we would like to move the entries that can be potentially big
@@ -4148,22 +4148,22 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     *tensor = std::move(*initializer);
 
     // Check if this is an output of the graph
-    auto hit = name_mapping.find(src_name);
-    if (hit != name_mapping.cend()) {
-      tensor->set_name(hit->second);
+    auto hit = name_to_nodearg.find(src_name);
+    if (hit != name_to_nodearg.cend()) {
+      // We rename it to If node output.
+      tensor->set_name(hit->second->Name());
     } else {
+      NodeArg* node_arg = graph_to_inline.GetNodeArg(src_name);
+      assert(node_arg != nullptr);
       auto new_name = GenerateNodeArgName(make_unique(src_name));
-      ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(src_name, new_name));
+      NodeArg& new_arg = GetOrCreateNodeArg(new_name, node_arg->TypeAsProto());
+      ORT_IGNORE_RETURN_VALUE(name_to_nodearg.emplace(src_name, &new_arg));
       tensor->set_name(std::move(new_name));
     }
 
     auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
     ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " from graph: ",
                 graph_to_inline.Name(), " conflicts with graph initializer. Check name generation above.");
-
-    const NodeArg* node_arg = graph_to_inline.GetNodeArg(src_name);
-    assert(node_arg != nullptr);
-    ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), node_arg->TypeAsProto()));
 
 #if !defined(DISABLE_SPARSE_TENSORS)
     if (has_sparse_origin) {
@@ -4187,17 +4187,14 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
         // Check if this is one of the implicit graph inputs
         // then leave the name as is and reuse the NodeArg
         const auto& input_name = input_def->Name();
-        if (outer_scope_values.count(input_name) > 0) {
-          auto* node_arg = GetNodeArgIncludingParentGraphs(input_name);
-          assert(node_arg != nullptr);
-          new_node_input_defs.push_back(node_arg);
+        auto outer_hit = outer_scope_values.find(input_name);
+        if (outer_hit != outer_scope_values.cend()) {
+          new_node_input_defs.push_back(outer_hit->second);
         } else {
-          auto hit = name_mapping.find(input_name);
-          if (hit != name_mapping.cend()) {
+          auto hit = name_to_nodearg.find(input_name);
+          if (hit != name_to_nodearg.cend()) {
             // This is other node output, constant node or initializer that was renamed.
-            auto* node_arg = GetNodeArg(hit->second);
-            assert(node_arg != nullptr);
-            new_node_input_defs.push_back(node_arg);
+            new_node_input_defs.push_back(hit->second);
           } else {
             ORT_THROW("Node's: ", node->Name(), " input: ", input_name,
                       " is not If node's input or previous node output in this subgraph");
@@ -4209,19 +4206,17 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     InlinedVector<NodeArg*> new_node_output_defs;
     for (const auto* output_def : node->OutputDefs()) {
       const auto& output_name = output_def->Name();
-      auto hit = name_mapping.find(output_name);
-      if (hit != name_mapping.cend()) {
+      auto hit = name_to_nodearg.find(output_name);
+      if (hit != name_to_nodearg.cend()) {
         // This is one of the graph outputs, we rename it to
         // If node output.
-        auto* node_arg = GetNodeArg(hit->second);
-        ORT_ENFORCE(node_arg != nullptr,
-                    "Expecting to exist output node_arg: ", output_name);
-        new_node_output_defs.push_back(node_arg);
+        new_node_output_defs.push_back(hit->second);
       } else {
         // We generate an output to downstream nodes.
         auto new_name = GenerateNodeArgName(make_unique(output_name));
-        new_node_output_defs.push_back(&GetOrCreateNodeArg(new_name, output_def->TypeAsProto()));
-        ORT_IGNORE_RETURN_VALUE(name_mapping.emplace(output_name, std::move(new_name)));
+        NodeArg& new_arg = GetOrCreateNodeArg(new_name, output_def->TypeAsProto());
+        new_node_output_defs.push_back(&new_arg);
+        ORT_IGNORE_RETURN_VALUE(name_to_nodearg.emplace(output_name, &new_arg));
       }
     }
 
@@ -4241,7 +4236,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
       // Check if any of this node implicit inputs of this graph is in the renaming map
       bool rename_subgraph_names = false;
       for (const auto* input_def : node->ImplicitInputDefs()) {
-        if (name_mapping.count(input_def->Name()) > 0) {
+        if (name_to_nodearg.count(input_def->Name()) > 0) {
           rename_subgraph_names = true;
           break;
         }
@@ -4252,7 +4247,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
           // We need to rename the subgraph node names
           // because they may refer to the implicit inputs
           // that were renamed.
-          ReassignSubgraphDependentNodeArgs(name_mapping, *subgraph);
+          ReassignSubgraphDependentNodeArgs(name_to_nodearg, *subgraph);
         }
         subgraph->parent_node_ = &new_node;
         subgraph->parent_graph_ = this;
