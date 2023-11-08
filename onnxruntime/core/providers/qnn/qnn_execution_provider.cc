@@ -92,7 +92,7 @@ void QNNExecutionProvider::ParseQnnContextPriority(std::string context_priority_
     context_priority_ = qnn::ContextPriority::HIGH;
   } else {
     context_priority_ = qnn::ContextPriority::UNDEFINED;
-    LOGS_DEFAULT(WARNING) << "QNN context priority not valid, set to undefined.";
+    LOGS_DEFAULT(WARNING) << "QNN context priority: " << context_priority_string << " not valid, set to undefined.";
   }
 }
 

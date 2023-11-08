@@ -380,7 +380,7 @@ Status QnnBackendManager::ReleaseProfilehandle() {
   return Status::OK();
 }
 
-void SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t& qnn_context_config) {
+Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t& qnn_context_config) {
   qnn_context_config.option = QNN_CONTEXT_CONFIG_OPTION_PRIORITY;
   switch (context_priority) {
     case ContextPriority::LOW: {
@@ -400,12 +400,13 @@ void SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t& 
       break;
     }
     case ContextPriority::UNDEFINED: {
-      qnn_context_config.priority = QNN_PRIORITY_UNDEFINED;
-      break;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Qnn context priority.");
     }
     default:
-      qnn_context_config.priority = QNN_PRIORITY_UNDEFINED;
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL;
   }  // switch
+
+  return Status::OK();
 }
 
 Status QnnBackendManager::CreateContext() {
@@ -415,7 +416,7 @@ Status QnnBackendManager::CreateContext() {
   }
 
   QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
-  SetQnnContextConfig(context_priority_, qnn_context_config);
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
   const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
 
   auto result = qnn_interface_.contextCreate(backend_handle_,
@@ -520,7 +521,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                 "Invalid function pointer for contextCreateFromBinary.");
 
   QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
-  SetQnnContextConfig(context_priority_, qnn_context_config);
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
   const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
 
   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
