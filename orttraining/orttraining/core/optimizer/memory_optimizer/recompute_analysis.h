@@ -53,7 +53,7 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
    * The cluster id is used to identify a unique subgraph.
    * User can pass such cluster id to enable specific memory optimization for some subgraph.
    */
-  std::string GetClusterId() const;
+  std::string GetClusterId() const override;
 
   /**
    * @brief Get the serialized string for this recompute plan to create Node-level cluster id.
@@ -63,7 +63,7 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
    * Node cluster id is used to categorize nodes into different groups, showing them as one row in memory
    * optimization opportunity table.
    */
-  std::string NormalizeForNodeClusterId() const;
+  std::string NormalizeForNodeClusterId() const override;
 
   std::string GetNodesInTopoOrderStr() const;
 
