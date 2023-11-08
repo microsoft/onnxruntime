@@ -147,12 +147,15 @@ class SymbolicShapeInference:
             "GatherElements": self._infer_GatherElements,
             "GatherND": self._infer_GatherND,
             "Identity": self._pass_on_shape_and_type,
+            "AllReduce": self._pass_on_shape_and_type,
             "If": self._infer_If,
             "Loop": self._infer_Loop,
             "MatMul": self._infer_MatMul,
             "MatMulInteger16": self._infer_MatMulInteger,
             "MaxPool": self._infer_Pool,
             "Max": self._infer_symbolic_compute_ops,
+            "MemcpyFromHost": self._pass_on_shape_and_type,
+            "MemcpyToHost": self._pass_on_shape_and_type,
             "Min": self._infer_symbolic_compute_ops,
             "Mul": self._infer_symbolic_compute_ops,
             "NonMaxSuppression": self._infer_NonMaxSuppression,
@@ -200,6 +203,7 @@ class SymbolicShapeInference:
             "GemmFastGelu": self._infer_GemmFastGelu,
             "GemmFloat8": self._infer_GemmFloat8,
             "GroupNorm": self._infer_GroupNorm,
+            "SkipGroupNorm": self._infer_SkipGroupNorm,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
             "MultiHeadAttention": self._infer_MultiHeadAttention,
@@ -2375,6 +2379,11 @@ class SymbolicShapeInference:
 
     def _infer_GroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
+
+    def _infer_SkipGroupNorm(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node, 0, 0)
+        if len(node.output) > 1:
+            self._propagate_shape_and_type(node, 0, 1)
 
     def _infer_BiasSplitGelu(self, node):  # noqa: N802
         input_shape = self._get_shape(node, 0)

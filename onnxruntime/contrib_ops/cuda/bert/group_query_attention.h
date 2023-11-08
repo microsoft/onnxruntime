@@ -22,7 +22,7 @@ class GroupQueryAttention final : public CudaKernel {
  protected:
   int num_heads_;     // number of attention heads
   int kv_num_heads_;  // different for k and v for group query attention
-  int past_sequence_length_;
+  // bool left_padding_;       // shifts last token to end of buffer
   bool is_unidirectional_;  // causal
   int local_window_size_;
   bool is_past_bsnh_;

@@ -708,6 +708,7 @@ Status FusedAttentionCutlass(
                     ? (data.workspace + (data.no_qkv_workspace ? 0 : (elements_qk + elements_qk + elements_v)))
                     : nullptr;
   p.stream = stream;
+  p.has_custom_right_padding = false;
   run_memory_efficient_attention(p);
 
   DUMP_TENSOR_INIT();

@@ -316,7 +316,9 @@ Status FlashAttention(
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.scratch),
       parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
-      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional));
+      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional,
+      parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
+      true));
 
   DUMP_TENSOR("flash attention output", data.output,
               parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);
@@ -399,6 +401,7 @@ Status EfficientAttention(
                     ? data.scratch
                     : nullptr;
   p.stream = stream;
+  p.has_custom_right_padding = false;
   run_memory_efficient_attention(p);
   DUMP_TENSOR("efficient attention output", data.output,
               parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);

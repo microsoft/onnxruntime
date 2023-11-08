@@ -95,6 +95,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
+  * <a href="#com.microsoft.SkipGroupNorm">com.microsoft.SkipGroupNorm</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
   * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
@@ -2342,7 +2343,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>activation</tt> : int (required)</dt>
-<dd>Activation after group normalization: 0 for None, 1 for Swish</dd>
+<dd>Activation after group normalization: 0 for None, 1 for SiLU</dd>
 <dt><tt>channels_last</tt> : int</dt>
 <dd>1 if the input and output are in the NHWC layout, 0 if it is in the NCHW layout. Defaults to 1.</dd>
 <dt><tt>epsilon</tt> : float</dt>
@@ -2392,19 +2393,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>is_past_bsnh</tt> : int</dt>
-<dd>Whether past kv uses BSNH, otherwise BNSH. Default value is 1 (BSNH).</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
-<dt><tt>unidirectional</tt> : int</dt>
-<dd>Whether every token can only attend to previous tokens. Default value is 1.</dd>
 </dl>
 
-#### Inputs (3 - 6)
+#### Inputs
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2414,11 +2411,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>value</tt> : T</dt>
 <dd>Value with shape (batch_size, kv_sequence_length, kv_hidden_size)</dd>
 <dt><tt>past_key</tt> (optional) : T</dt>
-<dd>past state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
+<dd>past state key with support for format BNSH. When past_key uses same tensor as present_key(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
 <dt><tt>past_value</tt> (optional) : T</dt>
-<dd>past state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
-<dt><tt>past_sequence_length</tt> (optional) : M</dt>
-<dd>When buffered past_key and past_value is used (present_key uses same tensor as past_key), requiredto specify past_sequence_length (could be 0). Otherwise, past_sequence_length inferred from past_key.</dd>
+<dd>past state value with support for format BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
+<dt><tt>seqlens_k</tt> : M</dt>
+<dd>1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.</dd>
+<dt><tt>total_sequence_length</tt> : M</dt>
+<dd>Scalar tensor of total sequence length (past + new).</dd>
 </dl>
 
 #### Outputs
@@ -2427,9 +2426,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>present_key</tt> : T</dt>
-<dd>present state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
+<dd>present state key with support for format BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 <dt><tt>present_value</tt> : T</dt>
-<dd>present state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
+<dd>present state value with support for format BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 </dl>
 
 #### Type Constraints
@@ -2437,8 +2436,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16)</dt>
 <dd>Constrain input and output to float tensors.</dd>
-<dt><tt>M</tt> : tensor(int32), tensor(int64)</dt>
-<dd>Constrain past sequence length to int tensor.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask to int tensor.</dd>
 </dl>
 
 
@@ -2579,9 +2578,32 @@ This version of the operator has been available since version 1 of the 'com.micr
        And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
     3. Input B's quantization constants or scales are specified by input 'absmax'.
   
-  Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
-  Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
+    Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
+    Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
   
+  
+    1. (Default value) transB=True (Majorly used for forward pass)
+      Shape of A: [D0, D1, ..., Dn, K]
+      Shape of Dequanted B: [N, K], this is aligned with how PyTorch defined the linear weight, .e.g [out_features, in_features].
+  
+      The computation math:
+        dequant_B = dequant(B, absmax, quant_type, block_size)
+        transposed_dequant_B = dequant_B^T
+        output = A @ transposed_dequant_B
+  
+      Shape of output: [D0, D1, ..., Dn, N]
+  
+    2. transB=False (Majorly used for backward pass)
+      Shape of A: [D0, D1, ..., Dn, N]
+      Shape of Dequanted B: [N, K], this is aligned with how PyTorch defined the linear weight, .e.g [out_features, in_features].
+  
+      The computation math:
+        dequant_B = dequant(B, absmax, quant_type, block_size)
+        output = A @ dequant_B
+  
+      Shape of output: [D0, D1, ..., Dn, K]
+  
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -2597,6 +2619,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>number of groupsize used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
 <dt><tt>quant_type</tt> : int (required)</dt>
 <dd>quantization data type. 0 for FP4, 1 for NF4.</dd>
+<dt><tt>training_mode</tt> : int</dt>
+<dd>Indicate if the ops run in training_mode, by default, False.</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed on the last two dimensions before doing multiplication. Default to be 1.</dd>
 </dl>
 
 #### Inputs
@@ -4922,7 +4948,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.RotaryEmbedding"></a><a name="com.microsoft.rotaryembedding">**com.microsoft.RotaryEmbedding**</a>
 
-  RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices 
+  RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices
   that are multiplied to query and key before the inner product of query and key is taken.
 
 #### Version
@@ -5080,6 +5106,72 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>I</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.SkipGroupNorm"></a><a name="com.microsoft.skipgroupnorm">**com.microsoft.SkipGroupNorm**</a>
+
+  This operator element-wise adds x, skip and bias, then apply group normalization and optional activation.
+  
+  This operator transforms input according to
+    s = x + skip + bias
+    y = gamma * (s - mean) / sqrt(variance + epsilon) + beta
+  
+  The input channels are separated into num_groups groups, each containing num_channels / num_groups channels.
+  The num_channels must be divisible by num_groups.
+  The mean and standard-deviation of s are calculated separately over the each group.
+  The weight and bias are per-channel affine transform parameter vectors of size num_channels.
+  
+  The activation attribute can be used to enable activation after group normalization.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : int (required)</dt>
+<dd>Activation after group normalization: 0 for None, 1 for SiLU</dd>
+<dt><tt>channels_last</tt> : int</dt>
+<dd>1 if the input and output are in the NHWC layout, 0 if it is in the NCHW layout. Defaults to 1.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero</dd>
+<dt><tt>groups</tt> : int (required)</dt>
+<dd>The number of groups of channels. It should be a divisor of the number of channels C</dd>
+</dl>
+
+#### Inputs (4 - 5)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input data tensor. Dimensions are (N x H x W x C) when channels_last is 1  or (N x C x H x W) otherwise, where N is the batch size, C is the number of channels, and H and W are the height and width of the data</dd>
+<dt><tt>gamma</tt> : M</dt>
+<dd>1D gamma tensor for normalization with shape (C), where C is number of channels</dd>
+<dt><tt>beta</tt> : M</dt>
+<dd>1D beta tensor for normalization with shape (C), where C is number of channels</dd>
+<dt><tt>skip</tt> : T</dt>
+<dd>4D or 2D skip tensor. The shape can be (N x H x W x C) or (N x 1 x 1 x C) or (N x C)</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>1D bias tensor. Dimensions are (C), where C is number of channels</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>The output tensor of the same shape as X</dd>
+<dt><tt>S</tt> (optional) : T</dt>
+<dd>The element-wise sum of input x, skip and bias tensors. It has the same shape as X</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain input X, skip, bias and output Y, S types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain gamma and beta to float tensors.</dd>
 </dl>
 
 
