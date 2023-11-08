@@ -3,22 +3,32 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "tensorrt_execution_provider.h"
+#include "core/framework/murmurhash3.h"
 #include <iostream>
 
 namespace onnxruntime {
 
-// It's passible that two graphs have the same graph.Name()
-// Get the unique name from graph.Name() + first node's name
+// Get unique graph name based on graph's name and all nodes' name
 std::string GetUniqueGraphName(const Graph& graph) {
-  std::string first_node_name;
+  HashValue model_hash = 0;
+  uint32_t hash[4] = {0, 0, 0, 0};
+
+  auto hash_str = [&hash](const std::string& str) {
+    MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+  };
+
+  // Hash all nodes' name
   for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
     auto node = graph.GetNode(i);
     if (node == nullptr) {
       continue;
     }
-    first_node_name = node->Name();
+    hash_str(node->Name());
   }
-  return graph.Name() + "_" + first_node_name;
+
+  model_hash = hash[0] | (uint64_t(hash[1]) << 32);
+
+  return graph.Name() + "_" + std::to_string(model_hash);
 }
 
 // The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
