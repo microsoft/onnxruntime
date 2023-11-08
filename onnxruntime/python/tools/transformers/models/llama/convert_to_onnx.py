@@ -7,6 +7,8 @@ from typing import List
 
 import onnx
 import torch
+from benchmark_helper import Precision, prepare_environment, setup_logger
+from convert_generation import replace_mha_with_gqa
 from dist_settings import barrier, get_rank, get_size, init_dist
 from llama_inputs import get_merged_sample_with_past_kv_inputs, get_sample_inputs, get_sample_with_past_kv_inputs
 from llama_parity import main as parity_check
@@ -14,12 +16,10 @@ from llama_torch import setup_torch_model
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version
-from transformers import LlamaConfig, LlamaForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM
 
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
-from onnxruntime.transformers.benchmark_helper import Precision, prepare_environment, setup_logger
-from onnxruntime.transformers.convert_generation import replace_mha_with_gqa
 
 logger = logging.getLogger("")
 init_dist()
@@ -133,7 +133,7 @@ def save_onnx_model(onnx_model: onnx.ModelProto, output_path: str, data_path: st
 # temp_dir.cleanup()
 #
 def run_dynamo_export(
-    args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM, rank: int = 0, world_size: int = 1
+    args: argparse.Namespace, l_config: AutoConfig, llama: AutoModelForCausalLM, rank: int = 0, world_size: int = 1
 ):
     from torch._dynamo import config
 
@@ -194,7 +194,7 @@ def _prepare_dir(dir_path):
 
 
 def run_torchscript_separate_export(
-    args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM, rank: int = 0, world_size: int = 1
+    args: argparse.Namespace, l_config: AutoConfig, llama: AutoModelForCausalLM, rank: int = 0, world_size: int = 1
 ):
     # Dummy values for export
     batch_size, sequence_length = 2, 8
@@ -313,7 +313,7 @@ def run_torchscript_separate_export(
 
 
 def run_torchscript_merged_export(
-    args: argparse.Namespace, l_config: LlamaConfig, llama: LlamaForCausalLM, rank: int = 0, world_size: int = 1
+    args: argparse.Namespace, l_config: AutoConfig, llama: AutoModelForCausalLM, rank: int = 0, world_size: int = 1
 ):
     # Dummy values for export
     batch_size, sequence_length, past_sequence_length = 2, 8, 0
@@ -391,7 +391,7 @@ def run_torchscript_merged_export(
 
 
 # Optimize the model as FP32
-def optimize_export(config: LlamaConfig, input_path: str, output_path: str):
+def optimize_export(config: AutoConfig, input_path: str, output_path: str):
     from fusion_options import FusionOptions
 
     optimization_options = FusionOptions("gpt2")
@@ -411,7 +411,7 @@ def optimize_export(config: LlamaConfig, input_path: str, output_path: str):
 
 
 def convert_to_float16(
-    args: argparse.Namespace, config: LlamaConfig, old_paths: List[str], rank: int = 0, world_size: int = 1
+    args: argparse.Namespace, config: AutoConfig, old_paths: List[str], rank: int = 0, world_size: int = 1
 ):
     decoder_model_fp16_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp16.onnx")
     decoder_with_past_model_fp16_path = os.path.join(
@@ -427,7 +427,8 @@ def convert_to_float16(
         if os.path.exists(fp32_path):
             model = OnnxModel(onnx.load_model(fp32_path, load_external_data=True))
             model.convert_float_to_float16(keep_io_types=False)
-            model = use_group_query_attention(config, model, world_size)
+            if args.use_gqa:
+                model = use_group_query_attention(config, model, world_size)
             model.save_model_to_file(fp16_path, use_external_data_format=True)
             del model
             logger.info(f"The ONNX model at {fp32_path} has been converted to float16 and saved at {fp16_path}!")
@@ -437,10 +438,10 @@ def convert_to_float16(
     return new_paths
 
 
-def use_group_query_attention(config: LlamaConfig, fp16_model_opt: OnnxModel, world_size: int = 1):
-    # Replace MultiHeadAttention with GroupQueryAttention and remove attention mask nodes
+def use_group_query_attention(config: AutoConfig, fp16_model_opt: OnnxModel, world_size: int = 1):
+    # Replace MultiHeadAttention with GroupQueryAttention
     fp16_model_opt = replace_mha_with_gqa(
-        fp16_model_opt, "past_sequence_length", config.num_key_value_heads, world_size
+        fp16_model_opt, "attention_mask", config.num_key_value_heads, world_size
     )
     fp16_model_opt.prune_graph()
     fp16_model_opt.update_graph(allow_remove_graph_inputs=True)
@@ -520,8 +521,8 @@ def smooth_quant(
 
     logger.info(f"The {args.model_name} ONNX model has been successfully quantized to int8!")
 
-    logger.info(f"Removing {args.nc_workspace}")
-    os.system(f"rm -R {args.nc_workspace}")
+    logger.warning(f"Removing {args.nc_workspace}")
+    shutil.rmtree(args.nc_workspace)
 
 
 def remove_existing_model(model_path: str):
@@ -593,6 +594,14 @@ def get_args():
         help="Re-export models and overwrite existing models in output folder",
     )
     parser.set_defaults(reexport=False)
+
+    parser.add_argument(
+        "--use_gqa",
+        required=False,
+        action="store_true",
+        help="Use GroupQueryAttention instead of MultiHeadAttention",
+    )
+    parser.set_defaults(use_gqa=False)
 
     parser.add_argument(
         "--no_merged",
@@ -747,7 +756,7 @@ def main():
 
     location = args.original_model_name if use_auth_token else args.input
 
-    # use cuda for Llama-2-70b to speedup export, other models use CPU by default
+    # Use CUDA for LLaMA-2-70B to speed up export and CPU for other models
     l_config, llama = setup_torch_model(
         args, location, use_auth_token, device=args.device if args.model_name == "Llama-2-70b-hf" else None
     )
@@ -944,6 +953,8 @@ def main():
             parity_cmd.append("--use_past_kv")
         if "merged" in filename:
             parity_cmd.append("--merged")
+        if args.use_gqa:
+            parity_cmd.append("--use_gqa")
 
         try:
             logger.debug(f"check parity with cmd: {parity_cmd}")
