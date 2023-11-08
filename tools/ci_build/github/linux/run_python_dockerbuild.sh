@@ -2,13 +2,14 @@
 set -e -x
 BUILD_CONFIG="Release"
 
-while getopts "i:d:x:c:" parameter_Option
+while getopts "i:d:x:c:u:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
 d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
+u) CUDA_VERSION=${OPTARG};;
 esac
 done
 
@@ -23,7 +24,7 @@ docker run --rm \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
     $ADDITIONAL_DOCKER_PARAMETER \
-    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_python_package_cuda12.sh -d $DEVICE -c $BUILD_CONFIG -x $BUILD_EXTR_PAR
+    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_arm64_python_package.sh -d $DEVICE -c $BUILD_CONFIG -x $BUILD_EXTR_PAR -u $CUDA_VERSION
 
 sudo rm -rf $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/onnxruntime $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/pybind11 \
     $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/models $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/_deps \
