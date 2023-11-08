@@ -91,7 +91,14 @@ pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pyp
 pip install -r requirements-cuda11.txt
 ```
 
-We cannot directly `pip install tensorrt` for CUDA 11. Follow https://github.com/NVIDIA/TensorRT/issues/2773 to install TensorRT for CUDA 11 in Linux. For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead.
+For Windows, install nvtx like the following:
+```
+conda install -c conda-forge nvtx
+```
+
+We cannot directly `pip install tensorrt` for CUDA 11. Follow https://github.com/NVIDIA/TensorRT/issues/2773 to install TensorRT for CUDA 11 in Linux. 
+
+For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead. Like `pip install tensorrt-8.6.1.6.windows10.x86_64.cuda-11.8\tensorrt-8.6.1.6\python\tensorrt-8.6.1-cp310-none-win_amd64.whl`.
 
 #### CUDA 12.*:
 The official package of onnxruntime-gpu 1.16.* is built for CUDA 11.8. To use CUDA 12.*, you will need [build onnxruntime from source](https://onnxruntime.ai/docs/build/inferencing.html).
@@ -99,6 +106,7 @@ The official package of onnxruntime-gpu 1.16.* is built for CUDA 11.8. To use CU
 ```
 git clone --recursive https://github.com/Microsoft/onnxruntime.git
 cd onnxruntime
+pip install cmake
 pip install -r requirements-dev.txt
 ```
 Follow [example script for A100 in Ubuntu](https://github.com/microsoft/onnxruntime/blob/26a7b63716e3125bfe35fe3663ba10d2d7322628/build_release.sh)

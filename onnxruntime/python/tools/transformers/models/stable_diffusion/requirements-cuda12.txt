@@ -12,7 +12,8 @@ cuda-python==12.1.0
 # For windows, cuda-python need the following
 pywin32; platform_system == "Windows"
 
-nvtx
+# For windows, run `conda install -c conda-forge nvtx` instead
+nvtx; platform_system != "Windows"
 
 # Please install PyTorch 2.1 or above for 12.1 using one of the following commands:
 # pip3 install torch --index-url https://download.pytorch.org/whl/cu121
