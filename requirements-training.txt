@@ -7,4 +7,3 @@ packaging
 protobuf
 sympy
 setuptools>=61.0.0
-prettytable

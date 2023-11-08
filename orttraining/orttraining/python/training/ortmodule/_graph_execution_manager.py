@@ -14,13 +14,12 @@ from typing import Dict, List, Optional, Tuple
 
 import onnx
 import torch
-from prettytable import PrettyTable
 from torch.utils.cpp_extension import ROCM_HOME
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from onnxruntime.training.utils import ORTModelInputOutputSchemaType, onnx_dtype_to_pytorch_dtype
+from onnxruntime.training.utils import ORTModelInputOutputSchemaType, PTable, onnx_dtype_to_pytorch_dtype
 from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
@@ -316,11 +315,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         """
 
         # VERBOSE -> FULL export verbose log + FULL torch other logs from stdout and stderr (C++ backend)
-        # DEVINFO -> FULL export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
-        # INFO -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
+        # DEVINFO -> FULL export verbose log + FULL torch other logs from stdout and stderr (C++ backend)
+        # INFO -> [Rank 0] FULL export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # WARNING/ERROR -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # Be noted: rank 0 log only is controlled by logger configured in _logger.py
-        torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.DEVINFO
+        torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.INFO
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
@@ -632,18 +631,13 @@ class GraphExecutionManager(GraphExecutionInterface):
         if self._runtime_inspector.is_memory_inspector_enabled() and self._debug_options.log_level <= LogLevel.DEVINFO:
             self._logger.info(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)
 
+        tbl = PTable()
+
         def _add_record(tbl, columns):
-            tbl.add_row([columns[0], ":", "ON" if columns[1] else "OFF", ":", columns[2]])
+            return tbl.add_row([columns[0], ":", "ON" if columns[1] else "OFF", ":", columns[2]])
 
         notes = []
 
-        tbl = PrettyTable()
-        tbl.align = "l"
-        tbl.hrules = 2  # no horizontal lines
-        tbl.vrules = 2  # no vertical lines
-        tbl.header = False
-        tbl.max_width["Field 1"] = 20
-        tbl.max_width["Field 5"] = 200
         _add_record(tbl, ["ATen Executor", True, "Dispatch ATen operators to ORT's ATen executor"])
         _add_record(
             tbl,
@@ -663,7 +657,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         )
 
         output_memory_optimization_details = self._debug_options.log_level <= LogLevel.INFO
-        _add_record(
+        mem_row = _add_record(
             tbl,
             [
                 "Memory Optimizer",
@@ -672,8 +666,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     f"User config: {self._runtime_options.memory_optimizer_config}, probe level: {self._runtime_options.probe_level}"
                     if len(self._runtime_options.memory_optimizer_config) > 0
                     else "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>"
-                )
-                + (", available configs:" if output_memory_optimization_details else ""),
+                ),
             ],
         )
 
@@ -681,7 +674,10 @@ class GraphExecutionManager(GraphExecutionInterface):
             mem_plan_count = len(self._runtime_inspector.memory_ob.cluster_id_combination_to_saving_symbolics_map)
 
             if mem_plan_count > 0:
-                tbl.add_row(["", "", "", "", f"{'Config':<60}{'Freq':<8}{'Max Saving(B)':<16}Saving Symbolic(Bytes)"])
+                mem_tbl = PTable()
+                mem_tbl.add_row(
+                    [" | All available configs", "Status", "Freq", "Max Saving(Bytes)", "Saving Symbolic(Bytes)"]
+                )
 
                 index = 1
 
@@ -712,14 +708,19 @@ class GraphExecutionManager(GraphExecutionInterface):
                         saving_bytes = f"{saving_bytes:,.0f}"
 
                     cluster_ids_without_freq = _get_user_config_without_freq(cluster_id)
-                    _add_record(
-                        tbl,
+
+                    mem_tbl.add_row(
                         [
-                            f" - Plan {index}",
-                            all(cluster_id in user_configs_with_out_freq for cluster_id in cluster_ids_without_freq),
-                            f"{cluster_id:<60}{saving_symbolic.freq:<8}{saving_bytes:<16}{saving_symbolic.simplified_symbolic_saving_expr}",
-                        ],
+                            f" |- {cluster_id}",
+                            "ON"
+                            if all(cluster_id in user_configs_with_out_freq for cluster_id in cluster_ids_without_freq)
+                            else "OFF",
+                            saving_symbolic.freq,
+                            saving_bytes,
+                            saving_symbolic.simplified_symbolic_saving_expr,
+                        ]
                     )
+
                     index += 1
 
                 saving_recommendation = "use comma to enable multiple memory optimization plans at the same time:\n"
@@ -731,6 +732,8 @@ class GraphExecutionManager(GraphExecutionInterface):
                 for dim_param, dim_value in self._runtime_inspector.memory_ob.symbolic_dim_name_to_value_map.items():
                     saving_recommendation += f"  {dim_param}={dim_value},"
                 notes.append(saving_recommendation)
+
+                mem_row.append_annotation_table(mem_tbl)
 
         _add_record(
             tbl,
