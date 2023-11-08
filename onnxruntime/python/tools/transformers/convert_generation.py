@@ -1332,7 +1332,9 @@ def replace_mha_with_gqa(model: OnnxModel, attn_mask: str, kv_num_heads: int = 0
         name=model.create_node_name("Cast"),
         to=TensorProto.INT32,
     )
-    model.model.graph.node.extend([reduce_sum_node, sub_node, seqlen_k_cast_node, shape_node, gather_node, total_seqlen_cast_node])
+    model.model.graph.node.extend(
+        [reduce_sum_node, sub_node, seqlen_k_cast_node, shape_node, gather_node, total_seqlen_cast_node]
+    )
 
     # Replace MultiHeadAttention with GroupQueryAttention
     mha_nodes = list(filter(lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node))

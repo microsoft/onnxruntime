@@ -440,9 +440,7 @@ def convert_to_float16(
 
 def use_group_query_attention(config: AutoConfig, fp16_model_opt: OnnxModel, world_size: int = 1):
     # Replace MultiHeadAttention with GroupQueryAttention
-    fp16_model_opt = replace_mha_with_gqa(
-        fp16_model_opt, "attention_mask", config.num_key_value_heads, world_size
-    )
+    fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, "attention_mask", config.num_key_value_heads, world_size)
     fp16_model_opt.prune_graph()
     fp16_model_opt.update_graph(allow_remove_graph_inputs=True)
     return fp16_model_opt

@@ -65,7 +65,9 @@ def get_inputs(args: argparse.Namespace, config: AutoConfig):
     return inputs
 
 
-def verify_parity(args: argparse.Namespace, config: AutoConfig, pt_model: AutoModelForCausalLM, kv_cache_ortvalues: dict):
+def verify_parity(
+    args: argparse.Namespace, config: AutoConfig, pt_model: AutoModelForCausalLM, kv_cache_ortvalues: dict
+):
     inputs = get_inputs(args, config)
 
     # Run inference with PyTorch
