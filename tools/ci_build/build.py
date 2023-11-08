@@ -368,8 +368,8 @@ def parse_arguments():
     )
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
 
-    # Note: This arg is for specifying if the build includes macosx arch.
-    # Different from helper function is_macOS() that's for verifying system platform info that we are building on.
+    # Note: This arg is for specifying if this build includes macosx platform support in the apple xcframework.
+    # Different from helper function is_macOS() that's for verifying system platform info that we are building on.(i.e. windows/linux/macos)
     parser.add_argument("--macosx", action="store_true", help="build for macosx")
     parser.add_argument("--ios", action="store_true", help="build for ios")
 
