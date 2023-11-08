@@ -78,7 +78,7 @@ def parse_arguments(is_xl: bool, description: str):
         help="Root Directory to store torch or ONNX models, built engines and output images etc.",
     )
 
-    parser.add_argument("prompt", nargs="+", help="Text prompt(s) to guide image generation.")
+    parser.add_argument("prompt", nargs="*", default=[""], help="Text prompt(s) to guide image generation.")
 
     parser.add_argument(
         "--negative-prompt", nargs="*", default=[""], help="Optional negative prompt(s) to guide the image generation."
