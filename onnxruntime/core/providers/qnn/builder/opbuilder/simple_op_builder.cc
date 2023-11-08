@@ -27,12 +27,13 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
-  Status GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
-                             const NodeUnit& node_unit,
-                             const logging::Logger& logger,
-                             const std::vector<std::string>& input_names,
-                             size_t output_index,
-                             TensorInfo& output_info) const override ORT_MUST_USE_RESULT;
+  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& node_unit,
+                                  const logging::Logger& logger,
+                                  const std::vector<std::string>& input_names,
+                                  size_t output_index,
+                                  Qnn_DataType_t qnn_data_type,
+                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
   Status ExplicitOpCheck(const NodeUnit& node_unit) const;
@@ -334,12 +335,14 @@ static bool OverrideQuantParams(const std::string& op_type, Qnn_DataType_t qnn_d
   return quant_params.offset != orig_offset || quant_params.scale != orig_scale;
 }
 
-Status SimpleOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
-                                            const NodeUnit& node_unit,
-                                            const logging::Logger& logger,
-                                            const std::vector<std::string>& input_names,
-                                            size_t output_index,
-                                            TensorInfo& output_info) const {
+Status SimpleOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                                 const NodeUnit& node_unit,
+                                                 const logging::Logger& logger,
+                                                 const std::vector<std::string>& input_names,
+                                                 size_t output_index,
+                                                 Qnn_DataType_t qnn_data_type,
+                                                 Qnn_QuantizeParams_t& quant_param) const {
+  ORT_UNUSED_PARAMETER(input_names);
   const std::string& op_type = node_unit.OpType();
 
   // Override output quantization parameters for uint16 QDQ Sigmoid or Tanh.
@@ -348,16 +351,15 @@ Status SimpleOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
   if (op_type == "Sigmoid" || op_type == "Tanh") {
     const auto& outputs = node_unit.Outputs();
     ORT_RETURN_IF_NOT(output_index < outputs.size(),
-                      "Invalid output index in GetOutputTensorInfo for op ", op_type.c_str());
+                      "Invalid output index in OverrideOutputQuantParam for op ", op_type.c_str());
 
     const auto& output = node_unit.Outputs()[0];
     const std::string& output_name = output.node_arg.Name();
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(output, output_info));
 
-    if (output_info.quant_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
-      if (OverrideQuantParams(op_type, output_info.qnn_data_type, output_info.quant_param.scaleOffsetEncoding)) {
-        const int32_t offset = output_info.quant_param.scaleOffsetEncoding.offset;
-        const float scale = output_info.quant_param.scaleOffsetEncoding.scale;
+    if (quant_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
+      if (OverrideQuantParams(op_type, qnn_data_type, quant_param.scaleOffsetEncoding)) {
+        const int32_t offset = quant_param.scaleOffsetEncoding.offset;
+        const float scale = quant_param.scaleOffsetEncoding.scale;
 
         LOGS(logger, VERBOSE) << "QNN requires that 16-bit quantized " << op_type
                               << " operators use offset/scale values "
@@ -368,9 +370,6 @@ Status SimpleOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
                       " operator. Node name: ", node_unit.Name().c_str(), ", output name: ", output_name.c_str());
       }
     }
-  } else {
-    ORT_RETURN_IF_ERROR(BaseOpBuilder::GetOutputTensorInfo(qnn_model_wrapper, node_unit, logger, input_names,
-                                                           output_index, output_info));
   }
 
   return Status::OK();

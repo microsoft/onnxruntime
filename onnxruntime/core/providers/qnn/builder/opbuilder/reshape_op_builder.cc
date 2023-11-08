@@ -23,6 +23,13 @@ class ReshapeOpBuilder : public BaseOpBuilder {
                        const logging::Logger& logger,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& node_unit,
+                                  const logging::Logger& logger,
+                                  const std::vector<std::string>& input_names,
+                                  size_t output_index,
+                                  Qnn_DataType_t qnn_data_type,
+                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
 };
 
 Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -40,6 +47,27 @@ Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   const auto& input_0 = node_unit.Inputs()[0];
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, input_0, logger, input_names));
+
+  return Status::OK();
+}
+
+Status ReshapeOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                                  const NodeUnit& node_unit,
+                                                  const logging::Logger& logger,
+                                                  const std::vector<std::string>& input_names,
+                                                  size_t output_index,
+                                                  Qnn_DataType_t qnn_data_type,
+                                                  Qnn_QuantizeParams_t& quant_param) const {
+  // Force Reshape output to use the same quantization parameters as the input.
+  ORT_UNUSED_PARAMETER(node_unit);
+  ORT_UNUSED_PARAMETER(logger);
+  ORT_UNUSED_PARAMETER(output_index);
+
+  const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
+  ORT_RETURN_IF_NOT(input_tensor_wrapper.GetTensorDataType() == qnn_data_type,
+                    "Input and output data types do not match in OverrideOutputQuantParam");
+
+  quant_param = GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor());
 
   return Status::OK();
 }

@@ -127,7 +127,9 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
     const auto& output_name = outputs[output_i].node_arg.Name();
 
     TensorInfo output_info = {};
-    ORT_RETURN_IF_ERROR(GetOutputTensorInfo(qnn_model_wrapper, node_unit, logger, input_names, output_i, output_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[output_i], output_info));
+    ORT_RETURN_IF_ERROR(OverrideOutputQuantParam(qnn_model_wrapper, node_unit, logger, input_names,
+                                                 output_i, output_info.qnn_data_type, output_info.quant_param));
 
     Qnn_DataType_t supported_qnn_data_type = GetSupportedOutputDataType(output_i, output_info.qnn_data_type);
     bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
@@ -174,22 +176,6 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                       {}),
                       " Failed to add Cast node");
   }
-  return Status::OK();
-}
-
-Status BaseOpBuilder::GetOutputTensorInfo(QnnModelWrapper& qnn_model_wrapper,
-                                          const NodeUnit& node_unit,
-                                          const logging::Logger& logger,
-                                          const std::vector<std::string>& input_names,
-                                          size_t output_index,
-                                          TensorInfo& output_info) const {
-  ORT_UNUSED_PARAMETER(logger);
-  ORT_UNUSED_PARAMETER(input_names);
-  const auto& outputs = node_unit.Outputs();
-  ORT_RETURN_IF_NOT(output_index < outputs.size(), "Invalid output index in GetOutputTensorInfo for op ",
-                    node_unit.OpType().c_str());
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[output_index], output_info));
-
   return Status::OK();
 }
 
