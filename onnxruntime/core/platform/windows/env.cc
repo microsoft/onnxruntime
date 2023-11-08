@@ -32,7 +32,7 @@ limitations under the License.
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
-#include "unsupported/Eigen/CXX11/src/ThreadPool/ThreadPoolInterface.h"
+#include <unsupported/Eigen/CXX11/ThreadPool>
 #include <wil/Resource.h>
 
 #include "core/platform/path_lib.h"  // for LoopDir()

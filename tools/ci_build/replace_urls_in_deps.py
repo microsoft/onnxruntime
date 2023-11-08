@@ -8,6 +8,7 @@
 import argparse
 import csv
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,7 +47,16 @@ def main():
     deps = []
 
     csv_file_path = Path(REPO_DIR) / "cmake" / "deps.txt"
+    backup_csv_file_path = Path(REPO_DIR) / "cmake" / "deps.txt.bak"
+    # prefer to use the backup file
+    if backup_csv_file_path.exists():
+        csv_file_path = backup_csv_file_path
+    else:
+        # Make a copy before modifying it
+        print("Making a copy to %s" % str(backup_csv_file_path))
+        shutil.copy(csv_file_path, backup_csv_file_path)
 
+    print("Reading from %s" % str(csv_file_path))
     # Read the whole file into memory first
     with csv_file_path.open("r", encoding="utf-8") as f:
         depfile_reader = csv.reader(f, delimiter=";")
@@ -58,6 +68,8 @@ def main():
                 continue
             deps.append(Dep(row[0], row[1], row[2]))
 
+    csv_file_path = Path(REPO_DIR) / "cmake" / "deps.txt"
+    print("Writing to %s" % str(csv_file_path))
     # Write updated content back
     with csv_file_path.open("w", newline="", encoding="utf-8") as f:
         depfile_writer = csv.writer(f, delimiter=";")
