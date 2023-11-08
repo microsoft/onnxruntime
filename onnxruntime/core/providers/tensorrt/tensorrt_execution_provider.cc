@@ -1562,7 +1562,6 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
-
         // Only if the newly built graph has control flow op as well as it has parent node,
         // it needs to handle outer scope values before calling graph.Resolve().
         if (has_control_flow_op && graph.ParentNode()) {
