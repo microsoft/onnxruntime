@@ -31,6 +31,7 @@ class LogLevel(IntEnum):
 ORTMODULE_LOG_LEVEL_MAP: Dict[LogLevel, List[int]] = {
     LogLevel.VERBOSE: [Severity.VERBOSE, logging.DEBUG],
     LogLevel.DEVINFO: [Severity.INFO, logging.INFO],
+    # ONNX Runtime has too many INFO logs, so we map it to WARNING for a better user experience.
     LogLevel.INFO: [Severity.WARNING, logging.INFO],
     LogLevel.WARNING: [Severity.WARNING, logging.WARNING],
     LogLevel.ERROR: [Severity.ERROR, logging.ERROR],
@@ -55,7 +56,7 @@ def configure_ortmodule_logger(log_level: LogLevel) -> logging.Logger:
     """
     rank_info = f".rank-{get_rank()}" if get_world_size() > 1 else ""
     logger = logging.getLogger(f"orttraining{rank_info}")
-    # Disable the logger for non-zero ranks when level >= info
+    # Disable the logger for non-zero ranks when level >= INFO
     logger.disabled = log_level >= LogLevel.INFO and get_rank() != 0
     logger.setLevel(ortmodule_loglevel_to_python_loglevel(log_level))
     return logger

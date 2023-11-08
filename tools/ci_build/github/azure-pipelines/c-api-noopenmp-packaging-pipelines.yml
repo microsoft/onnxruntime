@@ -80,6 +80,8 @@ stages:
 - stage: Setup
   jobs:
   - job: Set_Variables
+    pool:
+      vmImage: ubuntu-latest
     steps:
     - checkout: none
     - bash: |
@@ -100,6 +102,8 @@ stages:
   dependsOn: Setup
   jobs:
   - job: D1
+    pool:
+      vmImage: ubuntu-latest
     variables:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     steps:
@@ -193,7 +197,7 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: gpu
-    EnvSetupScript: setup_env_cuda_11.bat
+    EnvSetupScript: setup_env_cuda.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
@@ -376,7 +380,7 @@ stages:
     - task: BatchScript@1
       displayName: 'setup env'
       inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda_11.bat'
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda.bat'
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
 
@@ -488,13 +492,13 @@ stages:
         Steps:
         - script: |
             tools/ci_build/get_docker_image.py \
-              --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11_8_tensorrt8_6 \
+              --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda \
               --context tools/ci_build/github/linux/docker \
-              --docker-build-args "--network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/usr/local/cuda/bin --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/usr --build-arg BUILD_UID=$( id -u ) --build-arg BUILD_UID=$( id -u )" \
+              --docker-build-args "--network=host --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8 --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 --build-arg BUILD_UID=$( id -u )" \
               --container-registry onnxruntimebuildcache \
               --multiple_repos \
               --repository onnxruntimecuda118xtrt86build
-          displayName: "Get onnxruntimecuda118xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11_8_tensorrt8_6"
+          displayName: "Get onnxruntimecuda118xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda"
           workingDirectory: $(Build.SourcesDirectory)/onnxruntime
         ContainerRegistry: onnxruntimebuildcache
 
@@ -716,44 +720,29 @@ stages:
         versionSpec: 6.2.1
 
     - task: PowerShell@2
-      displayName: Install .NET 6 workloads
+      displayName: Install mobile workloads
       inputs:
         targetType: 'inline'
         script: |
-          dotnet workload install android ios macos
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-    - task: PowerShell@2
-      displayName: Build .NET 6 targets using dotnet
-      inputs:
-        targetType: 'inline'
-        # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
-        # which is inconsistent with the msbuild output path for the pre-.net6 targets
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
-        # and makes it harder to do the packing
-        #
-        # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
-        script: |
-          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+          dotnet workload install android ios
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
-      displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
+      displayName: 'Restore NuGet Packages and create project.assets.json'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
+        msbuildArguments: '-t:restore -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
-      displayName: 'Build C# for pre-.net6 targets'
+      displayName: 'Build C# bindings'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - template: templates/win-esrp-dll.yml
@@ -761,15 +750,6 @@ stages:
         FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
         DisplayName: 'ESRP - Sign C# dlls'
         DoEsrp: ${{ parameters.DoEsrp }}
-
-    - task: MSBuild@1
-      displayName: Update projects.assets.json with combined list of all target frameworks
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=All -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'

@@ -103,7 +103,7 @@ def optimize_by_onnxruntime(
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path
 
-    model = OnnxModel(load_model(onnx_model_path, format=None, load_external_data=False))
+    model = OnnxModel(load_model(onnx_model_path, load_external_data=False))
     if model.use_float16() and not use_gpu:
         logger.warning(
             "This model uses float16 in the graph, use_gpu=False might cause extra Cast nodes. "
@@ -546,11 +546,14 @@ def main():
     if args.input_int32:
         optimizer.change_graph_inputs_to_int32()
 
-    if args.model_type in ["bert", "gpt2"]:
-        if optimizer.is_fully_optimized():
-            logger.info("The model has been fully optimized.")
-        else:
-            logger.info("The model has been optimized.")
+    # Print the operator statistics might help end user.
+    optimizer.get_operator_statistics()
+
+    fused_op_count = optimizer.get_fused_operator_statistics()
+    if "bert" in args.model_type and optimizer.is_fully_optimized(fused_op_count):
+        logger.info("The model has been fully optimized.")
+    else:
+        logger.info("The model has been optimized.")
 
     if args.convert_to_packing_mode:
         if args.model_type == "bert":

@@ -206,7 +206,7 @@ def _combine_input_buffers_initializers(
     _expand_inputs(inputs, non_none_inputs)
     flattened_kwargs_inputs = {}
     _expand_inputs(kwargs, flattened_kwargs_inputs)
-    buffer_names_dict = {buffer_name: inp for buffer_name, inp in named_buffer}
+    buffer_names_dict = None
     result = []
     embed_sparsity_results = OrderedDict()
     label_sparsity_results = OrderedDict()
@@ -233,6 +233,8 @@ def _combine_input_buffers_initializers(
 
         if inp is None:
             # Registered buffers are translated to user_input+initializer in ONNX
+            if buffer_names_dict is None:
+                buffer_names_dict = {buffer_name: i for buffer_name, i in named_buffer}
             try:  # noqa: SIM105
                 inp = buffer_names_dict[name]
             except KeyError:
