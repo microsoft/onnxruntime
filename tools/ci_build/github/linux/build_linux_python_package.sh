@@ -18,6 +18,7 @@ d) BUILD_DEVICE=${OPTARG};;
 p) PYTHON_EXES=(${OPTARG});;
 x) EXTRA_ARG=(${OPTARG});;
 c) BUILD_CONFIG=${OPTARG};;
+u) CUDA_VERSION=${OPTARG};;
 esac
 done
 
