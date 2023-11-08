@@ -161,10 +161,8 @@ std::unordered_map<std::string, std::pair<std::string, std::string>> disabledGpu
     test name -> absolute difference sampleTolerance
 */
 std::unordered_map<std::string, double> sampleTolerancePerTests({
-  {"fp16_inception_v1_opset7_GPU",0.005                                  },
-  {"fp16_inception_v1_opset8_GPU", 0.005},
-  {            "candy_opset9_GPU",
-   0.00150000                           }, // Intel(R) UHD Graphics 630 (29.20.100.9020) AP machine has inaccurate GPU results for FNS Candy opset 9 https://microsoft.visualstudio.com/OS/_workitems/edit/30696168/
-  { "fp16_tiny_yolov2_opset8_GPU",
-   0.109000                             }, // Intel(R) UHD Graphics 630 (29.20.100.9020) AP machine has inaccurate GPU results for FNS Candy opset 9 https://microsoft.visualstudio.com/OS/_workitems/edit/30696168/
+  {"fp16_inception_v1_opset7_GPU",      0.005},
+  {"fp16_inception_v1_opset8_GPU",      0.005},
+  {            "candy_opset9_GPU", 0.00150000}, // Intel(R) UHD Graphics 630 (29.20.100.9020) AP machine has inaccurate GPU results for FNS Candy opset 9 https://microsoft.visualstudio.com/OS/_workitems/edit/30696168/
+  { "fp16_tiny_yolov2_opset8_GPU",   0.109000}, // Intel(R) UHD Graphics 630 (29.20.100.9020) AP machine has inaccurate GPU results for FNS Candy opset 9 https://microsoft.visualstudio.com/OS/_workitems/edit/30696168/
 });
