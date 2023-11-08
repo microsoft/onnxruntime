@@ -1004,6 +1004,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("local_window_size",
+              "left_window_size for local attention (like Mistral). Default value is -1 meaning infinite. Must be used"
+              "in conjunction with unidirectional (local attention is similar to causal but with a limited window).",
+              AttributeProto::INT,
+              static_cast<int64_t>(-1))
         // .Attr("left_padding_last_token",
         //       "Copy last token to last index of buffer. Default is 0; 1 when true.",
         //       AttributeProto::INT,

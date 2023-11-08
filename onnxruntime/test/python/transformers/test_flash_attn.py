@@ -183,7 +183,9 @@ def create_multihead_attention_graph(config):
     return model.SerializeToString()
 
 
-def create_group_query_attention_graph_prompt(config, past_kv_format=Formats.BSNH, share_buffer=True, local_window_size=-1):
+def create_group_query_attention_graph_prompt(
+    config, past_kv_format=Formats.BSNH, share_buffer=True, local_window_size=-1
+):
     past_kv_seqlen = config.buffer_sequence_length if share_buffer else 0
     present_kv_seqlen = config.buffer_sequence_length if share_buffer else config.kv_sequence_length
     nodes = [
@@ -303,8 +305,8 @@ def create_group_query_attention_graph_prompt(config, past_kv_format=Formats.BSN
             TensorProto.FLOAT16,
             [
                 config.batch_size,
-                config.kv_sequence_length if present_kv_format == Formats.BSNH else config.kv_num_heads,
-                config.kv_num_heads if present_kv_format == Formats.BSNH else config.kv_sequence_length,
+                config.kv_sequence_length if past_kv_format == Formats.BSNH else config.kv_num_heads,
+                config.kv_num_heads if past_kv_format == Formats.BSNH else config.kv_sequence_length,
                 config.head_size,
             ],
         ),
@@ -313,8 +315,8 @@ def create_group_query_attention_graph_prompt(config, past_kv_format=Formats.BSN
             TensorProto.FLOAT16,
             [
                 config.batch_size,
-                config.kv_sequence_length if present_kv_format == Formats.BSNH else config.kv_num_heads,
-                config.kv_num_heads if present_kv_format == Formats.BSNH else config.kv_sequence_length,
+                config.kv_sequence_length if past_kv_format == Formats.BSNH else config.kv_num_heads,
+                config.kv_num_heads if past_kv_format == Formats.BSNH else config.kv_sequence_length,
                 config.head_size,
             ],
         ),
@@ -331,7 +333,9 @@ def create_group_query_attention_graph_prompt(config, past_kv_format=Formats.BSN
     return model.SerializeToString()
 
 
-def create_group_query_attention_graph_past(config, past_kv_format=Formats.BSNH, share_buffer=True, local_window_size=-1):
+def create_group_query_attention_graph_past(
+    config, past_kv_format=Formats.BSNH, share_buffer=True, local_window_size=-1
+):
     past_kv_seqlen = config.kv_sequence_length
     present_kv_seqlen = (
         config.kv_sequence_length if share_buffer else config.kv_sequence_length + config.sequence_length
@@ -658,8 +662,12 @@ def mha_func(q, k, v, config):
     return output
 
 
-def gqa_prompt_func(q, k, v, config, new_k, new_v, seqlens_k=None, window_size=-1, past_kv_format=Formats.BSNH, share_buffer=True):
-    onnx_model_str = create_group_query_attention_graph_prompt(config, past_kv_format, share_buffer, local_window_size=window_size)
+def gqa_prompt_func(
+    q, k, v, config, new_k, new_v, seqlens_k=None, window_size=-1, past_kv_format=Formats.BSNH, share_buffer=True
+):
+    onnx_model_str = create_group_query_attention_graph_prompt(
+        config, past_kv_format, share_buffer, local_window_size=window_size
+    )
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
     past_k = k.clone() if share_buffer else None
     past_v = v.clone() if share_buffer else None
@@ -728,8 +736,12 @@ def gqa_prompt_func(q, k, v, config, new_k, new_v, seqlens_k=None, window_size=-
         return output, present_k, present_v
 
 
-def gqa_past_func(q, k, v, config, new_k, new_v, seqlens_k=None, past_kv_format=Formats.BSNH, share_buffer=True, window_size=-1):
-    onnx_model_str = create_group_query_attention_graph_past(config, past_kv_format, share_buffer, local_window_size=window_size)
+def gqa_past_func(
+    q, k, v, config, new_k, new_v, seqlens_k=None, past_kv_format=Formats.BSNH, share_buffer=True, window_size=-1
+):
+    onnx_model_str = create_group_query_attention_graph_past(
+        config, past_kv_format, share_buffer, local_window_size=window_size
+    )
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     past_k = k.clone()
     past_v = v.clone()
@@ -1104,14 +1116,18 @@ def parity_check_gqa_prompt(
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded
-    out_ref, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size)
+    out_ref, _ = attention_ref(
+        q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size
+    )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_prompt_func(q, k, v, config, new_k, new_v, cache_seqlens, left_window_size, past_format, True)
+    out, present_k, present_v = gqa_prompt_func(
+        q, k, v, config, new_k, new_v, cache_seqlens, left_window_size, past_format, True
+    )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1218,14 +1234,18 @@ def parity_check_gqa_prompt_no_buff(
     new_mask = brange < cache_seqlens_expanded
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
-    out_ref, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, new_mask, 0.0, None, causal=True, window_size=window_size)
+    out_ref, _ = attention_ref(
+        q, k_cache_rep, v_cache_rep, None, new_mask, 0.0, None, causal=True, window_size=window_size
+    )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_prompt_func(q, None, None, config, new_k, new_v, cache_seqlens, past_format, False)
+    out, present_k, present_v = gqa_prompt_func(
+        q, None, None, config, new_k, new_v, cache_seqlens, left_window_size, past_format, False
+    )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1349,14 +1369,18 @@ def parity_check_gqa_past(
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
-    out_ref, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size)
+    out_ref, _ = attention_ref(
+        q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size
+    )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, cache_seqlens, past_format, True, left_window_size)
+    out, present_k, present_v = gqa_past_func(
+        q, k, v, config, new_k, new_v, cache_seqlens, past_format, True, left_window_size
+    )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1489,14 +1513,18 @@ def parity_check_gqa_past_no_buff(
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
-    out_ref, _ = attention_ref(q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size)
+    out_ref, _ = attention_ref(
+        q, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size
+    )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_past_func(q, k, v, config, new_k, new_v, cache_seqlens, past_format, False, window_size=left_window_size)
+    out, present_k, present_v = gqa_past_func(
+        q, k, v, config, new_k, new_v, cache_seqlens, past_format, False, window_size=left_window_size
+    )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1645,7 +1673,7 @@ class TestGQA(unittest.TestCase):
                         for local in [False, True]:
                             for past_kv_format in [Formats.BNSH]:
                                 config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                                parity_check_gqa_prompt(config, local=local past_format=past_kv_format)
+                                parity_check_gqa_prompt(config, local=local, past_format=past_kv_format)
                                 parity_check_gqa_prompt_no_buff(config, local=local, past_format=past_kv_format)
 
     def test_gqa_past(self):
