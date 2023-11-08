@@ -1153,12 +1153,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 // Memory optimization graph.
 #ifdef ENABLE_TRAINING
   {
-    const std::string enable_memory_optimizer =
+    const std::string memory_optimizer_config =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerEnabler, "");
     const std::string probe_level =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeLevel, "0");
 
-    MemoryOptimizer mem_transformer{enable_memory_optimizer, probe_level};
+    MemoryOptimizer mem_transformer{memory_optimizer_config, probe_level};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(mem_transformer, *session_logger_, graph));
   }
 #endif

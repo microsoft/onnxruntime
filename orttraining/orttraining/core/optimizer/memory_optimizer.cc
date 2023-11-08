@@ -30,12 +30,12 @@ constexpr bool IsForwardPassOperator(ptrdiff_t op_order_in_topological_sort,
 
 }  // namespace
 
-Status MemoryOptimizer::ParseConfigFromString(const std::string& enable_memory_optimizer,
+Status MemoryOptimizer::ParseConfigFromString(const std::string& memory_optimizer_config,
                                               const std::string& level) {
-  optimizer_config_ = enable_memory_optimizer;
+  optimizer_config_ = memory_optimizer_config;
 
   ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseConfigFromString(
-      enable_memory_optimizer,
+      memory_optimizer_config,
       pattern_subgraph_to_user_optimizer_config_map_));
 
   int probe_level = optimizer::memory_optimizer::ParseIntValueFromString(level);

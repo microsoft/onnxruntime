@@ -22,10 +22,10 @@ Find recomputable subgraphs and enable according to user configs.
 class MemoryOptimizer : public GraphTransformer {
  private:
  public:
-  MemoryOptimizer(const std::string& enable_memory_optimizer, const std::string& level)
+  MemoryOptimizer(const std::string& memory_optimizer_config, const std::string& level)
       : GraphTransformer("MemoryOptimizer") {
     // Parse user defined configs.
-    ORT_ENFORCE(ParseConfigFromString(enable_memory_optimizer, level).IsOK());
+    ORT_ENFORCE(ParseConfigFromString(memory_optimizer_config, level).IsOK());
   }
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
@@ -33,7 +33,7 @@ class MemoryOptimizer : public GraphTransformer {
   bool ShouldOnlyApplyOnce() const override { return true; }
 
  private:
-  Status ParseConfigFromString(const std::string& enable_memory_optimizer, const std::string& level);
+  Status ParseConfigFromString(const std::string& memory_optimizer_config, const std::string& level);
 
   /**
    * @brief Apply graph modifications based on user configs.

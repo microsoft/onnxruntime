@@ -454,7 +454,7 @@ class TrainingManager(GraphExecutionManager):
 
         # Enable memory optimization if it is enabled in the session options.
         session_options.add_session_config_entry(
-            "optimization.enable_memory_optimizer", self._runtime_options.memory_optimizer_config
+            "optimization.memory_optimizer_config", self._runtime_options.memory_optimizer_config
         )
         session_options.add_session_config_entry(
             "optimization.enable_memory_probe_recompute_level", self._runtime_options.probe_level
