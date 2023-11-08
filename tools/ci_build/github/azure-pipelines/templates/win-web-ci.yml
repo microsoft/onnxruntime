@@ -116,6 +116,10 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
   - script: |
+     npm run prebuild
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'run TypeScript type check in /js/web/'
+  - script: |
      npm run lint
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'run ESLint'

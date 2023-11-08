@@ -112,6 +112,10 @@ module.exports = {
     'use-isnan': 'error'
   },
   overrides: [{
+    files: ['web/lib/**/*.ts'],
+    excludedFiles: 'web/lib/wasm/proxy-worker/**/*',
+    parserOptions: { 'project': 'web/tsconfig.json' },
+  },{
     files: ['node/**/*.ts'],
     env: { 'es6': true, 'node': true }
   }, {
