@@ -29,7 +29,7 @@ stages:
         objcPodName: onnxruntime-mobile-objc
 
       ${{ if eq(parameters.packageVariant, 'Full') }}:
-        buildSettingsFile: "tools/ci_build/github/apple/default_full_ios_framework_build_settings.json"
+        buildSettingsFile: "tools/ci_build/github/apple/default_full_macos_ios_framework_build_settings.json"
         cPodName: onnxruntime-c
         objcPodName: onnxruntime-objc
 
