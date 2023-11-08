@@ -134,7 +134,7 @@ jobs:
         AdditionalKey: wasm_simd_threads | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads --enable_wasm_simd --enable_wasm_threads --wasm_run_tests_in_browser'
-      DisplayName: 'Build and test (node) (simd + threads)'
+      DisplayName: 'Build and test (browser) (simd + threads)'
       WithCache: ${{ parameters.WithCache }}
 
   - template: build-linux-wasm-step.yml
