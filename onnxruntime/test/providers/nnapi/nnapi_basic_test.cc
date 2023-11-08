@@ -556,9 +556,10 @@ TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
   constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.basic.ort");
   // stop NNAPI partitioning at Relu so NNAPI EP only takes first Conv
   const auto nnapi_partitioning_stop_ops = "Relu";
-  TestModelLoad(model_file_name, std::make_unique<NnapiExecutionProvider>(0, nnapi_partitioning_stop_ops),
-                // expect one NNAPI partition
-                [](const Graph& graph) { ASSERT_EQ(CountAssignedNodes(graph, kNnapiExecutionProvider), 1)
+  TestModelLoad(
+      model_file_name, std::make_unique<NnapiExecutionProvider>(0, nnapi_partitioning_stop_ops),
+      // expect one NNAPI partition
+      [](const Graph& graph) { ASSERT_EQ(CountAssignedNodes(graph, kNnapiExecutionProvider), 1)
                                    << "Exactly one node should have been taken by the NNAPI EP"; });
 }
 
