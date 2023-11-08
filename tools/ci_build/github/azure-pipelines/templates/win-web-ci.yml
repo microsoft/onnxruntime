@@ -100,10 +100,6 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'npm ci /js/'
   - script: |
-     npm run lint
-    workingDirectory: '$(Build.SourcesDirectory)\js'
-    displayName: 'run ESLint without TS type populated'
-  - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
     displayName: 'npm ci /js/common/'
