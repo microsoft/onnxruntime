@@ -19,16 +19,22 @@ parameters:
    - MinSizeRel
 - name: docker_base_image
   type: string
-  default: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+  default: 'nvidia/cuda:11.8.0-cudnn8-devel-ubi8'
   values:
    - nvidia/cuda:11.8.0-cudnn8-devel-ubi8
    - nvidia/cuda:12.2.2-cudnn8-devel-ubi8
 - name: trt_version
   type: string
-  default: 8.6.1.6-1.cuda11.8
+  default: '8.6.1.6-1.cuda11.8'
   values:
     - 8.6.1.6-1.cuda11.8
     - 8.6.1.6-1.cuda12.0
+- name: cuda_version
+  type: string
+  default: '11.8'
+  values:
+   - 11.8
+   - 12.2
 jobs:
 - job: Linux_py_GPU_Wheels_${{ parameters.arch }}
   timeoutInMinutes: 240
@@ -65,7 +71,7 @@ jobs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
         # please check ONNXRUNTIME_CUDA_VERSION in tools/ci_build/github/linux/build_linux_python_package.sh
-        arguments: -i onnxruntimecuda118xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} -x "${{ parameters.extra_build_arg }} -u "12.2"
+        arguments: -i onnxruntimecuda118xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} -x ${{ parameters.extra_build_arg }} -u ${{ parameters.cuda_version }}
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'

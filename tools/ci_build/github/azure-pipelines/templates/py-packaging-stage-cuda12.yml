@@ -102,3 +102,4 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           docker_base_image: ${{ variables.docker_base_image }}
           trt_version: ${{ variables.linux_trt_version }}
+          cuda_version: ${{ parameters.cuda_version }}
