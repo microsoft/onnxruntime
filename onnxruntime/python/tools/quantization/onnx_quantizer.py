@@ -111,7 +111,7 @@ class ONNXQuantizer:
         self.is_activation_symmetric = (
             False if "ActivationSymmetric" not in self.extra_options else self.extra_options["ActivationSymmetric"]
         )
-        self.quant_min_rrange = self.extra_options.get("QuantMinRealRange")
+        self.min_real_range = self.extra_options.get("MinimumRealRange")
 
         self.activation_qType = getattr(activation_qType, "tensor_type", activation_qType)
         self.weight_qType = getattr(weight_qType, "tensor_type", weight_qType)
@@ -999,7 +999,7 @@ class ONNXQuantizer:
             qType,
             self.is_weight_symmetric,
             self.reduce_range and reduce_range,
-            self.quant_min_rrange,
+            self.min_real_range,
         )
 
         if qType in {
@@ -1089,7 +1089,7 @@ class ONNXQuantizer:
                 self.is_weight_symmetric
                 or weight_qType in (onnx_proto.TensorProto.INT8, onnx_proto.TensorProto.FLOAT8E4M3FN),
                 self.reduce_range and reduce_range,
-                self.quant_min_rrange,
+                self.min_real_range,
             )
             rmin_list.append(rmin)
             rmax_list.append(rmax)
@@ -1212,7 +1212,7 @@ class ONNXQuantizer:
                 qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
 
                 zero, scale = compute_scale_zp(
-                    rmin, rmax, qmin, qmax, self.is_activation_symmetric, self.quant_min_rrange
+                    rmin, rmax, qmin, qmax, self.is_activation_symmetric, self.min_real_range
                 )
             quantization_params[tensor_name] = QuantizationParams(zero_point=zero, scale=scale)
 

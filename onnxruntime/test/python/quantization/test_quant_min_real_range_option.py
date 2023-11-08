@@ -14,7 +14,7 @@ from onnx import TensorProto, helper, numpy_helper
 from onnxruntime import quantization
 
 
-class TestQuantMinRealRangeOption(unittest.TestCase):
+class TestMinimumRealRangeOption(unittest.TestCase):
     def setUp(self):
         self.qdq_model_name = "model_qdq_u8.onnx"
 
@@ -25,7 +25,7 @@ class TestQuantMinRealRangeOption(unittest.TestCase):
 
         self.zero_range_weights = np.zeros([1, 2, 2, 2], dtype="float32")
 
-    def perform_quantization(self, activations, weight, quant_min_rrange):
+    def perform_quantization(self, activations, weight, min_real_range):
         # One-layer convolution model to be quantized with uint8 activations and uint8 weights.
         act = helper.make_tensor_value_info("ACT", TensorProto.FLOAT, activations[0].shape)
         helper.make_tensor_value_info("WGT", TensorProto.FLOAT, weight.shape)
@@ -52,7 +52,7 @@ class TestQuantMinRealRangeOption(unittest.TestCase):
             activation_type=quantization.QuantType.QUInt8,
             weight_type=quantization.QuantType.QUInt8,
             op_types_to_quantize=["Conv"],
-            extra_options={"QuantMinRealRange": quant_min_rrange},
+            extra_options={"MinimumRealRange": min_real_range},
         )
 
         # Extract quantization parameters: scales and zero points for activations and weights.
@@ -67,12 +67,12 @@ class TestQuantMinRealRangeOption(unittest.TestCase):
 
     def test_default(self):
         """
-        Test default behavior without specifying the QuantMinRealRange option.
+        Test default behavior without specifying the MinimumRealRange option.
         """
         act_zp, act_sc, wgt_zp, wgt_sc = self.perform_quantization(
             self.zero_range_activations,
             self.zero_range_weights,
-            quant_min_rrange=None,  # default behavior
+            min_real_range=None,  # default behavior
         )
 
         # No minimum real range is set. Expect default behavior (scale = 1.0, zp = 0)
@@ -83,17 +83,17 @@ class TestQuantMinRealRangeOption(unittest.TestCase):
 
     def test_min_real_range(self):
         """
-        Test a QuantMinRealRange value of 0.0001.
+        Test a MinimumRealRange value of 0.0001.
         """
-        quant_min_rrange = 0.0001
+        min_real_range = 0.0001
 
         act_zp, act_sc, wgt_zp, wgt_sc = self.perform_quantization(
             self.zero_range_activations,
             self.zero_range_weights,
-            quant_min_rrange=quant_min_rrange,
+            min_real_range=min_real_range,
         )
 
-        expected_scale = np.float32(quant_min_rrange / 255)
+        expected_scale = np.float32(min_real_range / 255)
 
         # Minimum floating-point range is set. Expect small scale values.
         self.assertEqual(act_zp, 0)

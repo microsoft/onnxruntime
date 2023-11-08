@@ -184,7 +184,7 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         return arr_fp32.astype(dtype)
 
 
-def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_rrange=None):
+def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=None):
     """Calculate the scale s and zero point z for the quantization relation
     r = s(q-z), where r are the original values and q are the corresponding
     quantized values.
@@ -200,7 +200,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_rrange=None):
     :parameter qmin: minimum value representable by the target quantization data type
     :parameter qmax: maximum value representable by the target quantization data type
     :parameter symmetric: True if the floating point range should be made symmetric. Defaults to False.
-    :parameter min_rrange: Minimum floating-point range (i.e., rmax - rmin) to enforce. Defaults to None.
+    :parameter min_real_range: Minimum floating-point range (i.e., rmax - rmin) to enforce. Defaults to None.
     :return: zero and scale [z, s]
 
     """
@@ -214,8 +214,8 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_rrange=None):
     rmax = max(rmax, 0)
 
     # Ensure a minimum float-point range if specified.
-    if min_rrange is not None:
-        rmax = max(rmax, rmin + min_rrange)
+    if min_real_range is not None:
+        rmax = max(rmax, rmin + min_real_range)
 
     if symmetric:
         absmax = max(abs(rmin), abs(rmax))
@@ -260,11 +260,13 @@ def compute_scale_zp_float8(element_type, std):
     return [zero, scale]
 
 
-def quantize_data(data, qType, symmetric, reduce_range=False, min_rrange=None):
+def quantize_data(data, qType, symmetric, reduce_range=False, min_real_range=None):
     """
     :param data: data to quantize
     :param qType: data type to quantize to. Supported types UINT8 and INT8
     :param symmetric: whether symmetric quantization is used or not. This is applied to INT8.
+    :parameter reduce_range: True if the quantization range should be reduced. Defaults to False.
+    :parameter min_real_range: Minimum floating-point range (i.e., rmax - rmin) to enforce. Defaults to None.
     :return: minimum, maximum, zero point, scale, and quantized weights
 
     To pack weights, we compute a linear transformation
@@ -307,7 +309,7 @@ def quantize_data(data, qType, symmetric, reduce_range=False, min_rrange=None):
     if qType in (TensorProto.INT8, TensorProto.UINT8, TensorProto.INT16, TensorProto.UINT16):
         if len(data):
             qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
-            zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_rrange)
+            zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_real_range)
         quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
         return rmin, rmax, zero_point, scale, quantized_data
 
