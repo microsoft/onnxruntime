@@ -29,7 +29,7 @@ stages:
         objcPodName: onnxruntime-mobile-objc
 
       ${{ if eq(parameters.packageVariant, 'Full') }}:
-        buildSettingsFile: "tools/ci_build/github/apple/default_full_macos_ios_framework_build_settings.json"
+        buildSettingsFile: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
         cPodName: onnxruntime-c
         objcPodName: onnxruntime-objc
 
@@ -85,13 +85,12 @@ stages:
     # create and test mobile pods
     - script: |
         python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
-          --build-dir "$(Build.BinariesDirectory)/macos_ios_framework" \
+          --build-dir "$(Build.BinariesDirectory)/apple_framework" \
           --staging-dir "$(Build.BinariesDirectory)/staging" \
           --pod-version "$(ortPodVersion)" \
           --test \
           --variant ${{ parameters.packageVariant }} \
           --build-settings-file "${{ variables.buildSettingsFile }}" \
-          --build-for-macosx \
           ${{ variables.optionalIncludeOpsByConfigOption }} \
           -b="--path_to_protoc_exe=$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
       displayName: "Build macOS/iOS framework and assemble pod package files"
