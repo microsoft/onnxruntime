@@ -157,7 +157,7 @@ for output in model.get_outputs():
     name = output.name
     if "present" in name:
         # Bind KV cache outputs to KV cache inputs
-        v = kv_cache[name.replace("present", "past_key_values")]
+        v = inputs[name.replace("present", "past_key_values")]
         io_binding.bind_output(
             name=name,
             device_type="cuda",
@@ -179,7 +179,7 @@ for output in model.get_outputs():
         )
 
 io_binding.synchronize_inputs()
-model.run_with_iobinding(io_binding)
+sess.run_with_iobinding(io_binding)
 io_binding.synchronize_outputs()
 ```
 
@@ -234,7 +234,6 @@ $ ./build.sh --config Release --use_cuda --cuda_home /usr/local/cuda-12.2 --cudn
 
 # 3. Shard and export the LLaMA-2 70B model. With FP16, you will need at least 140GB of GPU memory to load the model. Therefore, you will need at least 4 40GB A100 GPUs or 2 80GB A100 GPUs to shard the PyTorch model and export each shard to ONNX. Here is an example command:
 $ CUDA_VISIBLE_DEVICES=0,1,2,3 bash convert_70b_model.sh 4 -m meta-llama/Llama-2-70b-hf --output llama2-70b-distributed --precision fp16 --execution_provider cuda --use_gqa
-
 ```
 
 ## Benchmark LLaMA-2
@@ -356,5 +355,8 @@ python3 -m models.llama.benchmark_all \
     --precision fp16 \
     --batch-sizes "1 2" \
     --sequence-lengths "8 16" \
-    --device cuda
+    --device cuda \
+    --warmup-runs 5 \
+    --num-runs 1000 \
+    --timeout 60  # number of minutes before moving to the next benchmark
 ```
