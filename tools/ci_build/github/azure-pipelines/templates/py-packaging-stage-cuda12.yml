@@ -26,6 +26,34 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+- name: cuda_version
+  type: string
+  displayName: 'CUDA version. Windows Only.'
+  default: '12.2'
+  values:
+   - 11.8
+   - 12.2
+
+variables:
+  ${{ if eq(parameters.cuda_version, '11.8') }}:
+    - name: docker_base_image
+      value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+    - name: linux_trt_version
+      value: 8.6.1.6-1.cuda11.8
+    - name: win_trt_home
+      value: $(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
+    - name: win_cuda_home
+      value: $(Agent.TempDirectory)\v11.8
+  ${{ if eq(parameters.cuda_version, '12.2') }}:
+    - name: docker_base_image
+      value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+    - name: linux_trt_version
+      value: 8.6.1.6-1.cuda12.0
+    - name: win_trt_home
+      value: $(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
+    - name: win_cuda_home
+      value: $(Agent.TempDirectory)\v12.2
+  
 stages:
 - stage: Python_Packaging
   dependsOn: []
@@ -36,7 +64,7 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.8'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0" --cuda_home="$(Agent.TempDirectory)\v12.2"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
@@ -44,7 +72,7 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.9'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0" --cuda_home="$(Agent.TempDirectory)\v12.2"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
@@ -52,7 +80,7 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.10'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0" --cuda_home="$(Agent.TempDirectory)\v12.2"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
@@ -60,7 +88,7 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.11'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0" --cuda_home="$(Agent.TempDirectory)\v12.2"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu_cuda.bat
           EP_NAME: gpu
 
@@ -72,5 +100,5 @@ stages:
           machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          docker_base_image: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
-          trt_version: 8.6.1.6-1.cuda12.0
+          docker_base_image: ${{ variables.docker_base_image }}
+          trt_version: ${{ variables.linux_trt_version }}
