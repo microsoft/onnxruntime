@@ -1332,8 +1332,10 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   // Use default value as this field is not available in OrtCUDAProviderOptions
   cuda_options_converted.cudnn_conv_use_max_workspace = 1;
   cuda_options_converted.enable_cuda_graph = 0;
+  cuda_options_converted.prefer_nhwc = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
   cuda_options_converted.enable_skip_layer_norm_strict_mode = 0;
+  cuda_options_converted.use_ep_level_unified_stream = 0;
 
   return cuda_options_converted;
 }
@@ -1430,7 +1432,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   if (legacy_ov_options->device_type != nullptr)
     ov_options_converted_map["device_type"] = legacy_ov_options->device_type;
 
-  ov_options_converted_map["enable_vpu_fast_compile"] = legacy_ov_options->enable_vpu_fast_compile;
+  ov_options_converted_map["enable_npu_fast_compile"] = legacy_ov_options->enable_npu_fast_compile;
 
   if (legacy_ov_options->device_id != nullptr)
     ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
@@ -1623,6 +1625,28 @@ ProviderOptions GetProviderInfo_Cuda(const OrtCUDAProviderOptionsV2* provider_op
 
 }  // namespace onnxruntime
 
+void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, std::string extra_plugin_lib_paths) {
+  auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
+    for (auto ptr : domains) {
+      if (domain_name == ptr->domain_) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  std::vector<OrtCustomOpDomain*> custom_op_domains;
+  onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
+  provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
+  for (auto ptr : custom_op_domains) {
+    if (!is_already_in_domains(ptr->domain_, options->custom_op_domains_)) {
+      options->custom_op_domains_.push_back(ptr);
+    } else {
+      LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
+    }
+  }
+}
+
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   API_IMPL_BEGIN
   auto factory = onnxruntime::DnnlProviderFactoryCreator::Create(use_arena);
@@ -1644,13 +1668,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
 
   options->provider_factories.push_back(factory);
 
-  std::vector<OrtCustomOpDomain*> custom_op_domains;
   std::string extra_plugin_lib_paths = onnxruntime::Env::Default().GetEnvironmentVar("trt_extra_plugin_lib_paths");
-  onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
-  provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
-  for (auto ptr : custom_op_domains) {
-    options->custom_op_domains_.push_back(ptr);
-  }
+  AddTensorRTCustomOpDomainToSessionOption(options, extra_plugin_lib_paths);
 
   return nullptr;
   API_IMPL_END
@@ -1677,12 +1696,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
 
   options->provider_factories.push_back(factory);
 
-  std::vector<OrtCustomOpDomain*> custom_op_domains;
-  onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
-  provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, "");
-  for (auto ptr : custom_op_domains) {
-    options->custom_op_domains_.push_back(ptr);
-  }
+  AddTensorRTCustomOpDomainToSessionOption(options, "");
 
   return nullptr;
   API_IMPL_END
@@ -1786,13 +1800,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 
   options->provider_factories.push_back(factory);
 
-  std::vector<OrtCustomOpDomain*> custom_op_domains;
   std::string extra_plugin_lib_paths = (tensorrt_options == nullptr || tensorrt_options->trt_extra_plugin_lib_paths == nullptr) ? "" : tensorrt_options->trt_extra_plugin_lib_paths;
-  onnxruntime::ProviderInfo_TensorRT& provider_info = onnxruntime::GetProviderInfo_TensorRT();
-  provider_info.GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
-  for (auto ptr : custom_op_domains) {
-    options->custom_op_domains_.push_back(ptr);
-  }
+  AddTensorRTCustomOpDomainToSessionOption(options, extra_plugin_lib_paths);
 
   return nullptr;
   API_IMPL_END
@@ -1922,6 +1931,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
   if (ptr != nullptr) {
     delete[] ptr->trt_int8_calibration_table_name;
     delete[] ptr->trt_engine_cache_path;
+    delete[] ptr->trt_timing_cache_path;
     delete[] ptr->trt_engine_decryption_lib_path;
     delete[] ptr->trt_tactic_sources;
     delete[] ptr->trt_extra_plugin_lib_paths;

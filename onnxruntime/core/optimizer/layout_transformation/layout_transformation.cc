@@ -30,6 +30,23 @@ CostCheckResult PostLayoutTransformCostCheck(const api::GraphRef& graph, const a
   return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
 }
 
+#if defined(USE_CUDA) && ENABLE_CUDA_NHWC_OPS
+const std::unordered_set<std::string_view>& GetCUDALayoutSensitiveOps() {
+  static std::unordered_set<std::string_view> cuda_nhwc_ops = []() {
+    return std::unordered_set<std::string_view>{
+        "BatchNormalization",
+        "Conv",
+        "ConvTranspose",
+        "GlobalMaxPool",
+        "MaxPool",
+        "GlobalAveragePool",
+        "AveragePool",
+    };
+  }();
+  return cuda_nhwc_ops;
+}
+#endif
+
 /// <summary>
 /// Default function for checking if a node should have its layout changed. Allows EP specific adjustments to the
 /// default set of layout sensitive operators if required.
@@ -49,17 +66,6 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   // handle special cases
-#if defined(USE_XNNPACK)
-  if (node.GetExecutionProviderType() == kXnnpackExecutionProvider) {
-    if (node.OpType() == "Resize") {
-      // XNNPACK supports NCHW and NHWC for Resize so we don't need to use the internal NHWC domain and wrap the Resize
-      // with Transpose nodes. EPAwareHandleResize will allow an NCHW <-> NHWC Transpose to be pushed through
-      // the Resize during transpose optimization.
-      return false;
-    }
-  }
-#endif
-
 #if defined(USE_JSEP)
   // TODO(fs-eire): Remove special case handing of JSEP once NHWC Resize implementation is fixed
   if (node.GetExecutionProviderType() == kJsExecutionProvider) {
@@ -71,11 +77,16 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
   }
 #endif
 
-  // #if defined(USE_CUDA)
-  //   if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
-  //     Update as per https://github.com/microsoft/onnxruntime/pull/17200 with CUDA ops that support NHWC
-  //   }
-  // #endif
+#if defined(USE_CUDA) && ENABLE_CUDA_NHWC_OPS
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
+    if (layout_sensitive_ops.count(node.OpType())) {
+      const auto& cuda_nhwc_ops = GetCUDALayoutSensitiveOps();
+      if (!cuda_nhwc_ops.count(node.OpType())) {
+        return false;
+      }
+    }
+  }
+#endif
 
   return layout_sensitive_ops.count(node.OpType()) != 0;
 }

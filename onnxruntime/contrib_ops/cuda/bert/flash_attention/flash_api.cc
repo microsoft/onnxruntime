@@ -140,11 +140,10 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream, bool force_split
 // So we find the best efficiency, then find the smallest number of splits that gets 85%
 // of the best efficiency.
 int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_heads, int head_size, int num_SMs,
-                         int max_splits, bool new_kv, bool is_sm8x) {
+                         int max_splits) {
   // This needs to match with run_mha_fwd_splitkv_dispatch
-  const int block_n = is_sm8x ? (head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64))
-                              : (head_size <= 64 ? 256 : (head_size <= 160 ? 128 : 64));
-  const int num_n_blocks = (seqlen_k + (!new_kv ? 0 : seqlen_q) + block_n - 1) / block_n;
+  const int block_n = head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64);
+  const int num_n_blocks = (seqlen_k + block_n - 1) / block_n;
   // Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.
   // In any case we don't expect seqlen_q to be larger than 64 for inference.
   const int num_m_blocks = (seqlen_q + 64 - 1) / 64;
@@ -190,6 +189,26 @@ int num_splits_heuristic(int batch_size, int seqlen_q, int seqlen_k, int num_hea
   return 1;
 }
 
+// Returns (num_splits, softmax_lse_accum bytes, out_accum bytes)
+std::tuple<int, int, int> get_num_splits_and_buffer_sizes(int batch_size, int seqlen_q, int seqlen_k, int num_heads,
+                                                          int head_size, int num_SMs) {
+  int max_splits = 128;
+  // split kv buffers
+  int num_splits = num_splits_heuristic(batch_size, seqlen_q, seqlen_k, num_heads, head_size,
+                                        num_SMs, max_splits);
+  if (num_splits > 1) {
+    // softmax_lse_accum buffer
+    int softmax_lse_accum_bytes = get_softmax_lse_accum_size(num_splits, batch_size, num_heads, seqlen_q);
+    // out_accum buffer
+    auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
+    const int head_size_rounded = round_multiple(head_size, 32);
+    int out_accum_bytes = get_out_accum_size(num_splits, batch_size, num_heads, seqlen_q, head_size_rounded);
+    return {num_splits, softmax_lse_accum_bytes, out_accum_bytes};
+  } else {
+    return {0, 0, 0};
+  }
+}
+
 Status mha_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
                void* q,            // batch_size x seqlen_q x num_heads x head_size
@@ -215,7 +234,6 @@ Status mha_fwd(const cudaDeviceProp& dprops,
   const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
 
   Flash_fwd_params params;
-  params.dprops = &dprops;
   set_params_fprop(params,
                    batch_size,
                    seqlen_q, seqlen_k,
@@ -230,7 +248,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    softmax_scale,
                    is_causal,
                    kv_bsnh);
-
+  params.dprops = &dprops;
   params.knew_ptr = nullptr;
   params.vnew_ptr = nullptr;
   params.knew_batch_stride = 0;
@@ -276,7 +294,6 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   const int seqlen_k_rounded = round_multiple(max_seqlen_k, 128);
 
   Flash_fwd_params params;
-  params.dprops = &dprops;
   set_params_fprop(params,
                    batch_size,
                    max_seqlen_q, max_seqlen_k,
@@ -290,6 +307,12 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    softmax_lse,
                    softmax_scale,
                    is_causal);
+  params.dprops = &dprops;
+  params.num_splits = 0;
+  params.softmax_lseaccum_ptr = nullptr;
+  params.oaccum_ptr = nullptr;
+  params.knew_ptr = nullptr;
+  params.vnew_ptr = nullptr;
   run_mha_fwd(params, stream);
   return Status::OK();
 }
@@ -336,7 +359,6 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
   const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
 
   Flash_fwd_params params;
-  params.dprops = &dprops;
   set_params_fprop(params,
                    batch_size,
                    seqlen_q, seqlen_k,
@@ -351,6 +373,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                    softmax_scale,
                    is_causal,
                    past_bsnh);
+  params.dprops = &dprops;
 
   if (k != nullptr && v != nullptr) {
     params.seqlen_knew = seqlen_k_new;

@@ -34,7 +34,7 @@ class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatte
 def parse_arguments(is_xl: bool, description: str):
     parser = argparse.ArgumentParser(description=description, formatter_class=RawTextArgumentDefaultsHelpFormatter)
 
-    engines = ["ORT_TRT", "TRT"] if is_xl else ["ORT_CUDA", "ORT_TRT", "TRT"]
+    engines = ["ORT_CUDA", "ORT_TRT", "TRT"]
 
     parser.add_argument(
         "--engine",
@@ -68,7 +68,7 @@ def parse_arguments(is_xl: bool, description: str):
         "--scheduler",
         type=str,
         default="DDIM",
-        choices=["DDIM", "EulerA", "UniPC"],
+        choices=["DDIM", "UniPC"] if is_xl else ["DDIM", "EulerA", "UniPC"],
         help="Scheduler for diffusion process",
     )
 
@@ -95,7 +95,7 @@ def parse_arguments(is_xl: bool, description: str):
         "--denoising-steps",
         type=int,
         default=30 if is_xl else 50,
-        help="Number of denoising steps" + (" in each of base and refiner." if is_xl else "."),
+        help="Number of denoising steps" + (" in base." if is_xl else "."),
     )
 
     parser.add_argument(
@@ -145,6 +145,9 @@ def parse_arguments(is_xl: bool, description: str):
     parser.add_argument("--seed", type=int, default=None, help="Seed for random generator to get consistent results.")
     parser.add_argument("--disable-cuda-graph", action="store_true", help="Disable cuda graph.")
 
+    group = parser.add_argument_group("Options for ORT_CUDA engine only")
+    group.add_argument("--enable-vae-slicing", action="store_true", help="True will feed only one image to VAE once.")
+
     # TensorRT only options
     group = parser.add_argument_group("Options for TensorRT (--engine=TRT) only")
     group.add_argument("--onnx-refit-dir", help="ONNX models to load the weights from.")
@@ -157,12 +160,6 @@ def parse_arguments(is_xl: bool, description: str):
     group.add_argument(
         "--build-all-tactics", action="store_true", help="Build TensorRT engines using all tactic sources."
     )
-
-    # Pipeline options
-    if is_xl:
-        parser.add_argument(
-            "--enable-refiner", action="store_true", help="Enable refiner and run both base and refiner pipelines."
-        )
 
     args = parser.parse_args()
 
@@ -203,6 +200,7 @@ def repeat_prompt(args):
         raise ValueError(
             f"`--negative-prompt` must be of type `str` or `str` list, but is {type(args.negative_prompt)}"
         )
+
     if len(args.negative_prompt) == 1:
         negative_prompt = args.negative_prompt * len(prompt)
     else:
@@ -236,16 +234,11 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
             engine_dir=engine_dir,
             framework_model_dir=framework_model_dir,
             onnx_dir=onnx_dir,
-            onnx_opset=args.onnx_opset,
             opt_image_height=args.height,
             opt_image_width=args.height,
             opt_batch_size=batch_size,
             force_engine_rebuild=args.force_engine_build,
             device_id=torch.cuda.current_device(),
-            disable_cuda_graph_models=[
-                "clip2",  # TODO: Add ArgMax cuda kernel to enable cuda graph for clip2.
-                "unetxl",
-            ],
         )
     elif engine_type == EngineType.ORT_TRT:
         # Build TensorRT EP engines and load pytorch modules

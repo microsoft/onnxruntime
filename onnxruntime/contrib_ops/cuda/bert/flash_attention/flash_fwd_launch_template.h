@@ -12,18 +12,30 @@ namespace flash {
 
 template <typename Kernel_traits, bool Is_causal, bool Is_even_MN, bool Is_even_K, bool Return_softmax>
 __global__ void flash_fwd_kernel(Flash_fwd_params params) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   flash::compute_attn<Kernel_traits, Is_causal, Is_even_MN, Is_even_K, Return_softmax>(params);
+#else
+  (void)params;
+#endif
 }
 
 template <typename Kernel_traits, bool Is_causal, bool Is_even_MN, bool Is_even_K, bool Split, bool Append_KV>
 __global__ void flash_fwd_splitkv_kernel(Flash_fwd_params params) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   flash::compute_attn_splitkv<Kernel_traits, Is_causal, Is_even_MN, Is_even_K, Split, Append_KV>(params);
+#else
+  (void)params;
+#endif
 }
 
 template <typename Kernel_traits, int Log_max_splits, bool Is_even_K>
 __global__ void flash_fwd_splitkv_combine_kernel(Flash_fwd_params params) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   static_assert(Log_max_splits >= 1);
   flash::combine_attn_seqk_parallel<Kernel_traits, Log_max_splits, Is_even_K>(params);
+#else
+  (void)params;
+#endif
 }
 
 template <typename Kernel_traits, bool Is_causal>
@@ -111,17 +123,9 @@ void run_flash_splitkv_fwd(Flash_fwd_params& params, cudaStream_t stream) {
 
 template <typename T, int Headdim>
 void run_mha_fwd_splitkv_dispatch(Flash_fwd_params& params, cudaStream_t stream) {
-  bool is_sm8x = params.dprops->major == 8 && params.dprops->minor > 0;
   constexpr int kBlockM = 64;  // Fixed for all head dimensions
-  if (!is_sm8x) {              // A100, H100
-    // TD [2023-08-28]: nvcc segfaults for headdim 96 with block size 64 x 256,
-    // and for headdim 192 with block size 64 x 128.
-    constexpr int kBlockN = Headdim <= 64 ? 256 : (Headdim <= 160 ? 128 : 64);
-    run_flash_splitkv_fwd<Flash_fwd_kernel_traits<Headdim, kBlockM, kBlockN, 4, false, false, T>>(params, stream);
-  } else {  // Only 99KB of smem, so we have to set kBlockN smaller for Headdim 160 and above
-    constexpr int kBlockN = Headdim <= 64 ? 256 : (Headdim <= 128 ? 128 : 64);
-    run_flash_splitkv_fwd<Flash_fwd_kernel_traits<Headdim, kBlockM, kBlockN, 4, false, false, T>>(params, stream);
-  }
+  constexpr int kBlockN = Headdim <= 64 ? 256 : (Headdim <= 128 ? 128 : 64);
+  run_flash_splitkv_fwd<Flash_fwd_kernel_traits<Headdim, kBlockM, kBlockN, 4, false, false, T>>(params, stream);
 }
 
 template <typename T>

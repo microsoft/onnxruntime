@@ -51,32 +51,45 @@ class OrtStableDiffusionOptimizer:
             model = onnx.load(str(ort_optimized_model_path), load_external_data=True)
             return self.model_type_class_mapping[self.model_type](model)
 
-    def optimize(self, input_fp32_onnx_path, optimized_onnx_path, float16=True, keep_io_types=False, keep_outputs=None):
+    def optimize(
+        self,
+        input_fp32_onnx_path,
+        optimized_onnx_path,
+        float16=True,
+        keep_io_types=False,
+        fp32_op_list=None,
+        keep_outputs=None,
+        optimize_by_ort=True,
+        optimize_by_fusion=True,
+        final_target_float16=True,
+    ):
         """Optimize onnx model using ONNX Runtime transformers optimizer"""
         logger.info(f"Optimize {input_fp32_onnx_path}...")
-        fusion_options = FusionOptions(self.model_type)
-        if self.model_type in ["unet"] and not float16:
-            fusion_options.enable_packed_kv = False
-            fusion_options.enable_packed_qkv = False
 
-        m = optimize_model(
-            input_fp32_onnx_path,
-            model_type=self.model_type,
-            num_heads=0,  # will be deduced from graph
-            hidden_size=0,  # will be deduced from graph
-            opt_level=0,
-            optimization_options=fusion_options,
-            use_gpu=True,
-        )
+        if optimize_by_fusion:
+            fusion_options = FusionOptions(self.model_type)
+
+            # It is allowed float16=False and final_target_float16=True, for using fp32 as intermediate optimization step.
+            # For rare fp32 use case, we can disable packed kv/qkv since there is no fp32 TRT fused attention kernel.
+            if self.model_type in ["unet"] and not final_target_float16:
+                fusion_options.enable_packed_kv = False
+                fusion_options.enable_packed_qkv = False
+
+            m = optimize_model(
+                input_fp32_onnx_path,
+                model_type=self.model_type,
+                num_heads=0,  # will be deduced from graph
+                hidden_size=0,  # will be deduced from graph
+                opt_level=0,
+                optimization_options=fusion_options,
+                use_gpu=True,
+            )
+        else:
+            model = onnx.load_model(input_fp32_onnx_path, load_external_data=True)
+            m = self.model_type_class_mapping[self.model_type](model)
 
         if keep_outputs:
             m.prune_graph(outputs=keep_outputs)
-
-        if float16:
-            logger.info("Convert to float16 ...")
-            m.convert_float_to_float16(
-                keep_io_types=keep_io_types,
-            )
 
         use_external_data_format = m.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF
 
@@ -87,8 +100,15 @@ class OrtStableDiffusionOptimizer:
         # to save session creation time. Another benefit is to inspect the final graph for developing purpose.
         from onnxruntime import __version__ as ort_version
 
-        if version.parse(ort_version) >= version.parse("1.16.0") or not use_external_data_format:
+        if optimize_by_ort and (version.parse(ort_version) >= version.parse("1.16.0") or not use_external_data_format):
             m = self.optimize_by_ort(m, use_external_data_format=use_external_data_format)
+
+        if float16:
+            logger.info("Convert to float16 ...")
+            m.convert_float_to_float16(
+                keep_io_types=keep_io_types,
+                op_block_list=fp32_op_list,
+            )
 
         m.get_operator_statistics()
         m.get_fused_operator_statistics()

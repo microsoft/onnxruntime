@@ -52,6 +52,14 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
 
+#ifndef HWCAP2_I8MM
+#define HWCAP2_I8MM (1 << 13)
+#endif
+
+#ifndef HWCAP2_SVEI8MM
+#define HWCAP2_SVEI8MM (1 << 9)
+#endif
+
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
@@ -59,6 +67,9 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 
     // raw hack! Need CPUIDInfo implementation for more precise detection
     has_fp16_ = has_arm_neon_dot_;
+
+    has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
+    has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
 }
 #endif
 
@@ -479,6 +490,17 @@ Return Value:
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
+
+#if defined(__linux__)
+    //
+    // Check if the processor supports ASIMD I8MM instructions.
+    //
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmla;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmla;
+    }
+#endif
 
 #endif // MLAS_TARGET_ARM64
 #if defined(MLAS_TARGET_POWER)
