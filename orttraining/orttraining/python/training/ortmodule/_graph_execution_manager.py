@@ -473,7 +473,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         return graph_transformer_config
 
     @_logger.TrackTime(_logger.ORTModuleInitPhase.GRAPH_BUILDER_INIT)
-    @_logger.SuppressLogs(_logger.ORTModuleInitPhase.GRAPH_BUILDER_INIT)
     def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 

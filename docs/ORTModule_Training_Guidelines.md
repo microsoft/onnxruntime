@@ -49,6 +49,90 @@ More options for **developers**.
 ```
 Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/options.py) for more details.
 
+#### Log Level Explanations
+
+<table>
+<tr>
+<th style="width:20%">Log Level</th>
+<th style="width:80%">Description</th>
+</tr>
+<tr>
+<td>
+
+`FATAL` | `ERROR` | `WARNING` (For Users)
+
+<sup>`WARNING` is the default and recommended level for
+<br>users.</sup>
+</td>
+<td>
+
+- ONNX Runtime backend log level - `FATAL` | `ERROR` | `WARNING`.
+- ORTModule log level - `FATAL` | `ERROR` | `WARNING`.
+- Rank-0 log filtering is `ON` (e.g. logging on rank-0-only).
+- PyTorch exporter export logs filtering is `ON`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `ON`.
+
+</td>
+</tr>
+<tr>
+<td>
+
+`INFO` (For Users | ORT Developers)
+
+<sup>`INFO` is used for collecting experimental
+<br>feature stats, or a little bit more error messages.</sup>
+</td>
+<td>
+
+- ONNX Runtime backend log level - `WARNING`.
+- ORTModule log level - `INFO`.
+- Rank-0 log filtering is `ON` (e.g. logging on rank-0-only).
+- PyTorch exporter export logs filtering is `ON`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
+
+</td>
+</tr>
+<tr>
+<td>
+
+`DEVINFO` (For ORT Developers)
+
+<sup>`DEVINFO` is the recommended level for
+<br>debugging purposes.</sup>
+</td>
+<td>
+
+- ONNX Runtime backend log level - `INFO`.
+- ORTModule log level - `INFO`.
+- Rank-0 log filtering is `OFF` (e.g. logging on all ranks).
+- PyTorch exporter export logs filtering is `OFF`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`VERBOSE` (For ORT Developers)
+
+<sup>`VERBOSE` is the last resort for debugging
+<br>hard problems.</sup>
+</td>
+<td>
+
+- ONNX Runtime backend log level - `VERBOSE`.
+- ORTModule log level - `VERBOSE`.
+- Rank-0 log filtering is `OFF` (e.g. logging on all ranks).
+- PyTorch exporter export logs filtering is `OFF`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
+
+</td>
+</tr>
+
+</table>
+
+
 ### 2.1 Environment Variables
 
 `ORTModule` provides environment variables targeting different use cases.
