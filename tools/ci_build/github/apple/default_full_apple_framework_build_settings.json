@@ -1,14 +1,20 @@
 {
     "build_osx_archs": {
-        "iphoneos": [
-            "arm64"
-        ],
-        "iphonesimulator": [
-            "arm64",
+        "macosx": [
             "x86_64"
         ]
     },
     "build_params": {
+        "macosx": [
+            "--parallel",
+            "--use_xcode",
+            "--build_apple_framework",
+            "--use_coreml",
+            "--use_xnnpack",
+            "--skip_tests",
+            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF",
+            "--apple_deploy_target=10.14"
+        ],
         "iphoneos": [
             "--ios",
             "--parallel",

@@ -27,24 +27,12 @@ def _parse_build_settings(args):
         build_settings_data = json.load(f)
 
     build_settings = {}
-
     build_settings["build_osx_archs"] = build_settings_data.get("build_osx_archs", DEFAULT_BUILD_OSX_ARCHS)
 
-    build_params = []
     if "build_params" in build_settings_data:
-        build_params += build_settings_data["build_params"]
+        build_settings["build_params"] = build_settings_data.get("build_params")
     else:
         raise ValueError("build_params is required in the build config file")
-
-    build_params_for_macos = []
-    if "macosx" in build_settings["build_osx_archs"]:
-        if "build_params_for_macos" in build_settings_data:
-            build_params_for_macos += build_settings_data["build_params_for_macos"]
-        else:
-            raise ValueError("build_params_for_macos is required  when macosx arch is specified in the build config")
-
-    build_settings["build_params"] = build_params
-    build_settings["build_params_for_macos"] = build_params_for_macos
 
     return build_settings
 
@@ -131,23 +119,20 @@ def _build_package(args):
     intermediates_dir = os.path.join(build_dir, "intermediates")
     build_config = args.config
 
-    base_build_command = []
-    if args.build_for_macosx:
-        base_build_command += [sys.executable, BUILD_PY] + build_settings["build_params_for_macos"] + ["--config=" + build_config]
-    else:
-        base_build_command += [sys.executable, BUILD_PY] + build_settings["build_params"] + ["--config=" + build_config]
-
-    if args.include_ops_by_config is not None:
-        base_build_command += ["--include_ops_by_config=" + str(args.include_ops_by_config.resolve())]
-
-    if args.path_to_protoc_exe is not None:
-        base_build_command += ["--path_to_protoc_exe=" + str(args.path_to_protoc_exe.resolve())]
-
     # build framework for individual sysroot
+    base_build_command = []
     framework_dirs = []
     framework_info_path = ""
     public_headers_path = ""
     for sysroot in build_settings["build_osx_archs"]:
+        base_build_command = [sys.executable, BUILD_PY] + build_settings["build_params"][sysroot] + ["--config=" + build_config]
+
+        if args.include_ops_by_config is not None:
+            base_build_command += ["--include_ops_by_config=" + str(args.include_ops_by_config.resolve())]
+
+        if args.path_to_protoc_exe is not None:
+            base_build_command += ["--path_to_protoc_exe=" + str(args.path_to_protoc_exe.resolve())]
+
         framework_dir = _build_for_ios_sysroot(
             build_config,
             intermediates_dir,
@@ -226,8 +211,6 @@ def parse_args():
     )
 
     parser.add_argument("--path_to_protoc_exe", type=pathlib.Path, help="Path to protoc exe.")
-
-    parser.add_argument("--build_for_macosx", action="store_true", help="Enable macos build in pods.")
 
     args = parser.parse_args()
 
