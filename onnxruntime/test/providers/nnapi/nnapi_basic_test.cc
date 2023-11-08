@@ -559,7 +559,7 @@ TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
   TestModelLoad(model_file_name, std::make_unique<NnapiExecutionProvider>(0, nnapi_partitioning_stop_ops),
                 // expect one NNAPI partition
                 [](const Graph& graph) { ASSERT_EQ(CountAssignedNodes(graph, kNnapiExecutionProvider), 1)
-                                             << "Exactly one node should have been taken by the NNAPI EP"; });
+                                   << "Exactly one node should have been taken by the NNAPI EP"; });
 }
 
 }  // namespace test
