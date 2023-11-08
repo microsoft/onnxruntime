@@ -232,7 +232,8 @@ static std::vector<ITestCase*> GetAllTestCases() {
     ORT_TSTR("tf_resnet_v2_152"),
     ORT_TSTR("vgg19"),
     ORT_TSTR("yolov3"),
-    ORT_TSTR("zfnet512")};
+    ORT_TSTR("zfnet512")
+  };
   allDisabledTests.insert(std::begin(x86DisabledTests), std::end(x86DisabledTests));
 #endif
   // Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose

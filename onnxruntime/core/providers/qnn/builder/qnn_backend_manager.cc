@@ -608,8 +608,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
                 "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
   QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
   // Get power client id
-  uint32_t powerconfig_client_id = 0;
-  status = htp_perf_infra.createPowerConfigId(/*device_id=*/0, /*core_id=*/0, &powerconfig_client_id);
+  status = htp_perf_infra.createPowerConfigId(/*device_id=*/0, /*core_id=*/0, &htp_power_config_client_id_);
   ORT_RETURN_IF(QNN_SUCCESS != status, "createPowerConfigId failed.");
 
   constexpr const int kNumConfigs = 1;
@@ -618,7 +617,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
   QnnHtpPerfInfrastructure_PowerConfig_t& dcvs_config = power_configs[0];
   dcvs_config.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_V3;
   QnnHtpPerfInfrastructure_DcvsV3_t& dcvs_v3 = dcvs_config.dcvsV3Config;
-  dcvs_v3.contextId = powerconfig_client_id;
+  dcvs_v3.contextId = htp_power_config_client_id_;
   dcvs_v3.setSleepDisable = 0;
   dcvs_v3.sleepDisable = 0;
   dcvs_v3.setDcvsEnable = 1;
@@ -716,7 +715,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
       break;
   }
   std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr_ = ObtainNullTermPtrVector(power_configs);
-  status = htp_perf_infra.setPowerConfig(powerconfig_client_id, perf_power_configs_ptr_.data());
+  status = htp_perf_infra.setPowerConfig(htp_power_config_client_id_, perf_power_configs_ptr_.data());
   ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for HTP performance mode.");
 
   // Set rpc control latency here, but note that v68 doesn't support rpc polling mode.
@@ -730,7 +729,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
     rpc_polling_time.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
     rpc_control_latency.rpcControlLatencyConfig = rpc_control_latency_;
     perf_power_configs_ptr_ = ObtainNullTermPtrVector(rpc_power_configs);
-    status = htp_perf_infra.setPowerConfig(powerconfig_client_id, perf_power_configs_ptr_.data());
+    status = htp_perf_infra.setPowerConfig(htp_power_config_client_id_, perf_power_configs_ptr_.data());
     ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for RPC control latency.");
   }
 
@@ -751,12 +750,36 @@ void QnnBackendManager::Split(std::vector<std::string>& split_string,
   }
 }
 
+Status QnnBackendManager::DestroyHTPPowerConfigID() {
+  if (htp_performance_mode_ == HtpPerformanceMode::kHtpDefault) {
+    return Status::OK();
+  }
+
+  QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
+  auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
+  ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
+
+  auto* htp_infra = static_cast<QnnHtpDevice_Infrastructure_t*>(qnn_device_infra);
+  ORT_RETURN_IF(QNN_HTP_DEVICE_INFRASTRUCTURE_TYPE_PERF != htp_infra->infraType,
+                "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
+  QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
+
+  Qnn_ErrorHandle_t destroy_ret = htp_perf_infra.destroyPowerConfigId(htp_power_config_client_id_);
+  ORT_RETURN_IF(QNN_SUCCESS != destroy_ret, "destroyPowerConfigId failed.");
+  return Status::OK();
+}
+
 void QnnBackendManager::ReleaseResources() {
   if (!backend_setup_completed_) {
     return;
   }
 
-  auto result = ReleaseContext();
+  auto result = DestroyHTPPowerConfigID();
+  if (Status::OK() != result) {
+    ORT_THROW("Failed to DestroyHTPPowerConfigID.");
+  }
+
+  result = ReleaseContext();
   if (Status::OK() != result) {
     ORT_THROW("Failed to ReleaseContext.");
   }

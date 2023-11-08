@@ -174,7 +174,8 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 // shape inferencing issues on QNN. Thus, the models are expected to have a specific input/output
 // types and shapes.
 static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bool enable_qnn_saver = false,
-                               const std::string& qnn_context_priority = "") {
+                               std::string htp_graph_finalization_opt_mode = "",
+                               std::string qnn_context_priority = "") {
   Ort::SessionOptions so;
 
   // Ensure all type/shape inference warnings result in errors!
@@ -195,9 +196,14 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
   }
 #endif
 
-  if (!qnn_context_priority.empty()) {
-    options["qnn_context_priority"] = qnn_context_priority;
+  if (!htp_graph_finalization_opt_mode.empty()) {
+    options["htp_graph_finalization_optimization_mode"] = std::move(htp_graph_finalization_opt_mode);
   }
+
+  if (!qnn_context_priority.empty()) {
+    options["qnn_context_priority"] = std::move(qnn_context_priority);
+  }
+
   so.AppendExecutionProvider("QNN", options);
 
   Ort::Session session(*ort_env, ort_model_path, so);
@@ -306,11 +312,27 @@ TEST_F(QnnHTPBackendTests, QnnSaver_OutputFiles) {
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
 }
 
+// Test that models run with various HTP graph finalization optimization modes.
+TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
+  constexpr std::array<const char*, 5> graph_opt_modes = {"",    // No explicit mode specified
+                                                          "0",   // Explicit default mode
+                                                          "1",   // Mode 1
+                                                          "2",   // Mode 2
+                                                          "3"};  // Mode 3
+  for (auto mode : graph_opt_modes) {
+    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
+                       true,   // use_htp
+                       false,  // enable_qnn_saver
+                       mode);  // htp_graph_finalization_opt_mode
+  }
+}
+
 // Test that models run with high QNN context priority.
 TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
                      true,     // use_htp
-                     false,    // enable_qnn_saver
+                     false,    // 
+                     "",
                      "high");  // qnn_context_priority
 }
 
