@@ -188,7 +188,7 @@ ComputeDotProducts(
                 UnrolledLoop<4>([&](size_t j) { bv[i][j] = vmulq_n_f32(bv[i][j], scale[i]); });
             });
 
-            // c += a * b
+            // c[m,n] += a[m,k] * b[k,n]
             UnrolledLoop<4>([&](size_t j) {
                 UnrolledLoop<NCols>([&](size_t i) { acc[i] = vfmaq_f32(acc[i], av[j], bv[i][j]); });
             });
