@@ -20,11 +20,12 @@ struct GroupQueryAttentionData {
   const T* value = nullptr;
   const T* past_key = nullptr;
   const T* past_value = nullptr;
+  int* seqlens_k = nullptr;
   // Flash buffers
   T* softmax_lse = nullptr;
   T* softmax_lse_accum = nullptr;
   T* out_accum = nullptr;
-  int* seqlens_k = nullptr;
+  int* seqlens_k_total = nullptr;
   // Memory Efficient buffers
   T* fmha_buffer = nullptr;
   T* k = nullptr;

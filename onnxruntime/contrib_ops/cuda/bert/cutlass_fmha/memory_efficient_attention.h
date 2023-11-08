@@ -43,6 +43,8 @@ struct MemoryEfficientAttentionParams {
   static bool need_workspace(size_t v_head_size, bool is_float) {
     return (v_head_size > 128 && !is_float);
   }
+
+  bool has_custom_right_padding = false;
 };
 
 void run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);

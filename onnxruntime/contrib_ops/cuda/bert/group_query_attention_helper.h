@@ -19,20 +19,21 @@ Status CheckInputs(const Tensor* query,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   const Tensor* past_seq_len,
+                   const Tensor* seqlens_k,
+                   const Tensor* total_seqlen,
                    bool is_past_bsnh,
                    float scale) {
-  // Note: Here S* is max_sequence_length, S- is past_sequence_length, S+ is kv_sequence_length
-  //     past_key                   : (B, S*, N_k, H) or (B, N_k, S*, H) or (B, S-, N_k, H) or (B, N_k, S-, H)
-  //     past_value                 : (B, S*, N_k, H) or (B, N_k, S*, H) or (B, S-, N_k, H) or (B, N_k, S-, H)
+  // Note: Here S* is past_cache_sequence_length, S- is past_sequence_length, S+ is sequence_length
+  //     past_key                   : (B, N_k, S*, H) or (B, N_k, S-, H)
+  //     past_value                 : (B, N_k, S*, H) or (B, N_k, S-, H)
   // no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
-  //     key              (K)       : (B, S+, D_kv)
-  //     value            (V)       : (B, S+, D_kv)
+  //     key              (K)       : (B, S, D_kv)
+  //     value            (V)       : (B, S, D_kv)
   ORT_UNUSED_PARAMETER(value);
 
   AttentionQkvFormat qkv_format = Q_K_V_BSNH;
-  AttentionQkvFormat past_kv_format = Q_K_V_BSNH;
+  AttentionQkvFormat past_kv_format = is_past_bsnh ? Q_K_V_BSNH : Q_K_V_BNSH;
 
   const auto& query_dims = query->Shape().GetDims();
   const auto& key_dims = key->Shape().GetDims();
@@ -47,10 +48,9 @@ Status CheckInputs(const Tensor* query,
   int q_hidden_size = static_cast<int>(query_dims[2]);
   int head_size = static_cast<int>(q_hidden_size) / num_heads;
 
-  int kv_sequence_length = static_cast<int>(key_dims[1]);
   int kv_hidden_size = static_cast<int>(key_dims[2]);
 
-  int max_sequence_length = 0;
+  int32_t past_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     const auto& past_key_dims = past_key->Shape().GetDims();
     const auto& past_value_dims = past_value->Shape().GetDims();
@@ -79,7 +79,6 @@ Status CheckInputs(const Tensor* query,
 
     // BNSH
     if (!is_past_bsnh) {
-      past_kv_format = Q_K_V_BNSH;
       if (past_key_dims[2] != past_value_dims[2]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "BNSH Input 'past_key' and 'past_value' should have same dimension 2 (max sequence"
@@ -94,11 +93,10 @@ Status CheckInputs(const Tensor* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'past_value' shall have kv_num_heads");
       }
-      // We assume all sequence in past kv are left-padded to max or past sequence length
-      max_sequence_length = static_cast<int>(past_key_dims[2]);
+      // We assume all sequence in past kv are right-padded to max or past sequence length
+      past_sequence_length = static_cast<int>(past_key_dims[2]);
       // BSNH
     } else {
-      past_kv_format = Q_K_V_BSNH;
       if (past_key_dims[1] != past_value_dims[1]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "BNSH Input 'past_key' and 'past_value' should have same dimension 1 (max sequence"
@@ -113,8 +111,8 @@ Status CheckInputs(const Tensor* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'past_value' shall have kv_num_heads");
       }
-      // We assume all sequence in past kv are left-padded to max or past sequence length
-      max_sequence_length = static_cast<int>(past_key_dims[1]);
+      // We assume all sequence in past kv are right-padded to max or past sequence length
+      past_sequence_length = static_cast<int>(past_key_dims[1]);
     }
 
     if (past_key_dims[3] != head_size) {
@@ -129,7 +127,7 @@ Status CheckInputs(const Tensor* query,
     }
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' and 'past_value' shall be both present or both absent");
+                           "Input 'past_key' and 'past_value' shall be both present or both absent.");
   }
 
   if (key_dims.size() != 3) {
@@ -158,56 +156,45 @@ Status CheckInputs(const Tensor* query,
                            "Input 'query' and 'value' shall have same dim 0 (batch_size)");
   }
 
-  if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
+  if (static_cast<int64_t>(sequence_length) != value_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
+                           "Input 'query,' 'key,' and 'value' shall have the same dim 1 (sequence_length)");
   }
 
   if (value_dims[2] != kv_hidden_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
   }
 
-  // When kv-cache, we take past_seq_len as an argument... otherwise we use sequence length of past kv directly.
-  int32_t past_sequence_length = 0;
-  int present_sequence_length = kv_sequence_length;
-  if (past_seq_len != nullptr) {
-    if (past_key == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Past KV must be present as share-buffer when using past_seq_len pointer.");
-    }
-    if (!onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "past_sequence_length tensor must be of one element when using past kv.");
-    }
-    if (past_seq_len->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-      past_sequence_length = *((*past_seq_len).template Data<int32_t>());
-    } else {
-      past_sequence_length = static_cast<int32_t>(*((*past_seq_len).template Data<int64_t>()));
-    }
-    if (past_sequence_length + kv_sequence_length > max_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "KV buffer too small... shall be that max_sequence_length >= past_sequence_length + kv_sequence_length");
-    }
-    present_sequence_length = max_sequence_length;
-  } else if (past_key != nullptr) {
-    past_sequence_length = max_sequence_length;  // this is the length of past_key tensor
-    present_sequence_length = past_sequence_length + kv_sequence_length;
+  // Check seqlens_k tensor (holding past seqlen for token gen)
+  const auto& seqlens_dim = seqlens_k->Shape().GetDims();
+  if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "seqlens_k must be shape (batch_size).");
   }
+
+  // Set present sequence length and kv_share_buffer from input total_seqlen tensor
+  if (!onnxruntime::IsScalarOr1ElementVector(total_seqlen)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "total_sequence_length tensor must be of one element.");
+  }
+  int total_sequence_length = *((*total_seqlen).template Data<int32_t>());
+  int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
+
+  bool is_prompt = sequence_length != 1;
 
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
-    output_parameters->sequence_length = sequence_length;
-    output_parameters->past_sequence_length = past_sequence_length;
-    output_parameters->kv_sequence_length = kv_sequence_length;
-    output_parameters->present_sequence_length = present_sequence_length;
-    output_parameters->max_sequence_length = max_sequence_length;
+    output_parameters->sequence_length = sequence_length;                  // sequence length of Q
+    output_parameters->seqlen_past_kv_cache = past_sequence_length;        // max sequence length of past kv tensors
+    output_parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->num_heads = num_heads;
     output_parameters->head_size = q_hidden_size / num_heads;
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->is_unidirectional = true;
+    output_parameters->is_prompt = is_prompt;
     output_parameters->scale = scale;
     output_parameters->qkv_format = qkv_format;
     output_parameters->past_kv_format = past_kv_format;
@@ -216,16 +203,16 @@ Status CheckInputs(const Tensor* query,
   return Status::OK();
 }
 
-template <typename T>
-Status CheckInputs(const T* query,
-                   const T* key,
-                   const T* value,
-                   const T* past_key,
-                   const T* past_value,
+Status CheckInputs(const Tensor* query,
+                   const Tensor* key,
+                   const Tensor* value,
+                   const Tensor* past_key,
+                   const Tensor* past_value,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   const T* past_seq_len,
+                   const Tensor* seqlens_k,
+                   const Tensor* total_seqlen,
                    bool is_past_bsnh,
                    float scale,
                    int max_threads_per_block) {
@@ -233,7 +220,7 @@ Status CheckInputs(const T* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, past_seq_len, is_past_bsnh, scale);
+  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, is_past_bsnh, scale);
 }
 
 }  // namespace group_query_attention_helper
