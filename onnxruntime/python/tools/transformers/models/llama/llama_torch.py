@@ -3,7 +3,7 @@ import os
 
 import torch
 from dist_settings import barrier, get_rank, get_size
-from transformers import LlamaConfig, LlamaForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM
 
 logger = logging.getLogger("")
 
@@ -19,9 +19,9 @@ def setup_torch_model(args, location, use_auth_token, torch_dtype=torch.float32,
 
     for i in range(world_size):
         if i == rank % (world_size):
-            l_config = LlamaConfig.from_pretrained(location, use_auth_token=use_auth_token, cache_dir=args.cache_dir)
+            l_config = AutoConfig.from_pretrained(location, use_auth_token=use_auth_token, cache_dir=args.cache_dir)
             l_config.use_cache = True
-            llama = LlamaForCausalLM.from_pretrained(
+            llama = AutoModelForCausalLM.from_pretrained(
                 location,
                 use_auth_token=use_auth_token,
                 config=l_config,

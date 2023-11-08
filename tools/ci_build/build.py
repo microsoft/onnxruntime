@@ -796,6 +796,7 @@ def run_subprocess(
 
     my_env.update(env)
 
+    log.info(" ".join(args))
     return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
 
 
@@ -1838,6 +1839,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             # For CUDA or DML enabled builds test IOBinding feature
             if args.use_cuda or args.use_dml:
                 log.info("Testing IOBinding feature")
+                if args.use_dml:
+                    run_subprocess(
+                        [sys.executable, "-m", "pip", "uninstall", "--yes", "onnx"], cwd=cwd, dll_path=dll_path
+                    )
+                    run_subprocess([sys.executable, "-m", "pip", "install", "-q", "onnx"], cwd=cwd, dll_path=dll_path)
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_cuda:
@@ -2024,13 +2030,6 @@ def build_python_wheel(
         run_subprocess(args, cwd=cwd)
 
 
-def derive_linux_build_property():
-    if is_windows():
-        return '/p:IsLinuxBuild="false"'
-    else:
-        return '/p:IsLinuxBuild="true"'
-
-
 def build_nuget_package(
     cmake_path,
     source_dir,
@@ -2043,7 +2042,6 @@ def build_nuget_package(
     use_dnnl,
     use_tvm,
     use_winml,
-    use_snpe,
     use_qnn,
     enable_training_apis,
     msbuild_extra_options,
@@ -2054,83 +2052,93 @@ def build_nuget_package(
         )
 
     csharp_build_dir = os.path.join(source_dir, "csharp")
-    is_linux_build = derive_linux_build_property()
 
     # in most cases we don't want/need to include the Xamarin mobile targets, as doing so means the Xamarin
     # mobile workloads must be installed on the machine.
     # they are only included in the Microsoft.ML.OnnxRuntime nuget package
     sln = "OnnxRuntime.DesktopOnly.CSharp.sln"
+    have_exclude_mobile_targets_option = "IncludeMobileTargets=false" in msbuild_extra_options
 
     # derive package name and execution provider based on the build args
     target_name = "/t:CreatePackage"
-    execution_provider = '/p:ExecutionProvider="None"'
-    package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime"'
-    enable_training_tests = '/p:TrainingEnabledNativeBuild="false"'
+    execution_provider = "/p:ExecutionProvider=None"
+    package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime"
+    enable_training_tests = "/p:TrainingEnabledNativeBuild=false"
+
     if enable_training_apis:
-        enable_training_tests = '/p:TrainingEnabledNativeBuild="true"'
+        enable_training_tests = "/p:TrainingEnabledNativeBuild=true"
         if use_cuda:
-            package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Training.Gpu"'
+            package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Training.Gpu"
         else:
-            package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Training"'
+            package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Training"
     elif use_winml:
-        package_name = '/p:OrtPackageId="Microsoft.AI.MachineLearning"'
+        package_name = "/p:OrtPackageId=Microsoft.AI.MachineLearning"
         target_name = "/t:CreateWindowsAIPackage"
     elif use_openvino:
-        execution_provider = '/p:ExecutionProvider="openvino"'
-        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.OpenVino"'
+        execution_provider = "/p:ExecutionProvider=openvino"
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.OpenVino"
     elif use_tensorrt:
-        execution_provider = '/p:ExecutionProvider="tensorrt"'
-        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.TensorRT"'
+        execution_provider = "/p:ExecutionProvider=tensorrt"
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.TensorRT"
     elif use_dnnl:
-        execution_provider = '/p:ExecutionProvider="dnnl"'
-        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.DNNL"'
+        execution_provider = "/p:ExecutionProvider=dnnl"
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DNNL"
     elif use_cuda:
-        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu"
     elif use_rocm:
-        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm"
     elif use_tvm:
-        execution_provider = '/p:ExecutionProvider="tvm"'
-        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
-    elif use_snpe:
-        execution_provider = '/p:ExecutionProvider="snpe"'
-        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Snpe"'
+        execution_provider = "/p:ExecutionProvider=tvm"
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Tvm"
     elif use_qnn:
-        execution_provider = '/p:ExecutionProvider="qnn"'
-        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.QNN"'
+        execution_provider = "/p:ExecutionProvider=qnn"
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.QNN"
     elif any(map(lambda x: "OrtPackageId=" in x, msbuild_extra_options)):
         pass
     else:
-        # use the solution file that includes Xamarin mobile targets
-        sln = "OnnxRuntime.CSharp.sln"
+        # we currently only allow building with mobile targets on Windows.
+        # it should be possible to allow building with android targets on Linux but that requires updating the
+        # csproj to separate the inclusion of ios and android targets.
+        if is_windows() and have_exclude_mobile_targets_option is False:
+            # use the sln that include the mobile targets
+            sln = "OnnxRuntime.CSharp.sln"
+
+    # explicitly exclude mobile targets in this case
+    if sln != "OnnxRuntime.CSharp.sln" and have_exclude_mobile_targets_option is False:
+        msbuild_extra_options.append("IncludeMobileTargets=false")
+
+    # expand extra_options to add prefix
+    extra_options = ["/p:" + option for option in msbuild_extra_options]
+
+    # we have to use msbuild directly if including Xamarin targets as dotnet only supports MAUI (.net6)
+    use_dotnet = sln != "OnnxRuntime.CSharp.sln"
+
+    if use_dotnet:
+        cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config", *extra_options]
+    else:
+        cmd_args = ["msbuild", sln, "/t:restore", "/p:RestoreConfigFile=NuGet.CSharp.config", *extra_options]
 
     # set build directory based on build_dir arg
     native_dir = os.path.normpath(os.path.join(source_dir, build_dir))
-    ort_build_dir = '/p:OnnxRuntimeBuildDirectory="' + native_dir + '"'
+    ort_build_dir = "/p:OnnxRuntimeBuildDirectory=" + native_dir
 
-    # dotnet restore
-    cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config"]
     run_subprocess(cmd_args, cwd=csharp_build_dir)
 
     # build csharp bindings and create nuget package for each config
     for config in configs:
-        if is_linux():
-            native_build_dir = os.path.join(native_dir, config)
-            cmd_args = [cmake_path, "-DCMAKE_INSTALL_PREFIX=./nuget-staging/usr/local", "-Pcmake_install.cmake"]
-            run_subprocess(cmd_args, cwd=native_build_dir)
-
-        configuration = '/p:Configuration="' + config + '"'
-
+        configuration = "/p:Configuration=" + config
         if not use_winml:
-            cmd_args = [
-                "dotnet",
+            cmd_args = ["dotnet"] if use_dotnet else []
+            cmd_args += [
                 "msbuild",
                 sln,
                 configuration,
                 package_name,
-                is_linux_build,
                 ort_build_dir,
                 enable_training_tests,
+                *extra_options,
             ]
+
             run_subprocess(cmd_args, cwd=csharp_build_dir)
         else:
             winml_interop_dir = os.path.join(source_dir, "csharp", "src", "Microsoft.AI.MachineLearning.Interop")
@@ -2141,7 +2149,7 @@ def build_nuget_package(
                 "msbuild",
                 winml_interop_project,
                 configuration,
-                '/p:Platform="Any CPU"',
+                "/p:Platform=Any CPU",
                 ort_build_dir,
                 "-restore",
             ]
@@ -2155,25 +2163,27 @@ def build_nuget_package(
                 # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
                 nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
         else:
-            # user needs to make sure nuget is installed and can be found
-            nuget_exe = "nuget"
+            # `dotnet pack` is used on Linux
+            nuget_exe = "NugetExe_not_set"
 
         nuget_exe_arg = '/p:NugetExe="' + nuget_exe + '"'
 
-        cmd_args = [
-            "dotnet",
+        cmd_args = ["dotnet"] if use_dotnet else []
+        cmd_args += [
             "msbuild",
             "OnnxRuntime.CSharp.proj",
             target_name,
             package_name,
             configuration,
             execution_provider,
-            is_linux_build,
             ort_build_dir,
             nuget_exe_arg,
+            *extra_options,
         ]
-        cmd_args.extend(msbuild_extra_options)
+
         run_subprocess(cmd_args, cwd=csharp_build_dir)
+
+        log.info(f"nuget package was created in the {config} build output directory.")
 
 
 def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl, enable_training_apis):
@@ -2637,6 +2647,7 @@ def main():
                 enable_training_apis=args.enable_training_apis,
                 enable_rocm_profiling=args.enable_rocm_profiling,
             )
+
         if args.build_nuget:
             build_nuget_package(
                 cmake_path,
@@ -2650,7 +2661,6 @@ def main():
                 args.use_dnnl,
                 args.use_tvm,
                 args.use_winml,
-                args.use_snpe,
                 args.use_qnn,
                 args.enable_training_apis,
                 normalize_arg_list(args.msbuild_extra_options),

@@ -399,6 +399,8 @@ bool SetEpsForAllNodes(Graph& graph,
                        const std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers,
                        const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
+  const KernelRegistry::TypeConstraintMap type_constraint_map{};
+
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == kConstant)
       continue;
@@ -426,13 +428,28 @@ bool SetEpsForAllNodes(Graph& graph,
         break;
       }
 
+      // check the internal NHWC domain if EP requests NHWC as it may only have a kernel registered in that domain
+      if (ep->GetPreferredLayout() == DataLayout::NHWC) {
+        const KernelCreateInfo* kci = nullptr;
+        auto status = ep->GetKernelRegistry()->TryFindKernel(ep->Type(),
+                                                             std::string_view(node.OpType()),
+                                                             std::string_view(kMSInternalNHWCDomain),
+                                                             node.SinceVersion(),
+                                                             type_constraint_map,
+                                                             &kci);
+        if (status.IsOK() && kci != nullptr) {
+          found = true;
+          break;
+        }
+      }
+
       // Check the EP has an impl for the node from custom_registries
       if (custom_registries != nullptr &&
           std::any_of(custom_registries->cbegin(), custom_registries->cend(),
-                      [&](auto reg) { return KernelRegistry::HasImplementationOf(
-                                          *reg->GetKernelRegistry(),
-                                          node, ep->Type(),
-                                          kernel_type_str_resolver); })) {
+                      [&](auto reg) {
+                        return KernelRegistry::HasImplementationOf(*reg->GetKernelRegistry(), node, ep->Type(),
+                                                                   kernel_type_str_resolver);
+                      })) {
         found = true;
         break;
       }
@@ -760,7 +777,7 @@ void BaseTester::ExecuteModelForEps(
     for (const auto& ep : execution_providers) {
       providers.append(ep->Type() + " ");
     }
-    LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << "were unable to run the model.";
+    LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << " were unable to run the model.";
     return;
   }
 
