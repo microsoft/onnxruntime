@@ -6,7 +6,13 @@ Pod::Spec.new do |spec|
     spec.homepage               = "https://github.com/microsoft/onnxruntime"
     spec.source                 = { :http => "file:///http_source_placeholder" }
     spec.summary                = "@SUMMARY@"
-    spec.platform               = { :ios => "@IOS_DEPLOYMENT_TARGET@", :osx => "@MACOSX_DEPLOYMENT_TARGET@" }
+    spec.ios.deployment_target  = "@IOS_DEPLOYMENT_TARGET@"
+
+    macosx_deployment_target =  "@MACOSX_DEPLOYMENT_TARGET@"
+    if !macosx_deployment_target.nil?
+        spec.osx.deployment_target = macosx_deployment_target
+    end
+
     spec.vendored_frameworks    = "@ORT_C_FRAMEWORK@"
     spec.static_framework       = true
     spec.weak_framework         = [ @WEAK_FRAMEWORK@ ]
