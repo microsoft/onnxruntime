@@ -60,7 +60,7 @@ if [ "$ARCH" == "x86_64" ]; then
     BUILD_ARGS+=("--enable_onnx_tests")
 fi
 
-if [ "$BUILD_DEVICE" == "GPU" ] && [ "$CUDA_VERSION" != ""]; then
+if [ "$BUILD_DEVICE" == "GPU" ] && [ "$CUDA_VERSION" != "" ]; then
     #Enable CUDA and TRT EPs.
     BUILD_ARGS+=("--nvcc_threads=1" "--use_cuda" "--use_tensorrt" "--cuda_version=$CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80")
 fi
