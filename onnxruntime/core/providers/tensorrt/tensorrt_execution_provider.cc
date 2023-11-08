@@ -1564,8 +1564,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         // Only if the newly built graph has control flow op as well as it has parent node,
         // it needs to handle outer scope values before calling graph.Resolve().
-        //if (has_control_flow_op && graph.ParentNode()) {
-        if (has_control_flow_op) {
+        if (has_control_flow_op && graph.ParentNode()) {
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values for the subgraph " << graph_build.Name();
           BuildSubGraphContext(graph_build);
           SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
