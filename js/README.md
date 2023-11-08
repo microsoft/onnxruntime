@@ -344,7 +344,7 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
       Full build:
 
       ```sh
-      python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_full_ios_framework_build_settings.json --config Release
+      python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_full_apple_framework_build_settings.json --config Release
       ```
 
       Reduced size build:
