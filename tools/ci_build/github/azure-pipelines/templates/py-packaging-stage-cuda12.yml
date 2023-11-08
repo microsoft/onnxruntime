@@ -66,9 +66,11 @@ stages:
 
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
-      - template: py-linux-gpu-cuda12.yml
+      - template: py-linux-gpu.yml
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+          docker_base_image: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+          trt_version: 8.6.1.6-1.cuda12.0
