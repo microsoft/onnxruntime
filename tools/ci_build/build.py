@@ -368,9 +368,13 @@ def parse_arguments():
     )
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
 
+    # Note: This arg is for specifying if the build includes macosx arch.
+    # Different from helper function is_macOS() that's for verifying system platform info that we are building on.
+    parser.add_argument("--macosx", action="store_true", help="build for macosx")
     parser.add_argument("--ios", action="store_true", help="build for ios")
+
     parser.add_argument(
-        "--ios_sysroot", default="", help="Specify the location name of the macOS platform SDK to be used"
+        "--osx_sysroot", default="", help="Specify the location name of the macOS platform SDK to be used"
     )
     parser.add_argument(
         "--ios_toolchain_file",
@@ -1258,27 +1262,28 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    if args.ios:
+    if args.macosx or args.ios:
         if not args.cmake_generator == "Xcode":
-            raise BuildError("iOS build requires use of the Xcode CMake generator ('--cmake_generator Xcode').")
+            raise BuildError("MacOS/iOS build requires use of the Xcode CMake generator ('--cmake_generator Xcode').")
 
         needed_args = [
-            args.ios_sysroot,
+            args.osx_sysroot,
             args.apple_deploy_target,
         ]
         arg_names = [
-            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",
+            "--osx_sysroot          " + "<the location or name of the macOS platform SDK>",
             "--apple_deploy_target  " + "<the minimum version of the target platform>",
         ]
         if not all(needed_args):
             raise BuildError(
-                "iOS build on MacOS canceled due to missing arguments: "
+                "iOS/MacOS framework build on MacOS canceled due to missing arguments: "
                 + ", ".join(val for val, cond in zip(arg_names, needed_args) if not cond)
             )
+        cmake_system_name = "Darwin" if args.osx_sysroot == "macosx" else "iOS"
         cmake_args += [
-            "-DCMAKE_SYSTEM_NAME=iOS",
+            "-DCMAKE_SYSTEM_NAME=" + cmake_system_name,
             "-Donnxruntime_BUILD_SHARED_LIB=ON",
-            "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
+            "-DCMAKE_OSX_SYSROOT=" + args.osx_sysroot,
             "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
             # we do not need protoc binary for ios cross build
             "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
@@ -1750,8 +1755,8 @@ def run_ios_tests(args, source_dir, config, cwd):
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, "tools", "ci_build", "github", "apple", "test_ios_packages.py")
         framework_info_file = os.path.join(cwd, "framework_info.json")
-        dynamic_framework_dir = os.path.join(cwd, config + "-" + args.ios_sysroot)
-        static_framework_dir = os.path.join(cwd, config + "-" + args.ios_sysroot, "static_framework")
+        dynamic_framework_dir = os.path.join(cwd, config + "-" + args.osx_sysroot)
+        static_framework_dir = os.path.join(cwd, config + "-" + args.osx_sysroot, "static_framework")
         # test dynamic framework
         run_subprocess(
             [

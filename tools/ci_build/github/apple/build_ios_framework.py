@@ -40,7 +40,7 @@ def _parse_build_settings(args):
 
 # Build fat framework for all archs of a single sysroot
 # For example, arm64 and x86_64 for iphonesimulator
-def _build_for_ios_sysroot(
+def _build_for_osx_sysroot(
     build_config, intermediates_dir, base_build_command, sysroot, archs, build_dynamic_framework
 ):
     # paths of the onnxruntime libraries for different archs
@@ -52,7 +52,7 @@ def _build_for_ios_sysroot(
         build_dir_current_arch = os.path.join(intermediates_dir, sysroot + "_" + current_arch)
         build_command = [
             *base_build_command,
-            "--ios_sysroot=" + sysroot,
+            "--osx_sysroot=" + sysroot,
             "--osx_arch=" + current_arch,
             "--build_dir=" + build_dir_current_arch,
         ]
@@ -133,7 +133,7 @@ def _build_package(args):
         if args.path_to_protoc_exe is not None:
             base_build_command += ["--path_to_protoc_exe=" + str(args.path_to_protoc_exe.resolve())]
 
-        framework_dir = _build_for_ios_sysroot(
+        framework_dir = _build_for_osx_sysroot(
             build_config,
             intermediates_dir,
             base_build_command,
