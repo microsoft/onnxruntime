@@ -89,7 +89,7 @@ stages:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.11'
           EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-          ENV_SETUP_SCRIPT: setup_env_gpu_cuda.bat
+          ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
 
