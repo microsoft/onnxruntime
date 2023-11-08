@@ -83,6 +83,13 @@ class ConvActivationSelector : public NodeSelector {
       return std::nullopt;
     }
 
+    // If the Conv operator node belongs to kMSInternalNHWCDomain and if the activation attribute
+    // is already set then skip it.
+    if (node.OpType() == "Conv" && node.Domain() == kMSInternalNHWCDomain &&
+        node.GetAttributes().find("activation") != node.GetAttributes().end()) {
+      return std::nullopt;
+    }
+
     auto is_supported_non_cuda_rocm_ep_activation = [&graph_viewer](const Node& activation_node) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}) ||
