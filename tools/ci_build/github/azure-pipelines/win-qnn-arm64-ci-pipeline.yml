@@ -71,14 +71,6 @@ jobs:
     inputs:
       versionSpec: 6.4.x
 
-  - powershell: |
-     gci -Recurse "C:`\Program Files`\Git`\" -Filter patch.exe -ErrorAction SilentlyContinue
-    displayName: 'Check for patch.exe in Git install'
-
-  - powershell: |
-     gci -Recurse "C:`\" -Filter patch.exe -ErrorAction SilentlyContinue
-    displayName: 'Check for patch.exe on C:\\'
-
   - task: PythonScript@0
     displayName: 'Build'
     inputs:
