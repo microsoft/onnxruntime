@@ -113,6 +113,7 @@ uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor);
 uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);
+bool AreQnnQParamsEqual(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1);
 
 // TODO: split out separate files for Wrappers
 class QnnTensorWrapper {

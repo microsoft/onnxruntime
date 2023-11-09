@@ -30,6 +30,14 @@ class TileOpBuilder : public BaseOpBuilder {
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& node_unit,
+                                  const logging::Logger& logger,
+                                  const std::vector<std::string>& input_names,
+                                  size_t output_index,
+                                  Qnn_DataType_t qnn_data_type,
+                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
 };
 
 Status TileOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -84,6 +92,18 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                      logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
+}
+
+Status TileOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                               const NodeUnit& node_unit,
+                                               const logging::Logger& logger,
+                                               const std::vector<std::string>& input_names,
+                                               size_t output_index,
+                                               Qnn_DataType_t qnn_data_type,
+                                               Qnn_QuantizeParams_t& quant_param) const {
+  // Force the Tile operator output to use the same quantization parameters as the input.
+  return SetOutputQParamEqualToInput(qnn_model_wrapper, node_unit, logger, input_names,
+                                     0 /*input_index*/, output_index, qnn_data_type, quant_param);
 }
 
 void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

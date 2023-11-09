@@ -103,6 +103,15 @@ class BaseOpBuilder : public IOpBuilder {
     return node_name;
   }
 
+  Status SetOutputQParamEqualToInput(QnnModelWrapper& qnn_model_wrapper,
+                                     const NodeUnit& node_unit,
+                                     const logging::Logger& logger,
+                                     const std::vector<std::string>& input_names,
+                                     size_t input_index,
+                                     size_t output_index,
+                                     Qnn_DataType_t qnn_data_type,
+                                     Qnn_QuantizeParams_t& quant_param) const ORT_MUST_USE_RESULT;
+
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
     // TODO: Use QNN operator names defined in "QnnOpDef.h"
     static const std::unordered_map<std::string, std::string> onnx_op_type_to_qnn_op_type = {

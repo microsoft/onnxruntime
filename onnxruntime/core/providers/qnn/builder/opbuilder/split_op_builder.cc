@@ -139,19 +139,10 @@ Status SplitOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapp
   // Force Split outputs to use the same quantization parameters as the input.
   //
   // The quantization tool assigns equal qparams to the input and outputs, and the NodeUnit selectors
-  // now require QDQ Split units to have the same qparams. However, Sigmoid/Tanh may override their output qparms,
+  // now require QDQ Split units to have the same qparams. However, Sigmoid/Tanh may override their output qparams,
   // which requires us to explicitly handle this in case a Split is consumer of a Sigmoid/Tanh node.
-  ORT_UNUSED_PARAMETER(node_unit);
-  ORT_UNUSED_PARAMETER(logger);
-  ORT_UNUSED_PARAMETER(output_index);
-
-  const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
-  ORT_RETURN_IF_NOT(input_tensor_wrapper.GetTensorDataType() == qnn_data_type,
-                    "Input and output data types do not match in OverrideOutputQuantParam");
-
-  quant_param = GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor());
-
-  return Status::OK();
+  return SetOutputQParamEqualToInput(qnn_model_wrapper, node_unit, logger, input_names,
+                                     0 /*input_index*/, output_index, qnn_data_type, quant_param);
 }
 
 void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -59,17 +59,8 @@ Status ReshapeOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wra
                                                   Qnn_DataType_t qnn_data_type,
                                                   Qnn_QuantizeParams_t& quant_param) const {
   // Force Reshape output to use the same quantization parameters as the input.
-  ORT_UNUSED_PARAMETER(node_unit);
-  ORT_UNUSED_PARAMETER(logger);
-  ORT_UNUSED_PARAMETER(output_index);
-
-  const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
-  ORT_RETURN_IF_NOT(input_tensor_wrapper.GetTensorDataType() == qnn_data_type,
-                    "Input and output data types do not match in OverrideOutputQuantParam");
-
-  quant_param = GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor());
-
-  return Status::OK();
+  return SetOutputQParamEqualToInput(qnn_model_wrapper, node_unit, logger, input_names,
+                                     0 /*input_index*/, output_index, qnn_data_type, quant_param);
 }
 
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

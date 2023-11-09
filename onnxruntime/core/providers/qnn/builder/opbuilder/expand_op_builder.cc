@@ -24,6 +24,13 @@ class ExpandOpBuilder : public BaseOpBuilder {
                        const logging::Logger& logger,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& node_unit,
+                                  const logging::Logger& logger,
+                                  const std::vector<std::string>& input_names,
+                                  size_t output_index,
+                                  Qnn_DataType_t qnn_data_type,
+                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
 };
 
 template <typename T>
@@ -129,6 +136,18 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   input_names.push_back(shape_input_name);
 
   return Status::OK();
+}
+
+Status ExpandOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                                 const NodeUnit& node_unit,
+                                                 const logging::Logger& logger,
+                                                 const std::vector<std::string>& input_names,
+                                                 size_t output_index,
+                                                 Qnn_DataType_t qnn_data_type,
+                                                 Qnn_QuantizeParams_t& quant_param) const {
+  // Force Expand output to use the same quantization parameters as the input.
+  return SetOutputQParamEqualToInput(qnn_model_wrapper, node_unit, logger, input_names,
+                                     0 /*input_index*/, output_index, qnn_data_type, quant_param);
 }
 
 void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
