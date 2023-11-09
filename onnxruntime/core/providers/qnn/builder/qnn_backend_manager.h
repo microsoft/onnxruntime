@@ -30,11 +30,13 @@ class QnnBackendManager {
                     ProfilingLevel profiling_level,
                     uint32_t rpc_control_latency,
                     HtpPerformanceMode htp_performance_mode,
+                    ContextPriority context_priority,
                     std::string&& qnn_saver_path)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
         htp_performance_mode_(htp_performance_mode),
+        context_priority_(context_priority),
         qnn_saver_path_(qnn_saver_path) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -74,9 +76,7 @@ class QnnBackendManager {
 
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
-  Status LoadCachedQnnCtxFromOnnxModel(const std::string& ep_engine_cache,
-                                       QnnModel& qnn_model,
-                                       bool& loaded_from_cache);
+  Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length, QnnModel& qnn_model);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
@@ -135,6 +135,8 @@ class QnnBackendManager {
 
   Status UnloadLib(void* handle);
 
+  Status DestroyHTPPowerConfigID();
+
   void* LibFunction(void* handle, const char* symbol, std::string& error_msg);
 
   template <class T>
@@ -174,8 +176,6 @@ class QnnBackendManager {
     return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
   }
 
-  Status LoadCachedQnnContextFromBuffer(const std::string& buffer, QnnModel& qnn_model);
-
  private:
   const std::string backend_path_;
   const logging::Logger* logger_ = nullptr;
@@ -188,7 +188,6 @@ class QnnBackendManager {
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
   Qnn_ContextHandle_t context_ = nullptr;
-  QnnContext_Config_t** context_config_ = nullptr;
   ProfilingLevel profiling_level_;
   bool backend_initialized_ = false;
   bool device_created_ = false;
@@ -200,11 +199,13 @@ class QnnBackendManager {
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_ = 0;
   HtpPerformanceMode htp_performance_mode_;
+  ContextPriority context_priority_;
   std::string sdk_build_version_ = "";
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
   const std::string qnn_saver_path_;
+  uint32_t htp_power_config_client_id_ = 0;
 };
 
 }  // namespace qnn

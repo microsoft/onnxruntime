@@ -52,8 +52,10 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlRuntimeGraphFusionTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #include "core/providers/dml/dml_session_options_config_keys.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/user_logging_sink.h"
@@ -613,9 +615,35 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  // Create Custom Op if EP requests it
+  // Register Custom Op if EP requests it
   std::vector<OrtCustomOpDomain*> custom_op_domains;
-  p_exec_provider->GetCustomOpDomainList(custom_op_domains);
+  std::vector<OrtCustomOpDomain*> candidate_custom_op_domains;
+  p_exec_provider->GetCustomOpDomainList(candidate_custom_op_domains);
+
+  auto registry_kernels = kernel_registry_manager_.GetKernelRegistriesByProviderType(p_exec_provider->Type());
+
+  // Register the custom op domain only if it has not been registered before
+  if (registry_kernels.empty()) {
+    custom_op_domains = candidate_custom_op_domains;
+  } else {
+    for (auto candidate_custom_op_domain : candidate_custom_op_domains) {
+      for (auto registry_kernel : registry_kernels) {
+        const auto& kernel_map = registry_kernel->GetKernelCreateMap();
+        bool need_register = true;
+        // If the kernel registry is the ep's custom op registry, we only need to check the first kernel,
+        // because all kernels in one kernel registry should have the same domain name.
+        for (auto iter = kernel_map.begin(); iter != kernel_map.end(); iter++) {
+          if (iter->second.kernel_def->Domain() == candidate_custom_op_domain->domain_) {
+            need_register = false;
+            break;
+          }
+        }
+        if (need_register) {
+          custom_op_domains.push_back(candidate_custom_op_domain);
+        }
+      }
+    }
+  }
 
   if (!custom_op_domains.empty()) {
     if (AddCustomOpDomains(custom_op_domains) != Status::OK()) {
@@ -984,14 +1012,27 @@ common::Status InferenceSession::Load() {
 
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
-  // 1. ensure potential QDQ node units have unique DQ nodes (required transformer).
+  // 1. Ensure we inline as many functions as possible. We refer to it as Ahead Of Time (AOT) function inlining.
+  // 2. ensure potential QDQ node units have unique DQ nodes (required transformer).
   //    - This is a required transformer as the ORT code has a hard requirement there are no overlapping QDQ node units.
   //    - We run it here in case optimizers are disabled.
-  // 2. run level 1 optimizations. these only use ONNX operators.
-  // 3. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
-  // 4. run level 2+ optimizations. level 2 and 3 optimizations use contrib ops.
-  // 5. insert cast nodes (required transformer).
-  // 6. insert copy nodes (required transformer).
+  // 3. run level 1 optimizations. these only use ONNX operators.
+  // 4. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
+  // 5. run level 2+ optimizations. level 2 and 3 optimizations use contrib ops.
+  // 6. insert cast nodes (required transformer).
+  // 7. insert copy nodes (required transformer).
+
+  // Run Ahead Of time function inlining
+  GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_);
+  if (const bool disable_aot_function_inlining =
+          session_options_.config_options.GetConfigOrDefault(
+              kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "0") == "1";
+      !disable_aot_function_inlining) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.InlineFunctionsAOT(*model_,
+                                                                  execution_providers_,
+                                                                  kernel_registry_manager_,
+                                                                  *session_logger_));
+  }
 
   auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
                                    Graph& graph) {
@@ -1075,7 +1116,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   }
 
   // Do partitioning based on execution providers' capabilities.
-  GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        mode, debug_graph_fn));
 
@@ -1562,7 +1602,9 @@ common::Status InferenceSession::Initialize() {
                                                                record_runtime_optimization_produced_op_schema));
 
 #ifdef USE_DML
-      if (execution_providers_.Get(kDmlExecutionProvider)) {
+      const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);
+
+      if (dmlExecutionProvider) {
         // DML graph fusion is an important runtime optimization that cannot be done ahead of time; it must be disabled
         // when running in "offline mode" and saving an optimized model to disk. To support users that want to optimize
         // models offline, and then disable graph optimizations when running "online", this transformer ignores the ORT
@@ -1572,11 +1614,20 @@ common::Status InferenceSession::Initialize() {
 
         if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
-                                                                                                                                      execution_providers_.Get(kDmlExecutionProvider));
+                                                                                                                                      dmlExecutionProvider);
           if (dmlGraphFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
           }
           ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
+
+          if (static_cast<const Dml::ExecutionProvider*>(dmlExecutionProvider)->DynamicGraphFusionEnabled()) {
+            std::unique_ptr<onnxruntime::GraphTransformer> dmlRuntimeGraphFusionTransformer = std::make_unique<Dml::DmlRuntimeGraphFusionTransformer>("DmlRuntimeGraphFusionTransformer",
+                                                                                                                                                      dmlExecutionProvider);
+            if (dmlRuntimeGraphFusionTransformer == nullptr) {
+              return Status(common::ONNXRUNTIME, common::FAIL, "DmlRuntimeGraphFusionTransformer is nullptr");
+            }
+            ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlRuntimeGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
+          }
         }
 
         // This transformer applies DML-specific fusions that go beyond what ORT offers by default
