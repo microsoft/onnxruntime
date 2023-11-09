@@ -1,0 +1,3 @@
+{%- assign url = page.url -%}
+
+<p class="text-small text-grey-dk-100 mb-0">For documentation questions, please <a href="https://github.com/microsoft/onnxruntime/issues/new?labels=component:documentation&title=[Documentation%20Request]&body=%5BEnter%20feedback%20here%5D%0A%0A---%0A%23%23%23%23%20Document%20Details%0A*%20Title%3A%20{{ page.title | url_encode }}%0A*%20Page%3A%20%5B{{ url | absolute_url | url_encode }}%5D({{ url | absolute_url | url_encode }})%0A*%20Page%20Source%3A%20{{ page.name | url_encode }}" target="_blank">file an issue</a></p>

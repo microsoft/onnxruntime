@@ -33,10 +33,7 @@
 <Hero />
 <Customers />
 <CodeBlocks />
-<div class="divider px-10" />
-<Saos once={true} animation={'slide-in-right 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
-	<Videos />
-</Saos>
+<Videos />
 <Saos once={true} animation={'slide-in-left 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
 	<GenerativeAi />
 </Saos>
@@ -47,7 +44,6 @@
 	<Performance />
 </Saos>
 
-<div class="divider px-10" />
 <Saos once={true} animation={'slide-in-bottom 1s cubic-bezier(0.250, 0.460, 0.450, 0.940) both'}>
 	<TrainingAndInference />
 </Saos>

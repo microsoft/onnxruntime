@@ -158,6 +158,7 @@
 			{/if}
 		</div>
 	</div>
+	<div class="divider px-6" />
 </div>
 
 <style>
