@@ -69,7 +69,9 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
   OrtMIGraphXProviderOptions params{
       0,
       0,
-      0};
+      0,
+      0,
+      nullptr};
   return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;

@@ -3,23 +3,29 @@
 
 #pragma once
 
+#include <miopen/miopen.h>
+#include <rocblas/rocblas.h>
+
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
-#include "migraphx_execution_provider_info.h"
+#include "core/providers/migraphx/migraphx_execution_provider_info.h"
+#include "core/providers/migraphx/migraphx_inc.h"
 
 #include <map>
-#include "migraphx_inc.h"
+#include <unordered_map>
 // TODO: find a better way to share this
 // #include "core/providers/cuda/rocm_stream_handle.h"
-#include <miopen/miopen.h>
-#include <rocblas/rocblas.h>
 
 namespace onnxruntime {
 
 namespace migraphx_env_vars {
-static const std::string kFP16Enable = "ORT_MIGRAPHX_FP16_ENABLE";
-static const std::string dumpModelOps = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
+static const char kFP16Enable[] = "ORT_MIGRAPHX_FP16_ENABLE";
+static const char kINT8Enable[] = "ORT_MIGRAPHX_INT8_ENABLE";
+static const char dumpModelOps[] = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
+static const char kINT8CalibrationTableName[] = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME";
+static const char kCachePath[] = "ORT_MIGRAPHX_CACHE_PATH";
+static const char kINT8UseNativeMIGraphXCalibrationTable[] = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE";
 };  // namespace migraphx_env_vars
 
 // Information to construct kernel function state.
@@ -35,6 +41,9 @@ struct MIGraphXFuncState {
   OrtMutex* mgx_mu_ptr = nullptr;
   bool no_input_shape = false;
   bool fp16_enable = false;
+  bool int8_enable = false;
+  bool int8_calibration_cache_available = false;
+  std::unordered_map<std::string, float> dynamic_range_map;
   bool dump_model_ops = false;
 };
 
@@ -69,6 +78,12 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
  private:
   bool fp16_enable_ = false;
+  bool int8_enable_ = false;
+  std::string int8_calibration_cache_name_;
+  bool int8_calibration_cache_available_ = false;
+  bool int8_use_native_migraphx_calibration_table_ = false;
+  std::string calibration_cache_path_;
+  std::unordered_map<std::string, float> dynamic_range_map;
   bool dump_model_ops_ = false;
   int device_id_;
   migraphx::target t_;
