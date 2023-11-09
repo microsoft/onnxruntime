@@ -585,7 +585,7 @@ public:
         opDesc.ScaleTensor = &inputDescs[1];
         opDesc.ZeroPointTensor = &inputDescs[2];
         opDesc.OutputTensor = &outputDescs[0];
-
+        
         SetDmlOperatorDesc({ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
     }
 };

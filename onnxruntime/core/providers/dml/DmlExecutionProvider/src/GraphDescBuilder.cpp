@@ -219,9 +219,11 @@ namespace Dml::GraphDescBuilder
 
         // Iterate through each node and create a corresponding node in the new graph
         // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
-        for (size_t sortedNodeIndex : indexedSubGraph.nodes)
+        std::unordered_map<std::string, std::vector<uint32_t>> inferredOutputShapes;
+
+        for (const onnxruntime::Node* subgraphNode : subgraphNodes)
         {
-            const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
+            const onnxruntime::Node& node = *subgraphNode;
 
             const GraphNodeProperties& graphNodeProps = graphNodePropertyMap.find(GetUniqueNodeName(node))->second;
             const auto& requiredConstantCpuInputs = graphNodeProps.internalRegInfo->requiredConstantCpuInputs;

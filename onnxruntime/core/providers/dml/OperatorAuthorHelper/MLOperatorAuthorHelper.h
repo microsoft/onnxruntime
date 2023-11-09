@@ -13,6 +13,8 @@
 #define ML_CHECK_BOOL(x) THROW_HR_IF(E_INVALIDARG, !(x))
 #endif
 
+#include <optional>
+
 namespace onnxruntime
 {
     struct MLFloat16;
@@ -602,6 +604,18 @@ public:
         Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
         ORT_THROW_IF_FAILED(m_implPrivate->GetConstantInputTensor(inputIndex, &tensor));
         return MLOperatorTensor(tensor.Get());
+    }
+
+    std::optional<MLOperatorTensor> TryGetConstantInputTensor(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
+        ORT_THROW_IF_FAILED(m_implPrivate->TryGetConstantInputTensor(inputIndex, &tensor));
+        if (tensor)
+        {
+            return MLOperatorTensor(tensor.Get());
+        }
+
+        return std::nullopt;
     }
 
     uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const
