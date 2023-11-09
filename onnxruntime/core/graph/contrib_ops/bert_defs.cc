@@ -1005,8 +1005,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Attr("local_window_size",
-              "left_window_size for local attention (like Mistral). Default value is -1 meaning infinite. Must be used"
-              "in conjunction with unidirectional (local attention is similar to causal but with a limited window).",
+              "left_window_size for local attention (like Mistral). Default value is -1 meaning unused.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
         // .Attr("left_padding_last_token",

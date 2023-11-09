@@ -145,6 +145,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_memory_efficient_attention =
       !use_flash_attention &&
       !disable_memory_efficient_attention_ &&
+      local_window_size_ == -1 &&
       (parameters.head_size & 7) == 0 &&
       parameters.sequence_length <= parameters.seqlen_past_kv_cache + parameters.sequence_length &&
       (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
