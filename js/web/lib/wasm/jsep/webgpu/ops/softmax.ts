@@ -8,9 +8,9 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common';
+import {getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 1) {
@@ -52,12 +52,6 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
   };
   const x = inputVariable('x', input.dataType, input.dims, components);
   const output = outputVariable('result', input.dataType, input.dims, components);
-  const enableInputShapesUniforms = enableShapesUniforms(input.dims.length);
-  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: packedCols}];
-  if (enableInputShapesUniforms) {
-    programUniforms.push(...createTensorShapeVariables(input.dims), ...createTensorShapeVariables(input.dims));
-  }
-  const inputDependencies: ProgramInputTensorInfoDependency[] = [enableInputShapesUniforms ? 'type' : 'dims'];
   const valueType = x.type.value;
   // 6.2.4 in wgsl spec
   const threadMaxDecl = tensorTypeToWsglStorageType(input.dataType) === 'f32' ?
@@ -138,8 +132,12 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
       }`;
   return {
     name: 'Softmax',
-    shaderCache: {hint: `${components}`, inputDependencies},
-    getRunData: () => ({outputs: [{dims: shape, dataType: input.dataType}], dispatchGroup: {x: rows}, programUniforms}),
+    shaderCache: {hint: `${components}`, inputDependencies: ['type']},
+    getRunData: () => ({
+      outputs: [{dims: shape, dataType: input.dataType}],
+      dispatchGroup: {x: rows},
+      programUniforms: [{type: 'uint32', data: packedCols}]
+    }),
     getShaderSource,
   };
 };
