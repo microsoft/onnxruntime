@@ -421,6 +421,9 @@ fn prepare_libort_dir_compiled() -> Result<PathBuf> {
     ));
 
     config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+    config.define("ONNX_USE_MSVC_STATIC_RUNTIME", "OFF");
+    config.define("protobuf_MSVC_STATIC_RUNTIME", "OFF");
+    config.define("gtest_force_shared_crt", "ON");
 
     if let Ok(Accelerator::Cuda) = env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() {
         config.define("onnxruntime_USE_CUDA", "ON");
