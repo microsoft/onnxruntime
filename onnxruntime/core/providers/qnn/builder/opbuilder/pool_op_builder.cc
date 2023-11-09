@@ -251,10 +251,11 @@ Status PoolOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrappe
                                                size_t output_index,
                                                Qnn_DataType_t qnn_data_type,
                                                Qnn_QuantizeParams_t& quant_param) const {
-  // Force MaxPool outputs to use the same quantization parameters as the input.
+  // Force MaxPool outputs to use the same quantization parameters as the input if they are nearly equal.
+  // This helps the HTP backend employ certain optimizations.
   if (node_unit.OpType() == "MaxPool") {
-    return SetOutputQParamEqualToInput(qnn_model_wrapper, node_unit, logger, input_names,
-                                       0 /*input_index*/, output_index, qnn_data_type, quant_param);
+    return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                    0 /*input_index*/, output_index, qnn_data_type, quant_param);
   }
 
   return Status::OK();

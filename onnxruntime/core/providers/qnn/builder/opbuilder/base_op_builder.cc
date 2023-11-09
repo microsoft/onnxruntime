@@ -182,22 +182,24 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-Status BaseOpBuilder::SetOutputQParamEqualToInput(QnnModelWrapper& qnn_model_wrapper,
-                                                  const NodeUnit& node_unit,
-                                                  const logging::Logger& logger,
-                                                  const std::vector<std::string>& input_names,
-                                                  size_t input_index,
-                                                  size_t output_index,
-                                                  Qnn_DataType_t qnn_data_type,
-                                                  Qnn_QuantizeParams_t& quant_param) const {
+Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
+                                                               const NodeUnit& node_unit,
+                                                               const logging::Logger& logger,
+                                                               const std::vector<std::string>& input_names,
+                                                               size_t input_index,
+                                                               size_t output_index,
+                                                               Qnn_DataType_t qnn_data_type,
+                                                               Qnn_QuantizeParams_t& quant_param) const {
   const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[input_index]);
   ORT_RETURN_IF_NOT(input_tensor_wrapper.GetTensorDataType() == qnn_data_type,
                     "Input and output data types do not match");
 
   Qnn_QuantizeParams_t input_quant_param = GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor());
 
-  if (!AreQnnQParamsEqual(quant_param, input_quant_param)) {
-    LOGS(logger, VERBOSE) << "QNN EP will override the output quantization parameters for " << node_unit.OpType()
+  // If quant params are not exactly equal but they are nearly equal, override them to be equal.
+  if (!AreQnnQParamsEqual(quant_param, input_quant_param, 0.0f /*scale_epsilon*/) &&
+      AreQnnQParamsEqual(quant_param, input_quant_param, 1e-9f /*scale_epsilon*/)) {
+    LOGS(logger, WARNING) << "QNN EP will override the output quantization parameters for " << node_unit.OpType()
                           << " operators to be equal to the input quantization parameters. Operator name: "
                           << node_unit.Name() << ", input_index: " << input_index << ", output index: "
                           << output_index << ".";

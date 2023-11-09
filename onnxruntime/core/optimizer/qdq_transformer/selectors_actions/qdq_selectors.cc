@@ -268,7 +268,7 @@ bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   const Node& dq_node = *dq_nodes.front();
   int32_t dt_input = dq_node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  // All Q outputs should have same data type and quantization parameters as the input.
+  // All Q outputs should have same data type and (optionally) equal quantization parameters as the input.
   for (size_t q_idx = 0; q_idx < q_nodes.size(); q_idx++) {
     const Node& q_node = *q_nodes[q_idx];
 
@@ -276,14 +276,10 @@ bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer,
       return false;
     }
 
-    if (!IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath())) {
+    if (enforce_equal_io_qparams_ &&
+        !IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath())) {
       return false;
     }
-  }
-
-  // 16-bit int types must be explicitly allowed.
-  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
-    return false;
   }
 
   return true;

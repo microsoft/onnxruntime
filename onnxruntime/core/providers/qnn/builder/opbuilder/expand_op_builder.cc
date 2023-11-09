@@ -145,9 +145,10 @@ Status ExpandOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrap
                                                  size_t output_index,
                                                  Qnn_DataType_t qnn_data_type,
                                                  Qnn_QuantizeParams_t& quant_param) const {
-  // Force Expand output to use the same quantization parameters as the input.
-  return SetOutputQParamEqualToInput(qnn_model_wrapper, node_unit, logger, input_names,
-                                     0 /*input_index*/, output_index, qnn_data_type, quant_param);
+  // Force Expand output to use the same quantization parameters as the input if they are nearly equal.
+  // This enables the HTP backend to employ certain optimizations.
+  return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                  0 /*input_index*/, output_index, qnn_data_type, quant_param);
 }
 
 void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -101,9 +101,10 @@ Status TileOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrappe
                                                size_t output_index,
                                                Qnn_DataType_t qnn_data_type,
                                                Qnn_QuantizeParams_t& quant_param) const {
-  // Force the Tile operator output to use the same quantization parameters as the input.
-  return SetOutputQParamEqualToInput(qnn_model_wrapper, node_unit, logger, input_names,
-                                     0 /*input_index*/, output_index, qnn_data_type, quant_param);
+  // Force the Tile operator output to use the same quantization parameters as the input if nearly equal.
+  // This helps the HTP backend employ certain optimizations.
+  return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                  0 /*input_index*/, output_index, qnn_data_type, quant_param);
 }
 
 void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

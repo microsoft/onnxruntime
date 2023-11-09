@@ -170,9 +170,9 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                     "Cannot get quantization parameter");
   if (is_quantized_tensor) {
     // Make sure the output quantization parameters are equal to the input.
-    ORT_RETURN_IF_ERROR(SetOutputQParamEqualToInput(qnn_model_wrapper, node_unit, logger, input_names,
-                                                    0 /*input_index*/, 0 /*output_index*/, qnn_data_type,
-                                                    quantize_param));
+    ORT_RETURN_IF_ERROR(SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                                 0 /*input_index*/, 0 /*output_index*/, qnn_data_type,
+                                                                 quantize_param));
   }
 
   std::vector<uint32_t> target_output_shape;

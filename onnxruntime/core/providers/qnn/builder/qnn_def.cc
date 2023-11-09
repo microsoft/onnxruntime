@@ -201,7 +201,8 @@ const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor) 
   }
 }
 
-bool AreQnnQParamsEqual(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1) {
+bool AreQnnQParamsEqual(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
+                        float scale_epsilon) {
   if (qparam0.encodingDefinition != qparam1.encodingDefinition ||
       qparam0.quantizationEncoding != qparam1.quantizationEncoding) {
     return false;
@@ -211,7 +212,7 @@ bool AreQnnQParamsEqual(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeP
     switch (qparam0.quantizationEncoding) {
       case QNN_QUANTIZATION_ENCODING_SCALE_OFFSET:
         return qparam0.scaleOffsetEncoding.offset == qparam1.scaleOffsetEncoding.offset &&
-               qparam0.scaleOffsetEncoding.scale == qparam1.scaleOffsetEncoding.scale;
+               std::abs(qparam0.scaleOffsetEncoding.scale - qparam1.scaleOffsetEncoding.scale) <= scale_epsilon;
       case QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET: {
         const Qnn_AxisScaleOffset_t& vals0 = qparam0.axisScaleOffsetEncoding;
         const Qnn_AxisScaleOffset_t& vals1 = qparam1.axisScaleOffsetEncoding;
@@ -222,7 +223,7 @@ bool AreQnnQParamsEqual(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeP
 
         for (uint32_t i = 0; i < vals0.numScaleOffsets; ++i) {
           if (vals0.scaleOffset[i].offset != vals1.scaleOffset[i].offset ||
-              vals0.scaleOffset[i].scale != vals1.scaleOffset[i].scale) {
+              std::abs(vals0.scaleOffset[i].scale - vals1.scaleOffset[i].scale) > scale_epsilon) {
             return false;
           }
         }
@@ -233,7 +234,8 @@ bool AreQnnQParamsEqual(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeP
         const Qnn_BwScaleOffset_t& vals0 = qparam0.bwScaleOffsetEncoding;
         const Qnn_BwScaleOffset_t& vals1 = qparam1.bwScaleOffsetEncoding;
 
-        return vals0.bitwidth == vals1.bitwidth && vals0.offset == vals1.offset && vals0.scale == vals1.scale;
+        return vals0.bitwidth == vals1.bitwidth && vals0.offset == vals1.offset &&
+            std::abs(vals0.scale - vals1.scale) <= scale_epsilon;
       }
       case QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET: {
         const Qnn_BwAxisScaleOffset_t& vals0 = qparam0.bwAxisScaleOffsetEncoding;
@@ -244,7 +246,8 @@ bool AreQnnQParamsEqual(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeP
         }
 
         for (uint32_t i = 0; i < vals0.numElements; ++i) {
-          if (vals0.offsets[i] != vals1.offsets[i] || vals0.scales[i] != vals1.scales[i]) {
+          if (vals0.offsets[i] != vals1.offsets[i] ||
+              std::abs(vals0.scales[i] - vals1.scales[i]) > scale_epsilon) {
             return false;
           }
         }
