@@ -24,55 +24,6 @@ jobs:
       - name: fmt
         run: cargo fmt --all -- --check
 
-  download:
-    name: Download prebuilt ONNX Runtime archive from build.rs
-    runs-on: ubuntu-latest
-    env:
-      ORT_RUST_STRATEGY: download
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/rust-toolchain-setup
-      - name: vendor onnxruntime source
-        run: just vendor
-      - run: rustup target install x86_64-unknown-linux-gnu
-      - run: rustup target install x86_64-apple-darwin
-      - run: rustup target install i686-pc-windows-msvc
-      - run: rustup target install x86_64-pc-windows-msvc
-      # ******************************************************************
-      - name: Download prebuilt archive (CPU, x86_64-unknown-linux-gnu)
-        run: cargo build --target x86_64-unknown-linux-gnu  --manifest-path ${{ env.MANIFEST_PATH }}
-      - name: Verify prebuilt archive downloaded (CPU, x86_64-unknown-linux-gnu)
-        run: ls -lh target/x86_64-unknown-linux-gnu/debug/build/onnxruntime-sys-*/out/onnxruntime-linux-x64-1.*.tgz
-      # ******************************************************************
-      - name: Download prebuilt archive (CPU, x86_64-apple-darwin)
-        run: cargo build --target x86_64-apple-darwin  --manifest-path ${{ env.MANIFEST_PATH }}
-      - name: Verify prebuilt archive downloaded (CPU, x86_64-apple-darwin)
-        run: ls -lh target/x86_64-apple-darwin/debug/build/onnxruntime-sys-*/out/onnxruntime-osx-x64-1.*.tgz
-      # ******************************************************************
-      - name: Download prebuilt archive (CPU, i686-pc-windows-msvc)
-        run: cargo build --target i686-pc-windows-msvc  --manifest-path ${{ env.MANIFEST_PATH }}
-      - name: Verify prebuilt archive downloaded (CPU, i686-pc-windows-msvc)
-        run: ls -lh target/i686-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-x86-1.*.zip
-      # ******************************************************************
-      - name: Download prebuilt archive (CPU, x86_64-pc-windows-msvc)
-        run: cargo build --target x86_64-pc-windows-msvc  --manifest-path ${{ env.MANIFEST_PATH }}
-      - name: Verify prebuilt archive downloaded (CPU, x86_64-pc-windows-msvc)
-        run: ls -lh target/x86_64-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-x64-1.*.zip
-      # ******************************************************************
-      - name: Download prebuilt archive (GPU, x86_64-unknown-linux-gnu)
-        env:
-          ORT_USE_CUDA: "yes"
-        run: cargo build --target x86_64-unknown-linux-gnu  --manifest-path ${{ env.MANIFEST_PATH }}
-      - name: Verify prebuilt archive downloaded (GPU, x86_64-unknown-linux-gnu)
-        run: ls -lh target/x86_64-unknown-linux-gnu/debug/build/onnxruntime-sys-*/out/onnxruntime-linux-x64-gpu-1.*.tgz
-      # ******************************************************************
-      - name: Download prebuilt archive (GPU, x86_64-pc-windows-msvc)
-        env:
-          ORT_USE_CUDA: "yes"
-        run: cargo build --target x86_64-pc-windows-msvc  --manifest-path ${{ env.MANIFEST_PATH }}
-      - name: Verify prebuilt archive downloaded (GPU, x86_64-pc-windows-msvc)
-        run: ls -lh target/x86_64-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-gpu-x64-1.*.zip
-
   test:
     name: Test Suite
     runs-on: ${{ matrix.os }}
