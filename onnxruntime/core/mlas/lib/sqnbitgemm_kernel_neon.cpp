@@ -102,16 +102,19 @@ ComputeDotProducts(
             [&](size_t i) { scale[i] = QuantBScale[i * StrideQuantBScale]; }
         );
 
-        uint8_t zp[NCols];
+        float offset[NCols];  // Includes zero point and float conversion offset of 16.
+                              // More details on the float conversion below.
         if (QuantBZeroPointColPtr != nullptr) {
             UnrolledLoop<NCols>([&](size_t i) {
-                uint8_t zp_packed =
+                const uint8_t zp_packed =
                     QuantBZeroPointColPtr[i * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
-                zp[i] = ((QuantBZeroPointIdx & 1) == 1) ? (zp_packed >> 4) : (zp_packed & 0x0F);
+                const uint8_t zp = ((QuantBZeroPointIdx & 1) == 1) ? (zp_packed >> 4) : (zp_packed & 0x0F);
+                offset[i] = 16.0f + zp;
             });
         } else {
             UnrolledLoop<NCols>([&](size_t i) {
-                zp[i] = 8;
+                constexpr uint8_t zp = 8;
+                offset[i] = 16.0f + zp;
             });
         }
 
@@ -137,55 +140,70 @@ ComputeDotProducts(
             uint8x8_t bv_packed[NCols];
             UnrolledLoop<NCols>([&](size_t i) { bv_packed[i] = vld1_u8(b_data[i]); });
 
-            uint8x8_t bv_bytes_unzipped[NCols][2];
+            uint8x8_t bv_u8_unzipped[NCols][2];
             UnrolledLoop<NCols>([&](size_t i) {
-                bv_bytes_unzipped[i][0] = vand_u8(bv_packed[i], LowMask);
-                bv_bytes_unzipped[i][1] = vand_u8(vshr_n_u8(bv_packed[i], 4), LowMask);
+                bv_u8_unzipped[i][0] = vand_u8(bv_packed[i], LowMask);
+                bv_u8_unzipped[i][1] = vand_u8(vshr_n_u8(bv_packed[i], 4), LowMask);
             });
 
-            int8x16_t bv_bytes[NCols];
+            uint8x8_t bv_u8[NCols][2];
             UnrolledLoop<NCols>([&](size_t i) {
-                bv_bytes[i] =
-                    vreinterpretq_s8_u8(
-                        vcombine_u8(
-                            vzip1_u8(bv_bytes_unzipped[i][0], bv_bytes_unzipped[i][1]),
-                            vzip2_u8(bv_bytes_unzipped[i][0], bv_bytes_unzipped[i][1])
-                        )
-                    );
+                bv_u8[i][0] = vzip1_u8(bv_u8_unzipped[i][0], bv_u8_unzipped[i][1]);
+                bv_u8[i][1] = vzip2_u8(bv_u8_unzipped[i][0], bv_u8_unzipped[i][1]);
             });
 
             // dequantize B
 
-            // subtract zero point
+            // Manual conversion to float takes place in two steps:
+            // 1. Map 4-bit values from [0, 15] to float values from [16.0f, 31.0f].
+            //    This target float range is convenient because the 4-bit source values can be placed directly into the
+            //    target float bits.
+            // 2. Subtract the conversion offset of 16 from the float result.
+
+            // The high 16 bits of an IEEE 754 32-bit float used as a template for creating float values.
+            constexpr uint16_t float_high_half_template = 0b0'10000011'0000000;
+            //                                           sign|exponent|partial mantissa
+            //                                              +|131: 2^4|~~~~ <- 4 bits go here
+
+            const uint16x8_t float_high_half_template_v = vdupq_n_s16(float_high_half_template);
+
+            // shift left 3 and widen to 16 bits
+            uint16x8_t bv_u16[NCols][2];
             UnrolledLoop<NCols>([&](size_t i) {
-                const int8x16_t zpv = vdupq_n_s8(zp[i]);
-                bv_bytes[i] = vsubq_s8(bv_bytes[i], zpv);
+                constexpr int shift = 3;
+                bv_u16[i][0] = vshll_n_u8(bv_u8[i][0], shift);
+                bv_u16[i][1] = vshll_n_u8(bv_u8[i][1], shift);
             });
 
-            // widen to int16
-            int16x8_t bv_int16[NCols][2];
-
+            // combine 4 bits with float high half template
             UnrolledLoop<NCols>([&](size_t i) {
-                bv_int16[i][0] = vmovl_s8(vget_low_s8(bv_bytes[i]));
-                bv_int16[i][1] = vmovl_s8(vget_high_s8(bv_bytes[i]));
+                bv_u16[i][0] = vorrq_u16(bv_u16[i][0], float_high_half_template_v);
+                bv_u16[i][1] = vorrq_u16(bv_u16[i][1], float_high_half_template_v);
             });
 
             // `SubBlkLen` floats of B
             float32x4_t bv[NCols][4];
 
-            // widen to int32, cast to float32
-
+            // shift left 16, widen to 32 bits, and reinterpret as float
             UnrolledLoop<NCols>([&](size_t i) {
-                bv[i][0] = vcvtq_f32_s32(vmovl_s16(vget_low_s16(bv_int16[i][0])));
-                bv[i][1] = vcvtq_f32_s32(vmovl_s16(vget_high_s16(bv_int16[i][0])));
+                constexpr int shift = 16;
+                bv[i][0] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][0]), shift));
+                bv[i][1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][0], shift));
 
-                bv[i][2] = vcvtq_f32_s32(vmovl_s16(vget_low_s16(bv_int16[i][1])));
-                bv[i][3] = vcvtq_f32_s32(vmovl_s16(vget_high_s16(bv_int16[i][1])));
+                bv[i][2] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][1]), shift));
+                bv[i][3] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][1], shift));
+            });
+
+            // subtract float conversion offset (16) and zero point
+            UnrolledLoop<NCols>([&](size_t i) {
+                const uint32x4_t offset_v = vdupq_n_f32(offset[i]);
+                UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
             });
 
             // multiply by scale
             UnrolledLoop<NCols>([&](size_t i) {
-                UnrolledLoop<4>([&](size_t j) { bv[i][j] = vmulq_n_f32(bv[i][j], scale[i]); });
+                const float32x4_t scale_v = vdupq_n_f32(scale[i]);
+                UnrolledLoop<4>([&](size_t j) { bv[i][j] = vmulq_f32(bv[i][j], scale_v); });
             });
 
             // c[m,n] += a[m,k] * b[k,n]
