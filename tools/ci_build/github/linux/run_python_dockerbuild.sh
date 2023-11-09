@@ -9,7 +9,7 @@ i) DOCKER_IMAGE=${OPTARG};;
 d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG:-""};;
 c) BUILD_CONFIG=${OPTARG};;
-u) CUDA_VERSION=${OPTARG};;
+u) CUDA_VERSION=${OPTARG:-""};;
 *) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-u <cuda_version>]"
    exit 1;;
 esac

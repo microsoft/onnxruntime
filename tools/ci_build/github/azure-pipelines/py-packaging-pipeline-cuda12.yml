@@ -6,7 +6,7 @@ parameters:
     default: true
   - name: enable_windows_gpu
     type: boolean
-    default: true
+    default: false
   - name: cmake_build_type
     type: string
     default: 'Release'
