@@ -807,4 +807,4 @@ export const getBroadcastDims = (inShape: readonly number[], outShape: readonly 
 };
 
 // TODO: remove this limitation once >4D dims are supported by uniform.
-export const enableShapesUniforms = (rank: number): boolean => rank <= 4 && rank > 0;
+export const enableShapesUniforms = (rank: number): boolean => rank <= 4;
