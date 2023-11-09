@@ -57,13 +57,13 @@ class QNNExecutionProvider : public IExecutionProvider {
                              const logging::Logger& logger);
 
   void ParseHtpPerformanceMode(std::string htp_performance_mode_string);
+  void ParseQnnContextPriority(std::string context_priority_string);
 
   void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
 
   void InitQnnGraphConfigs(qnn::QnnGraphConfigsBuilder& configs_holder) const;
 
  private:
-  ProviderOptions runtime_options_;
   qnn::ProfilingLevel profiling_level_ = qnn::ProfilingLevel::OFF;
   qnn::HtpPerformanceMode htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
@@ -74,6 +74,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::string context_cache_path_ = "";
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   std::unique_ptr<qnn::QnnCacheModelHandler> qnn_cache_model_handler_;
+  qnn::ContextPriority context_priority_ = qnn::ContextPriority::NORMAL;
 };
 
 }  // namespace onnxruntime
