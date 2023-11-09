@@ -868,7 +868,6 @@ class SymbolicShapeInference:
         if any([i in self.sympy_data_ or i in self.initializers_ for i in node.input]):
             values = self._get_int_or_float_values(node)
             if all([v is not None for v in values]):
-                assert get_attribute(node, "axis") == 0
                 self.sympy_data_[node.output[0]] = []
                 for i in range(len(node.input)):
                     value = values[i]
