@@ -1637,9 +1637,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         # GCOV_PREFIX specifies the root directory
         # for creating the runtime code coverage files.
         if args.code_coverage:
-            adb_shell(
-                "cd {0} && GCOV_PREFIX={0} GCOV_PREFIX_STRIP={1} {2}".format(device_dir, cwd.count(os.sep) + 1, cmd)
-            )
+            adb_shell(f"cd {device_dir} && GCOV_PREFIX={device_dir} GCOV_PREFIX_STRIP={cwd.count(os.sep) + 1} {cmd}")
         else:
             adb_shell(f"cd {device_dir} && {cmd}")
 
@@ -1689,7 +1687,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 )
 
             if args.use_nnapi:
-                run_adb_shell("{0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
+                run_adb_shell(f"{device_dir}/onnx_test_runner -e nnapi {device_dir}/test")
             else:
                 run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
 
@@ -1702,9 +1700,9 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
                 adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
                 adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")
-                run_adb_shell("LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_shared_lib_test".format(device_dir))
+                run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_shared_lib_test")
                 run_adb_shell(
-                    "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_customopregistration_test".format(device_dir)
+                    f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
                 )
 
 
@@ -1839,6 +1837,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             # For CUDA or DML enabled builds test IOBinding feature
             if args.use_cuda or args.use_dml:
                 log.info("Testing IOBinding feature")
+                if args.use_dml:
+                    run_subprocess(
+                        [sys.executable, "-m", "pip", "uninstall", "--yes", "onnx"], cwd=cwd, dll_path=dll_path
+                    )
+                    run_subprocess([sys.executable, "-m", "pip", "install", "-q", "onnx"], cwd=cwd, dll_path=dll_path)
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_cuda:

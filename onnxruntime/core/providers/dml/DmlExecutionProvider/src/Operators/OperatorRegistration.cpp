@@ -516,6 +516,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(BitwiseAnd);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseOr);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseXor);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseNot);
+DML_OP_EXTERN_CREATION_FUNCTION(RotaryEmbedding);
 
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
@@ -534,6 +535,7 @@ DML_OP_EXTERN_QUERY_FUNCTION(Attention);
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
 constexpr static std::array<const char*, 1> typeNameListDefaultV = {"V"};
 constexpr static std::array<const char*, 2> typeNameListAttention = {"T", "M"};
+constexpr static std::array<const char*, 2> typeNameListRotaryEmbedding = {"T", "M"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
 constexpr static std::array<const char*, 2> typeNameListLayerNorm = { "T", "U" };
 constexpr static std::array<const char*, 2> typeNameListLayerNormContrib = { "T", "V" };
@@ -613,6 +615,7 @@ constexpr static std::array<SupportedTensorDataTypes, 4> supportedTypeListQAtten
 };
 
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListAttention = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32};
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRotaryEmbedding = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListGroupNorm = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListNonZero = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Ints8Bit | SupportedTensorDataTypes::Ints16Bit | SupportedTensorDataTypes::Ints32Bit | SupportedTensorDataTypes::Bool};
 
@@ -1046,6 +1049,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  QAttention,                         typeNameListFour,               supportedTypeListQAttention,            DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryQAttention)},
     {REG_INFO_MS(   1,  Attention,                          typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryAttention)},
     {REG_INFO_MS(   1,  MultiHeadAttention,                 typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  RotaryEmbedding,                    typeNameListRotaryEmbedding,    supportedTypeListRotaryEmbedding,       DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QLinearConcat,                      typeNameListQLinearConcat,      supportedTypeListQLinearConcat,         DmlGraphSupport::Supported)},
 
     {REG_INFO(     10,  IsInf,                              typeNameListTwo,                supportedTypeListIsInf,                 DmlGraphSupport::Supported)},

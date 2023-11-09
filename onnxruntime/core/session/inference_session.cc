@@ -1009,7 +1009,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
               kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "0") == "1";
       !disable_aot_function_inlining) {
     ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.InlineFunctionsAOT(*model_,
-                                                                  execution_providers_, kernel_registry_manager_));
+                                                                  execution_providers_,
+                                                                  kernel_registry_manager_,
+                                                                  *session_logger_));
   }
 
   auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,

@@ -127,7 +127,7 @@ export class ProgramManager {
     const userCode = programInfo.getShaderSource(shaderHelper);
     const code = `${extensions.join('\n')}\n${shaderHelper.additionalImplementations}\n${userCode}`;
     const shaderModule = device.createShaderModule({code, label: programInfo.name});
-    LOG_DEBUG('verbose', () => `[WebGPU] shader code: ${code}`);
+    LOG_DEBUG('verbose', () => `[WebGPU] ${programInfo.name} shader code: ${code}`);
 
     const computePipeline = device.createComputePipeline(
         {compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto', label: programInfo.name});
