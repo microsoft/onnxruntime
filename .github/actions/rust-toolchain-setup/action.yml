@@ -20,8 +20,7 @@ runs:
       # We need to use the nightly rust tool change to enable registry-auth / to connect to ADO feeds.
       if: ${{ (runner.os == 'Linux') }}
       run: |
-        rustup set profile minimal
-        rustup install
+        rustup toolchain install stable --profile minimal
       shell: bash
     # - name: Cargo login
     #   if: ${{ (runner.os == 'Linux') }}
@@ -35,8 +34,7 @@ runs:
       # We need to use the nightly rust tool change to enable registry-auth / to connect to ADO feeds.
       if: ${{ (runner.os == 'Windows') }}
       run: |
-        rustup set profile minimal
-        rustup install
+        rustup toolchain install stable --profile minimal
       shell: pwsh
     # - name: Cargo login
     #   if: ${{ (runner.os == 'Windows') }}
