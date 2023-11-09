@@ -2,6 +2,10 @@ name: Rust
 
 on: [pull_request]
 
+defaults:
+ run:
+  working-directory: ./rust/
+
 env:
   CARGO_TERM_COLOR: always
   RUST_LOG: onnxruntime=debug,onnxruntime-sys=debug
