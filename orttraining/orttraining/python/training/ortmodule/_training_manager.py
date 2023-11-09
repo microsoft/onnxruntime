@@ -405,7 +405,7 @@ class TrainingManager(GraphExecutionManager):
 
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
-        device_type = self._device if type(self._device) is str else self._device.type.lower()
+        device_type = self._device if type(self._device) is str else self._device.type.lower()  # noqa: E721
         if device_type == "ort":
             fw_outputs_device_info = [C.get_ort_device(self._device.index)] * (
                 len(self._graph_info.user_output_names) + len(self._graph_info.frontier_node_arg_map)
