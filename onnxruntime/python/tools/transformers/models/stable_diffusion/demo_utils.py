@@ -68,7 +68,7 @@ def parse_arguments(is_xl: bool, description: str):
         "--scheduler",
         type=str,
         default="DDIM",
-        choices=["DDIM", "EulerA", "UniPC"],
+        choices=["DDIM", "UniPC"] if is_xl else ["DDIM", "EulerA", "UniPC"],
         help="Scheduler for diffusion process",
     )
 
@@ -78,7 +78,7 @@ def parse_arguments(is_xl: bool, description: str):
         help="Root Directory to store torch or ONNX models, built engines and output images etc.",
     )
 
-    parser.add_argument("prompt", nargs="+", help="Text prompt(s) to guide image generation.")
+    parser.add_argument("prompt", nargs="*", default=[""], help="Text prompt(s) to guide image generation.")
 
     parser.add_argument(
         "--negative-prompt", nargs="*", default=[""], help="Optional negative prompt(s) to guide the image generation."
@@ -144,6 +144,9 @@ def parse_arguments(is_xl: bool, description: str):
     parser.add_argument("--nvtx-profile", action="store_true", help="Enable NVTX markers for performance profiling.")
     parser.add_argument("--seed", type=int, default=None, help="Seed for random generator to get consistent results.")
     parser.add_argument("--disable-cuda-graph", action="store_true", help="Disable cuda graph.")
+
+    group = parser.add_argument_group("Options for ORT_CUDA engine only")
+    group.add_argument("--enable-vae-slicing", action="store_true", help="True will feed only one image to VAE once.")
 
     # TensorRT only options
     group = parser.add_argument_group("Options for TensorRT (--engine=TRT) only")
