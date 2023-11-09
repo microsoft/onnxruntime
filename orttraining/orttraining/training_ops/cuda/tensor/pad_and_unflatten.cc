@@ -17,8 +17,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
         .TypeConstraint("T_INT", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T_INDEX", DataTypeImpl::GetTensorType<int64_t>())
-        .InputMemoryType(OrtMemTypeCPUInput, 2)
-        .OutputMemoryType(OrtMemTypeCPUOutput, 1),
+        .InputMemoryType(OrtMemTypeCPUInput, 2),
     PadAndUnflatten);
 
 // Put implementation in the anonymous namespace to avoid name collision in the global namespace.
@@ -63,14 +62,11 @@ Status PadAndUnflatten::ComputeInternal(OpKernelContext* context) const {
   output_shape_vec.push_back(dims_ptr[0]);
   output_shape_vec.push_back(dims_ptr[1]);
 
-  std::vector<int64_t> full_size_flatten_shape_vec;
   const int64_t flatten_dim_factor = dims_ptr[0] * dims_ptr[1];
-  full_size_flatten_shape_vec.push_back(flatten_dim_factor);
 
   int64_t element_stride = 1;
   for (size_t i = 1; i < input_shape.NumDimensions(); ++i) {
     output_shape_vec.push_back(input_shape[i]);
-    full_size_flatten_shape_vec.push_back(input_shape[i]);
     element_stride *= input_shape[i];
   }
 
@@ -86,11 +82,6 @@ Status PadAndUnflatten::ComputeInternal(OpKernelContext* context) const {
                                         *input_tensor,
                                         *indices_tensor,
                                         *output_tensor);
-
-  // Set input shape output tensor.
-  size_t rank = full_size_flatten_shape_vec.size();
-  Tensor* input_shape_tensor = context->Output(1, {static_cast<int>(rank)});
-  TensorShape(full_size_flatten_shape_vec).CopyDims(input_shape_tensor->MutableData<int64_t>(), rank);
 
   return Status::OK();
 }

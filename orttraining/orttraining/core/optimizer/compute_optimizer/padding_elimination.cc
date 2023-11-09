@@ -129,91 +129,43 @@ NodeArg* InsertExpandForNodeInput(Graph& graph,
   return new_expand_node->MutableOutputDefs()[0];
 }
 
-// Insert Reshape + ShrunkenGather to flatten the in_index-th input of node.
+// Insert FlattenAndUnpad to flatten and unpad the in_index-th input of node.
 // The gather_index_arg is the indices of the elements that are not padding.
 NodeArg* InsertFlattenPatternForInput(Graph& graph,
                                       Node& node,
                                       uint32_t in_index,
                                       NodeArg* gather_index_arg,
                                       const logging::Logger& logger) {
-  InlinedVector<NodeArg*> reshape_input_args;
-  reshape_input_args.reserve(2);
-  reshape_input_args.push_back(node.MutableInputDefs()[in_index]);
-  std::vector<int64_t> new_shape;
-  new_shape.push_back(-1);  // only support flatten 0 and 1 dims
-  auto input_shape = node.InputDefs()[in_index]->Shape();
-  ORT_ENFORCE(input_shape->dim_size() >= 2);
-  ONNX_NAMESPACE::TensorShapeProto flattened_shape;
-  if (input_shape->dim(0).has_dim_value() && input_shape->dim(1).has_dim_value()) {
-    flattened_shape.add_dim()->set_dim_value(input_shape->dim(0).dim_value() * input_shape->dim(1).dim_value());
-  } else {
-    std::string token_dim_name = MakeString("total_token_count_", utils::GetRandomSeed());
-    flattened_shape.add_dim()->set_dim_param(token_dim_name);
-  }
-  for (int k = 2; k < input_shape->dim_size(); k++) {
-    ORT_ENFORCE(input_shape->dim(k).has_dim_value());
-    new_shape.push_back(input_shape->dim(k).dim_value());
-    flattened_shape.add_dim()->set_dim_value(input_shape->dim(k).dim_value());
-  }
-  ONNX_NAMESPACE::TensorProto new_shape_const_tensor;
-  new_shape_const_tensor.set_name(graph.GenerateNodeArgName("new_shape"));
-  new_shape_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  new_shape_const_tensor.add_dims(new_shape.size());
-  new_shape_const_tensor.set_raw_data(new_shape.data(), new_shape.size() * sizeof(int64_t));
-  NodeArg* new_shape_arg = &graph_utils::AddInitializer(graph, new_shape_const_tensor);
-  reshape_input_args.push_back(new_shape_arg);
+  InlinedVector<NodeArg*> unpad_input_args;
+  unpad_input_args.reserve(2);
+  unpad_input_args.push_back(node.MutableInputDefs()[in_index]);
+  unpad_input_args.push_back(gather_index_arg);
 
-  InlinedVector<NodeArg*> reshape_output_args;
-  reshape_output_args.push_back(
-      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("inputs_reshape_result"),
-                                node.MutableInputDefs()[in_index]->TypeAsProto()));
-
-  Node* new_reshape_node = InsertIntermediateNodeOnDestInput(
-      graph, node,
-      in_index,
-      0,
-      0,
-      graph.GenerateNodeName("Reshape"),
-      "Reshape",
-      "Reshape node to filter invalid tokens.",
-      reshape_input_args,
-      reshape_output_args,
-      {},
-      "",
-      logger);
-
-  new_reshape_node->SetExecutionProviderType(node.GetExecutionProviderType());
-  auto reshape_out_arg = new_reshape_node->MutableOutputDefs()[0];
-
-  reshape_out_arg->SetShape(flattened_shape);
-
-  InlinedVector<NodeArg*> gather_input_args;
-  gather_input_args.reserve(2);
-  gather_input_args.push_back(reshape_output_args[0]);
-  gather_input_args.push_back(gather_index_arg);
-
-  InlinedVector<NodeArg*> gather_output_args;
-  gather_output_args.push_back(
+  InlinedVector<NodeArg*> unpad_output_args;
+  unpad_output_args.push_back(
       &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("padding_filter_result"),
-                                reshape_out_arg->TypeAsProto()));
+                                nullptr));
+  unpad_output_args.push_back(
+      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("d1_d2_shape"),
+                                nullptr));
 
-  Node* new_gather_node = InsertIntermediateNodeOnDestInput(
+  Node* unpad_node = InsertIntermediateNodeOnDestInput(
       graph, node,
       in_index,
       0,
       0,
       graph.GenerateNodeName("PaddingFilter"),
-      "ShrunkenGather",
-      "ShrunkenGather node to filter invalid tokens.",
-      gather_input_args,
-      gather_output_args,
+      "FlattenAndUnpad",
+      "FlattenAndUnpad node to filter invalid tokens.",
+      unpad_input_args,
+      unpad_output_args,
       {},
       kMSDomain,
       logger);
 
-  new_gather_node->SetExecutionProviderType(node.GetExecutionProviderType());
-  auto gather_out_arg = new_gather_node->MutableOutputDefs()[0];
-  return gather_out_arg;
+  unpad_node->SetExecutionProviderType(node.GetExecutionProviderType());
+  auto unpad_out_arg = unpad_node->MutableOutputDefs()[0];
+  return unpad_out_arg;
 }
 
 // Insert PadAndUnflatten to unflatten the shape of the in_index-th input of node.
@@ -236,10 +188,6 @@ NodeArg* InsertNodesForOutput(Graph& graph,
   pad_node_output_args.push_back(
       &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("padded_result"),
                                 nullptr));
-  pad_node_output_args.push_back(
-      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("padded_d1xd2_shape"),
-                                nullptr));
-
   Node* new_gathergrad_node = InsertIntermediateNodeOnDestInput(
       graph, node,
       in_index,
