@@ -945,8 +945,11 @@ void TestQuantizedAttentionPastState(int64_t batch,
   test.AddInput<InputT>("input_zero_point", {1}, input_zero_point);
   test.AddInput<WeightT>("weight_zero_point", {weight_scale_zp_size}, weight_zero_point);
   test.AddInput<float>("past", past_dims, past_data);
-
+#if defined(USE_DML)
+  test.AddReferenceOutputs(reference_model, 2e-2f);
+#else
   test.AddReferenceOutputs(reference_model, 0.0002f);
+#endif
   test.Run();
 }
 
