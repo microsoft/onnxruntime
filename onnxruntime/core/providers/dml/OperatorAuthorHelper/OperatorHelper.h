@@ -1490,6 +1490,22 @@ private:
     std::vector<int32_t> m_qkvHiddenSizes;
 };
 
+class QAttentionHelper
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    QAttentionHelper(const Info_t& info, const Shape_t& shapeInfo)
+    {
+        Initialize(KernelInformationAdapter(info));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+private:
+    void Initialize(const IKernelInformationAdapter& kernelInformation);
+    uint32_t m_numHeads;
+};
+
 class SkipLayerNormHelper
 {
 public:
@@ -1630,6 +1646,7 @@ using ShapeInferenceHelper_Affine = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QuantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_DequantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QLinearSigmoid = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_QAttention = QAttentionHelper;
 using ShapeInferenceHelper_Attention = AttentionHelper;
 using ShapeInferenceHelper_MultiHeadAttention = MultiHeadAttentionHelper;
 using ShapeInferenceHelper_Sign = GetBroadcastedOutputShapeHelper;
