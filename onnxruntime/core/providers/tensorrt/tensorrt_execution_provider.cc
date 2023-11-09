@@ -2199,7 +2199,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
   // So, simply return the ComputeCapability here.
   if (graph.NumberOfNodes() == 1 && GraphHasCtxNode(graph)) {
-    SubGraph_t supported_node_vector = {{0}, false};
+    SubGraph_t supported_node_vector = {{0}, true};
     std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     return result;
