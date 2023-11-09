@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
+#include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
 
 #ifdef __APPLE__
@@ -22,6 +23,10 @@ class SoftmaxOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override;
 #endif
 
+  // Operator support related
+ private:
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                         const logging::Logger& logger) const override;
 };
 
 // Add operator related
@@ -47,6 +52,23 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 #endif
+
+// Operator support related
+
+bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                         const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger))
+    return false;
+
+  const TensorShape shape(input_shape);
+  if (shape.Size() == 0) {
+    LOGS(logger, VERBOSE) << "Cases that input data being empty due to a dimension with value of 0 is not supported";
+    return false;
+  }
+  return true;
+}
 
 void CreateSoftmaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<SoftmaxOpBuilder>());
