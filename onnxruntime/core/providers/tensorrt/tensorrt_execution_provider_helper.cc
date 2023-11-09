@@ -9,29 +9,29 @@
 namespace onnxruntime {
 
 namespace {
-  // Get unique graph name based on graph's name and all nodes' name
-  std::string GetUniqueGraphName(const Graph& graph) {
-    HashValue model_hash = 0;
-    uint32_t hash[4] = {0, 0, 0, 0};
+// Get unique graph name based on graph's name and all nodes' name
+std::string GetUniqueGraphName(const Graph& graph) {
+  HashValue model_hash = 0;
+  uint32_t hash[4] = {0, 0, 0, 0};
 
-    auto hash_str = [&hash](const std::string& str) {
-      MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
-    };
+  auto hash_str = [&hash](const std::string& str) {
+    MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+  };
 
-    // Hash all nodes' name
-    for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
-      auto node = graph.GetNode(i);
-      if (node == nullptr) {
-        continue;
-      }
-      hash_str(node->Name());
+  // Hash all nodes' name
+  for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
+    auto node = graph.GetNode(i);
+    if (node == nullptr) {
+      continue;
     }
-
-    model_hash = hash[0] | (uint64_t(hash[1]) << 32);
-
-    return graph.Name() + "_" + std::to_string(model_hash);
+    hash_str(node->Name());
   }
+
+  model_hash = hash[0] | (uint64_t(hash[1]) << 32);
+
+  return graph.Name() + "_" + std::to_string(model_hash);
 }
+}  // namespace
 
 // The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
 // Graph::ResolveContext::IsInputInitializerOrOutput(). We have to implement this fuction again.
