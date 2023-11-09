@@ -63,6 +63,8 @@ struct ROCMExecutionProviderInfo {
   // If set to false, use fix workspace size (32M) for Conv algo search, the final algo might not be the best.
   bool miopen_conv_use_max_workspace{true};
 
+  bool enable_hip_graph{false};
+
   rocm::TunableOpInfo tunable_op{};
 
   static ROCMExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
