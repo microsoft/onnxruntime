@@ -2,14 +2,14 @@
 set -e -x
 BUILD_CONFIG="Release"
 
-while getopts "i:d:x:c:u:" parameter_Option
+while getopts "i:d:xc:u:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
 d) DEVICE=${OPTARG};;
-x) BUILD_EXTR_PAR=${OPTARG:-""};;
+x) BUILD_EXTR_PAR=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-u) CUDA_VERSION=${OPTARG:-""};;
+u) CUDA_VERSION=${OPTARG};;
 *) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-u <cuda_version>]"
    exit 1;;
 esac
