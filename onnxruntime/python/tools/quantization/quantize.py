@@ -370,6 +370,12 @@ def quantize_static(
                     `com.microsoft` domain, which forces use of ONNX Runtime's QuantizeLinear and DequantizeLinear
                     contrib op implementations. The contrib op implementations may support features not standardized
                     into the ONNX specification (e.g., 16-bit quantization types).
+                MinimumRealRange = float|None :
+                    Default is None. If set to a floating-point value, the calculation of the quantization parameters
+                    (i.e., scale and zero point) will enforce a minimum range between rmin and rmax. If (rmax - rmin)
+                    is less than the specified minimum range, rmax will be set to rmin + MinimumRealRange. This is
+                    necessary for EPs like QNN that require a minimum floating-point range when determining
+                    quantization parameters.
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
         if calibrate_method != CalibrationMethod.Distribution:
