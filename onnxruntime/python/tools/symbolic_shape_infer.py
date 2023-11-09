@@ -24,7 +24,7 @@ def get_attribute(node, attr_name, default_value=None):
 
 
 def get_dim_from_proto(dim):
-    return getattr(dim, dim.WhichOneof("value")) if type(dim.WhichOneof("value")) is str else None
+    return getattr(dim, dim.WhichOneof("value")) if type(dim.WhichOneof("value")) is str else None  # noqa: E721
 
 
 def is_sequence(type_proto):
@@ -82,7 +82,7 @@ def handle_negative_axis(axis, rank):
 
 def get_opset(mp, domain=None):
     domain = domain or ["", "onnx", "ai.onnx"]
-    if type(domain) != list:
+    if type(domain) != list:  # noqa: E721
         domain = [domain]
     for opset in mp.opset_import:
         if opset.domain in domain:
@@ -92,7 +92,7 @@ def get_opset(mp, domain=None):
 
 
 def as_scalar(x):
-    if type(x) == list:
+    if type(x) == list:  # noqa: E721
         assert len(x) == 1
         return x[0]
     elif type(x) == np.ndarray:
@@ -102,7 +102,7 @@ def as_scalar(x):
 
 
 def as_list(x, keep_none):
-    if type(x) == list:
+    if type(x) == list:  # noqa: E721
         return x
     elif type(x) == np.ndarray:
         return list(x)
@@ -113,7 +113,7 @@ def as_list(x, keep_none):
 
 
 def sympy_reduce_product(x):
-    if type(x) == list:
+    if type(x) == list:  # noqa: E721
         value = sympy.Integer(1)
         for v in x:
             value = value * v
@@ -250,7 +250,7 @@ class SymbolicShapeInference:
         self.prefix_ = prefix
 
     def _add_suggested_merge(self, symbols, apply=False):
-        assert all([(type(s) == str and s in self.symbolic_dims_) or is_literal(s) for s in symbols])
+        assert all([(type(s) == str and s in self.symbolic_dims_) or is_literal(s) for s in symbols])  # noqa: E721
         symbols = set(symbols)
         for k, v in self.suggested_merge_.items():
             if k in symbols:
@@ -320,7 +320,7 @@ class SymbolicShapeInference:
         )
 
     def _merge_symbols(self, dims):
-        if not all([type(d) == str for d in dims]):
+        if not all([type(d) == str for d in dims]):  # noqa: E721
             if self.auto_merge_:
                 unique_dims = list(set(dims))
                 is_int = [is_literal(d) for d in unique_dims]
@@ -403,7 +403,7 @@ class SymbolicShapeInference:
     def _get_sympy_shape(self, node, idx):
         sympy_shape = []
         for d in self._get_shape(node, idx):
-            if type(d) == str:
+            if type(d) == str:  # noqa: E721
                 sympy_shape.append(
                     self.symbolic_dims_[d]
                     if d in self.symbolic_dims_
@@ -429,7 +429,7 @@ class SymbolicShapeInference:
 
     def _update_computed_dims(self, new_sympy_shape):
         for i, new_dim in enumerate(new_sympy_shape):
-            if not is_literal(new_dim) and type(new_dim) != str:
+            if not is_literal(new_dim) and type(new_dim) != str:  # noqa: E721
                 str_dim = str(new_dim)
                 if str_dim in self.suggested_merge_:
                     if is_literal(self.suggested_merge_[str_dim]):
@@ -557,7 +557,7 @@ class SymbolicShapeInference:
         # for new symbolic dims from subgraph output, add to main graph symbolic dims
         subgraph_shapes = [get_shape_from_value_info(o) for o in symbolic_shape_inference.out_mp_.graph.output]
         subgraph_new_symbolic_dims = {
-            d for s in subgraph_shapes if s for d in s if type(d) == str and d not in self.symbolic_dims_
+            d for s in subgraph_shapes if s for d in s if type(d) == str and d not in self.symbolic_dims_  # noqa: E721
         }
         new_dims = {}
         for d in subgraph_new_symbolic_dims:
@@ -892,7 +892,7 @@ class SymbolicShapeInference:
             if all([d == dims[0] for d in dims]):
                 continue
             merged = self._merge_symbols(dims)
-            if type(merged) == str:
+            if type(merged) == str:  # noqa: E721
                 sympy_shape[d] = self.symbolic_dims_[merged] if merged else None
             else:
                 sympy_shape[d] = merged
@@ -932,7 +932,7 @@ class SymbolicShapeInference:
         sympy_shape = self._get_int_or_float_values(node)[0]
         vi = self.known_vi_[node.output[0]]
         if sympy_shape is not None:
-            if type(sympy_shape) != list:
+            if type(sympy_shape) != list:  # noqa: E721
                 sympy_shape = [sympy_shape]
             self._update_computed_dims(sympy_shape)
             # update sympy data if output type is int, and shape is known
@@ -1072,7 +1072,7 @@ class SymbolicShapeInference:
             idx = self._try_get_value(node, 1)
             if idx is not None:
                 data = self.sympy_data_[node.input[0]]
-                if type(data) == list:
+                if type(data) == list:  # noqa: E721
                     if type(idx) == np.ndarray and len(idx.shape) == 1:
                         self.sympy_data_[node.output[0]] = [data[int(i)] for i in idx]
                     else:
@@ -1875,7 +1875,7 @@ class SymbolicShapeInference:
             and len(steps) == 1
         ):
             input_sympy_data = self.sympy_data_[node.input[0]]
-            if type(input_sympy_data) == list or (
+            if type(input_sympy_data) == list or (  # noqa: E721
                 type(input_sympy_data) == np.array and len(input_sympy_data.shape) == 1
             ):
                 self.sympy_data_[node.output[0]] = input_sympy_data[starts[0] : ends[0] : steps[0]]
@@ -1943,7 +1943,7 @@ class SymbolicShapeInference:
             # For symbolic dimensions we guess they are !=1.
             output_shape = [s for s in input_shape if s != 1]
             if self.verbose_ > 0:
-                symbolic_dimensions = [s for s in input_shape if type(s) != int]
+                symbolic_dimensions = [s for s in input_shape if type(s) != int]  # noqa: E721
                 if len(symbolic_dimensions) > 0:
                     logger.debug(
                         f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
@@ -1956,8 +1956,8 @@ class SymbolicShapeInference:
                 if i not in axes:
                     output_shape.append(input_shape[i])
                 else:
-                    assert input_shape[i] == 1 or type(input_shape[i]) != int
-                    if self.verbose_ > 0 and type(input_shape[i]) != int:
+                    assert input_shape[i] == 1 or type(input_shape[i]) != int  # noqa: E721
+                    if self.verbose_ > 0 and type(input_shape[i]) != int:  # noqa: E721
                         logger.debug(
                             f"Symbolic dimensions in input shape of op: '{node.op_type}' node: '{node.name}'. "
                             f"Assuming the dimension '{input_shape[i]}' at index {i} of the input to be equal to 1."
@@ -2462,7 +2462,7 @@ class SymbolicShapeInference:
         vi.CopyFrom(helper.make_tensor_value_info(node.output[output_index], output_dtype, shape))
 
     def _is_none_dim(self, dim_value):
-        if type(dim_value) != str:
+        if type(dim_value) != str:  # noqa: E721
             return False
         if "unk__" not in dim_value:
             return False
@@ -2496,7 +2496,7 @@ class SymbolicShapeInference:
                     # some models use None for symbolic dim in input, replace it with a string
                     input_dims[i_dim].dim_param = str(self._new_symbolic_dim(i.name, i_dim))
 
-            self.input_symbols_.update([d for d in input_shape if type(d) == str])
+            self.input_symbols_.update([d for d in input_shape if type(d) == str])  # noqa: E721
 
         for s in self.input_symbols_:
             if s in self.suggested_merge_:
