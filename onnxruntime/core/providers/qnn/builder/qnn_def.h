@@ -48,6 +48,14 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpBalanced,
 };
 
+enum class ContextPriority : uint8_t {
+  LOW = 0,
+  NORMAL,
+  NORMAL_HIGH,
+  HIGH,
+  UNDEFINED
+};
+
 // Defines the graph optimization strategy used by the HTP backend.
 enum class HtpGraphFinalizationOptimizationMode : uint8_t {
   kDefault = 0,
