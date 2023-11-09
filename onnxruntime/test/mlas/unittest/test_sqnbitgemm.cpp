@@ -257,6 +257,7 @@ static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   count += SQNBitGemmShortExecuteTest<4, 32>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 64>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 128>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<4, 256>::RegisterShortExecuteTests();
 
   return count;
 }

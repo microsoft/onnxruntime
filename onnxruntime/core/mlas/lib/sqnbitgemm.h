@@ -288,6 +288,7 @@ enum QuantVariant {
     QuantVariant_BitWidth4_BlockSize32,
     QuantVariant_BitWidth4_BlockSize64,
     QuantVariant_BitWidth4_BlockSize128,
+    QuantVariant_BitWidth4_BlockSize256,
     QuantVariantCount,  // Keep this element last and ensure that its value is the number of other QuantVariant values.
                         // Its value is used as an array size.
 };

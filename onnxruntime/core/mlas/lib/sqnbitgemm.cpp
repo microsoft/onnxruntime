@@ -33,6 +33,8 @@ GetDispatchQuantVariant(size_t BlkBitWidth, size_t BlkLen)
         type = QuantVariant_BitWidth4_BlockSize64;
     } else if (BlkBitWidth == 4 && BlkLen == 128) {
         type = QuantVariant_BitWidth4_BlockSize128;
+    } else if (BlkBitWidth == 4 && BlkLen == 256) {
+        type = QuantVariant_BitWidth4_BlockSize256;
     }
 
     return type;
