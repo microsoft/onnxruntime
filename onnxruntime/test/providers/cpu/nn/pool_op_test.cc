@@ -1735,5 +1735,23 @@ TEST(PoolTest, MaxPoolDimWithZeroForN) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(PoolTest, MaxPoolOutputCeilModeSizeReduceByOne) {
+  OpTester test("MaxPool", 12);
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("pads", vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{1});
+  test.AddAttribute("ceil_mode", static_cast<int64_t>(1));
+
+  std::vector<float> x_vals = {1, 2,};
+  std::vector<int64_t> x_dims = {1, 1, 2};  // N of 0 should be handled
+  std::vector<int64_t> expected_dims = {1, 1, 1};
+  std::vector<float> expected_vals = {2};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
