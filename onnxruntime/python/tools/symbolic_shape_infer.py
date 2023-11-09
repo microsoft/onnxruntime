@@ -1604,6 +1604,7 @@ class SymbolicShapeInference:
         input_sympy_shape = self._get_sympy_shape(node, 0)
         if get_opset(self.out_mp_) <= 10:
             scales = self._try_get_value(node, 1)
+            scales = [int(s) if s == int(s) else s for s in scales]
             if scales is not None:
                 new_sympy_shape = [sympy.simplify(sympy.floor(d * s)) for d, s in zip(input_sympy_shape, scales)]
                 self._update_computed_dims(new_sympy_shape)
@@ -1617,6 +1618,7 @@ class SymbolicShapeInference:
         else:
             roi = self._try_get_value(node, 1)
             scales = self._try_get_value(node, 2)
+            scales = [int(s) if s == int(s) else s for s in scales]
             sizes = self._try_get_value(node, 3)
             if sizes is not None:
                 new_sympy_shape = [sympy.simplify(sympy.floor(s)) for s in sizes]
@@ -2505,7 +2507,16 @@ class SymbolicShapeInference:
                 self.symbolic_dims_[s] = self.symbolic_dims_[s_merge]
             else:
                 # Since inputs are not produced by other ops, we can assume positivity
-                self.symbolic_dims_[s] = sympy.Symbol(s, integer=True, positive=True)
+                expr = sympy.parsing.sympy_parser.parse_expr(s, transformations=(
+                    sympy.parsing.sympy_parser.standard_transformations + 
+                    (sympy.parsing.sympy_parser.implicit_multiplication_application,)
+                ))
+                if isinstance(expr, sympy.Symbol):
+                    self.symbolic_dims_[s] = sympy.Symbol(s, integer=True, positive=True)
+                else:
+                    for fs in expr.free_symbols:
+                        expr = expr.subs({fs: sympy.Symbol(str(fs), integer=True, positive=True)})
+                    self.symbolic_dims_[s] = expr
         # create a temporary ModelProto for single node inference
         # note that we remove initializer to have faster inference
         # for tensor ops like Reshape/Tile/Expand that read initializer, we need to do sympy computation based inference anyways
