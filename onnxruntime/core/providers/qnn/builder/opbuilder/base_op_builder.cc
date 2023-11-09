@@ -128,8 +128,11 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
 
     TensorInfo output_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[output_i], output_info));
-    ORT_RETURN_IF_ERROR(OverrideOutputQuantParam(qnn_model_wrapper, node_unit, logger, input_names,
-                                                 output_i, output_info.qnn_data_type, output_info.quant_param));
+
+    if (output_info.quant_param.encodingDefinition == QNN_DEFINITION_DEFINED) {
+      ORT_RETURN_IF_ERROR(OverrideOutputQuantParam(qnn_model_wrapper, node_unit, logger, input_names,
+                                                   output_i, output_info.qnn_data_type, output_info.quant_param));
+    }
 
     Qnn_DataType_t supported_qnn_data_type = GetSupportedOutputDataType(output_i, output_info.qnn_data_type);
     bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);

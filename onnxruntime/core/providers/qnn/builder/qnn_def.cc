@@ -207,7 +207,7 @@ bool AreQnnQParamsEqual(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeP
     return false;
   }
 
-  if (qparam0.encodingDefinition != QNN_DEFINITION_UNDEFINED) {
+  if (qparam0.encodingDefinition == QNN_DEFINITION_DEFINED) {
     switch (qparam0.quantizationEncoding) {
       case QNN_QUANTIZATION_ENCODING_SCALE_OFFSET:
         return qparam0.scaleOffsetEncoding.offset == qparam1.scaleOffsetEncoding.offset &&
