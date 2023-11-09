@@ -71,7 +71,7 @@ jobs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
         # please check ONNXRUNTIME_CUDA_VERSION in tools/ci_build/github/linux/build_linux_python_package.sh
-        arguments: -i onnxruntimecuda118xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} -x ${{ parameters.extra_build_arg }} -u ${{ parameters.cuda_version }}
+        arguments: -i onnxruntimecuda118xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} -u ${{ parameters.cuda_version }} -x ${{ parameters.extra_build_arg }}
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'

@@ -15,10 +15,12 @@ do case "${parameter_Option}"
 in
 #GPU or CPU.
 d) BUILD_DEVICE=${OPTARG};;
-p) PYTHON_EXES=(${OPTARG});;
-x) EXTRA_ARG=(${OPTARG});;
+p) PYTHON_EXES=("${OPTARG}");;
+x) EXTRA_ARG=("${OPTARG}");;
 c) BUILD_CONFIG=${OPTARG};;
 u) CUDA_VERSION=${OPTARG};;
+*) echo "Usage: $0 -d <GPU|CPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>] [-u <cuda_version>]"
+   exit 1;;
 esac
 done
 
@@ -49,7 +51,7 @@ if [ "$ARCH" == "x86_64" ] && [ "$GCC_VERSION" -ge 9 ]; then
 fi
 
 echo "EXTRA_ARG:"
-echo $EXTRA_ARG
+echo "$EXTRA_ARG"
 
 if [ "$EXTRA_ARG" != "" ]; then
     BUILD_ARGS+=("$EXTRA_ARG")
