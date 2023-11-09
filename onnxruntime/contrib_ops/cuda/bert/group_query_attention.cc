@@ -47,7 +47,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   is_unidirectional_ = true;
   // left_padding_ = info.GetAttrOrDefault<int64_t>("left_padding_last_token", 0) == 1;
   is_past_bsnh_ = false;  // info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
-  local_window_size_ = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
+  local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
 #if USE_FLASH_ATTENTION
