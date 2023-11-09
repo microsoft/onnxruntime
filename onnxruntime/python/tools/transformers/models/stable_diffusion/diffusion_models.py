@@ -463,7 +463,7 @@ class CLIP(BaseModel):
 
         assert self.clip_skip >= 0 and self.clip_skip < hidden_layers
 
-        node_output_name = "/text_model/encoder/layers.{}/Add_1_output_0".format(hidden_layers - 1 - self.clip_skip)
+        node_output_name = f"/text_model/encoder/layers.{hidden_layers - 1 - self.clip_skip}/Add_1_output_0"
 
         # search the name in outputs of all node
         found = False
