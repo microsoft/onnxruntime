@@ -44,6 +44,7 @@ const SOURCE_ROOT_FOLDER = path.join(__dirname, '../..');  // <ORT_ROOT>/js/
 const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WEBGL': 'false',
   'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+  'BUILD_DEFS.DISABLE_WEBNN': 'true',  // Disable WebNN until CI is ready.
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
@@ -370,6 +371,7 @@ async function main() {
     await addBuildTask(buildOrt({
       outputBundleName: 'ort.all',
       format: 'iife',
+      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBNN': 'false'}
     }));
   }
 

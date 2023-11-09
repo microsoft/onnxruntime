@@ -137,8 +137,9 @@ async function loadTensors(
 }
 
 async function initializeSession(
-    modelFilePath: string, backendHint: string, ioBindingMode: Test.IOBindingMode, profile: boolean,
-    sessionOptions: ort.InferenceSession.SessionOptions, fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
+    modelFilePath: string, backendHint: ort.InferenceSession.ExecutionProviderConfig, ioBindingMode: Test.IOBindingMode,
+    profile: boolean, sessionOptions: ort.InferenceSession.SessionOptions,
+    fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
   const preloadModelData: Uint8Array|undefined =
       fileCache && fileCache[modelFilePath] ? fileCache[modelFilePath] : undefined;
   Logger.verbose(
@@ -232,9 +233,8 @@ export class ModelTestContext {
   /**
    * create a ModelTestContext object that used in every test cases in the given ModelTest.
    */
-  static async create(
-      modelTest: Test.ModelTest, profile: boolean,
-      sessionOptions?: ort.InferenceSession.SessionOptions): Promise<ModelTestContext> {
+  static async create(modelTest: Test.ModelTest, profile: boolean, testOptions?: Test.Options):
+      Promise<ModelTestContext> {
     if (this.initializing) {
       throw new Error('cannot create a ModelTestContext object when the previous creation is not done');
     }
@@ -243,8 +243,14 @@ export class ModelTestContext {
       this.initializing = true;
 
       const initStart = now();
-      const session = await initializeSession(
-          modelTest.modelUrl, modelTest.backend!, modelTest.ioBinding, profile, sessionOptions || {}, this.cache);
+      const session = modelTest.backend == 'webnn' ?
+          await initializeSession(
+              modelTest.modelUrl, testOptions?.webnnOptions || 'webnn', modelTest.ioBinding, profile,
+              testOptions?.sessionOptions || {} || {}, this.cache) :
+          await initializeSession(
+              modelTest.modelUrl, modelTest.backend!, modelTest.ioBinding, profile, testOptions?.sessionOptions || {},
+              this.cache);
+
       const initEnd = now();
 
       for (const testCase of modelTest.cases) {

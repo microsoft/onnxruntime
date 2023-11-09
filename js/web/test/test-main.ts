@@ -110,8 +110,7 @@ for (const group of ORT_WEB_TEST_CONFIG.model) {
         let context: ModelTestContext;
 
         before('prepare session', async () => {
-          context = await ModelTestContext.create(
-              test, ORT_WEB_TEST_CONFIG.profile, ORT_WEB_TEST_CONFIG.options.sessionOptions);
+          context = await ModelTestContext.create(test, ORT_WEB_TEST_CONFIG.profile, ORT_WEB_TEST_CONFIG.options);
         });
 
         after('release session', async () => {
