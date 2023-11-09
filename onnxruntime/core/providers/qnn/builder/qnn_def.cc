@@ -235,7 +235,7 @@ bool AreQnnQParamsEqual(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeP
         const Qnn_BwScaleOffset_t& vals1 = qparam1.bwScaleOffsetEncoding;
 
         return vals0.bitwidth == vals1.bitwidth && vals0.offset == vals1.offset &&
-            std::abs(vals0.scale - vals1.scale) <= scale_epsilon;
+               std::abs(vals0.scale - vals1.scale) <= scale_epsilon;
       }
       case QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET: {
         const Qnn_BwAxisScaleOffset_t& vals0 = qparam0.bwAxisScaleOffsetEncoding;
