@@ -58,15 +58,15 @@ jobs:
         if: contains(matrix.target, 'x86_64-apple-darwin')
         run: brew install libomp
       - name: Build (cargo build)
-        run: cargo build --all --manifest-path ${{ env.MANIFEST_PATH }}
+        run: cargo build --all --target ${{ matrix.target }} --manifest-path ${{ env.MANIFEST_PATH }}
       - name: Build tests (cargo test)
-        run: cargo test --no-run --manifest-path ${{ env.MANIFEST_PATH }}
+        run: cargo test --target ${{ matrix.target }} --no-run --manifest-path ${{ env.MANIFEST_PATH }}
       - name: Build onnxruntime with 'model-fetching' feature
-        run: cargo build --manifest-path ${{ env.MANIFEST_PATH }} --features model-fetching
+        run: cargo build --target ${{ matrix.target }} --manifest-path ${{ env.MANIFEST_PATH }} --features model-fetching
       - name: Test onnxruntime-sys
-        run: cargo test --package onnxruntime-sys -- --test-threads=1 --nocapture
+        run: cargo test --target ${{ matrix.target }} --package onnxruntime-sys -- --test-threads=1 --nocapture
       - name: Test onnxruntime
-        run: cargo test --manifest-path ${{ env.MANIFEST_PATH }} --features model-fetching -- --test-threads=1 --nocapture
+        run: cargo test --target ${{ matrix.target }} --manifest-path ${{ env.MANIFEST_PATH }} --features model-fetching -- --test-threads=1 --nocapture
 
   clippy:
     name: Clippy
