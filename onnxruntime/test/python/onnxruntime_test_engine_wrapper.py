@@ -3,11 +3,12 @@
 
 import os
 import unittest
-from typing import Dict, List
+
 import numpy as np
-from helper import get_name
 import onnx
+from helper import get_name
 from onnx import TensorProto, helper
+
 import onnxruntime as onnxrt
 
 
