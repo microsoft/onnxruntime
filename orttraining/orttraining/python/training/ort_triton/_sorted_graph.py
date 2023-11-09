@@ -39,10 +39,11 @@ class SortedGraph:
         # For elementwise graph outputs, when we group nodes to different kernels, if the target shape is different
         # from other nodes' target shape, even it can be broadcasted, we still need to create a new kernel for it.
         self._elementwise_graph_outputs: Set[str] = set()
+        graph_output_names = [output.name for output in self._graph.output]
         for node in self._graph.node:
             if is_elementwise_node(node):
                 self._elementwise_graph_outputs.update(
-                    [output for output in node.output if output in self._graph.output]
+                    [output for output in node.output if output in graph_output_names]
                 )
 
         # Topological sort the nodes in the graph.
