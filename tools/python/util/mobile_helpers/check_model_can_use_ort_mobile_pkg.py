@@ -12,7 +12,7 @@ import sys
 import onnx
 from onnx import shape_inference
 
-from ..onnx_model_utils import get_opsets_imported
+from ..onnx_model_utils import ModelProtoWithShapeInfo, get_opsets_imported
 from ..reduced_build_config_parser import parse_config
 
 cpp_to_tensorproto_type = {
@@ -265,15 +265,13 @@ def run_check(model_path: pathlib.Path, mobile_pkg_build_config: pathlib.Path, l
     )
 
     model_file = model_path.resolve(strict=True)
-    model = onnx.load(str(model_file))
 
     # we need to run shape inferencing to populate that type info for node outputs.
     # we will get warnings if the model uses ORT contrib ops (ONNX does not have shape inferencing for those),
     # and shape inferencing will be lost downstream of those.
     # TODO: add support for checking ORT format model as it will have full type/shape info for all nodes
-    model_with_type_info = shape_inference.infer_shapes(model)
-
-    return run_check_with_model(model_with_type_info, mobile_pkg_build_config, logger)
+    model_wrapper = ModelProtoWithShapeInfo(model_file)
+    return run_check_with_model(model_wrapper.model_with_shape_info, mobile_pkg_build_config, logger)
 
 
 def main():

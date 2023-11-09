@@ -95,6 +95,7 @@ def optimize_model(
     output_path: pathlib.Path,
     level: ort.GraphOptimizationLevel = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC,
     log_level: int = 3,
+    use_external_initializers: bool = False,
 ):
     """
     Optimize an ONNX model using ONNX Runtime to the specified level
@@ -103,11 +104,24 @@ def optimize_model(
     :param level: onnxruntime.GraphOptimizationLevel to use. Default is ORT_ENABLE_BASIC.
     :param log_level: Log level. Defaults to Error (3) so we don't get output about unused initializers being removed.
                       Warning (2) or Info (1) may be desirable in some scenarios.
+    :param use_external_initializers: Set flag to write initializers to an external file. Required if model > 2GB.
+                                      Requires onnxruntime 1.17+
     """
     so = ort.SessionOptions()
     so.optimized_model_filepath = str(output_path.resolve())
     so.graph_optimization_level = level
     so.log_severity_level = log_level
+
+    # save using external initializers so models > 2 GB are handled
+    if use_external_initializers:
+        major, minor, rest = ort.__version__.split(".", 3)
+        if int(major) > 1 or (int(major) == 1 and int(minor) >= 17):
+            so.add_session_config_entry("session.optimized_model_external_initializers_file_name", "external_data.pb")
+        else:
+            raise ValueError(
+                "ONNX Runtime 1.17 or higher required to save initializers as external data when optimizing model. "
+                f"Current ONNX Runtime version is {ort.__version__}"
+            )
 
     # create session to optimize. this will write the updated model to output_path
     _ = ort.InferenceSession(str(model_path.resolve(strict=True)), so, providers=["CPUExecutionProvider"])
@@ -366,3 +380,33 @@ def get_optimization_level(level):
         return ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     raise ValueError("Invalid optimization level of " + level)
+
+
+class ModelProtoWithShapeInfo:
+    """
+    Class to load an ONNX model and run shape inferencing on it to populate the ValueInfo.
+    The model_with_shape_info property will contain the updated model.
+    If the model is > 2GB and uses external data a temporary file is required to run shape inferencing successfully.
+    This helper class handle automatic removal of the temporary file.
+    """
+
+    def __init__(self, model_path: pathlib.Path):
+        """
+        :param model_path: Path to ONNX model to load and run shape inferencing on.
+        """
+
+        self.model_path = model_path
+
+        model = onnx.load(str(model_path))
+        self.model_with_shape_info = onnx.shape_inference.infer_shapes(model, strict_mode=True)
+
+        # ONNX has a silent failure from the call to infer_shapes when the model is > 2GB.
+        # We detect that by checking the nodes in the returned model.
+        self._tmp_model_path = None
+        if len(model.graph.node) > 0 and len(self.model_with_shape_info.graph.node) == 0:
+            self._tmp_model_path = pathlib.Path(model_path).with_suffix(".temp_with_shapeinf.onnx")
+            onnx.shape_inference.infer_shapes_path(str(model_path), str(self._tmp_model_path))
+            self.model_with_shape_info = onnx.load(str(self._tmp_model_path))
+
+    def __del__(self):
+        self._tmp_model_path.unlink(missing_ok=True)
