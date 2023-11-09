@@ -55,6 +55,14 @@ parameters:
   type: string
   default: 'NONE'
 
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.2'
+  values:
+    - 11.8
+    - 12.2
+
 - name: WindowsTensorRT
   displayName: Windows TensorRT version
   type: string
@@ -63,10 +71,6 @@ parameters:
   displayName: Linux TensorRT version
   type: string
   default: '8.6.1.6-1.cuda12.0'
-- name: CudaVersion
-  displayName: CUDA version
-  type: string
-  default: '12.2'
 - name: DockerBaseImage
   displayName: Docker base image
   type: string
