@@ -64,7 +64,7 @@ jobs:
       - name: Build onnxruntime with 'model-fetching' feature
         run: cargo build --manifest-path ${{ env.MANIFEST_PATH }} --features model-fetching
       - name: Test onnxruntime-sys
-        run: cargo build --package onnxruntime-sys -- --test-threads=1 --nocapture
+        run: cargo test --package onnxruntime-sys -- --test-threads=1 --nocapture
       - name: Test onnxruntime
         run: cargo test --manifest-path ${{ env.MANIFEST_PATH }} --features model-fetching -- --test-threads=1 --nocapture
 

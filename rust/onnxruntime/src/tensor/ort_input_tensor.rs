@@ -46,6 +46,7 @@ where
     T: TypeToTensorElementDataType + Debug,
     D: Dimension,
 {
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn construct<'a>(
         &'a mut self,
         memory_info: &MemoryInfo,

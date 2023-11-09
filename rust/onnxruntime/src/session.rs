@@ -231,7 +231,7 @@ impl<'a> SessionBuilder<'a> {
         assert_null_pointer(status, "SessionStatus")?;
         assert_not_null_pointer(allocator_ptr, "Allocator")?;
 
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, &self.env)?;
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, self.env)?;
         unsafe {
             // Extract input and output properties
             let num_input_nodes =
@@ -295,7 +295,7 @@ impl<'a> SessionBuilder<'a> {
         assert_null_pointer(status, "SessionStatus")?;
         assert_not_null_pointer(allocator_ptr, "Allocator")?;
 
-        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, &self.env)?;
+        let memory_info = MemoryInfo::new(AllocatorType::Arena, MemType::Default, self.env)?;
         unsafe {
             // Extract input and output properties
             let num_input_nodes =
@@ -444,7 +444,7 @@ impl Session {
             let arr = input_arrays.as_mut();
 
             let input_tensors = arr
-                .into_iter()
+                .iter_mut()
                 .map(|v| v.construct(memory_info, allocator))
                 .collect::<Result<Vec<_>>>()?;
 
@@ -513,10 +513,7 @@ impl Session {
             .collect();
         cstrings?;
 
-        outputs?
-            .into_iter()
-            .map(|v| OrtOutput::try_from(v))
-            .collect()
+        outputs?.into_iter().map(OrtOutput::try_from).collect()
     }
 
     fn validate_input_shapes(&self, input_array_shapes: &[Vec<usize>]) -> Result<()> {
@@ -618,7 +615,7 @@ unsafe fn get_tensor_dimensions(
         .then_some(())
         .ok_or(OrtError::InvalidDimensions)?;
 
-    let mut node_dims: Vec<i64> = vec![0; num_dims as usize];
+    let mut node_dims: Vec<i64> = vec![0; num_dims];
     let status = env.env().api().GetDimensions.unwrap()(
         tensor_info_ptr,
         node_dims.as_mut_ptr(), // FIXME: UB?
