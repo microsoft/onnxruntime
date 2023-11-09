@@ -307,7 +307,7 @@ fn main() {
 
     let output_node_names_cstring: Vec<std::ffi::CString> = output_node_names
         .iter()
-        .map(|n| std::ffi::CString::new(n.clone()).unwrap())
+        .map(|n| std::ffi::CString::new(*n).unwrap())
         .collect();
     let output_node_names_ptr: Vec<*const i8> = output_node_names_cstring
         .iter()
