@@ -211,7 +211,7 @@ class AutotuneConfigs:
             if x_numel.is_number
             else int(
                 x_numel.subs(
-                    {symbol: sympy.Integer(extract_shape_from_symbol(symbol)) for symbol in x_numel.free_symbols}
+                    {symbol: sympy.Integer(extract_shape_from_symbol(symbol.name)) for symbol in x_numel.free_symbols}
                 )
             )
         )
@@ -220,7 +220,7 @@ class AutotuneConfigs:
             if r_numel.is_number
             else int(
                 r_numel.subs(
-                    {symbol: sympy.Integer(extract_shape_from_symbol(symbol)) for symbol in r_numel.free_symbols}
+                    {symbol: sympy.Integer(extract_shape_from_symbol(symbol.name)) for symbol in r_numel.free_symbols}
                 )
             )
         )

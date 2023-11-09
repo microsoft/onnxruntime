@@ -9,8 +9,8 @@ from typing import Any, List
 import sympy
 
 
-def extract_shape_from_symbol(symbol: sympy.Symbol) -> int:
-    match = re.match(r"i(\d+)_dim(\d+)_(\d+)", symbol.name)
+def extract_shape_from_symbol(symbol: str) -> int:
+    match = re.match(r"i(\d+)_dim(\d+)_(\d+)", symbol)
     assert match
     return int(match.group(3))
 

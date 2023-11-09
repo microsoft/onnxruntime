@@ -41,7 +41,9 @@ class SortedGraph:
         self._elementwise_graph_outputs: Set[str] = set()
         for node in self._graph.node:
             if is_elementwise_node(node):
-                self._elementwise_graph_outputs.update(node.output)
+                self._elementwise_graph_outputs.update(
+                    [output for output in node.output if output in self._graph.output]
+                )
 
         # Topological sort the nodes in the graph.
         self._sorted_nodes: List[NodeProto] = topological_sort(
