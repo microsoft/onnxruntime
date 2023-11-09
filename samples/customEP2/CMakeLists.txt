@@ -11,7 +11,7 @@ IF (WIN32)
 
 target_include_directories(customep2 PUBLIC "/onnxruntime/include/onnxruntime")
 target_link_directories(customep2 PUBLIC "/onnxruntime/build/windows/debug/debug/")
-target_link_libraries(customep2 PUBLIC onnxruntime)
+# target_link_libraries(customep2 PUBLIC onnxruntime)
 
 ELSE()
 

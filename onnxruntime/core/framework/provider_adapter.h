@@ -24,16 +24,17 @@ class ExternalDataTransfer : public IDataTransfer {
     return external_ep_impl_->CanCopy(src_device, dst_device);
   }
 
-  common::Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    OrtValue src_value, dst_value;
-    const void* src_raw = src.DataRaw();
-    Tensor::InitOrtValue(src.DataType(), src.Shape(), const_cast<void*>(src_raw), src.Location(), src_value, src.ByteOffset());
-    Tensor::InitOrtValue(dst.DataType(), dst.Shape(), dst.MutableDataRaw(), dst.Location(), dst_value, dst.ByteOffset());
+  common::Status CopyTensor(const Tensor& /*src*/, Tensor& /*dst*/) const override {
+    //OrtValue src_value, dst_value;
+    //const void* src_raw = src.DataRaw();
+    //Tensor::InitOrtValue(src.DataType(), src.Shape(), const_cast<void*>(src_raw), src.Location(), src_value, src.ByteOffset());
+    //Tensor::InitOrtValue(dst.DataType(), dst.Shape(), dst.MutableDataRaw(), dst.Location(), dst_value, dst.ByteOffset());
 
-    Ort::ConstValue src_cv{&src_value};
-    Ort::UnownedValue dst_uv{&dst_value};
-    external_ep_impl_->MemoryCpy(dst_uv, src_cv);
-    return Status::OK();
+    //Ort::ConstValue src_cv{&src_value};
+    //Ort::UnownedValue dst_uv{&dst_value};
+    ////external_ep_impl_->MemoryCpy(dst_uv, src_cv);
+    //return Status::OK();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED);
   }
 
  private:
@@ -179,6 +180,31 @@ struct KernelRegistryAdapter : public interface::IKernelRegistry {
   std::vector<BuilderPtr> builders_;
 };
 
+struct AllocatorAdapter : public OrtAllocator {
+  AllocatorAdapter(interface::Allocator* impl) : impl_(impl),
+                                                 mem_info_("",
+                                                           OrtDeviceAllocator,
+                                                           OrtDevice(static_cast<OrtDevice::DeviceType>(impl->dev_type),
+                                                                     OrtDevice::MemType::DEFAULT, 0)) {
+    version = ORT_API_VERSION;
+    OrtAllocator::Alloc = [](struct OrtAllocator* this_, size_t size) -> void* {
+      auto self = reinterpret_cast<AllocatorAdapter*>(this_);
+      return self->impl_->Alloc(size);
+    };
+    OrtAllocator::Free = [](struct OrtAllocator* this_, void* p) {
+      auto self = reinterpret_cast<AllocatorAdapter*>(this_);
+      return self->impl_->Free(p);
+    };
+    OrtAllocator::Info = [](const struct OrtAllocator* this_) {
+      auto self = reinterpret_cast<const AllocatorAdapter*>(this_);
+      return &self->mem_info_;
+    };
+  }
+
+ private:
+  interface::Allocator* impl_;
+  struct OrtMemoryInfo mem_info_;
+};
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class ExecutionProviderAdapter : public IExecutionProvider {
@@ -187,6 +213,9 @@ class ExecutionProviderAdapter : public IExecutionProvider {
       : IExecutionProvider(external_ep->GetType(), external_ep->GetDevice()), external_ep_impl_(external_ep) {
     external_ep_impl_->RegisterKernels(kernel_registry_);
     kernel_registry_.BuildKernels();
+    for (auto& allocator : external_ep_impl_->GetAllocators()) {
+      allocators_.push_back(std::make_unique<AllocatorAdapter>(allocator.get()));
+    }
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
@@ -195,11 +224,9 @@ class ExecutionProviderAdapter : public IExecutionProvider {
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override {
     std::vector<AllocatorPtr> ret;
-    std::vector<OrtAllocator*> allocators = external_ep_impl_->GetAllocators();
-    for (auto& allocator : allocators) {
-      AllocatorPtr alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
-      ret.push_back(std::move(alloc_ptr));
-    }
+    std::for_each(allocators_.begin(), allocators_.end(), [&](std::unique_ptr<AllocatorAdapter>& impl) {
+      ret.push_back(std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(impl.get()));
+    });
     return ret;
   }
 
@@ -263,6 +290,7 @@ class ExecutionProviderAdapter : public IExecutionProvider {
   }
 
  private:
+  std::vector<std::unique_ptr<AllocatorAdapter>> allocators_;
   std::unique_ptr<interface::ExecutionProvider> external_ep_impl_;
   KernelRegistryAdapter kernel_registry_;
 };

@@ -20,9 +20,9 @@ class CustomEp : public interface::ExecutionProvider {
   ~CustomEp() override = default;
 
   bool CanCopy(const OrtDevice& src, const OrtDevice& dest) override;
-  void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) override;
+  //void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) override;
 
-  std::vector<std::unique_ptr<SubGraphDef>> GetCapability(interface::GraphViewRef*) override;
+  std::vector<std::unique_ptr<interface::SubGraphDef>> GetCapability(interface::GraphViewRef*) override;
   void RegisterKernels(interface::IKernelRegistry&) override;
 
   common::Status Compile(std::vector<std::unique_ptr<interface::GraphViewRef>>&,
