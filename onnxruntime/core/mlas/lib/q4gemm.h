@@ -42,31 +42,10 @@ MLAS_FORCEINLINE
 void
 MlasBlkQ4DequantB(float* FpData, const uint8_t* PackedB, size_t CountN, size_t CountK, size_t ldb);
 
-MLAS_FORCEINLINE
-void
-MlasAddBiasForGemm(const float* Bias, float* C, size_t CountM, size_t CountN, size_t ldc) {
-    for (size_t m = 0; m < CountM; m++) {
-        const float* bias = Bias;
-        float* sum = C;
-        for (size_t n = 0; n < CountN; n += 4) {
-            if (CountN - n < 4) {
-                for (size_t nn = n; nn < CountN; nn++) {
-                    *sum += *bias;
-                    sum++;
-                    bias++;
-                }
-                break;
-            }
 
-            MLAS_FLOAT32X4 acc_x = MlasLoadFloat32x4(sum);
-            acc_x = MlasAddFloat32x4(acc_x, MlasLoadFloat32x4(bias));
-            MlasStoreFloat32x4(sum, acc_x);
-            bias += 4;
-            sum += 4;
-        }
-        C += ldc;
-    }
-}
+template <typename KERNEL>
+MLAS_FORCEINLINE void
+AddBiasAvx(const float* Bias, float* C, size_t CountM, size_t CountN, size_t ldc);
 
 
 
@@ -156,7 +135,7 @@ MlasQ4GemmOperation(
 #endif
 
             if (bias) {
-                MlasAddBiasForGemm(bias, c_blk, RowsHandled, CountN, ldc);
+                AddBiasAvx<KERNEL>(bias, c_blk, RowsHandled, CountN, ldc);
             }
             if (DataParams->OutputProcessor != nullptr) {
                 DataParams->OutputProcessor->Process(

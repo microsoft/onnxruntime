@@ -1030,6 +1030,40 @@ MlasBlkQ4DequantSgemmPackB(
     }
 }
 
+template<>
+MLAS_FORCEINLINE
+void
+AddBiasAvx<MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>(
+    const float* Bias,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc
+    )
+{
+    for (size_t m = 0; m < CountM; m++) {
+        const float* bias = Bias;
+        float* sum = C;
+        for (size_t n = 0; n < CountN; n += 4) {
+            if (CountN - n < 4) {
+                for (size_t nn = n; nn < CountN; nn++) {
+                    *sum += *bias;
+                    sum++;
+                    bias++;
+                }
+                break;
+            }
+
+            __m128 acc_x = _mm_loadu_ps(sum);
+            acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(bias));
+            _mm_storeu_ps(sum, acc_x);
+            bias += 4;
+            sum += 4;
+        }
+        C += ldc;
+    }
+}
+
 
 static MLAS_Q4GEMM_OPERATION* Q4Operations_avx512vnni[] = {
     MlasQ4GemmOperation<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>,
