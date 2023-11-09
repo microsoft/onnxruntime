@@ -267,9 +267,9 @@ def _combine_input_buffers_initializers(
     else:
         result.extend(params)
 
-    if rt_inspector.is_memory_inspector_enabled() and not rt_inspector.is_symbolic_dim_collecting_completed():
-        rt_inspector.collect_symbolic_dim_values(input_info.dynamic_axes, onnx_input_to_value_map)
-        rt_inspector.complete_symbolic_dim_collecting()
+    if rt_inspector.memory_ob.is_enabled() and not rt_inspector.memory_ob.symbolic_dim_collecting_completed:
+        rt_inspector.memory_ob.collect_symbolic_dim_values(input_info.dynamic_axes, onnx_input_to_value_map)
+        rt_inspector.memory_ob.symbolic_dim_collecting_completed = True
 
     return result, embed_sparsity_results, label_sparsity_results
 

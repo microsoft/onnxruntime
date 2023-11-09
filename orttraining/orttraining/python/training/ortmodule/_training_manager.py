@@ -111,7 +111,7 @@ class TrainingManager(GraphExecutionManager):
 
                 Module outputs are returned to the user
                 """
-                self._runtime_inspector.inspect_memory(Phase.PRE_FORWARD)
+                self._runtime_inspector.memory_ob.inspect_memory(Phase.PRE_FORWARD)
 
                 if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                     # Assert that the input and model device match
@@ -146,7 +146,7 @@ class TrainingManager(GraphExecutionManager):
                 for idx in self._graph_info.output_grad_indices_non_differentiable:
                     ctx.mark_non_differentiable(user_outputs[idx])
 
-                self._runtime_inspector.inspect_memory(Phase.POST_FORWARD)
+                self._runtime_inspector.memory_ob.inspect_memory(Phase.POST_FORWARD)
 
                 return user_outputs
 
@@ -154,7 +154,7 @@ class TrainingManager(GraphExecutionManager):
             def backward(ctx, *grad_outputs):
                 """Performs backward pass based on grad wrt module output"""
 
-                self._runtime_inspector.inspect_memory(Phase.PRE_BACKWARD)
+                self._runtime_inspector.memory_ob.inspect_memory(Phase.PRE_BACKWARD)
 
                 assert ctx.run_info is not None, "forward() or __call__() methods must be called before backward()"
                 if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
@@ -205,7 +205,7 @@ class TrainingManager(GraphExecutionManager):
                 # This version only works if backward_outputs is an OrtValueVector.
                 transferred_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
 
-                self._runtime_inspector.inspect_memory(Phase.POST_BACKWARD)
+                self._runtime_inspector.memory_ob.inspect_memory(Phase.POST_BACKWARD)
 
                 return tuple(transferred_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
 
@@ -432,7 +432,7 @@ class TrainingManager(GraphExecutionManager):
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
 
-        if self._runtime_inspector.is_memory_inspector_enabled() and self._debug_options.log_level <= LogLevel.INFO:
+        if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.log_level <= LogLevel.INFO:
             # Create a training agent without enabling memory optimization.
             execution_agent = TrainingAgent(
                 self._onnx_models.optimized_model.SerializeToString(),
@@ -446,7 +446,7 @@ class TrainingManager(GraphExecutionManager):
                 local_device_rank,
             )
 
-            self._runtime_inspector.find_memory_optimization_opportunity(
+            self._runtime_inspector.memory_ob.find_memory_optimization_opportunity(
                 execution_agent, self._runtime_options.memory_optimizer_config, self._runtime_options.probe_level
             )
 
