@@ -331,8 +331,8 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
 TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
                      true,     // use_htp
-                     false,    // 
-                     "",
+                     false,    // enable_qnn_saver
+                     "",       // htp_graph_finalization_opt_mode
                      "high");  // qnn_context_priority
 }
 
