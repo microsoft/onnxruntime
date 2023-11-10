@@ -57,6 +57,13 @@ def get_args():
     )
 
     parser.add_argument(
+        "--hf-deepspeed",
+        default=False,
+        action="store_true",
+        help="Benchmark in PyTorch with `DeepSpeed Inference`",
+    )
+
+    parser.add_argument(
         "--hf-ort-dir-path",
         type=str,
         default="",
@@ -310,6 +317,38 @@ def main():
         ]
         logger.info("Benchmark PyTorch with torch.compile")
         results = benchmark(args, benchmark_cmd, "pytorch-compile")
+        all_results.extend(results)
+
+    # Benchmark PyTorch with DeepSpeed inference
+    if args.hf_deepspeed:
+        benchmark_cmd = [
+            "python",
+            "-m",
+            "models.llama.benchmark",
+            "--benchmark-type",
+            "hf-deepspeed",
+            "--model-name",
+            args.model_name,
+            "--precision",
+            args.precision,
+            "--batch-sizes",
+            args.batch_sizes,
+            "--sequence-lengths",
+            args.sequence_lengths,
+            "--device",
+            args.device,
+            "--device-id",
+            str(args.device_id),
+            "--warmup-runs",
+            str(args.warmup_runs),
+            "--num-runs",
+            str(args.num_runs),
+            "--log-folder",
+            args.log_folder,
+            "--auth",
+        ]
+        logger.info("Benchmark PyTorch with DeepSpeed Inference")
+        results = benchmark(args, benchmark_cmd, "pytorch-deepspeed")
         all_results.extend(results)
 
     # Benchmark Optimum + ONNX Runtime

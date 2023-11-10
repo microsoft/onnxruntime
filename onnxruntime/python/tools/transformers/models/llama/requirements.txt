@@ -6,3 +6,6 @@ torch
 onnx>=1.14.0
 datasets>=2.8.0
 protobuf==3.20.2
+psutil>=5.9.6
+deepspeed>=0.10.3
+py3nvml>=0.2.7

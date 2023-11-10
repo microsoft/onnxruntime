@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # For determining whether the ONNX model can do both prompt generation and token generation or only one of the two
 def get_ort_model_inputs_len(args, model):
-    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
+    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile", "hf-deepspeed"}:
         return 0
     if args.benchmark_type == "hf-ort":
         try:
@@ -52,7 +52,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
     # Set max_seq_len to 2048 for Microsoft model since that is the max value currently supported
     max_seq_len = 2048
 
-    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
+    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile", "hf-deepspeed"}:
         init_inputs = get_sample_inputs(
             args.config,
             args.target_device,
@@ -203,7 +203,7 @@ def get_model(args: argparse.Namespace):
     # 4) Benchmark LLaMA-2 from Microsoft (already optimized, available at https://github.com/microsoft/Llama-2-Onnx)
     # 5) Benchmark LLaMA-2 from convert_to_onnx
 
-    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
+    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile", "hf-deepspeed"}:
         source = args.hf_pt_dir_path if args.hf_pt_dir_path else args.model_name
         start_time = time.time()
         model = LlamaForCausalLM.from_pretrained(
@@ -212,10 +212,22 @@ def get_model(args: argparse.Namespace):
             use_auth_token=args.auth,
             use_cache=True,
         ).to(args.target_device)
-        end_time = time.time()
+
+        if args.benchmark_type == "hf-deepspeed":
+            import deepspeed
+
+            ds_engine = deepspeed.init_inference(model,
+                                                 mp_size=1,
+                                                 dtype=torch.half if args.use_fp16 else torch.float32,
+                                                 checkpoint=None,
+                                                 max_out_tokens=2047,
+                                                 replace_with_kernel_inject=True
+                                                )
+            model = ds_engine.module
 
         if args.benchmark_type == "hf-pt-compile":
             model = torch.compile(model)
+        end_time = time.time()
 
     elif args.benchmark_type in {"hf-ort", "ort-msft", "ort-convert-to-onnx"}:
         sess_options = ort.SessionOptions()
@@ -326,7 +338,7 @@ def profile_fn(args, fn, inputs, inputs_type):
     prefix = f"b{args.batch_size}_s{args.sequence_length}_{args.benchmark_type.lower()}-{args.precision}-{args.device}_{fn.__name__.replace('_', '-')}_{inputs_type}_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}"
     filename = None
 
-    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
+    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile", "hf-deepspeed"}:
         # Profile PyTorch kernels
         with profile(  # noqa: SIM117
             activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True
@@ -515,7 +527,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
 
 
 def run_inference(args, init_inputs, iter_inputs, model):
-    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile", "hf-ort"}:
+    if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile", "hf-deepspeed", "hf-ort"}:
         run_hf_inference(args, init_inputs, iter_inputs, model)
     elif args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}:
         run_ort_inference(args, init_inputs, iter_inputs, model)
@@ -530,7 +542,7 @@ def get_args():
         "--benchmark-type",
         type=str,
         required=True,
-        choices=["hf-pt-eager", "hf-pt-compile", "hf-ort", "ort-msft", "ort-convert-to-onnx"],
+        choices=["hf-pt-eager", "hf-pt-compile", "hf-deepspeed", "hf-ort", "ort-msft", "ort-convert-to-onnx"],
     )
     parser.add_argument(
         "-m",
