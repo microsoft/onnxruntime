@@ -85,23 +85,11 @@ stages:
 
       - template: telemetry-steps.yml
 
-      - ${{ if eq(parameters['buildJava'], 'true') }}:
-        - task: JavaToolInstaller@0
-          inputs:
-            versionSpec: "11"
-            jdkArchitectureOption: ${{ parameters.buildArch }}
-            jdkSourceOption: 'PreInstalled'
-
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.8'
           addToPath: true
           architecture: ${{ parameters.buildArch }}
-
-      - task: NodeTool@0
-        condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
-        inputs:
-          versionSpec: '18.x'
 
       - template: jobs/set-winenv.yml
         parameters:

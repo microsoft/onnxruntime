@@ -30,10 +30,10 @@ steps:
         displayName: 'Download Secondary CUDA SDK v${{ parameters.SecondaryCUDAVersion }}'
   - ${{ if eq(parameters.DownloadTRT, true) }}:
       - powershell: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.PrimaryTensorRTVersion }}", $(Agent.TempDirectory)
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.PrimaryTensorRTVersion }}" $(Agent.TempDirectory)
         displayName: 'Download Primary TensorRT with version ${{ parameters.PrimaryTensorRTVersion }}'
       - powershell: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.SecondaryTensorRTVersion }}", $(Agent.TempDirectory)
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.SecondaryTensorRTVersion }}" $(Agent.TempDirectory)
         displayName: 'Download Secondary TensorRT with version ${{ parameters.SecondaryTensorRTVersion }}'
   - task: BatchScript@1
     displayName: 'setup env'
