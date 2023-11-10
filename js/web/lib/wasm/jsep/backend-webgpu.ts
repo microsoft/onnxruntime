@@ -343,6 +343,9 @@ export class WebGpuBackend {
       let maxAlignmentOfField = 1;
       programUniforms.forEach(v => {
         const data = typeof v.data === 'number' ? [v.data] : v.data;
+        if (data.length === 0) {
+          return;
+        }
         // https://www.w3.org/TR/WGSL/#alignof
         let baseAlignment: number;
         switch (data.length) {
