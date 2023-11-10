@@ -608,7 +608,7 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
     }
 
     // Same as the above, except this one is for large models
-#if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
+#if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE) || defined(USE_TENSORRT)
 #ifdef _WIN32
     ORT_STRING_VIEW model_test_root_path = ORT_TSTR("..\\models");
     // thus, only the root path should be mounted.
