@@ -14,8 +14,7 @@ parameters:
       - '11.8'
       - '12.2'
 
-steps:
-  variables:
+variables:
   - name: cuda_sdk_url
     value: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
   - name: tensorrt_dir
@@ -26,6 +25,7 @@ steps:
   - name: tensorrt_url
     value: https://lotusscus.blob.core.windows.net/models/local/${{ variables.tensorrt_dir }}
 
+steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
       - powershell: |
           azcopy.exe cp --recursive ${{ variables.cuda_sdk_url }} $(Agent.TempDirectory)
