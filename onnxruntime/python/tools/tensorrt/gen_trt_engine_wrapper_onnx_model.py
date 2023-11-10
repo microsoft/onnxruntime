@@ -52,10 +52,11 @@ def main():
     ctx_embed_mode = args.embed_mode
     engine_cache_path = args.trt_engine_cache_path
 
+    # Get serialized engine from engine cache
+    with open(engine_cache_path, "rb") as file:
+        engine_buffer = file.read()
+
     if ctx_embed_mode:
-        # Get engine buffer from engine cache
-        with open(engine_cache_path, "rb") as file:
-            engine_buffer = file.read()
         ep_cache_context_content = engine_buffer
     else:
         ep_cache_context_content = engine_cache_path
