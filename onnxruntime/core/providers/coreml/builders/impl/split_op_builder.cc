@@ -124,13 +124,13 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     Initializer unpacked_tensor(split_tensor);
     auto split_span = unpacked_tensor.DataAsSpan<int64_t>();
     if (split_span.size() < 2) {
-      LOGS(logger, VERBOSE) << "CoreML Split requires to produce at least 2 outputs.";
+      LOGS(logger, VERBOSE) << "CoreML SplitND requires to produce at least 2 outputs.";
       return false;
     }
   } else {
     if (node.SinceVersion() >= 18) {
-      if (num_outputs < 1) {
-        LOGS(logger, VERBOSE) << "Invalid num_outputs. The value can not be lower than 1. num_outputs: " << num_outputs;
+      if (num_outputs < 2) {
+        LOGS(logger, VERBOSE) << "Invalid num_outputs. The value can not be lower than 1. and CoreMl SplitND requires at least 2 outputs. num_outputs: " << num_outputs;
         return false;
       }
       if (num_outputs != input_shape[HandleNegativeAxis(axis, input_shape.size())]) {
