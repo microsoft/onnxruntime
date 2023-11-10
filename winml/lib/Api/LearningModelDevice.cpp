@@ -148,11 +148,10 @@ static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RE
 
   assert(rc == TRUE);
 
-  return { std::move(processorInformationBytes), length };
+  return {std::move(processorInformationBytes), length};
 }
 
-long long GetNumberOfSoCDieAtoms()
-{
+long long GetNumberOfSoCDieAtoms() {
   // while (Size > (ULONG)FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) {
   DWORD dwLevel2GroupMask = 0;
   DWORD dwLevel3GroupMask = 0;
