@@ -74,6 +74,29 @@ The QNN Execution Provider supports a number of configuration options. The `prov
 |'/path/to/context/cache'|string path to context cache binary|
 
 
+|`provider_options_values` for `provider_options_keys = "qnn_context_embed_mode"`|Description|
+|---|---|
+|'0'|generate the QNN context binary into separate file, set path in ONNX file specified by qnn_context_cache_path.|
+|'1'|generate the QNN context binary into the ONNX file specified by qnn_context_cache_path (default).|
+
+
+|`provider_options_values` for `provider_options_keys = "qnn_context_priority"`|Description|
+|---|---|
+|'low'||
+|'normal'|default.|
+|'normal_high'||
+|'high'||
+ref: [HTP Yielding and Pre-Emption](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/htp_yielding.html)
+
+
+|`provider_options_values` for `provider_options_keys = "htp_graph_finalization_optimization_mode"`|Description|
+|---|---|
+|'0'|default.|
+|'1'|faster preparation time, less optimal graph.|
+|'2'|longer preparation time, more optimal graph.|
+|'3'|longest preparation time, most likely even more optimal graph.|
+
+
 ## Usage
 ### C++
 C API details are [here](../get-started/with-c.md).
@@ -94,4 +117,4 @@ sess = ort.InferenceSession(model_path, providers=['QNNExecutionProvider'], prov
 
 ### Inference example
 
-[Image classification with Mobilenetv2 in CPP using QNN Execution Provider with QNN CPU & HTP Backend](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP)
+[Image classification with Mobilenetv2 in CPP using QNN Execution Provider with QNN CPU & HTP Backend](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP/mobilenetv2_classification)
