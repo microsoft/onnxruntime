@@ -1,6 +1,4 @@
 parameters:
-  - name: EnvSetupScript
-    type: string
   - name: DownloadCUDA
     type: boolean
     default: false
