@@ -31,8 +31,7 @@ import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
 
 const conv2dTransposeCommonSnippet =
-    (isChannelsLast: boolean, addBias = false, attributes: ConvTransposeAttributes, hasPreluActivationWeights = false,
-     innerElementSize = 4): string => {
+    (isChannelsLast: boolean, addBias = false, attributes: ConvTransposeAttributes, innerElementSize = 4): string => {
       const type = typeSnippet(innerElementSize, 'f32');
       const getWSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
@@ -238,7 +237,7 @@ export const createConv2DTransposeMatMulProgramInfo =
         const dimBOuter : i32 = ${dimBOuter};
         const dimInner : i32 = ${dimInner};
         ${declareFunctions}
-        ${conv2dTransposeCommonSnippet(isChannelsLast, hasBias, attributes, false, innerElementSize)}
+        ${conv2dTransposeCommonSnippet(isChannelsLast, hasBias, attributes, innerElementSize)}
         ${
             isVec4 ? makeMatMulPackedVec4Source(
                          elementsPerThread, workGroupSize, 'f32', undefined, !isChannelsLast, tileInner) :

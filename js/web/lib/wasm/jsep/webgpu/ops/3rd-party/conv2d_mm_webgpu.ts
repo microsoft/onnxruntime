@@ -33,8 +33,8 @@ import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packe
 
 const conv2dCommonSnippet =
     (isChannelsLast: boolean, fitAOuter: boolean, fitBOuter: boolean, fitInner: boolean, addBias = false,
-     attributes: ConvAttributes, hasPreluActivationWeights = false, innerElementSizeX = 4, innerElementSizeW = 4,
-     innerElementSize = 4, dataType = 'f32'): string => {
+     attributes: ConvAttributes, innerElementSizeX = 4, innerElementSizeW = 4, innerElementSize = 4,
+     dataType = 'f32'): string => {
       const getXSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
@@ -245,8 +245,8 @@ export const createConv2DMatMulProgramInfo =
         ${declareFunctions}
         ${
             conv2dCommonSnippet(
-                isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias, attributes, false, elementsSize[0],
-                elementsSize[1], elementsSize[2], t)}
+                isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias, attributes, elementsSize[0], elementsSize[1],
+                elementsSize[2], t)}
             ${
             isVec4 ?
                 makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, t, undefined, !isChannelsLast, tileInner) :
