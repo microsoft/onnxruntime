@@ -319,10 +319,10 @@ stages:
       DownloadTRT: true
       cuda_sdk_url: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
       tensorrt_dir:
-        ${{ if eq(parameters.CUDA_Version, '11.8') }}:
-          value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
-        ${{ if eq(parameters.CUDA_Version, '12.2') }}:
-          value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
+      ${{ if eq(parameters.CUDA_Version, '11.8') }}:
+        value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
+      ${{ if eq(parameters.CUDA_Version, '12.2') }}:
+        value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
       tensorrt_url: https://lotusscus.blob.core.windows.net/models/local/${{ variables.tensorrt_dir }}
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
