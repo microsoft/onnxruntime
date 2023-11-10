@@ -15,6 +15,7 @@ class WeightOnlyQuantConfig:
         algorithm,
         group_size=32,
         scheme="sym",
+        accuracy_level=0,
         use_external_data_format=False,
     ):
         """This is the Base class for Weight Only Quant Configuration.
@@ -27,6 +28,8 @@ class WeightOnlyQuantConfig:
                 quantization per output channel.
             scheme:
                 symmetrize or asymmetric calibration data for weights.
+            accuracy_level:
+                support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
             use_external_data_format:
                 option used for large size (>2GB) model. Set to False by default.
         """
@@ -40,6 +43,7 @@ class WeightOnlyQuantConfig:
         self.group_size = group_size
         self.scheme = scheme
         self.use_external_data_format = use_external_data_format
+        self.accuracy_level = accuracy_level
 
 
 class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -47,6 +51,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self,
         group_size=32,
         scheme="sym",
+        accuracy_level=0,
         ratios=None,
         use_external_data_format=False,
     ):
@@ -60,13 +65,19 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 quantization per output channel.
             scheme:
                 symmetrize or asymmetric calibration data for weights.
+            accuracy_level:
+                support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
             use_external_data_format:
                 option used for large size (>2GB) model. Set to False by default.
         """
         if ratios is None:
             ratios = {}
         super().__init__(
-            algorithm="RTN", group_size=group_size, scheme=scheme, use_external_data_format=use_external_data_format
+            algorithm="RTN",
+            group_size=group_size,
+            scheme=scheme,
+            accuracy_level=accuracy_level,
+            use_external_data_format=use_external_data_format
         )
         self.ratios = ratios
 
@@ -82,6 +93,7 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         actorder=False,
         mse=False,
         perchannel=True,
+        accuracy_level=0,
         use_external_data_format=False,
     ):
         """
@@ -106,6 +118,8 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 whether get scale and zero point with mse error.
             perchannel (bool, optional):
                 whether quantize weight per-channel.
+            accuracy_level:
+                support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
             use_external_data_format:
                 option used for large size (>2GB) model. Set to False by default.
         """
@@ -113,6 +127,7 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
             algorithm="GPTQ",
             group_size=group_size,
             scheme=scheme,
+            accuracy_level=accuracy_level,
             use_external_data_format=use_external_data_format,
         )
         self.calibration_data_reader = calibration_data_reader
@@ -183,6 +198,7 @@ def quantize_weight_only(
     model = load_model_with_shape_infer(Path(model_input))
     scheme = weight_only_config.scheme
     group_size = weight_only_config.group_size
+    accuracy_level = weight_only_config.accuracy_level
     weight_only_node_config = _generate_weight_only_node_config(model, group_size, scheme)
 
     algorithm = weight_only_config.algorithm
@@ -191,7 +207,12 @@ def quantize_weight_only(
 
         ratios = weight_only_config.ratios
 
-        model = rtn_quantize(model=model_input, weight_config=weight_only_node_config, ratios=ratios)
+        model = rtn_quantize(
+            model=model_input,
+            weight_config=weight_only_node_config,
+            ratios=ratios,
+            accuracy_level=accuracy_level,
+        )
     elif algorithm == "GPTQ":
         from neural_compressor.adaptor.ox_utils.weight_only import gptq_quantize
 
@@ -212,6 +233,7 @@ def quantize_weight_only(
             actorder=actorder,
             mse=mse,
             perchannel=perchannel,
+            accuracy_level=accuracy_level,
         )
 
     model.save_model_to_file(model_output, weight_only_config.use_external_data_format)
