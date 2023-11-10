@@ -320,7 +320,7 @@ stages:
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
     - script: dir $(Build.SourcesDirectory)
-    - template: jobs/download_win_gpu_libraries.yml
+    - template: templates/jobs/download_win_gpu_libraries.yml
       parameters:
         DownloadCUDA: true
         DownloadTRT: true
