@@ -1222,11 +1222,7 @@ static void RunDropSplitQDQTestCase(const std::vector<int64_t>& input_shape, int
                     check_graph,
                     TransformerLevel::Level1,
                     TransformerLevel::Level2,
-                    {12, 13, 18, 19});  // Test different ways to specify the split in each opset:
-                                        // 12 - split into equal parts without explicit 'split' attribute
-                                        // 13 - use optional 'split' input to split into 3 parts
-                                        // 18 - use 'num_outputs' attribute to split into 3 parts
-                                        // 19 - use 'num_outputs' attribute to split into 3 parts
+                    {12, 18, 19});
 }
 
 // Test that DQ -> Split -> Q (many) is replaced with just Split for various quantization types.

@@ -20,7 +20,7 @@ void SplitQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   const std::string action_name{"dropSplitQDQ"};
   std::unique_ptr<Action> action = std::make_unique<QDQ::SplitReplaceWithQuant>();
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::SplitSelector>(true /*enforce_equal_io_qparams*/);
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::OutputVariadicSelector>();
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"Split", {}}},
                                                          std::move(selector),

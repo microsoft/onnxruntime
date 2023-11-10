@@ -481,26 +481,13 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output, use_contrib_qdq);
 
     // add Split
-    std::vector<NodeArg*> split_inputs;
-    split_inputs.push_back(dq_output);
-
-    // Use the optional 'split' input when testing Split 13
-    int opset = builder.DomainToVersionMap().find(kOnnxDomain)->second;
-    if (opset >= 13 && opset < 18) {
-      int64_t dim = input_shape[axis];
-      int64_t split_size = dim / 3;
-      split_inputs.push_back(builder.Make1DInitializer(std::vector<int64_t>{split_size,
-                                                                            split_size, dim - (2 * split_size)}));
-    }
 
     auto* split_output_1 = builder.MakeIntermediate();
     auto* split_output_2 = builder.MakeIntermediate();
     auto* split_output_3 = builder.MakeIntermediate();
-    Node& split_node = builder.AddNode("Split", split_inputs, {split_output_1, split_output_2, split_output_3});
+    Node& split_node = builder.AddNode("Split", {dq_output}, {split_output_1, split_output_2, split_output_3});
     split_node.AddAttribute("axis", axis);
-
-    // Use the 'num_outputs' attribute when testing Split >= 18
-    if (opset >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       split_node.AddAttribute("num_outputs", static_cast<int64_t>(3));
     }
 

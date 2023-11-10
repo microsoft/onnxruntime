@@ -253,39 +253,7 @@ void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
 }
 
-bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                   const Node& node,
-                                   const std::vector<const Node*>& dq_nodes,
-                                   const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
-    return false;
-  }
-
-  auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
-    return graph_viewer.GetConstantInitializer(initializer_name, true);
-  };
-
-  const Node& dq_node = *dq_nodes.front();
-  int32_t dt_input = dq_node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-
-  // All Q outputs should have same data type and (optionally) equal quantization parameters as the input.
-  for (size_t q_idx = 0; q_idx < q_nodes.size(); q_idx++) {
-    const Node& q_node = *q_nodes[q_idx];
-
-    if (dt_input != q_node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type()) {
-      return false;
-    }
-
-    if (enforce_equal_io_qparams_ &&
-        !IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath())) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-void SplitSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+void OutputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.num_output_defs = 1;  // set to 1 as the first output is variadic
 }
 
