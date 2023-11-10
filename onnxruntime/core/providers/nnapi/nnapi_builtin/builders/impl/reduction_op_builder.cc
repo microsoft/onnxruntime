@@ -51,11 +51,10 @@ void ReductionOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, cons
 Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& op_type(node_unit.OpType());
   const auto& inputs = node_unit.Inputs();
-  const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
   auto& shaper(model_builder.GetShaper());
-  const auto input_shape = shaper[input];
+  const auto input_shape = shaper[inputs[0].node_arg.Name()];
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
@@ -100,10 +99,10 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   }
 
   // Add ReduceMean operation
-  if (!axes.empty()) {
-    InlinedVector<uint32_t> input_indices;
-    input_indices.push_back(operand_indices.at(input));  // data
+  InlinedVector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(inputs[0].node_arg.Name()));  // data
 
+  if (!axes.empty()) {
     const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
     Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
     const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
@@ -111,17 +110,17 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
     input_indices.push_back(operand_indices.at(axes_name));  // axes
 
-    int32_t input_rank = static_cast<int32_t>(input_shape.size());
+    int32_t input_size = static_cast<int32_t>(input_shape.size());
 
     // Make output dimensions
     InlinedVector<uint32_t> output_dimen;
     if (keepdims) {
-      output_dimen.reserve(input_rank);
+      output_dimen.reserve(input_size);
     } else {
-      output_dimen.reserve(input_rank - axes.size());
+      output_dimen.reserve(input_size - axes.size());
     }
 
-    for (int32_t i = 0; i < input_rank; i++) {
+    for (int32_t i = 0; i < input_size; i++) {
       if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
         output_dimen.push_back(input_shape[i]);
       } else {
@@ -144,14 +143,10 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
     ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                    {output}, {output_operand_type}));
   } else {
-    // Note: If `axes` is still empty at this point, meaning it's ReduceMean-18 and attribute `noop_with_empty_axes`
-    // specifies as 1. We treat this case as an Identity op in NNAPI EP.
-    // However, we hit an issue while adding no-ops operation in NNAPI because it doesn't allow adding an operand both as
-    // an input and output.
-    // Currently, we return not supported in NNAPI EP when `noop_with_empty_axes` is true.
-
-    // const OperandType output_operand_type(operand_types.at(input).type, input_shape);
-    // model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
+    // If `axes` is still empty at this point, meaning that it's ReduceMean-18 and attribute `noop_with_empty_axes` specifies as 1,
+    // treat as an Identity op here.
+    const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, input_shape);
+    model_builder.RegisterOperand(output, operand_indices.at(inputs[0].node_arg.Name()), output_operand_type);
   }
 
   return Status::OK();
@@ -174,8 +169,6 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
   const auto& inputs = node_unit.Inputs();
   const auto& op(node_unit.OpType());
 
-  NodeAttrHelper helper(node_unit);
-
   Shape input_shape;
   if (!GetShape(inputs[0].node_arg, input_shape))
     return false;
@@ -187,22 +180,12 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
   }
 
   if (op == "ReduceMean") {
-    const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0) != 0;
     if (inputs.size() > 1 && inputs[1].node_arg.Exists()) {
       const auto& axes_name = inputs[1].node_arg.Name();
       if (!Contains(initializers, axes_name)) {
         LOGS_DEFAULT(VERBOSE) << "Axes of ReduceMean must be a constant initializer.";
         return false;
       }
-    }
-    // Note: For the case - ReduceMean 18+ with noop_with_empty_axes attribute set as 1,
-    // currently we hit an issue in NNAPI where it does not allow adding an operand as both an input and output.
-    // This issue may arise from handling no-ops like Identity and ReduceX with noop_with_empty_axes set.
-    // TODO: Support the case when a more complete solution is available.
-    if (node_unit.SinceVersion() >= 18 && noop_with_empty_axes) {
-      LOGS_DEFAULT(VERBOSE)
-          << "ReduceMean 18+ with noop_with_empty_axes attribute set as 1 is not supported for now.";
-      return false;
     }
   }
 

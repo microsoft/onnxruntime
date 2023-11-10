@@ -9,6 +9,11 @@ parameters:
   - 'custom'
   default: 'nightly (@dev)'
 
+- name: NodePipelineId
+  displayName: 'Node npm package build Id'
+  type: string
+  default: 'latest'
+
 variables:
   # pipeline should define the following varaibles
   #   ExtraBuildArgs
@@ -24,11 +29,6 @@ variables:
     NpmPackagingMode: '$(VersionSuffix)'
 
 resources:
-  pipelines:
-  - pipeline: build
-    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
-    trigger: true
-    branch: main
   repositories:
   - repository: manylinux
     type: Github
@@ -51,7 +51,7 @@ stages:
     BuildConfig: 'Release'
     PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
     PackageName: 'onnxruntime-react-native'
-    BuildAndroidAARStageDependsOn: 'Precheck_and_extract_commit'
+    BuildAndroidAARStageDependsOn: 'Extract_commit'
 
 - stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:
@@ -65,13 +65,34 @@ stages:
       runCodesignValidationInjection: false
     timeoutInMinutes: 10
     steps:
-    - download: build
-      artifact: 'NPM_packages'
-      displayName: 'Download onnxruntime-node Pipeline Artifact'
+
+    - ${{ if eq(parameters.NodePipelineId, 'latest') }}:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          buildType: 'specific'
+          project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+          definition: '940'
+          specificBuildWithTriggering: true
+          buildVersionToDownload: 'latest'
+          artifactName: 'NPM_packages'
+          targetPath: '$(Pipeline.Workspace)'
+        displayName: 'Download onnxruntime-node Pipeline Artifact'
+
+    - ${{ if ne(parameters.NodePipelineId, 'latest') }}:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          buildType: 'specific'
+          project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+          definition: '940'
+          buildVersionToDownload: 'specific'
+          pipelineId: '${{ parameters.NodePipelineId }}'
+          artifactName: 'NPM_packages'
+          targetPath: '$(Pipeline.Workspace)'
+        displayName: 'Download onnxruntime-node Pipeline Artifact'
 
     - task: CopyFiles@2
       inputs:
-        sourceFolder: '$(Pipeline.Workspace)\build\NPM_packages'
+        sourceFolder: $(Pipeline.Workspace)
         contents: onnxruntime-*.tgz
         targetFolder: $(Build.ArtifactStagingDirectory)\node-artifacts
       displayName: 'Copy onnxruntime-node Artifacts'

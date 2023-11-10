@@ -5,59 +5,20 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "[common] Launch Unit Tests in Node.js",
-      "args": ["-u", "bdd", "--timeout", "999999", "--colors", "${workspaceFolder}/common/test/**/*.js"],
-      "internalConsoleOptions": "openOnSessionStart",
-      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
-      "cwd": "${workspaceFolder}/common",
-      "request": "launch",
-      "skipFiles": ["<node_internals>/**"],
-      "type": "node",
-      "sourceMaps": true,
-      "preLaunchTask": "tsc: build - common/test/tsconfig.json"
-    },
-    {
-      "name": "[web] Launch Test Runner CLI in Node.js",
-      "program": "${workspaceFolder}/web/script/test-runner-cli.js",
-      "request": "launch",
-      "skipFiles": ["<node_internals>/**"],
-      "type": "node",
-      "cwd": "${workspaceFolder}/web",
-      "args": ["suite1"]
-    },
-    {
-      "name": "[web] Launch NPM tests in Node.js",
-      "args": [
-        "--timeout",
-        "999999",
-        "--colors",
-        "-r",
-        "${workspaceFolder}/web/dist/ort.node.min.js",
-        "${workspaceFolder}/web/test/test-main"
-      ],
-      "internalConsoleOptions": "openOnSessionStart",
-      "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
-      "request": "launch",
-      "skipFiles": ["<node_internals>/**"],
-      "type": "node",
-      "cwd": "${workspaceFolder}/web"
-    },
-    {
-      "name": "[web] Attach to Chrome for NPM tests",
       "type": "chrome",
       "request": "attach",
+      "name": "Attach to Chrome",
       "port": 9333,
       "webRoot": "${workspaceFolder}",
       "sourceMapPathOverrides": {
-        "../../common/*": "${webRoot}/common/*",
-        "../lib/*": "${webRoot}/web/lib/*"
+        "webpack://ort/*": "${webRoot}/common/*",
+        "webpack:///*": "${webRoot}/web/*"
       },
       "sourceMaps": true,
-      "smartStep": true,
-      "skipFiles": ["**/node_modules/**"]
+      "smartStep": true
     },
     {
-      "name": "[web] Remote Browser via Webkit Adaptor",
+      "name": "Remote Browser via Webkit Adaptor",
       "type": "chrome",
       "request": "attach",
       "port": 9000,

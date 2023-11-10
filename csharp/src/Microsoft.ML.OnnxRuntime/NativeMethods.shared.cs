@@ -292,8 +292,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr UpdateROCMProviderOptions;
         public IntPtr GetROCMProviderOptionsAsString;
         public IntPtr ReleaseROCMProviderOptions;
-        public IntPtr CreateAndRegisterAllocatorV2;
-        public IntPtr RunAsync;
     }
 
     internal static class NativeMethods
@@ -512,8 +510,6 @@ namespace Microsoft.ML.OnnxRuntime
             OrtUpdateROCMProviderOptions = (DOrtUpdateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateROCMProviderOptions, typeof(DOrtUpdateROCMProviderOptions));
             OrtGetROCMProviderOptionsAsString = (DOrtGetROCMProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetROCMProviderOptionsAsString, typeof(DOrtGetROCMProviderOptionsAsString));
             OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
-            OrtCreateAndRegisterAllocatorV2 = (DCreateAndRegisterAllocatorV2)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocatorV2, typeof(DCreateAndRegisterAllocatorV2));
-            OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
         }
 
         internal class NativeLib
@@ -919,32 +915,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 out UIntPtr /*(ulong* out)*/ startTime);
         public static DOrtSessionGetProfilingStartTimeNs OrtSessionGetProfilingStartTimeNs;
-
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(ONNStatus*)*/ DCreateAndRegisterAllocatorV2(
-                                                IntPtr /* (OrtEnv*) */ environment,
-                                                IntPtr /*(char*)*/ provider_type,
-                                                IntPtr /*(OrtMemoryInfo*)*/ mem_info,
-                                                IntPtr /*(OrtArenaCfg*)*/ arena_cfg,
-                                                IntPtr /*(char**)*/ provider_options_keys,
-                                                IntPtr /*(char**)*/ provider_options_values,
-                                                UIntPtr /*(size_t)*/num_keys);
-        public static DCreateAndRegisterAllocatorV2 OrtCreateAndRegisterAllocatorV2;
-
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(ONNStatus*)*/ DOrtRunAsync(
-                                IntPtr /*(OrtSession*)*/ session,
-                                IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
-                                IntPtr[] /*(char**)*/ inputNames,
-                                IntPtr[] /*(OrtValue*[])*/ inputValues,
-                                UIntPtr /*(size_t)*/ inputCount,
-                                IntPtr[] /*(char**)*/ outputNames,
-                                UIntPtr /*(size_t)*/ outputCount,
-                                IntPtr[] /*(OrtValue*[])*/ outputValues,
-                                IntPtr /*(void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status))*/ callback,  // callback function
-                                IntPtr /*(void*)*/ user_data
-                                );
-        public static DOrtRunAsync OrtRunAsync;
 
         #endregion InferenceSession API
 
@@ -1860,61 +1830,54 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtFillStringTensor OrtFillStringTensor;
 
-        /// \param value A tensor created from OrtCreateTensor... function.
-        /// \param index The index of the entry in the tensor to resize. <summary>
-        /// \param length_in_bytes Length to resize the string to.
-        /// \param buffer The resized buffer.
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetResizedStringTensorElementBuffer(
-            IntPtr /* OrtValue */ value,
-            UIntPtr /* size_t */ index,
-            UIntPtr /* size_t */ length_in_bytes,
-            out IntPtr /* char** */ buffer);
+                IntPtr /* OrtValue */ value,
+                UIntPtr /* size_t */ index,
+                UIntPtr /* size_t */ length_in_bytes,
+                out IntPtr /* char** */ buffer
+            );
 
         public static DOrtGetResizedStringTensorElementBuffer OrtGetResizedStringTensorElementBuffer;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorContent(
-            IntPtr /*(OrtValue*)*/ value,
-            byte[] /*(void*)*/  dst_buffer,
-            UIntPtr dst_buffer_len,
-            UIntPtr[] offsets,
-            UIntPtr offsets_len);
+                                                        IntPtr /*(OrtValue*)*/ value,
+                                                        byte[] /*(void*)*/  dst_buffer,
+                                                        UIntPtr dst_buffer_len,
+                                                        UIntPtr[] offsets,
+                                                        UIntPtr offsets_len);
 
         public static DOrtGetStringTensorContent OrtGetStringTensorContent;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorDataLength(IntPtr /*(OrtValue*)*/ value,
-                                                                              out UIntPtr /*(size_t*)*/ len);
+                                                        out UIntPtr /*(size_t*)*/ len);
 
         public static DOrtGetStringTensorDataLength OrtGetStringTensorDataLength;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorElementLength(IntPtr /*(OrtValue*)*/ value,
-                                                                                 UIntPtr /*(size_t)*/ index,
-                                                                                 out UIntPtr /*(size_t*)*/ len);
+                                                        UIntPtr /*(size_t)*/ index,
+                                                        out UIntPtr /*(size_t*)*/ len);
 
         public static DOrtGetStringTensorElementLength OrtGetStringTensorElementLength;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorElement(IntPtr /*(OrtValue*)*/ value,
-                                                                           UIntPtr /*(size_t)*/ bufferLength,
-                                                                           UIntPtr /*(size_t)*/ elementIndex,
-                                                                           byte[] buffer);
+                                                UIntPtr /*(size_t)*/ bufferLength,
+                                                UIntPtr /*(size_t)*/ elementIndex,
+                                                byte[] buffer);
 
         public static DOrtGetStringTensorElement OrtGetStringTensorElement;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtCastTypeInfoToTensorInfo(
-            IntPtr /*(struct OrtTypeInfo*)*/ typeInfo,
-            out IntPtr /*(const struct OrtTensorTypeAndShapeInfo**)*/ typeAndShapeInfo);
+        public delegate IntPtr /*(OrtStatus*)*/
+                                DOrtCastTypeInfoToTensorInfo(IntPtr /*(struct OrtTypeInfo*)*/ typeInfo, out IntPtr /*(const struct OrtTensorTypeAndShapeInfo**)*/ typeAndShapeInfo);
 
         public static DOrtCastTypeInfoToTensorInfo OrtCastTypeInfoToTensorInfo;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorTypeAndShape(
-            IntPtr /*(OrtValue*)*/ value, 
-            out IntPtr /*(struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorTypeAndShape(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
         public static DOrtGetTensorTypeAndShape OrtGetTensorTypeAndShape;
 
@@ -1924,16 +1887,12 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtReleaseTensorTypeAndShapeInfo OrtReleaseTensorTypeAndShapeInfo;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorElementType(
-            IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo,
-            out IntPtr /*(TensorElementType*)*/ output);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorElementType(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, out IntPtr /*(TensorElementType*)*/ output);
 
         public static DOrtGetTensorElementType OrtGetTensorElementType;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetDimensionsCount(
-            IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, 
-            out UIntPtr output);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetDimensionsCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, out UIntPtr output);
 
         public static DOrtGetDimensionsCount OrtGetDimensionsCount;
 

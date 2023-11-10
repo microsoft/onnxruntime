@@ -91,25 +91,28 @@ Node& graph_add_node(Graph& graph, const std::string& name,
   for (auto& o : outputs) {
     auto consumers = graph.GetConsumerNodes(o->Name());
     for (auto& consumer : consumers) {
-      auto dst_arg_index = 0u;
+      auto dst_arg_index = -1;
+      int arg_index = 0;
       auto tmp_inputs = node_get_inputs(*consumer);
       for (auto ni : *tmp_inputs) {
         auto name1 = ni.node_arg->Name();
         if (name1 == o->Name()) {
-          graph.AddEdge(ret.Index(), consumer->Index(), src_arg_index,
-                        dst_arg_index);
+          dst_arg_index = arg_index;
+          break;
         }
-        dst_arg_index = dst_arg_index + 1;
+        arg_index = arg_index + 1;
       }
-      // dst_arg_index should not init again.
       for (auto implicit_node_arg : node_get_implicit_input_node_args(*consumer)) {
         auto name1 = implicit_node_arg->Name();
         if (name1 == o->Name()) {
-          graph.AddEdge(ret.Index(), consumer->Index(), src_arg_index,
-                        dst_arg_index);
+          dst_arg_index = arg_index;
+          break;
         }
-        dst_arg_index = dst_arg_index + 1;
+        arg_index = arg_index + 1;
       }
+      assert(dst_arg_index != -1);
+      graph.AddEdge(ret.Index(), consumer->Index(), src_arg_index,
+                    dst_arg_index);
     }
     src_arg_index = src_arg_index + 1;
   }
@@ -138,7 +141,6 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
     model_proto = model.ToProto();
   } else {
     model_proto = model.ToGraphProtoWithExternalInitializers(filename_dat,
-                                                             ToPathString(filename),
                                                              initializer_size_threshold);
   }
   auto& metadata = model.MetaData();
@@ -151,10 +153,8 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
     }
   }
   // use relative path as data storage.
-  auto graph_proto = model_proto.mutable_graph();
-  *graph_proto = graph.ToGraphProto();
-  for (auto i = 0; i < graph_proto->initializer_size(); ++i) {
-    auto initializer = graph_proto->mutable_initializer(i);
+  for (auto i = 0; i < model_proto.graph().initializer_size(); ++i) {
+    auto initializer = model_proto.mutable_graph()->mutable_initializer(i);
     for (auto j = 0; j < initializer->external_data_size(); ++j) {
       auto external_data = initializer->mutable_external_data(j);
       if (external_data->key() == "location") {
@@ -197,9 +197,6 @@ Node& graph_fuse(Graph& graph, const std::string& name,
     auto proto = mygraph.ToGraphProto();
     *proto.mutable_name() = name;
     fused_node.AddAttribute("body", proto);
-  }
-  for (auto&& o : fused_node.OutputDefs()) {
-    graph.UpdateProducerNode(o->Name(), fused_node.Index());
   }
   return fused_node;
 }

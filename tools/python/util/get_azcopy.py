@@ -27,7 +27,7 @@ _log = logging.getLogger("util.get_azcopy")
 
 
 def _check_version(azcopy_path):
-    proc = subprocess.run([azcopy_path, "--version"], stdout=subprocess.PIPE, text=True)  # noqa: PLW1510
+    proc = subprocess.run([azcopy_path, "--version"], stdout=subprocess.PIPE, text=True)
     match = re.search(r"\d+(?:\.\d+)+", proc.stdout)
 
     if not match:

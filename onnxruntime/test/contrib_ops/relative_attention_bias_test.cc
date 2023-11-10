@@ -227,9 +227,7 @@ static void RunGatedRelativePositionBiasTest(
     int num_heads,
     int head_size,
     int D,
-    bool use_float16,
-    const std::vector<int>& token_offset,
-    int token_count) {
+    bool use_float16 = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
@@ -245,32 +243,21 @@ static void RunGatedRelativePositionBiasTest(
     std::vector<int64_t> eco_a_dims = {1, num_heads, 1, 1};
     std::vector<int64_t> output_dims = {batch_size, num_heads, seq_len, seq_len};
 
-    std::vector<int64_t> packed_query_dims = {token_count, num_heads * head_size};
-    std::vector<int64_t> token_offset_dims = {batch_size, seq_len};
-    bool is_padding_removed = token_offset.size() > 0;
-
     if (use_float16) {
-      tester.AddInput<MLFloat16>("query_layer", is_padding_removed ? packed_query_dims : query_layer_dims, ToFloat16(query_layer));
+      tester.AddInput<MLFloat16>("query_layer", query_layer_dims, ToFloat16(query_layer));
       tester.AddInput<MLFloat16>("query_bias", query_bias_dims, ToFloat16(query_bias));
       tester.AddInput<MLFloat16>("rel_pos", rel_pos_dims, ToFloat16(rel_pos));
       tester.AddInput<MLFloat16>("weight", weight_dims, ToFloat16(weight));
       tester.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias));
       tester.AddInput<MLFloat16>("eco_a", eco_a_dims, ToFloat16(eco_a));
-      if (is_padding_removed) {
-        tester.AddInput<int>("token_offset", token_offset_dims, token_offset);
-      }
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output));
     } else {
-      tester.AddInput<float>("query_layer", is_padding_removed ? packed_query_dims : query_layer_dims, query_layer);
+      tester.AddInput<float>("query_layer", query_layer_dims, query_layer);
       tester.AddInput<float>("query_bias", query_bias_dims, query_bias);
       tester.AddInput<float>("rel_pos", rel_pos_dims, rel_pos);
       tester.AddInput<float>("weight", weight_dims, weight);
       tester.AddInput<float>("bias", bias_dims, bias);
       tester.AddInput<float>("eco_a", eco_a_dims, eco_a);
-      if (is_padding_removed) {
-        tester.AddInput<int>("token_offset", token_offset_dims, token_offset);
-      }
-
       tester.AddOutput<float>("output", output_dims, output);
     }
 
@@ -317,10 +304,8 @@ TEST(GatedRelativePositionBiasTest, FP16_BSNHD_1x3x2x4x8) {
       0.88587445f, 0.42708054f, 1.0246648f, 0.05810945f, 0.2430356f, 0.4244021f, 1.428723f, 1.3902748f,
       0.48772895f, 0.84479123f};
 
-  const std::vector<int> token_offset;
-  int token_count = 0;
   RunGatedRelativePositionBiasTest(query_layer, query_bias, rel_pos, weight, bias, eco_a, output,
-                                   batch_size, seq_len, num_heads, head_size, D, true, token_offset, token_count);
+                                   batch_size, seq_len, num_heads, head_size, D, true);
 }
 
 TEST(GatedRelativePositionBiasTest, FP32_BSNHD_2x3x2x4x8) {
@@ -365,10 +350,8 @@ TEST(GatedRelativePositionBiasTest, FP32_BSNHD_2x3x2x4x8) {
       0.37552574f, 1.1995038f, 1.4269164f, 0.47112313f, 0.5597632f, 0.6641063f, 0.87367094f, 1.056893f,
       0.12367466f, 0.34158388f, 0.7510766f, 0.98590875f};
 
-  const std::vector<int> token_offset;
-  int token_count = 0;
   RunGatedRelativePositionBiasTest(query_layer, query_bias, rel_pos, weight, bias, eco_a, output,
-                                   batch_size, seq_len, num_heads, head_size, D, false, token_offset, token_count);
+                                   batch_size, seq_len, num_heads, head_size, D, false);
 }
 
 TEST(GatedRelativePositionBiasTest, FP32_LongSeq_BSNHD_2x5x2x4x4) {
@@ -427,19 +410,17 @@ TEST(GatedRelativePositionBiasTest, FP32_LongSeq_BSNHD_2x5x2x4x4) {
       0.48692167f, 0.33312735f, 0.4217717f, 0.117013805f, 0.5107221f, 0.78737986f, 0.22609876f, 0.6166911f,
       1.1153911f, 0.5832259f, 0.6681177f, 0.59397215f};
 
-  const std::vector<int> token_offset;
-  int token_count = 0;
   RunGatedRelativePositionBiasTest(query_layer, query_bias, rel_pos, weight, bias, eco_a, output,
-                                   batch_size, seq_len, num_heads, head_size, D, false, token_offset, token_count);
+                                   batch_size, seq_len, num_heads, head_size, D, false);
 }
 
-TEST(GatedRelativePositionBiasTest, FP16_BSNHD_2x8x2x4x8_NoPadding) {
+TEST(GatedRelativePositionBiasTest, FP16_BSNHD_2x8x2x4x8) {
   constexpr int batch_size = 2;
   constexpr int num_heads = 2;
   constexpr int seq_len = 8;
   constexpr int head_size = 4;
   constexpr int D = 8;
-  const std::vector<int64_t> query_layer_dim = {16, 8};
+  const std::vector<int64_t> query_layer_dim = {2, 8, 8};
   const std::vector<float> query_layer = {
       0.4962566f, 0.7682218f, 0.08847743f, 0.13203049f, 0.30742282f, 0.6340787f, 0.4900934f, 0.89644474f,
       0.45562798f, 0.6323063f, 0.34889346f, 0.4017173f, 0.022325754f, 0.16885895f, 0.29388845f, 0.5185218f,
@@ -525,10 +506,8 @@ TEST(GatedRelativePositionBiasTest, FP16_BSNHD_2x8x2x4x8_NoPadding) {
       0.57226765f, 0.46851522f, 0.26718724f, 0.6390965f, 1.0312729f, 0.39947683f, 0.22935463f, 0.35571814f,
       0.005002509f, 0.82025534f, 0.29372898f, 0.18800265f, 0.2395663f, 0.8900865f, 0.8644386f, 0.998915f};
 
-  const std::vector<int> token_offset = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  int token_count = 16;
   RunGatedRelativePositionBiasTest(query_layer, query_bias, rel_pos, weight, bias, eco_a, output,
-                                   batch_size, seq_len, num_heads, head_size, D, true, token_offset, token_count);
+                                   batch_size, seq_len, num_heads, head_size, D, true);
 }
 
 }  // namespace test

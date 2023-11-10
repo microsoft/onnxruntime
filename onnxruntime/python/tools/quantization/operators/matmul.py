@@ -77,7 +77,7 @@ class MatMulInteger(QOpMatMul):
             [matmul_integer_output],
             [cast_op_output],
             matmul_integer_output + "_cast",
-            to=onnx_proto.TensorProto.FLOAT,  # TODO: support FLOAT16 as well.
+            to=onnx_proto.TensorProto.FLOAT,
         )
         nodes.append(cast_node)
 

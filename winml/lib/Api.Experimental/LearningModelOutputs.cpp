@@ -21,4 +21,4 @@ winml_experimental::LearningModelBuilder LearningModelOutputs::Add(winml::ILearn
   return builder_;
 }
 
-}  // namespace WINML_EXPERIMENTALP
+} // namespace WINML_EXPERIMENTALP

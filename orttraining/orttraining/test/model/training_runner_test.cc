@@ -20,9 +20,9 @@ namespace training {
 namespace test {
 
 const PathString k_original_model_path =
-    ConcatPathComponent(ORT_TSTR("testdata"), ORT_TSTR("test_training_model.onnx"));
+    ConcatPathComponent<PathChar>(ORT_TSTR("testdata"), ORT_TSTR("test_training_model.onnx"));
 const PathString k_backward_model_path =
-    ConcatPathComponent(ORT_TSTR("testdata"), ORT_TSTR("temp_backward_model.onnx"));
+    ConcatPathComponent<PathChar>(ORT_TSTR("testdata"), ORT_TSTR("temp_backward_model.onnx"));
 
 const PathString k_output_directory = ORT_TSTR("training_runner_test_output");
 

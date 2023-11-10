@@ -22,7 +22,6 @@ static constexpr int kBeamWidthInputIndex = 8;
 static constexpr int kCacheIndirectionInputIndex = 9;
 static constexpr int kPastInputIndex = 5;
 static constexpr int kPresentOutputIndex = 1;
-static constexpr int kQKOutputIndex = 3;
 static constexpr int kBiasIndex = 10;
 
 #define REGISTER_KERNEL_TYPED(T1, T2)                                         \
@@ -51,7 +50,6 @@ DecoderMaskedMultiHeadAttention<T1, T2>::DecoderMaskedMultiHeadAttention(const O
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
-  output_qk_ = info.GetAttrOrDefault<int64_t>("output_qk", 0LL);
 }
 
 template <typename T1, typename T2>
@@ -100,7 +98,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
 
   // This kernel is for decoding only (i.e.) sequence length has to be 1
   if (sequence_length != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedMultiHeadAttention. Actual length is ", sequence_length);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedMultiHeadAttention");
   }
 
   if (parameters.head_size != parameters.v_head_size) {
@@ -127,7 +125,6 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(kPresentOutputIndex, present_shape);
   Tensor* present_value = context->Output(kPresentOutputIndex + 1, present_shape);
-  Tensor* cross_qk = nullptr;
 
   auto cuda_stream = Stream(context);
 
@@ -192,13 +189,6 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                        : const_cast<T1*>(value->Data<T1>());
     parameters.k_cache = present_key_data;
     parameters.v_cache = present_value_data;
-  }
-
-  if (output_qk_) {
-    int64_t qk_dims[] = {parameters.batch_size, parameters.num_heads, 1, parameters.total_sequence_length};
-    TensorShape qk_shape(&qk_dims[0], sizeof(qk_dims) / sizeof(qk_dims[0]));
-    cross_qk = context->Output(kQKOutputIndex, qk_shape);
-    parameters.out_qk = cross_qk->MutableData<float>();
   }
 
   parameters.out = output->MutableDataRaw();

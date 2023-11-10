@@ -14,4 +14,4 @@ std::wstring GetWinMLPath();
 
 wgi::SoftwareBitmap GetSoftwareBitmapFromFile(const std::wstring& filePath);
 winml::ImageFeatureValue LoadImageFeatureValue(const std::wstring& imagePath);
-}  // namespace FileHelpers
+}// namespace FileHelpers

@@ -316,19 +316,14 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputInfo(JNIE
 /*
  * Class:     ai_onnxruntime_OrtSession
  * Method:    run
- * Signature: (JJJ[Ljava/lang/String;[JJ[Ljava/lang/String;J[Lai/onnxruntime/OnnxValue;[JJ)[Z
- * private native boolean[] run(long apiHandle, long nativeHandle, long allocatorHandle,
- *                              String[] inputNamesArray, long[] inputs, long numInputs,
- *                              String[] outputNamesArray, long numOutputs,
- *                              OnnxValue[] outputValues, long[] outputHandles,
- *                              long runOptionsHandle) throws OrtException;
+ * Signature: (JJJ[Ljava/lang/String;[JJ[Ljava/lang/String;JJ)[Lai/onnxruntime/OnnxValue;
+ * private native OnnxValue[] run(long apiHandle, long nativeHandle, long allocatorHandle, String[] inputNamesArray, long[] inputs, long numInputs, String[] outputNamesArray, long numOutputs)
  */
-JNIEXPORT jbooleanArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEnv, jobject jobj, jlong apiHandle,
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEnv, jobject jobj, jlong apiHandle,
                                                                   jlong sessionHandle, jlong allocatorHandle,
                                                                   jobjectArray inputNamesArr, jlongArray tensorArr,
                                                                   jlong numInputs, jobjectArray outputNamesArr,
-                                                                  jlong numOutputs, jobjectArray outputValuesArr,
-                                                                  jlongArray outputHandlesArr, jlong runOptionsHandle) {
+                                                                  jlong numOutputs, jlong runOptionsHandle) {
 
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*)apiHandle;
@@ -336,7 +331,7 @@ JNIEXPORT jbooleanArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEn
   OrtSession* session = (OrtSession*)sessionHandle;
   OrtRunOptions* runOptions = (OrtRunOptions*)runOptionsHandle;
 
-  jbooleanArray outputArray = NULL;
+  jobjectArray outputArray = NULL;
 
   // Create the buffers for the Java input & output strings, and the input pointers
   const char** inputNames = allocarray(numInputs, sizeof(char*));
@@ -381,18 +376,12 @@ JNIEXPORT jbooleanArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEn
   // Release the java array copy of pointers to the tensors.
   (*jniEnv)->ReleaseLongArrayElements(jniEnv, tensorArr, inputValueLongs, JNI_ABORT);
 
-  // Extract a C array of longs which are pointers to the output tensors.
-  jlong* outputHandleLongs = (*jniEnv)->GetLongArrayElements(jniEnv, outputHandlesArr, NULL);
-
   // Extract the names of the output values.
   for (int i = 0; i < numOutputs; i++) {
     javaOutputStrings[i] = (*jniEnv)->GetObjectArrayElement(jniEnv, outputNamesArr, i);
     outputNames[i] = (*jniEnv)->GetStringUTFChars(jniEnv, javaOutputStrings[i], NULL);
-    outputValues[i] = (OrtValue*)outputHandleLongs[i];
+    outputValues[i] = NULL;
   }
-
-  // Release the java array copy of pointers to the outputs.
-  (*jniEnv)->ReleaseLongArrayElements(jniEnv, outputHandlesArr, outputHandleLongs, JNI_ABORT);
 
   // Actually score the inputs.
   // ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess, _In_ OrtRunOptions* run_options,
@@ -405,25 +394,20 @@ JNIEXPORT jbooleanArray JNICALL Java_ai_onnxruntime_OrtSession_run(JNIEnv* jniEn
     goto cleanup_output_values;
   }
 
-  // Create the output boolean array denoting if ORT owns the memory for each output.
-  // Java boolean arrays are initialized to false.
-  outputArray = (*jniEnv)->NewBooleanArray(jniEnv, safecast_int64_to_jsize(numOutputs));
-  jboolean* boolArr = (*jniEnv)->GetBooleanArrayElements(jniEnv, outputArray, NULL);
+  // Construct the output array of ONNXValues
+  jclass onnxValueClass = (*jniEnv)->FindClass(jniEnv, ORTJNI_OnnxValueClassName);
+  outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_int64_to_jsize(numOutputs), onnxValueClass, NULL);
 
   // Convert the output tensors into ONNXValues
   for (int i = 0; i < numOutputs; i++) {
-    if (outputValues[i] != NULL && (*jniEnv)->GetObjectArrayElement(jniEnv, outputValuesArr, i) == NULL) {
+    if (outputValues[i] != NULL) {
       jobject onnxValue = convertOrtValueToONNXValue(jniEnv, api, allocator, outputValues[i]);
       if (onnxValue == NULL) {
         break;  // go to cleanup, exception thrown
       }
-      boolArr[i] = 1;
-      (*jniEnv)->SetObjectArrayElement(jniEnv, outputValuesArr, i, onnxValue);
+      (*jniEnv)->SetObjectArrayElement(jniEnv, outputArray, i, onnxValue);
     }
   }
-
-  // Write the output array back to Java.
-  (*jniEnv)->ReleaseBooleanArrayElements(jniEnv, outputArray, boolArr, 0);
 
   // Note these gotos are in a specific order so they mirror the allocation pattern above.
   // They must be changed if the allocation code is rearranged.

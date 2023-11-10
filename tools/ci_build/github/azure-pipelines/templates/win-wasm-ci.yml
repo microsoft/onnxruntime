@@ -20,7 +20,7 @@ parameters:
   default: false
 
 - name: TimeoutInMinutes
-  default: 240
+  default: 180
 
 - name: BuildJsep
   type: boolean
@@ -31,30 +31,23 @@ parameters:
   type: boolean
   default: false
 
-- name: BuildTraining
-  type: boolean
-  default: true
-
 - name: WithCache
   type: boolean
   default: false
 
 jobs:
 - job: build_WASM
-  pool:
-    name: ${{ parameters.PoolName }}
+  pool: ${{ parameters.PoolName }}
+
   variables:
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "MinGW Makefiles" --build_wasm --use_xnnpack ${{ parameters.ExtraBuildArgs }}'
+    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "MinGW Makefiles" --build_wasm --use_xnnpack --emsdk_version releases-7c905cfc1ca6699f6ccb288ae174902cfbdcf0a2-64bit ${{ parameters.ExtraBuildArgs }}'
     runCodesignValidationInjection: false
   timeoutInMinutes: ${{ parameters.TimeoutInMinutes }}
   workspace:
     clean: all
   steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
   - checkout: self
   - task: DownloadPipelineArtifact@2
     inputs:
@@ -81,7 +74,7 @@ jobs:
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '16.x'
   - template: download-deps.yml
 
   - task: PythonScript@0
@@ -115,13 +108,6 @@ jobs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
       arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd --enable_wasm_simd'
       workingDirectory: '$(Build.BinariesDirectory)'
-  - ${{ if eq(parameters.BuildTraining, true) }}:
-    - task: PythonScript@0
-      displayName: 'Build (training + simd)'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\training_wasm_simd --enable_training_apis --enable_wasm_simd --target onnxruntime_webassembly --skip_tests'
-        workingDirectory: '$(Build.BinariesDirectory)'
   - ${{ if eq(parameters.BuildJsep, true) }}:
     - task: PythonScript@0
       displayName: 'Build (simd + JSEP)'
@@ -151,10 +137,6 @@ jobs:
           copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.js
           copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.worker.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.worker.js
         )
-        if exist $(Build.BinariesDirectory)\training_wasm_simd (
-          copy $(Build.BinariesDirectory)\training_wasm_simd\${{ parameters.BuildConfig }}\ort-training-wasm-simd.wasm $(Build.ArtifactStagingDirectory)\ort-training-wasm-simd.wasm
-          copy $(Build.BinariesDirectory)\training_wasm_simd\${{ parameters.BuildConfig }}\ort-training-wasm-simd.js $(Build.ArtifactStagingDirectory)\ort-training-wasm-simd.js
-        )
       displayName: 'Create Artifacts'
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - task: PublishPipelineArtifact@0
@@ -172,3 +154,6 @@ jobs:
   - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

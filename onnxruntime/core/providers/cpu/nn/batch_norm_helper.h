@@ -1,5 +1,4 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #pragma once
@@ -23,17 +22,11 @@ class BatchNormHelper {
                                        const Tensor* B,
                                        const Tensor* mean,
                                        const Tensor* var,
-                                       bool is_spatial = true,
-                                       bool is_nhwc = false) {
+                                       bool is_spatial = true) {
     const auto& x_dims = X->Shape().GetDims();
 
     // If x_dims size < 2, num_channels defaults to 1.
-    int64_t num_channels;
-    if (is_nhwc) {
-      num_channels = x_dims.size() > 1 ? x_dims[x_dims.size() - 1] : 1;
-    } else {
-      num_channels = x_dims.size() > 1 ? x_dims[1] : 1;
-    }
+    int64_t num_channels = x_dims.size() > 1 ? x_dims[1] : 1;
     // the first 2 are respectively - N and C.
     int num_feature_dims = x_dims.size() > 1 ? static_cast<int>(x_dims.size() - 2) : 0;
 
@@ -116,7 +109,7 @@ class BatchNormHelper {
     return common::Status::OK();
   }
 
-  static void NormalizeDims(const TensorShape& x_shape, std::vector<int64_t>& new_dims, bool is_nhwc = false) {
+  static void NormalizeDims(const TensorShape& x_shape, std::vector<int64_t>& new_dims) {
     new_dims.clear();
     auto orig_dims = x_shape.GetDims();
     ORT_ENFORCE(orig_dims.size() < 6,
@@ -129,16 +122,10 @@ class BatchNormHelper {
 
     auto rank = x_shape.NumDimensions();
     auto num_samples = rank > 0 ? orig_dims[0] : 1;  // NCHW
-    const size_t channel_dim = is_nhwc ? rank - 1 : 1;
-    const size_t height_dim = is_nhwc ? 1 : 2;
-    auto num_channels = rank > 1 ? orig_dims[channel_dim] : 1;
-    auto height = rank > 2 ? orig_dims[height_dim] : 1;
+    auto num_channels = rank > 1 ? orig_dims[1] : 1;
+    auto height = rank > 2 ? orig_dims[2] : 1;
     int64_t width = 1;
-    if (is_nhwc) {
-      new_dims = {num_samples, height, width, num_channels};
-    } else {
-      new_dims = {num_samples, num_channels, height, width};
-    }
+    new_dims = {num_samples, num_channels, height, width};
   }
 };
 }  // namespace onnxruntime

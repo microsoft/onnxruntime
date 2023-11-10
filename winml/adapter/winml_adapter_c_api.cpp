@@ -14,13 +14,13 @@ const OrtApi* GetVersion1Api();
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 static constexpr WinmlAdapterApi winml_adapter_api_1 = {
-  // Schema override
+    // Schema override
   &winmla::OverrideSchema,
 
-  // OrtEnv methods
+    // OrtEnv methods
   &winmla::EnvConfigureCustomLoggerAndProfiler,
 
-  // OrtModel methods
+    // OrtModel methods
   &winmla::CreateModelFromPath,
   &winmla::CreateModelFromData,
   &winmla::CloneModel,
@@ -43,11 +43,11 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::ModelEnsureNoFloat16,
   &winmla::SaveModel,
 
-  // OrtSessionOptions methods
+    // OrtSessionOptions methods
   &OrtSessionOptionsAppendExecutionProvider_CPU,
   &winmla::OrtSessionOptionsAppendExecutionProviderEx_DML,
 
-  // OrtSession methods
+    // OrtSession methods
   &winmla::CreateSessionWithoutModel,
   &winmla::SessionGetExecutionProvider,
   &winmla::SessionInitialize,
@@ -61,7 +61,8 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::SessionGetIntraOpThreadSpinning,
   &winmla::SessionGetNamedDimensionsOverrides,
 
-  // Dml methods (TODO need to figure out how these need to move to session somehow...)
+    // Dml methods (TODO need to figure out how these need to move to session somehow...)
+  &winmla::DmlExecutionProviderSetDefaultRoundingMode,
   &winmla::DmlExecutionProviderFlushContext,
   &winmla::DmlExecutionProviderReleaseCompletedReferences,
   &winmla::DmlCopyTensor,
@@ -93,7 +94,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::JoinModels,
   &winmla::CreateThreadPool,
 
-  // Release
+    // Release
   &winmla::ReleaseModel,
   &winmla::ReleaseThreadPool,
 };

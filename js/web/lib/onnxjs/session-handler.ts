@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession, InferenceSessionHandler, SessionHandler, Tensor} from 'onnxruntime-common';
+import {InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common';
 
 import {Session} from './session';
 import {Tensor as OnnxjsTensor} from './tensor';
 
-export class OnnxjsSessionHandler implements InferenceSessionHandler {
+export class OnnxjsSessionHandler implements SessionHandler {
   constructor(private session: Session) {
     this.inputNames = this.session.inputNames;
     this.outputNames = this.session.outputNames;

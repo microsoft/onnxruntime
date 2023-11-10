@@ -1392,14 +1392,13 @@ namespace Windows::AI::MachineLearning::Adapter
         const onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* protoHelper,
         const void* executionHandle,
         bool isInternalOperator,
-        const EdgeShapes* inputShapesOverrides,
         const EdgeShapes* inferredOutputShapes,
         const AttributeMap* defaultAttributes,
         DmlGraphNodeCreateInfo* graphNodeCreateInfo,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
         MLOperatorTensorGetter& constantInputGetter
         )
-    :   OpNodeInfoWrapper(protoHelper, inputShapesOverrides, defaultAttributes, requiredConstantCpuInputs, constantInputGetter, nullptr),
+    :   OpNodeInfoWrapper(protoHelper, nullptr, defaultAttributes, requiredConstantCpuInputs, constantInputGetter, nullptr),
         m_inferredOutputShapes(inferredOutputShapes),
         m_internalOperator(isInternalOperator),
         m_graphNodeCreateInfo(graphNodeCreateInfo)

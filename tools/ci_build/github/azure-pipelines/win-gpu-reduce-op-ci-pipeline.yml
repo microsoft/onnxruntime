@@ -9,47 +9,53 @@ jobs:
       minsizerel:
         BuildConfig: 'MinSizeRel'
   variables:
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
-    EnvSetupScript: setup_env_cuda.bat
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
-    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    setVcvars: true
   timeoutInMinutes: 120
   workspace:
     clean: all
   steps:
-  - template: templates/jobs/win-ci-prebuild-steps.yml
-    parameters:
-      EnvSetupScript: $(EnvSetupScript)
-      DownloadCUDA: true
-      BuildArch: $(buildArch)
-      BuildConfig: $(BuildConfig)
-      MachinePool: 'onnxruntime-Win2022-GPU-T4'
-      WithCache: true
-      Today: $(Today)
+  - task: UsePythonVersion@0
+    inputs: 
+      versionSpec: '3.8'
+      addToPath: true
+      architecture: $(buildArch)
 
-  - template: templates/jobs/win-ci-build-steps.yml
-    parameters:
-      WithCache: True
-      Today: $(TODAY)
-      AdditionalKey: "gpu-reduced-ops | $(BuildConfig)"
-      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --build_wheel --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"'
-      MsbuildArguments: $(MsbuildArguments)
-      BuildArch: $(buildArch)
-      Platform: 'x64'
-      BuildConfig: $(BuildConfig)
-
-  - task: PythonScript@0
-    displayName: 'Build wheel'
+  - task: BatchScript@1
+    displayName: 'setup env'
     inputs:
-      scriptPath: '$(Build.SourcesDirectory)\setup.py'
-      arguments: 'bdist_wheel'
-      workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - script: |
+     python -m pip install -q setuptools wheel numpy flatbuffers
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
 
   - powershell: |
-      python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022"  --build_shared_lib --enable_onnx_tests --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-    displayName: 'Run tests'
+      azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+
+  - task: PowerShell@2
+    displayName: 'Install ONNX'
+    inputs:
+      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+      workingDirectory: '$(Build.BinariesDirectory)'
+      arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
+
+  - task: PythonScript@0
+    displayName: 'Build and test'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --build_wheel --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"'
+      workingDirectory: '$(Build.BinariesDirectory)'
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
+

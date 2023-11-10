@@ -24,7 +24,7 @@ static std::vector<PathString> GetAllDataFiles(const PathString& dir_path) {
                 !HasExtensionOf(filename_str, ORT_TSTR("pb"))) {
               return true;
             }
-            data_files.push_back(ConcatPathComponent(dir_path, filename_str));
+            data_files.push_back(ConcatPathComponent<PathChar>(dir_path, filename_str));
             return true;
           });
 

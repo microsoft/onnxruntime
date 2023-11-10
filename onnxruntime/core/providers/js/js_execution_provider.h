@@ -19,21 +19,12 @@ KernelCreateInfo BuildKernelCreateInfo();
 
 }  // namespace js
 
+// placeholder for future use. no options currently
 struct JsExecutionProviderInfo {
-  JsExecutionProviderInfo(const ProviderOptions& po) {
-    auto it = po.find("preferred_layout");
-    if (it != po.end()) {
-      auto& value = it->second;
-      if (value == "NCHW") {
-        data_layout = DataLayout::NCHW;
-      } else if (value == "NHWC") {
-        data_layout = DataLayout::NHWC;
-      }
-    }
-  }
+  JsExecutionProviderInfo() = default;
 
-  // JSEP default preferred layout is NHWC
-  DataLayout data_layout = DataLayout::NHWC;
+  JsExecutionProviderInfo(const ProviderOptions& po) {
+  }
 };
 
 class JsExecutionProvider : public IExecutionProvider {
@@ -48,7 +39,7 @@ class JsExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
-  DataLayout GetPreferredLayout() const override { return preferred_data_layout_; }
+  DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
 
@@ -57,7 +48,6 @@ class JsExecutionProvider : public IExecutionProvider {
   bool ConcurrentRunSupported() const override { return false; }
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
-  DataLayout preferred_data_layout_;
 };
 
 }  // namespace onnxruntime

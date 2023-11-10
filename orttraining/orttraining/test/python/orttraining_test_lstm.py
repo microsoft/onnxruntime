@@ -840,9 +840,9 @@ class LSTM:
 
 
 @pytest.mark.parametrize("sequence_length", [2, 4, 16, 32])
-@pytest.mark.parametrize("batch_size", [32])
-@pytest.mark.parametrize("input_size", [32])
-@pytest.mark.parametrize("hidden_size", [32])
+@pytest.mark.parametrize("batch_size", [2, 4, 32])
+@pytest.mark.parametrize("input_size", [2, 4, 32])
+@pytest.mark.parametrize("hidden_size", [2, 4, 32])
 def test_lstm_forward(sequence_length, batch_size, input_size, hidden_size):
     num_directions = 1
 
@@ -871,9 +871,9 @@ def test_lstm_forward(sequence_length, batch_size, input_size, hidden_size):
 
 
 @pytest.mark.parametrize("sequence_length", [2, 4, 16, 32])
-@pytest.mark.parametrize("batch_size", [32])
-@pytest.mark.parametrize("input_size", [32])
-@pytest.mark.parametrize("hidden_size", [32])
+@pytest.mark.parametrize("batch_size", [2, 4, 32])
+@pytest.mark.parametrize("input_size", [2, 4, 32])
+@pytest.mark.parametrize("hidden_size", [2, 4, 32])
 def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size):
     num_directions = 1
 

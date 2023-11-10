@@ -10,10 +10,6 @@ namespace onnxruntime {
 namespace js {
 
 void* JsCustomAllocator::Alloc(size_t size) {
-  if (size == 0) {
-    return nullptr;
-  }
-
   void* p = EM_ASM_PTR({ return Module.jsepAlloc($0); }, size);
   stats_.num_allocs++;
   stats_.bytes_in_use += size;
@@ -21,10 +17,8 @@ void* JsCustomAllocator::Alloc(size_t size) {
 }
 
 void JsCustomAllocator::Free(void* p) {
-  if (p != nullptr) {
-    size_t size = (size_t)(void*)EM_ASM_PTR({ return Module.jsepFree($0); }, p);
-    stats_.bytes_in_use -= size;
-  }
+  size_t size = (size_t)(void*)EM_ASM_PTR({ return Module.jsepFree($0); }, p);
+  stats_.bytes_in_use -= size;
 }
 
 void JsCustomAllocator::GetStats(AllocatorStats* stats) {

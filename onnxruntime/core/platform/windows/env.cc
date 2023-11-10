@@ -431,7 +431,7 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                                           0,
                                           static_cast<DWORD>(mapped_offset),
                                           mapped_length);
-  GSL_SUPPRESS(r.11)
+  GSL_SUPPRESS(r .11)
   mapped_memory =
       MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
                       OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};

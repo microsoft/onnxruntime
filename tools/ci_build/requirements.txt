@@ -1,8 +1,7 @@
-# packages used by transformers python unittest (only enabled in Linux CPU CI Pipeline)
+# packages used by transformers tool test
 packaging
 protobuf==3.20.2
 numpy==1.24.0
 coloredlogs==15.0
 transformers==4.30.0
 psutil
-einops

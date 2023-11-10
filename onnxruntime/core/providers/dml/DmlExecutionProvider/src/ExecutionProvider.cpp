@@ -67,8 +67,7 @@ namespace Dml
     ExecutionProvider::ExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands,
-        bool enableDynamicGraphFusion) :
+        bool enableMetacommands) :
             IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
@@ -81,7 +80,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableDynamicGraphFusion);
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -117,7 +116,7 @@ namespace Dml
         ORT_TRY
         {
         ComPtr<IUnknown> allocation;
-        allocation.Attach(static_cast<IUnknown* >(m_allocator->Alloc(size, roundingMode)));
+        allocation.Attach(static_cast<IUnknown* >(m_allocator->Alloc(size)));
 
         const auto* allocInfo = m_allocator->DecodeDataHandle(allocation.Get());
 
@@ -148,12 +147,12 @@ namespace Dml
 // Task 24384515: Update ORT AIInfra release agent pool to install 19H1 SDK on VM bootstrap
 #define D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE ((D3D_FEATURE_LEVEL)0x1000)
 
-    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands, bool enableDynamicGraphFusion)
+    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
-          m_areMetacommandsEnabled(enableMetacommands),
-          m_dynamicGraphFusionEnabled(enableDynamicGraphFusion)
+          m_areMetacommandsEnabled(enableMetacommands)
     {
+
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
         D3D_FEATURE_LEVEL featureLevelsList[] = {
@@ -205,6 +204,7 @@ namespace Dml
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
+            m_allocator->SetDefaultRoundingMode(m_defaultRoundingMode);   // TODO(leca): REVIEW: the original code is able to set roudingMode multiple times during alloc's life time. Double check this case is not happening
             m_context->SetAllocator(m_allocator);
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
             m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
@@ -637,7 +637,7 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto cpuOnDmlOperators = std::array<const char*, 8>{
+        auto cpuOnDmlOperators = std::array<char*, 8>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
@@ -660,7 +660,7 @@ namespace Dml
 
     bool IsDmlSequenceOperator(const onnxruntime::Node& node)
     {
-        auto sequence_ops = std::array<const char*, 1>{
+        auto sequence_ops = std::array<char*, 1>{
             "ConcatFromSequence"
         };
 
@@ -676,7 +676,7 @@ namespace Dml
 
     bool IsCustomOpShader(const onnxruntime::Node& node)
     {
-        auto custom_ops = std::array<const char*, 3>{
+        auto custom_ops = std::array<char*, 3>{
             "DFT",
             "STFT",
             "GridSample"
@@ -963,6 +963,11 @@ namespace Dml
         m_context->Flush();
     }
 
+    void ExecutionProviderImpl::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
+    {
+        m_defaultRoundingMode = roundingMode;
+    }
+
     void ExecutionProviderImpl::ReleaseCompletedReferences()
     {
          m_context->ReleaseCompletedReferences();
@@ -1094,11 +1099,6 @@ namespace Dml
         return m_areMetacommandsEnabled;
     }
 
-    bool ExecutionProviderImpl::DynamicGraphFusionEnabled() const noexcept
-    {
-        return m_dynamicGraphFusionEnabled;
-    }
-
     std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
     ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
     {
@@ -1125,20 +1125,15 @@ namespace Dml
         m_context->ReleaseCompletedReferences();
         m_uploadHeap->Trim();
 
-        // Allocations after this point are potentially transient and their sizes are
-        // rounded to enable pooling.
-        m_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
-
         return onnxruntime::common::Status::OK();
     }
 
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands,
-        bool enableDynamicGraphFusion)
+        bool enableMetacommands)
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, enableDynamicGraphFusion);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
@@ -1151,6 +1146,12 @@ namespace Dml
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
         dmlexecutionprovider->Flush();
+    }
+
+    void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode)
+    {
+        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
+        dmlexecutionprovider->SetDefaultRoundingMode(roundingMode);
     }
 
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider * provider)

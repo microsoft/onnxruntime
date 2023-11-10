@@ -34,7 +34,7 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto rank = static_cast<int32_t>(input_shape.size());
 
   emscripten::val desc = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_INT64), "Unsupported data type");
+  desc.set("type", emscripten::val("int64"));
   emscripten::val dims = emscripten::val::array();
   dims.call<void>("push", rank);
   desc.set("dimensions", dims);

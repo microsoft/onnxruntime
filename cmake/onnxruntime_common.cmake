@@ -86,12 +86,7 @@ endif()
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
-if(WIN32)
-  if("cxx_std_23" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
-    set_property(TARGET onnxruntime_common PROPERTY CXX_STANDARD 23)
-    target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
-  endif()
-endif()
+
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
@@ -121,7 +116,7 @@ if (MSVC)
     endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date::date ${WIL_TARGET})
+onnxruntime_add_include_to_target(onnxruntime_common date_interface WIL::WIL)
 target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
     # propagate include directories of dependencies that are part of public interface
@@ -208,7 +203,7 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
     if (CPUINFO_SUPPORTED)
       onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo ${ONNXRUNTIME_CLOG_TARGET_NAME})
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo cpuinfo::clog)
     endif()
   endif()
 endif()

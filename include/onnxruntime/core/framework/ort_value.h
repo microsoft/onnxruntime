@@ -68,7 +68,11 @@ struct OrtValue {
   }
 
   bool IsSparseTensor() const {
+#if !defined(DISABLE_SPARSE_TENSORS)
     return (type_ != nullptr && type_->IsSparseTensorType());
+#else
+    ORT_THROW("Sparse tensor is not supported in this build.");
+#endif
   }
 
   onnxruntime::MLDataType Type() const {

@@ -7,7 +7,7 @@
 #include <string>
 
 #ifndef SHARED_PROVIDER
-#include "core/graph/onnx_protobuf.h"
+#include "onnx/onnx_pb.h"
 #endif
 
 #include "core/framework/float8.h"

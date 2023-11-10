@@ -31,7 +31,7 @@ namespace onnxruntime {
 namespace rocm {
 
 template <typename InputT, typename OutputT, typename AccT, bool IsLogSoftmax>
-Status dispatch_warpwise_softmax_forward(Stream* stream, OutputT* dst, const InputT* src, int softmax_elements,
+Status dispatch_warpwise_softmax_forward(hipStream_t stream, OutputT* dst, const InputT* src, int softmax_elements,
                                          int softmax_elements_stride, int batch_count, RocmTuningContext* tuning_ctx) {
   SoftmaxParams<InputT, OutputT> params(tuning_ctx, stream, dst, src, softmax_elements, softmax_elements_stride,
                                         softmax_elements_stride, batch_count, IsLogSoftmax);
@@ -44,10 +44,10 @@ Status dispatch_warpwise_softmax_forward(Stream* stream, OutputT* dst, const Inp
 
 #define SPECIALIZED_SOFTMAX_IMPL(InputT, OutputT, AccT)                             \
   template Status dispatch_warpwise_softmax_forward<InputT, OutputT, AccT, false>(  \
-      Stream* stream, OutputT * dst, const InputT* src, int softmax_elements,       \
+      hipStream_t stream, OutputT * dst, const InputT* src, int softmax_elements,   \
       int softmax_elements_stride, int batch_count, RocmTuningContext* tuning_ctx); \
   template Status dispatch_warpwise_softmax_forward<InputT, OutputT, AccT, true>(   \
-      Stream* stream, OutputT * dst, const InputT* src, int softmax_elements,       \
+      hipStream_t stream, OutputT * dst, const InputT* src, int softmax_elements,   \
       int softmax_elements_stride, int batch_count, RocmTuningContext* tuning_ctx);
 
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
@@ -57,7 +57,7 @@ SPECIALIZED_SOFTMAX_IMPL(double, double, double)
 SPECIALIZED_SOFTMAX_IMPL(BFloat16, BFloat16, float)
 
 template <typename InputT, typename OutputT, typename AccT, bool IsLogSoftmax>
-Status dispatch_blockwise_softmax_forward(Stream* stream, OutputT* output,
+Status dispatch_blockwise_softmax_forward(hipStream_t stream, OutputT* output,
                                           const InputT* input, int softmax_elements,
                                           int input_stride, int output_stride,
                                           int batch_count, RocmTuningContext* tuning_ctx) {
@@ -72,10 +72,10 @@ Status dispatch_blockwise_softmax_forward(Stream* stream, OutputT* output,
 
 #define SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(InputT, OutputT, AccT)                           \
   template Status dispatch_blockwise_softmax_forward<InputT, OutputT, AccT, false>(         \
-      Stream* stream, OutputT * output, const InputT* input, int softmax_elements,          \
+      hipStream_t stream, OutputT * output, const InputT* input, int softmax_elements,      \
       int input_stride, int output_stride, int batch_count, RocmTuningContext* tuning_ctx); \
   template Status dispatch_blockwise_softmax_forward<InputT, OutputT, AccT, true>(          \
-      Stream* stream, OutputT * output, const InputT* input, int softmax_elements,          \
+      hipStream_t stream, OutputT * output, const InputT* input, int softmax_elements,      \
       int input_stride, int output_stride, int batch_count, RocmTuningContext* tuning_ctx);
 
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, float)

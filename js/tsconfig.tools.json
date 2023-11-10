@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "Node16",
+    "module": "CommonJS",
     "declaration": false,
     "sourceMap": false
   }

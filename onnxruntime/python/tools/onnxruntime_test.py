@@ -40,7 +40,7 @@ def generate_feeds(sess, symbolic_dims: dict | None = None):
             if not dim:
                 # unknown dim
                 shape.append(1)
-            elif isinstance(dim, str):
+            elif type(dim) == str:
                 # symbolic dim. see if we have a value otherwise use 1
                 if dim in symbolic_dims:
                     shape.append(int(symbolic_dims[dim]))

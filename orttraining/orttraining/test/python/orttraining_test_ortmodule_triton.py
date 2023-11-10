@@ -135,31 +135,8 @@ def _torch_layer_norm(input, weight, bias, **kwargs):
     return torch.nn.functional.layer_norm(input, normalized_shape, weight, bias)
 
 
-def _torch_gelu(input):
-    return torch.nn.functional.gelu(input)
-
-
-def _torch_quick_gelu(input, **kwargs):
-    alpha = kwargs.get("alpha", 1.702)
-    return input * torch.sigmoid(input * alpha)
-
-
-def _torch_gelu_grad(dy, x):
-    alpha = 0.70710678118654752440
-    beta = 1.12837916709551257390 * 0.70710678118654752440 * 0.5
-    cdf = 0.5 * (1 + torch.erf(x * alpha))
-    pdf = beta * torch.exp(x * x * -0.5)
-    return dy * (cdf + x * pdf)
-
-
-def _torch_quick_gelu_grad(dy, x, **kwargs):
-    alpha = kwargs.get("alpha", 1.702)
-    sigmoid = torch.sigmoid(x * alpha)
-    return dy * sigmoid * (1.0 + x * alpha * (1.0 - sigmoid))
-
-
 class TorchFuncExecutor:
-    _TORCH_FUNC_MAP = {  # noqa: RUF012
+    _INFER_FUNC_MAP = {  # noqa: RUF012
         "Add": _torch_add,
         "Sub": _torch_sub,
         "Mul": _torch_mul,
@@ -177,17 +154,13 @@ class TorchFuncExecutor:
         "ReduceMin": _torch_reduce_min,
         "Softmax": _torch_softmax,
         "LayerNormalization": _torch_layer_norm,
-        "Gelu": _torch_gelu,
-        "QuickGelu": _torch_quick_gelu,
-        "GeluGrad": _torch_gelu_grad,
-        "QuickGeluGrad": _torch_quick_gelu_grad,
     }
 
     @classmethod
     def run(cls, op_type, *torch_tensors, **kwargs):
-        if op_type not in cls._TORCH_FUNC_MAP:
+        if op_type not in cls._INFER_FUNC_MAP:
             raise NotImplementedError(f"Unsupported op type: {op_type}")
-        return cls._TORCH_FUNC_MAP[op_type](*torch_tensors, **kwargs)
+        return cls._INFER_FUNC_MAP[op_type](*torch_tensors, **kwargs)
 
 
 def _run_op_test(op_type, onnx_dtype, create_model_func, gen_inputs_func, **kwargs):
@@ -196,8 +169,6 @@ def _run_op_test(op_type, onnx_dtype, create_model_func, gen_inputs_func, **kwar
     pt_inputs = gen_inputs_func(_onnx_dtype_to_torch_dtype(onnx_dtype))
     ort_inputs = copy.deepcopy(pt_inputs)
     ort_inputs = [tensor.to(torch.uint8) if tensor.dtype == torch.bool else tensor for tensor in ort_inputs]
-    if "::" in op_type:
-        _, op_type = op_type.split("::")
     pt_outputs = TorchFuncExecutor.run(op_type, *pt_inputs, **kwargs)
     model_str = create_model_func(op_type, onnx_dtype, **kwargs).SerializeToString()
     ort_outputs = call_triton_by_onnx(hash(model_str), model_str, *[to_dlpack(tensor) for tensor in ort_inputs])
@@ -289,27 +260,13 @@ def _run_tunable_op_test(module_cls, dtype, gen_inputs_func, tunable_op, impl_co
     del os.environ["ORTMODULE_TUNING_RESULTS_PATH"]
 
 
-@pytest.mark.parametrize(
-    "op",
-    [
-        ("Add", {}),
-        ("Sub", {}),
-        ("Mul", {}),
-        ("Div", {}),
-        ("com.microsoft::GeluGrad", {}),
-        ("com.microsoft::QuickGeluGrad", {}),
-        ("com.microsoft::QuickGeluGrad", {"alpha": 1.0}),
-    ],
-)
+@pytest.mark.parametrize("op_type", ["Add", "Sub", "Mul", "Div"])
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT, TensorProto.FLOAT16])
 @pytest.mark.parametrize("input_shapes", [([1024, 2], [1024, 2]), ([2, 3, 3, 3], [3, 1, 3]), ([2049], [1])])
-def test_binary_elementwise_op(op, onnx_dtype, input_shapes):
-    def _create_model(op_type, onnx_dtype, **kwargs):
-        domain = ""
-        if "::" in op_type:
-            domain, op_type = op_type.split("::")
+def test_binary_elementwise_op(op_type, onnx_dtype, input_shapes):
+    def _create_model(op_type, onnx_dtype):
         graph = helper.make_graph(
-            [helper.make_node(op_type, ["X", "Y"], ["Z"], name="test", domain=domain, **kwargs)],
+            [helper.make_node(op_type, ["X", "Y"], ["Z"], name="test")],
             "test",
             [
                 helper.make_tensor_value_info("X", onnx_dtype, None),
@@ -325,7 +282,7 @@ def test_binary_elementwise_op(op, onnx_dtype, input_shapes):
             torch.randn(*input_shapes[1], dtype=dtype, device=DEVICE),
         ]
 
-    _run_op_test(op[0], onnx_dtype, _create_model, _gen_inputs, **op[1])
+    _run_op_test(op_type, onnx_dtype, _create_model, _gen_inputs)
 
 
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT, TensorProto.FLOAT16])
@@ -346,25 +303,13 @@ def test_sum_op(onnx_dtype, input_shapes):
     _run_op_test("Sum", onnx_dtype, _create_model, _gen_inputs)
 
 
-@pytest.mark.parametrize(
-    "op",
-    [
-        ("Sqrt", {}),
-        ("Exp", {}),
-        ("com.microsoft::Gelu", {}),
-        ("com.microsoft::QuickGelu", {}),
-        ("com.microsoft::QuickGelu", {"alpha": 1.0}),
-    ],
-)
+@pytest.mark.parametrize("op_type", ["Sqrt", "Exp"])
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT, TensorProto.FLOAT16])
 @pytest.mark.parametrize("input_shape", [[1024, 4], [2, 3, 3, 3], [2049, 1]])
-def test_unary_elementwise_op(op, onnx_dtype, input_shape):
-    def _create_model(op_type, onnx_dtype, **kwargs):
-        domain = ""
-        if "::" in op_type:
-            domain, op_type = op_type.split("::")
+def test_unary_elementwise_op(op_type, onnx_dtype, input_shape):
+    def _create_model(op_type, onnx_dtype):
         graph = helper.make_graph(
-            [helper.make_node(op_type, ["X"], ["Y"], name="test", domain=domain, **kwargs)],
+            [helper.make_node(op_type, ["X"], ["Y"], name="test")],
             "test",
             [helper.make_tensor_value_info("X", onnx_dtype, None)],
             [helper.make_tensor_value_info("Y", onnx_dtype, None)],
@@ -374,7 +319,7 @@ def test_unary_elementwise_op(op, onnx_dtype, input_shape):
     def _gen_inputs(dtype):
         return [torch.rand(*input_shape, dtype=dtype, device=DEVICE)]
 
-    _run_op_test(op[0], onnx_dtype, _create_model, _gen_inputs, **op[1])
+    _run_op_test(op_type, onnx_dtype, _create_model, _gen_inputs)
 
 
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT, TensorProto.FLOAT16])

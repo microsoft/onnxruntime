@@ -7,6 +7,7 @@
 import logging
 import os
 import random
+import sys
 import tempfile
 from pathlib import Path
 from typing import List, Union
@@ -14,11 +15,13 @@ from typing import List, Union
 import numpy
 import onnx
 import torch
-from onnx_model import OnnxModel
-from torch_onnx_export_helper import torch_onnx_export
 from transformers import MT5Config, T5Config
 
 from onnxruntime import InferenceSession
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from onnx_model import OnnxModel  # noqa: E402
+from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

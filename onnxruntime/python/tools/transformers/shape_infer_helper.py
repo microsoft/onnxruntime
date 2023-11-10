@@ -28,12 +28,12 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         self.is_inferred_: bool = False
         self.dynamic_axis_mapping_: Dict[str, int] = {}
 
-    def infer(self, dynamic_axis_mapping: Dict[str, int], max_runs: int = 200):
+    def infer(self, dynamic_axis_mapping: Dict[str, int], max_runs: int = 128):
         """Run shape inference, and try replace dynamic axis from string to integer when mapping is provided.
 
         Args:
             dynamic_axis_mapping (_type_): a dictionary with name of dynamic axis as key, like {"batch_size" : 4}
-            max_runs (int, optional): limit maximum number of runs to avoid infinite loop. Defaults to 200.
+            max_runs (int, optional): limit maximum number of runs to avoid infinite loop. Defaults to 32.
 
         Returns:
             bool: whether all shapes has been inferred or not.

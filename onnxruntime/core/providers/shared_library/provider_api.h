@@ -240,7 +240,6 @@ struct DeleteOnUnloadPtr {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
-constexpr const char* kMSInternalNHWCDomain = "com.ms.internal.nhwc";
 constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
@@ -350,9 +349,6 @@ void InitProviderOrtApi();
 #define LOGS_CATEGORY(logger, severity, category)                                                                        \
   if ((logger).OutputIsEnabled(::onnxruntime::logging::Severity::k##severity, ::onnxruntime::logging::DataType::SYSTEM)) \
   CREATE_MESSAGE(logger, severity, category, ::onnxruntime::logging::DataType::SYSTEM)->Stream()
-
-#define LOGS(logger, severity) \
-  LOGS_CATEGORY(logger, severity, ::onnxruntime::logging::Category::onnxruntime)
 
 #define LOGS_DEFAULT_CATEGORY(severity, category) \
   LOGS_CATEGORY(::onnxruntime::logging::LoggingManager::DefaultLogger(), severity, category)

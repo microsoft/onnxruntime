@@ -32,53 +32,38 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
   if (!GetType(*node.InputDefs()[0], input_type, logger))
     return false;
 
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    LOGS(logger, VERBOSE) << "GetClipMinMax() only support Clip node with float inputs for now. "
+                          << "The node [" << node_name << "] has input 0 type: " << input_type;
+    return false;
+  }
+
   min = std::numeric_limits<float>::lowest();
   max = std::numeric_limits<float>::max();
 
   if (node.SinceVersion() < 11) {  // Clip opset 1, 6 is using attributes for min/max
     NodeAttrHelper helper(node);
-    // attributes will be always float
     min = helper.Get("min", std::numeric_limits<float>::lowest());
     max = helper.Get("max", std::numeric_limits<float>::max());
   } else {
-    if (node.InputDefs().size() > 1) {
-      // we have input min
+    if (node.InputDefs().size() > 1) {  // we have input min
       const auto& min_name = node.InputDefs()[1]->Name();
       if (!Contains(initializers, min_name)) {
         LOGS(logger, VERBOSE) << "Input min of Clip must be known";
         return false;
       }
-      Initializer unpacked_tensor_min(*initializers.at(min_name));
-      switch (input_type) {
-        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-          min = unpacked_tensor_min.DataAsSpan<float>()[0];
-          break;
-        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-          min = (unpacked_tensor_min.DataAsSpan<MLFloat16>()[0]).ToFloat();
-          break;
-        default:
-          LOGS(logger, VERBOSE) << "GetClipMinMax() only support Clip node with float inputs for now. "
-                                << "The node [" << node_name << "] has input 0 type: " << input_type;
-          return false;
-      }
+      Initializer unpacked_tensor(*initializers.at(min_name));
+      min = unpacked_tensor.DataAsSpan<float>()[0];
+    }
 
-      if (node.InputDefs().size() > 2) {
-        // we have input max
-        const auto& max_name = node.InputDefs()[2]->Name();
-        if (!Contains(initializers, max_name)) {
-          LOGS(logger, VERBOSE) << "Input max of Clip must be known";
-          return false;
-        }
-        Initializer unpacked_tensor_max(*initializers.at(max_name));
-        switch (input_type) {
-          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-            max = unpacked_tensor_max.DataAsSpan<float>()[0];
-            break;
-          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-            max = (unpacked_tensor_max.DataAsSpan<MLFloat16>()[0]).ToFloat();
-            break;
-        }
+    if (node.InputDefs().size() > 2) {  // we have input max
+      const auto& max_name = node.InputDefs()[2]->Name();
+      if (!Contains(initializers, max_name)) {
+        LOGS(logger, VERBOSE) << "Input max of Clip must be known";
+        return false;
       }
+      Initializer unpacked_tensor(*initializers.at(max_name));
+      max = unpacked_tensor.DataAsSpan<float>()[0];
     }
   }
 
@@ -119,7 +104,7 @@ int64_t NodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
   return node_attributes_.at(key).i();
 }
 
-const std::string& NodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
+std::string NodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
   if (!HasAttr(key))
     return def_val;
 

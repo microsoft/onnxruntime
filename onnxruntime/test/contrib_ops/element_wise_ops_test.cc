@@ -162,13 +162,13 @@ static void RunBiasGeluTestBFloat16(const std::vector<int64_t>& input_dims, cons
   tester.AddInput<BFloat16>("B", bias_dims, bias_data_bf16);
   tester.AddOutput<BFloat16>("C", input_dims, output_data_bf16);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#if defined(USE_CUDA)
+#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif defined(USE_ROCM)
+#elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#elif defined(USE_DNNL)
+#elif USE_DNNL
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-#elif defined(USE_DML)
+#elif USE_DML
   execution_providers.push_back(DefaultDmlExecutionProvider());
 #endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -197,8 +197,9 @@ TEST(BiasGeluTest, BFloat16) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(MathOpTest, ComplexMul) {
+  if (DefaultCudaExecutionProvider() == nullptr) return;
+
   std::vector<float> input_a_data = {
       -0.5f, 0.6f};
 
@@ -218,15 +219,13 @@ TEST(MathOpTest, ComplexMul) {
   tester.AddOutput<float>("C", {4, 2}, output_data);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#if defined(USE_CUDA)
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif defined(USE_ROCM)
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(MathOpTest, ComplexMulConj) {
+  if (DefaultCudaExecutionProvider() == nullptr) return;
+
   std::vector<float> input_a_data = {
       -0.5f, 0.6f};
 
@@ -246,15 +245,13 @@ TEST(MathOpTest, ComplexMulConj) {
   tester.AddOutput<float>("C", {4, 2}, output_data);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif defined(USE_ROCM)
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(MathOpTest, ComplexMul_fp16) {
+  if (DefaultCudaExecutionProvider() == nullptr) return;
+
   std::vector<MLFloat16> input_a_data = {
       MLFloat16(-0.5f), MLFloat16(0.6f)};
 
@@ -274,15 +271,13 @@ TEST(MathOpTest, ComplexMul_fp16) {
   tester.AddOutput<MLFloat16>("C", {4, 2}, output_data);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif defined(USE_ROCM)
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(MathOpTest, ComplexMulConj_fp16) {
+  if (DefaultCudaExecutionProvider() == nullptr) return;
+
   std::vector<MLFloat16> input_a_data = {
       MLFloat16(-0.5f), MLFloat16(0.6f)};
 
@@ -302,14 +297,9 @@ TEST(MathOpTest, ComplexMulConj_fp16) {
   tester.AddOutput<MLFloat16>("C", {4, 2}, output_data);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif defined(USE_ROCM)
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

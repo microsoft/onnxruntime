@@ -43,8 +43,6 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     output = model_builder.GetBuilder().call<emscripten::val>("floor", input);
   } else if (op_type == "Identity") {
     output = model_builder.GetBuilder().call<emscripten::val>("identity", input);
-  } else if (op_type == "Log") {
-    output = model_builder.GetBuilder().call<emscripten::val>("log", input);
   } else if (op_type == "Neg") {
     output = model_builder.GetBuilder().call<emscripten::val>("neg", input);
   } else if (op_type == "Not") {
@@ -67,7 +65,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 }
 
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.count(op_type) > 0)
+  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
 
   static std::vector<std::string> op_types =
@@ -79,7 +77,6 @@ void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op
           "Exp",
           "Floor",
           "Identity",
-          "Log",
           "Neg",
           "Not",
           "Reciprocal",

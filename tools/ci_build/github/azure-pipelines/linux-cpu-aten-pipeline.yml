@@ -1,32 +1,3 @@
-##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
-trigger:
-  branches:
-    include:
-    - main
-    - rel-*
-  paths:
-    exclude:
-    - docs/**
-    - README.md
-    - CONTRIBUTING.md
-    - BUILD.md
-    - 'js/web'
-    - 'onnxruntime/core/providers/js'
-pr:
-  branches:
-    include:
-    - main
-    - rel-*
-  paths:
-    exclude:
-    - docs/**
-    - README.md
-    - CONTRIBUTING.md
-    - BUILD.md
-    - 'js/web'
-    - 'onnxruntime/core/providers/js'
-#### end trigger ####
-
 resources:
   repositories:
   - repository: manylinux
@@ -52,6 +23,10 @@ jobs:
   - checkout: self
     clean: true
     submodules: recursive
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '16.x'
 
   - template: templates/get-docker-image-steps.yml
     parameters:

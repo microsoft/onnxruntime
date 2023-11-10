@@ -16,7 +16,7 @@ namespace rocm {
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T, false>);                                                            \
+      ConvTranspose<T>);                                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       ConvTranspose,                                                                       \
       kOnnxDomain,                                                                         \
@@ -24,20 +24,20 @@ namespace rocm {
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T, false>);
+      ConvTranspose<T>);
 
 REGISTER_KERNEL_TYPED(float)
 // not yet supported in MIOpen
 // REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-template <typename T, bool NHWC>
-Status ConvTranspose<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
+template <typename T>
+Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
   return DoConvTranspose(context, false);
 }
 
-template <typename T, bool NHWC>
-Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
+template <typename T>
+Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
   const Tensor* X = context->Input<Tensor>(0);

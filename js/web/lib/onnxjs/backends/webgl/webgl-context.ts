@@ -4,7 +4,7 @@
 import {env} from 'onnxruntime-common';
 
 import * as DataEncoders from './texture-data-encoder';
-import {DataEncoder, Encoder, EncoderUsage} from './texture-data-encoder';
+import {DataEncoder, Encoder} from './texture-data-encoder';
 import {repeatedTry} from './utils';
 
 export interface FenceContext {
@@ -257,14 +257,14 @@ ${shaderSource}`);
   deleteProgram(program: WebGLProgram): void {
     this.gl.deleteProgram(program);
   }
-  getEncoder(dataType: Encoder.DataType, channels: number, usage: EncoderUsage = EncoderUsage.Default): DataEncoder {
+  getEncoder(dataType: Encoder.DataType, channels: number, usage: Encoder.Usage = Encoder.Usage.Default): DataEncoder {
     if (this.version === 2) {
       return new DataEncoders.RedFloat32DataEncoder(this.gl as WebGL2RenderingContext, channels);
     }
 
     switch (dataType) {
       case 'float':
-        if (usage === EncoderUsage.UploadOnly || this.isRenderFloat32Supported) {
+        if (usage === Encoder.Usage.UploadOnly || this.isRenderFloat32Supported) {
           return new DataEncoders.RGBAFloatDataEncoder(this.gl, channels);
         } else {
           return new DataEncoders.RGBAFloatDataEncoder(

@@ -20,27 +20,26 @@ struct SamplingState : public ISamplingState<T> {
             int vocab_size,
             int max_iter,
             int seed,
-            bool is_cuda,
-            Stream* stream) {
+            bool is_cuda) {
     int total_count = batch_size * vocab_size;
 
-    this->h_softmaxed_score = AllocateBuffer<float>(cpu_allocator, h_softmaxed_score_buffer_, SafeInt<size_t>(total_count), stream);
+    this->h_softmaxed_score = AllocateBuffer<float>(cpu_allocator, h_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
 
     this->generator = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
 
     if (is_cuda) {
-      this->d_index_in = AllocateBuffer<int>(allocator, d_index_in_buffer_, SafeInt<size_t>(total_count), stream);
-      this->d_index_out = AllocateBuffer<int>(allocator, d_index_out_buffer_, SafeInt<size_t>(total_count), stream);
-      this->d_offset = AllocateBuffer<int>(allocator, d_offset_buffer_, SafeInt<size_t>(batch_size + 1), stream);
-      this->d_sorted_score = AllocateBuffer<T>(allocator, d_sorted_score_buffer_, SafeInt<size_t>(total_count), stream);
-      this->d_sorted_softmaxed_score = AllocateBuffer<float>(allocator, d_sorted_softmaxed_score_buffer_, SafeInt<size_t>(total_count), stream);
-      this->d_softmaxed_score = AllocateBuffer<float>(allocator, d_softmaxed_score_buffer_, SafeInt<size_t>(total_count), stream);
-      this->d_sampled = AllocateBuffer<float>(allocator, d_sampled_buffer_, SafeInt<size_t>(batch_size), stream);
-      this->h_sampled_all = AllocateBuffer<float>(cpu_allocator, h_sampled_all_buffer_, SafeInt<size_t>(batch_size * max_iter), stream);
-      this->d_indices = AllocateBuffer<int32_t>(allocator, d_indices_buffer_, SafeInt<size_t>(batch_size), stream);
+      this->d_index_in = AllocateBuffer<int>(allocator, d_index_in_buffer_, SafeInt<size_t>(total_count));
+      this->d_index_out = AllocateBuffer<int>(allocator, d_index_out_buffer_, SafeInt<size_t>(total_count));
+      this->d_offset = AllocateBuffer<int>(allocator, d_offset_buffer_, SafeInt<size_t>(batch_size + 1));
+      this->d_sorted_score = AllocateBuffer<T>(allocator, d_sorted_score_buffer_, SafeInt<size_t>(total_count));
+      this->d_sorted_softmaxed_score = AllocateBuffer<float>(allocator, d_sorted_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
+      this->d_softmaxed_score = AllocateBuffer<float>(allocator, d_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
+      this->d_sampled = AllocateBuffer<float>(allocator, d_sampled_buffer_, SafeInt<size_t>(batch_size));
+      this->h_sampled_all = AllocateBuffer<float>(cpu_allocator, h_sampled_all_buffer_, SafeInt<size_t>(batch_size * max_iter));
+      this->d_indices = AllocateBuffer<int32_t>(allocator, d_indices_buffer_, SafeInt<size_t>(batch_size));
       this->temp_storage_bytes = 0;
       // TODO: Do not allocate this buffer if there's no presence_mask
-      this->d_presence_mask = AllocateBuffer<int>(allocator, d_presence_mask_buffer_, SafeInt<size_t>(total_count), stream);
+      this->d_presence_mask = AllocateBuffer<int>(allocator, d_presence_mask_buffer_, SafeInt<size_t>(total_count));
 
       std::uniform_real_distribution<float> distribution(0.0, 1.0);
       static_cast<void>(distribution(this->generator));
@@ -49,25 +48,25 @@ struct SamplingState : public ISamplingState<T> {
       }
     } else {
       // TODO: Some buffer can be reused for CPU
-      this->sorted_scores = AllocateBuffer<T>(cpu_allocator, sorted_scores_buffer_, SafeInt<size_t>(total_count), stream);
-      this->cumulative_probs = AllocateBuffer<T>(cpu_allocator, cumulative_probs_buffer_, SafeInt<size_t>(total_count), stream);
+      this->sorted_scores = AllocateBuffer<T>(cpu_allocator, sorted_scores_buffer_, SafeInt<size_t>(total_count));
+      this->cumulative_probs = AllocateBuffer<T>(cpu_allocator, cumulative_probs_buffer_, SafeInt<size_t>(total_count));
     }
   }
 
  private:
-  IAllocatorUniquePtr<void> d_index_in_buffer_;
-  IAllocatorUniquePtr<void> d_index_out_buffer_;
-  IAllocatorUniquePtr<void> d_offset_buffer_;
-  IAllocatorUniquePtr<void> d_sorted_score_buffer_;
-  IAllocatorUniquePtr<void> d_sorted_softmaxed_score_buffer_;
-  IAllocatorUniquePtr<void> d_softmaxed_score_buffer_;
-  IAllocatorUniquePtr<void> h_softmaxed_score_buffer_;
-  IAllocatorUniquePtr<void> d_sampled_buffer_;
-  IAllocatorUniquePtr<void> h_sampled_all_buffer_;
-  IAllocatorUniquePtr<void> d_indices_buffer_;
-  IAllocatorUniquePtr<void> d_presence_mask_buffer_;
-  IAllocatorUniquePtr<void> sorted_scores_buffer_;
-  IAllocatorUniquePtr<void> cumulative_probs_buffer_;
+  BufferUniquePtr d_index_in_buffer_;
+  BufferUniquePtr d_index_out_buffer_;
+  BufferUniquePtr d_offset_buffer_;
+  BufferUniquePtr d_sorted_score_buffer_;
+  BufferUniquePtr d_sorted_softmaxed_score_buffer_;
+  BufferUniquePtr d_softmaxed_score_buffer_;
+  BufferUniquePtr h_softmaxed_score_buffer_;
+  BufferUniquePtr d_sampled_buffer_;
+  BufferUniquePtr h_sampled_all_buffer_;
+  BufferUniquePtr d_indices_buffer_;
+  BufferUniquePtr d_presence_mask_buffer_;
+  BufferUniquePtr sorted_scores_buffer_;
+  BufferUniquePtr cumulative_probs_buffer_;
 };
 
 template <typename T>
@@ -83,25 +82,24 @@ struct GreedySearchState : public IGreedySearchState<T> {
             int num_heads,
             int head_size,
             bool has_decoder_masked_self_attention,
-            bool is_cuda,
-            Stream* stream) {
+            bool is_cuda) {
     // below buffers are on cpu
     this->sequences_space = AllocateBuffer<int32_t>(cpu_allocator,
                                                     sequences_space_buffer_,
-                                                    SafeInt<size_t>(2) * batch_size * max_length, stream);
+                                                    SafeInt<size_t>(2) * batch_size * max_length);
     memset(this->sequences_space.data(), 0, this->sequences_space.size_bytes());
     this->sequences.Init(this->sequences_space, static_cast<int>(batch_size), sequence_length, max_length);
 
-    this->sequence_lengths = AllocateBuffer<int32_t>(cpu_allocator, sequence_lengths_buffer_, batch_size, stream);
-    this->eos_meet = AllocateBuffer<bool>(cpu_allocator, eos_meet_buffer_, batch_size, stream);
+    this->sequence_lengths = AllocateBuffer<int32_t>(cpu_allocator, sequence_lengths_buffer_, batch_size);
+    this->eos_meet = AllocateBuffer<bool>(cpu_allocator, eos_meet_buffer_, batch_size);
     memset(this->eos_meet.data(), 0, this->eos_meet.size_bytes());
 
-    this->next_tokens = AllocateBuffer<int32_t>(cpu_allocator, next_tokens_buffer_, SafeInt<size_t>(batch_size), stream);
+    this->next_tokens = AllocateBuffer<int32_t>(cpu_allocator, next_tokens_buffer_, SafeInt<size_t>(batch_size));
 
     // below buffers are on cpu or cuda
     size_t next_token_size = SafeInt<size_t>(batch_size) * vocab_size;
-    this->next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size, stream);
-    this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_size, stream);
+    this->next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size);
+    this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_size);
 
     if (is_cuda) {
       AllocateTempBufferForGetGreedySearchTopOne<T>(
@@ -111,8 +109,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
           this->temp_topk_scores_buffer,
           this->temp_topk_tokens_buffer,
           this->topk_scores_buffer,
-          this->topk_tokens_buffer,
-          stream);
+          this->topk_tokens_buffer);
 
       // If at all we need to, we only need to re-order past state for CUDA as
       //`DecoderMaskedSelfAttention` is only supported on CUDA
@@ -140,14 +137,14 @@ struct GreedySearchState : public IGreedySearchState<T> {
   }
 
  private:
-  IAllocatorUniquePtr<void> sequences_space_buffer_;
-  IAllocatorUniquePtr<void> sequence_lengths_buffer_;
-  IAllocatorUniquePtr<void> next_token_scores_buffer_;
-  IAllocatorUniquePtr<void> next_tokens_buffer_;
-  IAllocatorUniquePtr<void> next_positions_buffer_;
-  IAllocatorUniquePtr<void> eos_meet_buffer_;
-  IAllocatorUniquePtr<void> temp_topk_buffer_;
-  IAllocatorUniquePtr<void> staging_for_past_state_reorder_buffer_;
+  BufferUniquePtr sequences_space_buffer_;
+  BufferUniquePtr sequence_lengths_buffer_;
+  BufferUniquePtr next_token_scores_buffer_;
+  BufferUniquePtr next_tokens_buffer_;
+  BufferUniquePtr next_positions_buffer_;
+  BufferUniquePtr eos_meet_buffer_;
+  BufferUniquePtr temp_topk_buffer_;
+  BufferUniquePtr staging_for_past_state_reorder_buffer_;
 };
 
 // Base class of gready search implementation that is common for both GPT-2 and Bart/T5.

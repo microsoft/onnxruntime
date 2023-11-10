@@ -39,4 +39,4 @@ void LearningModelExperimental::SetName(hstring const& model_name) {
   modelp->SetName(model_name);
 }
 
-}  // namespace WINML_EXPERIMENTALP
+}// namespace WINML_EXPERIMENTALP

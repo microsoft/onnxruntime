@@ -9,5 +9,6 @@
 karma.conf.js
 tsconfig.json
 tsconfig.tsbuildinfo
+webpack.config.js
 
 *.tgz

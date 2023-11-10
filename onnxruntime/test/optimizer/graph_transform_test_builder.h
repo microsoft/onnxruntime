@@ -39,20 +39,8 @@ namespace test {
 template <typename T>
 struct IsTypeQuantLinearCompatible : utils::IsByteType<T> {};
 
-template <>
-struct IsTypeQuantLinearCompatible<int16_t> : std::true_type {};
-
-template <>
-struct IsTypeQuantLinearCompatible<uint16_t> : std::true_type {};
-
 template <typename T>
 struct IsTypeDequantLinearCompatible : utils::IsByteType<T> {};
-
-template <>
-struct IsTypeDequantLinearCompatible<int16_t> : std::true_type {};
-
-template <>
-struct IsTypeDequantLinearCompatible<uint16_t> : std::true_type {};
 
 template <>
 struct IsTypeDequantLinearCompatible<int32_t> : std::true_type {};
@@ -231,15 +219,6 @@ class ModelTestBuilder {
     return &graph_.GetOrCreateNodeArg(name, nullptr);
   }
 
-  NodeArg* MakeRandInitializerBool(const std::vector<int64_t>& shape) {
-    std::vector<uint8_t> data_uint8 = rand_gen_.Uniform<uint8_t>(shape, 0, 1);
-    std::vector<bool> data;
-    for (uint8_t x : data_uint8) {
-      data.push_back(x != 0);
-    }
-    return MakeInitializerBool(shape, data);
-  }
-
   template <typename T>
   NodeArg* MakeInitializer(const std::vector<int64_t>& shape, T min, T max) {
     return MakeInitializer<T>(shape, rand_gen_.Uniform<T>(shape, min, max));
@@ -288,27 +267,23 @@ class ModelTestBuilder {
   AddQuantizeLinearNode(NodeArg* input_arg,
                         float input_scale,
                         T input_zero_point,
-                        NodeArg* output_arg,
-                        bool use_ms_domain = false) {
+                        NodeArg* output_arg) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));
     input_args.push_back(MakeScalarInitializer<T>(input_zero_point));
 
-    std::string domain = use_ms_domain ? kMSDomain : "";
-    return AddNode("QuantizeLinear", input_args, {output_arg}, domain);
+    return AddNode("QuantizeLinear", input_args, {output_arg});
   }
 
   Node& AddQuantizeLinearNode(NodeArg* input_arg,
                               float input_scale,
-                              NodeArg* output_arg,
-                              bool use_ms_domain = false) {
+                              NodeArg* output_arg) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));
 
-    std::string domain = use_ms_domain ? kMSDomain : "";
-    return AddNode("QuantizeLinear", input_args, {output_arg}, domain);
+    return AddNode("QuantizeLinear", input_args, {output_arg});
   }
 
   template <typename T>
@@ -316,27 +291,23 @@ class ModelTestBuilder {
   AddDequantizeLinearNode(NodeArg* input_arg,
                           float input_scale,
                           T input_zero_point,
-                          NodeArg* output_arg,
-                          bool use_ms_domain = false) {
+                          NodeArg* output_arg) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));
     input_args.push_back(MakeScalarInitializer<T>(input_zero_point));
 
-    std::string domain = use_ms_domain ? kMSDomain : "";
-    return AddNode("DequantizeLinear", input_args, {output_arg}, domain);
+    return AddNode("DequantizeLinear", input_args, {output_arg});
   }
 
   Node& AddDequantizeLinearNode(NodeArg* input_arg,
                                 float input_scale,
-                                NodeArg* output_arg,
-                                bool use_ms_domain = false) {
+                                NodeArg* output_arg) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));
 
-    std::string domain = use_ms_domain ? kMSDomain : "";
-    return AddNode("DequantizeLinear", input_args, {output_arg}, domain);
+    return AddNode("DequantizeLinear", input_args, {output_arg});
   }
 
   template <typename TWeight>

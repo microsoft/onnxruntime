@@ -6,7 +6,6 @@
 #include "core/common/inlined_containers.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/beam_search_parameters.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
 #include "contrib_ops/cpu/transformers/greedy_search_parameters.h"
 #include "contrib_ops/cpu/transformers/sampling_parameters.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
@@ -21,17 +20,9 @@ struct NextTokenScores {
   int batch_beam_size;
   int vocab_size;
 
-  gsl::span<T> GetScores(int batch_beam_index) {
-    assert(batch_beam_index >= 0 && batch_beam_index < batch_beam_size);
-    return scores.subspan(static_cast<gsl::index>(batch_beam_index) * vocab_size, vocab_size);
-  }
+  gsl::span<T> GetScores(int batch_beam_index);
 
-  void SetScore(int token_id, T score) {
-    assert(token_id >= 0 && token_id < vocab_size);
-    for (int i = 0; i < batch_beam_size; i++) {
-      scores[static_cast<gsl::index>(i) * vocab_size + token_id] = score;
-    }
-  }
+  void SetScore(int token_id, T score);
 };
 
 // Interface for all scorers for beam search or beam sample.
@@ -150,126 +141,10 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class TimestampLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  TimestampLogitsProcessor(int eos_token_id, int max_initial_timestamp_index)
-      : eos_token_id_(eos_token_id), max_initial_timestamp_index_(max_initial_timestamp_index) {}
+  TimestampLogitsProcessor(int eos_token_id, int max_initial_timestamp_index);
 
   void Process(const ISequences* sequences,
-               NextTokenScores<T>& next_token_scores) override {
-    // TODO: translate_token_id_ and transcribe_token_id_ need to support both multilingual and English-only models.
-    const int beg_token_id_ = eos_token_id_ + 107;
-    const int not_token_id_ = eos_token_id_ + 106;
-    const int solm_token_id_ = eos_token_id_ + 105;
-    const int sot_token_id_ = eos_token_id_ + 1;
-    constexpr int translate_token_id_ = 50358;
-    constexpr int transcribe_token_id_ = 50359;
-
-    const int batch_beam_size = next_token_scores.batch_beam_size;
-    const int vocab_size = next_token_scores.vocab_size;
-    for (int i = 0; i < batch_beam_size; i++) {
-      gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
-      gsl::span<const int32_t> sequence = sequences->GetSequence(i);
-      const size_t seq_length = sequence.size();
-
-      // Find first timestamp
-      size_t sample_begin = 0;
-      for (size_t j = 0; j < seq_length; j++) {
-        sample_begin++;
-        if (sequence[j] >= beg_token_id_) {
-          break;
-        }
-      }
-
-      // Suppress tokens
-      for (int j = 0; j < vocab_size; j++) {
-        // Suppress notimestamps and solm tokens
-        if (j == not_token_id_ || j == solm_token_id_) {
-          beam_token_scores[j] = std::numeric_limits<T>::lowest();
-        }
-
-        // Suppress sot, translate and transcribe tokens
-        if (seq_length > sample_begin) {
-          if (j == sot_token_id_ || j == translate_token_id_ || j == transcribe_token_id_) {
-            beam_token_scores[j] = std::numeric_limits<T>::lowest();
-          }
-        }
-      }
-
-      // Timestamps should be in pair except the first one
-      const bool last_was_timestamp = seq_length > 0 && sequence.back() >= beg_token_id_;
-      const bool penultimate_was_timestamp = seq_length <= sample_begin || sequence[seq_length - 2] >= beg_token_id_;
-      if (last_was_timestamp) {
-        if (penultimate_was_timestamp) {
-          // If timestamps show up in pair, or it's the first timestamp, no more timestamp is generated
-          for (int j = beg_token_id_; j < vocab_size; j++) {
-            beam_token_scores[j] = std::numeric_limits<T>::lowest();
-          }
-        } else {
-          // If timestamp doesn't show up in pair, generate timestamp
-          for (int j = 0; j < eos_token_id_; j++) {
-            beam_token_scores[j] = std::numeric_limits<T>::lowest();
-          }
-        }
-      }
-
-      // Find timestamp tokens
-      std::vector<int32_t> timestamps;
-      for (const auto& word_id : sequence) {
-        if (word_id >= beg_token_id_) {
-          timestamps.push_back(word_id);
-        }
-      }
-
-      // Timestamps will not decrease
-      const size_t timestamps_len = timestamps.size();
-      if (timestamps_len > 0) {
-        int timestamp_last = 0;
-        if (last_was_timestamp && !penultimate_was_timestamp) {
-          // For single timestamp at the end, next timestamp must not be smaller
-          timestamp_last = timestamps.back();
-        } else {
-          // For paired timestamp at the end, next timestamp must be greater
-          timestamp_last = timestamps.back() + 1;
-        }
-
-        for (int j = beg_token_id_; j < timestamp_last; j++) {
-          beam_token_scores[j] = std::numeric_limits<T>::lowest();
-        }
-      }
-
-      if (seq_length == sample_begin) {
-        const int last_allowed = beg_token_id_ + max_initial_timestamp_index_;
-        for (int j = last_allowed + 1; j < vocab_size; j++) {
-          beam_token_scores[j] = std::numeric_limits<T>::lowest();
-        }
-      }
-
-      // Caculate logsumexp on timestamps
-      float timestamp_logprob = std::numeric_limits<T>::lowest();
-      {
-        float logsumexp = 0.0f;
-        const float logprob_max = *std::max_element(beam_token_scores.begin() + beg_token_id_, beam_token_scores.end());
-        for (int j = beg_token_id_; j < vocab_size; ++j) {
-          if (beam_token_scores[j] > std::numeric_limits<T>::lowest()) {
-            logsumexp += expf(beam_token_scores[j] - logprob_max);
-          }
-        }
-        if (logsumexp > 0.0f) {
-          timestamp_logprob = logf(logsumexp) + logprob_max;
-        }
-      }
-
-      const float max_text_token_logprob = *std::max_element(beam_token_scores.begin(), beam_token_scores.begin() + beg_token_id_);
-      if (timestamp_logprob > max_text_token_logprob) {
-        for (int j = 0; j < beg_token_id_; ++j) {
-          beam_token_scores[j] = std::numeric_limits<T>::lowest();
-        }
-      }
-    }
-
-#ifdef DEBUG_GENERATION
-    DumpScores("TimestampLogitsProcessor", next_token_scores);
-#endif
-  }
+               NextTokenScores<T>& next_token_scores) override;
 
  private:
   int eos_token_id_;

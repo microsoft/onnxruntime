@@ -11,7 +11,7 @@ import triton
 import triton.language as tl
 from onnx import TensorProto, helper
 
-from onnxruntime.training.ortmodule import register_graph_optimizer
+from onnxruntime.training.ortmodule import register_graph_transformer
 
 from .._utils import get_attribute, to_numpy_array
 
@@ -246,8 +246,8 @@ def _get_shape_related_nodes(graph, start_arg, sub_graph_nodes):
                         args.append(output)
 
 
-@register_graph_optimizer(devices="cuda")
-def optimize_graph_for_slice_scel(graph):
+@register_graph_transformer(devices="cuda")
+def transform_slice_scel(graph):
     remove_nodes = []
     triton_nodes = []
     value_infos = []

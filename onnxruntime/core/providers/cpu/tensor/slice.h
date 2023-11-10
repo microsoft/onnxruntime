@@ -38,10 +38,6 @@ class SliceBase {
                                      TensorShapeVector& input_axes,
                                      TensorShapeVector& input_steps);
 
-  static Status FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
-                                  TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
-                                  TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims);
-
  protected:
   SliceBase(const OpKernelInfo& info, bool dynamic = false)
       : dynamic_(dynamic) {

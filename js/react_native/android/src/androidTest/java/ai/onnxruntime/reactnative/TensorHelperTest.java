@@ -239,34 +239,6 @@ public class TensorHelperTest {
   }
 
   @Test
-  public void createInputTensor_bool() throws Exception {
-    OnnxTensor outputTensor = OnnxTensor.createTensor(ortEnvironment, new boolean[] {false, true});
-
-    JavaOnlyMap inputTensorMap = new JavaOnlyMap();
-
-    JavaOnlyArray dims = new JavaOnlyArray();
-    dims.pushInt(2);
-    inputTensorMap.putArray("dims", dims);
-
-    inputTensorMap.putString("type", TensorHelper.JsTensorTypeBool);
-
-    ByteBuffer dataByteBuffer = ByteBuffer.allocate(2);
-    dataByteBuffer.put((byte)0);
-    dataByteBuffer.put((byte)1);
-    inputTensorMap.putMap("data", blobModule.testCreateData(dataByteBuffer.array()));
-
-    OnnxTensor inputTensor = TensorHelper.createInputTensor(blobModule, inputTensorMap, ortEnvironment);
-
-    Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL);
-    Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL);
-    Assert.assertEquals(inputTensor.toString(), outputTensor.toString());
-    Assert.assertArrayEquals(inputTensor.getByteBuffer().array(), outputTensor.getByteBuffer().array());
-
-    inputTensor.close();
-    outputTensor.close();
-  }
-
-  @Test
   public void createOutputTensor_bool() throws Exception {
     MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
     try {

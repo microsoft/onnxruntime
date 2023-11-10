@@ -15,24 +15,38 @@ jobs:
     buildArch: x64
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 120
   workspace:
     clean: all
-  steps:
-  - template: win-ci-prebuild-steps.yml
-    parameters:
-      EnvSetupScript: $(EnvSetupScript)
-      DownloadCUDA: false
-      BuildArch: $(buildArch)
-      BuildConfig: $(BuildConfig)
-      MachinePool: 'onnxruntime-Win-CPU-2022'
-      WithCache: true
-      Today: $(Today)
+  steps:    
+  - task: UsePythonVersion@0
+    inputs: 
+      versionSpec: '3.8' 
+      addToPath: true 
+      architecture: $(buildArch)
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '16.x'
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - script: |
+     python -m pip install -q setuptools wheel numpy
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
+
+  - task: PowerShell@2
+    displayName: 'Install ONNX'
+    inputs:
+      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+      workingDirectory: '$(Build.BinariesDirectory)'
+      arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0

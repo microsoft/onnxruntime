@@ -11,7 +11,7 @@ namespace contrib {
 namespace rocm {
 
 template <typename Fn, typename T>
-Status LaunchElementwiseKernel(RocmTuningContext* tuning_ctx, Stream* stream,
+Status LaunchElementwiseKernel(RocmTuningContext* tuning_ctx, hipStream_t stream,
                                const T* input, int input_length,
                                const T* bias, int bias_length,
                                T* output);
@@ -21,7 +21,7 @@ namespace internal {
 
 template <typename T>
 struct ElementwiseParams : OpParams {
-  ElementwiseParams(RocmTuningContext* tuning_ctx, onnxruntime::Stream* stream,
+  ElementwiseParams(RocmTuningContext* tuning_ctx, hipStream_t stream,
                     const T* input, const T* bias, T* output, int input_length, int bias_length)
       : OpParams(tuning_ctx, stream),
         input(input),

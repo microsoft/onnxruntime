@@ -1,16 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #pragma once
-
-#include <list>
-#include <memory>
 
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
+#include <list>
 
 namespace onnxruntime {
 
@@ -190,11 +187,7 @@ class Conv : public CudaKernel {
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
-    is_nhwc_domain_ = info.node().Domain() == kMSInternalNHWCDomain;
   }
-
-  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) override;
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
@@ -208,8 +201,6 @@ class Conv : public CudaKernel {
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
   static const cudnnConvolutionFwdAlgo_t kAllAlgos[];
-  std::unique_ptr<Tensor> W_;
-  bool is_nhwc_domain_;  // prepack is only needed for the Conv in kMSInternalNHWCDomain
 };
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,

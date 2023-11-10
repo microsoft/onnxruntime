@@ -387,7 +387,7 @@ stages:
     - job: Windows_py_GPU_Wheels
       workspace:
         clean: all
-      pool: 'onnxruntime-Win2022-GPU-T4'
+      pool: 'onnxruntime-gpu-winbuild-t4'
       timeoutInMinutes:  300
       variables:
         CUDA_VERSION: '11.8'
@@ -395,7 +395,10 @@ stages:
         EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
         EnvSetupScript: setup_env_gpu.bat
         EP_NAME: gpu
-        VSGenerator: 'Visual Studio 17 2022'
+        ${{if contains(Agent.Name, 'onnxruntime-gpu-winbuild-t4')}}:
+          VSGenerator: 'Visual Studio 16 2019'
+        ${{else}}:
+          VSGenerator: 'Visual Studio 17 2022'
       strategy:
         matrix:
           ${{ each PythonVersion in parameters.python_version }}:

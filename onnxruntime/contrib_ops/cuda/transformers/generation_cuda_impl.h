@@ -213,64 +213,6 @@ void BufferExpansionKernelLauncher(const T* input,
                                    int chunk_size,
                                    cudaStream_t stream);
 
-void ReorderPastStatesKernelLauncher(void* out_buffer,
-                                     const void* in_buffer,
-                                     int batch_size,
-                                     int num_heads,
-                                     int max_length,
-                                     int head_size,
-                                     int chunk_size,
-                                     cudaStream_t stream);
-
-void LaunchCopyCrossQKSingleDecodeStep(
-    cudaStream_t stream,
-    float* cross_qk_buffer_data,
-    float** qk_layer_pointers,
-    int token_index,
-    int batchxbeam,
-    int num_layers,
-    int num_heads,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    int frames,
-    int max_length);
-
-void LaunchFinalizeCrossQK(
-    cudaStream_t stream,
-    int iteration_number,
-    int context_decoding_len,
-    int batch_size,
-    int num_beams,
-    int max_length,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    int frames_of_k,
-    const float* cross_qk_buffer_data,
-    float* cross_qk_output,
-    int num_return_sequences,
-    const int* cache_indir_data,
-    const int32_t* beam_indices);
-
-void LaunchForceDecodingIds(
-    float* beam_scores,
-    const int batch_size,
-    const int num_beams,
-    const int vocab_size,
-    const int32_t* force_ids,
-    int id_len,
-    int step,
-    cudaStream_t stream);
-
-template <typename T>
-void LaunchSaveNoSpeechProbs(
-    T* result_no_speech_probs, /* [batch]*/
-    const float* probs,        /* [batch, num_beams, vocab_size]*/
-    const int batch_size,
-    const int num_beams,
-    const int vocab_size,
-    const int no_speech_token_id,
-    cudaStream_t stream);
-
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

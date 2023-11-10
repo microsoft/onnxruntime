@@ -1,15 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/coreml/builders/helper.h"
-#include "core/providers/coreml/builders/impl/base_op_builder.h"
-#include "core/providers/coreml/builders/op_builder_factory.h"
-#include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
-
+#include "core/providers/coreml/builders/helper.h"
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
+#include "core/providers/coreml/builders/op_builder_factory.h"
+
+#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -18,8 +17,8 @@ class LRNOpBuilder : public BaseOpBuilder {
   // Add operator related
 #ifdef __APPLE__
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                                             const logging::Logger& logger) const override;
 #endif
 
   // Operator support related

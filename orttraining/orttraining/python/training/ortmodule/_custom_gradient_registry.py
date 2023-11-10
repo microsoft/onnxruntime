@@ -271,3 +271,8 @@ def upsample_nearest2d_gradient():
 @register_gradient("org.pytorch.aten", "ATen", "upsample_nearest3d", "vec")
 def upsample_nearest3d_gradient():
     return _upsample_gradient("upsample_nearest3d_backward", 3)
+
+
+@register_gradient("org.pytorch.aten", "ATen", "upsample_bilinear2d", "vec")
+def upsample_bilinear2d_gradient():
+    return _upsample_gradient("upsample_bilinear2d_backward", 2)

@@ -349,7 +349,7 @@ def run_training_test_on_device_and_compare(
     expected_outputs=[],  # noqa: B006
     expected_grads=[],  # noqa: B006
 ):
-    repeats = 8
+    repeats = 16
     for _i in range(repeats):
         m = pt_model_builder_func()
         x = pt_model_inputs_generator()

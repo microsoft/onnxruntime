@@ -20,36 +20,26 @@ namespace rocm {
       kRocmExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SkipLayerNorm<T, false>);                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      SkipSimplifiedLayerNormalization,                           \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kRocmExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SkipLayerNorm<T, true>);
+      SkipLayerNorm<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 using namespace ONNX_NAMESPACE;
 
-template <typename T, bool Simplified>
-SkipLayerNorm<T, Simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
+template <typename T>
+SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
 }
 
-template <typename T, bool Simplified>
-Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T>
+Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);
   const Tensor* skip = ctx->Input<Tensor>(1);
   const Tensor* gamma = ctx->Input<Tensor>(2);
-
-  const Tensor* beta = Simplified ? nullptr : ctx->Input<Tensor>(3);
-  const Tensor* bias = Simplified ? ctx->Input<Tensor>(3) : ctx->Input<Tensor>(4);
+  const Tensor* beta = ctx->Input<Tensor>(3);
+  const Tensor* bias = ctx->Input<Tensor>(4);
 
   Tensor* output = ctx->Output(0, input->Shape());
 
@@ -112,9 +102,9 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   int64_t element_count = input->Shape().Size();
   typedef typename ToHipType<T>::MappedType HipT;
 
-  return LaunchSkipLayerNormKernel<HipT, float, HipT, Simplified>(
+  return LaunchSkipLayerNormKernel<HipT, float, HipT>(
       GetTuningContext(),
-      ctx->GetComputeStream(),
+      Stream(ctx),
       reinterpret_cast<HipT*>(output->MutableData<T>()),
       skip_input_bias_add_output != nullptr ? reinterpret_cast<HipT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr,
       reinterpret_cast<const HipT*>(input->Data<T>()),

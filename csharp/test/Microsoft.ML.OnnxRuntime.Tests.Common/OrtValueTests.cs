@@ -1,5 +1,6 @@
 ﻿using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 using Xunit;
@@ -21,7 +22,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string[] strsRom = { "HelloR", "OrtR", "WorldR" };
             string[] strs = { "Hello", "Ort", "World" };
             long[] shape = { 1, 1, 3 };
-            var elementsNum = ShapeUtils.GetSizeForShape(shape);
+            var elementsNum = ArrayUtilities.GetSizeForShape(shape);
             Assert.Equal(elementsNum, strs.Length);
             Assert.Equal(elementsNum, strsRom.Length);
 
@@ -64,13 +65,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 for (int i = 0; i < elementsNum; ++i)
                 {
                     // First populate via ROM
-                    strTensor.StringTensorSetElementAt(strsRom[i].AsMemory(), i);
+                    strTensor.FillStringTensorElement(strsRom[i].AsMemory(), i);
                     Assert.Equal(strsRom[i], strTensor.GetStringElement(i));
                     Assert.Equal(strsRom[i], strTensor.GetStringElementAsMemory(i).ToString());
                     Assert.Equal(Encoding.UTF8.GetBytes(strsRom[i]), strTensor.GetStringElementAsSpan(i).ToArray());
 
                     // Fill via Span
-                    strTensor.StringTensorSetElementAt(strs[i].AsSpan(), i);
+                    strTensor.FillStringTensorElement(strs[i].AsSpan(), i);
                     Assert.Equal(strs[i], strTensor.GetStringElement(i));
                     Assert.Equal(strs[i], strTensor.GetStringElementAsMemory(i).ToString());
                     Assert.Equal(Encoding.UTF8.GetBytes(strs[i]), strTensor.GetStringElementAsSpan(i).ToArray());
@@ -126,7 +127,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.NotNull(dataTypeInfo);
             Assert.Equal(dataType, dataTypeInfo.ElementType);
 
-            var elementsNum = ShapeUtils.GetSizeForShape(shape);
+            var elementsNum = ArrayUtilities.GetSizeForShape(shape);
 
             Assert.True(tensor.IsTensor);
             Assert.False(tensor.IsSparseTensor);
@@ -161,7 +162,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             int[] data = { 1, 2, 3 };
             var mem = new Memory<int>(data);
             long[] shape = { 1, 1, 3 };
-            var elementsNum = ShapeUtils.GetSizeForShape(shape);
+            var elementsNum = ArrayUtilities.GetSizeForShape(shape);
             Assert.Equal(elementsNum, data.Length);
 
 
@@ -199,7 +200,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 data[2] = 3;
 
                 long[] shape = { 1, 1, 3 };
-                var elementsNum = ShapeUtils.GetSizeForShape(shape);
+                var elementsNum = ArrayUtilities.GetSizeForShape(shape);
                 Assert.Equal(elementsNum, Elements);
 
                 using (var tensor = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance, TensorElementType.Int32,

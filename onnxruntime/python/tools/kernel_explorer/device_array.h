@@ -62,8 +62,8 @@ class DeviceArray {
  private:
   std::shared_ptr<void> device_;
   void* host_;
-  py::ssize_t size_;
-  py::ssize_t itemsize_;
+  ssize_t size_;
+  ssize_t itemsize_;
 };
 
 }  // namespace onnxruntime

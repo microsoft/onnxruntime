@@ -4,7 +4,7 @@
 /// <reference lib="webworker" />
 
 import {OrtWasmMessage} from '../proxy-messages';
-import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, extractTransferableBuffers, initRuntime, isOrtEnvInitialized, releaseSession, run} from '../wasm-core-impl';
+import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, extractTransferableBuffers, initRuntime, releaseSession, run} from '../wasm-core-impl';
 import {initializeWebAssembly} from '../wasm-factory';
 
 self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
@@ -25,6 +25,7 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
                                                                                                 type: 'init-ort',
                                                                                                 err
                                                                                               } as OrtWasmMessage));
+        postMessage({type: 'init-ort'} as OrtWasmMessage);
       } catch (err) {
         postMessage({type: 'init-ort', err} as OrtWasmMessage);
       }
@@ -87,14 +88,6 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         postMessage({type: 'end-profiling'} as OrtWasmMessage);
       } catch (err) {
         postMessage({type: 'end-profiling', err} as OrtWasmMessage);
-      }
-      break;
-    case 'is-ort-env-initialized':
-      try {
-        const ortEnvInitialized = isOrtEnvInitialized();
-        postMessage({type: 'is-ort-env-initialized', out: ortEnvInitialized} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'is-ort-env-initialized', err} as OrtWasmMessage);
       }
       break;
     default:

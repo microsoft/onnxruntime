@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <string>
-#include <unordered_map>
 #include "core/providers/dml/DmlExecutionProvider/src/GraphDescBuilder.h"
 
 namespace Dml
@@ -50,8 +48,5 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
-        std::unordered_set<std::string>& dynamicCpuInputMap,
-        gsl::span<const onnxruntime::NodeIndex> additionalSplittingNodes,
-        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputs,
-        bool allowDmlGraphDynamicShapes);
+        std::function<void(const onnxruntime::Node&)> onNodeUnsupportedInGraph = nullptr);
 } // namespace Dml

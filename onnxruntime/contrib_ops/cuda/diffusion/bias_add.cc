@@ -44,6 +44,11 @@ Status BiasAdd<T>::ComputeInternal(OpKernelContext* context) const {
                            "The input is expected to have 3 dimensions, got ", input_dims.size());
   }
 
+  if (input_dims[2] != 320 && input_dims[2] != 640 && input_dims[2] != 1280) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Number of channels should be 320, 640 or 1280, got ", input_dims[2]);
+  }
+
   const Tensor* bias = context->Input<Tensor>(1);
   const auto& bias_dims = bias->Shape().GetDims();
   if (bias_dims.size() != 1) {

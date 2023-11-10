@@ -27,7 +27,7 @@ constexpr size_t GetGroupNormWorkspaceSizeInBytes() {
 template <typename T>
 Status LaunchGroupNormKernel(
     RocmTuningContext* tuning_ctx,
-    Stream* stream,
+    hipStream_t stream,
     T* output,                 // normalized output tensor
     const T* input,            // input tensor
     const float* gamma,        // gamma (also known as weight or scale)

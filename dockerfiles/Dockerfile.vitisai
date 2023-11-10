@@ -22,7 +22,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-ENV PATH /code/cmake-3.27.3-linux-x86_64/bin:$PATH
+ENV PATH /code/cmake-3.26.3-linux-x86_64/bin:$PATH
 ENV LD_LIBRARY_PATH /opt/xilinx/xrt/lib:$LD_LIBRARY_PATH
 
 WORKDIR /code
@@ -41,4 +41,4 @@ RUN . $VAI_ROOT/conda/etc/profile.d/conda.sh &&\
     /bin/sh ./build.sh --allow_running_as_root --config RelWithDebInfo --enable_pybind --build_wheel --use_vitisai --parallel --update --build --build_shared_lib &&\
     pip install /code/onnxruntime/build/Linux/RelWithDebInfo/dist/*-linux_x86_64.whl &&\
     cd .. &&\
-    rm -rf onnxruntime cmake-3.27.3-linux-x86_64
+    rm -rf onnxruntime cmake-3.26.3-linux-x86_64

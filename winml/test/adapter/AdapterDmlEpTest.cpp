@@ -93,6 +93,14 @@ UniqueOrtSession CreateCpuSession() {
   return CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
 }
 
+void DmlExecutionProviderSetDefaultRoundingMode() {
+  GPUTEST;
+  auto session = CreateDmlSession();
+  OrtExecutionProvider* ort_provider;
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, false), ort_api);
+}
+
 void DmlExecutionProviderFlushContext() {
   GPUTEST;
   auto session = CreateDmlSession();
@@ -350,12 +358,13 @@ void SessionGetInputRequiredDeviceId() {
   );
   WINML_EXPECT_EQUAL(0, device_id);
 }
-}  // namespace
+}// namespace
 
 const AdapterDmlEpTestApi& getapi() {
   static constexpr AdapterDmlEpTestApi api = {
     AdapterDmlEpTestSetup,
     AdapterDmlEpTestTeardown,
+    DmlExecutionProviderSetDefaultRoundingMode,
     DmlExecutionProviderFlushContext,
     DmlExecutionProviderReleaseCompletedReferences,
     DmlCreateAndFreeGPUAllocationFromD3DResource,

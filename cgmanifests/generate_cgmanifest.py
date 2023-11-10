@@ -90,6 +90,55 @@ def add_github_dep(name, parsed_url):
             git_deps[dep] = name
 
 
+with open(
+    os.path.join(REPO_DIR, "tools", "ci_build", "github", "linux", "docker", "Dockerfile.manylinux2014_cuda11"),
+) as f:
+    for line in f:
+        if not line.strip():
+            package_name = None
+            package_filename = None
+            package_url = None
+        if package_filename is None:
+            m = re.match(r"RUN\s+export\s+(.+?)_ROOT=(\S+).*", line)
+            if m is not None:
+                package_name = m.group(1)
+                package_filename = m.group(2)
+            else:
+                m = re.match(r"RUN\s+export\s+(.+?)_VERSION=(\S+).*", line)
+                if m is not None:
+                    package_name = m.group(1)
+                    package_filename = m.group(2)
+        elif package_url is None:
+            m = re.match(r"(.+?)_DOWNLOAD_URL=(\S+)", line)
+            if m is not None:
+                package_url = m.group(2)
+                if package_name == "LIBXCRYPT":
+                    package_url = m.group(2) + "/v" + package_filename + ".tar.gz"
+                elif package_name == "CMAKE":
+                    package_url = m.group(2) + "/v" + package_filename + "/cmake-" + package_filename + ".tar.gz"
+                else:
+                    package_url = m.group(2) + "/" + package_filename + ".tar.gz"
+                parsed_url = urlparse(package_url)
+                if parsed_url.hostname == "github.com":
+                    add_github_dep("manylinux dependency " + package_name, parsed_url)
+                else:
+                    registration = {
+                        "Component": {
+                            "Type": "other",
+                            "other": {
+                                "Name": package_name.lower(),
+                                "Version": package_filename.split("-")[-1],
+                                "DownloadUrl": package_url,
+                            },
+                            "comments": "manylinux dependency",
+                        }
+                    }
+                    registrations.append(registration)
+                package_name = None
+                package_filename = None
+                package_url = None
+
+
 def normalize_path_separators(path):
     return path.replace(os.path.sep, "/")
 

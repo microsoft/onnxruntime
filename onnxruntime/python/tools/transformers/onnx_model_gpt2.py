@@ -8,7 +8,6 @@ import onnx
 from fusion_gpt_attention import FusionGptAttention
 from fusion_gpt_attention_megatron import FusionGptAttentionMegatron
 from fusion_gpt_attention_no_past import FusionGptAttentionNoPast
-from fusion_rotary_attention import FusionRotaryAttention
 from onnx_model_bert import BertOnnxModel
 
 logger = logging.getLogger(__name__)
@@ -27,9 +26,6 @@ class Gpt2OnnxModel(BertOnnxModel):
             fusion.apply()
             fusion = FusionGptAttentionMegatron(self, self.num_heads)
             fusion.apply()
-
-        fusion = FusionRotaryAttention(self, self.hidden_size, self.num_heads)
-        fusion.apply()
 
     def postprocess(self):
         """
@@ -98,4 +94,4 @@ class Gpt2OnnxModel(BertOnnxModel):
             reshape_count += 2
 
         self.prune_graph()
-        logger.info(f"postprocess: remove Reshape count: {reshape_count}")
+        logger.info(f"postprocess: remove Reshape count:{reshape_count}")

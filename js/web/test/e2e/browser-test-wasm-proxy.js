@@ -3,7 +3,7 @@
 
 'use strict';
 
-it('Browser E2E testing - WebAssembly backend (proxy)', async function() {
+it('Browser E2E testing - WebAssembly backend (proxy)', async function () {
   ort.env.wasm.proxy = true;
-  await testFunction(ort, {executionProviders: ['wasm']});
+  await testFunction(ort, { executionProviders: ['wasm'] });
 });

@@ -1,21 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import * as path from 'node:path';
 import {Env} from 'onnxruntime-common';
+import * as path from 'path';
 
 import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-let ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule>;
-
-if (!BUILD_DEFS.DISABLE_TRAINING) {
-  ortWasmFactory = require('./binding/ort-training-wasm-simd.js');
-} else {
-  ortWasmFactory =
-      BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
-}
+const ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule> =
+    BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
 
 const ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> = !BUILD_DEFS.DISABLE_WASM_THREAD ?
     (BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm-threaded.js') :
@@ -78,13 +72,10 @@ const isSimdSupported = (): boolean => {
 };
 
 const getWasmFileName = (useSimd: boolean, useThreads: boolean) => {
-  if (useSimd) {
-    if (!BUILD_DEFS.DISABLE_TRAINING) {
-      return 'ort-training-wasm-simd.wasm';
-    }
-    return useThreads ? 'ort-wasm-simd-threaded.wasm' : 'ort-wasm-simd.wasm';
+  if (useThreads) {
+    return useSimd ? 'ort-wasm-simd-threaded.wasm' : 'ort-wasm-threaded.wasm';
   } else {
-    return useThreads ? 'ort-wasm-threaded.wasm' : 'ort-wasm.wasm';
+    return useSimd ? 'ort-wasm-simd.wasm' : 'ort-wasm.wasm';
   }
 };
 
@@ -137,7 +128,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
             typeof Blob !== 'undefined') {
           return URL.createObjectURL(new Blob(
               [
-                // This require() function is handled by esbuild plugin to load file content as string.
+                // This require() function is handled by webpack to load file content of the corresponding .worker.js
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
                 require('./binding/ort-wasm-threaded.worker.js')
               ],
@@ -170,7 +161,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       if (typeof Blob === 'undefined') {
         config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
       } else {
-        const scriptSourceCode = `var ortWasmThreaded=${factory.toString()};`;
+        const scriptSourceCode = `var ortWasmThreaded=(function(){var _scriptDir;return ${factory.toString()}})();`;
         config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
       }
     }

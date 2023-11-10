@@ -1,0 +1,74 @@
+parameters:
+- name: arch
+  type: string
+
+- name: device
+  type: string
+
+- name: machine_pool
+  type: string
+
+- name: extra_job_id
+  type: string
+  default: ''
+
+- name: python_wheel_suffix
+  type: string
+  default: ''
+
+- name: timeout
+  type: number
+  default: 120
+
+jobs:
+- job: Linux_Test_${{ parameters.device }}${{ parameters.extra_job_id }}_${{ parameters.arch }}
+  timeoutInMinutes: ${{ parameters.timeout }}
+  variables:
+    skipComponentGovernanceDetection: true
+  workspace:
+    clean: all
+  pool: ${{ parameters.machine_pool }}
+  steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact'
+    inputs:
+      artifactName: 'drop-linux-${{ lower(parameters.device) }}-${{ parameters.arch }}'
+      targetPath: '$(Build.BinariesDirectory)/Release'
+      # The public ADO project
+      ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+        buildType: current
+      # The private ADO project
+      ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+        definition: 841
+        preferTriggeringPipeline: true
+        runVersion: 'latest'
+        buildType: specific
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact'
+    inputs:      
+      artifactName: 'onnxruntime${{ parameters.python_wheel_suffix }}'
+      targetPath: '$(Build.BinariesDirectory)/whl'      
+      # The public ADO project
+      ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+        buildType: current
+      # The private ADO project
+      ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+        definition: 841
+        preferTriggeringPipeline: true
+        runVersion: 'latest'
+        buildType: specific
+
+
+  - task: Bash@3
+    displayName: 'Bash Script'
+    inputs:
+      targetType: filePath
+      filePath: tools/ci_build/github/linux/run_python_tests.sh
+      arguments: -d ${{ parameters.device }}
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

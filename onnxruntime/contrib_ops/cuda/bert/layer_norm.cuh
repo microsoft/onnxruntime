@@ -147,16 +147,14 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
   __shared__ T rsigma;  // 1 / std.dev.
   T beta_v[ILP], gamma_v[ILP], output_v[ILP];
 
-  const bool is_valid = ILP * threadIdx.x < ld;
-  if (is_valid) {
-    if (beta != nullptr) {
-      VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
-      *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
-    }
-
-    VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
-    *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
+  if (beta != nullptr) {
+    VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
+    *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
   }
+  VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
+  *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
+
+  VecT* output_val = reinterpret_cast<VecT*>(&output_v);
 
   KeyValuePairSum pair_sum;
   const cub::KeyValuePair<T, T> sum_kv = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
@@ -167,15 +165,13 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
   }
   __syncthreads();
 
-  if (is_valid) {
+  if (ILP * threadIdx.x < ld) {
 #pragma unroll
     for (int i = 0; i < ILP; i++) {
       output_v[i] = (beta != nullptr)
                         ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i]
                         : gamma_v[i] * (input_v[i] - mu) * rsigma;
     }
-
-    VecT* output_val = reinterpret_cast<VecT*>(&output_v);
     *(reinterpret_cast<VecT*>(&output[idx])) = *output_val;
   }
 }
@@ -190,15 +186,12 @@ __device__ inline void SimplifiedLayerNormSmall(const T* input_v, const T& threa
   using BlockReduce = cub::BlockReduce<T, TPB>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
   __shared__ T rsigma;  // 1 / std.dev.
-
-  const bool is_valid = ILP * threadIdx.x < ld;
-
   T gamma_v[ILP], output_v[ILP];
 
-  if (is_valid) {
-    VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
-    *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
-  }
+  VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
+  *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
+
+  VecT* output_val = reinterpret_cast<VecT*>(&output_v);
 
   const T sum = BlockReduce(temp_storage).Sum(thread_data);
 
@@ -207,13 +200,11 @@ __device__ inline void SimplifiedLayerNormSmall(const T* input_v, const T& threa
   }
   __syncthreads();
 
-  if (is_valid) {
+  if (ILP * threadIdx.x < ld) {
 #pragma unroll
     for (int i = 0; i < ILP; i++) {
       output_v[i] = gamma_v[i] * input_v[i] * rsigma;
     }
-
-    VecT* output_val = reinterpret_cast<VecT*>(&output_v);
     *(reinterpret_cast<VecT*>(&output[idx])) = *output_val;
   }
 }

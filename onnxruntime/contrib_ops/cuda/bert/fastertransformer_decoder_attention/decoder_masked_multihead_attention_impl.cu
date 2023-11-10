@@ -174,6 +174,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     q = add_vec(q, q_bias);
   }
 
+
   T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
 
   const float inv_sqrt_dh = params.scale;
@@ -349,22 +350,24 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
-    if (ti < tlength) {
-      if (has_beams) {
-        const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
 
+    if (has_beams) {
 #pragma unroll
-        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-          int jj = ii * params.max_sequence_length + ti;
+      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        int jj = ii * params.max_sequence_length + ti;
 
+        if (ti < tlength) {
+          const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
           k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
         }
-      } else {
+      }
+    } else {
 #pragma unroll
-        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-          int jj = ii * params.max_sequence_length + ti;
+      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        int jj = ii * params.max_sequence_length + ti;
 
+        if (ti < tlength) {
           k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
         }
@@ -427,15 +430,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   // Compute the logits and start the sum.
   float sum = 0.f;
   int sum_tlength = params.is_cross_attention ? tlength - 1 : tlength;
-
-  if (params.out_qk != nullptr) {
-    // store cross qk before softmax, out_qk has shape [B(batchxbeam), #Head, 1, total_sequence_length]
-    float* target = ((float*)params.out_qk) + ((int64_t)bhi * tlength);
-    for (int ti = tidx; ti <= sum_tlength; ti += THREADS_PER_BLOCK) {
-      target[ti] = (float)(qk_smem[ti]);
-    }
-  }
-
   for (int ti = tidx; ti <= sum_tlength; ti += THREADS_PER_BLOCK) {
     // This is a deviation from FasterTransformer kernel implementation
     // but this aligns with ORT's other Attention kernels which strives to

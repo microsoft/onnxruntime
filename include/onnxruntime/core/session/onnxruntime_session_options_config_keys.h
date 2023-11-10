@@ -67,16 +67,6 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
-// This setting controls whether to enable AheadOfTime function inlining.
-// AOT function inlining examines the graph and attempts to inline as many locally defined functions in the model
-// as possible with the help of enabled execution providers.
-// This can reduce the number of function calls and improve performance because it is done before
-// Level1 optimizers and constant folding. However, under some circumstances, when the EPs are not available,
-// one can disable the AOT inlining, produce an optimized model and postpone AOT until run time.
-// "0": enable; "1": disable.
-// Its default value is "0".
-static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = "session.disable_aot_function_inlining";
-
 #ifdef ENABLE_TRAINING
 // Specifies a list of op types for memory footprint reduction.
 // The value should be a ","-delimited list of pair of

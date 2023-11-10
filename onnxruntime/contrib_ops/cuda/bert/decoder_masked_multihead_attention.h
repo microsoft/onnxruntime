@@ -22,7 +22,6 @@ class DecoderMaskedMultiHeadAttention final : public CudaKernel {
   float mask_filter_value_;
   float scale_;
   bool past_present_share_buffer_;
-  bool output_qk_;
 };
 
 }  // namespace cuda

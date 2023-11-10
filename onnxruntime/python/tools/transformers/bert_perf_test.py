@@ -3,11 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-# This tool measures the inference performance of onnxruntime on BERT-like model with inputs like input_ids,
-# token_type_ids (optional), and attention_mask (optional).
-#
-# If the model does not have exactly three inputs like above, you might need specify names of inputs with
-# --input_ids_name, --segment_ids_name and --input_mask_name
+# This tool measures the inference performance of onnxruntime or onnxruntime-gpu python package on Bert model.
+
+# The input model shall have exactly three inputs. The model is either fully optimized (with EmbedLayerNormalization node),
+# or with reasonable input names (one input name has 'mask' substring, another has 'token' or 'segment' substring).
+# See get_bert_inputs function in bert_test_data.py for more information.
 
 # Example command to run test on batch_size 1 and 2 for a model on GPU:
 #   python bert_perf_test.py --model bert.onnx --batch_size 1 2 --sequence_length 128 --use_gpu --samples 1000 --test_times 1
@@ -44,8 +44,6 @@ class TestSetting:
     seed: int
     verbose: bool
     log_severity: int
-    average_sequence_length: int
-    random_sequence_length: bool
 
 
 @dataclass
@@ -57,7 +55,6 @@ class ModelSetting:
     opt_level: int
     input_tuning_results: Optional[str]
     output_tuning_results: Optional[str]
-    mask_type: int
 
 
 def create_session(
@@ -235,12 +232,7 @@ def to_string(model_path, session, test_setting):
     option += "graph_optimization_level={},intra_op_num_threads={},".format(
         sess_options.graph_optimization_level, sess_options.intra_op_num_threads
     ).replace("GraphOptimizationLevel.ORT_", "")
-
-    option += f"batch_size={test_setting.batch_size},sequence_length={test_setting.sequence_length},"
-    option += f"test_cases={test_setting.test_cases},test_times={test_setting.test_times},"
-    option += f"use_gpu={test_setting.use_gpu},use_io_binding={test_setting.use_io_binding},"
-    option += f"average_sequence_length={test_setting.average_sequence_length},"
-    option += f"random_sequence_length={test_setting.random_sequence_length}"
+    option += f"batch_size={test_setting.batch_size},sequence_length={test_setting.sequence_length},test_cases={test_setting.test_cases},test_times={test_setting.test_times},use_gpu={test_setting.use_gpu}"
     return option
 
 
@@ -275,7 +267,7 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
             results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
             all_latency_list.extend(latency_list)
 
-    # latency in milliseconds
+    # latency in miliseconds
     latency_ms = np.array(all_latency_list) * 1000
 
     average_latency = statistics.mean(latency_ms)
@@ -373,9 +365,7 @@ def run_performance(model_setting, test_setting, perf_results):
         input_ids,
         segment_ids,
         input_mask,
-        test_setting.average_sequence_length,
-        test_setting.random_sequence_length,
-        mask_type=model_setting.mask_type,
+        random_mask_length=False,
     )
 
     run_perf_tests(model_setting, test_setting, perf_results, all_inputs)
@@ -483,7 +473,6 @@ def parse_arguments():
         default=None,
         help="input name for input ids",
     )
-
     parser.add_argument(
         "--segment_ids_name",
         required=False,
@@ -491,7 +480,6 @@ def parse_arguments():
         default=None,
         help="input name for segment ids",
     )
-
     parser.add_argument(
         "--input_mask_name",
         required=False,
@@ -506,37 +494,11 @@ def parse_arguments():
         type=str,
         help="tuning results (json) to be loaded before benchmark",
     )
-
     parser.add_argument(
         "--output_tuning_results",
         default=None,
         type=str,
         help="tuning results (json) to be saved after benchmark",
-    )
-
-    parser.add_argument(
-        "-a",
-        "--average_sequence_length",
-        default=-1,
-        type=int,
-        help="average sequence length excluding padding",
-    )
-
-    parser.add_argument(
-        "-r",
-        "--random_sequence_length",
-        required=False,
-        action="store_true",
-        help="use uniform random instead of fixed sequence length",
-    )
-    parser.set_defaults(random_sequence_length=False)
-
-    parser.add_argument(
-        "--mask_type",
-        required=False,
-        type=int,
-        default=2,
-        help="mask type: (1: mask index or sequence length, 2: raw 2D mask, 3: key len, cumulated lengths of query and key)",
     )
 
     args = parser.parse_args()
@@ -549,14 +511,11 @@ def main():
     if args.test_times == 0:
         args.test_times = max(1, int(1000 / args.samples))
 
-    if args.average_sequence_length <= 0:
-        args.average_sequence_length = args.sequence_length
-
     manager = multiprocessing.Manager()
     perf_results = manager.dict()
 
     batch_size_set = set(args.batch_size)
-    if not (min(batch_size_set) >= 1 and max(batch_size_set) <= 128):
+    if not min(batch_size_set) >= 1 and max(batch_size_set) <= 128:
         raise Exception("batch_size not in range [1, 128]")
 
     model_setting = ModelSetting(
@@ -567,7 +526,6 @@ def main():
         args.opt_level,
         args.input_tuning_results,
         args.output_tuning_results,
-        args.mask_type,
     )
 
     for batch_size in batch_size_set:
@@ -583,8 +541,6 @@ def main():
             args.seed,
             args.verbose,
             args.log_severity,
-            args.average_sequence_length,
-            args.random_sequence_length,
         )
 
         print("test setting", test_setting)

@@ -104,7 +104,7 @@ void ModelValidator::FnsCandy16(
   float dataTolerance
 ) {
   ORT_UNUSED_PARAMETER(dataTolerance);
-  // file name strings
+    // file name strings
   static wchar_t* modelFileName = L"winmlperf_coreml_FNS-Candy_prerelease_fp16.onnx";
   static wchar_t* inputDataImageFileName = L"fish_720.png";
   static wchar_t* outputDataFileName = L"output.png";
@@ -115,7 +115,7 @@ void ModelValidator::FnsCandy16(
   auto fullModelPath = modulePath + modelFileName;
   auto outputFileName = modulePath + outputDataFileName;
 
-  // WinML model creation
+    // WinML model creation
   LearningModel model = nullptr;
   model = LearningModel::LoadFromFilePath(fullModelPath);
 
@@ -126,7 +126,7 @@ void ModelValidator::FnsCandy16(
   auto fullImagePath = modulePath + inputDataImageFileName;
   BindImage(modelBinding, inputBindingName, fullImagePath.c_str(), bindInputsAsIInspectable);
 
-  // create the tensor for the actual output
+    // create the tensor for the actual output
   auto output = model.OutputFeatures().First().Current();
   if (output.Kind() != LearningModelFeatureKind::Tensor) {
     throw winrt::hresult_invalid_argument(L"Model output kind is not type Tensor");
@@ -135,16 +135,16 @@ void ModelValidator::FnsCandy16(
   auto shape = winrt::single_threaded_vector(std::vector<int64_t>{1, 1});
   auto outputTensor = BindImageOutput(outputBindingStrategy, modelBinding, outputDataBindingName);
 
-  // Evaluate the model
+    // Evaluate the model
   std::cout << "Calling EvaluateSync on instance" << instance << "\n";
   LearningModelEvaluationResult result = nullptr;
   result = modelSession.Evaluate(modelBinding, {});
 
-  // Get results
+    // Get results
   if (outputBindingStrategy == OutputBindingStrategy::Unbound) {
-    // When output binding strategy is unbound, the output tensor was not set on bind.
-    // Therefore, we need to retrieve it from the LearnignModelEvaluationResult
-    // TODO: is this right? outputTensorT is unused...
+        // When output binding strategy is unbound, the output tensor was not set on bind.
+        // Therefore, we need to retrieve it from the LearnignModelEvaluationResult
+        // TODO: is this right? outputTensorT is unused...
     /*auto outputTensorT = */ result.Outputs().Lookup(outputDataBindingName).as<TensorFloat16Bit>();
   } else {
     if (result.Outputs().Lookup(outputDataBindingName) != outputTensor) {
@@ -171,7 +171,7 @@ void ModelValidator::SqueezeNet(
   OutputBindingStrategy outputBindingStrategy,
   bool bindInputsAsIInspectable
 ) {
-  // file name strings
+    // file name strings
   static wchar_t* modelFileName = L"model.onnx";
   static wchar_t* inputDataFileName = L"test_data_0_input.pb";
   static wchar_t* outputDataFileName = L"test_data_0_output.pb";
@@ -183,7 +183,7 @@ void ModelValidator::SqueezeNet(
   auto fullModelPath = modulePath + modelFileName;
   auto outputFileName = modulePath + outputDataFileName;
 
-  // WinML model creation
+        // WinML model creation
   LearningModel model = nullptr;
   model = LearningModel::LoadFromFilePath(fullModelPath);
 
@@ -201,13 +201,13 @@ void ModelValidator::SqueezeNet(
     BindTensor(modelBinding, inputBindingName, inputTensor, bindInputsAsIInspectable);
   }
 
-  // load up the expected output
+    // load up the expected output
   auto expectedResultsTensor = ProtobufHelpers::LoadTensorFromProtobufFile(outputFileName, false);
   if (expectedResultsTensor == nullptr) {
     throw winrt::hresult_invalid_argument(L"Expected Results from protobuf file are null.");
   }
 
-  // create the tensor for the actual output
+    // create the tensor for the actual output
   auto output = model.OutputFeatures().First().Current();
   if (output.Kind() != LearningModelFeatureKind::Tensor) {
     throw winrt::hresult_invalid_argument(L"Expected output feature kind of model to be Tensor");
@@ -216,15 +216,15 @@ void ModelValidator::SqueezeNet(
   auto outputTensor =
     BindOutput<TensorFloat>(outputBindingStrategy, modelBinding, outputDataBindingName, expectedResultsTensor.Shape());
 
-  // Evaluate the model
+    // Evaluate the model
   std::cout << "Calling EvaluateSync on instance " << instance << "\n";
   LearningModelEvaluationResult result = nullptr;
   result = modelSession.Evaluate(modelBinding, {});
 
-  // Get results
+    // Get results
   if (outputBindingStrategy == OutputBindingStrategy::Unbound) {
-    // When output binding strategy is unbound, the output tensor was not set on bind.
-    // Therefore, we need to retrieve it from the LearnignModelEvaluationResult
+        // When output binding strategy is unbound, the output tensor was not set on bind.
+        // Therefore, we need to retrieve it from the LearnignModelEvaluationResult
     outputTensor = result.Outputs().Lookup(outputDataBindingName).as<ITensor>();
   } else {
     if (result.Outputs().Lookup(outputDataBindingName) != outputTensor) {
@@ -250,4 +250,4 @@ void ModelValidator::SqueezeNet(
     }
   }
 }
-}  // namespace WinML::Engine::Test
+}// namespace WinML::Engine::Test

@@ -60,6 +60,6 @@ struct WeakBuffer
   }
 };
 
-}  // namespace WinMLTest
+} // namespace WinMLTest
 
-#endif  // WEAK_BUFFER_H
+#endif // WEAK_BUFFER_H

@@ -36,10 +36,6 @@ _ELEMENTWISE_OPS = {
     "DropoutGrad": {"domain": "com.microsoft", "versions": [1]},
     "Identity": {"versions": [13], "is_no_op": True},
     "Sum": {"versions": [13]},
-    "Gelu": {"domain": "com.microsoft", "versions": [1]},
-    "QuickGelu": {"domain": "com.microsoft", "versions": [1]},
-    "GeluGrad": {"domain": "com.microsoft", "versions": [1]},
-    "QuickGeluGrad": {"domain": "com.microsoft", "versions": [1]},
 }
 
 _REDUCTION_OPS = {

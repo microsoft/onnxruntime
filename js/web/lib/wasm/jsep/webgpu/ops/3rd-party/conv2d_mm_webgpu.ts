@@ -20,10 +20,9 @@
 // modified to fit the needs of the project
 
 import {LOG_DEBUG} from '../../../log';
-import {TensorView} from '../../../tensor-view';
+import {TensorView} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
-import {ProgramInfo} from '../../types';
-import {tensorTypeToWsglStorageType} from '../common';
+import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
 import {ConvAttributes} from '../conv';
 
 import {Activation, activationFnSnippet, biasActivationSnippet, typeSnippet} from './activation_util';
@@ -33,13 +32,13 @@ import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packe
 const conv2dCommonSnippet =
     (isChannelsLast: boolean, fitAOuter: boolean, fitBOuter: boolean, fitInner: boolean, addBias = false,
      activation?: Activation, hasPreluActivationWeights = false, innerElementSizeX = 4, innerElementSizeW = 4,
-     innerElementSize = 4, dataType = 'f32'): string => {
+     innerElementSize = 4): string => {
       const getXSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
             return 'resData = x[xIndex];';
           case 3:
-            return `resData = vec3<${dataType}>(x[xIndex], x[xIndex + 1], x[xIndex + 2]);`;
+            return 'resData = vec3<f32>(x[xIndex], x[xIndex + 1], x[xIndex + 2]);';
           case 4:
             return 'resData = x[xIndex / 4];';
           default:
@@ -93,7 +92,7 @@ const conv2dCommonSnippet =
     let xRow = outRow * stride[0] + dilation[0] * WRow - pad[0];
     let xCol = outCol * stride[1] + dilation[1] * WCol - pad[1];
     let xCh = ${col} % inChannels;
-    var resData = ${typeSnippet(innerElementSizeX, dataType)}(0.0);
+    var resData = ${typeSnippet(innerElementSizeX)}(0.0);
     // The bounds checking is always needed since we use it to pad zero for
     // the 'same' padding type.
     if (xRow >= 0 && xRow < ${xHeight} && xCol >= 0 && xCol < ${xWidth}) {
@@ -111,7 +110,7 @@ const conv2dCommonSnippet =
     if (row < dimAOuter && col < dimInner) {
       ${readXSnippet}
     }
-    return ${typeSnippet(innerElementSizeX, dataType)}(0.0);`) :
+    return ${typeSnippet(innerElementSizeX)}(0.0);`) :
                                        (fitInner && fitBOuter ? `
     let col = colIn * ${innerElementSizeX};
     ${readXSnippet}` :
@@ -120,15 +119,13 @@ const conv2dCommonSnippet =
     if (row < dimInner && col < dimBOuter) {
       ${readXSnippet}
     }
-    return ${typeSnippet(innerElementSizeX, dataType)}(0.0);`);
+    return ${typeSnippet(innerElementSizeX)}(0.0);`);
 
       const sampleW = `${getWSnippet(innerElementSizeW)}`;
 
-      const resType = typeSnippet(innerElementSize, dataType);
-      const aType =
-          isChannelsLast ? typeSnippet(innerElementSizeX, dataType) : typeSnippet(innerElementSizeW, dataType);
-      const bType =
-          isChannelsLast ? typeSnippet(innerElementSizeW, dataType) : typeSnippet(innerElementSizeX, dataType);
+      const resType = typeSnippet(innerElementSize);
+      const aType = isChannelsLast ? typeSnippet(innerElementSizeX) : typeSnippet(innerElementSizeW);
+      const bType = isChannelsLast ? typeSnippet(innerElementSizeW) : typeSnippet(innerElementSizeX);
       const userCode = `
     ${activationFnSnippet(activation, hasPreluActivationWeights, innerElementSize === 4, 4)}
     fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${aType} {
@@ -154,26 +151,30 @@ const conv2dCommonSnippet =
     };
 
 export const createConv2DMatMulProgramInfo =
-    (inputs: readonly TensorView[], attributes: ConvAttributes, outputShape: readonly number[], dimAOuter: number,
-     dimBOuter: number, dimInner: number, hasBias: boolean, sequentialAccessByThreads: boolean): ProgramInfo => {
+    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvAttributes,
+     outputShape: readonly number[], dimAOuter: number, dimBOuter: number, dimInner: number, hasBias: boolean,
+     sequentialAccessByThreads: boolean): ProgramInfo => {
       const isChannelsLast = attributes.format === 'NHWC';
       const inChannels = isChannelsLast ? inputs[0].dims[3] : inputs[0].dims[1];
       const batchSize = outputShape[0];
       const outWidth = isChannelsLast ? outputShape[2] : outputShape[3];
       const outHeight = isChannelsLast ? outputShape[1] : outputShape[2];
       const outChannels = isChannelsLast ? outputShape[3] : outputShape[1];
-      // TODO: enable vec4 for NCHW
-      const isVec4 = isChannelsLast && (inChannels % 4 === 0 || inChannels % 3 === 0) && outChannels % 4 === 0;
+      const isVec4 = (((inChannels % 4 === 0 || inChannels % 3 === 0) && isChannelsLast) ||
+                      (outWidth % 4 === 0 && !isChannelsLast)) &&
+          outChannels % 4 === 0;
 
       // TODO: fine tune size
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
-      const workGroupSize: [number, number, number] = [8, 8, 1];
-      const elementsPerThread = dimAOuter <= 8 ? [4, 1, 1] : [4, 4, 1];
+      const workGroupSize: [number, number, number] =
+          isVec4 ? [8, 8, 1] : [dispatchX <= 4 ? 4 : 16, dispatchX > 4 && dispatchY <= 4 ? 4 : 16, 1];
+      const elementsPerThread =
+          isVec4 ? [4, 4, 1] : [dispatchX <= 4 ? 1 : 2, dispatchX > 4 && dispatchY <= 4 ? 1 : 2, 1];
       const dispatch = [
         Math.ceil(dispatchX / workGroupSize[0] / elementsPerThread[0]),
         Math.ceil(dispatchY / workGroupSize[1] / elementsPerThread[1]),
-        Math.ceil(batchSize / workGroupSize[2] / elementsPerThread[2])
+        Math.ceil(batchSize / workGroupSize[2] / elementsPerThread[1])
       ];
 
       LOG_DEBUG('verbose', () => `[conv2d_mm_webgpu] dispatch = ${dispatch}`);
@@ -189,35 +190,31 @@ export const createConv2DMatMulProgramInfo =
       const fitInner = dimInner % tileInner === 0;
 
       const elementsSize = isVec4 ? [innerElementSize, 4, 4] : [1, 1, 1];
-      const t = tensorTypeToWsglStorageType(inputs[0].dataType);
 
       const declareInputs = [
-        `@group(0) @binding(0) var<storage, read> x: array<${isVec4 && innerElementSize === 4 ? `vec4<${t}>` : t}>;`,
-        `@group(0) @binding(1) var<storage, read> w: array<${isVec4 ? `vec4<${t}>` : t}>;`
+        `@group(0) @binding(0) var<storage, read> x: array<${isVec4 && innerElementSize === 4 ? 'vec4<f32>' : 'f32'}>;`,
+        `@group(0) @binding(1) var<storage, read> w: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;`
       ];
       let declareFunctions = `
-      fn setOutputAtIndex(flatIndex : i32, value : ${isVec4 ? `vec4<${t}>` : t}) {
-        result[flatIndex] = ${isVec4 ? `vec4<${t}>` : t}(value);
+      fn setOutputAtIndex(flatIndex : i32, value : ${isVec4 ? 'vec4<f32>' : 'f32'}) {
+        result[flatIndex] = ${isVec4 ? 'vec4<f32>' : 'f32'}(value);
       }
-      fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : ${isVec4 ? `vec4<${t}>` : t}) {
+      fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, d3 : i32, value : ${isVec4 ? 'vec4<f32>' : 'f32'}) {
         let flatIndex = getOutputIndexFromCoords(vec4<i32>(d0, d1, d2, d3));
         setOutputAtIndex(flatIndex ${isVec4 ? '/ 4' : ''}, value);
       }`;
       if (hasBias) {
-        declareInputs.push(`@group(0) @binding(2) var<storage, read> bias: array<${isVec4 ? `vec4<${t}>` : t}>;`);
+        declareInputs.push(`@group(0) @binding(2) var<storage, read> bias: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;`);
         declareFunctions += `
-        fn getBiasByOutputCoords(coords : vec4<i32>) -> ${isVec4 ? `vec4<${t}>` : t} {
+        fn getBiasByOutputCoords(coords : vec4<i32>) -> ${isVec4 ? 'vec4<f32>' : 'f32'} {
           return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
         }`;
       }
 
       return {
-        name: 'Conv2DMatMul',
-        shaderCache: {hint: attributes.cacheKey},
-        getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
-        }),
+        ...metadata,
+        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+        dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
         getShaderSource: () => `
         ${utilFunctions}
         //struct Uniforms { xShape : vec4<i32>, wShape : vec4<i32>, outShape : vec4<i32>,
@@ -225,7 +222,7 @@ export const createConv2DMatMulProgramInfo =
         //  dilation : vec2<i32>, dimAOuter : i32, dimBOuter : i32, dimInner : i32 };
         ${declareInputs.join('')}
         @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${
-            isVec4 ? `vec4<${t}>` : t}>;
+            isVec4 ? 'vec4<f32>' : 'f32'}>;
         //@group(0) @binding(${declareInputs.length + 1}) var<uniform> uniforms: Uniforms;
 
         const xShape : vec4<i32> = vec4<i32>(${inputs[0].dims.join(',')});
@@ -243,12 +240,11 @@ export const createConv2DMatMulProgramInfo =
         ${
             conv2dCommonSnippet(
                 isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias, undefined, false, elementsSize[0],
-                elementsSize[1], elementsSize[2], t)}
+                elementsSize[1], elementsSize[2])}
             ${
-            isVec4 ?
-                makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, t, undefined, !isChannelsLast, tileInner) :
-                makeMatMulPackedSource(
-                    elementsPerThread, workGroupSize, t, undefined, !isChannelsLast, tileInner, false, undefined,
-                    sequentialAccessByThreads)}`
+            isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, !isChannelsLast, tileInner) :
+                     makeMatMulPackedSource(
+                         elementsPerThread, workGroupSize, !isChannelsLast, tileInner, false, undefined,
+                         sequentialAccessByThreads)}`
       };
     };

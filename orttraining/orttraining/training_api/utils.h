@@ -10,40 +10,6 @@
 namespace onnxruntime {
 namespace training {
 namespace api {
-
-struct ModelIdentifiers {
-  // ModelIdentifiers struct enables an easy way to store and identify the models used for training, evaluation
-  // and model updates(optimizer model).
-  // The model can be specified by a path to the model file or by a span of bytes containing the model data.
-  // Training model is required, evaluation and optimizer models are optional.
-  std::variant<std::string, gsl::span<const uint8_t>> train_model;
-  std::variant<std::optional<std::string>, gsl::span<const uint8_t>> eval_model;
-  std::variant<std::optional<std::string>, gsl::span<const uint8_t>> optim_model;
-
-  ModelIdentifiers(std::variant<std::string, gsl::span<const uint8_t>> training_model,
-                   std::variant<std::optional<std::string>, gsl::span<const uint8_t>> evaluation_model,
-                   std::variant<std::optional<std::string>, gsl::span<const uint8_t>> optimzer_model)
-      : train_model(training_model), eval_model(evaluation_model), optim_model(optimzer_model) {}
-
-  bool IsModelAvailable(const std::variant<std::optional<std::string>, gsl::span<const uint8_t>>& model) const {
-    if ((std::holds_alternative<std::optional<std::string>>(model) &&
-         std::get<std::optional<std::string>>(model).has_value()) ||
-        (std::holds_alternative<gsl::span<const uint8_t>>(model) &&
-         std::get<gsl::span<const uint8_t>>(model).size() > 0)) {
-      return true;
-    }
-    return false;
-  }
-
-  bool IsEvalModelAvailable() const {
-    return IsModelAvailable(eval_model);
-  }
-
-  bool IsOptimizerModelAvailable() const {
-    return IsModelAvailable(optim_model);
-  }
-};
-
 namespace utils {
 
 // Get names of graph inputs and outputs

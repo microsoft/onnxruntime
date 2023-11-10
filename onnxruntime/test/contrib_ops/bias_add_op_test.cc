@@ -107,20 +107,6 @@ TEST(BiasAddTest, BiasAddTest_HiddenSize_1280) {
   constexpr int64_t num_channels = 1280;
   RunBiasAddTest(batch_size, image_size, num_channels);
 }
-
-TEST(BiasAddTest, BiasAddTest_HiddenSize_768) {
-  constexpr int64_t batch_size = 2;
-  constexpr int64_t image_size = 5;
-  constexpr int64_t num_channels = 768;
-  RunBiasAddTest(batch_size, image_size, num_channels);
-}
-
-TEST(BiasAddTest, BiasAddTest_HiddenSize_1536) {
-  constexpr int64_t batch_size = 1;
-  constexpr int64_t image_size = 3;
-  constexpr int64_t num_channels = 1536;
-  RunBiasAddTest(batch_size, image_size, num_channels);
-}
 #endif
 
 }  // namespace test

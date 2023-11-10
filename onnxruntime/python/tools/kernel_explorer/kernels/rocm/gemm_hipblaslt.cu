@@ -45,12 +45,12 @@ class GemmHipBlasLt : public IKernelExplorer {
     params_.m = m;
     params_.n = n;
     params_.k = k;
-    params_.alpha = static_cast<float>(alpha);
+    params_.alpha = alpha;
     params_.a = static_cast<T*>(a.ptr());
     params_.lda = lda;
     params_.b = static_cast<T*>(b.ptr());
     params_.ldb = ldb;
-    params_.beta = static_cast<float>(beta);
+    params_.beta = beta;
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
@@ -112,14 +112,14 @@ class StridedBatchedGemmHipBlasLt : public IKernelExplorer {
     params_.m = m;
     params_.n = n;
     params_.k = k;
-    params_.alpha = static_cast<float>(alpha);
+    params_.alpha = alpha;
     params_.a = static_cast<T*>(a.ptr());
     params_.lda = lda;
     params_.stride_a = stride_a;
     params_.b = static_cast<T*>(b.ptr());
     params_.ldb = ldb;
     params_.stride_b = stride_b;
-    params_.beta = static_cast<float>(beta);
+    params_.beta = beta;
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
     params_.stride_c = stride_c;

@@ -8,10 +8,7 @@ import csv
 import logging
 import os
 import random
-import sys
-import time
 import timeit
-from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from enum import Enum
@@ -33,7 +30,6 @@ class Precision(Enum):
     FLOAT32 = "fp32"
     FLOAT16 = "fp16"
     INT8 = "int8"
-    INT4 = "int4"
 
     def __str__(self):
         return self.value
@@ -174,7 +170,7 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
 
     logger.info(f"PyTorch Version:{torch.__version__}")
     logger.info(f"Transformers Version:{transformers.__version__}")
-    logger.info(f"OnnxRuntime Version:{onnxruntime.__version__}")
+    logger.info(f"Onnxruntime Version:{onnxruntime.__version__}")
 
     # Support three major versions of PyTorch and OnnxRuntime, and up to 9 months of transformers.
     assert version.parse(torch.__version__) >= version.parse("1.10.0")
@@ -443,141 +439,76 @@ def get_gpu_info() -> Optional[List[Dict[str, Any]]]:
         return None
 
 
-class MemoryMonitor(ABC):
-    def __init__(self, keep_measuring=True):
-        self.keep_measuring = keep_measuring
+def measure_memory(is_gpu, func):
+    class MemoryMonitor:
+        def __init__(self, keep_measuring=True):
+            self.keep_measuring = keep_measuring
 
-    def measure_cpu_usage(self):
-        import psutil
+        def measure_cpu_usage(self):
+            import psutil
 
-        max_usage = 0
-        while True:
-            max_usage = max(max_usage, psutil.Process(os.getpid()).memory_info().rss / 1024**2)
-            sleep(0.005)  # 5ms
-            if not self.keep_measuring:
-                break
-        return max_usage
-
-    @abstractmethod
-    def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
-        raise NotImplementedError()
-
-
-class CudaMemoryMonitor(MemoryMonitor):
-    def __init__(self, keep_measuring=True):
-        super().__init__(keep_measuring)
-
-    def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
-        from py3nvml.py3nvml import (
-            NVMLError,
-            nvmlDeviceGetCount,
-            nvmlDeviceGetHandleByIndex,
-            nvmlDeviceGetMemoryInfo,
-            nvmlDeviceGetName,
-            nvmlInit,
-            nvmlShutdown,
-        )
-
-        max_gpu_usage = []
-        gpu_name = []
-        try:
-            nvmlInit()
-            device_count = nvmlDeviceGetCount()
-            if not isinstance(device_count, int):
-                logger.error(f"nvmlDeviceGetCount result is not integer: {device_count}")
-                return None
-
-            max_gpu_usage = [0 for i in range(device_count)]
-            gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(device_count)]
+            max_usage = 0
             while True:
-                for i in range(device_count):
-                    info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
-                    if isinstance(info, str):
-                        logger.error(f"nvmlDeviceGetMemoryInfo returns str: {info}")
-                        return None
-                    max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
+                max_usage = max(max_usage, psutil.Process(os.getpid()).memory_info().rss / 1024**2)
                 sleep(0.005)  # 5ms
                 if not self.keep_measuring:
                     break
-            nvmlShutdown()
-            return [
-                {
-                    "device_id": i,
-                    "name": gpu_name[i],
-                    "max_used_MB": max_gpu_usage[i],
-                }
-                for i in range(device_count)
-            ]
-        except NVMLError as error:
-            logger.error("Error fetching GPU information using nvml: %s", error)
-            return None
+            return max_usage
 
+        def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
+            from py3nvml.py3nvml import (
+                NVMLError,
+                nvmlDeviceGetCount,
+                nvmlDeviceGetHandleByIndex,
+                nvmlDeviceGetMemoryInfo,
+                nvmlDeviceGetName,
+                nvmlInit,
+                nvmlShutdown,
+            )
 
-class RocmMemoryMonitor(MemoryMonitor):
-    def __init__(self, keep_measuring=True):
-        super().__init__(keep_measuring)
-        rocm_smi_path = "/opt/rocm/libexec/rocm_smi"
-        if os.path.exists(rocm_smi_path):
-            if rocm_smi_path not in sys.path:
-                sys.path.append(rocm_smi_path)
-        try:
-            import rocm_smi
+            max_gpu_usage = []
+            gpu_name = []
+            try:
+                nvmlInit()
+                device_count = nvmlDeviceGetCount()
+                if not isinstance(device_count, int):
+                    logger.error(f"nvmlDeviceGetCount result is not integer: {device_count}")
+                    return None
 
-            self.rocm_smi = rocm_smi
-            self.rocm_smi.initializeRsmi()
-        except ImportError:
-            self.rocm_smi = None
+                max_gpu_usage = [0 for i in range(device_count)]
+                gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(device_count)]
+                while True:
+                    for i in range(device_count):
+                        info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
+                        if isinstance(info, str):
+                            logger.error(f"nvmlDeviceGetMemoryInfo returns str: {info}")
+                            return None
+                        max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
+                    sleep(0.005)  # 5ms
+                    if not self.keep_measuring:
+                        break
+                nvmlShutdown()
+                return [
+                    {
+                        "device_id": i,
+                        "name": gpu_name[i],
+                        "max_used_MB": max_gpu_usage[i],
+                    }
+                    for i in range(device_count)
+                ]
+            except NVMLError as error:
+                logger.error("Error fetching GPU information using nvml: %s", error)
+                return None
 
-    def get_used_memory(self, dev):
-        if self.rocm_smi is None:
-            return -1
-        return self.rocm_smi.getMemInfo(dev, "VRAM")[0] / 1024 / 1024
-
-    def measure_gpu_usage(self):
-        if self.rocm_smi is None:
-            return None
-
-        device_count = len(self.rocm_smi.listDevices()) if self.rocm_smi is not None else 0
-        max_gpu_usage = [0 for i in range(device_count)]
-        gpu_name = [f"GPU{i}" for i in range(device_count)]
-        while True:
-            for i in range(device_count):
-                max_gpu_usage[i] = max(max_gpu_usage[i], self.get_used_memory(i))
-            time.sleep(0.005)  # 5ms
-            if not self.keep_measuring:
-                break
-        return [
-            {
-                "device_id": i,
-                "name": gpu_name[i],
-                "max_used_MB": max_gpu_usage[i],
-            }
-            for i in range(device_count)
-        ]
-
-
-def measure_memory(is_gpu, func, monitor_type="cuda", start_memory=None):
-    memory_monitor_type = None
-    if monitor_type == "rocm":
-        memory_monitor_type = RocmMemoryMonitor
-    else:
-        memory_monitor_type = CudaMemoryMonitor
-
-    monitor = memory_monitor_type(False)
+    monitor = MemoryMonitor(False)
 
     if is_gpu:
-        if start_memory is not None:
-            memory_before_test = start_memory
-        else:
-            memory_before_test = monitor.measure_gpu_usage()
+        memory_before_test = monitor.measure_gpu_usage()
         if memory_before_test is None:
             return None
 
-        if func is None:
-            return memory_before_test
-
         with ThreadPoolExecutor() as executor:
-            monitor = memory_monitor_type()
+            monitor = MemoryMonitor()
             mem_thread = executor.submit(monitor.measure_gpu_usage)
             try:
                 fn_thread = executor.submit(func)
@@ -602,16 +533,10 @@ def measure_memory(is_gpu, func, monitor_type="cuda", start_memory=None):
         return None
 
     # CPU memory
-    if start_memory is not None:
-        memory_before_test = start_memory
-    else:
-        memory_before_test = monitor.measure_cpu_usage()
-
-    if func is None:
-        return memory_before_test
+    memory_before_test = monitor.measure_cpu_usage()
 
     with ThreadPoolExecutor() as executor:
-        monitor = memory_monitor_type()
+        monitor = MemoryMonitor()
         mem_thread = executor.submit(monitor.measure_cpu_usage)
         try:
             fn_thread = executor.submit(func)

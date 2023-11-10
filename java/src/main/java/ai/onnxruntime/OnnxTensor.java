@@ -13,7 +13,6 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
-import java.util.Optional;
 
 /**
  * A Java object wrapping an OnnxTensor. Tensors are the main input to the library, and can also be
@@ -22,60 +21,18 @@ import java.util.Optional;
 public class OnnxTensor extends OnnxTensorLike {
 
   /**
-   * This reference is held for OnnxTensors backed by a java.nio.Buffer to ensure the buffer does
+   * This reference is held for OnnxTensors backed by a Java nio buffer to ensure the buffer does
    * not go out of scope while the OnnxTensor exists.
    */
   private final Buffer buffer;
 
-  /**
-   * Denotes if the OnnxTensor made a copy of the buffer on construction (i.e. it may have the only
-   * reference).
-   */
-  private final boolean ownsBuffer;
-
   OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info) {
-    this(nativeHandle, allocatorHandle, info, null, false);
+    this(nativeHandle, allocatorHandle, info, null);
   }
 
-  OnnxTensor(
-      long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer, boolean ownsBuffer) {
+  OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer) {
     super(nativeHandle, allocatorHandle, info);
     this.buffer = buffer;
-    this.ownsBuffer = ownsBuffer;
-  }
-
-  /**
-   * Returns true if the buffer in this OnnxTensor was created on construction of this tensor, i.e.,
-   * it is a copy of a user supplied buffer or array and may hold the only reference to that buffer.
-   *
-   * <p>When this is true the backing buffer was copied from the user input, so users cannot mutate
-   * the state of this buffer without first getting the reference via {@link #getBufferRef()}.
-   *
-   * @return True if the buffer in this OnnxTensor was allocated by it on construction (i.e., it is
-   *     a copy of a user buffer.)
-   */
-  public boolean ownsBuffer() {
-    return this.ownsBuffer;
-  }
-
-  /**
-   * Returns a reference to the buffer which backs this {@code OnnxTensor}. If the tensor is not
-   * backed by a buffer (i.e., it was created from a Java array, or is backed by memory allocated by
-   * ORT) this method returns an empty {@link Optional}.
-   *
-   * <p>Changes to the buffer elements will be reflected in the native {@code OrtValue}, this can be
-   * used to repeatedly update a single tensor for multiple different inferences without allocating
-   * new tensors, though the inputs <b>must</b> remain the same size and shape.
-   *
-   * <p>Note: the tensor could refer to a contiguous range of elements in this buffer, not the whole
-   * buffer. It is up to the user to manage this information by respecting the position and limit.
-   * As a consequence, accessing this reference should be considered problematic when multiple
-   * threads hold references to the buffer.
-   *
-   * @return A reference to the buffer.
-   */
-  public Optional<Buffer> getBufferRef() {
-    return Optional.ofNullable(buffer);
   }
 
   @Override
@@ -88,8 +45,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * primitives if it has multiple dimensions.
    *
    * <p>Java multidimensional arrays are quite slow for more than 2 dimensions, in that case it is
-   * recommended you use the {@link java.nio.Buffer} extractors below (e.g., {@link
-   * #getFloatBuffer}).
+   * recommended you use the java.nio.Buffer extractors below (e.g. {@link #getFloatBuffer}).
    *
    * @return A Java value.
    * @throws OrtException If the value could not be extracted as the Tensor is invalid, or if the
@@ -326,12 +282,6 @@ public class OnnxTensor extends OnnxTensorLike {
    * Create a Tensor from a Java primitive, primitive multidimensional array or String
    * multidimensional array. The shape is inferred from the object using reflection. The default
    * allocator is used.
-   *
-   * <p>Note: Java multidimensional arrays are not dense and this method requires traversing a large
-   * number of pointers for high dimensional arrays. For types other than Strings it is recommended
-   * to use one of the {@code createTensor} methods which accepts a {@link java.nio.Buffer}, e.g.
-   * {@link #createTensor(OrtEnvironment, FloatBuffer, long[])} as those methods are zero copy to
-   * transfer data into ORT when using direct buffers.
    *
    * @param env The current OrtEnvironment.
    * @param data The data to store in a tensor.
@@ -750,8 +700,7 @@ public class OnnxTensor extends OnnxTensorLike {
             info.onnxType.value),
         allocator.handle,
         info,
-        tuple.data,
-        tuple.isCopy);
+        tuple.data);
   }
 
   private static native long createTensor(

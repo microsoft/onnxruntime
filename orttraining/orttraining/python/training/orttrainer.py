@@ -306,8 +306,8 @@ class ORTTrainer:
         # Mute the dropout nodes
         dropout_nodes = [n for n in onnx_model_copy.graph.node if n.op_type == "Dropout"]
         for node in dropout_nodes:
-            ratio_node = next(n for n in onnx_model_copy.graph.node if node.input[1] in n.output)
-            training_mode_node = next(n for n in onnx_model_copy.graph.node if node.input[2] in n.output)
+            ratio_node = [n for n in onnx_model_copy.graph.node if node.input[1] in n.output][0]
+            training_mode_node = [n for n in onnx_model_copy.graph.node if node.input[2] in n.output][0]
 
             training_mode_node.attribute.pop()
             ratio_node.attribute.pop()
@@ -844,7 +844,7 @@ class ORTTrainer:
 
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *inputs, **kwargs):
         # Normalize input to tuple of samples
-        if type(inputs) == tuple and len(inputs) == 1 and type(inputs[0]) == list:  # noqa: E721
+        if type(inputs) == tuple and len(inputs) == 1 and type(inputs[0]) == list:
             input = tuple(inputs[0])
         else:
             input = inputs

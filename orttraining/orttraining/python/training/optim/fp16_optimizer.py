@@ -3,8 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import warnings
 
-from ._modifier_registry import OptimizerModifierTypeRegistry, get_full_qualified_type_name
+from ._modifier_registry import OptimizerModifierTypeRegistry
 
 
 def FP16_Optimizer(optimizer, **kwargs):  # noqa: N802
@@ -79,13 +80,22 @@ def FP16_Optimizer(optimizer, **kwargs):  # noqa: N802
 
     """
 
-    optimizer_full_qualified_name = (
-        "apex.amp.optimizer.unique_name_as_id"
-        if hasattr(optimizer, "_amp_stash")
-        else get_full_qualified_type_name(optimizer)
-    )
-    modifier = OptimizerModifierTypeRegistry.create_modifier(optimizer_full_qualified_name, optimizer, **kwargs)
-    if modifier is not None:
-        modifier.apply()
+    def get_full_qualified_type_name(o):
+        if hasattr(optimizer, "_amp_stash"):
+            return "apex.amp.optimizer.unique_name_as_id"
+
+        klass = o.__class__
+        module = klass.__module__
+        if module == "builtins":
+            return klass.__qualname__
+        return module + "." + klass.__qualname__
+
+    optimizer_full_qualified_name = get_full_qualified_type_name(optimizer)
+    if optimizer_full_qualified_name not in OptimizerModifierTypeRegistry:
+        warnings.warn("Skip modifying optimizer because of optimizer name not found in registry.", UserWarning)
+        return optimizer
+
+    modifier = OptimizerModifierTypeRegistry[optimizer_full_qualified_name](optimizer, **kwargs)
+    modifier.apply()
 
     return optimizer

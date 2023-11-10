@@ -61,7 +61,7 @@ def parse_args():
         "-m",
         help="Path to ONNX model to use. Model will be copied into the test app",
         type=Path,
-        required=True,
+        Required=True,
     )
 
     args = parser.parse_args()

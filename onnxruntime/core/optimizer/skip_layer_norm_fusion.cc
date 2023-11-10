@@ -12,8 +12,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // LayerNorm supports limited data types.
-static constexpr std::array supported_data_types{
-    "tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
+static constexpr std::array supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {

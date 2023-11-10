@@ -26,14 +26,15 @@ class ONNXModels:
     1. exported_model: Model that is exported by torch.onnx.export
     2. optimized_model: For eval mode it's exported_model with concrete input shapes set if needed,
                         for training mode, it's optimized model after gradients graph has been built.
-    In addition, ORTModule also saves two other models, to the user-provided path:
-    a. the pre_grad_model which is the model before the gradients graph is built.
-    b. the execution_model which is the model that is being executed by ORT.
-      It has further optimizations done by the InferenceSession and is saved by the InferenceSession.
+    3. optimized_pre_grad_model: Optimized model before gradient graph is built. It's None for eval mode.
+    4. In addition, ORTModule also saves the execution_model which is the model
+       that is being executed by ORT. It has further optimizations done by the
+       InferenceSession and is saved by the InferenceSession.
     """
 
     exported_model: Optional[onnx.ModelProto] = None
     optimized_model: Optional[onnx.ModelProto] = None
+    optimized_pre_grad_model: Optional[onnx.ModelProto] = None
 
     def save_exported_model(self, path, name_prefix, export_mode):
         # save the ortmodule exported model
@@ -46,3 +47,8 @@ class ONNXModels:
         _save_model(
             self.optimized_model, os.path.join(path, _get_onnx_file_name(name_prefix, "optimized", export_mode))
         )
+        if self.optimized_pre_grad_model is not None:
+            _save_model(
+                self.optimized_pre_grad_model,
+                os.path.join(path, _get_onnx_file_name(name_prefix, "optimized_pre_grad", export_mode)),
+            )

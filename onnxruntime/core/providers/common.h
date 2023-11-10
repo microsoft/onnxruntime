@@ -5,7 +5,6 @@
 
 #include <cstdint>
 #include <functional>
-#include "core/common/safeint.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
@@ -104,8 +103,8 @@ inline Status ComputePad(const int64_t in_dim,
       // The ONNX spec says if `auto_pad` attribute is set, pad until the `legacy_target_size`
       // is `ceil (in_dim / stride)`. The following line of code is essentially just that and
       // is retained as is
-      SafeInt<int64_t> legacy_target_size = (SafeInt<int64_t>(in_dim) + stride - 1) / stride;
-      SafeInt<int64_t> pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
+      int64_t legacy_target_size = (in_dim + stride - 1) / stride;
+      int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
       // make sure padding is symmetric
       if (force_symmetric_auto_padding) {
         // Inlining math::roundUpPow2() from util/math.h to avoid bringing in the transitive dependencies.
@@ -129,9 +128,8 @@ inline Status ComputePad(const int64_t in_dim,
 constexpr inline int64_t ComputeOutputShape(const int64_t in_dim,
                                             const int64_t stride, const int64_t kernel, const int64_t dilation,
                                             const int64_t pad_head, const int64_t pad_tail) {
-  const SafeInt<int64_t> dkernel = SafeInt<int64_t>(dilation) * (kernel - 1) + 1;
-  int64_t dkernel_value = SafeInt<int64_t>(in_dim) + pad_head + pad_tail - dkernel;
-  return static_cast<int64_t>(static_cast<double>(dkernel_value) / stride + 1);
+  const int64_t dkernel = dilation * (kernel - 1) + 1;
+  return static_cast<int64_t>(static_cast<double>(in_dim + pad_head + pad_tail - dkernel) / stride + 1);
 }
 
 inline Status ComputePadAndOutputShape(const int64_t in_dim,

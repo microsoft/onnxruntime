@@ -16,6 +16,7 @@
 
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
+#include <iostream>
 
 using onnxruntime::concurrency::ThreadPool;
 

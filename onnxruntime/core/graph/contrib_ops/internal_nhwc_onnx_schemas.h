@@ -2,9 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/graph/onnx_protobuf.h"
-
-#ifndef ORT_MINIMAL_BUILD
+#include "onnx/defs/schema.h"
 
 namespace onnxruntime {
 namespace internal_nhwc_onnx {
@@ -19,5 +17,3 @@ class OpSet_Internal_NHWC_ONNX {
 
 }  // namespace internal_nhwc_onnx
 }  // namespace onnxruntime
-
-#endif  // !ORT_MINIMAL_BUILD

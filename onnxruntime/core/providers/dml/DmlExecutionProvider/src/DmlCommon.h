@@ -6,11 +6,6 @@
 #include <assert.h>
 #include "core/providers/dml/OperatorAuthorHelper/Common.h"
 
-template <typename T>
-auto unmove_ptr(T&& t) {
-    return &static_cast<T&>(t);
-}
-
 namespace Dml
 {
     using namespace OperatorHelper;

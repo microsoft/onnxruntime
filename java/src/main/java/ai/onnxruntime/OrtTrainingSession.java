@@ -418,7 +418,7 @@ public final class OrtTrainingSession implements AutoCloseable {
    */
   public OrtSession.Result trainStep(Map<String, ? extends OnnxTensorLike> inputs)
       throws OrtException {
-    return trainStep(inputs, trainOutputNames, Collections.emptyMap(), null);
+    return trainStep(inputs, trainOutputNames, null);
   }
 
   /**
@@ -432,7 +432,7 @@ public final class OrtTrainingSession implements AutoCloseable {
   public OrtSession.Result trainStep(
       Map<String, ? extends OnnxTensorLike> inputs, OrtSession.RunOptions runOptions)
       throws OrtException {
-    return trainStep(inputs, trainOutputNames, Collections.emptyMap(), runOptions);
+    return trainStep(inputs, trainOutputNames, runOptions);
   }
 
   /**
@@ -446,41 +446,14 @@ public final class OrtTrainingSession implements AutoCloseable {
   public OrtSession.Result trainStep(
       Map<String, ? extends OnnxTensorLike> inputs, Set<String> requestedOutputs)
       throws OrtException {
-    return trainStep(inputs, requestedOutputs, Collections.emptyMap(), null);
+    return trainStep(inputs, requestedOutputs, null);
   }
 
   /**
    * Performs a single step of training, accumulating the gradients.
    *
-   * <p>The outputs are sorted based on the supplied map traversal order.
-   *
-   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are
-   * <b>not</b> closed when the result object is closed.
-   *
    * @param inputs The inputs (must include both the features and the target).
-   * @param pinnedOutputs The requested outputs which the user has allocated.
-   * @return Requested outputs produced by the training step.
-   * @throws OrtException If the native call failed.
-   */
-  public OrtSession.Result trainStep(
-      Map<String, ? extends OnnxTensorLike> inputs, Map<String, ? extends OnnxValue> pinnedOutputs)
-      throws OrtException {
-    return trainStep(inputs, Collections.emptySet(), pinnedOutputs, null);
-  }
-
-  /**
-   * Performs a single step of training, accumulating the gradients.
-   *
-   * <p>The outputs are sorted based on the supplied set traversal order with pinned outputs first,
-   * then requested outputs. An {@link IllegalArgumentException} is thrown if the same output name
-   * appears in both the requested outputs and the pinned outputs.
-   *
-   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are
-   * <b>not</b> closed when the result object is closed.
-   *
-   * @param inputs The inputs (must include both the features and the target).
-   * @param requestedOutputs The requested outputs which ORT will allocate.
-   * @param pinnedOutputs The requested outputs which the user has allocated.
+   * @param requestedOutputs The requested outputs.
    * @param runOptions Run options for controlling this specific call.
    * @return Requested outputs produced by the training step.
    * @throws OrtException If the native call failed.
@@ -488,7 +461,6 @@ public final class OrtTrainingSession implements AutoCloseable {
   public OrtSession.Result trainStep(
       Map<String, ? extends OnnxTensorLike> inputs,
       Set<String> requestedOutputs,
-      Map<String, ? extends OnnxValue> pinnedOutputs,
       OrtSession.RunOptions runOptions)
       throws OrtException {
     checkClosed();
@@ -500,14 +472,12 @@ public final class OrtTrainingSession implements AutoCloseable {
               + ") found "
               + inputs.size());
     }
-    int numTrainOutputs = trainOutputNames.size();
-    int totalOutputs = requestedOutputs.size() + pinnedOutputs.size();
-    if ((totalOutputs == 0) || (totalOutputs > numTrainOutputs)) {
+    if (requestedOutputs.isEmpty() || (requestedOutputs.size() > trainOutputNames.size())) {
       throw new OrtException(
-          "Unexpected number of requestedOutputs & pinnedOutputs, expected [1,"
-              + numTrainOutputs
+          "Unexpected number of requestedOutputs, expected [1,"
+              + trainOutputNames.size()
               + ") found "
-              + totalOutputs);
+              + requestedOutputs.size());
     }
     String[] inputNamesArray = new String[inputs.size()];
     long[] inputHandles = new long[inputs.size()];
@@ -522,35 +492,12 @@ public final class OrtTrainingSession implements AutoCloseable {
             "Unknown input name " + t.getKey() + ", expected one of " + trainInputNames);
       }
     }
-    String[] outputNamesArray = new String[requestedOutputs.size() + pinnedOutputs.size()];
-    OnnxValue[] outputValues = new OnnxValue[outputNamesArray.length];
-    long[] outputHandles = new long[outputNamesArray.length];
+    String[] outputNamesArray = new String[requestedOutputs.size()];
     i = 0;
-    for (Map.Entry<String, ? extends OnnxValue> e : pinnedOutputs.entrySet()) {
-      if (trainOutputNames.contains(e.getKey())) {
-        outputNamesArray[i] = e.getKey();
-        outputValues[i] = e.getValue();
-        outputHandles[i] = OrtSession.getHandle(e.getValue());
-        i++;
-      } else {
-        throw new OrtException(
-            "Unknown output name "
-                + e.getKey()
-                + ", expected one of "
-                + trainOutputNames.toString());
-      }
-    }
     for (String s : requestedOutputs) {
       if (trainOutputNames.contains(s)) {
-        if (!pinnedOutputs.containsKey(s)) {
-          outputNamesArray[i] = s;
-          // outputValues and outputHandles can be null/0 for these outputs as ORT will allocate
-          // them.
-          i++;
-        } else {
-          throw new OrtException(
-              "Output '" + s + "' was found in both the requested outputs and the pinned outputs");
-        }
+        outputNamesArray[i] = s;
+        i++;
       } else {
         throw new OrtException(
             "Unknown output name " + s + ", expected one of " + trainOutputNames.toString());
@@ -558,7 +505,7 @@ public final class OrtTrainingSession implements AutoCloseable {
     }
     long runOptionsHandle = runOptions == null ? 0 : runOptions.getNativeHandle();
 
-    boolean[] ownedByResult =
+    OnnxValue[] outputValues =
         trainStep(
             OnnxRuntime.ortApiHandle,
             OnnxRuntime.ortTrainingApiHandle,
@@ -569,10 +516,8 @@ public final class OrtTrainingSession implements AutoCloseable {
             inputNamesArray.length,
             outputNamesArray,
             outputNamesArray.length,
-            outputValues,
-            outputHandles,
             runOptionsHandle);
-    return new OrtSession.Result(outputNamesArray, outputValues, ownedByResult);
+    return new OrtSession.Result(outputNamesArray, outputValues);
   }
 
   /*
@@ -595,7 +540,7 @@ public final class OrtTrainingSession implements AutoCloseable {
    * run_options, size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs, size_t
    * outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
    */
-  private native boolean[] trainStep(
+  private native OnnxValue[] trainStep(
       long apiHandle,
       long trainingApiHandle,
       long nativeHandle,
@@ -605,8 +550,6 @@ public final class OrtTrainingSession implements AutoCloseable {
       long numInputs,
       String[] outputNamesArray,
       long numOutputs,
-      OnnxValue[] outputValues,
-      long[] outputHandles,
       long runOptionsHandle);
 
   /**
@@ -618,7 +561,7 @@ public final class OrtTrainingSession implements AutoCloseable {
    */
   public OrtSession.Result evalStep(Map<String, ? extends OnnxTensorLike> inputs)
       throws OrtException {
-    return evalStep(inputs, evalOutputNames, Collections.emptyMap(), null);
+    return evalStep(inputs, evalOutputNames, null);
   }
 
   /**
@@ -632,7 +575,7 @@ public final class OrtTrainingSession implements AutoCloseable {
   public OrtSession.Result evalStep(
       Map<String, ? extends OnnxTensorLike> inputs, OrtSession.RunOptions runOptions)
       throws OrtException {
-    return evalStep(inputs, evalOutputNames, Collections.emptyMap(), runOptions);
+    return evalStep(inputs, evalOutputNames, runOptions);
   }
 
   /**
@@ -646,41 +589,14 @@ public final class OrtTrainingSession implements AutoCloseable {
   public OrtSession.Result evalStep(
       Map<String, ? extends OnnxTensorLike> inputs, Set<String> requestedOutputs)
       throws OrtException {
-    return evalStep(inputs, requestedOutputs, Collections.emptyMap(), null);
+    return evalStep(inputs, requestedOutputs, null);
   }
 
   /**
    * Performs a single evaluation step using the supplied inputs.
    *
-   * <p>The outputs are sorted based on the supplied map traversal order.
-   *
-   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are
-   * <b>not</b> closed when the result object is closed.
-   *
-   * @param inputs The inputs to score.
-   * @param pinnedOutputs The requested outputs which the user has allocated.
-   * @return The requested outputs.
-   * @throws OrtException If the native call failed.
-   */
-  public OrtSession.Result evalStep(
-      Map<String, ? extends OnnxTensorLike> inputs, Map<String, ? extends OnnxValue> pinnedOutputs)
-      throws OrtException {
-    return evalStep(inputs, Collections.emptySet(), pinnedOutputs, null);
-  }
-
-  /**
-   * Performs a single evaluation step using the supplied inputs.
-   *
-   * <p>The outputs are sorted based on the supplied set traversal order with pinned outputs first,
-   * then requested outputs. An {@link IllegalArgumentException} is thrown if the same output name
-   * appears in both the requested outputs and the pinned outputs.
-   *
-   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are
-   * <b>not</b> closed when the result object is closed.
-   *
-   * @param inputs The inputs to score.
-   * @param requestedOutputs The requested outputs which ORT will allocate.
-   * @param pinnedOutputs The requested outputs which the user has allocated.
+   * @param inputs The model inputs.
+   * @param requestedOutputs The requested output names.
    * @param runOptions Run options for controlling this specific call.
    * @return The requested outputs.
    * @throws OrtException If the native call failed.
@@ -688,7 +604,6 @@ public final class OrtTrainingSession implements AutoCloseable {
   public OrtSession.Result evalStep(
       Map<String, ? extends OnnxTensorLike> inputs,
       Set<String> requestedOutputs,
-      Map<String, ? extends OnnxValue> pinnedOutputs,
       OrtSession.RunOptions runOptions)
       throws OrtException {
     checkClosed();
@@ -700,14 +615,12 @@ public final class OrtTrainingSession implements AutoCloseable {
               + ") found "
               + inputs.size());
     }
-    int numEvalOutputs = evalOutputNames.size();
-    int totalOutputs = requestedOutputs.size() + pinnedOutputs.size();
-    if ((totalOutputs == 0) || (totalOutputs > numEvalOutputs)) {
+    if (requestedOutputs.isEmpty() || (requestedOutputs.size() > evalOutputNames.size())) {
       throw new OrtException(
-          "Unexpected number of requestedOutputs & pinnedOutputs, expected [1,"
-              + numEvalOutputs
+          "Unexpected number of requestedOutputs, expected [1,"
+              + evalOutputNames.size()
               + ") found "
-              + totalOutputs);
+              + requestedOutputs.size());
     }
     String[] inputNamesArray = new String[inputs.size()];
     long[] inputHandles = new long[inputs.size()];
@@ -722,35 +635,12 @@ public final class OrtTrainingSession implements AutoCloseable {
             "Unknown input name " + t.getKey() + ", expected one of " + evalInputNames.toString());
       }
     }
-    String[] outputNamesArray = new String[requestedOutputs.size() + pinnedOutputs.size()];
-    OnnxValue[] outputValues = new OnnxValue[outputNamesArray.length];
-    long[] outputHandles = new long[outputNamesArray.length];
+    String[] outputNamesArray = new String[requestedOutputs.size()];
     i = 0;
-    for (Map.Entry<String, ? extends OnnxValue> e : pinnedOutputs.entrySet()) {
-      if (evalOutputNames.contains(e.getKey())) {
-        outputNamesArray[i] = e.getKey();
-        outputValues[i] = e.getValue();
-        outputHandles[i] = OrtSession.getHandle(e.getValue());
-        i++;
-      } else {
-        throw new OrtException(
-            "Unknown output name "
-                + e.getKey()
-                + ", expected one of "
-                + evalOutputNames.toString());
-      }
-    }
     for (String s : requestedOutputs) {
       if (evalOutputNames.contains(s)) {
-        if (!pinnedOutputs.containsKey(s)) {
-          outputNamesArray[i] = s;
-          // outputValues and outputHandles can be null/0 for these outputs as ORT will allocate
-          // them.
-          i++;
-        } else {
-          throw new OrtException(
-              "Output '" + s + "' was found in both the requested outputs and the pinned outputs");
-        }
+        outputNamesArray[i] = s;
+        i++;
       } else {
         throw new OrtException(
             "Unknown output name " + s + ", expected one of " + evalOutputNames.toString());
@@ -758,7 +648,7 @@ public final class OrtTrainingSession implements AutoCloseable {
     }
     long runOptionsHandle = runOptions == null ? 0 : runOptions.getNativeHandle();
 
-    boolean[] ownedByResult =
+    OnnxValue[] outputValues =
         evalStep(
             OnnxRuntime.ortApiHandle,
             OnnxRuntime.ortTrainingApiHandle,
@@ -769,10 +659,8 @@ public final class OrtTrainingSession implements AutoCloseable {
             inputNamesArray.length,
             outputNamesArray,
             outputNamesArray.length,
-            outputValues,
-            outputHandles,
             runOptionsHandle);
-    return new OrtSession.Result(outputNamesArray, outputValues, ownedByResult);
+    return new OrtSession.Result(outputNamesArray, outputValues);
   }
 
   /*
@@ -794,7 +682,7 @@ public final class OrtTrainingSession implements AutoCloseable {
    * run_options, size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs, size_t
    * outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
    */
-  private native boolean[] evalStep(
+  private native OnnxValue[] evalStep(
       long apiHandle,
       long trainingApiHandle,
       long nativeHandle,
@@ -804,8 +692,6 @@ public final class OrtTrainingSession implements AutoCloseable {
       long numInputs,
       String[] outputNamesArray,
       long numOutputs,
-      OnnxValue[] outputValues,
-      long[] outputHandles,
       long runOptionsHandle)
       throws OrtException;
 

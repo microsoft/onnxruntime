@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <string>
-#include <filesystem>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -173,7 +172,7 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 // The models passed to this function are subgraphs extracted from a larger model that exhibited
 // shape inferencing issues on QNN. Thus, the models are expected to have a specific input/output
 // types and shapes.
-static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bool enable_qnn_saver = false) {
+static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp) {
   Ort::SessionOptions so;
 
   // Ensure all type/shape inference warnings result in errors!
@@ -184,14 +183,8 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
 
 #if defined(_WIN32)
   options["backend_path"] = use_htp ? "QnnHtp.dll" : "QnnCpu.dll";
-  if (enable_qnn_saver) {
-    options["qnn_saver_path"] = "QnnSaver.dll";
-  }
 #else
   options["backend_path"] = use_htp ? "libQnnHtp.so" : "libQnnCpu.so";
-  if (enable_qnn_saver) {
-    options["qnn_saver_path"] = "libQnnSaver.so";
-  }
 #endif
 
   so.AppendExecutionProvider("QNN", options);
@@ -233,7 +226,7 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
   auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
   std::vector<int64_t> output_shape = typeshape.GetShape();
 
-  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 6, 7, 10));
+  ASSERT_THAT(output_shape, ::testing::ElementsAre(1, 6, 7, 10));
 }
 
 // Test shape inference of NHWC Resize operator (opset 11) that uses
@@ -260,23 +253,6 @@ TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx", false);
 }
 
-// Test that QNN Saver generates the expected files for a model meant to run on the QNN CPU backend.
-TEST_F(QnnCPUBackendTests, QnnSaver_OutputFiles) {
-  const std::filesystem::path qnn_saver_output_dir = "saver_output";
-
-  // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.
-  std::filesystem::remove_all(qnn_saver_output_dir);
-  ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
-
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                     false,  // use_htp
-                     true);  // enable_qnn_saver
-
-  // Check that QNN Saver output files exist.
-  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
-  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
-}
-
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Test shape inference of QDQ NHWC Resize operator (opset 18) that uses
@@ -284,25 +260,8 @@ TEST_F(QnnCPUBackendTests, QnnSaver_OutputFiles) {
 TEST_F(QnnHTPBackendTests, TestNHWCResizeShapeInference_qdq_sizes_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx", true);
 }
-
-// Test that QNN Saver generates the expected files for a model meant to run on the QNN HTP backend.
-TEST_F(QnnHTPBackendTests, QnnSaver_OutputFiles) {
-  const std::filesystem::path qnn_saver_output_dir = "saver_output";
-
-  // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.
-  std::filesystem::remove_all(qnn_saver_output_dir);
-  ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
-
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                     true,   // use_htp
-                     true);  // enable_qnn_saver
-
-  // Check that QNN Saver output files exist.
-  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
-  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
-}
-
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace test

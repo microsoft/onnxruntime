@@ -24,10 +24,6 @@ Following platforms are supported with pre-built binaries:
 
 To use on platforms without pre-built binaries, you can build Node.js binding from source and consume it by `npm install <onnxruntime_repo_root>/js/node/`. See also [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime Node.js binding locally.
 
-# GPU Support
-
-Right now, the Windows version supports only the DML provider. Linux x64 can use CUDA and TensorRT.
-
 ## License
 
 License information can be found [here](https://github.com/microsoft/onnxruntime/blob/main/README.md#license).

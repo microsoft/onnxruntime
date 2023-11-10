@@ -80,7 +80,7 @@ CREATE_TENSOR(TensorInt64Bit, int64_t, int64_t)
 CREATE_TENSOR(TensorFloat16Bit, _winml::Half, float)
 
 #pragma warning(push)
-#pragma warning(disable : 4702)  // Unreachable code (one of TensorBase's constructor unconditionally throws for \
+#pragma warning(disable : 4702) // Unreachable code (one of TensorBase's constructor unconditionally throws for \
                                 // std::string because it's not supported with D3D12 resources)
 CREATE_TENSOR(TensorString, std::string, winrt::hstring)
 #pragma warning(pop)
@@ -420,8 +420,8 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
       BindingType, const wf::IInspectable& inspectable, const winml::ITensorFeatureDescriptor& descriptor
     );
     constexpr std::array<TensorCreator, 13> creators = {
-      // Vector and VectorViews of float16 and int8 collide with float and uint8 respectively.
-      // They are omitted because of this ambiguity and are not constructible via raw winrt collections.
+            // Vector and VectorViews of float16 and int8 collide with float and uint8 respectively.
+            // They are omitted because of this ambiguity and are not constructible via raw winrt collections.
       CreateTensorValueFromInspectable<winmlp::TensorBoolean, bool>,
       CreateTensorValueFromInspectable<winmlp::TensorFloat, float>,
       CreateTensorValueFromInspectable<winmlp::TensorDouble, double>,

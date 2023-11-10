@@ -10,6 +10,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_ubuntu_cpu
+  displayName: 'Whether Ubuntu CPU (manylinux_2_27) package is built.'
+  type: boolean
+  default: true
+
 - name: enable_linux_gpu
   displayName: 'Whether Linux GPU package is built.'
   type: boolean
@@ -39,17 +44,6 @@ parameters:
   displayName: 'Whether Linux ARM package is built.'
   type: boolean
   default: true
-
-# TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
-- name: cmake_build_type
-  type: string
-  displayName: 'Linux packages cmake build type. Linux Only.'
-  default: 'Release'
-  values:
-   - Debug
-   - Release
-   - RelWithDebInfo
-   - MinSizeRel
 
 stages:
 - stage: Python_Packaging
@@ -246,6 +240,18 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
         displayName: 'Run Python Tests'
 
+      #Skip it for 32 bits x86 build. Currently the scan tool has a bug: it doesn't allow me use 64 bits link.exe
+      #in 32 bits Win32 build. I tried all the settings but they all don't work.
+      - task: SDLNativeRules@3
+        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+        condition: and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8')))
+        inputs:
+          msBuildArchitecture: amd64
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
+          excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files'
+
+
       - task: TSAUpload@2
         displayName: 'TSA upload'
         condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
@@ -371,7 +377,7 @@ stages:
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
           export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-x86_64
           python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --use_coreml --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2
@@ -445,7 +451,7 @@ stages:
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
           export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-arm64
           python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --use_coreml --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - script: |
@@ -484,25 +490,25 @@ stages:
       - template: py-linux.yml
         parameters:
           arch: 'aarch64'
-          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-          base_image: 'arm64v8/almalinux:8'
-          devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
-          ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
-          prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
+          machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
+          base_image: 'arm64v8/centos:7'
+          devtoolset_rootpath: /opt/rh/devtoolset-10/root
+          ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
+          prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
+          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
+            device: '-d AZURE'
 
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
       - template: py-linux.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
-          base_image: 'registry.access.redhat.com/ubi8/ubi'
-          devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
-          ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
-          prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
+          machine_pool: 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
+          base_image: 'centos:7'
+          devtoolset_rootpath: /opt/rh/devtoolset-11/root
+          ld_library_path_arg: /opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64
+          prepend_path: '/opt/rh/devtoolset-11/root/usr/bin:'
+          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
+            device: '-d AZURE'
 
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
@@ -510,5 +516,5 @@ stages:
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
+          ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
+            device: '-d AZURE'

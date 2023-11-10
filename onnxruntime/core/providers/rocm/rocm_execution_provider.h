@@ -36,11 +36,11 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  rocblas_handle PerThreadDefaultRocblasHandle() {
+  rocblas_handle PerThreadRocblasHandle() {
     return GetPerThreadContext().RocblasHandle();
   }
 
-  miopenHandle_t PerThreadDefaultMiopenHandle() {
+  miopenHandle_t PerThreadMiopenHandle() {
     return GetPerThreadContext().MiopenHandle();
   }
 
@@ -60,6 +60,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
   int GetMiopenConvExhaustiveSearch() const { return info_.miopen_conv_exhaustive_search; }
   bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
+
   bool GetMiopenConvUseMaxWorkspace() const { return info_.miopen_conv_use_max_workspace; }
 
   ProviderOptions GetProviderOptions() const override {
@@ -67,15 +68,15 @@ class ROCMExecutionProvider : public IExecutionProvider {
   }
 
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                          ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, const OrtArenaCfg* arena_cfg);
+                                          ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
   ITuningContext* GetTuningContext() const override;
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
-  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
  private:
   ROCMExecutionProviderInfo info_;
@@ -104,30 +105,21 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
     template <typename T>
     const T* GetConstOnes(size_t count, hipStream_t stream) {
-      constexpr bool is_float = std::is_same<T, float>::value;
-      constexpr bool is_double = std::is_same<T, double>::value;
-      constexpr bool is_half = std::is_same<T, half>::value;
-      constexpr bool is_BFloat16 = std::is_same<T, BFloat16>::value;
-      if (is_float) {
+      if (std::is_same<T, float>::value) {
         if (!constant_ones_float_) {
           constant_ones_float_ = rocm::CreateConstantOnes<float>();
         }
         return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream, count));
-      } else if (is_double) {
+      } else if (std::is_same<T, double>::value) {
         if (!constant_ones_double_) {
           constant_ones_double_ = rocm::CreateConstantOnes<double>();
         }
         return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream, count));
-      } else if (is_half) {
+      } else if (std::is_same<T, half>::value) {
         if (!constant_ones_half_) {
           constant_ones_half_ = rocm::CreateConstantOnes<half>();
         }
         return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream, count));
-      } else if (is_BFloat16) {
-        if (!constant_ones_bfloat16_) {
-          constant_ones_bfloat16_ = rocm::CreateConstantOnes<BFloat16>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(stream, count));
       } else {
         return nullptr;
       }
@@ -140,7 +132,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
     std::unique_ptr<rocm::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<rocm::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<rocm::IConstantBuffer<half>> constant_ones_half_;
-    std::unique_ptr<rocm::IConstantBuffer<BFloat16>> constant_ones_bfloat16_;
   };
 
   using PerThreadContextMap = std::unordered_map<const ROCMExecutionProvider*, std::weak_ptr<PerThreadContext>>;

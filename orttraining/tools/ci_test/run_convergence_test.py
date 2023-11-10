@@ -35,7 +35,7 @@ def main():
         convergence_test_output_path = os.path.join(output_dir, "convergence_test_out.csv")
 
         # run BERT training
-        subprocess.run(  # noqa: PLW1510
+        subprocess.run(
             [
                 os.path.join(args.binary_dir, "onnxruntime_training_bert"),
                 "--model_name",

@@ -34,6 +34,7 @@ python3 $ORT_ROOT/tools/ci_build/build.py \
     --disable_ml_ops \
     --disable_exceptions \
     --include_ops_by_config $ORT_ROOT/onnxruntime/test/testdata/required_ops_and_types.config \
+    --path_to_protoc_exe $ORT_ROOT/protobuf_install/bin/protoc \
     --skip_tests
 
 # Push onnxruntime_test_all and testdata to emulator

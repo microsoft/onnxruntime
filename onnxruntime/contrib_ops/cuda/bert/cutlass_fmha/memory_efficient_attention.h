@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
+#if USE_FLASH_ATTENTION
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -58,4 +58,4 @@ void run_memory_efficient_attention_sm50(const MemoryEfficientAttentionParams& p
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif  // USE_MEMORY_EFFICIENT_ATTENTION
+#endif  // USE_FLASH_ATTENTION

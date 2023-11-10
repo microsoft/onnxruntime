@@ -56,7 +56,7 @@ ElementWiseRangedTransform<T>::~ElementWiseRangedTransform() {
   Status Init(const onnxruntime::NodeAttributes& attributes) {     \
     return (GetFloatParam(#X, attributes, X));                     \
   }                                                                \
-  GSL_SUPPRESS(r.11)                                               \
+  GSL_SUPPRESS(r .11)                                              \
   ElementWiseRangedTransform<T>* Copy() const final {              \
     using T1 = typename std::remove_pointer<decltype(this)>::type; \
     using T2 = typename std::remove_const<T1>::type;               \
@@ -71,7 +71,7 @@ ElementWiseRangedTransform<T>::~ElementWiseRangedTransform() {
     ORT_RETURN_IF_ERROR(GetFloatParam(#Y, attributes, Y));         \
     return Status::OK();                                           \
   }                                                                \
-  GSL_SUPPRESS(r.11)                                               \
+  GSL_SUPPRESS(r .11)                                              \
   ElementWiseRangedTransform<T>* Copy() const final {              \
     using T1 = typename std::remove_pointer<decltype(this)>::type; \
     using T2 = typename std::remove_const<T1>::type;               \

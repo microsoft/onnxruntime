@@ -9,22 +9,45 @@
 
 namespace vaip {
 using namespace ::onnxruntime;
+std::vector<const Node*> node_arg_names_to_nodes(const GraphViewer& graph,
+                                                 const std::vector<std::string>& node_arg_names) {
+  auto ret = std::vector<const Node*>();
+  ret.reserve(node_arg_names.size());
+  for (auto& onnx_node_arg_name : node_arg_names) {
+    auto deq = graph.GetProducerNode(onnx_node_arg_name);
+    vai_assert(deq != nullptr, std::string("cannot find producer. onnx_node_arg_name=" + onnx_node_arg_name));
+    // to support multiple output, some nodes mighe already be inserted.
+    auto found = std::find(ret.begin(), ret.end(), deq) != ret.end();
+    if (!found) {
+      ret.push_back(deq);
+    }
+  }
+  return ret;
+}
 
 static std::vector<NodeIndex> node_names_to_nodes(const GraphViewer& graph,
                                                   const std::vector<std::string>& node_names) {
+  auto find_node = [&](const std::string& node_name) -> NodeIndex {
+    for (auto& n : graph.Nodes()) {
+      if (n.Name() == node_name) {
+        return n.Index();
+      }
+    }
+    vai_assert(false, std::string("cannot find node: " + node_name));
+    return onnxruntime::NodeIndex(-1);
+  };
   auto ret = std::vector<NodeIndex>();
   ret.reserve(node_names.size());
   for (auto& onnx_node_name : node_names) {
-    // onnnx_node_name is actually node arg name.
-    auto node = graph.GetProducerNode(onnx_node_name);
-    vai_assert(node != nullptr, std::string("cannot find producer. onnx_node_arg_name=" + onnx_node_name));
-    ret.push_back(node->Index());
+    ret.push_back(find_node(onnx_node_name));
   }
   return ret;
 }
 
 std::unique_ptr<ComputeCapability> XirSubgraphToComputeCapability1(const onnxruntime::GraphViewer& graph, vaip_core::ExecutionProvider* ep, size_t index) {
   auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  auto input_nodes = node_arg_names_to_nodes(graph, *ep->get_meta_def_inputs());
+  auto output_nodes = node_arg_names_to_nodes(graph, *ep->get_meta_def_outputs());
   meta_def->constant_initializers = *ep->get_meta_def_constant_initializer();
   meta_def->inputs = *ep->get_meta_def_inputs();
   meta_def->outputs = *ep->get_meta_def_outputs();

@@ -13,7 +13,7 @@ namespace transformers {
 struct GreedySearchParameters : public BeamSearchParameters {
   int BatchBeamSize() const { return batch_size; }
 
-  void ParseFromAttributes(const OpKernelInfo& info) override;
+  void ParseFromAttributes(const OpKernelInfo& info);
 
   void ParseFromInputs(OpKernelContext* context);
 };

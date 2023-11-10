@@ -31,10 +31,6 @@ parameters:
   type: boolean
   default: false
 
-- name: BuildTraining
-  type: boolean
-  default: true
-
 - name: WithCache
   type: boolean
   default: false
@@ -46,7 +42,7 @@ jobs:
   variables:
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --use_xnnpack ${{ parameters.ExtraBuildArgs }}'
+    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --use_xnnpack --emsdk_version releases-7c905cfc1ca6699f6ccb288ae174902cfbdcf0a2-64bit ${{ parameters.ExtraBuildArgs }}'
     runCodesignValidationInjection: false
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
@@ -83,7 +79,7 @@ jobs:
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '16.x'
   - template: download-deps.yml
 
   - task: PythonScript@0
@@ -96,8 +92,9 @@ jobs:
   - script: |
       set -ex
       cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-      ./emsdk install 3.1.44 ccache-git-emscripten-64bit
-      ./emsdk activate 3.1.44 ccache-git-emscripten-64bit
+      ./emsdk install 3.1.37 ccache-git-emscripten-64bit
+      ./emsdk activate 3.1.37 ccache-git-emscripten-64bit
+      ln -s $(Build.SourcesDirectory)/cmake/external/emsdk/ccache/git-emscripten_64bit/bin/ccache /usr/local/bin/ccache
     displayName: 'emsdk install and activate ccache for emscripten'
     condition: eq('${{ parameters.WithCache }}', 'true')
 
@@ -149,19 +146,6 @@ jobs:
       DisplayName: 'Build and test (node) (simd)'
       WithCache: ${{ parameters.WithCache }}
 
-  - ${{ if eq(parameters.BuildTraining, true) }}:
-    - template: build-linux-wasm-step.yml
-      parameters:
-        Today: $(Today)
-        ${{ if eq(parameters.BuildStaticLib, true)}}:
-          AdditionalKey: training_wasm_simd | ${{ parameters.BuildConfig }} | static
-        ${{ else }}:
-          AdditionalKey: training_wasm_simd | ${{ parameters.BuildConfig }}
-        CacheDir: $(ORT_CACHE_DIR)/training_wasm_simd
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/training_wasm_simd --enable_training_apis --enable_wasm_simd --target onnxruntime_webassembly --skip_tests'
-        DisplayName: 'Build (training + simd)'
-        WithCache: ${{ parameters.WithCache }}
-
   - ${{ if eq(parameters.BuildJsep, true) }}:
     - template: build-linux-wasm-step.yml
       parameters:
@@ -200,10 +184,6 @@ jobs:
           cp $(Build.BinariesDirectory)/wasm_simd_threads_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.wasm $(Build.ArtifactStagingDirectory)/ort-wasm-simd-threaded.jsep.wasm
           cp $(Build.BinariesDirectory)/wasm_simd_threads_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.js $(Build.ArtifactStagingDirectory)/ort-wasm-simd-threaded.jsep.js
           cp $(Build.BinariesDirectory)/wasm_simd_threads_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.worker.js $(Build.ArtifactStagingDirectory)/ort-wasm-simd-threaded.jsep.worker.js
-        fi
-        if [ -d $(Build.BinariesDirectory)/training_wasm_simd ]; then
-          cp $(Build.BinariesDirectory)/training_wasm_simd/${{ parameters.BuildConfig }}/ort-training-wasm-simd.wasm $(Build.ArtifactStagingDirectory)/ort-training-wasm-simd.wasm
-          cp $(Build.BinariesDirectory)/training_wasm_simd/${{ parameters.BuildConfig }}/ort-training-wasm-simd.js $(Build.ArtifactStagingDirectory)/ort-training-wasm-simd.js
         fi
       displayName: 'Create Artifacts'
   - ${{ if eq(parameters.SkipPublish, false) }}:

@@ -16,8 +16,8 @@ namespace AI {
 namespace MachineLearning {
 using tensor_shape_type = int64_t;
 }
-}  // namespace AI
-}  // namespace Microsoft
+}// namespace AI
+} // namespace Microsoft
 
 #include "winml_microsoft.h"
 
@@ -30,10 +30,10 @@ using learning_model_device = WinMLLearningModelDevice;
 using learning_model_session = WinMLLearningModelSession;
 using learning_model_binding = WinMLLearningModelBinding;
 using learning_model_results = WinMLLearningModelResults;
-}  // namespace Details
-}  // namespace MachineLearning
-}  // namespace AI
-}  // namespace Microsoft
+}// namespace Details
+}// namespace MachineLearning
+}// namespace AI
+} // namespace Microsoft
 
 namespace Microsoft {
 namespace AI {
@@ -146,8 +146,8 @@ learning_model_results learning_model_session::evaluate(learning_model_binding& 
   return Details::learning_model_results(m_session.evaluate(binding.m_binding));
 }
 
-}  // namespace MachineLearning
-}  // namespace AI
-}  // namespace Microsoft
+}// namespace MachineLearning
+}// namespace AI
+} // namespace Microsoft
 
-#endif  // MICROSOFT_AI_MACHINELEARNING_H_
+#endif // MICROSOFT_AI_MACHINELEARNING_H_

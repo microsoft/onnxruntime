@@ -2397,7 +2397,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_17 = {
+static constexpr OrtApi ort_api_1_to_16 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2659,6 +2659,7 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::ReleaseKernelInfo,
     // End of Version 12 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    // Start of Version 13 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::GetTrainingApi,
     &OrtApis::SessionOptionsAppendExecutionProvider_CANN,
     &OrtApis::CreateCANNProviderOptions,
@@ -2667,6 +2668,7 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::ReleaseCANNProviderOptions,
     // End of Version 13 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    // Start of Version 14 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::MemoryInfoGetDeviceType,
     &OrtApis::UpdateEnvWithCustomLogLevel,
     &OrtApis::SetGlobalIntraOpThreadAffinity,
@@ -2683,6 +2685,7 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::GetSessionConfigEntry,
     // End of Version 14 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    // Start of Version 15 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
     &OrtApis::CreateDnnlProviderOptions,
     &OrtApis::UpdateDnnlProviderOptions,
@@ -2701,26 +2704,13 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::GetBuildInfoString,
     // End of Version 15 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    // Start of Version 16 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::CreateROCMProviderOptions,
     &OrtApis::UpdateROCMProviderOptions,
     &OrtApis::GetROCMProviderOptionsAsString,
     &OrtApis::ReleaseROCMProviderOptions,
     &OrtApis::CreateAndRegisterAllocatorV2,
     &OrtApis::RunAsync,
-    &OrtApis::UpdateTensorRTProviderOptionsWithValue,
-    &OrtApis::GetTensorRTProviderOptionsByName,
-    &OrtApis::UpdateCUDAProviderOptionsWithValue,
-    &OrtApis::GetCUDAProviderOptionsByName,
-    &OrtApis::KernelContext_GetResource,
-    // End of Version 16 - DO NOT MODIFY ABOVE (see above text for more information)
-
-    &OrtApis::SetUserLoggingFunction,
-    &OrtApis::ShapeInferContext_GetInputCount,
-    &OrtApis::ShapeInferContext_GetInputTypeShape,
-    &OrtApis::ShapeInferContext_GetAttribute,
-    &OrtApis::ShapeInferContext_SetOutputTypeShape,
-    &OrtApis::SetSymbolicDimensions,
-    &OrtApis::ReadOpAttr,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -2749,20 +2739,18 @@ static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size 
 static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 224, "Size of version 13 API cannot change");
 static_assert(offsetof(OrtApi, GetSessionConfigEntry) / sizeof(void*) == 238, "Size of version 14 API cannot change");
 static_assert(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*) == 254, "Size of version 15 API cannot change");
-static_assert(offsetof(OrtApi, KernelContext_GetResource) / sizeof(void*) == 265, "Size of version 16 API cannot change");
-static_assert(offsetof(OrtApi, SetUserLoggingFunction) / sizeof(void*) == 266, "Size of version 17 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.17.0",
+static_assert(std::string_view(ORT_VERSION) == "1.16.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_17 above:
+// 2. If there were any APIs added to ort_api_1_to_16 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_17;
+    return &ort_api_1_to_16;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."

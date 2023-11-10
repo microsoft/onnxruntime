@@ -3,16 +3,24 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "orttraining/training_api/module.h"
-#include "orttraining/training_api/optimizer.h"
-#include "orttraining/training_api/lr_scheduler.h"
-#include "orttraining/training_api/checkpoint.h"
-#include "orttraining/training_api/utils.h"
+#include "module.h"
+#include "optimizer.h"
+#include "lr_scheduler.h"
+#include "checkpoint.h"
 
 namespace onnxruntime {
 namespace training {
 namespace api {
 using namespace common;
+
+struct ModelIdentifiers {
+  const std::string train_model;
+  const std::optional<std::string> eval_model, optim_model;
+  ModelIdentifiers(const std::string& train_model_uri,
+                   const std::optional<std::string>& eval_model_uri,
+                   const std::optional<std::string>& optim_model_uri)
+      : train_model(train_model_uri), eval_model(eval_model_uri), optim_model(optim_model_uri) {}
+};
 
 // Wrapper on top of module and optimizer classes and is the only class exposed via capis
 class TrainingSession {

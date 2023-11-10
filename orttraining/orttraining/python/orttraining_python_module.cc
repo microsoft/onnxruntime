@@ -15,12 +15,6 @@ namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
 
-#if defined(USE_MPI) && defined(ORT_USE_NCCL)
-static constexpr bool HAS_COLLECTIVE_OPS = true;
-#else
-static constexpr bool HAS_COLLECTIVE_OPS = false;
-#endif
-
 using namespace onnxruntime::logging;
 
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
@@ -366,8 +360,6 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
         GetTrainingEnv().ClearExecutionProviderInstances();
       },
       "Clean the execution provider instances used in ort training module.");
-
-  m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });
 
   // See documentation for class TrainingEnvInitialzer earlier in this module
   // for an explanation as to why this is needed.

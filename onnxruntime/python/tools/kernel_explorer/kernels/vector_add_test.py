@@ -54,7 +54,7 @@ class VectorAddMetric(ke.BandwidthMetric):
     size: int
 
     def report(self):
-        return f"{self.duration:6.2f} us {self.gbps:5.2f} GB/s {self.dtype} size={self.size:<4} {self.name}"
+        return f"{self.name :<50} {self.dtype} size={self.size:<4}, {self.duration:.2f} us, {self.gbps:.2f} GB/s"
 
 
 def profile_vector_add_func(size, dtype, func):

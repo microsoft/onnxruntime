@@ -6,10 +6,6 @@
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
-#include "LearningModelSession.h"
-#include "ISequenceFeatureValue.h"
-
-#include "FeatureValues.h"
 
 namespace _winml {
 
@@ -173,55 +169,55 @@ struct SequenceBase : public winrt::implements<
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorBoolean>() {
-    return winml::TensorBoolean::Create();
+    return winmlp::TensorBoolean::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorFloat>() {
-    return winml::TensorFloat::Create();
+    return winmlp::TensorFloat::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorDouble>() {
-    return winml::TensorDouble::Create();
+    return winmlp::TensorDouble::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorInt8Bit>() {
-    return winml::TensorInt8Bit::Create();
+    return winmlp::TensorInt8Bit::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorUInt8Bit>() {
-    return winml::TensorUInt8Bit::Create();
+    return winmlp::TensorUInt8Bit::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorUInt16Bit>() {
-    return winml::TensorUInt16Bit::Create();
+    return winmlp::TensorUInt16Bit::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorInt16Bit>() {
-    return winml::TensorInt16Bit::Create();
+    return winmlp::TensorInt16Bit::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorUInt32Bit>() {
-    return winml::TensorUInt32Bit::Create();
+    return winmlp::TensorUInt32Bit::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorInt32Bit>() {
-    return winml::TensorInt32Bit::Create();
+    return winmlp::TensorInt32Bit::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorUInt64Bit>() {
-    return winml::TensorUInt64Bit::Create();
+    return winmlp::TensorUInt64Bit::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorInt64Bit>() {
-    return winml::TensorInt64Bit::Create();
+    return winmlp::TensorInt64Bit::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorFloat16Bit>() {
-    return winml::TensorFloat16Bit::Create();
+    return winmlp::TensorFloat16Bit::Create();
   }
   template <>
   auto CreatePlaceholderTensor<winml::TensorString>() {
-    return winml::TensorString::Create();
+    return winmlp::TensorString::Create();
   }
 
   void AppendValue(_winml::BindingContext& context, wfc::IVector<T> data, winrt::com_ptr<_winml::IValue> value) {

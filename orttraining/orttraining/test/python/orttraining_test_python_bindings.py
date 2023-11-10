@@ -28,25 +28,17 @@ class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingBlock):
         return self.loss(output_name)
 
 
-def _create_training_artifacts(
-    artifact_directory: str | os.PathLike,
-    requires_grad: list[str] | None = None,
-    frozen_params: list[str] | None = None,
-    optimizer_type=artifacts.OptimType.AdamW,
-):
+def _create_training_artifacts(artifact_directory: str | os.PathLike):
     device = "cpu"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
     pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
-    if requires_grad is None:
-        requires_grad = [name for name, param in pt_model.named_parameters() if param.requires_grad]
-
-    if frozen_params is None:
-        frozen_params = [name for name, param in pt_model.named_parameters() if not param.requires_grad]
+    requires_grad = [name for name, param in pt_model.named_parameters() if param.requires_grad]
+    frozen_params = [name for name, param in pt_model.named_parameters() if not param.requires_grad]
 
     artifacts.generate_artifacts(
         onnx_model,
-        optimizer=optimizer_type,
+        optimizer=artifacts.OptimType.AdamW,
         loss=artifacts.LossType.CrossEntropyLoss,
         requires_grad=requires_grad,
         frozen_params=frozen_params,
@@ -77,6 +69,7 @@ def test_train_step():
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module.
+        print(training_model_file_path)
         model = Module(training_model_file_path, state)
         model.train()
         ort_loss = model(inputs, labels)
@@ -114,8 +107,7 @@ def test_eval_step():
         assert fetches
 
 
-@pytest.mark.parametrize("optimizer_type", [artifacts.OptimType.SGD, artifacts.OptimType.AdamW])
-def test_optimizer_step(optimizer_type):
+def test_optimizer_step():
     # Generating random data for testing.
     inputs = torch.randn(64, 784).numpy()
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
@@ -127,7 +119,7 @@ def test_optimizer_step(optimizer_type):
             _,
             optimizer_model_file_path,
             _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
+        ) = _create_training_artifacts(temp_dir)
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module and Optimizer.
@@ -144,8 +136,7 @@ def test_optimizer_step(optimizer_type):
         assert not np.array_equal(old_flatten_params.numpy(), new_params.numpy())
 
 
-@pytest.mark.parametrize("optimizer_type", [artifacts.OptimType.SGD, artifacts.OptimType.AdamW])
-def test_get_and_set_lr(optimizer_type):
+def test_get_and_set_lr():
     with tempfile.TemporaryDirectory() as temp_dir:
         (
             checkpoint_file_path,
@@ -153,7 +144,7 @@ def test_get_and_set_lr(optimizer_type):
             _,
             optimizer_model_file_path,
             _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
+        ) = _create_training_artifacts(temp_dir)
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module and Optimizer.
@@ -171,8 +162,7 @@ def test_get_and_set_lr(optimizer_type):
         assert lr != new_lr
 
 
-@pytest.mark.parametrize("optimizer_type", [artifacts.OptimType.SGD, artifacts.OptimType.AdamW])
-def test_scheduler_step(optimizer_type):
+def test_scheduler_step():
     # Generating random data for testing.
     inputs = torch.randn(64, 784).numpy()
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
@@ -184,7 +174,7 @@ def test_scheduler_step(optimizer_type):
             _,
             optimizer_model_file_path,
             _,
-        ) = _create_training_artifacts(temp_dir, optimizer_type=optimizer_type)
+        ) = _create_training_artifacts(temp_dir)
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module and Optimizer.
@@ -244,9 +234,7 @@ def test_training_module_checkpoint():
         assert np.array_equal(old_flatten_params.numpy(), new_params.numpy())
 
 
-@pytest.mark.parametrize("optimizer_type", [artifacts.OptimType.SGD, artifacts.OptimType.AdamW])
-@pytest.mark.parametrize("trainable_only", [True, False])
-def test_copy_buffer_to_parameters(trainable_only, optimizer_type):
+def test_copy_buffer_to_parameters():
     # Generating random data for testing.
     inputs = torch.randn(64, 784).numpy()
     labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
@@ -258,12 +246,7 @@ def test_copy_buffer_to_parameters(trainable_only, optimizer_type):
             _,
             optimizer_model_file_path,
             _,
-        ) = _create_training_artifacts(
-            temp_dir,
-            requires_grad=["fc2.weight", "fc2.bias"],
-            frozen_params=["fc1.weight", "fc1.bias"],
-            optimizer_type=optimizer_type,
-        )
+        ) = _create_training_artifacts(temp_dir)
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
 
         # Create a Module and Optimizer.
@@ -271,7 +254,7 @@ def test_copy_buffer_to_parameters(trainable_only, optimizer_type):
         optimizer = Optimizer(optimizer_model_file_path, model)
 
         # Keep a copy of the parameters.
-        old_output_params = model.get_contiguous_parameters(trainable_only=trainable_only)
+        old_output_params = model.get_contiguous_parameters()
 
         # Run a Training Step.
         model.train()
@@ -279,15 +262,15 @@ def test_copy_buffer_to_parameters(trainable_only, optimizer_type):
         optimizer.step()
 
         # Get the new parameters.
-        output_params = model.get_contiguous_parameters(trainable_only=trainable_only)
+        output_params = model.get_contiguous_parameters()
         # Make sure old params are different from new params.
         assert not np.array_equal(old_output_params.numpy(), output_params.numpy())
 
         # Copy the old parameters to the model.
-        model.copy_buffer_to_parameters(old_output_params, trainable_only=trainable_only)
+        model.copy_buffer_to_parameters(old_output_params)
 
         # Get the saved parameters.
-        saved_params = model.get_contiguous_parameters(trainable_only=trainable_only)
+        saved_params = model.get_contiguous_parameters()
 
         # Make sure the saved parameters are the same as the old parameters.
         assert np.array_equal(old_output_params.numpy(), saved_params.numpy())
@@ -360,18 +343,14 @@ def test_add_get_property(property_value):
         if isinstance(property_value, float):
             property_value = float(np.float32(property_value))
 
-        assert len(state.properties) == 0
-
-        state.properties["property"] = property_value
-        assert "property" in state.properties
-        assert state.properties["property"] == property_value
-        assert len(state.properties) == 1
+        state["property"] = property_value
+        assert "property" in state
+        assert state["property"] == property_value
 
         CheckpointState.save_checkpoint(state, checkpoint_file_path)
         new_state = CheckpointState.load_checkpoint(checkpoint_file_path)
-        assert "property" in new_state.properties
-        assert new_state.properties["property"] == property_value
-        assert len(new_state.properties) == 1
+        assert "property" in new_state
+        assert new_state["property"] == property_value
 
 
 def test_get_input_output_names():
@@ -390,9 +369,8 @@ def test_get_input_output_names():
         # Create a Module.
         model = Module(training_model_file_path, state, eval_model_file_path)
 
-        training_model = onnx.load(training_model_file_path)
-        assert model.input_names() == [input.name for input in training_model.graph.input][:2]
-        assert model.output_names() == [output.name for output in training_model.graph.output][:1]
+        assert model.input_names() == ["input-0", "labels"]
+        assert model.output_names() == ["onnx::loss::128"]
 
 
 def test_ort_custom_ops():
@@ -528,6 +506,7 @@ def test_train_step_with_ort_values():
         # Create Checkpoint State.
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
         # Create a Module.
+        print(training_model_file_path)
         model = Module(training_model_file_path, state)
         model.train()
         ort_loss = model(inputs, labels)
@@ -567,60 +546,3 @@ def test_eval_step_with_ort_values():
         fetches = model(inputs, labels)
         assert isinstance(fetches, OrtValue)
         assert fetches
-
-
-@pytest.mark.parametrize("device", ["cpu", "cuda"])
-def test_get_and_set_parameter_values(device):
-    with tempfile.TemporaryDirectory() as temp_dir:
-        (
-            checkpoint_file_path,
-            training_model_file_path,
-            eval_model_file_path,
-            _,
-            pt_model,
-        ) = _create_training_artifacts(
-            temp_dir, requires_grad=["fc2.weight", "fc2.bias"], frozen_params=["fc1.weight", "fc1.bias"]
-        )
-
-        state = CheckpointState.load_checkpoint(checkpoint_file_path)
-
-        model = Module(training_model_file_path, state, eval_model_file_path, device=device)
-
-        state_dict = pt_model.state_dict()
-        assert len(state_dict) == len(state.parameters)
-        for parameter_name, _ in state.parameters:
-            assert parameter_name in state_dict
-
-        for name, pt_param in pt_model.named_parameters():
-            ort_param = state.parameters[name]
-            assert ort_param.name == name
-            assert np.allclose(pt_param.detach().cpu().numpy(), ort_param.data)
-            if name in ["fc1.weight", "fc1.bias"]:
-                assert ort_param.requires_grad is False
-                assert ort_param.grad is None
-            else:
-                assert ort_param.requires_grad is True
-                assert np.allclose(ort_param.grad, np.zeros_like(ort_param.data, dtype=np.float32))
-
-        original_param = state.parameters["fc1.weight"].data
-        state.parameters["fc1.weight"].data = np.ones_like(state.parameters["fc1.weight"].data, dtype=np.float32)
-        updated_param = state.parameters["fc1.weight"].data
-        assert np.allclose(updated_param, np.ones_like(updated_param, dtype=np.float32))
-
-        model.train()
-        inputs = torch.randn(64, 784).numpy()
-        labels = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
-        loss = model(inputs, labels)
-        assert loss is not None
-        for name, _ in pt_model.named_parameters():
-            ort_param = state.parameters[name]
-            assert ort_param.name == name
-            if name in ["fc1.weight", "fc1.bias"]:
-                assert ort_param.requires_grad is False
-                assert ort_param.grad is None
-            else:
-                assert ort_param.requires_grad is True
-                assert ort_param.grad.any()
-
-        state.parameters["fc1.weight"] = original_param
-        assert np.allclose(state.parameters["fc1.weight"].data, original_param)

@@ -170,21 +170,15 @@ class CudaKernel : public OpKernel {
     return provider_->PerThreadDefaultCudnnHandle();
   }
 
-  inline cudaStream_t DefaultCudaStream() const {
-    // this will return the CUDA EP level stream which can differ from the actual compute tasks stream
-    // the compute task stream is supplied within OpKernelContext during inference
-    return provider_->ComputeStream();
+ protected:
+  template <typename T>
+  inline const T* GetConstOnes(size_t count, cudaStream_t stream) const {
+    return provider_->template GetConstOnes<T>(count, stream);
   }
 
   inline Status CopyTensor(const Tensor& src, Tensor& dst, onnxruntime::Stream& stream) const {
     auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(src.Location().device, dst.Location().device);
     return gpu_data_transfer->CopyTensorAsync(src, dst, stream);
-  }
-
- protected:
-  template <typename T>
-  inline const T* GetConstOnes(size_t count, cudaStream_t stream) const {
-    return provider_->template GetConstOnes<T>(count, stream);
   }
 
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }

@@ -239,7 +239,7 @@ class UpsampleBase {
     if (coordinate_transform_mode_name == "half_pixel_symmetric") {
       return HALF_PIXEL_SYMMETRIC;
     }
-    ORT_THROW("coordinate_transform_mode:[" + coordinate_transform_mode_name + "] is not supported!");
+    ORT_THROW("coordinate_transform_mode:[" + coordinate_transform_mode_name + "] is not supportted!");
   }
 
   GetOriginalCoordinateFunc GetOriginalCoordinateFromResizedCoordinate(

@@ -6,6 +6,4 @@ typedoc.json
 tsconfig.json
 **/*.tsbuildinfo
 
-/test/
-
 *.tgz

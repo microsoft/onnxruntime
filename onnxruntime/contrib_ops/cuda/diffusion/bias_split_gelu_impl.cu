@@ -65,12 +65,6 @@ void LaunchBiasSplitGeluKernel(cudaStream_t stream, int32_t grid_size, int32_t h
     case 5120:
       (biasSplitGeluKernel<T, 5120, TPB>)<<<grid_size, TPB, 0, stream>>>(input, bias, output);
       break;
-    case 3072:
-      (biasSplitGeluKernel<T, 3072, TPB>)<<<grid_size, TPB, 0, stream>>>(input, bias, output);
-      break;
-    case 6144:
-      (biasSplitGeluKernel<T, 6144, TPB>)<<<grid_size, TPB, 0, stream>>>(input, bias, output);
-      break;
     default:
       ORT_NOT_IMPLEMENTED("Not implemented");
   }
@@ -79,13 +73,9 @@ void LaunchBiasSplitGeluKernel(cudaStream_t stream, int32_t grid_size, int32_t h
 template __global__ void biasSplitGeluKernel<float, 1280, 256>(float const*, float const*, float*);
 template __global__ void biasSplitGeluKernel<float, 2560, 256>(float const*, float const*, float*);
 template __global__ void biasSplitGeluKernel<float, 5120, 256>(float const*, float const*, float*);
-template __global__ void biasSplitGeluKernel<float, 3072, 256>(float const*, float const*, float*);
-template __global__ void biasSplitGeluKernel<float, 6144, 256>(float const*, float const*, float*);
 template __global__ void biasSplitGeluKernel<half, 1280, 256>(half const*, half const*, half*);
 template __global__ void biasSplitGeluKernel<half, 2560, 256>(half const*, half const*, half*);
 template __global__ void biasSplitGeluKernel<half, 5120, 256>(half const*, half const*, half*);
-template __global__ void biasSplitGeluKernel<half, 3072, 256>(half const*, half const*, half*);
-template __global__ void biasSplitGeluKernel<half, 6144, 256>(half const*, half const*, half*);
 
 template void LaunchBiasSplitGeluKernel<float>(cudaStream_t stream, int32_t grid_size, int32_t half_hidden_size,
                                                float const* input, float const* bias, float* output);

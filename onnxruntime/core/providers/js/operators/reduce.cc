@@ -7,30 +7,32 @@ namespace onnxruntime {
 namespace js {
 
 #define REGISTER_REDUCE_ELEMENTWISE_VERSIONED_KERNEL(ReduceOp, sinceVersion, endVersion) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                     \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                               \
       ReduceOp,                                                                          \
       kOnnxDomain,                                                                       \
       sinceVersion, endVersion,                                                          \
+      float,                                                                             \
       kJsExecutionProvider,                                                              \
       (*KernelDefBuilder::Create())                                                      \
-          .TypeConstraint("T", JsepSupportedFloatTypes()),                               \
-      ReduceOp<true>);
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),                    \
+      ReduceOp<float>);
 
 // macro REGISTER_REDUCE_ELEMENTWISE_VERSIONED_KERNEL does not set .InputMemoryType(OrtMemTypeCPU, 1), so in future if
 // a new opset version update applies to Reduce* operators, we may need to add another macro like
 // REGISTER_REDUCE_ELEMENTWISE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT to set input memory type.
 // i.e. we cannot use REGISTER_REDUCE_ELEMENTWISE_VERSIONED_KERNEL to version 18 when the opset version is increased.
 
-#define REGISTER_REDUCE_ELEMENTWISE_KERNEL(ReduceOp, sinceVersion) \
-  ONNX_OPERATOR_KERNEL_EX(                                         \
-      ReduceOp,                                                    \
-      kOnnxDomain,                                                 \
-      sinceVersion,                                                \
-      kJsExecutionProvider,                                        \
-      (*KernelDefBuilder::Create())                                \
-          .TypeConstraint("T", JsepSupportedFloatTypes())          \
-          .InputMemoryType(OrtMemTypeCPU, 1),                      \
-      ReduceOp<true>);
+#define REGISTER_REDUCE_ELEMENTWISE_KERNEL(ReduceOp, sinceVersion)   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
+      ReduceOp,                                                      \
+      kOnnxDomain,                                                   \
+      sinceVersion,                                                  \
+      float,                                                         \
+      kJsExecutionProvider,                                          \
+      (*KernelDefBuilder::Create())                                  \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()) \
+          .InputMemoryType(OrtMemTypeCPU, 1),                        \
+      ReduceOp<float>);
 
 REGISTER_REDUCE_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 1, 10);
 REGISTER_REDUCE_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 11, 12);

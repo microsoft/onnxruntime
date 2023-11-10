@@ -34,6 +34,12 @@ static void run_qordered_longformer_attention_op_test(
     const int64_t head_size,
     const int64_t window,
     int64_t input_hidden_size = 0) {
+  int cuda_runtime_version = 0;
+  // Need 11.4 or higher cuda runtime
+  if ((cudaRuntimeGetVersion(&cuda_runtime_version) != cudaSuccess) || (cuda_runtime_version < 11040)) {
+    return;
+  }
+
   // Needs Turing architecture
   if (NeedSkipIfCudaArchLowerThan(750) || NeedSkipIfCudaArchGreaterEqualThan(800)) {
     return;

@@ -287,9 +287,9 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
     T* k_smem = q_smem + rotary_embedding_dim;
 
     const int half_rotary_dim = rotary_embedding_dim / 2;
-    const int half_idx = (head_idx) / half_rotary_dim;
-    const int intra_half_idx = (head_idx) % half_rotary_dim;
-    const int smem_pitch = half_rotary_dim;
+    const int half_idx        = (head_idx) / half_rotary_dim;
+    const int intra_half_idx  = (head_idx) % half_rotary_dim;
+    const int smem_pitch      = half_rotary_dim;
 
     if (do_rotary) {
       *reinterpret_cast<Vec_t*>(q_smem + half_idx * smem_pitch + intra_half_idx) = q;
@@ -440,6 +440,7 @@ __global__ void AddBiasTransposeQKVLarge(const int head_size, const T* input, co
     h += stride;
   }
 }
+
 
 template <typename T>
 __global__ void AddBiasTransposeCutlass(const T* input, const T* biases, T* output, int v_head_size) {
@@ -650,7 +651,7 @@ void InvokeAddBiasTranspose(
     if (format != 1 && format != 2 && format != 3) {
       ORT_THROW("format must be 1, 2 or 3 for rotary attention");
     }
-    if (qk_head_size != 64 && qk_head_size != 128) {
+    if (qk_head_size != 64 && qk_head_size !=128) {
       ORT_THROW("qk_head_size must be 64 or 128 for rotary attention");
     }
     if (v_head_size != -1 && qk_head_size != v_head_size) {

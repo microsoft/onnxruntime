@@ -6,14 +6,11 @@ package ai.onnxruntime;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import ai.onnxruntime.OrtException.OrtErrorCode;
 import ai.onnxruntime.OrtSession.Result;
 import ai.onnxruntime.OrtSession.SessionOptions;
 import ai.onnxruntime.OrtSession.SessionOptions.ExecutionMode;
@@ -34,8 +31,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -76,7 +71,7 @@ public class InferenceTest {
   @Test
   public void testVersion() {
     String version = env.getVersion();
-    assertFalse(version.isEmpty());
+    Assertions.assertFalse(version.isEmpty());
   }
 
   @Test
@@ -661,12 +656,7 @@ public class InferenceTest {
         OnnxValue resultTensor = result.get(0);
         float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
         assertEquals(expectedOutput.length, resultArray.length);
-        if (provider == OrtProvider.CORE_ML) {
-          // CoreML gives slightly different answers on a 2020 13" M1 MBP
-          assertArrayEquals(expectedOutput, resultArray, 1e-2f);
-        } else {
-          assertArrayEquals(expectedOutput, resultArray, 1e-6f);
-        }
+        assertArrayEquals(expectedOutput, resultArray, 1e-6f);
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to execute a scoring operation", e);
       }
@@ -751,151 +741,6 @@ public class InferenceTest {
         }
       }
       tensor.close();
-    }
-  }
-
-  @Test
-  public void testPinnedOutputs() throws OrtException {
-    String modelPath = TestHelpers.getResourcePath("/java-three-output-matmul.onnx").toString();
-    FloatBuffer outputABuf =
-        ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-    FloatBuffer outputBBuf =
-        ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-    FloatBuffer outputCBuf =
-        ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-    FloatBuffer tooSmallBuf =
-        ByteBuffer.allocateDirect(4 * 2).order(ByteOrder.nativeOrder()).asFloatBuffer();
-    FloatBuffer tooBigBuf =
-        ByteBuffer.allocateDirect(4 * 6).order(ByteOrder.nativeOrder()).asFloatBuffer();
-    FloatBuffer wrongShapeBuf =
-        ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-    LongBuffer wrongTypeBuf =
-        ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asLongBuffer();
-
-    try (SessionOptions options = new SessionOptions()) {
-      try (OrtSession session = env.createSession(modelPath, options);
-          OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
-          OnnxTensor outputA = OnnxTensor.createTensor(env, outputABuf, new long[] {1, 4});
-          OnnxTensor outputB = OnnxTensor.createTensor(env, outputBBuf, new long[] {1, 4});
-          OnnxTensor outputC = OnnxTensor.createTensor(env, outputCBuf, new long[] {1, 4});
-          OnnxTensor tooSmall = OnnxTensor.createTensor(env, tooSmallBuf, new long[] {1, 2});
-          OnnxTensor tooBig = OnnxTensor.createTensor(env, tooBigBuf, new long[] {1, 6});
-          OnnxTensor wrongShape = OnnxTensor.createTensor(env, wrongShapeBuf, new long[] {2, 2});
-          OnnxTensor wrongType = OnnxTensor.createTensor(env, wrongTypeBuf, new long[] {1, 4})) {
-        Map<String, OnnxTensor> inputMap = Collections.singletonMap("input", t);
-        Set<String> requestedOutputs = new LinkedHashSet<>();
-        Map<String, OnnxTensor> pinnedOutputs = new LinkedHashMap<>();
-
-        // Test that all outputs can be pinned
-        pinnedOutputs.put("output-0", outputA);
-        pinnedOutputs.put("output-1", outputB);
-        pinnedOutputs.put("output-2", outputC);
-        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
-          assertEquals(3, r.size());
-          assertSame(outputA, r.get(0));
-          assertSame(outputB, r.get(1));
-          assertSame(outputC, r.get(2));
-          assertFalse(r.isResultOwner(0));
-          assertFalse(r.isResultOwner(1));
-          assertFalse(r.isResultOwner(2));
-          // More tests
-        }
-        TestHelpers.zeroBuffer(outputABuf);
-        TestHelpers.zeroBuffer(outputBBuf);
-        TestHelpers.zeroBuffer(outputCBuf);
-        requestedOutputs.clear();
-        pinnedOutputs.clear();
-
-        // Test a single pinned output
-        pinnedOutputs.put("output-1", outputB);
-        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
-          assertEquals(1, r.size());
-          assertSame(outputB, r.get(0));
-          assertSame(outputB, r.get("output-1").get());
-          assertFalse(r.isResultOwner(0));
-          // More tests
-        }
-        TestHelpers.zeroBuffer(outputABuf);
-        TestHelpers.zeroBuffer(outputBBuf);
-        TestHelpers.zeroBuffer(outputCBuf);
-        requestedOutputs.clear();
-        pinnedOutputs.clear();
-
-        // Test a mixture of pinned and generated outputs
-        requestedOutputs.add("output-0");
-        requestedOutputs.add("output-2");
-        pinnedOutputs.put("output-1", outputB);
-        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
-          assertEquals(3, r.size());
-          // pinned outputs are first
-          assertSame(outputB, r.get(0));
-          assertSame(outputB, r.get("output-1").get());
-          // requested outputs are different
-          assertNotSame(outputA, r.get("output-0").get());
-          assertNotSame(outputC, r.get("output-2").get());
-          // check ownership.
-          assertFalse(r.isResultOwner(0));
-          assertTrue(r.isResultOwner(1));
-          assertTrue(r.isResultOwner(2));
-          // More tests
-        }
-        TestHelpers.zeroBuffer(outputABuf);
-        TestHelpers.zeroBuffer(outputBBuf);
-        TestHelpers.zeroBuffer(outputCBuf);
-        requestedOutputs.clear();
-        pinnedOutputs.clear();
-
-        // Test that overlapping names causes an error
-        requestedOutputs.add("output-1");
-        pinnedOutputs.put("output-1", outputB);
-        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
-          fail("Should have thrown OrtException");
-        } catch (OrtException e) {
-          assertEquals(OrtErrorCode.ORT_JAVA_UNKNOWN, e.getCode());
-        }
-        requestedOutputs.clear();
-        pinnedOutputs.clear();
-
-        // Test that a tensor of the wrong type causes an error
-        pinnedOutputs.put("output-0", wrongType);
-        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
-          fail("Should have thrown OrtException");
-        } catch (OrtException e) {
-          assertEquals(OrtErrorCode.ORT_INVALID_ARGUMENT, e.getCode());
-        }
-        requestedOutputs.clear();
-        pinnedOutputs.clear();
-
-        // Test that a tensor of the wrong shape (but right capacity) causes an error.
-        pinnedOutputs.put("output-1", wrongShape);
-        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
-          fail("Should have thrown OrtException");
-        } catch (OrtException e) {
-          assertEquals(OrtErrorCode.ORT_INVALID_ARGUMENT, e.getCode());
-        }
-        requestedOutputs.clear();
-        pinnedOutputs.clear();
-
-        // Test that a tensor which is too small causes an error
-        pinnedOutputs.put("output-1", tooSmall);
-        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
-          fail("Should have thrown OrtException");
-        } catch (OrtException e) {
-          assertEquals(OrtErrorCode.ORT_INVALID_ARGUMENT, e.getCode());
-        }
-        requestedOutputs.clear();
-        pinnedOutputs.clear();
-
-        // Test that a tensor which is too large causes an error
-        pinnedOutputs.put("output-1", tooBig);
-        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
-          fail("Should have thrown OrtException");
-        } catch (OrtException e) {
-          assertEquals(OrtErrorCode.ORT_INVALID_ARGUMENT, e.getCode());
-        }
-        requestedOutputs.clear();
-        pinnedOutputs.clear();
-      }
     }
   }
 

@@ -162,6 +162,89 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 using namespace rnn::detail;
 
+// internal helper code
+namespace detail {
+
+template <typename T>
+class UniDirectionalGru {
+ public:
+  UniDirectionalGru(AllocatorPtr allocator, int seq_length, int batch_size, int input_size, int hidden_size,
+                    bool linear_before_reset, Direction direction, gsl::span<const T> bias,
+                    gsl::span<const T> initial_hidden_state, const ActivationFuncs::Entry& activation_func_f,
+                    const ActivationFuncs::Entry& activation_func_g, float clip,
+                    onnxruntime::concurrency::ThreadPool* ttp);
+
+  void Compute(gsl::span<const T> inputs, gsl::span<const int> sequence_lengths, int num_directions,
+               const GemmWeights<T>& input_weights,
+               const GemmWeights<T>& recurrent_weights_ZR,
+               const GemmWeights<T>& recurrent_weights_H,
+               gsl::span<T>& outputs, gsl::span<T>& final_hidden_state);
+
+  ~UniDirectionalGru() = default;
+
+ private:
+  AllocatorPtr allocator_;
+
+  int seq_length_;
+  int batch_size_;
+  int input_size_;
+  int hidden_size_;
+  bool linear_before_reset_;
+
+  const float clip_;
+
+  Direction direction_;
+  bool use_bias_;
+
+  IAllocatorUniquePtr<T> outputZRH_ptr_;
+  gsl::span<T> outputZRH_;
+
+  IAllocatorUniquePtr<T> cur_h_ptr_;
+  IAllocatorUniquePtr<T> batched_hidden0_ptr_;
+  IAllocatorUniquePtr<int> sequence_lengths_ptr_;
+  gsl::span<T> cur_h_;
+  gsl::span<T> batched_hidden0_;
+  gsl::span<int> sequence_lengths_;
+
+  // Wb[zr] and Rb[zr] can always be added together upfront, and repeated to match the batch size for
+  // faster GEMM calculations, so these two members are all the
+  // Wb[z] + Rb[z] values added together, repeated batch_size_ times
+  IAllocatorUniquePtr<T> batched_bias_WRz_ptr_, batched_bias_WRr_ptr_;
+  gsl::span<T> batched_bias_WRz_, batched_bias_WRr_;
+
+  // Wbh and Rbh can only be combined upfront if linear_before_reset_ is false
+  IAllocatorUniquePtr<T> batched_bias_WRh_ptr_;
+  gsl::span<T> batched_bias_WRh_;
+
+  // if linear_before_reset_ is true, we need to setup Wbh and Rbh separately
+  IAllocatorUniquePtr<T> batched_bias_Wh_ptr_, batched_bias_Rh_ptr_;
+  gsl::span<T> batched_bias_Wh_, batched_bias_Rh_;
+
+  IAllocatorUniquePtr<T> linear_output_ptr_;
+  gsl::span<T> linear_output_;
+
+  IAllocatorUniquePtr<T> inputs_reverse_ptr_;
+  IAllocatorUniquePtr<T> outputs_reverse_ptr_;
+  gsl::span<T> inputs_reverse_;
+  gsl::span<T> outputs_reverse_;
+
+  deepcpu::ClipWithBiasFuncPtr clip_with_bias_ptr_{};
+
+  float zr_alpha_{};
+  float zr_beta_{};
+  float h_alpha_{};
+  float h_beta_{};
+
+  deepcpu::GruResetGateFuncPtr reset_gate_{};
+  deepcpu::ActivationFuncPtr update_gate_{};
+  deepcpu::GruOutputGateFuncPtr output_gate_{};
+
+  void AllocateBuffers();
+
+  onnxruntime::concurrency::ThreadPool* ttp_;
+};
+}  // namespace detail
+
 // #define DUMP_MATRIXES to provide lots of diagnostic output
 #if defined(DUMP_MATRIXES)
 #define DumpMatrix(...) onnxruntime::rnn::detail::DumpMatrixImpl(__VA_ARGS__)
@@ -532,8 +615,7 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         gsl::span<const T> initial_hidden_state,
                                         const ActivationFuncs::Entry& activation_func_f,
                                         const ActivationFuncs::Entry& activation_func_g,
-                                        const float clip, onnxruntime::concurrency::ThreadPool* ttp,
-                                        const bool training_mode)
+                                        const float clip, onnxruntime::concurrency::ThreadPool* ttp)
     : allocator_(std::move(allocator)),
       seq_length_(seq_length),
       batch_size_(batch_size),
@@ -543,8 +625,7 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
       clip_(clip),
       direction_(direction),
       use_bias_(!bias.empty()),
-      ttp_(ttp),
-      training_mode_(training_mode) {
+      ttp_(ttp) {
   clip_with_bias_ptr_ = use_bias_ ? deepcpu::clip_add_bias : deepcpu::clip_ignore_bias;
 
   // setup activation function pointers and alpha/beta values to use with them
@@ -611,36 +692,6 @@ void UniDirectionalGru<T>::Compute(gsl::span<const T> inputs_arg,
                                    const GemmWeights<T>& recurrent_weightsH_s,
                                    gsl::span<T>& outputs,
                                    gsl::span<T>& final_hidden_state) {
-  ComputeImpl(inputs_arg, sequence_lengths_arg, num_directions,
-              input_weights_s, recurrent_weightsZR_s, recurrent_weightsH_s,
-              outputs, final_hidden_state, outputZRH_);
-}
-
-template <typename T>
-void UniDirectionalGru<T>::Compute(gsl::span<const T> inputs_arg,
-                                   gsl::span<const int> sequence_lengths_arg,
-                                   const int num_directions,
-                                   const GemmWeights<T>& input_weights_s,
-                                   const GemmWeights<T>& recurrent_weightsZR_s,
-                                   const GemmWeights<T>& recurrent_weightsH_s,
-                                   gsl::span<T>& outputs,
-                                   gsl::span<T>& final_hidden_state,
-                                   gsl::span<T>& zrh) {
-  ComputeImpl(inputs_arg, sequence_lengths_arg, num_directions,
-              input_weights_s, recurrent_weightsZR_s, recurrent_weightsH_s,
-              outputs, final_hidden_state, zrh);
-}
-
-template <typename T>
-void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
-                                       gsl::span<const int> sequence_lengths_arg,
-                                       const int num_directions,
-                                       const GemmWeights<T>& input_weights_s,
-                                       const GemmWeights<T>& recurrent_weightsZR_s,
-                                       const GemmWeights<T>& recurrent_weightsH_s,
-                                       gsl::span<T>& outputs,
-                                       gsl::span<T>& final_hidden_state,
-                                       gsl::span<T>& zrh) {
   using span_T_const_iter = typename gsl::span<const T>::iterator;
   using span_T_iter = typename gsl::span<T>::iterator;
 
@@ -702,7 +753,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
                 input_size_,
                 input_weights.begin(), input_weights.end(),
                 input_size_, 0.f,
-                zrh.begin(), zrh.end(),
+                outputZRH_.begin(), outputZRH_.end(),
                 hidden_size_x3, ttp_);
   } else {
     MlasGemm(
@@ -715,11 +766,11 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
         static_cast<size_t>(input_size_),
         input_weights_s.buffer_,
         0.0f,
-        &*zrh.begin(),
+        &*outputZRH_.begin(),
         static_cast<size_t>(hidden_size_x3), ttp_);
   }
 
-  DumpMatrix("inputs with weights applied", zrh.data(), seq_length_ * batch_size_ * 3, hidden_size_);
+  DumpMatrix("inputs with weights applied", outputZRH_.data(), seq_length_ * batch_size_ * 3, hidden_size_);
 
   // output shape is [seq_length, num_directions, batch_size, hidden_size]
   // if we are doing 2 directions and this is the forward pass we're writing to the real output so
@@ -779,15 +830,15 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
 
       out_added_offset = (step * batch_size_) * hidden_size_x3;
 
-      // calculate Ht-1*R[zr], and add to the weighted inputs that are in zrh
+      // calculate Ht-1*R[zr], and add to the weighted inputs that are in outputZRH_
       // Ht-1 * R[zr] + Xt*(W[zr]^T)
       if (!recurrent_weightsZR_s.is_prepacked_) {
         ComputeGemm(batch_size_, hidden_size_x2, hidden_size_, alpha,
                     prev_Ht, prev_Ht_end,
                     hidden_size_,
                     recurrent_weightsZR.begin(), recurrent_weightsZR.end(),
-                    hidden_size_, 1.f,  // beta == 1 so we add existing values in zrh
-                    zrh.begin() + out_added_offset, zrh.end(),
+                    hidden_size_, 1.f,  // beta == 1 so we add existing values in outputZRH_
+                    outputZRH_.begin() + out_added_offset, outputZRH_.end(),
                     hidden_size_x3, ttp_);
       } else {
         MlasGemm(
@@ -797,12 +848,12 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
             static_cast<size_t>(hidden_size_),
             recurrent_weightsZR_s.buffer_,
             1.f,
-            &*(zrh.begin() + out_added_offset),
+            &*(outputZRH_.begin() + out_added_offset),
             static_cast<size_t>(hidden_size_x3), ttp_);
       }
 
       DumpMatrix("Ht-1 * R[zr] + Xt*(W[zr]^T)" + seqno_str,
-                 zrh.data() + out_added_offset, batch_size_, hidden_size_x2, 0, hidden_size_x3);
+                 outputZRH_.data() + out_added_offset, batch_size_, hidden_size_x2, 0, hidden_size_x3);
 
       if (linear_before_reset_) {
         // copy Rbh to linear output
@@ -844,8 +895,8 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
                                                                batched_bias_WRr_local_end, hidden_size_)
                                       : nullptr;
 
-        // initialize p_rt with input to calculate rt. zrh has Xt*(Wr^T) + Ht-1*(Rr^T).
-        T* p_rt = SafeRawPointer(zrh, out_added_offset + r * hidden_size_x3 + hidden_size_, hidden_size_);
+        // initialize p_rt with input to calculate rt. outputZRH_ has Xt*(Wr^T) + Ht-1*(Rr^T).
+        T* p_rt = SafeRawPointer(outputZRH_, out_added_offset + r * hidden_size_x3 + hidden_size_, hidden_size_);
 
         // add the bias and clip. post: p_rt == Xt*(Wr^T) + Ht-1*(Rr^T) + Wbr + Rbr
         clip_with_bias_ptr_(clip_, p_bias_r, p_rt, hidden_size_);
@@ -878,7 +929,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
         // input contains rt (.) (Ht-1*(Rh^T) + Rbh)
         auto input = cur_h_local;
         // out_H currently contains Xt*(W[zrh]^T).
-        auto out_H = zrh.begin() + out_added_offset;
+        auto out_H = outputZRH_.begin() + out_added_offset;
 
         for (int r = 0; r < batch_size_; r++) {
           // skip over the inputs with Z and R weights
@@ -895,7 +946,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
 #endif
 
         // out_H currently contains Xt*(Wh^T).
-        auto out_H = zrh.begin() + out_added_offset + hidden_size_x2;
+        auto out_H = outputZRH_.begin() + out_added_offset + hidden_size_x2;
 
         // Calculate Xt*(Wh^T) + rt (.) Ht-1 * Rh
         if (!recurrent_weightsH_s.is_prepacked_) {
@@ -904,7 +955,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
                       hidden_size_,
                       recurrent_weightsH.begin(), recurrent_weightsH.end(),  // Rh^T
                       hidden_size_, 1.f,                                     // beta == 1 to add Xt*(Wh^T) from out_H
-                      out_H, zrh.end(),
+                      out_H, outputZRH_.end(),
                       hidden_size_x3, ttp_);
         } else {
           MlasGemm(
@@ -919,7 +970,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
         }
       }
 
-      DumpMatrix("Xt*(Wh^T) + (" + label + ")" + seqno_str, zrh.data() + out_added_offset,
+      DumpMatrix("Xt*(Wh^T) + (" + label + ")" + seqno_str, outputZRH_.data() + out_added_offset,
                  batch_size_, hidden_size_, hidden_size_x2, hidden_size_x3);
 
       // 2nd Set of Activations
@@ -951,7 +1002,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
                                       : nullptr;
 
         // initialize p_zt with Xt*(Wz^T) + Ht-1*(Rz^T), which is most of the input to calculate zt:
-        T* p_zt = SafeRawPointer<T>(zrh, out_added_offset + r * hidden_size_x3, hidden_size_);
+        T* p_zt = SafeRawPointer<T>(outputZRH_, out_added_offset + r * hidden_size_x3, hidden_size_);
 
         // using p_zt, add bias and clip in-place
         clip_with_bias_ptr_(clip_, p_bias_z, p_zt, hidden_size_);
@@ -978,7 +1029,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
         // setup p_ht with input to calculate ht
         // p_ht = Xt*(Wh^T) + (rt (.) Ht-1 * Rh^T)          #  linear_before_reset_ == false
         //      = Xt*(Wh^T) + (rt (.) (Ht-1*(Rh^T) + Rbh))  #  linear_before_reset_ == true
-        T* p_ht = SafeRawPointer<T>(zrh, out_added_offset + r * hidden_size_x3 + hidden_size_x2, hidden_size_);
+        T* p_ht = SafeRawPointer<T>(outputZRH_, out_added_offset + r * hidden_size_x3 + hidden_size_x2, hidden_size_);
 
         // add Wbh [and Wrh] and clip
         clip_with_bias_ptr_(clip_, p_bias_h, p_ht, hidden_size_);  // post: p_ht == input to g() for calculating ht
@@ -1060,17 +1111,13 @@ void UniDirectionalGru<T>::AllocateBuffers() {
 
   auto batch_times_seq_length = batch_size_ * seq_length_;
 
-  if (!training_mode_) {
-    outputZRH_ = Allocate(allocator_, hidden_size_ * 3 * batch_times_seq_length, outputZRH_ptr_, true);
-  }
+  outputZRH_ = Allocate(allocator_, hidden_size_ * 3 * batch_times_seq_length, outputZRH_ptr_, true);
 
   if (direction_ == kReverse) {
     inputs_reverse_ = Allocate(allocator_, batch_times_seq_length * input_size_, inputs_reverse_ptr_);
     outputs_reverse_ = Allocate(allocator_, batch_times_seq_length * hidden_size_, outputs_reverse_ptr_);
   }
 }
-
-template class UniDirectionalGru<float>;
 
 }  // namespace detail
 }  // namespace onnxruntime

@@ -3,8 +3,8 @@
 
 'use strict';
 
-it('Browser E2E testing - WebAssembly backend (proxy, no threads)', async function() {
+it('Browser E2E testing - WebAssembly backend (proxy, no threads)', async function () {
   ort.env.wasm.numThreads = 1;
   ort.env.wasm.proxy = true;
-  await testFunction(ort, {executionProviders: ['wasm']});
+  await testFunction(ort, { executionProviders: ['wasm'] });
 });

@@ -51,13 +51,13 @@ Status LSTMReplacement::Apply(Graph& graph, Node& lstm_node, RewriteRuleEffect& 
 
   Node& lstm_training_node = graph.AddNode(graph.GenerateNodeName(lstm_node.Name() + "_training"),
                                            "LSTMTraining",
-                                           "LSTM with extra outputs needed for gradient computation.",
+                                           "LSTM with extra outputs for needed for gradient computation.",
                                            lstm_inputs,
                                            lstm_outputs,
                                            &lstm_attributes,  // AddNode makes a copy, so ok to pass pointer to local var
                                            kMSDomain);
 
-  // Assign provider to this new node. Provider should be same as the provider for node being replaced.
+  // Assign provider to this new node. Provider should be same as the provider for old node.
   lstm_training_node.SetExecutionProviderType(lstm_node.GetExecutionProviderType());
   graph_utils::FinalizeNodeFusion(graph, lstm_training_node, lstm_node);
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;

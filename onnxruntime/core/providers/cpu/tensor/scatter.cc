@@ -308,7 +308,7 @@ Status ScatterData(
 
   const auto& upd_shape = updates_input->Shape();
   const auto num_dims = input_data_shape.NumDimensions();
-  ORT_RETURN_IF_NOT(num_dims > 0, "ScatterElements op: input tensor must have at least one dimension");
+  assert(num_dims > 0);
 
   // Allocate and zero out counts. The input/output is of the same rank as
   // indices/updates but the actual dimensions of indices/updates must be less or equal

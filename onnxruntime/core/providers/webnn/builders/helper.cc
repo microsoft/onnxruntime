@@ -53,12 +53,9 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
   }
 
   for (const auto& dim : shape_proto->dim()) {
-    // WebNN doesn't support dynamic shape - use sessionOptions.freeDimensionOverrides to fix the shape.
+    // For now we workaround dynamic shape support by assuming 1.
     if (!dim.has_dim_value()) {
-      LOGS(logger, VERBOSE) << "Dynamic shape is not supported, "
-                            << "use sessionOptions.FreeDimensionOverrides to set a fixed shape for input: "
-                            << input_name;
-      return false;
+      LOGS(logger, VERBOSE) << "Dynamic shape is not supported for now, assume to be 1, for input:" << input_name;
     }
   }
 
@@ -140,44 +137,6 @@ bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
     }
   }
   return true;
-}
-
-bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
-  // WebNN changed the name of the MLOperandDescriptor's data type from "type" to "dataType",
-  // use a duplicate entry temporarily to workaround this API breaking issue.
-  // TODO: Remove legacy "type" once all browsers implement the new "dataType".
-  switch (data_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      desc.set("type", emscripten::val("uint8"));
-      desc.set("dataType", emscripten::val("uint8"));
-      return true;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      desc.set("type", emscripten::val("float16"));
-      desc.set("dataType", emscripten::val("float16"));
-      return true;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      desc.set("type", emscripten::val("float32"));
-      desc.set("dataType", emscripten::val("float32"));
-      return true;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      desc.set("type", emscripten::val("int32"));
-      desc.set("dataType", emscripten::val("int32"));
-      return true;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      desc.set("type", emscripten::val("int64"));
-      desc.set("dataType", emscripten::val("int64"));
-      return true;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      desc.set("type", emscripten::val("uint32"));
-      desc.set("dataType", emscripten::val("uint32"));
-      return true;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      desc.set("type", emscripten::val("uint64"));
-      desc.set("dataType", emscripten::val("uint64"));
-      return true;
-    default:
-      return false;
-  }
 }
 
 }  // namespace webnn

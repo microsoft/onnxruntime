@@ -433,8 +433,7 @@ static void RunModelWithRandomInput(
   std::vector<int64_t> token_offset_dims{batch_size, sequence_length};
   std::vector<int64_t> cum_seq_len_dims{batch_size + 1};
 
-  float gpu_threshold = is_float16 ? 0.15f : 0.005f;
-  gpu_threshold *= sequence_length > 1024 ? 4.0f : 1.0f;  // threshold should increase with sequence length
+  float gpu_threshold = is_float16 ? 0.1f : 0.005f;
   bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
   if (enable_cuda) {
     OpTester test("PackedAttention", 1, onnxruntime::kMSDomain);

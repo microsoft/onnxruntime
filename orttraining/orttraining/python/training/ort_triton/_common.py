@@ -131,10 +131,6 @@ class TypeAndShapeInfer:
         "ReduceMax": _infer_reduction,
         "ReduceMin": _infer_reduction,
         "Sum": _infer_elementwise,
-        "Gelu": _infer_unary,
-        "QuickGelu": _infer_unary,
-        "GeluGrad": _infer_elementwise,
-        "QuickGeluGrad": _infer_elementwise,
     }
 
     @classmethod

@@ -11,10 +11,6 @@ namespace onnxruntime {
 class ReshapeHelper {
  public:
   ReshapeHelper(const TensorShape& input_shape, TensorShapeVector& requested_shape, bool allow_zero = false) {
-    const auto input_shape_size = input_shape.Size();
-    ORT_ENFORCE(input_shape_size != -1,
-                "The input tensor must not have any dynamic (-1) dimensions. Input shape:", input_shape);
-
     auto nDims = requested_shape.size();
     ptrdiff_t unknown_dim = -1;
     int64_t size = 1;
@@ -36,12 +32,12 @@ class ReshapeHelper {
 
     if (unknown_dim != -1) {
       // calculate unknown dimension
-      ORT_ENFORCE(size != 0 && (input_shape_size % size) == 0,
+      ORT_ENFORCE(size != 0 && (input_shape.Size() % size) == 0,
                   "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape, ", requested shape:", TensorShape(requested_shape));
-      requested_shape[unknown_dim] = input_shape_size / size;
+      requested_shape[unknown_dim] = input_shape.Size() / size;
     } else {
       // check if the output shape is valid.
-      ORT_ENFORCE(input_shape_size == size,
+      ORT_ENFORCE(gsl::narrow_cast<int64_t>(input_shape.Size()) == size,
                   "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape, ", requested shape:", TensorShape(requested_shape));
     }
   }

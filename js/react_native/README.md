@@ -28,7 +28,6 @@ const result = session.run(input, ['num_detection:0', 'detection_classes:0'])
 ```
 
 Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js) for samples and tutorials. The ONNX Runtime React Native library does not currently support the following features:
-
 - Tensors with unsigned data types, with the exception of uint8 on Android devices
 - Model loading using ArrayBuffer
 

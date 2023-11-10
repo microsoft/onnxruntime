@@ -7,8 +7,10 @@
 #include <map>
 #include <sstream>
 
-#include "core/graph/onnx_protobuf.h"
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
 #include "onnx/defs/schema.h"
+
 #include "core/graph/constants.h"
 #include "core/common/common.h"
 #include "core/common/status.h"

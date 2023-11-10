@@ -112,14 +112,6 @@ export function run(testDataRoot: string): void {
               });
             }
           }
-
-          if (!skipModel) {
-            after(async () => {
-              if (session !== null) {
-                await session.release();
-              }
-            });
-          }
         });
       }
     }

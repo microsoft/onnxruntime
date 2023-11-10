@@ -7,8 +7,6 @@
 
 #include "MapFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
-#include "LearningModelSession.h"
-#include "IMapFeatureValue.h"
 
 namespace _winml {
 

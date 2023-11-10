@@ -100,7 +100,7 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
   // process the last dim(s)
   if (onesided_) {
     if (complex_input && !complex_output) {  // IRFFT
-      int64_t inferred_size = 2 * (input_shape[i] - 1);
+      int64_t inferred_size = input_shape[i] * 2 - 1;
       output_dims.push_back(inferred_size);
       signal_dims.push_back(inferred_size);
     } else if (!complex_input && complex_output) {  // RFFT

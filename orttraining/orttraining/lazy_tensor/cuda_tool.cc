@@ -6,11 +6,7 @@
 // CUDA
 #include "cuda.h"
 #include "cuda_runtime.h"
-#if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
-#include "nvtx3/nvToolsExt.h"
-#else
 #include "nvToolsExt.h"
-#endif
 // Pytorch
 #include <ATen/cuda/CUDAContext.h>
 // ORT

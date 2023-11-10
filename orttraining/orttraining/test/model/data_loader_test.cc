@@ -113,7 +113,7 @@ TEST(TrainingDataLoaderTest, DataLoader_OneSingleFile) {
   constexpr size_t max_num_files_preload = 3;
   const MapStringToString input_name_map = {{"a", "a"}, {"b", "b"}, {"c", "c"}};
   TemporaryDirectory tmp_dir{ORT_TSTR("training_data_loader_test_dir")};
-  const PathString& train_data_dir = ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("single_file"));
+  const PathString& train_data_dir = ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("single_file"));
   ASSERT_STATUS_OK(CreateInputDataFiles(train_data_dir, 1, {"a", "b", "c"}));
   DataLoader data_loader(input_name_map,
                          train_data_dir,
@@ -131,7 +131,7 @@ TEST(TrainingDataLoaderTest, DataLoader_OneSingleFileFailParsing) {
   constexpr size_t max_num_files_preload = 3;
   const MapStringToString input_name_map = {{"a_invalid", "a"}, {"b", "b"}, {"c", "c"}};
   TemporaryDirectory tmp_dir{ORT_TSTR("training_data_loader_test_dir")};
-  const PathString& train_data_dir = ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("single_file"));
+  const PathString& train_data_dir = ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("single_file"));
   ASSERT_STATUS_OK(CreateInputDataFiles(train_data_dir, 1, {"a", "b", "c"}));
   DataLoader data_loader(input_name_map,
                          train_data_dir,
@@ -147,7 +147,7 @@ void TestDataLoaderWithMultipleFiles(
     const size_t* const start_data_set_index = nullptr) {
   const MapStringToString input_name_map = {{"a", "a"}, {"b", "b"}, {"c", "c"}};
   TemporaryDirectory tmp_dir{ORT_TSTR("training_data_loader_test_dir")};
-  const PathString& train_data_dir = ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("multiple_files"));
+  const PathString& train_data_dir = ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("multiple_files"));
 
   ASSERT_STATUS_OK(CreateInputDataFiles(
       train_data_dir, num_input_files, {"a", "b", "c"}));

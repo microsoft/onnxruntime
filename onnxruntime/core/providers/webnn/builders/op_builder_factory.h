@@ -31,7 +31,6 @@ void CreateFlattenOpBuilder(const std::string& op_type, OpBuilderRegistrations& 
 void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-void CreateMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

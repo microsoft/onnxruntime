@@ -45,12 +45,13 @@ jobs:
     submodules: none
 
   - task: UsePythonVersion@0
-    displayName: Use Python 3.11
+    # Use python 3.8 to avoid build some of the required packages
+    displayName: Use Python 3.8
     inputs:
-      versionSpec: 3.11
+      versionSpec: 3.8
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '16.x'
 
   - template: set-version-number-variables-step.yml
 

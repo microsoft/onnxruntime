@@ -21,6 +21,12 @@ static void RunQOrdered_MatMul_Test(
     OrderCublasLt weight_order,
     float scale_A, float scale_B, float scale_C, float scale_Y,
     bool add_bias = false, bool broadcast_c_batch = false, bool per_channel = false) {
+  int cuda_runtime_version = 0;
+  // Need 11.4 or higher cuda runtime
+  if ((cudaRuntimeGetVersion(&cuda_runtime_version) != cudaSuccess) || (cuda_runtime_version < 11040)) {
+    return;
+  }
+
   // Needs Turing architecture
   if (NeedSkipIfCudaArchLowerThan(750) || NeedSkipIfCudaArchGreaterEqualThan(800)) {
     return;

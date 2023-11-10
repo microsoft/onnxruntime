@@ -3,11 +3,14 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import argparse  # noqa: F401
 import logging
+import sys  # noqa: F401
+from collections import deque  # noqa: F401
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import ModelProto, TensorProto, helper, numpy_helper  # noqa: F401
 from onnx_model_bert import BertOnnxModel
 
 logger = logging.getLogger(__name__)

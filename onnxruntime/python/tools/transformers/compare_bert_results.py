@@ -33,20 +33,18 @@ def run_model(model_path, all_inputs, use_gpu, disable_optimization):
     return results, latency_list, output_names
 
 
-def compare(baseline_results, treatment_results, verbose, rtol=1e-1, atol=1e-3):
+def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
     # Validate the output of baseline and treatment, to make sure the results are similar.
     diff_count = 0
+    max_rel_diff = 0
     max_abs_diff = 0
     for test_case_id, results in enumerate(baseline_results):
         case_passed = True
         for i in range(len(results)):
             treatment_output = treatment_results[test_case_id][i]
+            rel_diff = np.amax(np.abs((treatment_output - results[i]) / results[i]))
             abs_diff = np.amax(np.abs(treatment_output - results[i]))
-            if verbose and abs_diff > atol:
-                print("abs_diff", abs_diff)
-                print("treatment", treatment_output)
-                print("baseline", results[i])
-
+            max_rel_diff = max(max_rel_diff, rel_diff)
             max_abs_diff = max(max_abs_diff, abs_diff)
             if not np.allclose(results[i].tolist(), treatment_output.tolist(), rtol=rtol, atol=atol):
                 if case_passed:
@@ -56,7 +54,7 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-1, atol=1e-3):
                     if verbose:
                         print(f"case {test_case_id} output {i}")
                         print(f"baseline={results[i].tolist()}\ntreatment={treatment_output}")
-                        print(f"abs_diff={abs_diff}")
+                        print(f"rel_diff={rel_diff} abs_diff={abs_diff}")
 
     if diff_count == 0:
         print(
@@ -72,7 +70,8 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-1, atol=1e-3):
         )
 
     print(f"maximum absolute difference={max_abs_diff}")
-    return max_abs_diff, case_passed
+
+    print(f"maximum relative difference={max_rel_diff}")
 
 
 def run_test(
@@ -90,7 +89,6 @@ def run_test(
     input_ids_name,
     segment_ids_name,
     input_mask_name,
-    mask_type,
 ):
     # Try deduce input names from optimized model.
     input_ids, segment_ids, input_mask = get_bert_inputs(
@@ -98,7 +96,6 @@ def run_test(
     )
 
     # Use random mask length for accuracy test. It might introduce slight inflation in latency reported in this script.
-    average_sequence_length = int(sequence_length / 2) if sequence_length >= 2 else sequence_length
     all_inputs = generate_test_data(
         batch_size,
         sequence_length,
@@ -108,9 +105,7 @@ def run_test(
         input_ids,
         segment_ids,
         input_mask,
-        average_sequence_length,
-        True,  # random sequence length
-        mask_type,
+        random_mask_length=True,
     )
 
     baseline_results, baseline_latency, output_names = run_model(
@@ -134,7 +129,7 @@ def run_test(
         print(f"treatment average latency: {statistics.mean(treatment_latency) * 1000} ms")
 
     # Validate the output of baseline and treatment, to make sure the results are similar.
-    return compare(baseline_results, treatment_results, verbose, rtol, atol)
+    compare(baseline_results, treatment_results, verbose, rtol, atol)
 
 
 def parse_arguments():
@@ -213,14 +208,6 @@ def parse_arguments():
         help="input name for attention mask",
     )
 
-    parser.add_argument(
-        "--mask_type",
-        required=False,
-        type=int,
-        default=2,
-        help="mask type: (1: mask index or sequence length, 2: raw 2D mask, 3: key len, cumulated lengths of query and key)",
-    )
-
     args = parser.parse_args()
     return args
 
@@ -248,7 +235,6 @@ def main():
         args.input_ids,
         args.segment_ids,
         args.input_mask,
-        args.mask_type,
     )
 
 

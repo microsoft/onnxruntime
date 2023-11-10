@@ -76,12 +76,9 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
 
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
-  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(training_model_uri),
-                                           std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_uri)),
-                                           std::nullopt);
   auto model = std::make_unique<onnxruntime::training::api::Module>(
-      model_identifier, &state, onnxruntime::SessionOptions(),
-      *env, providers);
+      ToUTF8String(training_model_uri), &state, onnxruntime::SessionOptions(),
+      *env, providers, ToUTF8String(eval_model_uri));
 
   auto test_dir = ORT_TSTR("export_model_for_inferencing_test_dir");
   if (Env::Default().FolderExists(test_dir)) {
@@ -89,7 +86,7 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   }
   onnxruntime::test::TemporaryDirectory tmp_dir{test_dir};
   PathString inference_model_path{
-      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("inference_model.onnx"))};
+      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("inference_model.onnx"))};
 
   std::vector<std::string> graph_output_names({"output-0"});
   ASSERT_STATUS_OK(model->ExportModelForInferencing(ToUTF8String(inference_model_path), graph_output_names));
@@ -144,9 +141,7 @@ TEST(TrainingApiTest, ModuleParametersSize) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
-  auto model_identifiers = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
-                                            std::nullopt, std::nullopt);
-  auto model = std::make_unique<onnxruntime::training::api::Module>(model_identifiers,
+  auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
                                                                     &state, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
   size_t params_size = 0;
@@ -169,10 +164,7 @@ TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
-  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
-                                           std::nullopt,
-                                           std::nullopt);
-  auto model = std::make_unique<onnxruntime::training::api::Module>(model_identifier,
+  auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
                                                                     &state, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
   int64_t params_size = static_cast<int64_t>(model->GetParametersSize());
@@ -210,17 +202,14 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
-  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
-                                           std::nullopt,
-                                           std::nullopt);
-  auto model = std::make_unique<onnxruntime::training::api::Module>(model_identifier,
+  auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
                                                                     &state, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
   ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
-      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
+  onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
   size_t step = 0;
@@ -285,12 +274,8 @@ TEST(TrainingApiTest, OptimizerCreatedWithOptimizerCheckpointState) {
 
     ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
-    auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
-                                             std::nullopt,
-                                             std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
-
     std::shared_ptr<Module> model = std::make_shared<Module>(
-        model_identifier, &state, session_option,
+        ToUTF8String(model_uri), &state, session_option,
         *env, providers);
 
     // Load state dict from faked optimizer checkpoint state.
@@ -300,7 +285,7 @@ TEST(TrainingApiTest, OptimizerCreatedWithOptimizerCheckpointState) {
                                                              {"momentum0", "momentum1"},
                                                              external_optimizer_checkpoint_state));
     std::shared_ptr<Optimizer> optim = std::make_shared<Optimizer>(
-        model_identifier, &new_state, session_option, *env, providers);
+        ToUTF8String(optim_uri), &new_state, session_option, *env, providers);
 
     ASSERT_TRUE(optim.get() != nullptr);
   }
@@ -335,18 +320,14 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
 
     ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
-    auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
-                                             std::nullopt,
-                                             std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
-
     std::shared_ptr<Module> model = std::make_shared<Module>(
-        model_identifier, &state, session_option,
+        ToUTF8String(model_uri), &state, session_option,
         *env, providers);
 
     OrtValue input, target;
     GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-    target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
-        std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
+    onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+        std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
 
     /// Load test data for learning rate schedulers.
     auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_scheduler/" + test_file_name);
@@ -370,7 +351,7 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
     }
 
     std::shared_ptr<Optimizer> optim = std::make_shared<Optimizer>(
-        model_identifier, &state, session_option,
+        ToUTF8String(optim_uri), &state, session_option,
         *env, providers);
 
     // KNOWN ISSUE: LinearLRScheduler by default use optim's states to calculate the first step's learning rate.
@@ -443,11 +424,11 @@ TEST(TrainingApiTest, ModuleExportModelForInferencingCPU) {
 }
 
 #if defined(USE_CUDA)
+
 TEST(TrainingApiTest, ModuleExportModelForInferencingCUDA) {
   std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
   TestModuleExport(providers);
 }
-#endif
 
 TEST(TrainingApiTest, OptimStep) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
@@ -459,29 +440,25 @@ TEST(TrainingApiTest, OptimStep) {
 
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
-  std::vector<std::shared_ptr<IExecutionProvider>> providers;
-#if defined(USE_CUDA)
-  providers.push_back(onnxruntime::test::DefaultCudaExecutionProvider());
-#endif
+  std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
+  std::shared_ptr<IExecutionProvider> cuda_provider = providers.front();
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
-
-  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
-                                           std::nullopt,
-                                           std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
   auto model = std::make_unique<onnxruntime::training::api::Module>(
-      model_identifier, &state, session_option,
+      ToUTF8String(model_uri), &state, session_option,
       *env, providers);
   auto optim = std::make_unique<onnxruntime::training::api::Optimizer>(
-      model_identifier, &state, session_option,
+      ToUTF8String(optim_uri), &state, session_option,
       *env, providers);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  target = onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
-      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1));
+  onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
+  size_t step = 0;
   std::string param_name = "fc2.weight";
+
   // before training, check if optim state is initialized to 0
   onnxruntime::training::api::OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
   onnxruntime::training::api::ParameterOptimizerState& param_state =
@@ -489,34 +466,24 @@ TEST(TrainingApiTest, OptimStep) {
   OrtValue& moment_1 = param_state.at("momentum0");
 
   std::vector<float> param_vec_before_optimizer_step;
-  std::vector<float> moment_1_vec;
-#if defined(USE_CUDA)
   CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);
+  std::vector<float> moment_1_vec;
   CudaOrtValueToCpuVec(moment_1, moment_1_vec);
-#else
-  CpuOrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);
-  CpuOrtValueToVec(moment_1, moment_1_vec);
-#endif
-
   for (size_t i = 0; i < moment_1_vec.size(); i++) {
     ASSERT_EQ(moment_1_vec[i], 0.0f);
   }
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
+    step += 1;
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
     ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
+    std::vector<float> grads;
+    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads);
     ASSERT_STATUS_OK(optim->Step());
 
-    // get gradients and optim state and check if it is updated
-    std::vector<float> grads;
-#if defined(USE_CUDA)
-    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads);
+    // get optim state and check if it is updated
     CudaOrtValueToCpuVec(moment_1, moment_1_vec);
-#else
-    CpuOrtValueToVec(model->NamedParameters().at(param_name)->Gradient(), grads);
-    CpuOrtValueToVec(moment_1, moment_1_vec);
-#endif
     for (size_t i = 0; i < moment_1_vec.size(); i++) {
       if (grads[i] != 0.0f) {
         ASSERT_NE(moment_1_vec[i], 0.0f);
@@ -524,11 +491,7 @@ TEST(TrainingApiTest, OptimStep) {
     }
 
     std::vector<float> param_vec_after_optimizer_step;
-#if defined(USE_CUDA)
     CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
-#else
-    CpuOrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
-#endif
     for (size_t i = 0; i < param_vec_after_optimizer_step.size(); ++i) {
       if (grads[i] != 0.0f && moment_1_vec[i] != 0.0f) {
         ASSERT_NE(param_vec_after_optimizer_step[i], param_vec_before_optimizer_step[i]);
@@ -536,6 +499,8 @@ TEST(TrainingApiTest, OptimStep) {
     }
   }
 }
+
+#endif
 
 }  // namespace test
 }  // namespace training

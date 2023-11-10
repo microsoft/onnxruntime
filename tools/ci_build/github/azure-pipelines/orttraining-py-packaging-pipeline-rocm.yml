@@ -9,42 +9,32 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- stage: "Python_Packaging_ROCm57_Release"
+- stage: Python_Packaging
   jobs:
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.7'
+      RocmVersion: '5.4.2'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.7'
+      RocmVersion: '5.4.2'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.10'
-      RocmVersion: '5.7'
-
-- stage: "Python_Packaging_ROCm57_Debug"
-  jobs:
+      RocmVersion: '5.4.2'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
-      RocmVersion: '5.7'
-      BuildConfig: 'Debug'
+      RocmVersion: '5.5'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.9'
-      RocmVersion: '5.7'
-      BuildConfig: 'Debug'
+      RocmVersion: '5.5'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.10'
-      RocmVersion: '5.7'
-      BuildConfig: 'Debug'
-
-- stage: "Python_Packaging_ROCm56_Release"
-  condition: ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')
-  jobs:
+      RocmVersion: '5.5'
   - template: templates/rocm.yml
     parameters:
       PythonVersion: '3.8'
@@ -57,3 +47,18 @@ stages:
     parameters:
       PythonVersion: '3.10'
       RocmVersion: '5.6'
+  - template: templates/rocm.yml
+    parameters:
+      PythonVersion: '3.8'
+      RocmVersion: '5.6'
+      BuildConfig: 'RelWithDebInfo'
+  - template: templates/rocm.yml
+    parameters:
+      PythonVersion: '3.9'
+      RocmVersion: '5.6'
+      BuildConfig: 'RelWithDebInfo'
+  - template: templates/rocm.yml
+    parameters:
+      PythonVersion: '3.10'
+      RocmVersion: '5.6'
+      BuildConfig: 'RelWithDebInfo'

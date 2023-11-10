@@ -3,13 +3,8 @@
 
 #pragma once
 
-#include <cstdint>
-#include <string>
-#include <string_view>
-#include <unordered_set>
-
+#include "core/common/status.h"
 #include "core/graph/basic_types.h"
-#include "core/providers/coreml/builders/op_builder.h"
 
 namespace onnxruntime {
 
@@ -23,20 +18,15 @@ class Logger;
 
 namespace coreml {
 
-OpBuilderInputParams MakeOpBuilderParams(const GraphViewer& graph_viewer, uint32_t coreml_flags);
+bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
-bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name,
-                      const OpBuilderInputParams& input_params, const logging::Logger& logger);
+bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
 
-bool IsNodeSupported(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger);
+bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger);
 
 // Gets the set of nodes that are supported by the CoreML EP.
 std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                  const OpBuilderInputParams& input_params,
                                                   const logging::Logger& logger);
-
-bool CheckIsConstantInitializer(const NodeArg& node_arg, const GraphViewer& graph_viewer,
-                                const logging::Logger& logger, std::string_view input_description);
 
 // CoreML is more efficient running using Apple Neural Engine
 // This is to detect if the current system has Apple Neural Engine

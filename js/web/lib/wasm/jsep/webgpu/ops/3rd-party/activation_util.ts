@@ -19,18 +19,18 @@
 //
 // modified to fit the needs of the project
 
-export declare type Activation = 'linear' | 'relu' | 'prelu' | 'elu' | 'relu6' | 'leakyrelu' | 'sigmoid' | 'gelu';
+export declare type Activation = 'linear' | 'relu' | 'prelu' | 'elu' | 'relu6' | 'leakyrelu' | 'sigmoid';
 
-export const typeSnippet = (component: number, dataType: string) => {
+export const typeSnippet = (component: number) => {
   switch (component) {
     case 1:
-      return dataType;
+      return 'f32';
     case 2:
-      return `vec2<${dataType}>`;
+      return 'vec2<f32>';
     case 3:
-      return `vec3<${dataType}>`;
+      return 'vec3<f32>';
     case 4:
-      return `vec4<${dataType}>`;
+      return 'vec4<f32>';
     default:
       throw new Error(`${component}-component is not supported.`);
   }

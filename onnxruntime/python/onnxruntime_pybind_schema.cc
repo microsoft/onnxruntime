@@ -39,8 +39,8 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #endif
 #ifdef USE_OPENVINO
             []() {
-              ProviderOptions provider_options_map;
-              return onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options_map);
+              OrtOpenVINOProviderOptions provider_options;
+              return onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options);
             }(),
 #endif
 #ifdef USE_TENSORRT
@@ -59,7 +59,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             onnxruntime::ArmNNProviderFactoryCreator::Create(0),
 #endif
 #ifdef USE_DML
-            onnxruntime::DMLProviderFactoryCreator::Create(0, false, false, false),
+            onnxruntime::DMLProviderFactoryCreator::Create(0, /*skip_software_device_check*/ true),
 #endif
 #ifdef USE_NNAPI
             onnxruntime::NnapiProviderFactoryCreator::Create(0, std::optional<std::string>()),

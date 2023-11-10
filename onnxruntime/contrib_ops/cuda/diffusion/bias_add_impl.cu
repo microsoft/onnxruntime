@@ -42,17 +42,6 @@ __global__ void BiasAddKernel(T const* input, T const* bias, T const* residual, 
   }
 }
 
-template <typename T, unsigned TPB>
-__global__ void BiasAddLargeKernel(
-    int32_t const ld, const T* input, const T* bias, const T* residual, T* output) {
-  int32_t const offset = blockIdx.x * ld;
-
-  for (int32_t i = threadIdx.x; i < ld; i += TPB) {
-    int32_t const base_offset = offset + i;
-    output[base_offset] = input[base_offset] + bias[i] + residual[base_offset];
-  }
-}
-
 template __global__ void BiasAddKernel<float, 320, 320>(float const*, float const*, float const*, float*);
 template __global__ void BiasAddKernel<float, 640, 320>(float const*, float const*, float const*, float*);
 template __global__ void BiasAddKernel<float, 1280, 320>(float const*, float const*, float const*, float*);
@@ -63,19 +52,19 @@ template __global__ void BiasAddKernel<half, 1280, 320>(half const*, half const*
 template <typename T>
 void LaunchBiasAddKernel(cudaStream_t stream, int32_t grid_size, int32_t num_channels,
                          T const* input, T const* bias, T const* residual, T* output) {
+  constexpr int32_t TPB = 320;  // thread per block
   switch (num_channels) {
     case 320:
-      (BiasAddKernel<T, 320, 320>)<<<grid_size, 320, 0, stream>>>(input, bias, residual, output);
+      (BiasAddKernel<T, 320, TPB>)<<<grid_size, TPB, 0, stream>>>(input, bias, residual, output);
       break;
     case 640:
-      (BiasAddKernel<T, 640, 320>)<<<grid_size, 320, 0, stream>>>(input, bias, residual, output);
+      (BiasAddKernel<T, 640, TPB>)<<<grid_size, TPB, 0, stream>>>(input, bias, residual, output);
       break;
     case 1280:
-      (BiasAddKernel<T, 1280, 320>)<<<grid_size, 320, 0, stream>>>(input, bias, residual, output);
+      (BiasAddKernel<T, 1280, TPB>)<<<grid_size, TPB, 0, stream>>>(input, bias, residual, output);
       break;
     default:
-      BiasAddLargeKernel<T, 256><<<grid_size, 256, 0, stream>>>(num_channels, input, bias, residual, output);
-      break;
+      ORT_NOT_IMPLEMENTED("Not implemented");
   }
 }
 

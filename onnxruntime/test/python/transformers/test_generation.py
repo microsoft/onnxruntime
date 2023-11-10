@@ -6,7 +6,6 @@
 # --------------------------------------------------------------------------
 
 import os
-import shutil
 import unittest
 
 import onnx
@@ -20,12 +19,10 @@ if find_transformers_source() and find_transformers_source(["models", "t5"]):
     from benchmark_helper import Precision
     from convert_generation import main as run
     from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
-    from models.whisper.convert_to_onnx import main as run_whisper
 else:
     from onnxruntime.transformers.benchmark_helper import Precision
     from onnxruntime.transformers.convert_generation import main as run
     from onnxruntime.transformers.models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
-    from onnxruntime.transformers.models.whisper.convert_to_onnx import main as run_whisper
 
 
 class TestBeamSearchGpt(unittest.TestCase):
@@ -282,116 +279,6 @@ class TestBeamSearchT5(unittest.TestCase):
             sentences=None,
             append_arguments=False,
         )
-
-
-class TestBeamSearchWhisper(unittest.TestCase):
-    """Test BeamSearch for Whisper"""
-
-    def setUp(self):
-        self.model_name = "openai/whisper-tiny"
-        self.pytorch_folder = "cache_models"
-        self.onnx_folder = "onnx_models"
-        self.decoder_onnx_path = os.path.join(".", self.onnx_folder, "whisper-tiny_decoder.onnx")
-        self.encoder_onnx_path = os.path.join(".", self.onnx_folder, "whisper-tiny_encoder_decoder_init.onnx")
-        self.beam_search_onnx_path = os.path.join(".", self.onnx_folder, "whisper-tiny_beamsearch.onnx")
-        self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
-
-        self.base_arguments = [
-            "-m",
-            self.model_name,
-            "--output",
-            self.onnx_folder,
-            "--use_external_data_format",
-        ]
-        self.fp32_cpu_arguments = [
-            "--precision",
-            "fp32",
-            "--optimize_onnx",
-        ]
-        self.fp16_cuda_arguments = [
-            "--precision",
-            "fp16",
-            "--provider",
-            "cuda",
-            "--optimize_onnx",
-            "--use_gpu",
-        ]
-        self.int8_cpu_arguments = [
-            "--precision",
-            "int8",
-            "--quantize_embedding_layer",
-        ]
-
-    def tearDown(self):
-        pytorch_dir = os.path.join(".", self.pytorch_folder)
-        if os.path.exists(pytorch_dir):
-            shutil.rmtree(pytorch_dir)
-        onnx_dir = os.path.join(".", self.onnx_folder)
-        if os.path.exists(onnx_dir):
-            shutil.rmtree(onnx_dir)
-
-    def remove_onnx_files(self):
-        if os.path.exists(self.beam_search_onnx_path):
-            os.remove(self.beam_search_onnx_path)
-            os.remove(self.beam_search_onnx_path + ".data")
-
-        if os.path.exists(self.decoder_onnx_path):
-            os.remove(self.decoder_onnx_path)
-            os.remove(self.decoder_onnx_path + ".data")
-
-        if os.path.exists(self.encoder_onnx_path):
-            os.remove(self.encoder_onnx_path)
-            os.remove(self.encoder_onnx_path + ".data")
-
-    def run_export(self, arguments):
-        max_diff = run_whisper(arguments)
-        self.assertTrue(os.path.exists(self.beam_search_onnx_path), "Whisper model was not exported")
-        self.remove_onnx_files()
-        self.assertTrue(max_diff == 0, f"ORT and PyTorch have a parity mismatch of {max_diff}")
-
-    def run_configs(self, optional_arguments):
-        # FP32 CPU
-        arguments = self.base_arguments + self.fp32_cpu_arguments + optional_arguments
-        self.run_export(arguments)
-
-        if self.enable_cuda:
-            # FP16 CUDA
-            arguments = self.base_arguments + self.fp16_cuda_arguments + optional_arguments
-            self.run_export(arguments)
-
-        # INT8 CPU
-        arguments = self.base_arguments + self.int8_cpu_arguments + optional_arguments
-        self.run_export(arguments)
-
-    @pytest.mark.slow
-    def test_required_args(self):
-        optional_args = []
-        self.run_configs(optional_args)
-
-    @pytest.mark.slow
-    def test_forced_decoder_ids(self):
-        decoder_input_ids = ["--use_forced_decoder_ids"]
-        self.run_configs(decoder_input_ids)
-
-    @pytest.mark.slow
-    def test_logits_processor(self):
-        logits_processor = ["--use_logits_processor"]
-        self.run_configs(logits_processor)
-
-    @pytest.mark.slow
-    def test_cross_qk_overall(self):
-        decoder_input_ids = [
-            "--chain_model",
-            "--collect_cross_qk",
-            "--output_cross_qk",
-            "--use_forced_decoder_ids",
-            "--extra_decoding_ids",
-            "--output_no_speech_probs",
-            "--use_vocab_mask",
-            "--use_prefix_vocab_mask",
-            "--use_logits_processor",
-        ]
-        self.run_configs(decoder_input_ids)
 
 
 if __name__ == "__main__":

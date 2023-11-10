@@ -15,7 +15,7 @@ namespace Dml
         std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
         std::vector<DML_BUFFER_BINDING> initInputBindings,
-        std::vector<uint8_t>&& isInputsUploadedByDmlEP,
-        std::vector<bool>&& inputsUsed
+        std::vector<uint8_t>& isInputsUploadedByDmlEP,
+        std::vector<bool>& inputsUsed
     );
 } // namespace Dml

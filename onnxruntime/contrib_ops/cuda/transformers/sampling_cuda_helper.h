@@ -20,7 +20,7 @@ namespace SamplingCudaHelper {
 
 template <typename T>
 Status Sample(AllocatorPtr& allocator,
-              Stream* stream,
+              cudaStream_t cuda_stream,
               gsl::span<T>& next_token_scores,
               transformers::ISamplingState<T>* sampling_state,
               transformers::IGreedySearchState<T>* greedy_state,
@@ -29,8 +29,6 @@ Status Sample(AllocatorPtr& allocator,
               const transformers::IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(dumper);
   typedef typename ToCudaType<T>::MappedType CudaT;
-
-  auto cuda_stream = static_cast<cudaStream_t>(stream->GetHandle());
 
   gsl::span<int>& d_index_in = sampling_state->d_index_in;
   gsl::span<int>& d_offset = sampling_state->d_offset;
@@ -93,7 +91,7 @@ Status Sample(AllocatorPtr& allocator,
 #endif
 
   gsl::span<float>& d_sorted_softmaxed_score = sampling_state->d_sorted_softmaxed_score;
-  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(stream,
+  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
                                                                                       d_sorted_softmaxed_score.data(),
                                                                                       reinterpret_cast<CudaT*>(d_sorted_score.data()),
                                                                                       parameters->vocab_size,
@@ -127,7 +125,7 @@ Status Sample(AllocatorPtr& allocator,
 #endif
 
   gsl::span<float>& d_softmaxed_score = sampling_state->d_softmaxed_score;
-  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(stream,
+  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
                                                                                       d_softmaxed_score.data(),
                                                                                       reinterpret_cast<CudaT*>(next_token_scores.data()),
                                                                                       parameters->vocab_size,

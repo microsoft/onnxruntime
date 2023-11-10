@@ -5,7 +5,7 @@
 #include <string>
 
 #include "core/common/common.h"
-#include "core/graph/onnx_protobuf.h"
+#include "onnx/onnx_pb.h"
 #include "core/graph/graph.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/function.h"
@@ -31,8 +31,6 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
  * @param function_name The name of the function.
  * @param model_local_functions The map of local functions in the same onnx model.
  *                              This will be used as context for the function's type/shape inference.
- *                              This argument is captured by shape inferencing lambda by reference and must
- *                              be alive at the time of the shape inferencing.
  * @param domain_version_map Domain to version map used in current onnx model.
  * @param schema_registry The schema registry current model is using.
  * @param logger The logger current model is using.
@@ -40,7 +38,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
  */
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
                                                        const std::string& function_name,
-                                                       const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+                                                       const InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                                                        const std::unordered_map<std::string, int>& domain_version_map,
                                                        const SchemaRegistryManager& schema_registry,
                                                        const logging::Logger& logger,
@@ -55,10 +53,10 @@ inline std::string GetFunctionIdentifier(std::string_view function_domain, std::
   return function_domain.data() + std::string(":") + function_name.data();
 }
 
-void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto& calling_node,
-                const onnxruntime::NodeAttributes& attr_map, const std::string& unique_prefix);
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node,
+                const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix);
 
-void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const Node& calling_node, const std::string& unique_prefix);
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, Node& calling_node, std::string unique_prefix);
 
 }  // namespace function_utils
 

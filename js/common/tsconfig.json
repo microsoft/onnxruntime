@@ -5,7 +5,7 @@
     "declaration": true,
     "declarationMap": true,
     "esModuleInterop": false,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
   },
   "include": ["lib"]
 }

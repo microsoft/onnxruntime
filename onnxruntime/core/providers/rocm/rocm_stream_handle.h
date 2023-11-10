@@ -1,6 +1,3 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
 #pragma once
 #include "core/providers/rocm/rocm_pch.h"
 // #include "core/providers/cuda/shared_inc/cuda_utils.h"
@@ -20,7 +17,7 @@ struct RocmStream : Stream {
 
   ~RocmStream();
 
-  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override;
+  std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) override;
 
   void Flush() override;
 
@@ -33,8 +30,6 @@ struct RocmStream : Stream {
   miopenHandle_t miopen_handle_{};
 
   rocblas_handle rocblas_handle_{};
-
-  void* GetResource(int version, int id) const override;
 
  private:
   std::vector<void*> deferred_cpu_buffers_;

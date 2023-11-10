@@ -68,8 +68,11 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 }
 
 namespace onnxruntime {
+void DmlConfigureProviderFactoryDefaultRoundingMode(
+  onnxruntime::IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode
+);
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled);
-}  // namespace onnxruntime
+}// namespace onnxruntime
 
 #endif  // USE_DML
 
@@ -88,8 +91,28 @@ ORT_API_STATUS_IMPL(
   }
   auto factory = options->provider_factories.back().get();
 
+  // OnnxRuntime uses the default rounding mode when calling the session's allocator.
+  // During initialization, OnnxRuntime allocates weights, which are permanent across session
+  // lifetime and can be large, so shouldn't be rounded.
+  // So we create the provider with rounding disabled, and expect the caller to enable it after.
+  onnxruntime::DmlConfigureProviderFactoryDefaultRoundingMode(factory, AllocatorRoundingMode::Disabled);
+
   onnxruntime::DmlConfigureProviderFactoryMetacommandsEnabled(factory, metacommands_enabled);
 #endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(
+  winmla::DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled
+) {
+  API_IMPL_BEGIN
+#ifdef USE_DML
+  auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
+  Dml::SetDefaultRoundingMode(
+    dml_provider_internal, is_enabled ? AllocatorRoundingMode::Enabled : AllocatorRoundingMode::Disabled
+  );
+#endif
   return nullptr;
   API_IMPL_END
 }

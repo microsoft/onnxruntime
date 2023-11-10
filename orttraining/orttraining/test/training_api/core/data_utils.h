@@ -57,7 +57,7 @@ inline void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) 
   TensorShape shape(dims);
   std::vector<float> data(shape.Size());
   GenerateRandomData(data);
-  input = onnxruntime::test::CreateInputOrtValueOnCPU<float>(dims, data);
+  onnxruntime::test::CreateInputOrtValueOnCPU<float>(dims, data, &input);
 }
 
 }  // namespace onnxruntime::training::test

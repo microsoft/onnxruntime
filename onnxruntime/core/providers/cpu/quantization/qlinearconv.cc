@@ -77,8 +77,7 @@ class QLinearConv : public OpKernel {
     W_zero_point_value = W_zero_point_data[0];
     for (int64_t i = 1; i < W_zero_point_size; i++) {
       ORT_ENFORCE(W_zero_point_data[i] == W_zero_point_value,
-                  "QLinearConv : zero point of per-channel filter must be same. "
-                  "This happens by design if the quantization is symmetric.");
+                  "QLinearConv : zero point of per-channel filter must be same");
     }
   }
 

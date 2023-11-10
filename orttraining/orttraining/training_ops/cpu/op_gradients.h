@@ -78,19 +78,5 @@ class SoftmaxGrad final : public OpKernel {
   bool is_logsoftmaxgrad_;
 };
 
-template <typename T>
-class LeakyReluGrad final : public OpKernel {
- public:
-  explicit LeakyReluGrad(const OpKernelInfo& info) : OpKernel(info) {
-    alpha_ = info.GetAttrOrDefault<float>("alpha", 0.01f);
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LeakyReluGrad);
-  float alpha_;
-};
-
 }  // namespace contrib
 }  // namespace onnxruntime

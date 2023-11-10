@@ -119,6 +119,7 @@ module.exports = {
     rules: {
       'jsdoc/check-alignment': 'error',
       'jsdoc/check-indentation': 'error',
+      'jsdoc/newline-after-description': 'error',
     }
   }, {
     files: ['common/test/**/*.ts'],

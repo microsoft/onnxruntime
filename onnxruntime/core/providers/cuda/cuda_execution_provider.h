@@ -1,5 +1,4 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #pragma once
@@ -33,8 +32,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream) override;
 
-  DataLayout GetPreferredLayout() const override;
-
   const void* GetExecutionHandle() const noexcept override {
     // The CUDA interface does not return anything interesting.
     return nullptr;
@@ -50,12 +47,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   cudnnHandle_t PerThreadDefaultCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
-  }
-
-  cudaStream_t ComputeStream() {
-    // this will return the CUDA EP level stream which can differ from the actual compute tasks stream
-    // the compute task stream is supplied within OpKernelContext during inference
-    return stream_;
   }
 
   template <typename T>
@@ -77,7 +68,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool GetCudnnConvUseMaxWorkspace() const { return info_.cudnn_conv_use_max_workspace; }
   bool GetCudnnConv1dPadToNc1d() const { return info_.cudnn_conv1d_pad_to_nc1d; }
   bool IsSkipLayerNormInStrictMode() const { return info_.enable_skip_layer_norm_strict_mode; }
-  bool IsNHWCPreferred() const { return info_.prefer_nhwc; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);

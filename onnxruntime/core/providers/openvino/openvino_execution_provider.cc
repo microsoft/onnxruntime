@@ -19,7 +19,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
   openvino_ep::BackendManager::GetGlobalContext().cache_dir = info.cache_dir_;
-  openvino_ep::BackendManager::GetGlobalContext().num_streams = info.num_streams_;
   openvino_ep::BackendManager::GetGlobalContext().context = info.context_;
   openvino_ep::BackendManager::GetGlobalContext().enable_opencl_throttling = info.enable_opencl_throttling_;
   openvino_ep::BackendManager::GetGlobalContext().enable_dynamic_shapes = info.enable_dynamic_shapes_;
@@ -130,10 +129,6 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 #elif defined(OPENVINO_2023_0)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_0");
-  result = obj.Execute();
-#elif defined(OPENVINO_2023_1)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_1");
   result = obj.Execute();
 #endif
 

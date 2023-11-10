@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/graph/contrib_ops/shape_inference_functions.h"
-#include "core/graph/onnx_protobuf.h"
 #include <onnx/defs/shape_inference.h>
 #include <iostream>
 

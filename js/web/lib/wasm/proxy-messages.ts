@@ -1,26 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import type {Env, InferenceSession, Tensor} from 'onnxruntime-common';
+import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
-export type SerializableTensorMetadata =
-    [dataType: Tensor.Type, dims: readonly number[], data: Tensor.DataType, location: 'cpu'];
+/**
+ *  tuple elements are: ORT element type; dims; tensor data
+ */
+export type SerializableTensor = [Tensor.Type, readonly number[], Tensor.DataType];
 
-export type GpuBufferMetadata = {
-  gpuBuffer: Tensor.GpuBufferType;
-  download?: () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
-  dispose?: () => void;
-};
+/**
+ *  tuple elements are: InferenceSession handle; input names; output names
+ */
+export type SerializableSessionMetadata = [number, string[], string[]];
 
-export type UnserializableTensorMetadata =
-    [dataType: Tensor.Type, dims: readonly number[], data: GpuBufferMetadata, location: 'gpu-buffer']|
-    [dataType: Tensor.Type, dims: readonly number[], data: Tensor.DataType, location: 'cpu-pinned'];
-
-export type TensorMetadata = SerializableTensorMetadata|UnserializableTensorMetadata;
-
-export type SerializableSessionMetadata = [sessionHandle: number, inputNames: string[], outputNames: string[]];
-
-export type SerializableModeldata = [modelDataOffset: number, modelDataLength: number];
+/**
+ *  tuple elements are: modeldata.offset, modeldata.length
+ */
+export type SerializableModeldata = [number, number];
 
 interface MessageError {
   err?: string;
@@ -62,10 +58,10 @@ interface MessageReleaseSession extends MessageError {
 interface MessageRun extends MessageError {
   type: 'run';
   in ?: {
-    sessionId: number; inputIndices: number[]; inputs: SerializableTensorMetadata[]; outputIndices: number[];
+    sessionId: number; inputIndices: number[]; inputs: SerializableTensor[]; outputIndices: number[];
     options: InferenceSession.RunOptions;
   };
-  out?: SerializableTensorMetadata[];
+  out?: SerializableTensor[];
 }
 
 interface MesssageEndProfiling extends MessageError {
@@ -73,10 +69,5 @@ interface MesssageEndProfiling extends MessageError {
   in ?: number;
 }
 
-interface MessageIsOrtEnvInitialized extends MessageError {
-  type: 'is-ort-env-initialized';
-  out?: boolean;
-}
-
 export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCreateSessionAllocate|MessageCreateSessionFinalize|
-    MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling|MessageIsOrtEnvInitialized;
+    MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling;

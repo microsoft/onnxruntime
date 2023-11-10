@@ -342,7 +342,7 @@ namespace Microsoft.ML.OnnxRuntime
                     "Strings are not supported by this API");
             }
 
-            var shapeSize = ShapeUtils.GetSizeForShape(shape);
+            var shapeSize = ArrayUtilities.GetSizeForShape(shape);
             var requiredBufferSize = shapeSize * typeInfo.TypeSize;
             if (requiredBufferSize > sizeInBytes)
             {

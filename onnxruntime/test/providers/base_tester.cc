@@ -771,8 +771,6 @@ void BaseTester::ExecuteModelForEps(
 
   provider_type.resize(provider_type.size() - 1);  // remove the trailing ':'
 
-  SCOPED_TRACE(MakeString("registered execution providers: ", provider_type));
-
   if (custom_registries != nullptr) {
     for (const auto& reg : *custom_registries) {
       ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(reg));

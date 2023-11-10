@@ -498,7 +498,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     const int* mask_start = (mask_1d_size > attn->batch_size) ? mask_1d + attn->batch_size : nullptr;
     return ComputeSoftmaxWithMask1D<T>(
-        params->StreamHandle(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
+        params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
         mask_1d, mask_start, params->bias_buffer, gemm1_out, softmax_out, attn->is_unidirectional);
   }
 
@@ -507,7 +507,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     auto attn = params->attention;
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     return ComputeSoftmax<T>(
-        params->StreamHandle(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
+        params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
         params->bias_buffer, gemm1_out, softmax_out, attn->is_unidirectional);
   }
 
@@ -540,7 +540,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     auto attn = params->attention;
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     return LaunchTransCtx(
-        params->StreamHandle(),
+        params->Stream(),
         attn->sequence_length, attn->batch_size, attn->head_size, attn->num_heads,
         params->device_prop->maxThreadsPerBlock, false, gemm2_out, params->out_buffer);
   }
@@ -721,7 +721,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
       return v == 1 ? 0 : mask_filter_value;
     };
 
-    ConvertToFilledMaskValue<kVecSize><<<num_blocks, kThreadPerBlock, 0, params->StreamHandle()>>>(
+    ConvertToFilledMaskValue<kVecSize><<<num_blocks, kThreadPerBlock, 0, params->Stream()>>>(
         reinterpret_cast<T*>(params->workspace_buffer), {lengths.y * lengths.z, lengths.z, 1},  // out desc
         buffer, lengths, strides,                                                               // mask desc
         cvt);
@@ -843,7 +843,7 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
       if constexpr (USE_MASK) {
         ORT_RETURN_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>::LaunchConvertToFilledMaskValue(params));
       }
-      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
+      invoker->Run(arg.get(), StreamConfig{params->Stream()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(op)));

@@ -79,7 +79,7 @@ def _get_dict(separated_key):
         "int2": 2,
         "int_list": [1, 2, 3, 5, 6],
         "dict1": {"np_array": np.arange(100), "dict2": {"int3": 3, "int4": 4}, "str1": "onnxruntime"},
-        "bool1": True,
+        "bool1": bool(True),
         "int5": 5,
         "float1": 2.345,
         "np_array_float": np.array([1.234, 2.345, 3.456]),

@@ -407,7 +407,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_MlmBertE2E) {
   }
 
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
-  PathString new_model_uri{ConcatPathComponent(
+  PathString new_model_uri{ConcatPathComponent<PathChar>(
       tmp_dir.Path(),
       ORT_TSTR("insert_gather_before_sceloss_bert_e2e_optimized.onnx"))};
   ASSERT_STATUS_OK(Model::Save(*model, new_model_uri));

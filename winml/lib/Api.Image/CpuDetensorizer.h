@@ -128,12 +128,8 @@ class CpuDetensorizer {
     return nominalRangeConverter.Denormalize(*pCPUTensor);
   }
 
-  // clang-format off
   template <>
-#if _MSVC_LANG < 202002L
-  static
-#endif
-  float ReadTensor<DirectX::PackedVector::HALF>(
+  static float ReadTensor<DirectX::PackedVector::HALF>(
     const DirectX::PackedVector::HALF* pCPUTensor, const NominalRangeConverter& nominalRangeConverter
   ) {
     return nominalRangeConverter.Denormalize(DirectX::PackedVector::XMConvertHalfToFloat(*pCPUTensor));
@@ -171,13 +167,9 @@ class CpuDetensorizer {
     }
   }
 
-  // clang-format off
 #if defined(_M_AMD64) || defined(_M_IX86)
   template <>
-#if _MSVC_LANG < 202002L
-  static
-#endif
-  void InterleaveRowFloatToByte(
+  static void InterleaveRowFloatToByte(
     const float* xChannel,
     const float* yChannel,
     const float* zChannel,

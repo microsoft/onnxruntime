@@ -6,7 +6,8 @@
 #include <string>
 #include <vector>
 
-#include "core/graph/onnx_protobuf.h"
+#include "onnx/onnx-operators_pb.h"
+#include "onnx/defs/schema.h"
 #include "onnx/defs/function.h"
 #include "onnx/defs/parser.h"
 

@@ -16,29 +16,140 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, end)                                \
+// opset 11 explicitly added support for negative axis. implementation already allowed it.
+#define REGISTER_KERNEL_TYPED(name, T)                                                     \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
-      1, end,                                                                              \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 12,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-#define REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, version)                                                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                  \
-      name,                                                                                                                       \
-      kOnnxDomain,                                                                                                                \
-      version,                                                                                                                    \
-      T,                                                                                                                          \
-      kCudaExecutionProvider,                                                                                                     \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).InputMemoryType(OrtMemTypeCPUInput, 1), \
+#define REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                        \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 11,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      12, 12,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-#define REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(name, T, last, cur) \
-  REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, last)                      \
-  REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, cur)
+// Register those with changes in OpSet12.
+#define REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(name, T)                                \
+  REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+#define REGISTER_KERNEL_VERSIONED_TYPED_13(name, T)                                        \
+  REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13, 13,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+// Register ReduceMin int64_t support in OpSet14.
+#define REGISTER_KERNEL_TYPED_14(name, T)                                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      14,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+// CUDA ArgMax/ArgMin doesn't have OpSet12+ implementation (with select_last_index attr) yet
+#define REGISTER_KERNEL_VERSIONED_TYPED_11(name, T)                                        \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 11,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+// Register with the latest version 13
+#define REGISTER_KERNEL_TYPED_13(name, T)                                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 12,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create())                                                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                          \
+      name<T>);
 
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
 template <bool allow_multi_axes>
@@ -806,76 +917,69 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
 
 }  // namespace ReductionOps
 
-// CUDA ArgMax/ArgMin doesn't have OpSet12+ implementation (with select_last_index attr) yet
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, MLFloat16, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, float, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, double, 11)
+#define REGISTER_KERNEL_HFD(name)        \
+  REGISTER_KERNEL_TYPED(name, MLFloat16) \
+  REGISTER_KERNEL_TYPED(name, float)     \
+  REGISTER_KERNEL_TYPED(name, double)    \
+  REGISTER_KERNEL_TYPED(name, BFloat16)
 
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, MLFloat16, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, float, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, double, 11)
+#define REGISTER_KERNEL_HFD_VERSIONED_11(name)        \
+  REGISTER_KERNEL_VERSIONED_TYPED_11(name, MLFloat16) \
+  REGISTER_KERNEL_VERSIONED_TYPED_11(name, float)     \
+  REGISTER_KERNEL_VERSIONED_TYPED_11(name, double)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, int32_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, int64_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, int8_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, uint8_t, 17, 18)
+REGISTER_KERNEL_HFD_VERSIONED_11(ArgMax)
+REGISTER_KERNEL_HFD_VERSIONED_11(ArgMin)
+REGISTER_KERNEL_HFD(ReduceL1)
+REGISTER_KERNEL_HFD(ReduceL2)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, BFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, int32_t, 17, 18)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, MLFloat16)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, float)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, double)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int32_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int64_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int8_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, uint8_t)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, int32_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, int64_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, int8_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, uint8_t, 17, 18)
+REGISTER_KERNEL_HFD(ReduceMean)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, BFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, int32_t, 17, 18)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, MLFloat16)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, float)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, double)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int32_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int64_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int8_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, uint8_t)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, MLFloat16, 12, 13)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, float, 12, 13)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, double, 12, 13)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, int32_t, 12, 13)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, int64_t, 12, 13)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSum, BFloat16, 12, 13)
+REGISTER_KERNEL_TYPED_14(ReduceMin, MLFloat16)
+REGISTER_KERNEL_TYPED_14(ReduceMin, float)
+REGISTER_KERNEL_TYPED_14(ReduceMin, double)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int32_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int8_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, uint8_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int64_t)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSum, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSum, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSum, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSum, BFloat16, 17, 18)
+REGISTER_KERNEL_HFD(ReduceProd)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSumSquare, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSumSquare, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSumSquare, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceSumSquare, BFloat16, 17, 18)
+REGISTER_KERNEL_TYPED_13(ReduceSum, MLFloat16)
+REGISTER_KERNEL_TYPED_13(ReduceSum, float)
+REGISTER_KERNEL_TYPED_13(ReduceSum, double)
+REGISTER_KERNEL_TYPED_13(ReduceSum, int32_t)
+REGISTER_KERNEL_TYPED_13(ReduceSum, int64_t)
+REGISTER_KERNEL_TYPED_13(ReduceSum, BFloat16)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSumExp, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSumExp, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSumExp, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceLogSumExp, BFloat16, 17, 18)
+REGISTER_KERNEL_HFD(ReduceLogSum)
+REGISTER_KERNEL_HFD(ReduceSumSquare)
+REGISTER_KERNEL_HFD(ReduceLogSumExp)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL1, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL1, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL1, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL1, BFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL1, int32_t, 17, 18)
+#define REGISTER_KERNEL_INT32(name) \
+  REGISTER_KERNEL_TYPED(name, int32_t)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL2, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL2, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL2, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL2, BFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceL2, int32_t, 17, 18)
+REGISTER_KERNEL_INT32(ReduceL1)
+REGISTER_KERNEL_INT32(ReduceL2)
+REGISTER_KERNEL_INT32(ReduceMean)
+
+REGISTER_KERNEL_INT32(ReduceProd)
 
 }  // namespace cuda
 }  // namespace onnxruntime

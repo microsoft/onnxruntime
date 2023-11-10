@@ -76,9 +76,9 @@ ONNX_CPU_OPERATOR_KERNEL(
 // e.g. if input shape is { 2, 2, 2, 2, 2 }, output shape is { 2, 2, 1, 2, 2 },
 // and the 'steps' value for all dims is 1 except dim-2, then the input shape is coalesced to { 4, 2, 4 }
 // and the output shape is coalesced to { 4, 1, 4 }.
-Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
-                                    TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
-                                    TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
+static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
+                              TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
+                              TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
   size_t cur = 0;
   size_t nxt = 0;
   while (true) {
@@ -131,8 +131,6 @@ Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, g
     ends.resize(cur);
     steps.resize(cur);
   }
-
-  return Status::OK();
 }
 
 // Slice V1-9 & DynamicSlice
@@ -140,9 +138,9 @@ Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::sp
                                     gsl::span<const int64_t> raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, compute_metadata));
-  ORT_RETURN_IF_ERROR(FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                                        compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
-                                        compute_metadata.p_flattened_output_dims_));
+  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
+                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
+                    compute_metadata.p_flattened_output_dims_);
   return Status::OK();
 }
 
@@ -151,9 +149,9 @@ Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts, gsl::sp
                                     gsl::span<const int64_t> raw_axes, gsl::span<const int64_t> raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
-  ORT_RETURN_IF_ERROR(FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                                        compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
-                                        compute_metadata.p_flattened_output_dims_));
+  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
+                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
+                    compute_metadata.p_flattened_output_dims_);
 
   return Status::OK();
 }
@@ -200,14 +198,14 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
   ORT_RETURN_IF_NOT(nullptr == steps_tensor || start_tensor.Shape() == steps_tensor->Shape(),
                     "Starts and steps shape mismatch");
 
-  const auto size = narrow<size_t>(start_tensor.Shape().Size());
-  input_starts.reserve(size);
-  input_ends.reserve(size);
+  const auto size = start_tensor.Shape().Size();
+  input_starts.reserve(narrow<size_t>(size));
+  input_ends.reserve(narrow<size_t>(size));
   if (nullptr != axes_tensor)
-    input_axes.reserve(size);
+    input_axes.reserve(narrow<size_t>(size));
   // Slice V10
   if (nullptr != steps_tensor)
-    input_steps.reserve(size);
+    input_steps.reserve(narrow<size_t>(size));
 
   // check for type reduction of supported indices types
   constexpr bool int32_enabled = utils::HasType<EnabledIndicesTypes, int32_t>();

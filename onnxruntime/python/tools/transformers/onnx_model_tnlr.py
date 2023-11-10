@@ -5,9 +5,10 @@
 import logging
 from typing import Union
 
+import numpy as np
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_utils import NumpyHelper
-from onnx import NodeProto, helper
+from onnx import NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 
@@ -56,24 +57,26 @@ class FusionTnlrAttention(FusionAttention):
 
         attention_node_name = self.model.create_node_name("Attention")
 
-        tensor_dtype = weight.data_type
-        np_type = helper.tensor_dtype_to_np_dtype(tensor_dtype)
         weight = helper.make_tensor(
             name=attention_node_name + "_qkv_weight",
-            data_type=tensor_dtype,
+            data_type=TensorProto.FLOAT,
             dims=[hidden_size, 3 * hidden_size],
-            vals=qkv_weight.astype(np_type).tobytes(),
-            raw=True,
+            vals=qkv_weight.flatten().tolist(),
         )
+
+        # Sometimes weights and bias are stored in fp16
+        if weight.data_type == 10:
+            weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
         self.model.add_initializer(weight, self.this_graph_name)
 
         bias = helper.make_tensor(
             name=attention_node_name + "_qkv_bias",
-            data_type=tensor_dtype,
+            data_type=TensorProto.FLOAT,
             dims=[3 * hidden_size],
-            vals=qkv_bias.astype(np_type).tobytes(),
-            raw=True,
+            vals=qkv_bias.flatten().tolist(),
         )
+        if bias.data_type == 10:
+            bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
         self.model.add_initializer(bias, self.this_graph_name)
 
         attention_inputs = [

@@ -33,43 +33,24 @@ gsl::span<T> AllocateBuffer(AllocatorPtr allocator,
   return span;
 }
 
-template <typename T>
-gsl::span<T> AllocateBuffer(AllocatorPtr allocator,
-                            IAllocatorUniquePtr<void>& buffer,
-                            size_t elements,
-                            Stream* stream,
-                            bool fill = false,
-                            T fill_value = T{}) {
-  size_t bytes = SafeInt<size_t>(sizeof(T)) * elements;
-  buffer = IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
-  T* first = reinterpret_cast<T*>(buffer.get());
-  auto span = gsl::make_span(first, elements);
-
-  if (fill) {
-    std::fill_n(first, elements, fill_value);
-  }
-
-  return span;
-}
-
 template <typename ElementType>
 inline void AllocateTempBufferForGetGreedySearchTopOne(
     int32_t batch_size,
     AllocatorPtr allocator,
-    IAllocatorUniquePtr<void>& buffer,
+    BufferUniquePtr& buffer,
     gsl::span<ElementType>& stage_1_scores,  // shape (batch_size, parts_of_vocab)
     gsl::span<int32_t>& stage_1_tokens,      // shape (batch_size, parts_of_vocab)
     gsl::span<ElementType>& output_scores,   // shape (batch_size)
-    gsl::span<int32_t>& output_tokens,       // shape (batch_size)
-    Stream* stream) {
+    gsl::span<int32_t>& output_tokens        // shape (batch_size)
+) {
   constexpr size_t kMaxPartsPerVocab = 128;
   const size_t stage_1_element_size = kMaxPartsPerVocab * batch_size;
   const size_t output_element_size = batch_size;
 
   // Note: use float to allocate buffer for temporary value buffer to avoid unalignment
-  size_t bytes = (stage_1_element_size + output_element_size) * (sizeof(float) + sizeof(int32_t));
-  buffer = IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
-  void* topk_data = buffer.get();
+  void* topk_data = allocator->Alloc((stage_1_element_size + output_element_size) * (sizeof(float) + sizeof(int32_t)));
+  BufferUniquePtr temp_buffer(topk_data, BufferDeleter(allocator));
+  buffer = std::move(temp_buffer);
 
   ElementType* stage_1_scores_data = reinterpret_cast<ElementType*>(topk_data);
   stage_1_scores = gsl::make_span<ElementType>(stage_1_scores_data, stage_1_element_size);

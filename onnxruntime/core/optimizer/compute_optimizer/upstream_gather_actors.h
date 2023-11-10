@@ -189,7 +189,7 @@ class LayerNormalizationGatherActor : public UpStreamGatherOperatorActorBase {
                    const logging::Logger& /* logger */,
                    const std::unordered_map<int, int>& /* propagate_input_indices */,
                    const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
-                   const std::unordered_map<int, SliceInfo>& /* new_gather_infos */) override;
+                   const std::unordered_map<int, SliceInfo>& /* new_gather_infos */) override { return true; }
 };
 
 class SoftmaxGatherActor : public SimplePointwiseGatherActor<true> {
@@ -202,12 +202,6 @@ class SoftmaxGatherActor : public SimplePointwiseGatherActor<true> {
                 std::unordered_map<int, int>& propagate_input_indices,
                 std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
-
-  bool PostProcess(Graph& /* graph */, Node& /* current_node */, const SliceInfo& /* info_without_node */,
-                   const logging::Logger& /* logger */,
-                   const std::unordered_map<int, int>& /* propagate_input_indices */,
-                   const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
-                   const std::unordered_map<int, SliceInfo>& /* new_gather_infos */) override;
 };
 
 class ReshapeGatherActor : public UpStreamGatherOperatorActorBase {

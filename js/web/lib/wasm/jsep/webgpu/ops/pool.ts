@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorView} from '../../tensor-view';
+import {DataType} from '../../../wasm-common';
+import {TensorView} from '../../tensor';
 import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo} from '../types';
+import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createIndicesHelper, ShaderHelper} from './common';
 
 // TODO: support:
 // - ceil_mode                 "test_maxpool_2d_ceil"
@@ -18,18 +19,20 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 1) {
     throw new Error('Pool ops requires 1 input.');
   }
-  if (inputs[0].dims.length !== 4 && inputs[0].dims.length !== 3) {
-    throw new Error('Pool ops supports 1-D or 2-D inputs only for now.');
+  if (inputs[0].dims.length !== 4) {
+    throw new Error('Pool ops supports 2-D inputs only for now.');
+  }
+  if (inputs[0].dataType !== DataType.float) {
+    throw new Error('Invalid input type.');
   }
 };
 
 const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
-    input: TensorView, attributes: AttributeType, isGlobalOperator: boolean): [AttributeType, number[]] => {
+    inputs: readonly TensorView[], attributes: AttributeType, isGlobalOperator: boolean): [AttributeType, number[]] => {
   const isChannelsLast = attributes.format === 'NHWC';
-  const inputShapeAsChannelFirst = input.dims.slice();
-  if (isChannelsLast) {
-    inputShapeAsChannelFirst.splice(1, 0, inputShapeAsChannelFirst.pop()!);  // Move channel to the second position.
-  }
+  const inputShapeAsChannelFirst = isChannelsLast ?
+      [inputs[0].dims[0], inputs[0].dims[3], inputs[0].dims[1], inputs[0].dims[2]] :
+      inputs[0].dims.slice();
   const hasDilations = Object.hasOwnProperty.call(attributes, 'dilations');
   const kernelShape = attributes.kernelShape.slice();
   const strides = attributes.strides.slice();
@@ -46,20 +49,25 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
   } else {
     Object.assign(newAttributes, {kernelShape, strides, pads, cacheKey: attributes.cacheKey});
   }
-  const outputShapeAsChannelLast = outputShapeAsChannelFirst.slice();
-  outputShapeAsChannelLast.push(outputShapeAsChannelLast.splice(1, 1)[0]);
-  return [newAttributes, isChannelsLast ? outputShapeAsChannelLast : outputShapeAsChannelFirst];
+  return [
+    newAttributes,
+    isChannelsLast ?
+        [
+          outputShapeAsChannelFirst[0], outputShapeAsChannelFirst[2], outputShapeAsChannelFirst[3],
+          outputShapeAsChannelFirst[1]
+        ] :
+        outputShapeAsChannelFirst
+  ];
 };
 
 const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
-    shaderHelper: ShaderHelper, x: IndicesHelper, xShape: readonly number[], outputShape: readonly number[],
-    attributes: AttributeType, op1: string, op2: string, start: string): string => {
+    shaderHelper: ShaderHelper, inputDims: readonly number[], outputShape: readonly number[], attributes: AttributeType,
+    op1: string, op2: string, dataType: string, start: string): string => {
   const isChannelsLast = attributes.format === 'NHWC';
-  const inputDims = xShape;
-  const dataType = x.type.value;
   const rank = inputDims.length;
   const outputSize = ShapeUtil.size(outputShape);
-  const output = outputVariable('output', x.type.tensor, outputShape);
+  const outputIndicesHelper = createIndicesHelper('output', outputShape);
+  const xIndicesHelper = createIndicesHelper('x', inputDims);
 
   if (attributes.kernelShape.length <= 2) {
     const kw = attributes.kernelShape[attributes.kernelShape.length - 1];
@@ -72,22 +80,22 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     let codeHEnd = '';
     if (pwStart + pwEnd !== 0) {
       codeW = `
-                for (var i: u32 = 0u; i < ${kw}u; i++) {
-                  xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
-                  if (xIndices[${dimIdxW}] < 0 || xIndices[${dimIdxW}] >= ${inputDims[dimIdxW]}) {
-                    pad++;
-                    continue;
-                  }
-                  let x_val = x[${x.indicesToOffset('xIndices')}];
-                  ${op1}
-                }`;
+              for (var i: u32 = 0u; i < ${kw}u; i++) {
+                xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
+                if (xIndices[${dimIdxW}] < 0 || xIndices[${dimIdxW}] >= ${inputDims[dimIdxW]}) {
+                  pad++;
+                  continue;
+                }
+                let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
+                ${op1}
+              }`;
     } else {
       codeW = `
-                for (var i: u32 = 0u; i < ${kw}u; i++) {
-                  xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
-                  let x_val = x[${x.indicesToOffset('xIndices')}];
-                  ${op1}
-                }`;
+              for (var i: u32 = 0u; i < ${kw}u; i++) {
+                xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
+                let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
+                ${op1}
+              }`;
     }
 
     if (attributes.kernelShape.length === 2) {
@@ -118,13 +126,19 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     }
 
     const poolingCode = `
-            ${shaderHelper.declareVariables(x, output)}
+            @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
+            @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
+
+            ${outputIndicesHelper.o2iImpl}
+            ${xIndicesHelper.i2oImpl}
 
             ${shaderHelper.mainStart()}
               ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-              let indices = ${output.offsetToIndices('global_idx')};
-              var xIndices = ${output.offsetToIndices('global_idx')};
+              ${outputIndicesHelper.indicesVariableDeclaration('indices')}
+              ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
+              ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
+              ${outputIndicesHelper.o2iCall('global_idx', 'xIndices')}
 
               var value: ${dataType} = ${dataType}(${start});
               var pad = 0;
@@ -155,18 +169,22 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
                 }
               }
               if (!isPad) {
-                let x_val = x[${x.indicesToOffset('xIndices')}];
+                let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
                 ${op1}
               }`;
     } else {
       padCode = `
               }
-              let x_val = x[${x.indicesToOffset('xIndices')}];
+              let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
               ${op1}
             `;
     }
     const poolingCode = `
-            ${shaderHelper.declareVariables(x, output)}
+            @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
+            @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
+
+            ${outputIndicesHelper.o2iImpl}
+            ${xIndicesHelper.i2oImpl}
 
             const pads = array<u32, ${padsRank}>(${attributes.pads.map(i => `${i}u`).join(',')});
             const inputDims = array<u32, ${rank}>(${inputDims.map(i => `${i}u`).join(',')});
@@ -176,12 +194,14 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
             ${shaderHelper.mainStart()}
               ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-              let indices = ${output.offsetToIndices('global_idx')};
-              let xIndices = ${output.offsetToIndices('global_idx')};
+              ${outputIndicesHelper.indicesVariableDeclaration('indices')}
+              ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
+              ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
+              ${outputIndicesHelper.o2iCall('global_idx', 'xIndices')}
 
               var offsets: array<u32, ${stridesRank}>;
 
-              var value = ${output.type.value}(${start});
+              var value = ${dataType}(${start});
               var pad = 0;
               var isPad = false;
 
@@ -233,13 +253,13 @@ export interface AveragePoolAttributes extends PoolCommonAttributes, AttributeWi
 }
 
 const createAveragePoolProgramInfo =
-    (name: string, input: TensorView, isGlobalOperator: boolean, attributes: AveragePoolAttributes): ProgramInfo => {
+    (inputs: readonly TensorView[], metadata: ProgramMetadata, isGlobalOperator: boolean,
+     attributes: AveragePoolAttributes): ProgramInfo => {
       const [adjustedAttributes, outputShape] =
-          getAdjustedPoolAttributesAndOutputShape(input, attributes, isGlobalOperator);
+          getAdjustedPoolAttributesAndOutputShape(inputs, attributes, isGlobalOperator);
       const kernelSize = ShapeUtil.size(adjustedAttributes.kernelShape);
 
-      const x = inputVariable('x', input.dataType, input.dims);
-      const dataType = x.type.value;
+      const dataType = 'f32';
 
       const op1 = 'value += x_val;';
       let op2 = '';
@@ -249,14 +269,11 @@ const createAveragePoolProgramInfo =
         op2 += `value /= ${dataType}(${kernelSize} - pad);`;
       }
       return {
-        name,
-        shaderCache: {hint: attributes.cacheKey},
-        getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: input.dataType}],
-          dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
-        }),
-        getShaderSource: shaderHelper =>
-            generatePoolingCode(shaderHelper, x, input.dims, outputShape, adjustedAttributes, op1, op2, '0.0'),
+        ...metadata,
+        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+        getShaderSource: shaderHelper => generatePoolingCode(
+            shaderHelper, inputs[0].dims, outputShape, adjustedAttributes, op1, op2, dataType, '0.0'),
+        dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
       };
     };
 
@@ -274,7 +291,8 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
 
 export const averagePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createAveragePoolProgramInfo('AveragePool', context.inputs[0], false, attributes));
+  const metadata = {name: 'AveragePool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
+  context.compute({...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, false, attributes)});
 };
 
 const globalPoolAttributes = {
@@ -296,7 +314,8 @@ export const parseGlobalAveragePoolAttributes = (attributes: Record<string, unkn
 
 export const globalAveragePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createAveragePoolProgramInfo('GlobalAveragePool', context.inputs[0], true, attributes));
+  const metadata = {name: 'GlobalAveragePool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
+  context.compute({...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, true, attributes)});
 };
 
 export interface MaxPoolAttributes extends PoolCommonAttributes, AttributeWithCacheKey {
@@ -305,29 +324,27 @@ export interface MaxPoolAttributes extends PoolCommonAttributes, AttributeWithCa
 }
 
 const createMaxPoolProgramInfo =
-    (name: string, input: TensorView, isGlobalOperator: boolean, attributes: MaxPoolAttributes): ProgramInfo => {
+    (inputs: readonly TensorView[], metadata: ProgramMetadata, isGlobalOperator: boolean,
+     attributes: MaxPoolAttributes): ProgramInfo => {
       const [adjustedAttributes, outputShape] =
-          getAdjustedPoolAttributesAndOutputShape(input, attributes, isGlobalOperator);
+          getAdjustedPoolAttributesAndOutputShape(inputs, attributes, isGlobalOperator);
       const op1 = `
       value = max(x_val, value);
     `;
       const op2 = '';
-      const x = inputVariable('x', input.dataType, input.dims);
       return {
-        name,
-        shaderCache: {hint: attributes.cacheKey},
-        getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: input.dataType}],
-          dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
-        }),
+        ...metadata,
+        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
         getShaderSource: shaderHelper =>
-            generatePoolingCode(shaderHelper, x, input.dims, outputShape, adjustedAttributes, op1, op2, '-1e5'),
+            generatePoolingCode(shaderHelper, inputs[0].dims, outputShape, adjustedAttributes, op1, op2, 'f32', '-1e5'),
+        dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
       };
     };
 
 export const maxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createMaxPoolProgramInfo('MaxPool', context.inputs[0], false, attributes));
+  const metadata = {name: 'MaxPool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
+  context.compute({...metadata, get: () => createMaxPoolProgramInfo(context.inputs, metadata, false, attributes)});
 };
 
 export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {
@@ -353,5 +370,6 @@ export const parseGlobalMaxPoolAttributes = (attributes: Record<string, unknown>
 
 export const globalMaxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createMaxPoolProgramInfo('GlobalMaxPool', context.inputs[0], true, attributes));
+  const metadata = {name: 'GlobalMaxPool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
+  context.compute({...metadata, get: () => createMaxPoolProgramInfo(context.inputs, metadata, true, attributes)});
 };

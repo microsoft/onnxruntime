@@ -38,7 +38,6 @@ struct TensorrtExecutionProviderInfo {
   bool context_memory_sharing_enable{false};
   bool layer_norm_fp32_fallback{false};
   bool timing_cache_enable{false};
-  std::string timing_cache_path{""};
   bool force_timing_cache{false};
   bool detailed_build_log{false};
   bool build_heuristics_enable{false};
@@ -55,7 +54,6 @@ struct TensorrtExecutionProviderInfo {
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtTensorRTProviderOptionsV2& info);
-  static void UpdateProviderOptions(void* provider_options, const ProviderOptions& options, bool string_copy);
 
   std::vector<OrtCustomOpDomain*> custom_op_domain_list;
 };

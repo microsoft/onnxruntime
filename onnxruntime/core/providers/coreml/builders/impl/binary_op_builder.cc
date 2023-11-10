@@ -6,7 +6,6 @@
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
 #ifdef __APPLE__
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
 
@@ -19,8 +18,8 @@ class BinaryOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
 #ifdef __APPLE__
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                                             const logging::Logger& logger) const override;
 #endif
   // Operator support related
   int GetMinSupportedOpSet(const Node& node) const override;
@@ -31,31 +30,15 @@ class BinaryOpBuilder : public BaseOpBuilder {
 #ifdef __APPLE__
 static bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
-
-  const auto* x_shape_proto = input_defs[0]->Shape();
-  const auto* y_shape_proto = input_defs[1]->Shape();
-
-  if (!x_shape_proto || !y_shape_proto) {
-    LOGS(logger, WARNING) << "[" << node.Name() << "] Input shape is missing";
+  std::vector<int64_t> input_shape1;
+  if (!GetShape(*input_defs[0], input_shape1, logger))
     return false;
-  }
 
-  using Dimension = ONNX_NAMESPACE::TensorShapeProto::Dimension;
-  auto dim_eq =
-      [](const Dimension& x_dim, const Dimension& y_dim) {
-        const bool x_has_dim_value = utils::HasDimValue(x_dim);
-        if (x_has_dim_value != utils::HasDimValue(y_dim)) {
-          return false;
-        }
-        if (x_has_dim_value) {
-          return x_dim.dim_value() == y_dim.dim_value();
-        }
-        return x_dim.dim_param() == y_dim.dim_param();
-      };
+  std::vector<int64_t> input_shape2;
+  if (!GetShape(*input_defs[1], input_shape2, logger))
+    return false;
 
-  return std::equal(x_shape_proto->dim().begin(), x_shape_proto->dim().end(),
-                    y_shape_proto->dim().begin(), y_shape_proto->dim().end(),
-                    dim_eq);
+  return input_shape1 == input_shape2;
 }
 
 // Add operator related

@@ -65,7 +65,7 @@ def generate_sample(desc, device=None):
 
 
 def get_device_index(device):
-    if type(device) == str:  # noqa: E721
+    if type(device) == str:
         # could be 'cuda:0', 'cuda:1', or 'cpu'. with cpu, set index=0
         device = torch.device(device)
     return 0 if device.index is None else device.index
@@ -580,10 +580,10 @@ def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partiti
 
     if is_partitioned:
         assert_msg = (
-            f"Couldn't find checkpoint file {checkpoint_file}."
+            "Couldn't find checkpoint file {}."
             "Optimizer partitioning is enabled using ZeRO. Please make sure that the "
-            f"checkpoint file exists for rank {model.world_rank} of {model.world_size}."
-        )
+            "checkpoint file exists for rank {} of {}."
+        ).format(checkpoint_file, model.world_rank, model.world_size)
     else:
         assert_msg = f"Couldn't find checkpoint file {checkpoint_file}."
 
@@ -1005,7 +1005,7 @@ class ORTTrainer:
         self, input_desc_with_, internal_learning_rate, internal_loss_scale, *args, **kwargs
     ):
         fetches = None
-        if type(args) == tuple and len(args) == 1 and type(args[0]) == list:  # noqa: E721
+        if type(args) == tuple and len(args) == 1 and type(args[0]) == list:
             input = tuple(args[0])
         else:
             input = args
@@ -1174,7 +1174,7 @@ class ORTTrainer:
         )
 
         if len(session_run_results) == 1:
-            return session_run_results[next(iter(session_run_results.keys()))]
+            return session_run_results[list(session_run_results.keys())[0]]
         else:
             return [session_run_results[output_desc.name_] for output_desc in output_desc]
 

@@ -5,10 +5,6 @@
 
 #include "core/providers/coreml/builders/op_builder.h"
 
-#ifdef __APPLE__
-#include "core/providers/coreml/builders/coreml_spec.h"
-#endif
-
 namespace onnxruntime {
 namespace coreml {
 
@@ -23,13 +19,12 @@ class BaseOpBuilder : public IOpBuilder {
 #ifdef __APPLE__
  public:
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
-  Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
-                           const OpBuilderInputParams& input_params,
-                           const logging::Logger& logger) const override final;
+  [[nodiscard]] Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
+                                         const logging::Logger& logger) const override final;
 
  protected:
-  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                       const logging::Logger& logger) const = 0;
+  [[nodiscard]] virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                                                     const logging::Logger& logger) const = 0;
 
   static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer>
   CreateNNLayer(ModelBuilder& model_builder, const Node& node);
@@ -40,7 +35,7 @@ class BaseOpBuilder : public IOpBuilder {
   // Operator support related
  public:
   bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
-                     const logging::Logger& logger) const override final;
+                     const logging::Logger& logger) const override;
 
  protected:
   virtual bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
@@ -51,12 +46,11 @@ class BaseOpBuilder : public IOpBuilder {
   virtual bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const;
 
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 20; }
+  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 19; }
 
  private:
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;
-  bool HasSupportedInputs(const Node& node, const OpBuilderInputParams& input_params,
-                          const logging::Logger& logger) const;
+  bool HasSupportedInputs(const Node& node, const logging::Logger& logger) const;
 };
 
 }  // namespace coreml

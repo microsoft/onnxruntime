@@ -44,4 +44,4 @@ void StoreSpanIntoDisjointBuffers(
   LoadOrStoreDisjointBuffers(false /*store into buffers*/, num_buffers, get_buffer, buffer_span);
 }
 
-}  // namespace _winml
+} // namespace _winml

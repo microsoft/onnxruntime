@@ -5,7 +5,9 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -504,7 +506,7 @@ namespace Microsoft.ML.OnnxRuntime
                     "Cannot map managed strings buffer to native OrtValue. Use string specific interfaces");
             }
 
-            var shapeSize = ShapeUtils.GetSizeForShape(shape);
+            var shapeSize = ArrayUtilities.GetSizeForShape(shape);
             var requiredBufferSizeInBytes = shapeSize * typeInfo.TypeSize;
 
             // We allow creating a tensor over part of the buffer
@@ -550,7 +552,7 @@ namespace Microsoft.ML.OnnxRuntime
                     "Cannot map managed strings buffer to native OrtValue. Use string specific interfaces.");
             }
 
-            var shapeSize = ShapeUtils.GetSizeForShape(shape);
+            var shapeSize = ArrayUtilities.GetSizeForShape(shape);
             // We allow creating a tensor over part of the buffer
             if (shapeSize > memory.Length)
             {
@@ -743,7 +745,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Creates an OrtValue that contains a string tensor of specified shape, and
         /// containing empty strings. String tensors are always on CPU.
-        /// Use StringTensorSetElementAt to assign individual elements values.
+        /// Use FillStringTensorElement to assign individual elements values.
         /// </summary>
         /// <param name="allocator"></param>
         /// <returns>disposable OrtValue</returns>
@@ -776,7 +778,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="str">ReadOnlySpan over chars</param>
         /// <param name="index">index of the string element within the tensor
         /// must be within bounds of [0, N)</param>
-        public void StringTensorSetElementAt(ReadOnlySpan<char> str, int index)
+        public void FillStringTensorElement(ReadOnlySpan<char> str, int index)
         {
             unsafe
             {
@@ -803,9 +805,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="rom">ReadOnlyMemory instance over an array of chars</param>
         /// <param name="index">index of the string element within the tensor
         /// must be within bounds of [0, N)</param>
-        public void StringTensorSetElementAt(ReadOnlyMemory<char> rom, int index)
+        public void FillStringTensorElement(ReadOnlyMemory<char> rom, int index)
         {
-            StringTensorSetElementAt(rom.Span, index);
+            FillStringTensorElement(rom.Span, index);
         }
 
         /// <summary>
@@ -816,7 +818,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="utf8Bytes">read only span of bytes</param>
         /// <param name="index">flat index of the element in the string tensor</param>
-        public void StringTensorSetElementAt(ReadOnlySpan<byte> utf8Bytes, int index)
+        public void FillStringTensorElement(ReadOnlySpan<byte> utf8Bytes, int index)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetResizedStringTensorElementBuffer(Handle,
                                   (UIntPtr)index, (UIntPtr)utf8Bytes.Length, out IntPtr buffer));
@@ -1109,7 +1111,7 @@ namespace Microsoft.ML.OnnxRuntime
                 int count = 0;
                 foreach (var key in keys)
                 {
-                    ortValues[0].StringTensorSetElementAt(key.AsSpan(), count++);
+                    ortValues[0].FillStringTensorElement(key.AsSpan(), count++);
                 }
 
                 ortValues[1] = CreateTensorValueFromMemory(values, shape);
@@ -1161,7 +1163,7 @@ namespace Microsoft.ML.OnnxRuntime
                 int count = 0;
                 foreach (var value in values)
                 {
-                    ortValues[1].StringTensorSetElementAt(value.AsSpan(), count++);
+                    ortValues[1].FillStringTensorElement(value.AsSpan(), count++);
                 }
                 return CreateMap(ref ortValues[0], ref ortValues[1]);
             }

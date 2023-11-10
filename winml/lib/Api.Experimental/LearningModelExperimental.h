@@ -20,11 +20,11 @@ struct LearningModelExperimental : LearningModelExperimentalT<LearningModelExper
   Microsoft::AI::MachineLearning::LearningModel model_;
 };
 
-}  // namespace WINML_EXPERIMENTALP
+}// namespace WINML_EXPERIMENTALP
 
 namespace WINML_EXPERIMENTAL::factory_implementation {
 
 struct LearningModelExperimental
   : LearningModelExperimentalT<LearningModelExperimental, implementation::LearningModelExperimental> {};
 
-}  // namespace WINML_EXPERIMENTAL::factory_implementation
+}// namespace WINML_EXPERIMENTAL::factory_implementation

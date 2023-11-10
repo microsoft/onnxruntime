@@ -9,11 +9,11 @@ namespace js {
 JSEP_KERNEL_IMPL(MatMul, MatMul)
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(MatMul, kOnnxDomain, 1, 12, kJsExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", JsepSupportedFloatTypes()),
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                   MatMul);
 
 ONNX_OPERATOR_KERNEL_EX(MatMul, kOnnxDomain, 13, kJsExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", JsepSupportedFloatTypes()),
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         MatMul);
 
 }  // namespace js

@@ -48,22 +48,22 @@ class FusionShape(Fusion):
         input_name_to_nodes: Dict[str, List[NodeProto]],
         output_name_to_node: Dict[str, NodeProto],
     ):
-        #
-        # Simplify subgraph like
-        #
-        #          (2d_input)
-        #           /       \
-        #       Shape       shape
-        #       /             \
-        #   Gather(indices=0)  Gather(indices=1)
-        #       |                |
-        #   Unsqueeze(axes=0)   Unsqueeze(axes=0)
-        #          \           /
-        #             Concat
-        #               |
-        #
-        # into  (2d_input) --> Shape -->
-        #
+        """
+        Smplify subgraph like
+
+                   (2d_input)
+                    /       \
+                Shape       shape
+                /             \
+            Gather(indices=0)  Gather(indices=1)
+                |                |
+            Unsqueeze(axes=0)   Unsqueeze(axes=0)
+                   \\          /
+                      Concat
+                        |
+
+        into  (2d_input) --> Shape -->
+        """
         opset_version = self.model.get_opset_version()
 
         inputs = len(concat_node.input)

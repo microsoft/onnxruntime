@@ -1,20 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/narrow.h"
-#include "core/optimizer/initializer.h"
-#include "core/providers/common.h"
-#include "core/providers/coreml/builders/helper.h"
-#include "core/providers/coreml/builders/impl/base_op_builder.h"
-#include "core/providers/coreml/builders/op_builder_factory.h"
-#include "core/providers/coreml/shape_utils.h"
-#include "core/providers/shared/utils/utils.h"
-
 #ifdef __APPLE__
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
+#include "core/common/narrow.h"
+#include "core/providers/common.h"
+#include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/shared/utils/utils.h"
+#include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -26,8 +24,8 @@ class ActivationOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                                             const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
@@ -137,12 +135,6 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
     return false;
   }
 
-  // ensure that the third from last dimension is not dynamic
-  if (x_shape[x_rank - 3] == -1) {
-    LOGS(logger, VERBOSE) << "PRelu 'X' input must have a known third from last dimension.";
-    return false;
-  }
-
   // slope input must be a constant initializer
   if (!input_params.graph_viewer.IsConstantInitializer(input_defs[1]->Name(), true)) {
     LOGS(logger, VERBOSE) << "PRelu 'slope' input must be a constant initializer tensor";
@@ -154,7 +146,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   // - have 1 element
   {
     std::vector<int64_t> slope_shape;
-    if (!GetStaticShape(*input_defs[1], slope_shape, logger)) {
+    if (!GetShape(*input_defs[1], slope_shape, logger)) {
       return false;
     }
     const bool has_per_channel_slopes =

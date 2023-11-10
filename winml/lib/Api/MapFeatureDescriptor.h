@@ -21,7 +21,7 @@ struct MapFeatureDescriptor : MapFeatureDescriptorT<
     winml::ILearningModelFeatureDescriptor valueKind
   );
 
-  // IMapDescriptor
+   // IMapDescriptor
   winml::TensorKind KeyKind();
 
   winml::ILearningModelFeatureDescriptor ValueDescriptor();

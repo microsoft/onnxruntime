@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/cpu/rnn/rnn_helpers.h"
 #include "orttraining/training_ops/cpu/rnn/lstm_io_utils.h"
 
 namespace onnxruntime::lstm {
@@ -21,7 +22,7 @@ class LSTMGradImpl {
   const int hidden_size_;
   const int input_size_;
   concurrency::ThreadPool* thread_pool_;
-  const AllocatorPtr allocator_;
+  AllocatorPtr allocator_;
   IAllocatorUniquePtr<T> grad_a_ptr_;
   gsl::span<T> grad_a_span_;
   IAllocatorUniquePtr<T> grad_Ct2_ptr_;

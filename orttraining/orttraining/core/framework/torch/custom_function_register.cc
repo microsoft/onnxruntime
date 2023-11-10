@@ -95,16 +95,6 @@ void OrtTorchFunctionPool::RegisterTorchAutogradFunction(
   RegisterEntry(mutex_, key, backward.get(), backward_core_pool_);
 }
 
-void OrtTorchFunctionPool::RegisterShapeInferenceFunction(const std::string& key,
-                                                          PyObject* obj) {
-  RegisterEntry(mutex_, key, obj, shape_inference_function_pool_);
-}
-
-void OrtTorchFunctionPool::RegisterInputAliasFunction(const std::string& key,
-                                                      PyObject* obj) {
-  RegisterEntry(mutex_, key, obj, input_alias_function_pool_);
-}
-
 static void RegisterEntry(
     std::mutex& mutex,
     PyObject* obj,
@@ -163,26 +153,6 @@ PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
   return iter->second.get();
 }
 
-std::optional<PyObject*> OrtTorchFunctionPool::TryGettingShapeInferenceFunction(const std::string& key) {
-  ORT_ENFORCE(!key.empty(), "Cannot be empty string.");
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto iter = shape_inference_function_pool_.find(key);
-  if (iter != shape_inference_function_pool_.end()) {
-    return iter->second.get();
-  }
-  return std::nullopt;
-}
-
-std::optional<PyObject*> OrtTorchFunctionPool::TryGettingInputAliasFunction(const std::string& key) {
-  ORT_ENFORCE(!key.empty(), "Cannot be empty string.");
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto iter = input_alias_function_pool_.find(key);
-  if (iter != input_alias_function_pool_.end()) {
-    return iter->second.get();
-  }
-  return std::nullopt;
-}
-
 void OrtTorchFunctionPool::RegisterMiscellaneousConstInput(PyObject* obj) {
   ORT_ENFORCE(obj, "Cannot register NULL reference input.");
   const void* address = static_cast<const void*>(obj);
@@ -235,8 +205,6 @@ void OrtTorchFunctionPool::UnRegisterGlobalFunctions() {
 void OrtTorchFunctionPool::UnRegisterModelSpecificFunctions() {
   forward_core_pool_.clear();
   backward_core_pool_.clear();
-  shape_inference_function_pool_.clear();
-  input_alias_function_pool_.clear();
   miscellaneous_const_input_pool_.clear();
 }
 

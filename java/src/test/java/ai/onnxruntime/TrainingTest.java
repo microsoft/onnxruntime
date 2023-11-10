@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
@@ -68,6 +69,8 @@ public class TrainingTest {
     }
   }
 
+  // this test is not enabled as ORT Java doesn't support supplying an output buffer
+  @Disabled
   @Test
   public void testTrainingSessionTrainStep() throws OrtException {
     String checkpointPath = TestHelpers.getResourcePath("/checkpoint.ckpt").toString();
@@ -96,11 +99,14 @@ public class TrainingTest {
             ByteBuffer.allocateDirect(4 * expectedOutput.length)
                 .order(ByteOrder.nativeOrder())
                 .asFloatBuffer();
-        OnnxTensor outputTensor = OnnxTensor.createTensor(env, output, new long[0]);
+        OnnxTensor outputTensor =
+            OnnxTensor.createTensor(env, output, new long[expectedOutput.length]);
         outputMap.put("onnx::loss::21273", outputTensor);
-        try (OrtSession.Result r = trainingSession.trainStep(pinnedInputs, outputMap)) {
-          Assertions.assertEquals(expectedOutput[0], (float) outputTensor.getValue(), 1e-3f);
+        /* Disabled as we haven't implemented this yet
+        try (trainingSession.trainStep(pinnedInputs, outputMap)) {
+          Assertions.assertArrayEquals(expectedOutput, (float[]) outputTensor.getValue(), 1e-3f);
         }
+        */
       } finally {
         OnnxValue.close(outputMap);
         OnnxValue.close(pinnedInputs);

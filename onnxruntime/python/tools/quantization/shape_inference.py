@@ -81,17 +81,7 @@ def quant_pre_process(
             if not skip_symbolic_shape:
                 # Need to save the inferenced model to file so as to run the optimizer
                 input_model_path = str(temp_path / "symbolic_shape_inferred.onnx")
-                if save_as_external_data:
-                    onnx.save_model(
-                        model,
-                        input_model_path,
-                        save_as_external_data=True,
-                        all_tensors_to_one_file=all_tensors_to_one_file,
-                        size_threshold=external_data_size_threshold,
-                        convert_attribute=False,
-                    )
-                else:
-                    onnx.save(model, input_model_path)
+                onnx.save(model, input_model_path)
                 model = None
 
             opt_model_path = str(temp_path / "optimized.onnx")
@@ -99,10 +89,7 @@ def quant_pre_process(
                 sess_option = onnxruntime.SessionOptions()
                 sess_option.optimized_model_filepath = opt_model_path
                 sess_option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-                sess = onnxruntime.InferenceSession(input_model_path, sess_option, providers=["CPUExecutionProvider"])
-                # Close the session to avoid the cleanup error on Windows for temp folders
-                # https://github.com/microsoft/onnxruntime/issues/17627
-                del sess
+                _ = onnxruntime.InferenceSession(input_model_path, sess_option, providers=["CPUExecutionProvider"])
             except Exception:
                 logger.error(
                     "ONNX Runtime Model Optimization Failed! Consider rerun with option `--skip_optimization'."

@@ -32,4 +32,4 @@ class NominalRangeConverter {
   float scale;
   int32_t shift;
 };
-}  // namespace _winml
+} // namespace _winml

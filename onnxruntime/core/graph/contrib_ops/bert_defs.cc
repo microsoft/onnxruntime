@@ -126,7 +126,7 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
 }
 
 void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
-                                             int past_key_index,
+                                             int past_input_index,
                                              bool dmmha_packing = false) {
   // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
 
@@ -171,7 +171,10 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       *output_shape.add_dim() = query_dims[1];
       *output_shape.add_dim() = query_dims[2] * query_dims[4];
       updateOutputShape(ctx, 0, output_shape);
-    } else if (hasInputShape(ctx, 2)) {
+      return;
+    }
+
+    if (hasInputShape(ctx, 2)) {
       auto& value_shape = getInputShape(ctx, 2);
       auto& value_dims = value_shape.dim();
       if (value_dims.size() != 3 && value_dims.size() != 4) {
@@ -189,7 +192,10 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
                                     ? (dmmha_packing ? value_dims[2] / 3 : value_dims[2])
                                     : value_dims[1] * value_dims[3];
       updateOutputShape(ctx, 0, output_shape);
-    } else if (hasInputShape(ctx, 1)) {
+      return;
+    }
+
+    if (hasInputShape(ctx, 1)) {
       auto& key_shape = getInputShape(ctx, 1);
       if (key_shape.dim().size() == 5) {  // packed KV
         ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput(ctx);
@@ -198,20 +204,20 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   }
 
   if (ctx.getNumOutputs() > 1) {  // has present output
-    if (hasInputShape(ctx, past_key_index)) {
-      auto& past_shape = getInputShape(ctx, past_key_index);
+    if (hasInputShape(ctx, past_input_index)) {
+      auto& past_shape = getInputShape(ctx, past_input_index);
       auto& past_dims = past_shape.dim();
       if (past_dims.size() != 4) {
-        fail_shape_inference("The past_key input shall be 4 dimensions");
+        fail_shape_inference("The past input shall be 5 dimensions");
       }
 
       auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
       if (past_present_share_buffer) {
-        propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);
-        propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
+        propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
+        propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_input_index) + 1, 2);
       } else {
         if (sequence_length > 0 && past_dims[2].has_dim_value()) {
-          int64_t total_sequence_length = sequence_length + past_dims[2].dim_value();
+          int64_t total_sequence_length = sequence_length + past_shape.dim(3).dim_value();
 
           ONNX_NAMESPACE::TensorShapeProto present_shape;
           for (auto& dim : past_dims) {
@@ -223,59 +229,6 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
           updateOutputShape(ctx, 2, present_shape);
         }
       }
-    }
-  }
-}
-
-void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
-  // Output 0 has shape (batch_size, sequence_length, hidden_size)
-
-  // Q, K and V:
-  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-  //   Input 1 (key) has shape (batch_size, kv_sequence_length, kv_hidden_size)
-  //   Input 2 (value) has shape (batch_size, kv_sequence_length, kv_hidden_size)
-
-  // Type inference
-  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-  // Shape inference
-  if (hasInputShape(ctx, 0)) {
-    auto& query_shape = getInputShape(ctx, 0);
-    auto& query_dims = query_shape.dim();
-
-    if (query_dims.size() != 3) {
-      fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
-    }
-
-    if (hasInputShape(ctx, 2)) {
-      auto& value_shape = getInputShape(ctx, 2);
-      auto& value_dims = value_shape.dim();
-      if (value_dims.size() != 3) {
-        fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
-      }
-
-      ONNX_NAMESPACE::TensorShapeProto output_shape;
-      *output_shape.add_dim() = query_dims[0];
-      *output_shape.add_dim() = query_dims[1];
-      *output_shape.add_dim() = query_dims[2];
-      updateOutputShape(ctx, 0, output_shape);
-      return;
-    } else {
-      fail_shape_inference("Missing input 2 (value)");
-    }
-  }
-
-  if (ctx.getNumOutputs() > 1) {  // has present output
-    if (hasInputShape(ctx, past_key_index)) {
-      auto& past_shape = getInputShape(ctx, past_key_index);
-      auto& past_dims = past_shape.dim();
-      if (past_dims.size() != 4) {
-        fail_shape_inference("The past_key input shall be 4 dimensions");
-      }
-      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);
-      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
-      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, past_key_index, 1);
-      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
     }
   }
 }
@@ -529,135 +482,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PackedAttentionTypeAndShapeInference(ctx);
         }));
 
-constexpr const char* PackedMultiHeadAttention_ver1_doc = R"DOC(
-This is the packed version of MultiHeadAttention.
-
-Sequences in one batch usually don't have same length and they are padded to have same length,
-e.g., below is a batch with 3 sequences and * is padding token.
-  Sequence_0:   0,  1*, 2*,  3*
-  Sequence_1:   4,  5,  6*,  7*
-  Sequence_2:   8,  9,  10,  11
-
-PackedMultiHeadAttention is designed to takes in packed input, i.e., only the real tokens without padding.
-An input as above will be packed into 3 tensors like below:
- - query ([q0, q4, q5, q8, q9, q10, q11])
- - key ([k0, k4, k5, k8, k9, k10, k11])
- - value ([v0, v4, v5, v8, v9, v10, v11])
- - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
- - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
-
-The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
-Token_offset records the offset of token in the unpacked input.
-cumulative_sequence_length records cumulated length of each sequnces length.
-
-The operator only supports BERT like model with padding on right now.
-)DOC";
-
-// Shape inference for PackedMultiHeadAttention. Here are the shapes of inputs and output:
-// When Q, K and V are not packed:
-//   Input 'query':                      (token_count, hidden_size)
-//   Input 'key':                        (token_count, hidden_size)
-//   Input 'value':                      (token_count, v_hidden_size)
-// When Q, K and V are packed:
-//   Input 'query':                      (token_count, num_heads, 3, head_size)
-//   Input 'key':                        None
-//   Input 'value':                      None
-// Input 'bias':                         (hidden_size + hidden_size + v_hidden_size)
-// Input 'token_offset':                 (batch_size, sequence_length)
-// Input 'cumulative_sequence_length':   (batch_size + 1)
-// Input 'relative_position_bias':       (batch_size or 1, num_heads, sequence_length, sequence_length) or None
-// Output 'output':                      (token_count, v_hidden_size)
-void PackedMultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
-  // Type inference
-  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-  // Shape inference
-  if (hasInputShape(ctx, 0)) {
-    auto& query_shape = getInputShape(ctx, 0);
-    auto& query_dims = query_shape.dim();
-
-    if (query_dims.size() != 2 && query_dims.size() != 4) {
-      fail_shape_inference("Inputs 0 (query) shall be 2 or 4 dimensions");
-    }
-
-    if (query_dims.size() == 4) {  // packed QKV
-      ONNX_NAMESPACE::TensorShapeProto output_shape;
-      *output_shape.add_dim() = query_dims[0];
-      *output_shape.add_dim() = query_dims[1] * query_dims[3];
-      updateOutputShape(ctx, 0, output_shape);
-      return;
-    }
-
-    if (hasInputShape(ctx, 2)) {
-      auto& value_shape = getInputShape(ctx, 2);
-      auto& value_dims = value_shape.dim();
-      if (value_dims.size() != 2) {
-        fail_shape_inference("Inputs 2 (value) shall be 2 dimensions");
-      }
-
-      ONNX_NAMESPACE::TensorShapeProto output_shape;
-      *output_shape.add_dim() = query_dims[0];
-      *output_shape.add_dim() = value_dims[1];
-      updateOutputShape(ctx, 0, output_shape);
-      return;
-    }
-  }
-}
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    PackedMultiHeadAttention, 1,
-    OpSchema()
-        .SetDoc(PackedMultiHeadAttention_ver1_doc)
-        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-        .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is -10000.0f",
-              AttributeProto::FLOAT, OPTIONAL_VALUE)
-        .Attr("scale",
-              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
-              AttributeProto::FLOAT,
-              OPTIONAL_VALUE)
-        .Input(0,
-               "query",
-               "Query with shape (token_count, hidden_size) or packed qkv with shape (token_count, num_heads, 3, head_size)",
-               "T")
-        .Input(1,
-               "key",
-               "Key with shape (token_count, hidden_size)",
-               "T",
-               OpSchema::Optional)
-        .Input(2,
-               "value",
-               "Value with shape (token_count, v_hidden_size)",
-               "T",
-               OpSchema::Optional)
-        .Input(3,
-               "bias",
-               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
-               "T",
-               OpSchema::Optional)
-        .Input(4,
-               "token_offset",
-               "Offset of each token before packing, with shape (batch_size, sequence_length).",
-               "M")
-        .Input(5,
-               "cumulative_sequence_length",
-               "A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.",
-               "M")
-        .Input(6,
-               "relative_position_bias",
-               "It specifies the additional bias to QxK'. The shape is (batch_size, num_heads, sequence_length, sequence_length)"
-               " or (1, num_heads, sequence_length, sequence_length)",
-               "T",
-               OpSchema::Optional)
-        .Output(0,
-                "output",
-                "output tensor with shape (token_count, v_hidden_size)",
-                "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
-        .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask, offset and sequence length to integer types")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          PackedMultiHeadAttentionTypeAndShapeInference(ctx);
-        }));
-
 constexpr const char* DecoderMaskedSelfAttention_ver1_doc = R"DOC(
 Self attention that supports input sequence length of 1.
 
@@ -793,10 +617,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
-        .Attr("output_qk",
-              "Need output the cross attention MatMul(Q, K)",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, 1, hidden_size) or packed QKV with shape "
@@ -874,7 +694,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_key",
-                "present state for key with shape (batch_size, num_heads, total_sequence_length, head_size). "
+                "past state for key with shape (batch_size, num_heads, total_sequence_length, head_size). "
                 "If past_present_share_buffer is set, "
                 "its shape is (batch_size, num_heads, max_sequence_length, head_size), "
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
@@ -882,18 +702,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
-                "present state for value with shape (batch_size, num_heads, total_sequence_length, head_size). "
+                "past state for value with shape (batch_size, num_heads, total_sequence_length, head_size). "
                 "If past_present_share_buffer is set, "
                 "its shape is (batch_size, num_heads, max_sequence_length, head_size), "
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
                 "T",
                 OpSchema::Optional)
-        .Output(3,
-                "qk",
-                "normalized Q * K, of shape (batch_size, num_heads, 1, head_size). ",
-                "V",
-                OpSchema::Optional)
-        .TypeConstraint("V", {"tensor(float)"}, "Constrain qk output types to float32 tensors.")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")
@@ -946,8 +760,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "key_padding_mask",
-               "Key padding mask with shape (batch_size), (3 * batch_size + 2), (batch_size, kv_sequence_length), (batch_size, total_sequence_length), "
-               "or (batch_size, sequence_length, total_sequence_length)",
+               "Key padding mask with shape (batch_size) or (3 * batch_size + 2) or (batch_size, kv_sequence_length)",
                "M",
                OpSchema::Optional)
         .Input(5,
@@ -986,84 +799,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           MultiHeadAttentionTypeAndShapeInference(ctx, 6);
-        }));
-
-constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
-Group Query Self/Cross Attention.
-
-Supports different number of heads for q and kv.
-)DOC";
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    GroupQueryAttention, 1,
-    OpSchema()
-        .SetDoc(GroupQueryAttention_ver1_doc)
-        .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
-        .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
-        .Attr("unidirectional",
-              "Whether every token can only attend to previous tokens. Default value is 1.",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
-        .Attr("is_past_bsnh",
-              "Whether past kv uses BSNH, otherwise BNSH. Default value is 1 (BSNH).",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
-        .Attr("scale",
-              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
-              AttributeProto::FLOAT,
-              OPTIONAL_VALUE)
-        .Input(0,
-               "query",
-               "Query with shape (batch_size, sequence_length, hidden_size)",
-               "T")
-        .Input(1,
-               "key",
-               "Key with shape (batch_size, kv_sequence_length, kv_hidden_size) ",
-               "T")
-        .Input(2,
-               "value",
-               "Value with shape (batch_size, kv_sequence_length, kv_hidden_size)",
-               "T")
-        .Input(3,
-               "past_key",
-               "past state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key"
-               "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
-               "T",
-               OpSchema::Optional)
-        .Input(4,
-               "past_value",
-               "past state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value"
-               "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
-               "T",
-               OpSchema::Optional)
-        .Input(5,
-               "past_sequence_length",
-               "When buffered past_key and past_value is used (present_key uses same tensor as past_key), required"
-               "to specify past_sequence_length (could be 0). Otherwise, past_sequence_length inferred from past_key.",
-               "M",
-               OpSchema::Optional)
-        .Output(0,
-                "output",
-                "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
-                "T")
-        .Output(1,
-                "present_key",
-                "present state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key"
-                "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
-                "kv_sequence_length.",
-                "T",
-                OpSchema::Optional)
-        .Output(2,
-                "present_value",
-                "present state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value"
-                "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
-                "kv_sequence_length.",
-                "T",
-                OpSchema::Optional)
-        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
-        .TypeConstraint("M", {"tensor(int32)", "tensor(int64)"}, "Constrain past sequence length to int tensor.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          GroupQueryAttentionTypeAndShapeInference(ctx, 3);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
@@ -1128,49 +863,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("B", {"tensor(bool)"}, "Constrain key_padding_mask to bool tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           DecoderAttentionTypeAndShapeInference(ctx);
-        }));
-
-constexpr const char* RotaryEmbedding_ver1_doc = R"DOC(
-RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices 
-that are multiplied to query and key before the inner product of query and key is taken.
-)DOC";
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    RotaryEmbedding, 1,
-    OpSchema()
-        .SetDoc(RotaryEmbedding_ver1_doc)
-        .Attr("scale",
-              "Custom scale will be used if specified. Default value is 1.0",
-              AttributeProto::FLOAT,
-              OPTIONAL_VALUE)
-        .Attr("interleaved",
-              "Rotate using interleaved pattern. Default value is 0 (False).",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
-        .Input(0,
-               "input",
-               "3D tensor with shape (batch_size, sequence_length, hidden_size)",
-               "T")
-        .Input(1,
-               "position_ids",
-               "1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)",
-               "M")
-        .Input(2,
-               "cos_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2).",
-               "T")
-        .Input(3,
-               "sin_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2).",
-               "T")
-        .Output(0,
-                "output",
-                "3D tensor with shape (batch_size, sequence_length, hidden_size)",
-                "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
-        .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
 constexpr const char* EmbedLayerNormalization_ver1_doc = R"DOC(
@@ -1276,7 +968,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc("Skip and Layer Normalization Fusion")
         .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
         .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-        .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size) or (1, sequence_length, hidden_size) or (sequence_length, hidden_size)", "T")
+        .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
         .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
         .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T", OpSchema::Optional)
         .Input(4, "bias", "1D bias tensor with shape (hidden_size", "T", OpSchema::Optional)
@@ -1501,45 +1193,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(GatedRelativePositionBias_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-        .Input(0, "query_layer", "tensor with shape (batch_size, seq_len, num_heads x head_size) or (token_count, num_heads x head_size)", "T")
+        .Input(0, "query_layer", "tensor with shape (batch_size, seq_len, num_heads x head_size)", "T")
         .Input(1, "query_bias", "1-d tensor with shape (num_heads x head_size)", "T")
         .Input(2, "rel_pos", "tensor with shape (1, num_head, seq_len, seq_len)", "T")
         .Input(3, "weight", "gemm weight for the gated_ur_linear, shape (head_size, D), D is divisible by 2", "T")
         .Input(4, "bias", "bias for the gated_ur_linear, shape (D)", "T")
         .Input(5, "eco_a", "tensor of shape (1, num_heads, 1, 1)", "T")
-        .Input(6, "token_offset", "offset of each token with shape (batch_size, seq_len)", "M", OpSchema::Optional)
         .Output(0, "output", "output tensor with shape (batch_size, num_heads, seq_len, seq_len)", "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
-        .TypeConstraint("M", {"tensor(int32)"}, "Constrain token_offset to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           int64_t num_heads = getAttribute(ctx, "num_heads", -1L);
-
-          // When padding is removed:
-          //   query_layer: (token_count, num_heads x head_size)
-          //   token_offset: (batch_size, seq_len)
-          // Otherwise:
-          //   query_layer: (batch_size, seq_len, num_heads x head_size)
-          //   token_offset: None
-          // Output shape: (batch_size, num_heads, seq_len, seq_len)
-          if (hasInputShape(ctx, 6)) {
-            auto& token_offset_shape = getInputShape(ctx, 6);
-            TensorShapeProto output_shape;
-            *output_shape.add_dim() = token_offset_shape.dim(0);
-            output_shape.add_dim()->set_dim_value(num_heads);
-            *output_shape.add_dim() = token_offset_shape.dim(1);
-            *output_shape.add_dim() = token_offset_shape.dim(1);
-            updateOutputShape(ctx, 0, output_shape);
-          } else if (hasInputShape(ctx, 0)) {
+          if (hasInputShape(ctx, 0)) {
             auto& query_layer_shape = getInputShape(ctx, 0);
-            if (query_layer_shape.dim().size() == 3) {
-              TensorShapeProto output_shape;
-              *output_shape.add_dim() = query_layer_shape.dim(0);
-              output_shape.add_dim()->set_dim_value(num_heads);
-              *output_shape.add_dim() = query_layer_shape.dim(1);
-              *output_shape.add_dim() = query_layer_shape.dim(1);
-              updateOutputShape(ctx, 0, output_shape);
-            }
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = query_layer_shape.dim(0);
+            output_shape.add_dim()->set_dim_value(num_heads);
+            *output_shape.add_dim() = query_layer_shape.dim(1);
+            *output_shape.add_dim() = query_layer_shape.dim(1);
+            updateOutputShape(ctx, 0, output_shape);
           }
         }));
 

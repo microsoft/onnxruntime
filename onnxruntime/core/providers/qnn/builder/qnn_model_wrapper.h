@@ -36,16 +36,14 @@ class QnnModelWrapper {
                   const Qnn_BackendHandle_t& backend_handle,
                   const std::unordered_map<std::string, size_t>& input_index_map,
                   const std::unordered_map<std::string, size_t>& output_index_map,
-                  const std::unordered_set<std::string>& initializer_lookup,
-                  QnnBackendType qnn_backend_type)
+                  const std::unordered_set<std::string>& initializer_lookup)
       : graph_viewer_(graph_viewer),
         logger_(logger),
         qnn_interface_(qnn_interface),
         backend_handle_(backend_handle),
         input_index_map_(input_index_map),
         output_index_map_(output_index_map),
-        initializer_lookup_(initializer_lookup),
-        qnn_backend_type_(qnn_backend_type) {
+        initializer_lookup_(initializer_lookup) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
@@ -117,8 +115,7 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
-  // TODO(hecli) rename to GetTensorInfo
-  Status GetOnnxInputInfo(const NodeUnitIODef& input, OnnxInputInfo& input_info) const;
+  Status GetOnnxInputInfo(const NodeUnitIODef& input, bool is_quantized_model, OnnxInputInfo& input_info) const;
 
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,
@@ -179,10 +176,6 @@ class QnnModelWrapper {
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                std::vector<uint8_t>& unpacked_tensor) const;
 
-  QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
-
-  const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
-
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
                                    const std::vector<std::string>& names,
@@ -238,7 +231,6 @@ class QnnModelWrapper {
   const std::unordered_set<std::string>& initializer_lookup_;
   const std::vector<uint32_t> nchw2hwcn_perm_{2, 3, 1, 0};
   const std::vector<uint32_t> cnhw2hwcn_perm_{2, 3, 0, 1};
-  QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
 };  // QnnModelWrapper
 
 }  // namespace qnn

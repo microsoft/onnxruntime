@@ -21,3 +21,6 @@ execSync('npm run build:esm', {shell: true, stdio: 'inherit', cwd: __dirname});
 // see also: https://evertpot.com/universal-commonjs-esm-typescript-packages/
 writeFileSync(resolve(__dirname, './dist/cjs', 'package.json'), '{"type": "commonjs"}');
 writeFileSync(resolve(__dirname, './dist/esm', 'package.json'), '{"type": "module"}');
+
+// launch webpack to generate bundles
+execSync('npm run build:bundles', {shell: true, stdio: 'inherit', cwd: __dirname});

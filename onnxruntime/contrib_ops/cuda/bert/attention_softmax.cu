@@ -18,6 +18,7 @@ limitations under the License.
 */
 
 #include <cub/cub.cuh>
+#include <cuda_fp16.h>
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
@@ -796,7 +797,7 @@ Status ComputeSoftmaxWithMask1D(cudaStream_t stream,
 }
 
 template <typename T>
-Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
+Status ComputeSoftmaxWithRawMask(cudaStream_t stream,
                                  const int all_sequence_length,
                                  const int sequence_length,
                                  const int batch_size,
@@ -814,7 +815,6 @@ Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
                                  const bool use_persistent_softmax,
                                  T* persistent_softmax_workspace,
                                  const float mask_filter_value) {
-  auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
   T* out = use_persistent_softmax ? persistent_softmax_workspace : output;
@@ -873,7 +873,7 @@ Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
 
   if (use_persistent_softmax) {
     return onnxruntime::cuda::dispatch_warpwise_softmax_forward<T, T, float, false>(
-        ort_stream,
+        stream,
         output,
         persistent_softmax_workspace,
         all_sequence_length,
@@ -941,7 +941,7 @@ template Status ComputeSoftmaxWithMask1D<half>(cudaStream_t stream,
                                                half* output,
                                                const bool causal);
 
-template Status ComputeSoftmaxWithRawMask<float>(Stream* ort_stream,
+template Status ComputeSoftmaxWithRawMask<float>(cudaStream_t stream,
                                                  const int all_sequence_length,
                                                  const int sequence_length,
                                                  const int batch_size,
@@ -960,7 +960,7 @@ template Status ComputeSoftmaxWithRawMask<float>(Stream* ort_stream,
                                                  float* persistent_softmax_workspace,
                                                  const float mask_filter_value);
 
-template Status ComputeSoftmaxWithRawMask<half>(Stream* ort_stream,
+template Status ComputeSoftmaxWithRawMask<half>(cudaStream_t stream,
                                                 const int all_sequence_length,
                                                 const int sequence_length,
                                                 const int batch_size,

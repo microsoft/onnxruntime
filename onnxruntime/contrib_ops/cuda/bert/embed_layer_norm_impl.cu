@@ -86,10 +86,10 @@ __global__ void MaskIndexKernel(int sequence_length, const int* mask, int* mask_
 }
 
 inline Status ComputeMaskIndex(cudaStream_t stream,
-                               const int sequence_length,
-                               const int batch_size,
-                               const int* mask,
-                               int* mask_index) {
+                             const int sequence_length,
+                             const int batch_size,
+                             const int* mask,
+                             int* mask_index) {
   // Mask idx is of length batch_size and assumes the valid region is contiguous starting
   // from the beginning of the sequence
 
@@ -133,7 +133,7 @@ __global__ void EmbedLayerNormKernel(
     }
     if (nullptr == position_ids) {
       position_id = blockIdx.x;
-    } else if (broadcast_position_ids) {
+    } else if (broadcast_position_ids){
       position_id = position_ids[sequence_position % gridDim.x];
     } else {
       position_id = position_ids[sequence_position];
@@ -212,12 +212,13 @@ Status LaunchEmbedLayerNormKernel(
     void* embedding_sum,
     const int* position_ids,
     const bool broadcast_position_ids) {
+
   if (mask_index != nullptr) {
     if (nullptr == input_mask) {
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size, stream));
     } else {
       ORT_RETURN_IF_ERROR(
-          ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index)));
+        ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index)));
     }
   }
 

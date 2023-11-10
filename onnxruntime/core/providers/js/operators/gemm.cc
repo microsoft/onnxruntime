@@ -8,34 +8,33 @@
 namespace onnxruntime {
 namespace js {
 
-ONNX_OPERATOR_KERNEL_EX(
-    Gemm,
-    kOnnxDomain,
-    13,
-    kJsExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
-    Gemm);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Gemm,
-    kOnnxDomain,
-    11, 12,
-    kJsExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
-    Gemm);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Gemm,
-    kOnnxDomain,
-    9, 10,
-    kJsExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
-    Gemm);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Gemm,
-    kOnnxDomain,
-    7, 8,
-    kJsExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
-    Gemm);
+#define REGISTER_KERNEL_TYPED(T)                                                           \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      Gemm,                                                                                \
+      kOnnxDomain,                                                                         \
+      11,                                                                                  \
+      T,                                                                                   \
+      kJsExecutionProvider,                                                                \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Gemm<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      Gemm,                                                                                \
+      kOnnxDomain,                                                                         \
+      9, 10,                                                                               \
+      T,                                                                                   \
+      kJsExecutionProvider,                                                                \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Gemm<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      Gemm,                                                                                \
+      kOnnxDomain,                                                                         \
+      7, 8,                                                                                \
+      T,                                                                                   \
+      kJsExecutionProvider,                                                                \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Gemm<T>);
+
+REGISTER_KERNEL_TYPED(float)
 
 }  // namespace js
 }  // namespace onnxruntime

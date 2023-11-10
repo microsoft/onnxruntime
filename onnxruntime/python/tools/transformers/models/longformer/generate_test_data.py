@@ -8,12 +8,15 @@
 import argparse
 import os
 import random
+import sys
 from pathlib import Path
 
 import numpy as np
-from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data
-from onnx import ModelProto, TensorProto
-from onnx_model import OnnxModel
+from onnx import ModelProto, TensorProto, numpy_helper  # noqa: F401
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
 
 
 def parse_arguments():
@@ -38,23 +41,6 @@ def parse_arguments():
         default=128,
         help="maximum sequence length of input",
     )
-
-    parser.add_argument(
-        "-a",
-        "--average_sequence_length",
-        default=-1,
-        type=int,
-        help="average sequence length excluding padding",
-    )
-
-    parser.add_argument(
-        "-r",
-        "--random_sequence_length",
-        required=False,
-        action="store_true",
-        help="use uniform random instead of fixed sequence length",
-    )
-    parser.set_defaults(random_sequence_length=False)
 
     parser.add_argument(
         "--global_tokens",
@@ -204,8 +190,7 @@ def fake_test_data(
     input_mask,
     global_mask,
     num_global_tokens,
-    average_sequence_length,
-    random_sequence_length,
+    random_mask_length=False,
 ):
     """
     Generate fake input data for test.
@@ -221,9 +206,7 @@ def fake_test_data(
         inputs = {input_ids.name: input_1}
 
         if input_mask:
-            inputs[input_mask.name] = fake_input_mask_data(
-                input_mask, batch_size, sequence_length, average_sequence_length, random_sequence_length
-            )
+            inputs[input_mask.name] = fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length)
 
         if global_mask:
             inputs[global_mask.name] = fake_global_mask_data(
@@ -247,8 +230,7 @@ def generate_test_data(
     input_mask,
     global_mask,
     num_global_tokens,
-    average_sequence_length,
-    random_sequence_length,
+    random_mask_length=False,
 ):
     dictionary_size = 10000
     all_inputs = fake_test_data(
@@ -262,8 +244,7 @@ def generate_test_data(
         input_mask,
         global_mask,
         num_global_tokens,
-        average_sequence_length,
-        random_sequence_length,
+        random_mask_length,
     )
     if len(all_inputs) != test_cases:
         print("Failed to create test data for test.")
@@ -282,8 +263,6 @@ def create_longformer_test_data(
     input_mask_name,
     global_mask_name,
     num_global_tokens,
-    average_sequence_length,
-    random_sequence_length,
 ):
     input_ids, input_mask, global_mask = get_longformer_inputs(model, input_ids_name, input_mask_name, global_mask_name)
     all_inputs = generate_test_data(
@@ -296,8 +275,6 @@ def create_longformer_test_data(
         input_mask,
         global_mask,
         num_global_tokens,
-        average_sequence_length,
-        random_sequence_length,
     )
 
     for i, inputs in enumerate(all_inputs):
@@ -322,9 +299,6 @@ def main():
     else:
         print("Directory existed. test data files will be overwritten.")
 
-    if args.average_sequence_length <= 0:
-        args.average_sequence_length = args.sequence_length
-
     create_longformer_test_data(
         args.model,
         output_dir,
@@ -337,7 +311,6 @@ def main():
         args.input_mask_name,
         args.global_mask_name,
         args.global_tokens,
-        args.average_sequence_length,
     )
 
     print("Test data is saved to directory:", output_dir)

@@ -85,16 +85,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensions,
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetSymbolicDimensions,
-                    _In_ struct OrtTensorTypeAndShapeInfo* info,
-                    _In_ const char** names, _In_ size_t dim_params_length) {
-  info->dim_params.clear();
-  for (size_t idx = 0; idx < dim_params_length; ++idx) {
-    info->dim_params.push_back(names[idx]);
-  }
-  return nullptr;
-}
-
 ORT_API_STATUS_IMPL(OrtApis::GetTensorShapeElementCount,
                     _In_ const OrtTensorTypeAndShapeInfo* this_ptr, _Out_ size_t* out) {
   API_IMPL_BEGIN

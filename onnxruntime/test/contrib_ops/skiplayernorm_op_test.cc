@@ -11,15 +11,14 @@ namespace onnxruntime {
 namespace test {
 constexpr float epsilon_ = 1e-12f;
 
-static void RunOneTest(
-    bool strict,
+static void RunTest(
     const std::vector<float>& input_data,
     const std::vector<float>& skip_data,
     const std::vector<float>& gamma_data,
     const std::vector<float>& beta_data,
     const std::vector<float>& bias_data,
     const std::vector<float>& output_data,
-    const std::vector<float>& sum_output_data,
+    const std::vector<float>& skip_input_bias_add_output_data,
     float epsilon,
     int batch_size,
     int sequence_length,
@@ -28,30 +27,18 @@ static void RunOneTest(
     bool no_beta = false,
     bool simplified = false,
     bool use_token_count = false,
-    bool broadcast_skip = false,
-    bool no_batch_size = false) {
+    bool strict = false) {
   // Input and output shapes
   //   Input 0 - input: (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
-  //   Input 1 - skip : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size) or (1, sequence_length, hidden_size) or (sequence_length, hidden_size)
+  //   Input 1 - skip : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
   //   Input 2 - gamma: (hidden_size)
   //   Input 3 - beta : (hidden_size)
   //   Output         : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
-  std::vector<int64_t> skip_dims = input_dims;
-
   if (use_token_count) {
     input_dims = {batch_size * sequence_length, hidden_size};
-    skip_dims = input_dims;
   }
-
-  if (broadcast_skip) {
-    skip_dims = {1, sequence_length, hidden_size};
-  }
-
-  if (no_batch_size) {
-    skip_dims = {sequence_length, hidden_size};
-  }
-
+  std::vector<int64_t> skip_dims = input_dims;
   std::vector<int64_t> gamma_dims = {hidden_size};
   std::vector<int64_t> beta_dims = gamma_dims;
   std::vector<int64_t> bias_dims = gamma_dims;
@@ -61,8 +48,6 @@ static void RunOneTest(
 
   auto rocm_ep = DefaultRocmExecutionProvider();
   auto dml_ep = DefaultDmlExecutionProvider();
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if (!use_float16) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<float>("input", input_dims, input_data);
@@ -82,20 +67,17 @@ static void RunOneTest(
 
     test.AddOutput<float>("output", output_dims, output_data);
 
-    if (sum_output_data.size() != 0) {
+    if (skip_input_bias_add_output_data.size() != 0) {
       // The second and third outputs are reserved for something else
       test.AddOptionalOutputEdge<float>();
       test.AddOptionalOutputEdge<float>();
 
       test.AddOutput<float>("skip_input_bias_add_output",
                             output_dims,
-                            sum_output_data);
+                            skip_input_bias_add_output_data);
     }
 
-    if (cpu_ep != nullptr) {
-      execution_providers.push_back(DefaultCpuExecutionProvider());
-    }
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    test.Run();
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
              dml_ep != nullptr ||
              rocm_ep != nullptr) {
@@ -117,21 +99,17 @@ static void RunOneTest(
 
     test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
 
-    // Use larger threshold for fp16
-    if (use_float16) {
-      test.SetOutputAbsErr("output", 0.01f);
-    }
-
-    if (sum_output_data.size() != 0) {
+    if (skip_input_bias_add_output_data.size() != 0) {
       // The second and third outputs are reserved for something else
       test.AddOptionalOutputEdge<MLFloat16>();
       test.AddOptionalOutputEdge<MLFloat16>();
 
       test.AddOutput<MLFloat16>("skip_input_bias_add_output",
                                 output_dims,
-                                ToFloat16(sum_output_data));
+                                ToFloat16(skip_input_bias_add_output_data));
     }
 
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (dml_ep != nullptr) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
     } else if (rocm_ep != nullptr) {
@@ -153,36 +131,6 @@ static void RunOneTest(
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-  }
-}
-
-static void RunTest(
-    const std::vector<float>& input_data,
-    const std::vector<float>& skip_data,
-    const std::vector<float>& gamma_data,
-    const std::vector<float>& beta_data,
-    const std::vector<float>& bias_data,
-    const std::vector<float>& output_data,
-    const std::vector<float>& sum_output_data,
-    float epsilon,
-    int batch_size,
-    int sequence_length,
-    int hidden_size,
-    bool use_float16 = false,
-    bool no_beta = false,
-    bool simplified = false,
-    bool use_token_count = false,
-    bool broadcast_skip = false,
-    bool no_batch_size = false) {
-  RunOneTest(false, input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
-             epsilon, batch_size, sequence_length, hidden_size, use_float16, no_beta, simplified,
-             use_token_count, broadcast_skip, no_batch_size);
-
-  // strict mode does not support skip broadcasting.
-  if (!broadcast_skip) {
-    RunOneTest(true, input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
-               epsilon, batch_size, sequence_length, hidden_size, use_float16, no_beta, simplified,
-               use_token_count, broadcast_skip, no_batch_size);
   }
 }
 
@@ -394,7 +342,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec) {
           true /*use_float16*/,
           false /*no_beta*/,
           false /*simplified*/,
-          false /*use_token_count*/);
+          false /*use_token_count*/,
+          true /*strict*/);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch1_NoBeta) {
@@ -682,7 +631,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec_token_count) {
           true /*use_float16*/,
           false /*no_beta*/,
           false /*simplified*/,
-          true /*use_token_count*/);
+          true /*use_token_count*/,
+          true /*strict*/);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_TokenCount) {
@@ -731,8 +681,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_TokenCount) {
           true);
 }
 
-// SkipSimplifiedLayerNorm has not been enabled for DML yet
-#if !defined(USE_DML)
+// SkipSimplifiedLayerNorm has not been enabled for ROCm and DML yet
+#if !defined(USE_ROCM) && !defined(USE_DML)
 TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
   int batch_size = 1;
   int sequence_length = 2;
@@ -767,100 +717,6 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
           true,
           true,
           true);
-}
-#endif
-
-#if !defined(USE_ROCM) && !defined(USE_DML)
-TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_No_Batch_Size) {
-  int batch_size = 2;
-  int sequence_length = 2;
-  int hidden_size = 4;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f,
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> skip_data = {
-      0.1f, -0.2f, 0.3f, 1.0f,
-      0.5f, 0.1f, 0.4f, 1.6f};
-
-  std::vector<float> gamma_data = {
-      0.3f, 0.2f, 4.0f, 2.2f};
-
-  std::vector<float> beta_data = {
-      0.2f, 0.1f, 0.4f, 1.6f};
-
-  std::vector<float> output_data = {
-      0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
-      0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438,
-      0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
-      0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438};
-
-  RunTest(input_data,
-          skip_data,
-          gamma_data,
-          beta_data,
-          std::vector<float>(),
-          output_data,
-          {},
-          epsilon_,
-          batch_size,
-          sequence_length,
-          hidden_size,
-          false,  // use_float16
-          false,  // no_beta
-          false,  // simplified
-          false,  // use_token_count
-          true,   // broadcast_skip
-          true);  // no_batch_size
-}
-
-TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
-  int batch_size = 2;
-  int sequence_length = 2;
-  int hidden_size = 4;
-
-  std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f,
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> skip_data = {
-      0.1f, -0.2f, 0.3f, 1.0f,
-      0.5f, 0.1f, 0.4f, 1.6f};
-
-  std::vector<float> gamma_data = {
-      0.3f, 0.2f, 4.0f, 2.2f};
-
-  std::vector<float> beta_data = {
-      0.2f, 0.1f, 0.4f, 1.6f};
-
-  std::vector<float> output_data = {
-      0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
-      0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438,
-      0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
-      0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438};
-
-  RunTest(input_data,
-          skip_data,
-          gamma_data,
-          beta_data,
-          std::vector<float>(),
-          output_data,
-          {},
-          epsilon_,
-          batch_size,
-          sequence_length,
-          hidden_size,
-          false,   // use_float16
-          false,   // no_beta
-          false,   // simplified
-          false,   // use_token_count
-          true,    // broadcast_skip
-          false);  // no_batch_size
 }
 #endif
 

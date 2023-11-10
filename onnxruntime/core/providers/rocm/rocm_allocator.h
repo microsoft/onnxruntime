@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <unordered_set>
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
 #include "core/platform/ort_mutex.h"
@@ -55,7 +56,7 @@ class ROCMPinnedAllocator : public IAllocator {
   ROCMPinnedAllocator(const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0 /*CPU device always with id 0*/),
+                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0),
                           0, OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;

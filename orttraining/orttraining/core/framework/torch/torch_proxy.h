@@ -2,11 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-
 #include <mutex>
-#include <optional>
-#include <string>
-#include <vector>
 #include "orttraining/core/framework/torch/python_common.h"
 
 #ifndef SHARED_PROVIDER
@@ -40,57 +36,25 @@ class TorchProxy {
   };
 
   void Forward(
-      const std::string& func_name,
       void* callback,
       const std::vector<int64_t>& requires_grads,
-      const std::vector<std::optional<OrtValue>>& tensor_args,
+      const std::vector<OrtValue>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
       const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,
-      const bool is_training_mode,
-      const std::vector<int64_t>& inplace_map,
-      const std::string& invoke_id,
       void** diff_ctx,
-      std::vector<OrtValue>& returned_ortvalues);
+      std::vector<OrtValue>& returned_ortvalues,
+      const bool is_training_mode,
+      const bool is_inplace);
 
   void Backward(
-      const std::string& func_name,
       void* callback,
-      const std::vector<std::optional<OrtValue>>& tensor_args,
+      const std::vector<OrtValue>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
       const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,
-      const std::vector<int64_t>& inplace_map,
-      const std::string& invoke_id,
-      std::vector<OrtValue>& return_args);
-
-  /**
-   * @brief Run given function to get output to input reuse map.
-   *
-   * @param input_alias_func Python function to run.
-   *  The function should take a serialized PythonOp NodeProto string as input, return a tuple of two lists.
-   *  The signature of the function should be:
-   *     def alias_input(node_proto_str: str):
-   *         fw_alias_map = [1, -1, -1]
-   *         bw_alias_map = [-1, 0]
-   *         return fw_alias_map, bw_alias_map
-   * @param node_proto_str The serialized PythonOp NodeProto string.
-   * @param fw_output_to_input_alias_map Used as returned value, return the output to input alias map for forward pass.
-   *   For example, if the inputs of the torch.autograd.Function are [non_tensor_a, tensor_b],
-   *   outputs are [tensor_x, tensor_y, tensor_z], and the alias map is [1, -1, -1], this is explained as:
-   *   tensor_x is reusing the input tensor_b, tensor_y and tensor_z are not reusing any input.
-   *   The value of alias map is 0 based input index. -1 means the output is not reusing any input.
-   * @param bw_output_to_input_alias_map Used as returned value, return the output to input alias map for backward pass.
-   *   For example, if the inputs of the torch.autograd.Function are [tensor_x_grad, None, None],
-   *   outputs are [None, tensor_b_grad], and the alias map is [-1, 0], this is explained as:
-   *   tensor_b_grad is reusing the input tensor_x_grad.
-   *   The value of alias map is 0 based grad input index. -1 means the output is not reusing any input.
-   */
-  void RunInputAliasFunction(
-      void* input_alias_func,
-      const std::string& node_proto_str,
-      std::vector<int64_t>& fw_output_to_input_alias_map,
-      std::vector<int64_t>& bw_output_to_input_alias_map);
+      std::vector<OrtValue>& return_args,
+      const bool is_inplace);
 
  private:
   TorchProxy(){};

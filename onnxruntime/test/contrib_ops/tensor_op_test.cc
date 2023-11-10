@@ -6,7 +6,6 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#include "test/common/cuda_op_test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::test;
@@ -204,80 +203,6 @@ TEST(MVNContribOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
   // across_channels: false, normalize_variance: true
   MeanVarianceNormalizationPerChannel(false, true);
 }
-
-#ifdef USE_CUDA
-
-TEST(UnfoldTensorOpTest, LastDim) {
-  if (NeedSkipIfCudaArchLowerThan(530)) {
-    return;
-  }
-
-  std::vector<float> X = {
-      1.0f, 2.0f, 3.0f, 4.0f,
-      5.0f, 6.0f, 7.0f, 8.0f,
-      6.0f, 7.0f, 8.0f, 9.0f};
-
-  std::vector<float> output = {
-      1.0f, 2.0f, 3.0f, 2.0f, 3.0f, 4.0f,
-      5.0f, 6.0f, 7.0f, 6.0f, 7.0f, 8.0f,
-      6.0f, 7.0f, 8.0f, 7.0f, 8.0f, 9.0f};
-
-  OpTester tester("UnfoldTensor", 1, onnxruntime::kMSDomain);
-
-  tester.AddAttribute<int64_t>("size", 3LL);
-  tester.AddInput<float>("input", {3, 4}, X);
-  tester.AddOutput<float>("output", {3, 2, 3}, output);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-
-TEST(UnfoldTensorOpTest, NormalDim) {
-  if (NeedSkipIfCudaArchLowerThan(530)) {
-    return;
-  }
-
-  std::vector<int16_t> X = {
-      1, 2, 3, 4, 2, 2, 3, 4, 3, 2, 3, 4,
-      4, 6, 7, 8, 5, 6, 7, 8, 6, 6, 7, 8,
-      6, 7, 8, 9, 7, 7, 8, 9, 8, 7, 8, 9,
-      9, 7, 8, 9, 10, 7, 8, 9, 11, 7, 8, 9};
-
-  std::vector<int16_t> output = {
-      1, 2, 3,
-      2, 2, 2,
-      3, 3, 3,
-      4, 4, 4,
-
-      3, 4, 5,
-      2, 6, 6,
-      3, 7, 7,
-      4, 8, 8,
-
-      6, 7, 8,
-      7, 7, 7,
-      8, 8, 8,
-      9, 9, 9,
-
-      8, 9, 10,
-      7, 7, 7,
-      8, 8, 8,
-      9, 9, 9};
-
-  OpTester tester("UnfoldTensor", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("dim", 1LL);
-  tester.AddAttribute<int64_t>("size", 3LL);
-  tester.AddAttribute<int64_t>("step", 2LL);
-  tester.AddInput<int16_t>("input", {2, 6, 4}, X);
-  tester.AddOutput<int16_t>("output", {2, 2, 4, 3}, output);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

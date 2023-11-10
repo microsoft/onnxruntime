@@ -50,35 +50,6 @@ index 961e34d..55ae11b 100755
      make install > /dev/null
  }
  
-diff --git a/finalize.sh b/finalize.sh
-index 621eab9..4cbcf90 100755
---- a/finalize.sh
-+++ b/finalize.sh
-@@ -86,6 +86,3 @@ clean_pyc /opt/_internal
- rm -rf /root/.cache
- 
- hardlink -cv /opt/_internal
--
--# update system packages
--LC_ALL=C ${MY_DIR}/update-system-packages.sh
-diff --git a/install-build-packages.sh b/install-build-packages.sh
-index 408bc33..b45ceba 100755
---- a/install-build-packages.sh
-+++ b/install-build-packages.sh
-@@ -9,12 +9,11 @@ set -exuo pipefail
- # make sure the corresponding library is added to RUNTIME_DEPS if applicable
- 
- if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
--	COMPILE_DEPS="bzip2-devel ncurses-devel readline-devel gdbm-devel libpcap-devel xz-devel openssl openssl-devel keyutils-libs-devel krb5-devel libcom_err-devel libidn-devel curl-devel uuid-devel libffi-devel kernel-headers libdb-devel"
-+	COMPILE_DEPS="bzip2-devel ncurses-devel gdbm-devel xz-devel openssl openssl-devel keyutils-libs-devel krb5-devel libcom_err-devel curl-devel libffi-devel kernel-headers libdb-devel"
- 	if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
- 		PACKAGE_MANAGER=yum
- 	else
- 		PACKAGE_MANAGER=dnf
--		COMPILE_DEPS="${COMPILE_DEPS} tk-devel"
- 	fi
- elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
- 	PACKAGE_MANAGER=apk
 diff --git a/install-entrypoint.sh b/install-entrypoint.sh
 index 9ef1e99..ec52833 100755
 --- a/install-entrypoint.sh
@@ -94,27 +65,9 @@ index 9ef1e99..ec52833 100755
 +fi
 \ No newline at end of file
 diff --git a/install-runtime-packages.sh b/install-runtime-packages.sh
-index 137d2e2..203b4bc 100755
+index 137d2e2..21b60a7 100755
 --- a/install-runtime-packages.sh
 +++ b/install-runtime-packages.sh
-@@ -33,7 +33,7 @@ source $MY_DIR/build_utils.sh
- 
- # MANYLINUX_DEPS: Install development packages (except for libgcc which is provided by gcc install)
- if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
--	MANYLINUX_DEPS="glibc-devel libstdc++-devel glib2-devel libX11-devel libXext-devel libXrender-devel mesa-libGL-devel libICE-devel libSM-devel zlib-devel expat-devel"
-+	MANYLINUX_DEPS="glibc-devel libstdc++-devel glib2-devel zlib-devel expat-devel"
- elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
- 	MANYLINUX_DEPS="musl-dev libstdc++ glib-dev libx11-dev libxext-dev libxrender-dev mesa-dev libice-dev libsm-dev zlib-dev expat-dev"
- else
-@@ -54,7 +54,7 @@ else
- 	exit 1
- fi
- 
--BASETOOLS="autoconf automake bison bzip2 diffutils file make patch unzip"
-+BASETOOLS="autoconf automake bzip2 diffutils file make patch unzip"
- if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
- 	PACKAGE_MANAGER=yum
- 	BASETOOLS="${BASETOOLS} hardlink hostname which"
 @@ -73,9 +73,11 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
  	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
  		# Software collection (for devtoolset-10)
@@ -130,44 +83,3 @@ index 137d2e2..203b4bc 100755
  	elif [ "${AUDITWHEEL_ARCH}" == "aarch64" ] || [ "${AUDITWHEEL_ARCH}" == "ppc64le" ] || [ "${AUDITWHEEL_ARCH}" == "s390x" ]; then
  		# Software collection (for devtoolset-10)
  		yum -y install centos-release-scl-rh
-@@ -86,19 +88,21 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
- 	fi
- elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
- 	PACKAGE_MANAGER=dnf
--	BASETOOLS="${BASETOOLS} curl glibc-locale-source glibc-langpack-en hardlink hostname libcurl libnsl libxcrypt which"
-+	BASETOOLS="${BASETOOLS} yum-utils curl glibc-locale-source glibc-langpack-en hardlink hostname libcurl libxcrypt which"
- 	# See https://unix.stackexchange.com/questions/41784/can-yum-express-a-preference-for-x86-64-over-i386-packages
- 	echo "multilib_policy=best" >> /etc/yum.conf
- 	# Error out if requested packages do not exist
- 	echo "skip_missing_names_on_install=False" >> /etc/yum.conf
- 	# Make sure that locale will not be removed
- 	sed -i '/^override_install_langs=/d' /etc/yum.conf
--	dnf -y upgrade
- 	dnf -y install dnf-plugins-core
--	dnf config-manager --set-enabled powertools # for yasm
--	TOOLCHAIN_DEPS="gcc-toolset-12-binutils gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ gcc-toolset-12-gcc-gfortran"
--	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
--		TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
-+	if test -f "/etc/yum.repos.d/ubi.repo"; then
-+            sed -i 's/enabled\s*=\s*1/enabled = 1\nexclude=dotnet* aspnet* netstandard*/g' /etc/yum.repos.d/ubi.repo
-+	fi
-+        if [[ -d /usr/local/cuda ]]; then
-+	    TOOLCHAIN_DEPS="gcc gcc-c++"
-+	else
-+	    TOOLCHAIN_DEPS="gcc-toolset-12-binutils gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ gcc-toolset-12-gcc-gfortran"
- 	fi
- elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
- 	TOOLCHAIN_DEPS="binutils gcc g++ gfortran"
-@@ -121,12 +125,6 @@ else
- 	exit 1
- fi
- 
--# update system packages, we already updated them but
--# the following script takes care of cleaning-up some things
--# and since it's also needed in the finalize step, everything's
--# centralized in this script to avoid code duplication
--LC_ALL=C ${MY_DIR}/update-system-packages.sh
--
- if [ "${BASE_POLICY}" == "manylinux" ]; then
- 	# we'll be removing libcrypt.so.1 later on
- 	# this is needed to ensure the new one will be found

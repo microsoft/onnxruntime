@@ -11,15 +11,14 @@ export declare namespace Encoder {
   }
   export type DataType = keyof DataTypeMap;
   type DataArrayType = DataTypeMap[DataType];
-}
 
-/* eslint-disable @typescript-eslint/naming-convention */
-export const enum EncoderUsage {
-  Default = 0,
-  UploadOnly,
-  Download4BytesAsFloat32,
+  /* eslint-disable @typescript-eslint/naming-convention */
+  export const enum Usage {
+    Default = 0,
+    UploadOnly,
+    Download4BytesAsFloat32,
+  }
 }
-/* eslint-enable @typescript-eslint/naming-convention */
 
 /**
  * Abstraction for mapping data types to texture texlets

@@ -62,22 +62,18 @@ class TransposeBase {
 
   Status ComputeOutputShape(const Tensor& X, TensorShapeVector& output_dims, InlinedVector<size_t>& default_perm,
                             const InlinedVector<size_t>*& p_perm) const {
-    const size_t rank = X.Shape().NumDimensions();
+    size_t rank = X.Shape().NumDimensions();
     const auto& input_dims = X.Shape().GetDims();
+
+    // Determine permutation to use:
+    // If no permutation was specified in the attributes, the default is [rank-1, ..., 0]
+    default_perm.resize(rank);
 
     if (perm_specified_)
       p_perm = &perm_;
     else {
-      // Determine permutation to use:
-      // If no permutation was specified in the attributes, the default is [rank-1, ..., 0]
-      default_perm.resize(rank);
       for (size_t i = 0; i < rank; ++i) default_perm[i] = rank - i - 1;
       p_perm = &default_perm;
-    }
-
-    if (p_perm->size() != rank) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "perm size: ", p_perm->size(), " does not match input rank: ", std::to_string(rank));
     }
 
     // Determine shape of output

@@ -164,35 +164,3 @@ export const logLevelStringToEnum = (logLevel?: 'verbose'|'info'|'warning'|'erro
       throw new Error(`unsupported logging level: ${logLevel}`);
   }
 };
-
-/**
- * Check whether the given tensor type is supported by GPU buffer
- */
-export const isGpuBufferSupportedType = (type: Tensor.Type): type is Tensor.GpuBufferDataTypes => type === 'float32' ||
-    type === 'int32' || type === 'int64' || type === 'bool' || type === 'float16' || type === 'uint32';
-
-/**
- * Map string data location to integer value
- */
-export const dataLocationStringToEnum = (location: Tensor.DataLocation): number => {
-  switch (location) {
-    case 'none':
-      return 0;
-    case 'cpu':
-      return 1;
-    case 'cpu-pinned':
-      return 2;
-    case 'texture':
-      return 3;
-    case 'gpu-buffer':
-      return 4;
-    default:
-      throw new Error(`unsupported data location: ${location}`);
-  }
-};
-
-/**
- * Map integer data location to string value
- */
-export const dataLocationEnumToString = (location: number): Tensor.DataLocation|undefined =>
-    (['none', 'cpu', 'cpu-pinned', 'texture', 'gpu-buffer'] as const)[location];

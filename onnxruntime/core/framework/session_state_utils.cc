@@ -254,11 +254,10 @@ common::Status SaveInitializedTensors(
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
-    ORT_ENFORCE(entry != initialized_tensors_to_allocate.end(),
-                "OrtValue index: ", ort_value_index, " from initializer_allocation_order not found among initialized tensors");
     if (!(utils::HasExternalData(*entry->second) && exec_plan.GetLocation(ort_value_index).Type() == OrtDevice::CPU)) {
       // can not trace string tensor
-      ORT_ENFORCE(entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING, "Can not trace string tensor");
+      ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() &&
+                  entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
       ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
     }
     initialized_tensors_to_allocate.erase(entry);

@@ -109,9 +109,9 @@ struct weak_single_threaded_iterable
   };
 };
 
-}  // namespace Details
-}  // namespace MachineLearning
-}  // namespace AI
-}  // namespace Microsoft
+}// namespace Details
+}// namespace MachineLearning
+}// namespace AI
+} // namespace Microsoft
 
-#endif  // WEAK_SINGLE_THREADED_ITERABLE_H_
+#endif // WEAK_SINGLE_THREADED_ITERABLE_H_

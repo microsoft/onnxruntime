@@ -8,13 +8,8 @@ class LongformerAttentionBase;
 class AttentionBase;
 namespace transformers {
 class BeamSearch;
-class WhisperBeamSearch;
 class GreedySearch;
 class Sampling;
-struct BeamSearchParameters;
-struct GreedySearchParameters;
-struct SamplingParameters;
-struct WhisperBeamSearchParameters;
 }  // namespace transformers
 }  // namespace contrib
 
@@ -68,10 +63,6 @@ struct ProviderHostCPU {
   virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) = 0;
 
   // From cpu/tensor/slice.h
-  virtual Status SliceBase__FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
-                                              TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
-                                              TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) = 0;
-
   virtual Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
                                               gsl::span<const int64_t> raw_ends,
                                               gsl::span<const int64_t> raw_axes,
@@ -174,15 +165,6 @@ struct ProviderHostCPU {
                                                         const SessionState& session_state,
                                                         const std::string& attribute_name,
                                                         const SessionState& subgraph_session_state) = 0;
-  virtual Status WhisperBeamSearch__Compute(const contrib::transformers::WhisperBeamSearch* p, OpKernelContext* ctx) = 0;
-
-  virtual void BeamSearchParameters__ParseFromAttributes(contrib::transformers::BeamSearchParameters* p, const OpKernelInfo& info) = 0;
-
-  virtual void GreedySearchParameters__ParseFromAttributes(contrib::transformers::GreedySearchParameters* p, const OpKernelInfo& info) = 0;
-
-  virtual void SamplingParameters__ParseFromAttributes(contrib::transformers::SamplingParameters* p, const OpKernelInfo& info) = 0;
-
-  virtual void WhisperBeamSearchParameters__ParseFromAttributes(contrib::transformers::WhisperBeamSearchParameters* p, const OpKernelInfo& info) = 0;
 
   // GreedySearch
   virtual void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) = 0;

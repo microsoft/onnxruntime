@@ -51,8 +51,3 @@ TRACELOGGING_DECLARE_PROVIDER(winml_trace_logging_provider);
 #include "NamespaceAliases.h"
 #include "StringHelpers.h"
 #include "WinML_Lock.h"
-
-template <typename T>
-auto unmove_ptr(T&& t) {
-  return &static_cast<T&>(t);
-}

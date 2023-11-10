@@ -187,7 +187,7 @@ class FusionLayerNormalizationTF(Fusion):
                 ),
             ],
             output_name_to_node,
-        )
+        )  # yapf: disable
 
         if parent_nodes is None:
             return

@@ -262,12 +262,6 @@ public class TestHelpers {
     return new File(TestHelpers.class.getResource(path).getFile()).toPath();
   }
 
-  public static void zeroBuffer(FloatBuffer buf) {
-    for (int i = 0; i < buf.capacity(); i++) {
-      buf.put(i, 0.0f);
-    }
-  }
-
   public static float[] loadTensorFromFile(Path filename) {
     return loadTensorFromFile(filename, true);
   }

@@ -3,7 +3,7 @@
 
 import {Env, env, InferenceSession} from 'onnxruntime-common';
 
-import {OrtWasmMessage, SerializableModeldata, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
+import {OrtWasmMessage, SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import * as core from './wasm-core-impl';
 import {initializeWebAssembly} from './wasm-factory';
 
@@ -22,9 +22,8 @@ const createSessionAllocateCallbacks: Array<PromiseCallbacks<SerializableModelda
 const createSessionFinalizeCallbacks: Array<PromiseCallbacks<SerializableSessionMetadata>> = [];
 const createSessionCallbacks: Array<PromiseCallbacks<SerializableSessionMetadata>> = [];
 const releaseSessionCallbacks: Array<PromiseCallbacks<void>> = [];
-const runCallbacks: Array<PromiseCallbacks<SerializableTensorMetadata[]>> = [];
+const runCallbacks: Array<PromiseCallbacks<SerializableTensor[]>> = [];
 const endProfilingCallbacks: Array<PromiseCallbacks<void>> = [];
-const isOrtEnvInitializedCallbacks: Array<PromiseCallbacks<boolean>> = [];
 
 const ensureWorker = (): void => {
   if (initializing || !initialized || aborted || !proxyWorker) {
@@ -93,13 +92,6 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         endProfilingCallbacks.shift()![0]();
       }
       break;
-    case 'is-ort-env-initialized':
-      if (ev.data.err) {
-        isOrtEnvInitializedCallbacks.shift()![1](ev.data.err);
-      } else {
-        isOrtEnvInitializedCallbacks.shift()![0](ev.data.out!);
-      }
-      break;
     default:
   }
 };
@@ -129,18 +121,9 @@ export const initializeWebAssemblyInstance = async(): Promise<void> => {
 
     return new Promise<void>((resolve, reject) => {
       proxyWorker?.terminate();
-
-      const workerUrl = URL.createObjectURL(new Blob(
-          [
-            // This require() function is handled by esbuild plugin to load file content as string.
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            require('./proxy-worker/main')
-          ],
-          {type: 'text/javascript'}));
-      proxyWorker = new Worker(workerUrl, {name: 'ort-wasm-proxy-worker'});
-      proxyWorker.onerror = (ev: ErrorEvent) => reject(ev);
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+      proxyWorker = require('worker-loader?inline=no-fallback!./proxy-worker/main').default() as Worker;
       proxyWorker.onmessage = onProxyWorkerMessage;
-      URL.revokeObjectURL(workerUrl);
       initWasmCallbacks = [resolve, reject];
       const message: OrtWasmMessage = {type: 'init-wasm', in : env.wasm};
       proxyWorker.postMessage(message);
@@ -194,10 +177,6 @@ export const createSessionFinalize = async(modeldata: SerializableModeldata, opt
 export const createSession =
     async(model: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SerializableSessionMetadata> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
-    // check unsupported options
-    if (options?.preferredOutputLocation) {
-      throw new Error('session option "preferredOutputLocation" is not supported for proxy.');
-    }
     ensureWorker();
     return new Promise<SerializableSessionMetadata>((resolve, reject) => {
       createSessionCallbacks.push([resolve, reject]);
@@ -223,27 +202,17 @@ export const releaseSession = async(sessionId: number): Promise<void> => {
 };
 
 export const run = async(
-    sessionId: number, inputIndices: number[], inputs: TensorMetadata[], outputIndices: number[],
-    outputs: Array<TensorMetadata|null>, options: InferenceSession.RunOptions): Promise<TensorMetadata[]> => {
+    sessionId: number, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
+    options: InferenceSession.RunOptions): Promise<SerializableTensor[]> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
-    // check inputs location
-    if (inputs.some(t => t[3] !== 'cpu')) {
-      throw new Error('input tensor on GPU is not supported for proxy.');
-    }
-    // check outputs location
-    if (outputs.some(t => t)) {
-      throw new Error('pre-allocated output tensor is not supported for proxy.');
-    }
     ensureWorker();
-    return new Promise<SerializableTensorMetadata[]>((resolve, reject) => {
+    return new Promise<SerializableTensor[]>((resolve, reject) => {
       runCallbacks.push([resolve, reject]);
-      const serializableInputs = inputs as SerializableTensorMetadata[];  // every input is on CPU.
-      const message: OrtWasmMessage =
-          {type: 'run', in : {sessionId, inputIndices, inputs: serializableInputs, outputIndices, options}};
-      proxyWorker!.postMessage(message, core.extractTransferableBuffers(serializableInputs));
+      const message: OrtWasmMessage = {type: 'run', in : {sessionId, inputIndices, inputs, outputIndices, options}};
+      proxyWorker!.postMessage(message, core.extractTransferableBuffers(inputs));
     });
   } else {
-    return core.run(sessionId, inputIndices, inputs, outputIndices, outputs, options);
+    return core.run(sessionId, inputIndices, inputs, outputIndices, options);
   }
 };
 
@@ -257,18 +226,5 @@ export const endProfiling = async(sessionId: number): Promise<void> => {
     });
   } else {
     core.endProfiling(sessionId);
-  }
-};
-
-export const isOrtEnvInitialized = async(): Promise<boolean> => {
-  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
-    ensureWorker();
-    return new Promise<boolean>((resolve, reject) => {
-      isOrtEnvInitializedCallbacks.push([resolve, reject]);
-      const message: OrtWasmMessage = {type: 'is-ort-env-initialized'};
-      proxyWorker!.postMessage(message);
-    });
-  } else {
-    return core.isOrtEnvInitialized();
   }
 };

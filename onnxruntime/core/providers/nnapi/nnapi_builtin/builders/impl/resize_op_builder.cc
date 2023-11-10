@@ -153,10 +153,10 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
-  const auto input_rank = input_shape.size();
-  if (input_rank != 4) {
+  const auto input_size = input_shape.size();
+  if (input_size != 4) {
     LOGS_DEFAULT(VERBOSE) << "Resize only support 4d shape, input is "
-                          << input_rank << "d shape";
+                          << input_size << "d shape";
     return false;
   }
 
@@ -206,26 +206,6 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
         return false;
       }
     }
-
-    // The new feature - antialiasing introduced since opset 18 doesn't have a NNAPI mapping support yet.
-    // And a few other new attributes are currently not handled by NNAPI EP, can add support in the future if needed.
-    if (node_unit.SinceVersion() >= 18) {
-      const auto antialias = helper.Get("antialias", 0);
-      const auto axes = helper.Get("axes", std::vector<int64_t>{});
-      const auto keep_aspect_ratio_policy = helper.Get("keep_aspect_ratio_policy", "stretch");
-      if (antialias != 0) {
-        LOGS_DEFAULT(VERBOSE) << "Resize 18+ antialias feature is not currently supported by NNAPI.";
-        return false;
-      }
-      if (!axes.empty()) {
-        LOGS_DEFAULT(VERBOSE) << "Resize 18+ axes attribute is not currently supported by NNAPI EP.";
-        return false;
-      }
-      if (keep_aspect_ratio_policy != "stretch") {
-        LOGS_DEFAULT(VERBOSE) << "Resize 18+ keep_aspect_ratio_policy attribute is not currently supported by NNAPI EP.";
-        return false;
-      }
-    }
   }
 
   {  // scales and sizes (if present) must be initializers
@@ -236,22 +216,20 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     }
 
     // scales
-    bool using_scales = (inputs.size() > 2 && inputs[2].node_arg.Exists());
-    if (using_scales && !Contains(initializers, inputs[2].node_arg.Name())) {
+    if (inputs.size() == 3 && !Contains(initializers, inputs[2].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "Input scales of Resize must be known";
       return false;
     }
 
     // sizes
-    bool using_sizes = inputs.size() > 3 && inputs[3].node_arg.Exists();
-    if (using_sizes && !Contains(initializers, inputs[3].node_arg.Name())) {
+    if (inputs.size() > 3 && !Contains(initializers, inputs[3].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "Input sizes of Resize must be known";
       return false;
     }
     bool input_is_nchw = false;
     // haven't a good solution to check layout when scale is 1.0F
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
-    if (using_scales) {  // we are using scales
+    if (inputs.size() == 3) {  // we are using scales
       const auto& scales_tensor = *initializers.at(inputs[2].node_arg.Name());
       Initializer const unpacked_tensor(scales_tensor);
       auto scales_data = unpacked_tensor.DataAsSpan<float>();

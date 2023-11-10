@@ -1,0 +1,182 @@
+parameters:
+- name: CommitOverride
+  type: boolean
+  default: false
+
+- name: BuildConfig
+  type: string
+  default: 'Debug'
+
+- name: NpmPackagingMode
+  type: string
+  default: 'dev'
+
+- name: PoolName
+  type: string
+  default: 'onnxruntime-Ubuntu2004-AMD-CPU'
+
+- name: PackageName
+  displayName: 'Package name'
+  type: string
+  default: 'NPM_packages'
+
+jobs:
+- job: build_onnxruntime_web
+  pool: ${{ parameters.PoolName }}
+
+  variables:
+    runCodesignValidationInjection: false
+  timeoutInMinutes: 60
+  workspace:
+    clean: all
+  steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+  - checkout: self
+    submodules: false
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: '__commit'
+      path: $(Pipeline.Workspace)
+    displayName: 'Get commit SHA'
+    condition: eq('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     export __commit__=<$(Pipeline.Workspace)/__commit.txt
+     git fetch origin +$__commit__:refs/remotes/origin/$__commit__
+     git checkout --force $__commit__
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Read commit SHA and checkout'
+    condition: eq('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     echo.$(Build.SourceVersion)>$(Pipeline.Workspace)/__commit.txt
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Write commit SHA to __commit.txt'
+    condition: ne('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     git submodule sync -- cmake/external/onnx
+     git submodule update --init -- cmake/external/onnx
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Checkout submodule onnx'
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '16.x'
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      patterns: '${{ parameters.BuildConfig }}_*/**/*'
+      path: $(Pipeline.Workspace)/artifacts
+    displayName: 'Download WebAssembly artifacts'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)/artifacts
+      contents: |
+        **/*.wasm
+      targetFolder: $(Build.SourcesDirectory)/js/web/dist
+      flattenFolders: true
+    displayName: 'Binplace dist files'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)/artifacts
+      contents: |
+        **/*.js
+      targetFolder: $(Build.SourcesDirectory)/js/web/lib/wasm/binding
+      flattenFolders: true
+    displayName: 'Binplace js files'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)/js'
+    displayName: 'npm ci /js/'
+  - script: |
+     npm run lint
+    workingDirectory: '$(Build.SourcesDirectory)/js'
+    displayName: 'run ESLint without TS type populated'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)/js/common'
+    displayName: 'npm ci /js/common/'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)/js/web'
+    displayName: 'npm ci /js/web/'
+  - script: |
+     npm run lint
+    workingDirectory: '$(Build.SourcesDirectory)/js'
+    displayName: 'run ESLint'
+  - script: |
+     npm run format
+    workingDirectory: '$(Build.SourcesDirectory)/js'
+    displayName: 'Clang-format'
+  - script: |
+     node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
+    workingDirectory: '$(Build.SourcesDirectory)/js'
+    displayName: 'Check unformatted files'
+  - script: |
+     npm run build:doc
+    workingDirectory: '$(Build.SourcesDirectory)/js/web'
+    displayName: 'Generating documents'
+  - script: |
+     node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
+    workingDirectory: '$(Build.SourcesDirectory)/js/web'
+    displayName: 'Check out of dated documents'
+  - task: Cache@2
+    inputs:
+      key: onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+      restoreKeys: |
+        onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+      path: $(Build.SourcesDirectory)/js/test/
+      cacheHitVar: CACHE_RESTORED
+    displayName: 'Cache ONNX node test data'
+  - task: Bash@3
+    inputs:
+      targetType: 'inline'
+      script: find "$(Build.SourcesDirectory)/js/test/" -type f
+    condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
+    displayName: 'List ONNX node test data'
+  - task: PowerShell@2
+    inputs:
+      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
+      arguments: '$(NpmPackagingMode) $(Build.SourcesDirectory) web'
+      workingDirectory: $(Build.BinariesDirectory)
+      errorActionPreference: stop
+    displayName: 'Pack NPM packages'
+  - script: |
+     npm test
+    workingDirectory: '$(Build.SourcesDirectory)/js/web'
+    displayName: 'Run ort-web tests'
+  - script: |
+     npm test -- --webgl-texture-pack-mode -b=webgl
+    workingDirectory: '$(Build.SourcesDirectory)/js/web'
+    displayName: 'Run ort-web tests - WebGL: packed mode'
+  - script: |
+     npm test -- --wasm-enable-proxy -b=wasm
+    workingDirectory: '$(Build.SourcesDirectory)/js/web'
+    displayName: 'Run ort-web tests - WebAssembly: proxy'
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - script: |
+      npm run test:e2e
+    workingDirectory: '$(Build.SourcesDirectory)/js/web'
+    displayName: 'E2E package consuming test'
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Build.SourcesDirectory)/js/common
+      contents: onnxruntime-common-*.tgz
+      targetFolder: $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts (onnxruntime-common)'
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Build.SourcesDirectory)/js/web
+      contents: onnxruntime-web-*.tgz
+      targetFolder: $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts (onnxruntime-web)'
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - task: PublishPipelineArtifact@0
+    inputs:
+      artifactName: '${{ parameters.PackageName }}'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+    displayName: 'Publish Pipeline Artifact'
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'

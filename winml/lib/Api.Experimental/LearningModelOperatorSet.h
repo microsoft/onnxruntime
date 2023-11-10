@@ -13,4 +13,4 @@ struct LearningModelOperatorSet : LearningModelOperatorSetT<LearningModelOperato
   winml_experimental::LearningModelBuilder builder_;
   wfc::IVector<winml_experimental::LearningModelOperator> operators_;
 };
-}  // namespace WINML_EXPERIMENTALP
+}// namespace WINML_EXPERIMENTALP

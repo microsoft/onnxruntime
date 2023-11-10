@@ -10,10 +10,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-template <typename T, typename U, typename V, bool Simplified>
+template <typename T, typename U, typename V>
 Status LaunchSkipLayerNormKernel(
     RocmTuningContext* tuning,
-    Stream* stream,
+    hipStream_t stream,
     V* output,                      // output tensor
     T* skip_input_bias_add_output,  // optional output tensor
     const T* input,                 // input tensor

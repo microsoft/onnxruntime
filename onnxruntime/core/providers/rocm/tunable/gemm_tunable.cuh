@@ -58,15 +58,6 @@ class GemmTunableOp : public TunableOp<GemmParams<T>> {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
-
-    for (auto&& [_, op] : GetCKStreamKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
-      ORT_UNUSED_PARAMETER(_);
-      this->RegisterOp(std::move(op));
-    }
-    for (auto&& [_, op] : GetCKSplitKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
-      ORT_UNUSED_PARAMETER(_);
-      this->RegisterOp(std::move(op));
-    }
 #endif
   }
 

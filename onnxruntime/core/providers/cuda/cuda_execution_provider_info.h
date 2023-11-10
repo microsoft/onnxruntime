@@ -1,5 +1,4 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #pragma once
@@ -72,9 +71,6 @@ struct CUDAExecutionProviderInfo {
   cuda::TunableOpInfo tunable_op{};
 
   bool enable_skip_layer_norm_strict_mode{false};
-  bool prefer_nhwc{false};
-
-  bool use_ep_level_unified_stream{false};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);

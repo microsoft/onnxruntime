@@ -24,34 +24,28 @@
 #include "core/common/logging/logging.h"
 #endif
 #include "core/framework/execution_provider.h"
-#include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
 
 namespace onnxruntime {
 
-template <typename TuningContextT, typename NativeStreamT>
+template <typename TuningContextT, typename StreamT>
 struct OpParams {
   OpParams() : tuning_ctx{nullptr}, stream{} {}
-  OpParams(TuningContextT* tuning_ctx, Stream* stream) : tuning_ctx(tuning_ctx), stream(stream) {}
+  OpParams(TuningContextT* tuning_ctx, StreamT stream) : tuning_ctx(tuning_ctx), stream(stream) {}
   virtual ~OpParams() = default;
   virtual std::string Signature() const = 0;
-  inline onnxruntime::Stream* Stream() const { return stream; }
-  inline TuningContextT* TuningContext() const { return tuning_ctx; }
-  inline NativeStreamT StreamHandle() const {
-    return nullptr != stream ? static_cast<NativeStreamT>(stream->GetHandle()) : nullptr;
-  }
+  virtual StreamT Stream() const { return stream; }
+  virtual TuningContextT* TuningContext() const { return tuning_ctx; }
 
   // NOTE: the reason of TuningContext does not contains the Stream is that ORT now supports multiple stream and the
   // stream may change from call to call.
   TuningContextT* tuning_ctx;
-  onnxruntime::Stream* stream;
+  StreamT stream;
 };
 
 template <typename StreamT>
 class ITimer {
  public:
-  using NativeStreamT = StreamT;
-
   explicit ITimer(StreamT stream) : stream_{stream} {}
   virtual ~ITimer() = default;
 
@@ -223,7 +217,7 @@ class TunableOp {
   }
 
   static double Profile(Op<ParamsT>& op, const ParamsT* param, int num_iter) {
-    TimerT timer{param->StreamHandle()};
+    TimerT timer{param->Stream()};
     timer.Start();
     for (int i = 0; i < num_iter; i++) {
       ORT_THROW_IF_ERROR(op(param));
@@ -268,10 +262,6 @@ class TunableOp {
       WarmUp(candidate, params);
 
       auto approx_duration = Profile(candidate, params, approx_num_iter);
-      if (approx_duration > 2 * min_time) {
-        LOGS_DEFAULT(VERBOSE) << "FindFastestImpl skip slow instance " << op_sig << '(' << param_sig << ") id=" << i;
-        continue;
-      }
       int tuning_iter = std::max(1, int(std::min(double(max_tuning_iter), ctx->GetMaxTuningDurationMs() / approx_duration)));
 
       LOGS_DEFAULT(VERBOSE) << "FindFastestImpl run instance " << op_sig << '(' << param_sig << ") id=" << i << " " << tuning_iter << " times.";
@@ -282,7 +272,7 @@ class TunableOp {
         id = static_cast<int>(i);
       }
     }
-    ORT_ENFORCE(id >= 0, "Could not find viable op");
+    ORT_ENFORCE(id >= 0, "Cannot found viable op");
     LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;

@@ -52,18 +52,21 @@ void CompareOrtValuesToTensorProtoValues(
   ASSERT_EQ(name_to_ort_value.size(), name_to_tensor_proto.size());
 
   NameMLValMap name_to_ort_value_from_tensor_proto{};
-  AllocatorPtr tmp_allocator = std::make_shared<CPUAllocator>();
+  std::vector<std::vector<char>> tensor_buffers{};
 
   for (const auto& name_and_tensor_proto : name_to_tensor_proto) {
     const auto& name = name_and_tensor_proto.first;
     const auto& tensor_proto = name_and_tensor_proto.second;
     TensorShape shape{tensor_proto.dims().data(), static_cast<size_t>(tensor_proto.dims().size())};
     ASSERT_EQ(tensor_proto.data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    std::vector<char> tensor_buffer(shape.Size() * sizeof(float));
+    MemBuffer m(tensor_buffer.data(), tensor_buffer.size(), cpu_alloc_info);
     OrtValue ort_value;
-    ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), model_path.c_str(), tensor_proto,
-                                                  tmp_allocator, ort_value));
+    ASSERT_STATUS_OK(utils::TensorProtoToMLValue(
+        Env::Default(), model_path.c_str(), tensor_proto, m, ort_value));
 
     name_to_ort_value_from_tensor_proto.emplace(name, ort_value);
+    tensor_buffers.emplace_back(std::move(tensor_buffer));
   }
 
   for (const auto& name_and_ort_value : name_to_ort_value) {
@@ -103,10 +106,10 @@ TEST(CheckpointingTest, SaveAndLoad) {
   TemporaryDirectory tmp_dir{ORT_TSTR("checkpointing_test_dir")};
 
   PathString checkpoint_path{
-      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("test_checkpoint"))};
+      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("test_checkpoint"))};
   // this path doesn't need to exist, we just consider its parent directory
   PathString model_path{
-      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("test_model.onnx"))};
+      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("test_model.onnx"))};
 
   DataTransferManager data_transfer{};
   ASSERT_STATUS_OK(data_transfer.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));

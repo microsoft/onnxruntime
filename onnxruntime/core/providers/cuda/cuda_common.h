@@ -11,7 +11,6 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
-#include "core/framework/float8.h"
 #include "core/framework/float16.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
@@ -46,33 +45,6 @@ class ToCudaType<MLFloat16> {
   static MappedType FromFloat(float f) {
     uint16_t h = math::floatToHalf(f);
     return *reinterpret_cast<MappedType*>(&h);
-  }
-};
-
-template <>
-class ToCudaType<BFloat16> {
- public:
-  typedef BFloat16 MappedType;
-  static MappedType FromFloat(float f) {
-    return MappedType(f);
-  }
-};
-
-template <>
-class ToCudaType<Float8E4M3FN> {
- public:
-  typedef Float8E4M3FN MappedType;
-  static MappedType FromFloat(float f) {
-    return MappedType(f);
-  }
-};
-
-template <>
-class ToCudaType<Float8E5M2> {
- public:
-  typedef Float8E5M2 MappedType;
-  static MappedType FromFloat(float f) {
-    return MappedType(f);
   }
 };
 
@@ -179,14 +151,6 @@ class HalfGemmOptions {
 
   static HalfGemmOptions instance;
 };
-
-const char* cublasGetErrorEnum(cublasStatus_t error);
-
-const char* CudaDataTypeToString(cudaDataType_t dt);
-
-const char* CublasComputeTypeToString(cublasComputeType_t ct);
-
-cudaDataType_t ToCudaDataType(int32_t element_type);
 
 }  // namespace cuda
 }  // namespace onnxruntime

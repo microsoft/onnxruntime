@@ -39,13 +39,9 @@ Status BiasSplitGelu<T>::ComputeInternal(OpKernelContext* context) const {
                            "input is expected to have 3 dimensions, got ", input_dims.size());
   }
 
-  if (input_dims[2] != 2560 &&
-      input_dims[2] != 5120 &&
-      input_dims[2] != 6144 &&
-      input_dims[2] != 10240 &&
-      input_dims[2] != 12288) {
+  if (input_dims[2] != 2560 && input_dims[2] != 5120 && input_dims[2] != 10240) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "hidden size should be 2560, 5120, 6144, 10240 or 12288, got ", input_dims[2]);
+                           "hidden size should be 2560, 5120 or 10240, got ", input_dims[2]);
   }
 
   const Tensor* bias = context->Input<Tensor>(1);

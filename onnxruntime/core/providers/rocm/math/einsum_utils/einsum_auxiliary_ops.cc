@@ -53,7 +53,7 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
   return blas::column_major::StridedBatchedGemm(
       static_cast<rocm::tunable::RocmTuningContext*>(
           static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetTuningContext()),
-      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_,
+      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_->GetHandle()),
       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
       blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
       N, M, K,

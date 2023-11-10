@@ -1,5 +1,4 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #pragma once
@@ -11,7 +10,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename PoolType, bool NHWC>
+template <typename T, typename PoolType>
 class Pool : public CudaKernel, public PoolBase {
  public:
   Pool(const OpKernelInfo& info) : CudaKernel(info), PoolBase(info) {}
@@ -19,10 +18,10 @@ class Pool : public CudaKernel, public PoolBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-template <typename T, bool NHWC>
-class Pool<T, MaxPool<8>, NHWC> final : public Pool<T, MaxPool<1>, NHWC> {
+template <typename T>
+class Pool<T, MaxPool<8>> final : public Pool<T, MaxPool<1>> {
  public:
-  explicit Pool(const OpKernelInfo& info) : Pool<T, MaxPool<1>, NHWC>(info) {}
+  Pool(const OpKernelInfo& info) : Pool<T, MaxPool<1>>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };

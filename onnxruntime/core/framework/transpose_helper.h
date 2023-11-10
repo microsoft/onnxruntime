@@ -35,13 +35,11 @@ We fall back to the default implementation in all other cases, and if the input 
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
-#include "core/platform/threadpool.h"
 
 #include "core/common/gsl.h"
 
 namespace onnxruntime {
 bool IsTransposeMovingSingleAxis(gsl::span<const size_t> permutations, size_t& from, size_t& to);
 void SingleAxisTranspose(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output, size_t from,
-                         size_t to, const TensorShape* input_shape_override = nullptr,
-                         concurrency::ThreadPool* tp = nullptr);
+                         size_t to, const TensorShape* input_shape_override = nullptr);
 }  // namespace onnxruntime

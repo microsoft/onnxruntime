@@ -6,19 +6,22 @@
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Dict, List, Union
 
 import torch
-from float16 import float_to_float16_max_diff
-from onnx_model import OnnxModel
-from optimizer import optimize_model
 from t5_decoder import T5Decoder, T5DecoderHelper, T5DecoderInit
 from t5_encoder import T5Encoder, T5EncoderHelper
 from t5_encoder_decoder_init import T5EncoderDecoderInit, T5EncoderDecoderInitHelper
 from transformers import MT5ForConditionalGeneration, T5ForConditionalGeneration
 
 from onnxruntime import InferenceSession
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from float16 import float_to_float16_max_diff  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
+from optimizer import optimize_model  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

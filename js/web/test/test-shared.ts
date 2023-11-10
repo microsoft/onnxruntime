@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 import * as base64 from 'base64-js';
-import * as fs from 'node:fs/promises';
+import * as fs from 'fs';
+import {promisify} from 'util';
 
 import {Attribute} from '../lib/onnxjs/attribute';
 import {Graph} from '../lib/onnxjs/graph';
@@ -18,7 +19,7 @@ export function bufferToBase64(buffer: Uint8Array): string {
 export async function readFile(file: string) {
   if (typeof process !== 'undefined' && process.versions && process.versions.node) {
     // node
-    return fs.readFile(file);
+    return promisify(fs.readFile)(file);
   } else {
     // browser
     const response = await fetch(file);

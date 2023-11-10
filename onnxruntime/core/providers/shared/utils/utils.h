@@ -44,7 +44,7 @@ class NodeAttrHelper {
 
   int64_t Get(const std::string& key, int64_t def_val) const;
 
-  const std::string& Get(const std::string& key, const std::string& def_val) const;
+  std::string Get(const std::string& key, const std::string& def_val) const;
 
   std::vector<int64_t> Get(const std::string& key, const std::vector<int64_t>& def_val) const;
   std::vector<float> Get(const std::string& key, const std::vector<float>& def_val) const;

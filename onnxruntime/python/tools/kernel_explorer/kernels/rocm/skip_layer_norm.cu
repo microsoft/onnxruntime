@@ -12,7 +12,7 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
-template <typename T, int ThreadsPerBlock, int VecSize, bool Simplified>
+template <typename T, int ThreadsPerBlock, int VecSize>
 class SkipLayerNormSmall : public IKernelExplorer {
  public:
   SkipLayerNormSmall(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input, DeviceArray& skip,
@@ -23,11 +23,11 @@ class SkipLayerNormSmall : public IKernelExplorer {
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
-    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormSmallOp<T, float, T, ThreadsPerBlock, VecSize, Simplified>(&params_)));
+    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormSmallOp<T, float, T, ThreadsPerBlock, VecSize>(&params_)));
   }
 
   bool IsSupported() {
-    Status status = contrib::rocm::SkipLayerNormSmallOp<T, float, T, ThreadsPerBlock, VecSize, Simplified>(&params_);
+    Status status = contrib::rocm::SkipLayerNormSmallOp<T, float, T, ThreadsPerBlock, VecSize>(&params_);
     return status.IsOK();
   }
 
@@ -36,7 +36,7 @@ class SkipLayerNormSmall : public IKernelExplorer {
   ParamsT params_{};
 };
 
-template <typename T, int ThreadsPerBlock, int VecSize, bool Simplified>
+template <typename T, int ThreadsPerBlock, int VecSize>
 class SkipLayerNormRegular : public IKernelExplorer {
  public:
   SkipLayerNormRegular(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input, DeviceArray& skip,
@@ -47,11 +47,11 @@ class SkipLayerNormRegular : public IKernelExplorer {
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
-    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormRegularOp<T, float, T, ThreadsPerBlock, VecSize, Simplified>(&params_)));
+    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormRegularOp<T, float, T, ThreadsPerBlock, VecSize>(&params_)));
   }
 
   bool IsSupported() {
-    Status status = contrib::rocm::SkipLayerNormRegularOp<T, float, T, ThreadsPerBlock, VecSize, Simplified>(&params_);
+    Status status = contrib::rocm::SkipLayerNormRegularOp<T, float, T, ThreadsPerBlock, VecSize>(&params_);
     return status.IsOK();
   }
 
@@ -60,7 +60,7 @@ class SkipLayerNormRegular : public IKernelExplorer {
   ParamsT params_{};
 };
 
-template <typename T, bool Simplified>
+template <typename T>
 class SkipLayerNormStaticSelection : public IKernelExplorer {
  public:
   SkipLayerNormStaticSelection(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input,
@@ -71,11 +71,11 @@ class SkipLayerNormStaticSelection : public IKernelExplorer {
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
-    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormStaticSelection<T, float, T, Simplified>(&params_)));
+    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormStaticSelection<T, float, T>(&params_)));
   }
 
   bool IsSupported() {
-    Status status = contrib::rocm::SkipLayerNormStaticSelection<T, float, T, Simplified>(&params_);
+    Status status = contrib::rocm::SkipLayerNormStaticSelection<T, float, T>(&params_);
     return status.IsOK();
   }
 
@@ -84,7 +84,7 @@ class SkipLayerNormStaticSelection : public IKernelExplorer {
   ParamsT params_{};
 };
 
-template <typename T, bool Simplified>
+template <typename T>
 class SkipLayerNormTunable : public IKernelExplorer {
  public:
   SkipLayerNormTunable(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input, DeviceArray& skip,
@@ -107,22 +107,18 @@ class SkipLayerNormTunable : public IKernelExplorer {
  private:
   using ParamsT = contrib::rocm::SkipLayerNormParams<T, T>;
   ParamsT params_{};
-  contrib::rocm::SkipLayerNormTunableOp<T, float, T, Simplified> op_{};
+  contrib::rocm::SkipLayerNormTunableOp<T, float, T> op_{};
 };
 
-#define REGISTER_OP_COMMON(name, type, ...)                                 \
-  py::class_<type<__VA_ARGS__>>(m, name)                                    \
-      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, \
-                    DeviceArray&, DeviceArray&, DeviceArray&,               \
-                    float, int, int>())                                     \
-      .def("SetRepeats", &type<__VA_ARGS__>::SetRepeats)                    \
-      .def("Profile", &type<__VA_ARGS__>::Profile)                          \
-      .def("Run", &type<__VA_ARGS__>::Run)                                  \
-      .def("IsSupported", &type<__VA_ARGS__>::IsSupported);
-
-#define REGISTER_OP(name, type, threads_per_block, vec_size)                                                                           \
-  REGISTER_OP_COMMON("Simplified" #name "_" #type "_" #threads_per_block "_" #vec_size, name, type, threads_per_block, vec_size, true) \
-  REGISTER_OP_COMMON(#name "_" #type "_" #threads_per_block "_" #vec_size, name, type, threads_per_block, vec_size, false)
+#define REGISTER_OP(name, type, threads_per_block, vec_size)                                                   \
+  py::class_<name<type, threads_per_block, vec_size>>(m, #name "_" #type "_" #threads_per_block "_" #vec_size) \
+      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&,                                    \
+                    DeviceArray&, DeviceArray&, DeviceArray&,                                                  \
+                    float, int, int>())                                                                        \
+      .def("SetRepeats", &name<type, threads_per_block, vec_size>::SetRepeats)                                 \
+      .def("Profile", &name<type, threads_per_block, vec_size>::Profile)                                       \
+      .def("Run", &name<type, threads_per_block, vec_size>::Run)                                               \
+      .def("IsSupported", &name<type, threads_per_block, vec_size>::IsSupported);
 
 #define REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, threads_per_block) \
   REGISTER_OP(name, type, threads_per_block, 1)                     \
@@ -148,24 +144,19 @@ class SkipLayerNormTunable : public IKernelExplorer {
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 896)                        \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 1024)
 
-#define REGISTER_COMMON(name, type, ...)                                    \
-  py::class_<type<__VA_ARGS__>>(m, name)                                    \
+#define REGISTER_OP_TYPED(name, type)                                       \
+  py::class_<name<type>>(m, #name "_" #type)                                \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, \
                     DeviceArray&, DeviceArray&, DeviceArray&,               \
                     float, int, int>())                                     \
-      .def("SetRepeats", &type<__VA_ARGS__>::SetRepeats)                    \
-      .def("Profile", &type<__VA_ARGS__>::Profile)                          \
-      .def("Run", &type<__VA_ARGS__>::Run)                                  \
-      .def("IsSupported", &type<__VA_ARGS__>::IsSupported);
-
-#define REGISTER_OP_TYPED(name, type)                             \
-  REGISTER_COMMON("Simplified" #name "_" #type, name, type, true) \
-  REGISTER_COMMON(#name "_" #type, name, type, false)
+      .def("SetRepeats", &name<type>::SetRepeats)                           \
+      .def("Profile", &name<type>::Profile)                                 \
+      .def("Run", &name<type>::Run)                                         \
+      .def("IsSupported", &name<type>::IsSupported);
 
 KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmall, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmall, float);
-
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormRegular, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormRegular, float);
 

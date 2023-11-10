@@ -3,7 +3,6 @@ from pathlib import Path
 import onnx
 import onnx.helper as onnx_helper
 import onnx.numpy_helper as onnx_numpy_helper
-from onnx.onnx_pb import ModelProto
 
 from .quant_utils import attribute_to_kwarg, find_by_name
 
@@ -87,7 +86,7 @@ def _clean_initializers_helper(graph, model):
 
 
 class ONNXModel:
-    def __init__(self, model: ModelProto):
+    def __init__(self, model):
         self.model = model
 
     def nodes(self):
@@ -95,15 +94,6 @@ class ONNXModel:
 
     def initializer(self):
         return self.model.graph.initializer
-
-    def initializer_extend(self, inits):
-        if len(inits) == 0:
-            raise ValueError("Can add an empty list.")
-        for init in self.initializer():
-            self._check_init(init, "gain")
-        for init in inits:
-            self._check_init(init)
-            self.model.graph.initializer.append(init)
 
     def graph(self):
         return self.model.graph
@@ -123,15 +113,13 @@ class ONNXModel:
             self.remove_node(node)
 
     def add_node(self, node):
-        self.model.graph.node.extend([self._check_node(node)])
+        self.model.graph.node.extend([node])
 
     def add_nodes(self, nodes_to_add):
-        for node in nodes_to_add:
-            self.add_node(node)
+        self.model.graph.node.extend(nodes_to_add)
 
     def add_initializer(self, tensor):
         if find_by_name(tensor.name, self.model.graph.initializer) is None:
-            self._check_init(tensor)
             self.model.graph.initializer.extend([tensor])
 
     def get_initializer(self, name):
@@ -354,10 +342,7 @@ class ONNXModel:
                 self.model,
                 all_tensors_to_one_file=True,
                 location=Path(output_path).name + ".data",
-                convert_attribute=True,
             )
-        for init in self.model.graph.initializer:
-            self._check_init(init, "end")
         onnx.save_model(self.model, output_path)
 
     @staticmethod
@@ -471,30 +456,3 @@ class ONNXModel:
 
     def clean_initializers(self):
         return _clean_initializers_helper(self.graph(), self.model)
-
-    def _check_init(self, init, test=None):
-        if init.data_type == onnx.TensorProto.FLOAT8E4M3FN:
-            if init.HasField("raw_data"):
-                b = list(init.raw_data)
-                if any(map(lambda i: (i & 127) == 127, b)):
-                    raise ValueError(f"Initializer {init.name!r} has nan.")
-        return init
-
-    def _check_node(self, node):
-        """
-        A quantization to float 8 does not use quantized bias but float 16 bias.
-        This function checks that DequantizeLinear is not used to
-        dequantize from float 16.
-        """
-        if node.op_type == "DequantizeLinear":
-            zero_point = node.input[2]
-            init = self.get_initializer(zero_point)
-            dtype = init.data_type
-            if dtype in {
-                onnx.TensorProto.FLOAT16,
-                onnx.TensorProto.FLOAT,
-                onnx.TensorProto.DOUBLE,
-                onnx.TensorProto.BFLOAT16,
-            }:
-                raise RuntimeError(f"Unsupported DequantizeLinear operator, dequantization from {dtype}.")
-        return node

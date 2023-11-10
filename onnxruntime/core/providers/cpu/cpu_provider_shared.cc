@@ -115,12 +115,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) override { return onnxruntime::PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
   // From cpu/tensor/slice.h (direct)
-  Status SliceBase__FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
-                                      TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
-                                      TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) override {
-    return SliceBase::FlattenOutputDims(input_dimensions, output_dims, starts, ends, steps, p_flattened_input_dims, p_flattened_output_dims);
-  }
-
   Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
                                       gsl::span<const int64_t> raw_ends,
                                       gsl::span<const int64_t> raw_axes,
@@ -243,26 +237,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                 const SessionState& subgraph_session_state) override {
     return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name,
                                                                             subgraph_session_state);
-  }
-
-  Status WhisperBeamSearch__Compute(const contrib::transformers::WhisperBeamSearch* p, OpKernelContext* ctx) override {
-    return p->contrib::transformers::WhisperBeamSearch::Compute(ctx);
-  }
-
-  void BeamSearchParameters__ParseFromAttributes(contrib::transformers::BeamSearchParameters* p, const OpKernelInfo& info) override {
-    p->contrib::transformers::BeamSearchParameters::ParseFromAttributes(info);
-  }
-
-  void GreedySearchParameters__ParseFromAttributes(contrib::transformers::GreedySearchParameters* p, const OpKernelInfo& info) override {
-    p->contrib::transformers::GreedySearchParameters::ParseFromAttributes(info);
-  }
-
-  void SamplingParameters__ParseFromAttributes(contrib::transformers::SamplingParameters* p, const OpKernelInfo& info) override {
-    p->contrib::transformers::SamplingParameters::ParseFromAttributes(info);
-  }
-
-  void WhisperBeamSearchParameters__ParseFromAttributes(contrib::transformers::WhisperBeamSearchParameters* p, const OpKernelInfo& info) override {
-    p->contrib::transformers::WhisperBeamSearchParameters::ParseFromAttributes(info);
   }
 
   void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) override {

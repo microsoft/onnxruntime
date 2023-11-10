@@ -6,12 +6,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 
 #if defined(ORT_USE_NCCL)
-#include <algorithm>
-#include <tuple>
-#include <optional>
-#include <string>
 #include <nccl.h>
-#include <sstream>
 #endif
 
 namespace onnxruntime {
@@ -49,10 +44,6 @@ class NcclKernel : public ::onnxruntime::cuda::CudaKernel {
  public:
   explicit NcclKernel(const OpKernelInfo& info);
 
-  ncclComm_t Comm() const {
-    return nccl_->Comm();
-  }
-
  protected:
   NcclContext* nccl_ = nullptr;
 };
@@ -89,27 +80,6 @@ class AllToAll final : public NcclKernel {
  private:
   int64_t group_size_ = -1;
 };
-
-Status FuncAllReduce(
-    ncclComm_t comm,
-    cudaStream_t stream,
-    const Tensor* input,
-    Tensor* output);
-
-void FuncAllGather(
-    const NcclKernel* nccl_kernel,
-    OpKernelContext* ctx,
-    const Tensor* input,
-    const int64_t group_size,
-    const int64_t axis,
-    Tensor* output);
-
-std::unique_ptr<Tensor> FuncAllGather(
-    const NcclKernel* nccl_kernel,
-    OpKernelContext* ctx,
-    const Tensor* input,
-    const int64_t group_size,
-    const int64_t axis);
 
 }  // namespace cuda
 }  // namespace contrib

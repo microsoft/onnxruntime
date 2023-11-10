@@ -1,32 +1,3 @@
-##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
-trigger:
-  branches:
-    include:
-    - main
-    - rel-*
-  paths:
-    exclude:
-    - docs/**
-    - README.md
-    - CONTRIBUTING.md
-    - BUILD.md
-    - 'js/web'
-    - 'onnxruntime/core/providers/js'
-pr:
-  branches:
-    include:
-    - main
-    - rel-*
-  paths:
-    exclude:
-    - docs/**
-    - README.md
-    - CONTRIBUTING.md
-    - BUILD.md
-    - 'js/web'
-    - 'onnxruntime/core/providers/js'
-#### end trigger ####
-
 resources:
   repositories:
   - repository: manylinux
@@ -50,7 +21,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild

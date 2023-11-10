@@ -279,7 +279,7 @@ def calculate_trt_latency_percentage(trt_op_map):
             op_map = trt_op_map[ep]
 
             total_time = 0
-            for value in op_map.values():
+            for _key, value in op_map.items():
                 total_time += int(value)
 
             if ep == "TensorrtExecutionProvider":

@@ -11,21 +11,15 @@ namespace contrib {
 namespace transformers {
 
 struct BeamSearchParameters : public IGenerationParameters {
-  virtual ~BeamSearchParameters() {}
-
   Status Validate() const;
 
   int BatchBeamSize() const { return batch_size * num_beams; }
 
-  virtual void ParseFromAttributes(const OpKernelInfo& info);
+  void ParseFromAttributes(const OpKernelInfo& info);
 
   void ParseFromInputs(OpKernelContext* context);
 
   void SetSubgraphParameters(int vocab_size, int num_heads, int head_size, int num_layers);
-};
-
-struct WhisperBeamSearchParameters : public BeamSearchParameters {
-  void ParseFromAttributes(const OpKernelInfo& info) override;
 };
 
 }  // namespace transformers

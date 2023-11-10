@@ -1,0 +1,17 @@
+# --------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------
+# Dockerfile to run ONNXRuntime with source build for CPU
+
+FROM arm64v8/centos:7
+MAINTAINER Changming Sun "chasun@microsoft.com"
+ADD . /code
+
+
+RUN /code/dockerfiles/scripts/install_centos_arm64.sh && cd /code && CC=/opt/rh/devtoolset-10/root/usr/bin/gcc CXX=/opt/rh/devtoolset-10/root/usr/bin/g++ ./build.sh --allow_running_as_root --skip_submodule_sync --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
+
+FROM arm64v8/centos:7
+COPY --from=0 /code/build/Linux/Release/dist /root
+COPY --from=0 /code/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
+RUN yum install -y python3-wheel python3-pip && python3 -m pip install --upgrade pip && python3 -m pip install /root/*.whl && rm -rf /root/*.whl

@@ -12,7 +12,7 @@ interface BackendInfo {
   aborted?: boolean;
 }
 
-const backends: Map<string, BackendInfo> = new Map();
+const backends: {[name: string]: BackendInfo} = {};
 const backendsSortedByPriority: string[] = [];
 
 /**
@@ -23,13 +23,13 @@ const backendsSortedByPriority: string[] = [];
  * @param priority - an integer indicating the priority of the backend. Higher number means higher priority. if priority
  * < 0, it will be considered as a 'beta' version and will not be used as a fallback backend by default.
  *
- * @ignore
+ * @internal
  */
 export const registerBackend = (name: string, backend: Backend, priority: number): void => {
-  if (backend && typeof backend.init === 'function' && typeof backend.createInferenceSessionHandler === 'function') {
-    const currentBackend = backends.get(name);
+  if (backend && typeof backend.init === 'function' && typeof backend.createSessionHandler === 'function') {
+    const currentBackend = backends[name];
     if (currentBackend === undefined) {
-      backends.set(name, {backend, priority});
+      backends[name] = {backend, priority};
     } else if (currentBackend.priority > priority) {
       // same name is already registered with a higher priority. skip registeration.
       return;
@@ -46,7 +46,7 @@ export const registerBackend = (name: string, backend: Backend, priority: number
       }
 
       for (let i = 0; i < backendsSortedByPriority.length; i++) {
-        if (backends.get(backendsSortedByPriority[i])!.priority <= priority) {
+        if (backends[backendsSortedByPriority[i]].priority <= priority) {
           backendsSortedByPriority.splice(i, 0, name);
           return;
         }
@@ -65,13 +65,13 @@ export const registerBackend = (name: string, backend: Backend, priority: number
  * @param backendHints - a list of execution provider names to lookup. If omitted use registered backends as list.
  * @returns a promise that resolves to the backend.
  *
- * @ignore
+ * @internal
  */
 export const resolveBackend = async(backendHints: readonly string[]): Promise<Backend> => {
   const backendNames = backendHints.length === 0 ? backendsSortedByPriority : backendHints;
   const errors = [];
   for (const backendName of backendNames) {
-    const backendInfo = backends.get(backendName);
+    const backendInfo = backends[backendName];
     if (backendInfo) {
       if (backendInfo.initialized) {
         return backendInfo.backend;

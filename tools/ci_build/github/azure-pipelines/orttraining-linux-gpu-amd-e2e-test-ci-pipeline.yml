@@ -1,0 +1,80 @@
+trigger: none
+
+name: 'orttraining_amd_nightly_$(Date:yyyyMMdd)_$(Rev:r)'
+pool: 'AMD-GPU'
+
+jobs:
+- job: Onnxruntime_Linux_GPU_AMD_Training_E2E_Test
+
+  timeoutInMinutes: 60
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - script: |-
+      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+      set +x
+      echo "##vso[task.prependpath]/home/ciagent/conda/bin/"
+      echo "##vso[task.prependpath]/home/ciagent/pkg/openmpi-4.0.5/bin/"
+      echo '##vso[task.setvariable variable=LD_LIBRARY_PATH]/home/ciagent/pkg/openmpi-4.0.5/lib/'
+      eval "$('/home/ciagent/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+      echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
+    displayName: 'Initialize environment'
+
+  # update these if the E2E test data changes
+  - script: |-
+      export AZURE_BLOB_SAS_TOKEN="$(onnxruntimetestdata-storage-training-container-sas-token)"
+      python orttraining/tools/ci_test/download_azure_blob_archive.py \
+        --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip \
+        --target_dir training_e2e_test_data \
+        --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
+    displayName: 'Download onnxruntime_training_data.zip data'
+
+  - script: |-
+      python tools/ci_build/build.py \
+        --config RelWithDebInfo \
+        --enable_training \
+        --mpi_home /home/ciagent/pkg/openmpi-4.0.5 \
+        --use_rocm \
+        --rocm_home /opt/rocm \
+        --nccl_home /opt/rocm \
+        --update \
+        --build_dir ./build \
+        --build \
+        --parallel 8 \
+        --build_wheel \
+        --skip_tests
+    displayName: 'Build onnxruntime'
+
+  - script: |-
+      cd ./build/RelWithDebInfo &&\
+      ../../tools/ci_build/github/pai/pai_test_launcher.sh
+    displayName: 'Run onnxruntime unit tests'
+
+  - script: |-
+     python orttraining/tools/ci_test/run_batch_size_test.py \
+       --binary_dir build/RelWithDebInfo \
+       --model_root training_e2e_test_data/models \
+       --gpu_sku MI100_32G
+    displayName: 'Run C++ BERT-L batch size test'
+    condition: succeededOrFailed() # ensure all tests are run
+
+  - script: |-
+     python orttraining/tools/ci_test/run_bert_perf_test.py \
+        --binary_dir build/RelWithDebInfo \
+        --model_root training_e2e_test_data/models \
+        --training_data_root training_e2e_test_data/data \
+        --gpu_sku MI100_32G
+    displayName: 'Run C++ BERT-L performance test'
+    condition: succeededOrFailed() # ensure all tests are run
+
+  - script: |-
+     python orttraining/tools/ci_test/run_convergence_test.py \
+       --binary_dir build/RelWithDebInfo \
+       --model_root training_e2e_test_data/models \
+       --training_data_root training_e2e_test_data/data \
+       --gpu_sku MI100_32G
+    displayName: 'Run C++ BERT-L convergence test'
+    condition: succeededOrFailed() # ensure all tests are run

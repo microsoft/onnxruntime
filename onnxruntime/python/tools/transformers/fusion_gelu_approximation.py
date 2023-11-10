@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from logging import getLogger  # noqa: F401
+
 from fusion_base import Fusion
 from onnx import helper
 from onnx_model import OnnxModel

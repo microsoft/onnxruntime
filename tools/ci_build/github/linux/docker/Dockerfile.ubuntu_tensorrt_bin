@@ -21,7 +21,7 @@ ARG TAR_CUDNN_VERSION
 # Directory containing TensorRT tar.gz installation package
 ARG TRT_BINS_DIR=.
 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.27.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.26.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -42,7 +42,7 @@ RUN apt-get install -y --no-install-recommends \
     ln -s /usr/bin/pip3 pip;
 
 RUN pip install --upgrade pip 
-RUN pip install setuptools>=68.2.2
+RUN pip install setuptools>=41.0.0
 
 # Install TensorRT from tar.gz
 RUN tar -xzvf /TensorRT-${TAR_TRT_VERSION}.tar.gz

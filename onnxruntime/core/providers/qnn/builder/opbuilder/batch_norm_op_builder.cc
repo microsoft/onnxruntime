@@ -20,7 +20,8 @@ class BatchNormOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger,
+                       bool is_quantized_model) const override final ORT_MUST_USE_RESULT;
 };
 
 // BatchNorm is sensitive with data layout, no special validation so far
@@ -28,22 +29,25 @@ class BatchNormOpBuilder : public BaseOpBuilder {
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
 Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                          const NodeUnit& node_unit,
-                                         const logging::Logger& logger) const {
+                                         const logging::Logger& logger,
+                                         bool is_quantized_model) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {
     // It's useless to fallback the node after layout transformation because CPU EP can't support it anyway
     // Still do it here so hopefully QNN Op validation API can tell us some details why it's not supported
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
   } else {
     NodeAttrHelper node_helper(node_unit);
     const float default_epsilon = 1e-05f;
     const float epsilon = node_helper.Get("epsilon", 1e-05f);  // Default is 1e-05 according to ONNX spec.
     ORT_RETURN_IF(abs(epsilon - default_epsilon) > default_epsilon, "QNN BatchNorm doesn't support epsilon.");
 
+    const auto float_elem_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float");
+
     const auto& inputs = node_unit.Inputs();
     ORT_ENFORCE(inputs.size() == 5, "5 input expected per BatchNorm Onnx Spec.");
-
-    // Check input type is float for CPU. Can't use Qnn Op validation API since it's before layout transformation
-    ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));
+    // Check input type is float for CPU.
+    ONNX_NAMESPACE::DataType input_data_type = inputs[0].node_arg.Type();
+    ORT_RETURN_IF(!is_quantized_model && input_data_type != float_elem_type, "QNN BatchNorm CPU only support float32.");
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");

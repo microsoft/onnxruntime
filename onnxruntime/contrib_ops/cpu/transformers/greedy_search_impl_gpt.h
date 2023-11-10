@@ -211,8 +211,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
                     static_cast<int>(parameters->num_heads),
                     static_cast<int>(parameters->head_size),
                     gpt_subgraph_.has_decoder_masked_attention_,
-                    this->IsCuda(),
-                    this->ort_stream_);
+                    this->IsCuda());
 
   SamplingState<T> sampling_state;
   if (std::is_same<ParametersT, SamplingParameters>::value) {
@@ -222,8 +221,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
                         static_cast<int>(parameters->vocab_size),
                         static_cast<int>(parameters->max_length - parameters->sequence_length),
                         parameters->seed,
-                        this->IsCuda(),
-                        this->ort_stream_);
+                        this->IsCuda());
   }
 
   IAllocatorUniquePtr<char> buffer;

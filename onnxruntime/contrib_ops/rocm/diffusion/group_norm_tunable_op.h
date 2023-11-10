@@ -35,12 +35,11 @@ void groupNormNHWCSum(const GroupNormNHWCParams<T>* params) {
   // The number of instances.
   grid.z = params->n;
 
-#define LAUNCH_GROUPNORM_SUM(ThreadsPerBlock, VecSize)                \
-  groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>                 \
-      <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(         \
-          params->src, params->redBuffer, params->cPerBlock,          \
-          params->hwPerBlock, params->hw, params->hwc, params->c,     \
-          params->cPerGroup, params->groups, params->groupsPerBlock); \
+#define LAUNCH_GROUPNORM_SUM(ThreadsPerBlock, VecSize)                                                           \
+  groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>                                                            \
+      <<<grid, ThreadsPerBlock, 0, params->stream>>>(params->src, params->redBuffer, params->cPerBlock,          \
+                                                     params->hwPerBlock, params->hw, params->hwc, params->c,     \
+                                                     params->cPerGroup, params->groups, params->groupsPerBlock); \
   break;
 
   switch (params->cPerBlock) {
@@ -65,7 +64,7 @@ Status GroupNormNHWCSumOp(const GroupNormNHWCParams<T>* params) {
   grid.z = params->n;
 
   groupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>
-      <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(
+      <<<grid, ThreadsPerBlock, 0, params->stream>>>(
           params->src, params->redBuffer, params->cPerBlock, params->hwPerBlock,
           params->hw, params->hwc, params->c, params->cPerGroup, params->groups, params->groupsPerBlock);
   return HIP_CALL(hipGetLastError());
@@ -87,13 +86,12 @@ void groupNormNHWCScale(const GroupNormNHWCParams<T>* params) {
   // The number of instances.
   grid.z = params->n;
 
-#define LAUNCH_GROUPNORM_SCALE(ThreadsPerBlock, VecSize)                    \
-  groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>                     \
-      <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(               \
-          params->dst, params->src, params->gamma, params->beta,            \
-          params->redBuffer, params->epsilon, params->c, params->cPerBlock, \
-          params->cPerGroup, params->groups, params->hwc, params->invHWC,   \
-          params->hw, params->hwPerBlock, params->withSwish);               \
+#define LAUNCH_GROUPNORM_SCALE(ThreadsPerBlock, VecSize)                                                               \
+  groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>                                                                \
+      <<<grid, ThreadsPerBlock, 0, params->stream>>>(params->dst, params->src, params->gamma, params->beta,            \
+                                                     params->redBuffer, params->epsilon, params->c, params->cPerBlock, \
+                                                     params->cPerGroup, params->groups, params->hwc, params->invHWC,   \
+                                                     params->hw, params->hwPerBlock, params->withSwish);               \
   break;
 
   switch (params->cPerBlock) {
@@ -118,7 +116,7 @@ Status GroupNormNHWCScaleOp(const GroupNormNHWCParams<T>* params) {
   grid.z = params->n;
 
   groupNormNHWCScaleKernel<T, ThreadsPerBlock, VecSize>
-      <<<grid, ThreadsPerBlock, 0, params->StreamHandle()>>>(
+      <<<grid, ThreadsPerBlock, 0, params->stream>>>(
           params->dst, params->src, params->gamma, params->beta, params->redBuffer, params->epsilon, params->c, params->cPerBlock,
           params->cPerGroup, params->groups, params->hwc, params->invHWC, params->hw, params->hwPerBlock, params->withSwish);
   return HIP_CALL(hipGetLastError());
@@ -128,7 +126,7 @@ template <typename T, int ThreadsPerBlock, int VecSize>
 class GroupNormNHWCOp {
  public:
   Status operator()(const GroupNormNHWCParams<T>* params) {
-    HIP_RETURN_IF_ERROR(hipMemsetAsync(params->redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), params->StreamHandle()));
+    HIP_RETURN_IF_ERROR(hipMemsetAsync(params->redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), params->stream));
     auto status = GroupNormNHWCSumOp<T, ThreadsPerBlock, VecSize>(params);
     ORT_RETURN_IF_ERROR(status);
     HIP_RETURN_IF_ERROR(hipGetLastError());
@@ -157,7 +155,7 @@ class GroupNormNHWCOp {
 
 template <typename T>
 Status GroupNormNHWCStaticSelection(const GroupNormNHWCParams<T>* params) {
-  HIP_RETURN_IF_ERROR(hipMemsetAsync(params->redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), params->StreamHandle()));
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(params->redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), params->stream));
   groupNormNHWCSum<T>(params);
   HIP_RETURN_IF_ERROR(hipGetLastError());
   groupNormNHWCScale<T>(params);

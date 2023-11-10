@@ -1,3 +1,3 @@
 variables:
   common_cuda_version: '11.8'
-  common_cuda_baseimg: 'nvidia/cuda:11.8.0-cudnn8-devel-ubi8'
+  common_cuda_baseimg: 'nvidia/cuda:11.8.0-cudnn8-devel-centos7'

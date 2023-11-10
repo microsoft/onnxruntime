@@ -89,10 +89,6 @@ float QuickGeluGrad(float dy, float x, float alpha) {
   float sigmoid = v >= 0 ? 1.f / (1.f + std::exp(-v)) : 1.f - 1.f / (1 + std::exp(v));
   return dy * sigmoid * (1 + v * (1 - sigmoid));
 }
-
-constexpr float LeakyReluGrad(float dy, float y, float alpha) {
-  return dy * (y > 0.0f ? 1.0f : alpha);
-}
 }  // namespace
 
 TEST(GeluGradTest, Basic) {
@@ -265,23 +261,6 @@ TEST(QuickGeluGradTest, Basic) {
         },
         {{"alpha", alpha}}, 1, kMSDomain);
   }
-}
-
-TEST(LeakyReluGradTest, Basic) {
-  const std::vector<float> y_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
-  const std::vector<float> dY(7, 1.0f);
-  float alpha = 0.5f;
-
-  TestElementwiseGradientOp(
-      "LeakyReluGrad",
-      {{"dY", dY}, {"Y", y_vals}},
-      [alpha](const std::vector<float>& params) {
-        ORT_ENFORCE(params.size() == 2);
-        const auto dy = params[0], y = params[1];
-
-        return LeakyReluGrad(dy, y, alpha);
-      },
-      {{"alpha", alpha}}, 1, kMSDomain);
 }
 
 namespace {

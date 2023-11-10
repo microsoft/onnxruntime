@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace js {
 #define JSEP_DEFINE_REDUCE_KERNEL(ReduceKernel)                                                              \
-  template <bool allow_multi_axes = true>                                                                    \
+  template <typename T, bool allow_multi_axes = true>                                                        \
   class ReduceKernel : public JsKernel, public ReduceKernelBase<allow_multi_axes> {                          \
    public:                                                                                                   \
     using ReduceKernelBase<allow_multi_axes>::axes_;                                                         \

@@ -122,6 +122,9 @@ ORT_API_STATUS(
 );
 
 // Dml methods (TODO need to figure out how these need to move to session somehow...)
+ORT_API_STATUS(
+  DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled
+);
 ORT_API_STATUS(DmlExecutionProviderFlushContext, _In_ OrtExecutionProvider* dml_provider);
 ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecutionProvider* dml_provider);
 

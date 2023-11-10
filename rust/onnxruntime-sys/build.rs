@@ -105,6 +105,7 @@ fn generate_bindings(include_dir: &Path) {
         .expect("Unable to generate bindings");
 
     let generated_file = PathBuf::from(env::var("OUT_DIR").unwrap()).join("bindings.rs");
+    println!("cargo:rerun-if-changed={:?}", generated_file);
     bindings
         .write_to_file(&generated_file)
         .expect("Couldn't write bindings!");

@@ -49,9 +49,6 @@ class CudaTuningContext : public ITuningContext {
 
   const TuningResultsValidator& GetTuningResultsValidator() const override;
 
-  IAllocatorUniquePtr<void> GetScratchBuffer(
-      size_t bytes, Stream* stream, OrtMemType mem_type = OrtMemTypeDefault) const;
-
  private:
   TunableOpInfo* info_;  // non-owning handle
   TuningResultsManager manager_;

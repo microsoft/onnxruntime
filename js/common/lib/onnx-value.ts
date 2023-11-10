@@ -11,8 +11,3 @@ type NonTensorType = never;
  * NOTE: currently not support non-tensor
  */
 export type OnnxValue = Tensor|NonTensorType;
-
-/**
- * Type OnnxValueDataLocation represents the location of the data of an OnnxValue.
- */
-export type OnnxValueDataLocation = Tensor.DataLocation;

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /* eslint-disable import/no-internal-modules */
-import {Backend, InferenceSession, InferenceSessionHandler} from 'onnxruntime-common';
+import {Backend, InferenceSession, SessionHandler} from 'onnxruntime-common';
 
 import {Session} from './onnxjs/session';
 import {OnnxjsSessionHandler} from './onnxjs/session-handler';
@@ -11,8 +11,8 @@ class OnnxjsBackend implements Backend {
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   async init(): Promise<void> {}
 
-  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler> {
+  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+      Promise<SessionHandler> {
     // NOTE: Session.Config(from onnx.js) is not compatible with InferenceSession.SessionOptions(from
     // onnxruntime-common).
     //       In future we should remove Session.Config and use InferenceSession.SessionOptions.

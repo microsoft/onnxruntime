@@ -1,10 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #pragma once
-
-#include <memory>
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_kernel.h"
@@ -15,12 +12,10 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, bool NHWC>
+template <typename T>
 class ConvTranspose : public CudaKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : CudaKernel(info), conv_transpose_attrs_(info){};
-  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) override;
   Status ComputeInternal(OpKernelContext* context) const override;
   Status DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const;
 
@@ -28,7 +23,6 @@ class ConvTranspose : public CudaKernel {
   ConvTransposeAttributes conv_transpose_attrs_;
 
   mutable CudnnConvState<cudnnConvolutionBwdDataAlgoPerf_t> s_;
-  std::unique_ptr<Tensor> W_;
 };
 
 }  // namespace cuda

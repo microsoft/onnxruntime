@@ -4,27 +4,19 @@
 #include "onnxruntime_cxx_api.h"
 
 #include "common.h"
-#include "directml_load_helper.h"
 #include "inference_session_wrap.h"
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
-#include <string>
 
 Napi::FunctionReference InferenceSessionWrap::constructor;
+Ort::Env *InferenceSessionWrap::ortEnv;
 
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
-#if defined(USE_DML) && defined(_WIN32)
-  LoadDirectMLDll(env);
-#endif
   // create ONNX runtime env
   Ort::InitApi();
-  ORT_NAPI_THROW_ERROR_IF(
-      Ort::Global<void>::api_ == nullptr, env,
-      "Failed to initialize ONNX Runtime API. It could happen when this nodejs binding was built with a higher version "
-      "ONNX Runtime but now runs with a lower version ONNX Runtime DLL(or shared library).");
-  auto ortEnv = new Ort::Env{ORT_LOGGING_LEVEL_WARNING, "onnxruntime-node"};
-  env.SetInstanceData(ortEnv);
+  ortEnv = new Ort::Env{ORT_LOGGING_LEVEL_WARNING, "onnxruntime-node"};
+
   // initialize binding
   Napi::HandleScope scope(env);
 
@@ -36,11 +28,8 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
 
   constructor = Napi::Persistent(func);
   constructor.SuppressDestruct();
+
   exports.Set("InferenceSession", func);
-
-  Napi::Function listSupportedBackends = Napi::Function::New(env, InferenceSessionWrap::ListSupportedBackends);
-  exports.Set("listSupportedBackends", listSupportedBackends);
-
   return exports;
 }
 
@@ -65,7 +54,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
       Napi::String value = info[0].As<Napi::String>();
 
       ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(*env.GetInstanceData<Ort::Env>(),
+      this->session_.reset(new Ort::Session(OrtEnv(),
 #ifdef _WIN32
                                             reinterpret_cast<const wchar_t *>(value.Utf16Value().c_str()),
 #else
@@ -79,10 +68,9 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
       int64_t bytesOffset = info[1].As<Napi::Number>().Int64Value();
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
-      ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(*env.GetInstanceData<Ort::Env>(),
-                                            reinterpret_cast<char *>(buffer) + bytesOffset, bytesLength,
-                                            sessionOptions));
+      ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
+      this->session_.reset(
+          new Ort::Session(OrtEnv(), reinterpret_cast<char *>(buffer) + bytesOffset, bytesLength, sessionOptions));
     } else {
       ORT_NAPI_THROW_TYPEERROR(
           env,
@@ -163,7 +151,6 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
   std::vector<bool> reuseOutput;
   size_t inputIndex = 0;
   size_t outputIndex = 0;
-  OrtMemoryInfo *memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault).release();
 
   try {
     for (auto &name : inputNames_) {
@@ -171,7 +158,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
         inputIndex++;
         inputNames_cstr.push_back(name.c_str());
         auto value = feed.Get(name);
-        inputValues.push_back(NapiValueToOrtValue(env, value, memory_info));
+        inputValues.push_back(NapiValueToOrtValue(env, value));
       }
     }
     for (auto &name : outputNames_) {
@@ -180,7 +167,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
         outputNames_cstr.push_back(name.c_str());
         auto value = fetch.Get(name);
         reuseOutput.push_back(!value.IsNull());
-        outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value, memory_info));
+        outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value));
       }
     }
 
@@ -207,34 +194,4 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
   } catch (std::exception const &e) {
     ORT_NAPI_THROW_ERROR(env, e.what());
   }
-}
-
-Napi::Value InferenceSessionWrap::ListSupportedBackends(const Napi::CallbackInfo &info) {
-  Napi::Env env = info.Env();
-  Napi::EscapableHandleScope scope(env);
-  Napi::Array result = Napi::Array::New(env);
-
-  auto createObject = [&env](const std::string &name, const bool bundled) -> Napi::Object {
-    Napi::Object result = Napi::Object::New(env);
-    result.Set("name", name);
-    result.Set("bundled", bundled);
-    return result;
-  };
-
-  result.Set(uint32_t(0), createObject("cpu", true));
-
-#ifdef USE_DML
-  result.Set(result.Length(), createObject("dml", true));
-#endif
-#ifdef USE_CUDA
-  result.Set(result.Length(), createObject("cuda", false));
-#endif
-#ifdef USE_TENSORRT
-  result.Set(result.Length(), createObject("tensorrt", false));
-#endif
-#ifdef USE_COREML
-  result.Set(result.Length(), createObject("coreml", true));
-#endif
-
-  return scope.Escape(result);
 }

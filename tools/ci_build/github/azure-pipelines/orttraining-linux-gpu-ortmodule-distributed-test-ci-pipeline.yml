@@ -1,31 +1,4 @@
-##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
-trigger:
-  branches:
-    include:
-    - main
-    - rel-*
-  paths:
-    exclude:
-    - docs/**
-    - README.md
-    - CONTRIBUTING.md
-    - BUILD.md
-    - 'js/web'
-    - 'onnxruntime/core/providers/js'
-pr:
-  branches:
-    include:
-    - main
-    - rel-*
-  paths:
-    exclude:
-    - docs/**
-    - README.md
-    - CONTRIBUTING.md
-    - BUILD.md
-    - 'js/web'
-    - 'onnxruntime/core/providers/js'
-#### end trigger ####
+trigger: none
 
 stages:
 - stage: ORTModuleDistributedTest
@@ -124,7 +97,7 @@ stages:
           --volume $(Build.BinariesDirectory):/build \
           --volume /mnist:/mnist \
           onnxruntime_ortmodule_distributed_tests_image \
-            bash -c "rm -rf /build/RelWithDebInfo/onnxruntime/ && python3 -m pip install mpi4py onnxscript && python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl && mpirun -n 4 -x NCCL_DEBUG=INFO python /onnxruntime_src/onnxruntime/test/python/onnxruntime_test_collective.py && mpirun -n 2 -x NCCL_DEBUG=INFO python /onnxruntime_src/onnxruntime/test/python/onnxruntime_test_distributed.py" \
+            bash -c "rm -rf /build/RelWithDebInfo/onnxruntime/ && python3 -m pip install mpi4py && python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl && mpirun -n 4 -x NCCL_DEBUG=INFO python /onnxruntime_src/onnxruntime/test/python/onnxruntime_test_collective.py" \
       displayName: 'Run onnxruntime_test_collective.py'
       condition: succeededOrFailed()
       timeoutInMinutes: 30

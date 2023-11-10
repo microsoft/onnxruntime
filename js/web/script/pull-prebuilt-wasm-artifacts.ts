@@ -145,14 +145,12 @@ downloadJson(
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', folderName);
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.jsep.wasm', folderName);
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd.wasm', folderName);
 
                 extractFile(zip, JS_FOLDER, 'ort-wasm.js', folderName);
                 extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.js', folderName);
                 extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.worker.js', folderName);
                 extractFile(zip, JS_FOLDER, 'ort-wasm-simd.jsep.js', folderName);
                 extractFile(zip, JS_FOLDER, 'ort-wasm-simd-threaded.jsep.js', folderName);
-                extractFile(zip, JS_FOLDER, 'ort-training-wasm-simd.js', folderName);
               });
             });
           });

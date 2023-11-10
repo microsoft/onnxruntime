@@ -21,11 +21,7 @@ vaip_core::DllSafe<std::vector<NodeInput>> node_get_inputs(const Node& node) {
   }
   for (auto iter = node.InputEdgesBegin(); iter != node.InputEdgesEnd();
        ++iter) {
-    auto dst_idx = static_cast<size_t>(iter->GetDstArgIndex());
-    if (dst_idx < ret.size()) {
-      // ignore implicit nodes.
-      ret[dst_idx].node = &iter->GetNode();
-    }
+    ret[iter->GetDstArgIndex()].node = &iter->GetNode();
   }
   return vaip_core::DllSafe(ret);
 }

@@ -34,16 +34,6 @@ class OrtTorchFunctionPool final {
   //  2. Caller of GetBackwardCore should not decrease the reference count of the returned object.
   PyObject* GetBackwardCore(const std::string& key);  // The "key" is the "name" attribute in PythonOpGrad.
 
-  // Shape inference function is used to infer output shape of a PythonOp.
-  void RegisterShapeInferenceFunction(const std::string& key, PyObject* obj);
-  // Return a borrowed reference to the stored Python function, if it exists; otherwise, return nullptr.
-  std::optional<PyObject*> TryGettingShapeInferenceFunction(const std::string& key);
-
-  // Input alias function is used to infer memory reuse map of a PythonOp.
-  void RegisterInputAliasFunction(const std::string& key, PyObject* obj);
-  // Return a borrowed reference to the stored Python function, if it exists; otherwise, return nullptr.
-  std::optional<PyObject*> TryGettingInputAliasFunction(const std::string& key);
-
   // Autograd function may take input of "non-tensor && non int/float && non int/float tuple" types.
   // While PythonOp running requires those inputs be there otherwise kernel execution will fail.
   // So during model exporting, we need register those input with this API, then a ref cnt is increased by 1,
@@ -102,9 +92,6 @@ class OrtTorchFunctionPool final {
 
   std::unordered_map<std::string, PythonObjectPtr> forward_core_pool_;
   std::unordered_map<std::string, PythonObjectPtr> backward_core_pool_;
-  std::unordered_map<std::string, PythonObjectPtr> shape_inference_function_pool_;
-  std::unordered_map<std::string, PythonObjectPtr> input_alias_function_pool_;
-
   std::unordered_map<std::string, PythonObjectPtr> miscellaneous_const_input_pool_;
   std::unordered_map<int64_t, PythonObjectPtr> func_context_pool_;
 

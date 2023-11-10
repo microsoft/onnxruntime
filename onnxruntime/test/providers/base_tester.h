@@ -546,12 +546,6 @@ class BaseTester {
   BaseTester& ConfigExcludeEps(const std::unordered_set<std::string>& excluded_provider_types);
   BaseTester& Config(const RunOptions* run_options);
   BaseTester& ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers);
-  // Configure a single EP to run.
-  BaseTester& ConfigEp(std::unique_ptr<IExecutionProvider>&& execution_provider) {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.emplace_back(std::move(execution_provider));
-    return ConfigEps(std::move(execution_providers));
-  }
   BaseTester& Config(const Graph::ResolveOptions& resolve_options);
 
   void RunWithConfig(size_t* number_of_pre_packed_weights_counter = nullptr,

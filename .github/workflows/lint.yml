@@ -12,7 +12,7 @@ jobs:
     name: Optional Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
       - name: misspell # Check spellings as well
         uses: reviewdog/action-misspell@v1
         with:
@@ -34,7 +34,7 @@ jobs:
     name: Python format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -100,7 +100,7 @@ jobs:
     name: Lint JavaScript
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
       - uses: reviewdog/action-eslint@v1
         with:
           reporter: github-pr-check

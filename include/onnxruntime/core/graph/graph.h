@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
@@ -17,25 +16,28 @@
 #pragma warning(disable : 4244)
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#include "core/common/inlined_containers.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
+
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
-
-#include "flatbuffers/flatbuffers.h"
 
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#include "core/common/inlined_containers.h"
-#endif
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/path.h"
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
-#include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/function.h"
@@ -45,6 +47,12 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
+
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
 
 namespace onnxruntime {
 class Graph;
@@ -84,10 +92,10 @@ class Node {
        gsl::span<NodeArg* const> output_args,
        const NodeAttributes* attributes,
        std::string_view domain) {
-    Init(name, op_type, description,
-         input_args,
-         output_args,
-         attributes, domain);
+    Init(std::string{name}, std::string{op_type}, std::string{description},
+         std::vector<NodeArg*>{input_args.begin(), input_args.end()},
+         std::vector<NodeArg*>{output_args.begin(), output_args.end()},
+         attributes, std::string{domain});
   }
 #endif
 
@@ -564,13 +572,13 @@ class Node {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  void Init(std::string_view name,
-            std::string_view op_type,
-            std::string_view description,
-            gsl::span<NodeArg* const> input_args,
-            gsl::span<NodeArg* const> output_args,
+  void Init(const std::string& name,
+            const std::string& op_type,
+            const std::string& description,
+            const std::vector<NodeArg*>& input_args,
+            const std::vector<NodeArg*>& output_args,
             const NodeAttributes* attributes,
-            std::string_view domain);
+            const std::string& domain);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -887,11 +895,12 @@ class Graph {
   @returns NodeArg reference.
   */
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) {
-    auto insert_result = node_args_.emplace(name, nullptr);
-    if (insert_result.second) {
-      insert_result.first->second = std::make_unique<NodeArg>(name, p_arg_type);
+    auto iter = node_args_.find(name);
+    if (iter != node_args_.end()) {
+      return *(iter->second);
     }
-    return *(insert_result.first->second);
+    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
+    return *(result.first->second);
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1136,28 +1145,13 @@ class Graph {
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.
-  The Graph needs to be Resolve()d after this call.
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */
   Status InlineFunction(Node& node);
 
-  /**
-  Directly insert the nodes in the function proto provided into the graph.
-  The function converts Constant nodes into the initializers in the graph.
-  It then creates a node in the graph for each of the function nodes.
-  All of the names are expected to be specialized, and, therefore unique.
-  See function_utils::Specialize().
-
-  The Graph needs to be Resolve()d after this call.
-  @param func_to_inline
-  @returns Status indicating success or providing an error message.
-  */
-
-  Status InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline);
-
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
-  be used as a GraphProto attribute in another Node.
+  be used as a GraphProto attribute in another Node..
   e.g. when creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to
   define placeholder NodeArgs for outer scope values. This prevents these values from becoming explicit graph inputs
   when the Graph is resolved.
@@ -1405,13 +1399,6 @@ class Graph {
   // Add node with specified <node_proto>.
   Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
                 const ArgNameToTypeMap& name_to_type);
-
-  /** Helper that converts and adds constant node proto to an initializer in the graph.
-   @param constant_node_proto Constant node to convert
-   @param new_name use the new name for the initializer.
-  */
-  Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
-                                       std::optional<std::string_view> new_name);
 
 #endif
 

@@ -8,12 +8,16 @@ import logging
 import math
 import os
 import statistics
+import sys
 import timeit
 
 import numpy
 import torch
-from benchmark_helper import Precision
 from gpt2_helper import Gpt2Helper, Gpt2Inputs
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+from benchmark_helper import Precision  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

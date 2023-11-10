@@ -19,11 +19,11 @@ def dump_subgraph(model, output_dir, level=0):
 
     for node in graph.node:
         if node.op_type == "Scan" or node.op_type == "Loop":
-            body_attribute = next(iter(filter(lambda attr: attr.name == "body", node.attribute)))
+            body_attribute = list(filter(lambda attr: attr.name == "body", node.attribute))[0]
             export_and_recurse(node, body_attribute, output_dir, level)
         if node.op_type == "If":
-            then_attribute = next(iter(filter(lambda attr: attr.name == "then_branch", node.attribute)))
-            else_attribute = next(iter(filter(lambda attr: attr.name == "else_branch", node.attribute)))
+            then_attribute = list(filter(lambda attr: attr.name == "then_branch", node.attribute))[0]
+            else_attribute = list(filter(lambda attr: attr.name == "else_branch", node.attribute))[0]
             export_and_recurse(node, then_attribute, output_dir, level)
             export_and_recurse(node, else_attribute, output_dir, level)
 

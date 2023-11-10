@@ -136,9 +136,8 @@ Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadc
 
 static const char* QuantizeLinear_ver1_doc = R"DOC(
 The linear quantization operator. It consumes a full precision data, a scale, a zero point to compute the low precision / quantized tensor.
-The quantization formula is y = saturate ((x / y_scale) + y_zero_point). For saturation, it saturates to [0, 255] if it's uint8, [-128, 127] if it's int8,
-[0, 65,535] if it's uint16, and [-32,768, 32,767] if it's int16. For (x / y_scale), it's rounding to nearest ties to even.
-Refer to https://en.wikipedia.org/wiki/Rounding for details.
+The quantization formula is y = saturate ((x / y_scale) + y_zero_point).For saturation, it saturates to [0, 255] if it's uint8, or [-128, 127] if it's int8.
+For (x / y_scale), it's rounding to nearest ties to even. Refer to https://en.wikipedia.org/wiki/Rounding for details.
 Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -153,24 +152,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, false)
         .Input(0, "x", "N-D full precision Input tensor to be quantized.", "T1")
         .Input(1, "y_scale",
-               "Scale for doing quantization to get 'y'. It can be a scalar, which means per-tensor/layer "
-               "quantization, or a 1-D tensor for per-axis quantization.",
+               "Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor,"
+               "which means a per-tensor or per-axis quantization. If it's a 1-D tensor, "
+               "its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
                "T1")
         .Input(2, "y_zero_point",
-               "Zero point for doing quantization to get 'y'. Shape must match y_scale. Default is "
-               "uint8 with zero point of 0 if it's not specified.",
-               "T2", OpSchema::Optional)
+               "Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a "
+               "per-tensor"
+               "or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the "
+               "dimension value of 'axis' dimension of input 'x'.",
+               "T2")
         .Output(0, "y", "N-D quantized output tensor. It has same shape as input 'x'.", "T2")
         .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain 'x', 'y_scale' to float tensors.")
-        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
-                        "Constrain 'y_zero_point' and 'y' to 8-bit and 16-bit integer tensors.")
+        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"},
+                        "Constrain 'y_zero_point' and 'y' to 8-bit integer tensors.")
         .SetDoc(QuantizeLinear_ver1_doc)
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          if (ctx.getNumInputs() == 3 && ctx.getInputType(2) != nullptr) {
-            propagateElemTypeFromInputToOutput(ctx, 2, 0);
-          } else {
-            updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
-          }
+          propagateElemTypeFromInputToOutput(ctx, 2, 0);
 
           if (!hasInputShape(ctx, 0)) return;
 
@@ -194,19 +192,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                       AttributeProto::INT, false)
                                 .Input(0, "x", "N-D quantized Input tensor to be de-quantized.", "T1")
                                 .Input(1, "x_scale",
-                                       "Scale for input 'x'. It can be a scalar, which means a per-tensor/layer "
-                                       "dequantization, or a 1-D tensor for per-axis dequantization.",
+                                       "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a "
+                                       "per-tensor or per-axis quantization."
+                                       "If it's a 1-D tensor, its number of elements should be equal to the dimension "
+                                       "value of 'axis' dimension of input 'x'.",
                                        "T2")
                                 .Input(2, "x_zero_point",
-                                       "Zero point for input 'x'. Shape must match x_scale. It's optional. "
-                                       "Zero point is 0 when it's not specified.",
-                                       "T1", OpSchema::Optional)
+                                       "Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a "
+                                       "per-tensor or per-axis quantization."
+                                       "If it's a 1-D tensor, its number of elements should be equal to the dimension "
+                                       "value of 'axis' dimension of input 'x'.",
+                                       "T1")
                                 .Output(0, "y", "N-D full precision output tensor. It has same shape as input 'x'.",
                                         "T2")
-                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)",
-                                                       "tensor(uint16)", "tensor(int32)"},
-                                                "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, "
-                                                "16-bit integer tensors, or 32-bit signed integer tensors.")
+                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"},
+                                                "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.")
                                 .TypeConstraint("T2", {"tensor(float16)", "tensor(float)"},
                                                 "Constrain 'y', 'x_scale' to float tensors.")
                                 .SetDoc(DequantizeLinear_ver1_doc)

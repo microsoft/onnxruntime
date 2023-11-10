@@ -4,8 +4,10 @@
 # --------------------------------------------------------------------------
 from logging import getLogger
 
+import numpy as np  # noqa: F401
 from fusion_base import Fusion
-from onnx import helper
+from fusion_utils import FusionUtils  # noqa: F401
+from onnx import TensorProto, helper, numpy_helper  # noqa: F401
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -76,7 +78,7 @@ class FusionGptAttentionNoPast(Fusion):
                 [0, None, 0, 0, 0, 0, 0],
                 output_name_to_node=output_name_to_node,
                 return_indice=return_indice,
-            )
+            )  # yapf: disable
         else:
             qkv_nodes = self.model.match_parent_path(
                 normalize_node,
@@ -84,7 +86,7 @@ class FusionGptAttentionNoPast(Fusion):
                 [None, 0, 0, 0, 0, 0],
                 output_name_to_node=output_name_to_node,
                 return_indice=return_indice,
-            )
+            )  # yapf: disable
 
         if qkv_nodes is None:
             return
@@ -116,7 +118,7 @@ class FusionGptAttentionNoPast(Fusion):
             matmul_qkv,
             ["Transpose", "Reshape", "Split", "Reshape", "Gemm", "Reshape"],
             [1, 0, 0, 0, 0, 0],
-        )
+        )  # yapf: disable
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match v path")
             return
@@ -168,7 +170,7 @@ class FusionGptAttentionNoPast(Fusion):
                     "Div",
                 ],
                 [1, 0, 1, 0, 1, 0, 0, 0, 0, 0],
-            )
+            )  # yapf: disable
             if mask_nodes is None:
                 logger.debug("fuse_attention: failed to match mask path")
                 return
@@ -201,7 +203,7 @@ class FusionGptAttentionNoPast(Fusion):
                         "Div",
                     ],
                     [0, 0, 0, 1, 0, 0, 0, 0, 0],
-                )
+                )  # yapf: disable
                 if mask_nodes is None:
                     logger.debug("fuse_attention: failed to match mask path")
                     return
@@ -225,7 +227,7 @@ class FusionGptAttentionNoPast(Fusion):
                     mul_qk,
                     ["Slice", "Slice", "Unsqueeze", "Squeeze", "Slice", "Shape", "Div"],
                     [1, 0, 2, 0, 0, 0, 0],
-                )
+                )  # yapf: disable
                 if mask_nodes is None:
                     logger.debug("fuse_attention: failed to match mask path")
                     return

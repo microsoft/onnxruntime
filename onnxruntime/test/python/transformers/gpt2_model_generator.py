@@ -555,8 +555,6 @@ def create_gpt2_embedlayer(
     num_heads=4,
     epsilon=0.1,
     one_attention_node=False,
-    has_skip_layer_norm=True,
-    output_embedding_sum=False,
 ):
     # Construct input and output nodes
     inputs = [
@@ -566,47 +564,21 @@ def create_gpt2_embedlayer(
         helper.make_tensor_value_info("output_0", TensorProto.FLOAT, ["batch_size", "sequence_length", hidden_size])
     ]
 
-    if output_embedding_sum:
-        outputs.append(
-            helper.make_tensor_value_info(
-                "embedding_sum", TensorProto.FLOAT, ["batch_size", "sequence_length", hidden_size]
-            )
-        )
-
     # Construct graph nodes
     embed_layernorm_nodes = [
         helper.make_node("Gather", ["word_embeddings_weight", "ids"], ["gather_0_out"], "gather_word_embeddings"),
         helper.make_node("Gather", ["pos_embeddings_weight", "ids"], ["gather_1_out"], "gather_position_embeddings"),
         helper.make_node("Add", ["gather_0_out", "gather_1_out"], ["add_0_out"], "add_before_layernorm"),
         helper.make_node("Gather", ["token_embeddings_weight", "ids"], ["gather_2_out"], "gather_token_embeddings"),
+        helper.make_node(
+            "SkipLayerNormalization",
+            ["add_0_out", "gather_2_out", "layernorm_weight", "layernorm_bias"],
+            ["skip_layernorm_out"],
+            "skip_layernorm",
+            domain="com.microsoft",
+            epsilon=epsilon,
+        ),
     ]
-
-    if has_skip_layer_norm:
-        embed_layernorm_nodes.append(
-            helper.make_node(
-                "SkipLayerNormalization",
-                ["add_0_out", "gather_2_out", "layernorm_weight", "layernorm_bias"],
-                ["skip_layernorm_out"] if not output_embedding_sum else ["skip_layernorm_out", "", "", "embedding_sum"],
-                "skip_layernorm",
-                domain="com.microsoft",
-                epsilon=epsilon,
-            )
-        )
-    else:
-        embed_layernorm_nodes.append(
-            helper.make_node("Add", ["add_0_out", "gather_2_out"], ["embedding_sum"], "embedding_sum")
-        )
-
-        embed_layernorm_nodes.append(
-            helper.make_node(
-                "LayerNormalization",
-                ["embedding_sum", "layernorm_weight", "layernorm_bias"],
-                ["skip_layernorm_out"],
-                "layernorm",
-                epsilon=epsilon,
-            )
-        )
-
     attention_nodes = (
         [
             helper.make_node("MatMul", ["skip_layernorm_out", "q_weight"], ["q_out"], "q_attn"),
@@ -736,7 +708,6 @@ def create_gpt2_fused_embedlayer(
     num_heads=4,
     epsilon=0.1,
     one_attention_node=False,
-    output_embedding_sum=False,
 ):
     # Construct input and output nodes
     inputs = [
@@ -745,12 +716,6 @@ def create_gpt2_fused_embedlayer(
     outputs = [
         helper.make_tensor_value_info("output_0", TensorProto.FLOAT, ["batch_size", "sequence_length", hidden_size])
     ]
-    if output_embedding_sum:
-        outputs.append(
-            helper.make_tensor_value_info(
-                "embedding_sum", TensorProto.FLOAT, ["batch_size", "sequence_length", hidden_size]
-            )
-        )
 
     # Construct graph nodes
     embed_layernorm_nodes = [
@@ -767,9 +732,7 @@ def create_gpt2_fused_embedlayer(
                 "",
                 "ids",
             ],
-            ["EmbedLayerNormalization_0_output", "EmbedLayerNormalization_0_dummy_mask_index", "embedding_sum"]
-            if output_embedding_sum
-            else ["EmbedLayerNormalization_0_output", "EmbedLayerNormalization_0_dummy_mask_index"],
+            ["EmbedLayerNormalization_0_output", "EmbedLayerNormalization_0_dummy_mask_index"],
             "EmbedLayerNormalization_0",
             domain="com.microsoft",
             epsilon=epsilon,
@@ -913,9 +876,3 @@ if __name__ == "__main__":
 
     model = create_gpt2_fused_embedlayer(one_attention_node=True)
     onnx.save(model, "./test_data/models/gpt2_embedlayer_one_attn_exp.onnx")
-
-    model = create_gpt2_embedlayer(one_attention_node=True, output_embedding_sum=True)
-    onnx.save(model, "gpt2_embedlayer_one_attn_output_sum.onnx")
-
-    model = create_gpt2_fused_embedlayer(one_attention_node=True, output_embedding_sum=True)
-    onnx.save(model, "./test_data/models/gpt2_embedlayer_one_attn_output_sum_exp.onnx")

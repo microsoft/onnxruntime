@@ -4,6 +4,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_ubuntu_cpu
+  displayName: 'Whether Ubuntu CPU (manylinux_2_27) package is built.'
+  type: boolean
+  default: true
+
 - name: enable_linux_gpu
   displayName: 'Whether Linux GPU package is built.'
   type: boolean
@@ -37,18 +42,7 @@ parameters:
 - name: build_py_parameters
   displayName: 'Specify extra build parameters'
   type: string
-  default: '--use_azure'
-
-# TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
-- name: cmake_build_type
-  type: string
-  displayName: 'Linux packages cmake build type. Linux Only.'
-  default: 'Release'
-  values:
-   - Debug
-   - Release
-   - RelWithDebInfo
-   - MinSizeRel
+  default: 'NONE'
 
 trigger: none
 
@@ -64,11 +58,12 @@ stages:
 - template: templates/py-packaging-stage.yml
   parameters:
     enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
+    enable_ubuntu_cpu: ${{ parameters.enable_ubuntu_cpu }}
     enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
     enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
     enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
     enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
     enable_mac_silicon: ${{ parameters.enable_mac_silicon }}
     enable_linux_arm: ${{ parameters.enable_linux_arm }}
-    build_py_parameters: ${{ parameters.build_py_parameters }}
-    cmake_build_type: ${{ parameters.cmake_build_type }}
+    ${{ if not(eq(parameters.build_py_parameters, 'NONE')) }}:
+      build_py_parameters: ${{ parameters.build_py_parameters }}

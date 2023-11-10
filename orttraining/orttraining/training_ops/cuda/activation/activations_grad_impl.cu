@@ -64,13 +64,6 @@ struct OP_TanhGrad : public CtxTanhGrad {
   }
 };
 
-template <typename T>
-struct OP_LeakyReluGrad : public CtxLeakyReluGrad {
-  __device__ __inline__ T operator()(const T& dy, const T& y) const {
-    return dy * (y > T{0} ? T{1} : static_cast<T>(alpha));
-  }
-};
-
 #define BINARY_ELEMENTWISE_IMPL(name)                                                  \
   BINARY_ELEMENTWISE_IMPL_DECLARATION(name) {                                          \
     BinaryElementWiseNoBroadcastImpl(stream,                                           \

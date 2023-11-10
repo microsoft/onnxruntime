@@ -9,13 +9,6 @@
 
 namespace onnxruntime {
 
-struct CudaStream;
-
-struct DeferredCpuAllocator : public OrtAllocator {
-  DeferredCpuAllocator(CudaStream&);
-  CudaStream& cuda_stream_;
-};
-
 struct CudaStream : Stream {
   CudaStream(cudaStream_t stream,
              const OrtDevice& device,
@@ -41,15 +34,10 @@ struct CudaStream : Stream {
 
   cublasHandle_t cublas_handle_{};
 
-  void* GetResource(int version, int id) const override;
-
-  onnxruntime::IAllocator* GetCpuAllocator() const { return cpu_allocator_.get(); }
-
  private:
   std::vector<void*> deferred_cpu_buffers_;
   AllocatorPtr cpu_allocator_;
   bool release_cpu_buffer_on_cuda_stream_{true};
-  DeferredCpuAllocator deferred_cpu_allocator_;
 };
 
 void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry,

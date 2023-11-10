@@ -20,16 +20,11 @@ parameters:
   type: string
   default: 'NPM_packages'
 
-- name: RunWebGpuTests
-  type: boolean
-  default: false
-
 jobs:
 - job: build_onnxruntime_web
   pool: ${{ parameters.PoolName }}
 
   variables:
-    webgpuCommandlineExtraFlags: '--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de'
     runCodesignValidationInjection: false
   timeoutInMinutes: 60
   workspace:
@@ -73,7 +68,7 @@ jobs:
     displayName: 'Testing: force EOL to lf on windows for /js/**'
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '16.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: '${{ parameters.BuildConfig }}_*/**/*'
@@ -107,10 +102,6 @@ jobs:
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
     displayName: 'npm ci /js/common/'
-  - script: |
-     npm test
-    workingDirectory: '$(Build.SourcesDirectory)\js\common'
-    displayName: 'run onnxruntime-common tests'
   - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
@@ -157,40 +148,20 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     npm test -- -e=edge -b=webgl,wasm,xnnpack
+     npm test
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests (wasm,webgl,xnnpack backend)'
-    condition: eq('${{ parameters.RunWebGpuTests }}', 'false')
+    displayName: 'Run ort-web tests'
   - script: |
-     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu $(webgpuCommandlineExtraFlags)
-    workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests (ALL backends)'
-    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
-  - script: |
-     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags)
-    workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
-    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
-    # temporarily allow this test to fail, so that people are not blocked.
-    # investigation is ongoing for the root cause of the random failure (Edge crash).
-    # TODO: remove this line once the root cause is found and fixed.
-    continueOnError: true
-  - script: |
-     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags)
-    workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
-    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
-  - script: |
-     npm test -- --webgl-texture-pack-mode -b=webgl -e=edge
+     npm test -- --webgl-texture-pack-mode -b=webgl
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
-     npm test -- --wasm-enable-proxy -b=wasm -e=edge
+     npm test -- --wasm-enable-proxy -b=wasm
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
-      npm run test:e2e -- --browser=Edge_default
+      npm run test:e2e
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'E2E package consuming test'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))

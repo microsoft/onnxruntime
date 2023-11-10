@@ -60,20 +60,6 @@ else()
     endif()
 endif()
 
-# setup providers
-if (onnxruntime_USE_CUDA)
-    set(NODEJS_BINDING_USE_CUDA "--use_cuda")
-endif()
-if (onnxruntime_USE_DML)
-    set(NODEJS_BINDING_USE_DML "--use_dml")
-endif()
-if (onnxruntime_USE_TENSORRT)
-    set(NODEJS_BINDING_USE_TENSORRT "--use_tensorrt")
-endif()
-if (onnxruntime_USE_COREML)
-    set(NODEJS_BINDING_USE_COREML "--use_coreml")
-endif()
-
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 # add custom target
 add_custom_target(js_npm_ci ALL
@@ -88,9 +74,7 @@ add_custom_target(js_common_npm_ci ALL
 
 add_custom_target(nodejs_binding_wrapper ALL
     COMMAND ${NPM_CLI} ci
-    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE}
-        --arch=${NODEJS_BINDING_ARCH} ${NODEJS_BINDING_USE_CUDA} ${NODEJS_BINDING_USE_DML} ${NODEJS_BINDING_USE_TENSORRT}
-        ${NODEJS_BINDING_USE_COREML}
+    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE} --arch=${NODEJS_BINDING_ARCH}
     WORKING_DIRECTORY ${JS_NODE_ROOT}
     COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
 

@@ -226,14 +226,14 @@ class MlasActivationTest : public MlasTestBase {
       }
 
       MlasActivation(&Activation, &Buffer[0].f, nullptr, 1, _countof(Buffer), _countof(Buffer));
-      // TODO: Fix the test once centos has updated to almalinux
-      //      for (unsigned i = 0; i < _countof(TestData); i++) {
-      //        // Sensitive to comparing positive/negative zero and NaNs.
-      //        EXPECT_TRUE(Buffer[i].u == TestData[i][kind].u || Buffer[i].f == TestData[i][kind].f)
-      //            << ", Vector Activation Kind:" << (int)kind << ", i=" << i << ", value:"
-      //            << std::setw(8) << std::setfill('0') << std::hex << Buffer[i].u << ", expecting:"
-      //            << std::setw(8) << std::setfill('0') << std::hex << TestData[i][kind].u;
-      //      }
+
+      for (unsigned i = 0; i < _countof(TestData); i++) {
+        // Sensitive to comparing positive/negative zero and NaNs.
+        EXPECT_TRUE(Buffer[i].u == TestData[i][kind].u || Buffer[i].f == TestData[i][kind].f)
+            << ", Vector Activation Kind:" << (int)kind << ", i=" << i << ", value:"
+            << std::setw(8) << std::setfill('0') << std::hex << Buffer[i].u << ", expecting:"
+            << std::setw(8) << std::setfill('0') << std::hex << TestData[i][kind].u;
+      }
 
       //
       // Test the scalar activations.

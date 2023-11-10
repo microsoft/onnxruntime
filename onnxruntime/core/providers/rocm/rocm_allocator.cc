@@ -51,8 +51,9 @@ void* ROCMAllocator::Alloc(size_t size) {
 
 void ROCMAllocator::Free(void* p) {
   SetDevice(false);
-  CheckDevice(false);                   // ignore ROCM failure when free
-  ORT_IGNORE_RETURN_VALUE(hipFree(p));  // do not throw error since it's OK for hipFree to fail during shutdown
+  CheckDevice(false);  // ignore ROCM failure when free
+  // do not throw error since it's OK for hipFree to fail during shutdown; void to silence nodiscard
+  (void)hipFree(p);
 }
 
 void* ROCMExternalAllocator::Alloc(size_t size) {

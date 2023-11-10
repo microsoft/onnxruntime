@@ -132,35 +132,6 @@ ParQuantizeLinearStd(const float* Input,
   });
 }
 
-// This implementation could be more efficient however the cast from float16 to other types
-// usually happens on GPU.
-template <typename OutputType>
-#if !defined(DISABLE_FLOAT8_TYPES)
-typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, void>::type
-#else
-void
-#endif
-ParQuantizeLinearStd(const MLFloat16* Input,
-                     OutputType* Output,
-                     size_t N,
-                     MLFloat16 Scale,
-                     OutputType ZeroPoint,
-                     concurrency::ThreadPool* thread_pool) {
-  constexpr std::ptrdiff_t block_size = 128;
-  const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;
-  const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(MLFloat16)), static_cast<double>(block_size * sizeof(uint8_t)), static_cast<double>(block_size) * 2.0};
-  concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    auto begin_idx = begin * block_size;
-    auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);
-    float fscale = Scale.ToFloat();
-    for (; begin_idx != end_idx; ++begin_idx) {
-      int32_t ival = static_cast<int32_t>(Input[begin_idx].ToFloat() / fscale) + ZeroPoint;
-      Output[begin_idx] = static_cast<OutputType>(std::min(static_cast<int32_t>(std::numeric_limits<OutputType>::max()),
-                                                           std::max(static_cast<int32_t>(std::numeric_limits<OutputType>::lowest()), ival)));
-    }
-  });
-}
-
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename OutputFloat8Type>
@@ -180,30 +151,6 @@ ParQuantizeLinearSat(const float* Input,
     auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);
     for (; begin_idx < end_idx; ++begin_idx) {
       Output[begin_idx] = OutputFloat8Type(Input[begin_idx] / Scale, saturate);
-    }
-  });
-}
-
-// The implementation converts float16 to float and then do a quantization.
-// This is not efficient and is mostly added to enable unittest on CPU.
-// This case usually happens on GPU.
-template <typename OutputFloat8Type>
-typename std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputFloat8Type>::value, void>::type
-ParQuantizeLinearSat(const MLFloat16* Input,
-                     OutputFloat8Type* Output,
-                     size_t N,
-                     MLFloat16 Scale,
-                     const OutputFloat8Type& /* ORT_UNUSED_PARAMETER(ZeroPoint) */,
-                     bool saturate,
-                     concurrency::ThreadPool* thread_pool) {
-  constexpr std::ptrdiff_t block_size = 128;
-  const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;
-  const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(MLFloat16)), static_cast<double>(block_size * sizeof(uint8_t)), static_cast<double>(block_size) * 2.0};
-  concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    auto begin_idx = begin * block_size;
-    auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);
-    for (; begin_idx < end_idx; ++begin_idx) {
-      Output[begin_idx] = OutputFloat8Type(Input[begin_idx].ToFloat() / Scale.ToFloat(), saturate);
     }
   });
 }

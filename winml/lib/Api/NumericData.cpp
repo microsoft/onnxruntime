@@ -32,7 +32,7 @@ numeric_data::numeric_data(
     buffers_ = {combined_buffer_};
     auto buffer = buffer_at(0);
 
-    // The initial release of WinML (RS5) shipped with behavior that would
+      // The initial release of WinML (RS5) shipped with behavior that would
     // zero-initialize uninitialized tensors. After measuring, the performance impact
     // of memsetting the memory buffer is quite small (<1ms for 3channel 720x720 TensorFloats).
     // To maintain parity with RS5 behavior, we always zero out the memory buffer.

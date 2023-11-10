@@ -31,12 +31,12 @@ std::wstring GetModulePath() {
 }
 
 std::wstring GetWinMLPath() {
-  // bool inboxDll = false;
-  // TODO Add command line parsing
-  // if (SUCCEEDED(WEX::TestExecution::RuntimeParameters::TryGetValue(L"inbox", inboxDll)) && inboxDll)
-  // {
-  //     return L"";
-  // }
+        // bool inboxDll = false;
+        // TODO Add command line parsing
+        // if (SUCCEEDED(WEX::TestExecution::RuntimeParameters::TryGetValue(L"inbox", inboxDll)) && inboxDll)
+        // {
+        //     return L"";
+        // }
   return GetModulePath();
 }
 
@@ -63,4 +63,4 @@ winml::ImageFeatureValue LoadImageFeatureValue(const std::wstring& imagePath) {
   auto videoFrame = wm::VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
   return ImageFeatureValue::CreateFromVideoFrame(videoFrame);
 }
-}  // namespace FileHelpers
+}// namespace FileHelpers

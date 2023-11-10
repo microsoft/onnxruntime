@@ -1,0 +1,383 @@
+parameters:
+- name: BuildConfig
+  type: string
+
+- name: EnvSetupScript
+  type: string
+
+- name: job_name_suffix
+  type: string
+
+- name: buildArch
+  type: string
+
+- name: additionalBuildFlags
+  type: string
+
+- name: msbuildPlatform
+  type: string
+
+- name: isX86
+  type: boolean
+  default: false
+
+- name: isTraining
+  type: boolean
+  default: false
+
+- name: EnablePython
+  type: boolean
+  default: true
+
+- name: RunOnnxRuntimeTests
+  displayName: Run Tests?
+  type: boolean
+  default: true
+
+- name: RunStaticCodeAnalysis
+  displayName: Run Static Code Analysis
+  type: boolean
+  default: true
+
+- name: ORT_EP_NAME
+  type: string
+
+- name: MachinePool
+  type: string
+
+- name: GenerateDocumentation
+  displayName: Generate updated documentation. Requires build to have occurred and `--gen_doc` to be specified
+  type: boolean
+  default: false
+
+- name: WITH_CACHE
+  displayName: Use Cache to acclerate compilation
+  type: boolean
+  default: false
+
+jobs:
+- job: build_${{ parameters.job_name_suffix }}
+  variables:
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+    DocUpdateNeeded: false  # Set to true during document generation if there are diffs
+    skipComponentGovernanceDetection: true
+    DEPS_CACHE_DIR: $(Agent.TempDirectory)/deps_ccache
+    ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    ${{ if eq(parameters.WITH_CACHE, true) }}:
+      PS_CACHE_ARG: '-use_cache'
+      PY_CACHE_ARG: '--use_cache'
+      MSBUILD_CACHE_ARG: '/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:DebugInformationFormat=OldStyle'
+  workspace:
+    clean: all
+  pool: ${{ parameters.MachinePool }}
+  timeoutInMinutes:  300
+  steps:
+  - checkout: self
+    clean: true
+    submodules: none
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.8'
+      addToPath: true
+      architecture: ${{ parameters.buildArch }}
+
+  - template: download-deps.yml
+
+  - task: PythonScript@0
+    displayName: 'Update deps.txt'
+    inputs:
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+      arguments: --new_dir $(Build.BinariesDirectory)/deps
+      workingDirectory: $(Build.BinariesDirectory)
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '16.x'
+      force32bit: ${{ parameters.isX86 }}
+
+  # Our build machine doesn't have java x86
+  - ${{ if eq(parameters.buildArch, 'x64') }}:
+      - task: JavaToolInstaller@0
+        inputs:
+          versionSpec: '11'
+          jdkArchitectureOption: ${{ parameters.buildArch }}
+          jdkSourceOption: 'PreInstalled'
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - script: |
+     set ORT_DOXY_SRC=$(Build.SourcesDirectory)
+     set ORT_DOXY_OUT=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
+     mkdir %ORT_DOXY_SRC%
+     mkdir %ORT_DOXY_OUT%
+     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
+
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'API Documentation Check and generate'
+
+  - script: |
+     python -m pip install -q setuptools wheel numpy
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
+
+  - ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
+    - powershell: |
+       azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+
+  - ${{ if eq(parameters.WITH_CACHE, true) }}:
+    - powershell: |
+        if ([string]::IsNullOrEmpty((Get-Command ccache -errorAction SilentlyContinue)))
+        {
+          choco install ccache -y --version 4.7.4
+          $ccache_path = (Get-Command ccache).Source
+          $ccache_parent_dir = (Split-Path -parent $ccache_path)
+          Copy-Item "C:\ProgramData\chocolatey\lib\ccache\tools\ccache-4.7.4-windows-x86_64\ccache.exe" -Destination "C:\ProgramData\chocolatey\bin\cl.exe"
+          Get-ChildItem $ccache_parent_dir
+          ccache --version
+        }
+      displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
+
+  - ${{ if or(eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.GenerateDocumentation, true)) }}:
+      - ${{ if eq(parameters.WITH_CACHE, true) }}:
+        - task: Cache@2
+          # machinepool is used to ensure the compiler is same
+          inputs:
+            key: '"$(TODAY)" | ${{ parameters.buildArch }} | ${{ parameters.BuildConfig }} | ${{ parameters.MachinePool }} | $(Build.SourcesDirectory)/cmake/deps.txt, $(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1, $(Build.SourcesDirectory)/tools/ci_build/github/windows/helpers.ps1'
+            path: $(DEPS_CACHE_DIR)
+            restoreKeys: |
+              "$(TODAY)" | ${{ parameters.buildArch }} | ${{ parameters.BuildConfig }} | ${{ parameters.MachinePool }}
+          displayName: Cache Task
+
+      - task: PowerShell@2
+        displayName: 'Install ONNX'
+        inputs:
+          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+          workingDirectory: '$(Build.BinariesDirectory)'
+          arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config ${{ parameters.BuildConfig }} ${{ variables['PS_CACHE_ARG'] }}
+        ${{ if eq(parameters.WITH_CACHE, true) }}:
+          env:
+            CCACHE_DIR: $(DEPS_CACHE_DIR)
+            CCACHE_COMPILERCHECK: content
+
+      - ${{ if eq(parameters.WITH_CACHE, true) }}:
+        - powershell: |
+            ccache -sv
+            ccache -z
+          displayName: cache stat
+          env:
+            CCACHE_DIR: $(DEPS_CACHE_DIR)
+
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 5.7.0
+    inputs:
+      versionSpec: 5.7.0
+
+  - task: NuGetCommand@2
+    displayName: 'NuGet restore'
+    inputs:
+      command: 'restore'
+      feedsToUse: 'config'
+      restoreSolution: '$(Build.SourcesDirectory)\packages.config'
+      nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
+      restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+
+  - ${{ if eq(parameters.WITH_CACHE, true) }}:
+    - task: Cache@2
+      inputs:
+        ${{if eq(variables['Build.SourceBranchName'], 'merge')}}:
+          key: ' "$(TODAY)" |  $(System.StageName) | ${{ parameters.BuildConfig }} | merge '
+        ${{else}}:
+          key: '"$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }} | $(Build.SourceVersion) '
+        path: $(ORT_CACHE_DIR)
+        restoreKeys: |
+          "$(TODAY)" | onnxruntime | $(System.StageName) | ${{ parameters.BuildConfig }}
+      displayName: Cache Task
+
+  - task: PythonScript@0
+    displayName: 'Generate cmake config'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ variables.PY_CACHE_ARG }} ${{ parameters.additionalBuildFlags }}'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\onnxruntime.sln'
+      platform: ${{ parameters.msbuildPlatform }}
+      configuration: ${{ parameters.BuildConfig }}
+      msbuildArgs: '-maxcpucount ${{ variables.MSBUILD_CACHE_ARG }}'
+      msbuildArchitecture: ${{ parameters.buildArch }}
+      maximumCpuCount: true
+      logProjectEvents: false
+      workingFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+      createLogFile: true
+    ${{ if eq(parameters.WITH_CACHE, true) }}:
+      env:
+        CCACHE_DIR: $(ORT_CACHE_DIR)
+
+  - ${{ if eq(parameters.WITH_CACHE, true) }}:
+    - powershell: |
+        ccache -sv
+        ccache -z
+      displayName: cache stat
+      env:
+        CCACHE_DIR: $(ORT_CACHE_DIR)
+
+  - powershell: |
+      Get-Volume $("$(Build.BinariesDirectory)")[0]
+    displayName: check disk size
+
+  - task: DeleteFiles@1
+    displayName: 'Delete intermedia files from $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+      Contents: |
+        **/*.obj
+
+  - powershell: |
+      Get-Volume $("$(Build.BinariesDirectory)")[0]
+    displayName: check disk size
+
+  - ${{ if eq(parameters.EnablePython, true) }}:
+      - task: PythonScript@0
+        displayName: 'Build wheel'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\setup.py'
+          arguments: 'bdist_wheel'
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+
+  - task: MSBuild@1
+    displayName: 'Restore NuGet Packages'
+    inputs:
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      platform: 'Any CPU'
+      configuration: '${{ parameters.BuildConfig }}'
+      msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - task: MSBuild@1
+    displayName: 'Build C#'
+    inputs:
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      configuration: '${{ parameters.BuildConfig }}'
+      platform: 'Any CPU'
+      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  # C# test isn't launched by build.py, so models link has to be added.
+  - script: |
+     mklink /D /J models C:\local\models
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Create models link'
+
+  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
+      - task: DotNetCoreCLI@2
+        displayName: 'Test C#'
+        inputs:
+          command: test
+          projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
+          configuration: '${{ parameters.BuildConfig }}'
+          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) --blame'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - ${{ if eq(parameters.EnablePython, true) }}:
+      - powershell: |
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
+
+        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+        displayName: 'Install onnxruntime wheel'
+
+  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+      - powershell: |
+         python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+
+        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+        displayName: 'Run tests'
+
+
+  - ${{ if eq(parameters.RunStaticCodeAnalysis, true) }}:
+      - task: DeleteFiles@1
+        displayName: 'Delete binaries files from $(Build.BinariesDirectory)\RelWithDebInfo'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          Contents: |
+           **/*.obj
+           **/*.pdb
+           **/*.dll
+
+
+      # Manually set msBuildCommandline so that we can also set CAExcludePath
+      # build_dir must be a sub folder of $(Build.SourcesDirectory)
+      # TODO: move this step to a CPU-only machine to save GPU resources.
+      - task: SDLNativeRules@3
+        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+        inputs:
+          msBuildArchitecture: amd64
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\RelWithDebInfo\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=${{ parameters.msbuildPlatform }} /p:configuration=RelWithDebInfo /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+          excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files#C:\program files (x86)'
+          rulesetName: Custom
+          customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
+          publishXML: true
+
+      - task: SdtReport@2
+        displayName: 'Create Security Analysis Report'
+        inputs:
+          SDLNativeRules: true
+
+      - task: PublishSecurityAnalysisLogs@3
+        displayName: 'Publish Security Analysis Logs'
+        continueOnError: true
+
+      - task: PostAnalysis@2
+        displayName: 'Guardian Break v2'
+        inputs:
+          GdnBreakGdnToolSDLNativeRulesSeverity: Note
+          GdnBreakGdnToolSDLNativeRules: true
+
+
+  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+      - task: PublishTestResults@2
+        displayName: 'Publish unit test results'
+        inputs:
+          testResultsFiles: '**/*.results.xml'
+          searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
+          testRunTitle: 'Unit Test Run'
+        condition: succeededOrFailed()
+
+  - ${{ if eq(parameters.GenerateDocumentation, true) }}:
+    - task: PythonScript@0
+      displayName: 'Generate documentation'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate ${{ variables.PY_CACHE_ARG }}'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+  # if the validation from --gen_doc failed it sets DocUpdateNeeded so we can publish the latest version of the docs
+  # as an artifact, allowing a developer to download this and replace the current version instead of having to build
+  # and generate the docs locally themselves. handle each of the two md files separately - simpler than copying
+  # them to another location and publishing from there in a single task.
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/OperatorKernels.md'
+      artifactName: 'OperatorKernels.md'
+
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/ContribOperators.md'
+      artifactName: 'ContribOperators.md'

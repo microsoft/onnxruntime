@@ -11,14 +11,28 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
 using System.Diagnostics;
+using System;
 
 namespace Microsoft.ML.OnnxRuntime.Tensors
 {
     internal static class ArrayUtilities
     {
         public const int StackallocMax = 16;
+
+        public static long GetSizeForShape(long[] shape)
+        {
+            long product = 1;
+            foreach (var dim in shape)
+            {
+                if (dim < 0)
+                {
+                    throw new ArgumentOutOfRangeException("Shape must not have negative elements:" + dim);
+                }
+                product *= dim;
+            }
+            return product;
+        }
 
         public static long GetProduct(ReadOnlySpan<int> dimensions, int startIndex = 0)
         {
@@ -148,7 +162,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Calculates the n-d indices from the 1-d index in a layout specified by strides
+        /// Calculates the n-d indices from the 1-d index in a layout specificed by strides
         /// </summary>
         /// <param name="strides"></param>
         /// <param name="reverseStride"></param>

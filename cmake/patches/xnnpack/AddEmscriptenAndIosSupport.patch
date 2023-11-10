@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d53c48aa1..77c3cf983 100755
+index d53c48aa1..4c987bd7a 100755
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -105,22 +105,12 @@ ENDIF()
+@@ -105,7 +105,7 @@ ENDIF()
  
  IF(NOT CMAKE_SYSTEM_NAME)
    MESSAGE(FATAL_ERROR "CMAKE_SYSTEM_NAME not defined")
@@ -11,22 +11,7 @@ index d53c48aa1..77c3cf983 100755
    MESSAGE(FATAL_ERROR "Unrecognized CMAKE_SYSTEM_NAME = ${CMAKE_SYSTEM_NAME}")
  ENDIF()
  
- # ---[ Download deps
- IF(NOT XNNPACK_USE_SYSTEM_LIBS)
--  IF(NOT DEFINED CLOG_SOURCE_DIR)
--    MESSAGE(STATUS "Downloading clog to ${CMAKE_BINARY_DIR}/clog-source (define CLOG_SOURCE_DIR to avoid it)")
--    CONFIGURE_FILE(cmake/DownloadCLog.cmake "${CMAKE_BINARY_DIR}/clog-download/CMakeLists.txt")
--    EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
--      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/clog-download")
--    EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" --build .
--      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/clog-download")
--    SET(CLOG_SOURCE_DIR "${CMAKE_BINARY_DIR}/clog-source" CACHE STRING "clog source directory")
--  ENDIF()
--
-   IF(NOT DEFINED CPUINFO_SOURCE_DIR)
-     MESSAGE(STATUS "Downloading cpuinfo to ${CMAKE_BINARY_DIR}/cpuinfo-source (define CPUINFO_SOURCE_DIR to avoid it)")
-     CONFIGURE_FILE(cmake/DownloadCpuinfo.cmake "${CMAKE_BINARY_DIR}/cpuinfo-download/CMakeLists.txt")
-@@ -7108,6 +7098,10 @@ IF(MSVC)
+@@ -7108,6 +7108,10 @@ IF(MSVC)
    SET_PROPERTY(SOURCE ${ALL_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS "$<$<NOT:$<CONFIG:Debug>>: /O2 >")
    SET_PROPERTY(SOURCE ${HOT_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS "$<$<NOT:$<CONFIG:Debug>>: /O2 >")
    SET_PROPERTY(SOURCE ${COLD_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS "$<$<NOT:$<CONFIG:Debug>>: /O1 >")
@@ -37,30 +22,3 @@ index d53c48aa1..77c3cf983 100755
  ELSE()
    SET_PROPERTY(SOURCE ${ALL_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS "$<$<NOT:$<CONFIG:Debug>>: -O2 >")
    SET_PROPERTY(SOURCE ${HOT_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS "$<$<NOT:$<CONFIG:Debug>>: -O2 >")
-@@ -7142,26 +7136,6 @@ IF(LIBM)
-   TARGET_LINK_LIBRARIES(indirection PRIVATE ${LIBM})
- ENDIF()
- 
--# ---[ Configure clog
--IF(NOT TARGET clog)
--  IF(NOT XNNPACK_USE_SYSTEM_LIBS)
--    SET(CLOG_BUILD_TESTS OFF CACHE BOOL "")
--    SET(CLOG_RUNTIME_TYPE "${CPUINFO_RUNTIME_TYPE}" CACHE STRING "")
--    ADD_SUBDIRECTORY(
--      "${CLOG_SOURCE_DIR}/deps/clog"
--      "${CMAKE_BINARY_DIR}/clog")
--    # We build static version of clog but a dynamic library may indirectly depend on it
--    SET_PROPERTY(TARGET clog PROPERTY POSITION_INDEPENDENT_CODE ON)
--  ELSE()
--    ADD_LIBRARY(clog STATIC IMPORTED)
--    FIND_LIBRARY(CLOG_LIBRARY clog)
--    IF(NOT CLOG_LIBRARY)
--      MESSAGE(FATAL_ERROR "Cannot find clog")
--    ENDIF()
--    SET_PROPERTY(TARGET clog PROPERTY IMPORTED_LOCATION "${CLOG_LIBRARY}")
--  ENDIF()
--ENDIF()
--
- # ---[ Configure cpuinfo
- IF(NOT TARGET cpuinfo)
-   IF(NOT XNNPACK_USE_SYSTEM_LIBS)

@@ -86,19 +86,10 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const OrtOpenVINOProviderOptions* params) {
-#ifdef USE_OPENVINO
-  return OpenVINOProviderFactoryCreator::Create(params)->CreateProvider();
-#else
-  ORT_UNUSED_PARAMETER(params);
-  return nullptr;
-#endif
-}
-
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
-  ProviderOptions provider_options_map;
-  return OpenVINOProviderFactoryCreator::Create(&provider_options_map)->CreateProvider();
+  OrtOpenVINOProviderOptions params;
+  return OpenVINOProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -268,7 +259,7 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 #ifdef USE_DML
-  if (auto factory = DMLProviderFactoryCreator::Create(0, false, false, false))
+  if (auto factory = DMLProviderFactoryCreator::Create(0))
     return factory->CreateProvider();
 #endif
   return nullptr;

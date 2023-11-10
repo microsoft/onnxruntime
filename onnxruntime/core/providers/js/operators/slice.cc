@@ -12,8 +12,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     1, 9,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<int32_t>()}),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Slice_1);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -26,8 +25,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPU, 2)
         .InputMemoryType(OrtMemTypeCPU, 3)
         .InputMemoryType(OrtMemTypeCPU, 4)
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<int32_t>()}),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Slice);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -40,8 +38,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPU, 2)
         .InputMemoryType(OrtMemTypeCPU, 3)
         .InputMemoryType(OrtMemTypeCPU, 4)
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<int32_t>()}),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Slice);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -54,8 +51,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPU, 2)
         .InputMemoryType(OrtMemTypeCPU, 3)
         .InputMemoryType(OrtMemTypeCPU, 4)
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<int32_t>()}),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Slice);
 
 }  // namespace js

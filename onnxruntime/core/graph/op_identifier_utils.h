@@ -3,13 +3,25 @@
 
 #pragma once
 
-#include "flatbuffers/flatbuffers.h"
-
 #include "core/graph/op_identifier.h"
 
 #include "core/common/status.h"
 #include "core/graph/graph.h"
-#include "core/graph/onnx_protobuf.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+
+#include "onnx/defs/schema.h"  // for ONNX_NAMESPACE::OpSchema
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+namespace flatbuffers {
+class FlatBufferBuilder;
+
+template <typename T>
+struct Offset;
+
+struct String;
+}  // namespace flatbuffers
 
 namespace onnxruntime {
 

@@ -6,9 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -606,7 +604,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
             }
 
-            var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
+            var inputNamesArray =   LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
             var inputHandlesArray = inputValues.Select(v => v.Handle).ToArray();
 
             var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
@@ -638,7 +636,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr[] inputHandlesArray = new IntPtr[inputs.Count];
 
             int count = 0;
-            foreach (var input in inputs)
+            foreach(var input in inputs)
             {
                 inputNamesArray[count] = LookupInputMetadata(input.Key).ZeroTerminatedName;
                 inputHandlesArray[count] = input.Value.Handle;
@@ -1044,131 +1042,6 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 return _profilingStartTimeNs;
             }
-        }
-
-        private static void OrtCallback(IntPtr userData, IntPtr[] ouputs, uint numOutputs, IntPtr status)
-        {
-            var hostHdl = GCHandle.FromIntPtr(userData);
-            CallbackHost host = (CallbackHost)hostHdl.Target;
-            try
-            {
-                host.callback(host.outputValues, status);
-            }
-            finally
-            {
-                hostHdl.Free();
-            }
-        }
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate void OrtCallbackDelegate(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status);
-
-        private static OrtCallbackDelegate ortCallback = new OrtCallbackDelegate(OrtCallback);
-
-        private delegate void UserCallbackDelegate(IReadOnlyCollection<OrtValue> outputs, IntPtr status);
-
-        private class CallbackHost
-        {
-            public IReadOnlyCollection<string> inputNames { get; }
-            public IReadOnlyCollection<OrtValue> inputValues { get; }
-            public IReadOnlyCollection<string> outputNames { get; }
-            public IReadOnlyCollection<OrtValue> outputValues { get; }
-            public UserCallbackDelegate callback { get; }
-
-            public IntPtr[] rawInputNames { get; }
-            public IntPtr[] rawInputValues { get; }
-            public IntPtr[] rawOutputNames { get; }
-            public IntPtr[] rawOutputValues { get; }
-
-            public CallbackHost(InferenceSession session,
-                                IReadOnlyCollection<string> cbInputNames,
-                                IReadOnlyCollection<OrtValue> cbinputValues,
-                                IReadOnlyCollection<string> cbOutputNames,
-                                IReadOnlyCollection<OrtValue> cbOutputValues,
-                                UserCallbackDelegate userCallback)
-            {
-
-                inputNames = cbInputNames;
-                inputValues = cbinputValues;
-                outputNames = cbOutputNames;
-                outputValues = cbOutputValues;
-                callback = userCallback;
-
-                rawInputNames = LookupUtf8Names(inputNames, n => n, session.LookupInputMetadata);
-                rawInputValues = inputValues.Select(v => v.Handle).ToArray();
-
-                rawOutputNames = LookupUtf8Names(outputNames, n => n, session.LookupOutputMetadata);
-                rawOutputValues = outputValues.Select(v => v.Handle).ToArray();
-            }
-        }
-
-        private void RunAsyncInternal(RunOptions options,
-                                      IReadOnlyCollection<string> inputNames,
-                                      IReadOnlyCollection<OrtValue> inputValues,
-                                      IReadOnlyCollection<string> outputNames,
-                                      IReadOnlyCollection<OrtValue> outputValues,
-                                      UserCallbackDelegate callback)
-        {
-            CallbackHost host = new CallbackHost(this, inputNames, inputValues, outputNames, outputValues, callback);
-            var host_hdl = GCHandle.Alloc(host, GCHandleType.Normal);
-
-            try
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunAsync(
-                                                    _nativeHandle,
-                                                    options == null ? (IntPtr)null : options.Handle,
-                                                    host.rawInputNames,
-                                                    host.rawInputValues,
-                                                    (UIntPtr)host.rawInputNames.Length,
-                                                    host.rawOutputNames,
-                                                    (UIntPtr)host.rawOutputNames.Length,
-                                                    host.rawOutputValues,
-                                                    Marshal.GetFunctionPointerForDelegate(ortCallback),
-                                                    GCHandle.ToIntPtr(host_hdl)
-                                                    ));
-            }
-            catch (OnnxRuntimeException)
-            {
-                host_hdl.Free();
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Run inference asynchronous in a thread of intra-op thread pool
-        /// </summary>
-        /// <param name="options">run option, can be null</param>
-        /// <param name="inputNames">name of inputs</param>
-        /// <param name="inputValues">input ort values</param>
-        /// <param name="outputNames">name of outputs</param>
-        /// <param name="outputValues">output of ort values</param>
-        /// <returns>task to be awaited</returns>
-        /// <exception cref="OnnxRuntimeException"></exception>
-        public async Task<IReadOnlyCollection<OrtValue>> RunAsync(RunOptions options,
-                                                                  IReadOnlyCollection<string> inputNames,
-                                                                  IReadOnlyCollection<OrtValue> inputValues,
-                                                                  IReadOnlyCollection<string> outputNames,
-                                                                  IReadOnlyCollection<OrtValue> outputValues)
-        {
-            var promise = new TaskCompletionSource<IReadOnlyCollection<OrtValue>>();
-            RunAsyncInternal(options,
-                     inputNames,
-                     inputValues,
-                     outputNames,
-                     outputValues,
-                     (IReadOnlyCollection<OrtValue> outputs, IntPtr status) =>
-                     {
-                         try
-                         {
-                             NativeApiStatus.VerifySuccess(status);
-                             promise.SetResult(outputs);
-                         }
-                         catch (Exception ex)
-                         {
-                             promise.SetException(ex);
-                         }
-                     });
-            return await promise.Task;
         }
 
         #endregion

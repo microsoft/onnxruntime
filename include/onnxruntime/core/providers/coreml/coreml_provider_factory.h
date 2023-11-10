@@ -24,13 +24,9 @@ enum COREMLFlags {
   // Please note, enable this option does not guarantee the entire model to be executed using ANE only
   COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 0x004,
 
-  // Only allow CoreML EP to take nodes with inputs with static shapes. By default it will also allow inputs with
-  // dynamic shapes. However, the performance may be negatively impacted if inputs have dynamic shapes.
-  COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES = 0x008,
-
-  // Keep COREML_FLAG_LAST at the end of the enum definition
+  // Keep COREML_FLAG_MAX at the end of the enum definition
   // And assign the last COREMLFlag to it
-  COREML_FLAG_LAST = COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES,
+  COREML_FLAG_LAST = COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE,
 };
 
 #ifdef __cplusplus

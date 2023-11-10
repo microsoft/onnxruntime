@@ -6,7 +6,6 @@
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"
 #include "skip_layer_norm.h"
-#include "skip_layer_norm_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -20,29 +19,20 @@ namespace contrib {
       kCpuExecutionProvider,                                      \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SkipLayerNorm<T, false>);                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      SkipSimplifiedLayerNormalization,                           \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SkipLayerNorm<T, true>);
+      SkipLayerNorm<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 
-template <typename T, bool simplified>
-SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
+template <typename T>
+SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
 }
 
-template <typename T, bool simplified>
-Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
+template <typename T>
+Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* input = p_ctx->Input<Tensor>(0);
   const Tensor* skip = p_ctx->Input<Tensor>(1);
   const Tensor* gamma = p_ctx->Input<Tensor>(2);
@@ -55,15 +45,51 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
+  if (input_dims_size != 3 && input_dims_size != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
+  }
+
   int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
-  ORT_RETURN_IF_ERROR(onnxruntime::contrib::skip_layer_norm_helper::CheckInputs<Tensor>(input,
-                                                                                        skip,
-                                                                                        gamma,
-                                                                                        beta,
-                                                                                        bias,
-                                                                                        hidden_size,
-                                                                                        input_dims_size));
+  if (input->Shape() != skip->Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "skip is expected to have same shape as input");
+  }
+
+  const auto& gamma_dims = gamma->Shape().GetDims();
+  if (gamma_dims.size() != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "gamma is expected to have 1 dimension, got ", gamma_dims.size());
+  }
+  if (gamma_dims[0] != hidden_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Last dimension of gamma and input does not match");
+  }
+
+  if (nullptr != beta) {
+    const auto& beta_dims = beta->Shape().GetDims();
+    if (beta_dims.size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "beta is expected to have 1 dimension, got ", beta_dims.size());
+    }
+    if (beta_dims[0] != hidden_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Last dimension of beta and input does not match");
+    }
+  }
+
+  if (nullptr != bias) {
+    const auto& bias_dims = bias->Shape().GetDims();
+    if (bias_dims.size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "bias is expected to have 1 dimension, got ", bias_dims.size());
+    }
+    if (bias_dims[0] != hidden_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Last dimension of bias and input does not match");
+    }
+  }
 
   int64_t task_count = input->Shape().SizeToDimension(input_dims_size - 1);
 
@@ -79,15 +105,13 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   // of the input and skip tensors
   T* skip_input_bias_add_output_data = skip_input_bias_add_output != nullptr ? skip_input_bias_add_output->MutableData<T>() : nullptr;
 
-  const auto& skip_size = skip->Shape().Size();
-
   concurrency::ThreadPool::TryBatchParallelFor(
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
         auto offset = task_idx * hidden_size;
 
         const T* p_input = input_data + offset;
-        const T* p_skip = skip_data + (offset % skip_size);
+        const T* p_skip = skip_data + offset;
         T* p_output = output_data + offset;
         T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
 
@@ -111,16 +135,10 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         }
 
         mean = mean / hidden_size;
-        if (simplified) {
-          mean_square = sqrt(mean_square / hidden_size + epsilon_);
-        } else {
-          mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
-        }
+        mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon_);
 
         for (int64_t h = 0; h < hidden_size; h++) {
-          if (simplified) {
-            p_output[h] = p_output[h] / mean_square * gamma_data[h];
-          } else if (nullptr == beta_data) {
+          if (nullptr == beta_data) {
             p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h];
           } else {
             p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];

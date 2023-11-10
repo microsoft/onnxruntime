@@ -15,8 +15,34 @@ stages:
     torch_version: '2.0.0'
     opset_version: '15'
     cuda_version: '11.8'
-    cmake_cuda_architectures: 60;61;70;75;80;86;90
-    docker_file: Dockerfile.manylinux2_28_training_cuda11_8
+    gcc_version: 11
+    cmake_cuda_architectures: 50;52;60;61;70;75;80;86;87
+    docker_file: Dockerfile.manylinux2014_training_cuda11_8
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
     debug_build: false
+
+- template: templates/py-packaging-training-cuda-stage.yml
+  parameters:
+    build_py_parameters: --enable_training --update --build
+    torch_version: '2.0.0'
+    opset_version: '15'
+    cuda_version: '11.8'
+    gcc_version: 11
+    cmake_cuda_architectures: 50;52;60;61;70;75;80;86;87
+    docker_file: Dockerfile.manylinux2014_training_cuda11_8
+    agent_pool: Onnxruntime-Linux-GPU
+    upload_wheel: 'no'
+    debug_build: true
+
+- template: templates/py-packaging-stage.yml
+  parameters:
+    build_py_parameters: --enable_training
+    enable_linux_gpu: false
+    enable_ubuntu_cpu: false
+    enable_linux_cpu: false
+    enable_windows_cpu: true
+    enable_windows_gpu: false
+    enable_mac_cpu: false
+    enable_mac_silicon: false
+    enable_linux_arm: false

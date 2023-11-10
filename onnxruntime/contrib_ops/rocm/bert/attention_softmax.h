@@ -402,7 +402,7 @@ Status ComputeSoftmaxWithMask1D(
 }
 
 template <typename T>
-Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
+Status ComputeSoftmaxWithRawMask(hipStream_t stream,
                                  const int all_sequence_length,
                                  const int sequence_length,
                                  const int batch_size,
@@ -421,7 +421,6 @@ Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
   T* out = use_persistent_softmax ? persistent_softmax_workspace : output;
-  auto stream = static_cast<hipStream_t>(ort_stream->GetHandle());
 
 #define DISPATCH_KERNEL_SMALL_WITH_BLOCKSIZE(block_size)                         \
   SoftmaxWithRawMaskSmallKernel<T, block_size><<<grid, block_size, 0, stream>>>( \
@@ -449,7 +448,7 @@ Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
 #undef DISPATCH_KERNEL_SMALL_WITH_BLOCKSIZE
 
   if (use_persistent_softmax) {
-    return dispatch_warpwise_softmax_forward<T, T, float, false>(ort_stream,
+    return dispatch_warpwise_softmax_forward<T, T, float, false>(stream,
                                                                  output,
                                                                  persistent_softmax_workspace,
                                                                  all_sequence_length,

@@ -4,7 +4,7 @@
 #pragma once
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/graph/onnx_protobuf.h"
+#include "onnx/defs/schema.h"
 #include "core/graph/contrib_ops/ms_schema.h"
 #else
 #include "onnx/defs/data_type_utils.h"
@@ -53,7 +53,7 @@ void RegisterContribSchemas();
 void RegisterNchwcSchemas();
 void RegisterQuantizationSchemas();
 
-#if defined(ORT_USE_NCCL)
+#if defined(USE_MPI)
 void RegisterCollectiveOps();
 #endif
 

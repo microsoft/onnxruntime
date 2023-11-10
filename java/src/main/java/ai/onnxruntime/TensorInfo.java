@@ -58,37 +58,14 @@ public class TensorInfo implements ValueInfo {
      */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16(
         16), // Non-IEEE floating-point format based on IEEE754 single-precision
-    /**
-     * A non-IEEE 8-bit floating point format with 4 exponent bits and 3 mantissa bits, with NaN and
-     * no infinite values (FN).
-     *
-     * <p>See <a href="https://onnx.ai/onnx/technical/float8.html">the float 8 ONNX standard</a> for
-     * details.
-     */
-    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN(17),
-    /**
-     * A non-IEEE 8-bit floating point format with 4 exponent bits and 3 mantissa bits, with NaN, no
-     * infinite values (FN) and no negative zero (UZ).
-     *
-     * <p>See <a href="https://onnx.ai/onnx/technical/float8.html">the float 8 ONNX standard</a> for
-     * details.
-     */
-    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ(18),
-    /**
-     * A non-IEEE 8-bit floating point format with 5 exponent bits and 2 mantissa bits.
-     *
-     * <p>See <a href="https://onnx.ai/onnx/technical/float8.html">the float 8 ONNX standard</a> for
-     * details.
-     */
-    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2(19),
-    /**
-     * A non-IEEE 8-bit floating point format with 5 exponent bits and 2 mantissa bits, with NaN, no
-     * infinite values (FN) and no negative zero (UZ).
-     *
-     * <p>See <a href="https://onnx.ai/onnx/technical/float8.html">the float 8 ONNX standard</a> for
-     * details.
-     */
-    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ(20);
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN(
+        17), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ(
+        18), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2(
+        19), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ(
+        20); // Non-IEEE floating-point format based on IEEE754 single-precision
 
     /** The int id on the native side. */
     public final int value;

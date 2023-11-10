@@ -3,13 +3,15 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
+
+#include <memory>
 
 #include "core/common/gsl.h"
 
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #include "core/providers/rocm/rocm_allocator.h"
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
 
@@ -45,7 +47,7 @@ std::unique_ptr<IExecutionProvider> ROCMProviderFactory::CreateProvider() {
   return std::make_unique<ROCMExecutionProvider>(info_);
 }
 
-struct ProviderInfo_ROCM_Impl final : ProviderInfo_ROCM {
+struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
     auto hip_err = ::hipGetDeviceCount(&num_devices);
@@ -126,24 +128,9 @@ struct ProviderInfo_ROCM_Impl final : ProviderInfo_ROCM {
   }
 
   // Used by slice_concatenate_test.cc and onnxruntime_pybind_state.cc
-
-  void rocmMemcpy_HostToDevice(void* dst, const void* src, size_t count) override {
-    // hipMemcpy() operates on the default stream
-    HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyHostToDevice));
-
-    // To ensure that the copy has completed, invoke a stream sync for the default stream.
-    // For transfers from pageable host memory to device memory, a stream sync is performed before the copy is initiated.
-    // The function will return once the pageable buffer has been copied to the staging memory for DMA transfer
-    // to device memory, but the DMA to final destination may not have completed.
-
-    HIP_CALL_THROW(hipStreamSynchronize(0));
-  }
-
+  void rocmMemcpy_HostToDevice(void* dst, const void* src, size_t count) override { HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyHostToDevice)); }
   // Used by onnxruntime_pybind_state.cc
-  void rocmMemcpy_DeviceToHost(void* dst, const void* src, size_t count) override {
-    // For transfers from device to either pageable or pinned host memory, the function returns only once the copy has completed.
-    HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyDeviceToHost));
-  }
+  void rocmMemcpy_DeviceToHost(void* dst, const void* src, size_t count) override { HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyDeviceToHost)); }
 
   int hipGetDeviceCount() override {
     int num_devices = 0;
@@ -165,9 +152,10 @@ struct ProviderInfo_ROCM_Impl final : ProviderInfo_ROCM {
     return std::make_shared<ROCMProviderFactory>(info);
   }
 
-  std::shared_ptr<IAllocator> CreateRocmAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::ROCMExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
+  std::shared_ptr<IAllocator> CreateRocmAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::ROCMExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) override {
     return ROCMExecutionProvider::CreateRocmAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
+
 } g_info;
 
 struct ROCM_Provider : Provider {
@@ -181,8 +169,8 @@ struct ROCM_Provider : Provider {
     info.gpu_mem_limit = params->gpu_mem_limit;
     info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(params->arena_extend_strategy);
     info.miopen_conv_exhaustive_search = params->miopen_conv_exhaustive_search;
-    info.do_copy_in_default_stream = params->do_copy_in_default_stream != 0;
-    info.has_user_compute_stream = params->has_user_compute_stream != 0;
+    info.do_copy_in_default_stream = params->do_copy_in_default_stream;
+    info.has_user_compute_stream = params->has_user_compute_stream;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
     info.tunable_op.enable = params->tunable_op_enable;
@@ -192,32 +180,21 @@ struct ROCM_Provider : Provider {
     return std::make_shared<ROCMProviderFactory>(info);
   }
 
-  /**
-   * This function will be called by the C API UpdateROCMProviderOptions().
-   *
-   * What this function does is equivalent to resetting the OrtROCMProviderOptions instance with
-   * default ROCMExecutionProviderInf instance first and then set up the provided provider options.
-   * See ROCMExecutionProviderInfo::FromProviderOptions() for more details.
-   */
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
-    auto internal_options = onnxruntime::ROCMExecutionProviderInfo::FromProviderOptions(options);
+    auto info = onnxruntime::ROCMExecutionProviderInfo::FromProviderOptions(options);
     auto& rocm_options = *reinterpret_cast<OrtROCMProviderOptions*>(provider_options);
 
-    rocm_options.device_id = internal_options.device_id;
-    rocm_options.gpu_mem_limit = internal_options.gpu_mem_limit;
-    rocm_options.arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
-    rocm_options.miopen_conv_exhaustive_search = internal_options.miopen_conv_exhaustive_search;
-    rocm_options.do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
-    rocm_options.has_user_compute_stream = internal_options.has_user_compute_stream;
-    // The 'has_user_compute_stream' of the OrtROCMProviderOptions instance can be set by C API UpdateROCMProviderOptionsWithValue() as well.
-    // We only set the 'has_user_compute_stream' of the OrtROCMProviderOptions instance if it is provided in options
-    if (options.find("has_user_compute_stream") != options.end()) {
-      rocm_options.user_compute_stream = internal_options.user_compute_stream;
-    }
-    rocm_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
-    rocm_options.tunable_op_enable = internal_options.tunable_op.enable;
-    rocm_options.tunable_op_tuning_enable = internal_options.tunable_op.tuning_enable;
-    rocm_options.tunable_op_max_tuning_duration_ms = internal_options.tunable_op.max_tuning_duration_ms;
+    rocm_options.device_id = info.device_id;
+    rocm_options.gpu_mem_limit = info.gpu_mem_limit;
+    rocm_options.arena_extend_strategy = static_cast<int>(info.arena_extend_strategy);
+    rocm_options.miopen_conv_exhaustive_search = info.miopen_conv_exhaustive_search;
+    rocm_options.do_copy_in_default_stream = info.do_copy_in_default_stream;
+    rocm_options.has_user_compute_stream = info.has_user_compute_stream;
+    rocm_options.user_compute_stream = info.user_compute_stream;
+    rocm_options.default_memory_arena_cfg = info.default_memory_arena_cfg;
+    rocm_options.tunable_op_enable = info.tunable_op.enable;
+    rocm_options.tunable_op_tuning_enable = info.tunable_op.tuning_enable;
+    rocm_options.tunable_op_max_tuning_duration_ms = info.tunable_op.max_tuning_duration_ms;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

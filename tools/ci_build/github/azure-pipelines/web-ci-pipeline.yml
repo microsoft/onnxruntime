@@ -1,28 +1,3 @@
-##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
-trigger:
-  branches:
-    include:
-    - main
-    - rel-*
-  paths:
-    exclude:
-    - docs/**
-    - README.md
-    - CONTRIBUTING.md
-    - BUILD.md
-pr:
-  branches:
-    include:
-    - main
-    - rel-*
-  paths:
-    exclude:
-    - docs/**
-    - README.md
-    - CONTRIBUTING.md
-    - BUILD.md
-#### end trigger ####
-
 parameters:
 - name: NpmPublish
   displayName: 'NPM packages publish configuration'
@@ -57,9 +32,7 @@ stages:
     BuildStaticLib: true
     ExtraBuildArgs: $(ExtraBuildArgs)
     WASMTemplate: linux-wasm-ci.yml
+    WebTemplate: win-web-ci.yml
     UseWebPoolName: true
-    RunWebGpuTestsForDebugBuild: false
-    RunWebGpuTestsForReleaseBuild: true
-    WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
-    WebCpuPoolName: 'onnxruntime-Win-CPU-2022-web'
+    WebPoolName: 'onnxruntime-Win-CPU-2022-web'
     WithCache: true

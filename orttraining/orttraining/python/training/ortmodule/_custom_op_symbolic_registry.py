@@ -12,9 +12,36 @@ from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
-from onnxruntime.training.utils import pytorch_dtype_to_onnx
-
 from ._utils import get_runtime_pytorch_version
+
+# Mapping from pytorch scalar type to onnx scalar type.
+_CAST_PYTORCH_TO_ONNX = {
+    "Byte": torch.onnx.TensorProtoDataType.UINT8,
+    "Char": torch.onnx.TensorProtoDataType.INT8,
+    "Double": torch.onnx.TensorProtoDataType.DOUBLE,
+    "Float": torch.onnx.TensorProtoDataType.FLOAT,
+    "Half": torch.onnx.TensorProtoDataType.FLOAT16,
+    "Int": torch.onnx.TensorProtoDataType.INT32,
+    "Long": torch.onnx.TensorProtoDataType.INT64,
+    "Short": torch.onnx.TensorProtoDataType.INT16,
+    "Bool": torch.onnx.TensorProtoDataType.BOOL,
+    "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
+    "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
+    "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
+    # Not yet defined in torch.
+    # "Float8E4M3FN": torch.onnx.TensorProtoDataType.FLOAT8E4M3FN,
+    # "Float8E4M3FNUZ": torch.onnx.TensorProtoDataType.FLOAT8E4M3FNUZ,
+    # "Float8E5M2": torch.onnx.TensorProtoDataType.FLOAT8E5M2,
+    # "Float8E5M2FNUZ": torch.onnx.TensorProtoDataType.FLOAT8E5M2FNUZ,
+    "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
+}
+
+
+def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+    try:
+        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
+    except AttributeError:
+        return _CAST_PYTORCH_TO_ONNX[scalar_type]
 
 
 def wrap_custom_export_function(original_func: Callable) -> Callable:
@@ -129,7 +156,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         output_type = logits_casted.type()
     else:
         # For higher version torch we can get node output types
-        loss_output = next(iter(node.outputs()))
+        loss_output = list(node.outputs())[0]
         output_type = loss_output.type()
     ##################################
 
@@ -145,7 +172,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         weight_casted,
         ignore_index,
         reduction_s=reduction,
-        output_type_i=pytorch_dtype_to_onnx(output_type.scalarType()),
+        output_type_i=pytorch_type_to_onnx(output_type.scalarType()),
         outputs=2,
     )
     output.setType(output_type)
@@ -172,16 +199,10 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     output = g.op(
         "org.pytorch.aten::ATen", weight, indices, padding_idx, scale_grad_by_freq, sparse, operator_s="embedding"
     )
-
-    try:
-        # Tolerant to the case when sizes of indices are not available or not usable (for example
-        # when DeepSpeed stage3 enabled, all weights size is (0), this will fail.)
-        indices_shape = _get_tensor_sizes(indices)
-        if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
-            output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
-            output.setType(output_type)
-    except IndexError:
-        output.setType(weight.type())
+    indices_shape = _get_tensor_sizes(indices)
+    if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
+        output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
+        output.setType(output_type)
     return output
 
 
@@ -808,3 +829,16 @@ def upsample_nearest2d(g, input, output_size, scale_factors):
 @register_symbolic("upsample_nearest3d")
 def upsample_nearest3d(g, input, output_size, scale_factors):
     return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
+
+
+@register_symbolic("upsample_bilinear2d")
+def upsample_bilinear2d(g, input, output_size, align_corners, scale_factors):
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        output_size,
+        align_corners,
+        scale_factors,
+        operator_s="upsample_bilinear2d",
+        overload_name_s="vec",
+    )

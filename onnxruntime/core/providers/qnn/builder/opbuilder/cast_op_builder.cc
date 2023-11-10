@@ -22,6 +22,7 @@ class CastOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
+                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation = false) const override ORT_MUST_USE_RESULT;
 
@@ -29,15 +30,18 @@ class CastOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
+                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
 Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
+                                    bool is_quantized_model,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
+  ORT_UNUSED_PARAMETER(is_quantized_model);  // Ignore in all backends. Cast should use same QNN types across backends.
 
   const auto& inputs = node_unit.Inputs();
   ORT_ENFORCE(inputs.size() == 1, "QNN Cast node must have a single input.");
@@ -83,8 +87,10 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
+                                                  bool is_quantized_model,
                                                   bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(logger);
+  ORT_UNUSED_PARAMETER(is_quantized_model);  // Ignore in all backends. Cast should use same QNN types across backends.
 
   const auto& outputs = node_unit.Outputs();
   ORT_ENFORCE(outputs.size() == 1, "QNN Cast node must have a single output.");
@@ -112,7 +118,7 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                     "Failed to add output tensor for QNN Cast node.");
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                    qnn_def::package_name,
                                                     GetQnnOpType(node_unit.OpType()),
                                                     std::move(input_names),
                                                     {output_name},

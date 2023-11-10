@@ -259,7 +259,7 @@ static void CreateSessionWithCastToFloat16InModel() {
 }
 
 static void CreateSessionWithFloat16InitializersInModel() {
-  // load a model
+    // load a model
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fp16-initializer.onnx", learningModel));
 

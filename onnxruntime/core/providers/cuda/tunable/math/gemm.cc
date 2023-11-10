@@ -12,7 +12,7 @@ namespace tunable {
 template <typename T>
 GemmParams<T>::GemmParams(int m, int n, int k, bool trans_a, bool trans_b, float alpha, float beta,
                           const Gemm<T>* gemm_kernel, OpKernelContext* ctx)
-    : OpParams(gemm_kernel->GetTuningContext(), ctx->GetComputeStream()),
+    : OpParams(gemm_kernel->GetTuningContext(), gemm_kernel->Stream(ctx)),
       trans_a_(trans_a),
       trans_b_(trans_b),
       alpha_(alpha),

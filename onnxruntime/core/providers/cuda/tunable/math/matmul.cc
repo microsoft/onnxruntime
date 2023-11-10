@@ -12,7 +12,7 @@ namespace tunable {
 template <typename T>
 MatMulParams<T>::MatMulParams(float alpha, bool trans_a, bool trans_b, bool trans_batch_a, bool trans_batch_b,
                               MatMulComputeHelper& helper, const MatMul<T>* matmul_kernel, OpKernelContext* ctx)
-    : OpParams(matmul_kernel->GetTuningContext(), ctx->GetComputeStream()),
+    : OpParams(matmul_kernel->GetTuningContext(), matmul_kernel->Stream(ctx)),
       alpha_(alpha),
       trans_a_(trans_a),
       trans_b_(trans_b),

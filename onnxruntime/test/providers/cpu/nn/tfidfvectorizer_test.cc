@@ -91,7 +91,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim1Fail) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Can't merge shape info. "
-           "Both inferred and declared dimension have values but they differ. Inferred=7 Declared=0 Dimension=0");
+           "Both source and target dimension have values but they differ. Source=7 Target=0 Dimension=0");
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim1Success) {
@@ -136,7 +136,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim2) {
   test.AddOutput<float>("Y", out_dims, output);
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Mismatch between number of inferred and declared dimensions. inferred=2 declared=1");
+           "Mismatch between number of source and target dimensions. Source=2 Target=1");
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip01_Empty_Dim2) {
@@ -159,7 +159,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip01_Empty_Dim2) {
   test.AddOutput<float>("Y", out_dims, output);
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Mismatch between number of inferred and declared dimensions. inferred=2 declared=1");
+           "Mismatch between number of source and target dimensions. Source=2 Target=1");
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim2N) {

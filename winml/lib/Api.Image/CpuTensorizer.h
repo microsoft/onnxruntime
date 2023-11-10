@@ -112,23 +112,13 @@ class CpuTensorizer {
   template <typename T>
   static T ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter);
 
-  // clang-format off
   template <>
-#if _MSVC_LANG < 202002L
-  static
-#endif
-  float ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter) {
+  static float ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter) {
     return nominalRangeConverter.Normalize(static_cast<float>(input));
   }
-
-  // clang-format off
   template <>
-#if _MSVC_LANG < 202002L
-  static
-#endif
-  DirectX::PackedVector::HALF ConvertByteToFloat(
-    const BYTE& input,
-    const NominalRangeConverter& nominalRangeConverter
+  static DirectX::PackedVector::HALF ConvertByteToFloat(
+    const BYTE& input, const NominalRangeConverter& nominalRangeConverter
   ) {
     return nominalRangeConverter.Normalize(DirectX::PackedVector::XMConvertFloatToHalf(input));
   }
@@ -169,13 +159,9 @@ class CpuTensorizer {
     }
   }
 
-  // clang-format off
 #if defined(_M_AMD64) || defined(_M_IX86)
   template <>
-#if _MSVC_LANG < 202002L
-  static
-#endif
-  void DeinterleaveRowByteToFloat(
+  static void DeinterleaveRowByteToFloat(
     _In_ BYTE* pBuffer,
     _Inout_ float* xChannel,
     _Inout_ float* yChannel,

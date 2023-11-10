@@ -202,19 +202,19 @@ struct TensorCheck<double> {
       // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
       // If the isinf check is first the isnan check and branch gets omitted
       if (std::isnan(cur_expected[i])) {
-        EXPECT_TRUE(std::isnan(cur_actual[i])) << "Expected NaN. i:" << i;
+        ASSERT_TRUE(std::isnan(cur_actual[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(cur_expected[i])) {  // Test infinity for equality
-        EXPECT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
+        ASSERT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
       } else {
         if (!has_abs_err && !has_rel_err) {
           // the default for existing tests
-          EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
+          ASSERT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
         } else {
           if (has_abs_err) {
-            EXPECT_NEAR(cur_expected[i], cur_actual[i], *(params.absolute_error)) << "i:" << i;
+            ASSERT_NEAR(cur_expected[i], cur_actual[i], *(params.absolute_error)) << "i:" << i;
           }
           if (has_rel_err) {
-            EXPECT_NEAR(cur_expected[i], cur_actual[i], *(params.relative_error) * std::abs(cur_expected[i]))
+            ASSERT_NEAR(cur_expected[i], cur_actual[i], *(params.relative_error) * std::abs(cur_expected[i]))
                 << "i:" << i;
           }
         }
@@ -256,20 +256,20 @@ void InternalNumericalCheck(const Tensor& expected,
     // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
     // If the isinf check is first the isnan check and branch gets omitted
     if (std::isnan(cur_expected[i])) {
-      EXPECT_TRUE(std::isnan(cur_actual[i])) << "Expected NaN. i:" << i;
+      ASSERT_TRUE(std::isnan(cur_actual[i])) << "Expected NaN. i:" << i;
     } else if (std::isinf(cur_expected[i])) {  // Test infinity for equality
-      EXPECT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
+      ASSERT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
-        EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
+        ASSERT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
       } else {
         if (has_abs_err) {
-          EXPECT_NEAR(cur_expected[i], cur_actual[i], *(params.absolute_error))
+          ASSERT_NEAR(cur_expected[i], cur_actual[i], *(params.absolute_error))
               << "i:" << i;
         }
         if (has_rel_err) {
-          EXPECT_NEAR(cur_expected[i], cur_actual[i], *(params.relative_error) * std::abs(cur_expected[i]))
+          ASSERT_NEAR(cur_expected[i], cur_actual[i], *(params.relative_error) * std::abs(cur_expected[i]))
               << "i:" << i;
         }
       }

@@ -17,13 +17,12 @@ class CastOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
 #ifdef __APPLE__
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                                             const logging::Logger& logger) const override;
 #endif
   // Operator support related
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const override;
 };
 
 // Add operator related
@@ -64,7 +63,7 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
                           << "]";
     return false;
   }
-  if (!IsNodeSupported(prec_node, input_params, logger)) {
+  if (!IsNodeSupported(prec_node, input_params.graph_viewer, logger)) {
     LOGS(logger, VERBOSE) << "Cast's producing node ["
                           << prec_node.OpType()
                           << "] is not a supported op.";
@@ -77,25 +76,6 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   if (cast_to_type != ONNX_NAMESPACE::TensorProto::INT32) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()
                           << "] Output type: [" << cast_to_type
-                          << "] is not supported.";
-    return false;
-  }
-
-  return true;
-}
-
-bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const {
-  // We only check the type of input 0
-  const auto& input = *node.InputDefs()[0];
-
-  int32_t input_type;
-  if (!GetType(input, input_type, logger))
-    return false;
-
-  // only support int64 coming from ArgMax (check for ArgMax is done in IsOpSupportedImpl())
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    LOGS(logger, VERBOSE) << "[" << node.OpType()
-                          << "] Input type: [" << input_type
                           << "] is not supported.";
     return false;
   }

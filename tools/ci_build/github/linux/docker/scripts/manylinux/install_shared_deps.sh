@@ -53,9 +53,8 @@ cmake --build build-cmake
 mv ./build-cmake/ninja /usr/bin
 
 echo "Installing Node.js"
-# The EOL for nodejs v18.17.1 LTS is April 2025
-GetFile https://nodejs.org/dist/v18.17.1/node-v18.17.1-linux-x64.tar.gz /tmp/src/node-v18.17.1-linux-x64.tar.gz
-tar --strip 1 -xf /tmp/src/node-v18.17.1-linux-x64.tar.gz -C /usr
+GetFile https://nodejs.org/dist/v16.14.2/node-v16.14.2-linux-x64.tar.gz /tmp/src/node-v16.14.2-linux-x64.tar.gz
+tar --strip 1 -xf /tmp/src/node-v16.14.2-linux-x64.tar.gz -C /usr
 
 echo "Installing CCache"
 mkdir -p /tmp/ccache

@@ -5,34 +5,11 @@
 
 #include <algorithm>
 #include "core/graph/constants.h"
-#include "core/framework/utils.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 
 using namespace onnx_transpose_optimization;
 
 namespace onnxruntime {
-
-static bool EPAwareHandleResize(HandlerArgs& args) {
-  // Whilst Resize is not technically layout sensitive, execution providers typically implement handling for only one
-  // layout. Due to that, only push a Transpose through a Resize once it is assigned and we know it's being handled
-  // by an EP that supports multiple layouts. Currently that's the CPU and XNNPACK EPs.
-  const auto ep_type = args.node.GetExecutionProviderType();
-  if (ep_type == kCpuExecutionProvider || ep_type == kXnnpackExecutionProvider) {
-    // allow NCHW <-> NHWC for now. not clear any other sort of transpose has a valid usage in a real model
-    int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
-    if (rank_int == 4) {
-      static const std::vector<int64_t> nchw_to_nhwc_perm{0, 2, 3, 1};
-      static const std::vector<int64_t> nhwc_to_nchw_perm{0, 3, 1, 2};
-      if (args.perm == nchw_to_nhwc_perm || args.perm == nhwc_to_nchw_perm) {
-        return HandleResize(args);
-      }
-    }
-  }
-
-  return false;
-}
-
-constexpr HandlerInfo ep_aware_resize_handler = {&FirstInput, &EPAwareHandleResize};
 
 static bool HandleQLinearConcat(HandlerArgs& args) {
   return HandleSimpleNodeWithAxis(args);
@@ -80,12 +57,7 @@ static bool HandleQLinearPoolOp(HandlerArgs& args) {
 constexpr HandlerInfo q_linear_pool_op_handler = {&FirstInput, &HandleQLinearPoolOp};
 
 static bool HandleMaxPool(HandlerArgs& args) {
-#if defined(DISABLE_CONTRIB_OPS)
-  // Cannot convert MaxPool to com.microsoft.NhwcMaxPool if contrib ops are disabled in this build.
-  ORT_UNUSED_PARAMETER(args);
-  return false;
-#else
-  if (args.node.GetExecutionProviderType() != kCpuExecutionProvider) {
+  if (args.node.GetExecutionProviderType() != "CPUExecutionProvider") {
     return false;
   }
 
@@ -106,40 +78,22 @@ static bool HandleMaxPool(HandlerArgs& args) {
     return false;
   }
 
-  auto new_node = SwapNodeOpTypeDomainAndSinceVersion(args.ctx.graph, args.node, "NhwcMaxPool", kMSDomain, 1);
+  auto new_node = SwapNodeOpTypeDomainAndSinceVersion(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft", 1);
   new_node->ClearAttribute("storage_order");  // Only relevant for indices output. Prohibited for NhwcMaxPool.
   TransposeFirstInput(args.ctx, *new_node, args.perm_inv);
   TransposeOutputs(args.ctx, *new_node, args.perm);
   return true;
-#endif  // defined(DISABLE_CONTRIB_OPS)
-}
-
-static bool HandleContribQuantizeDequantizeLinear(HandlerArgs& args) {
-  if (!TransposeQuantizeDequantizeAxis(args.ctx.graph, args.perm, args.node)) {
-    return false;
-  }
-
-  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
-  TransposeOutputs(args.ctx, args.node, args.perm);
-
-  return true;
 }
 
 constexpr HandlerInfo max_pool_op_handler = {&FirstInput, &HandleMaxPool};
-
 constexpr HandlerInfo node_1_inp_handler = {&FirstInput, &HandleSimpleNode};
 constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOps};
-constexpr HandlerInfo contrib_quantize_dequantize_linear_handler = {&FirstInput,
-                                                                    &HandleContribQuantizeDequantizeLinear};
 
 // ORT contrib ops and special cased ONNX ops where we have EP specific handling
 const HandlerMap& OrtExtendedHandlers() {
   static const HandlerMap extended_handler_map = []() {
     HandlerMap map = {
         {"MaxPool", max_pool_op_handler},
-        {"Resize", ep_aware_resize_handler},
-        {"com.microsoft.QuantizeLinear", contrib_quantize_dequantize_linear_handler},
-        {"com.microsoft.DequantizeLinear", contrib_quantize_dequantize_linear_handler},
         {"com.microsoft.QLinearAdd", q_linear_binary_op_handler},
         {"com.microsoft.QLinearAveragePool", q_linear_pool_op_handler},
         {"com.microsoft.QLinearConcat", q_linear_concat_handler},

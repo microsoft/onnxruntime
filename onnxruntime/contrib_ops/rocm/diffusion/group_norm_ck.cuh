@@ -80,7 +80,7 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
                                            activation);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
+      invoker->Run(arg.get(), StreamConfig{params->stream});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_group_norm_op)));

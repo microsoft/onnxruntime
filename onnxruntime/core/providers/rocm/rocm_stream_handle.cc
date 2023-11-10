@@ -1,6 +1,3 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-#include "core/providers/rocm/rocm_resource.h"
 #include "core/providers/rocm/rocm_stream_handle.h"
 #include "core/providers/rocm/rocm_common.h"
 // #include "core/common/spin_pause.h"
@@ -84,29 +81,15 @@ void RocmStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
   deferred_cpu_buffers_.push_back(cpu_buffer);
 }
 
-struct CpuBuffersInfo {
-  // This struct stores the information needed
-  // to release CPU buffers allocated for GPU kernels.
-  // It's used to enqueue their release after
-  // associated GPU kernels in a ROCM stream.
-
-  // This is a CPU allocator in ROCM EP.
-  // It must be the one used to allocate the
-  // following pointers.
+struct CpuBuffersInfo {  // TODO: should be moved to base class
   AllocatorPtr allocator;
-  // buffers[i] is the i-th pointer added by
-  // AddDeferredReleaseCPUPtr for a specific
-  // ROCM stream. For example, this fields
-  // should contain all values in
-  // deferred_release_buffer_pool_[my_stream]
-  // when release my_stream's buffers.
   std::unique_ptr<void*[]> buffers;
   // CPU buffer buffers[i].
   // Number of buffer points in "buffers".
   size_t n_buffers;
 };
 
-static void ReleaseCpuBufferCallback(void* raw_info) {
+static void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, void* raw_info) {  // TODO: should be moved to base class
   std::unique_ptr<CpuBuffersInfo> info = std::make_unique<CpuBuffersInfo>();
   info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
   for (size_t i = 0; i < info->n_buffers; ++i) {
@@ -127,7 +110,14 @@ Status RocmStream::CleanUpOnRunEnd() {
       cpu_buffers_info->buffers[i] = deferred_cpu_buffers_.at(i);
     }
     cpu_buffers_info->n_buffers = deferred_cpu_buffers_.size();
-    HIP_RETURN_IF_ERROR(hipLaunchHostFunc(static_cast<hipStream_t>(GetHandle()), ReleaseCpuBufferCallback, cpu_buffers_info.release()));
+    // TODO(wechi): CUDA deprecates cudaStreamAddCallback and
+    // uses another API, cudaLaunchHostFunc(which can be
+    // captured in CUDA graph). Once AMD adds similar feature,
+    // we should replace the following line with
+    //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
+
+    // Release memory asynchronously to avoid blocking the compute stream.
+    HIP_RETURN_IF_ERROR(hipStreamAddCallback(static_cast<hipStream_t>(GetHandle()), ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
   } else {
     HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetHandle())));
     for (auto* buffer : deferred_cpu_buffers_) {
@@ -137,25 +127,6 @@ Status RocmStream::CleanUpOnRunEnd() {
 
   deferred_cpu_buffers_.clear();
   return Status::OK();
-}
-
-void* RocmStream::GetResource(int version, int id) const {
-  ORT_ENFORCE(version <= ORT_ROCM_RESOUCE_VERSION, "resource version unsupported!");
-  void* resource{};
-  switch (id) {
-    case RocmResource::hip_stream_t:
-      return reinterpret_cast<void*>(GetHandle());
-      break;
-    case RocmResource::miopen_handle_t:
-      return reinterpret_cast<void*>(miopen_handle_);
-      break;
-    case RocmResource::rocblas_handle_t:
-      return reinterpret_cast<void*>(rocblas_handle_);
-      break;
-    default:
-      break;
-  }
-  return resource;
 }
 
 // CPU Stream command handles

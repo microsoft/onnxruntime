@@ -72,52 +72,37 @@ cd onnxruntime/onnxruntime/python/tools/transformers/models/stable_diffusion
 
 Below is an example to optimize Stable Diffusion 1.5 in Linux. For Windows OS, please change the format of path to be like `.\sd` instead of `./sd`.
 
-It is recommended to create a Conda environment with Python 3.10 for the following setup:
-```
-conda create -n py310 python=3.10
-conda activate py310
-```
-
 ### Setup Environment (CUDA)
 
-First, we need install CUDA 11.8 or 12.1, [cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html) 8.5 or above, and [TensorRT 8.6.1](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html) in the machine.
-
-#### CUDA 11.8:
-
-In the Conda environment, install PyTorch 2.1 or above, and other required packages like the following:
+It is recommended to create a Conda environment with Python 3.8, 3.9 or 3.10, and run the model with [CUDA 11.7](https://developer.nvidia.com/cuda-11-7-0-download-archive) or 11.8.
 ```
-pip install torch --index-url https://download.pytorch.org/whl/nightly/cu118
-pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
-pip install -r requirements-cuda11.txt
+conda create -n py38 python=3.8
+conda activate py38
+pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
+pip install -r requirements-cuda.txt
 ```
 
-We cannot directly `pip install tensorrt` for CUDA 11. Follow https://github.com/NVIDIA/TensorRT/issues/2773 to install TensorRT for CUDA 11 in Linux. For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead.
+ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. CUDA 11.7 and cuDNN 8.5 are used in our tests.
 
-#### CUDA 12.*:
-The official package of onnxruntime-gpu 1.16.* is built for CUDA 11.8. To use CUDA 12.*, you will need [build onnxruntime from source](https://onnxruntime.ai/docs/build/inferencing.html).
+#### Install Nightly (Optional)
+
+Skip this step if you use onnxruntime-gpu package from official releases.
+
+To try latest optimizations, you can install [ort-nightly-gpu](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu/) package like the following:
 
 ```
-git clone --recursive https://github.com/Microsoft/onnxruntime.git
-cd onnxruntime
-pip install -r requirements-dev.txt
+pip uninstall onnxruntime-gpu
+pip install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
 ```
-Follow [example script for A100 in Ubuntu](https://github.com/microsoft/onnxruntime/blob/26a7b63716e3125bfe35fe3663ba10d2d7322628/build_release.sh)
-or [example script for RTX 4090 in Windows](https://github.com/microsoft/onnxruntime/blob/8df5f4e0df1f3b9ceeb0f1f2561b09727ace9b37/build_trt.cmd) to build and install onnxruntime-gpu wheel.
-
-Then install other python packages like the following:
-```
-pip install torch --index-url https://download.pytorch.org/whl/nightly/cu121
-pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
-pip install -r requirements-cuda12.txt
-```
-Finally, `pip install tensorrt` for Linux. For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead.
 
 ### Setup Environment (ROCm)
 
-It is recommended that the users run the model with ROCm 5.4 or newer and Python 3.10.
+It is recommended that the users run the model with ROCm 5.4 or newer and Python 3.8, 3.9 or 3.10.
 Note that Windows is not supported for ROCm at the moment.
 
 ```
+conda create -n py38 python=3.8
+conda activate py38
 wget https://repo.radeon.com/rocm/manylinux/rocm-rel-5.4/torch-1.12.1%2Brocm5.4-cp38-cp38-linux_x86_64.whl
 pip install torch-1.12.1+rocm5.4-cp38-cp38-linux_x86_64.whl
 pip install -r requirements-rocm.txt
@@ -169,12 +154,6 @@ curl https://raw.githubusercontent.com/huggingface/diffusers/v0.15.1/scripts/con
 python convert_sd_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path  ./sd_v1_5/fp32
 ```
 
-For SDXL, use optimum to export the model:
-```
-pip install optimum diffusers onnx onnxruntime-gpu
-optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task stable-diffusion-xl ./sd_xl_base_onnx
-```
-
 ### Optimize ONNX Pipeline
 
 Example to optimize the exported float32 ONNX models, and save to float16 models:
@@ -182,10 +161,7 @@ Example to optimize the exported float32 ONNX models, and save to float16 models
 python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd_v1_5/fp32 -o ./sd_v1_5/fp16 --float16
 ```
 
-For SDXL model, it is recommended to use a machine with 32 GB or more memory to optimize.
-```
-python optimize_pipeline.py -i ./sd_xl_base_onnx -o ./sd_xl_base_fp16 --float16
-```
+If you installed ONNX Runtime v1.14, some optimizations (packed QKV and BiasAdd) will be disabled automatically since they are not available in v1.14.
 
 ### Run Benchmark
 
@@ -248,21 +224,18 @@ Sometime, it complains ptxas not found when there are multiple CUDA versions ins
 Note that torch.compile is not supported in Windows: we encountered error `Windows not yet supported for torch.compile`. So it is excluded from RTX 3060 results of Windows.
 
 
-### Run Benchmark with TensorRT or TensorRT execution provider
+### Run Benchmark with TensorRT and TensorRT execution provider
 
 For TensorRT installation, follow https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html.
 
 ```
 pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
-pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
+pip install --upgrade polygraphy>=0.47.0 onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 pip install -r requirements-tensorrt.txt
 export CUDA_MODULE_LOADING=LAZY
 python benchmark.py -e tensorrt -b 1 -v 1.5
 python benchmark.py -e onnxruntime -r tensorrt -b 1 -v 1.5
 python benchmark.py -e onnxruntime -r tensorrt -b 1 -v 1.5 --enable_cuda_graph
-
-python benchmark.py -e tensorrt --height 1024 --width 1024 -s 30  -b 1 -v xl-1.0 --enable_cuda_graph
-python benchmark.py -e onnxruntime -r tensorrt --height 1024 --width 1024 -s 30  -b 1 -v xl-1.0 --enable_cuda_graph
 ```
 
 ### Example Benchmark output
@@ -411,7 +384,8 @@ Some kernels are enabled by MIOpen. We hereby thank for the AMD developers' coll
 
 There are other optimizations might improve the performance or reduce memory footprint:
 * Export the whole pipeline into a single ONNX model. Currently, there are multiple ONNX models (CLIP, VAE and U-Net etc). Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator. The end result is more efficient and less memory footprint.
-* For Stable Diffusion 2.1, we disable TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention in Windows to improve performance.
+* For Stable Diffusion 2.1, we disable TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention using Triton compiler to improve performance.
 * Reduce GPU memory footprint by actively deleting buffers for intermediate results.
+* Attention fusion in CLIP
 * Safety Checker Optimization
 * Leverage FP8 in latest GPU

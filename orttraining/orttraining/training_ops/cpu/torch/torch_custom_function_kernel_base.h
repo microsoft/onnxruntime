@@ -18,6 +18,10 @@
 namespace onnxruntime {
 namespace contrib {
 
+std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
+                                         const size_t begin_index,
+                                         const size_t num_arg);
+
 class PythonOpBase {
  public:
   PythonOpBase(const OpKernelInfo& info) {
@@ -106,7 +110,7 @@ class PythonOpBase {
 
   // Name of containing class. For example, MyReLU.
   std::string name_;
-  std::vector<int64_t> all_output_to_tensor_input_reuse_map_;
+  int64_t inplace_;
   std::string input_convention_;
   bool is_training_mode_;
   // input_requires_grads_[i] indicates if the i-th inputs of apply() should have gradient.
@@ -116,22 +120,13 @@ class PythonOpBase {
   // Types. input_tensor_types_[i] is the element type of the i-th tensor.
   std::vector<int64_t> input_tensor_types_;
 
-  // Concatenation of all bools from apply(...) 's inputs.
-  std::vector<int64_t> input_bool_scalars_;
-  std::vector<int64_t> input_bool_scalar_positions_;
-
-  // Concatenation of all ints from apply(...) 's inputs.
+  // Concatenation of all floats from apply(...) 's inputs.
   std::vector<int64_t> input_int_scalars_;
   std::vector<int64_t> input_int_scalar_positions_;
 
-  // Concatenation of all floats from apply(...) 's inputs.
+  // Concatenation of all ints from apply(...) 's inputs.
   std::vector<float> input_float_scalars_;
   std::vector<int64_t> input_float_scalar_positions_;
-
-  // Concatenation of all bool tuples from apply(...) 's inputs.
-  std::vector<int64_t> input_bool_tuples_;
-  std::vector<int64_t> input_bool_tuple_positions_;
-  std::vector<int64_t> input_bool_tuple_begins_;
 
   // Concatenation of all int tuples from apply(...) 's inputs.
   std::vector<int64_t> input_int_tuples_;
@@ -150,7 +145,7 @@ class PythonOpBase {
   std::vector<int64_t> output_tensor_types_;
 
  private:
-  void AddPrimitiveTypeScalarArgs();
+  void AddIntScalarArgs();
   void AddInputTupleArgs();
   void AddFloatTupleArgs();
   void AddPointerScalarArgs();
@@ -159,8 +154,6 @@ class PythonOpBase {
 
   void SetContextOutput(OpKernelContext* context, void* diff_ctx) const;
   void SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const;
-
-  std::string kernel_invoke_id_;
 };
 
 class PythonOpGradBase {
@@ -179,7 +172,7 @@ class PythonOpGradBase {
  protected:
   // Name of containing class. For example, MyReLU.
   std::string name_;
-
+  int64_t inplace_;
   // Input types of MyReLU.backward(...).
   std::vector<int64_t> input_tensor_types_;
 
@@ -190,13 +183,8 @@ class PythonOpGradBase {
   std::vector<int64_t> arg_positions_;
   std::vector<int64_t> const_arg_positions_;
 
-  // Memory reuse map for all outputs.
-  std::vector<int64_t> all_output_to_tensor_input_reuse_map_;
-
  private:
   void SetPositions();
-
-  std::string kernel_invoke_id_;
 };
 
 }  // namespace contrib

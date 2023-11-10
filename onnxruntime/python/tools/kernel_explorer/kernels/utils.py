@@ -133,11 +133,6 @@ def relu(x, bias):
     return np.max(x, 0, keepdims=True)
 
 
-def root_mean_square(x, axis, epsilon):
-    rms = np.sqrt(np.mean(np.square(x), axis=axis, keepdims=True) + epsilon)
-    return rms
-
-
 def standardization(x, axis, epsilon):
     mean = np.mean(x, axis=axis, keepdims=True)
     variance = np.var(x, axis=axis, keepdims=True)

@@ -201,7 +201,7 @@ static void RunTest(id self, SEL _cmd) {
   delete listeners.Release(listeners.default_result_printer());
   free(argv);
 
-  BOOL runDisabledTests = GTEST_FLAG_GET(also_run_disabled_tests);
+  BOOL runDisabledTests = testing::GTEST_FLAG(also_run_disabled_tests);
   NSMutableDictionary* testFilterMap = [NSMutableDictionary dictionary];
   NSCharacterSet* decimalDigitCharacterSet = [NSCharacterSet decimalDigitCharacterSet];
 

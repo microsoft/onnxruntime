@@ -197,7 +197,7 @@ bool DnnlPoolNodeCapability::IsMaxPoolIndicesSupported(const Node* node) const {
       bool edge_to_maxpoolgrad_found = false;
       for (auto it = node->OutputEdgesBegin(); it != node->OutputEdgesEnd(); ++it) {
         // if the MaxPool indice output `GetSrcArgIndex() == 1` goes to an OpType other than
-        // "MaxPoolGrad" the DNNL Execution providers implementation of MaxPool should not be used.
+        // "MaxPoolGrad" the DNNL Execution providers implementaiton of MaxPool should not be used.
         if (it->GetSrcArgIndex() == 1 && it->GetNode().OpType() != "MaxPoolGrad") {
           return false;
         }

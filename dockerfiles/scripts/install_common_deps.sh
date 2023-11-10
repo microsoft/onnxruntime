@@ -21,6 +21,6 @@ pip install "wheel>=0.35.1"
 rm -rf /opt/miniconda/pkgs
 
 # Dependencies: cmake
-wget --quiet https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3-linux-x86_64.tar.gz
-tar zxf cmake-3.27.3-linux-x86_64.tar.gz
-rm -rf cmake-3.27.3-linux-x86_64.tar.gz
+wget --quiet https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-linux-x86_64.tar.gz
+tar zxf cmake-3.26.3-linux-x86_64.tar.gz
+rm -rf cmake-3.26.3-linux-x86_64.tar.gz

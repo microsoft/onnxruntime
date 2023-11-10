@@ -38,7 +38,7 @@ Status ComputeSoftmaxWithMask1D(cudaStream_t stream,
                                 const bool causal);
 
 template <typename T>
-Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
+Status ComputeSoftmaxWithRawMask(cudaStream_t stream,
                                  const int all_sequence_length,
                                  const int sequence_length,
                                  const int batch_size,

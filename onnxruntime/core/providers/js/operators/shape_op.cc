@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/js/js_kernel.h"
-#include "core/providers/js/js_data_types.h"
 #include "core/providers/cpu/tensor/shape_op.h"
 
 namespace onnxruntime {
@@ -16,7 +15,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     (*KernelDefBuilder::Create())
         // properly force CPU/GPU synch inside the kernel
         .OutputMemoryType(OrtMemTypeCPU, 0)
-        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
 
@@ -28,7 +27,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     (*KernelDefBuilder::Create())
         // properly force CPU/GPU synch inside the kernel
         .OutputMemoryType(OrtMemTypeCPU, 0)
-        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
 
@@ -40,7 +39,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         // properly force CPU/GPU synch inside the kernel
         .OutputMemoryType(OrtMemTypeCPU, 0)
-        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
 

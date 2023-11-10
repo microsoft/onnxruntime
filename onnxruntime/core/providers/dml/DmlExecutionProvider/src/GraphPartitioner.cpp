@@ -151,8 +151,6 @@ namespace Dml
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap,
         _Inout_ std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& dmlNodePropertyMap,
         _Inout_ std::unordered_set<std::string>& requiredInitializerMap,
-        _Inout_ std::unordered_set<std::string>& dynamicCpuInputMap,
-        bool allowDmlGraphDynamicShapes,
         _Out_ bool* isDmlGraphNode
         )
     {
@@ -174,68 +172,36 @@ namespace Dml
 
             if (internalRegInfo && internalRegInfo->graphNodeFactoryRegistration)
             {
-                if (allowDmlGraphDynamicShapes)
+                bool requiredCpuInputsConstant = true;
+                for (uint32_t inputIndex : internalRegInfo->requiredConstantCpuInputs)
                 {
-                    for (uint32_t inputIndex : internalRegInfo->requiredConstantCpuInputs)
+                    if (inputIndex >= node.InputDefs().size() || !node.InputDefs()[inputIndex]->Exists())
                     {
-                        if (inputIndex >= node.InputDefs().size() || !node.InputDefs()[inputIndex]->Exists())
-                        {
-                            continue;
-                        }
-
-                        const onnx::TensorProto* tensor = nullptr;
-                        const std::string& inputName = node.InputDefs()[inputIndex]->Name();
-
-                        if (graph.GetInitializedTensor(inputName, tensor))
-                        {
-                            requiredInitializerMap.insert(inputName);
-                        }
-                        else
-                        {
-                            dynamicCpuInputMap.insert(inputName);
-                        }
+                        continue;
                     }
 
-                    std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
-                    if (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size())
+                    const onnx::TensorProto* tensor = nullptr;
+                    const std::string& inputName = node.InputDefs()[inputIndex]->Name();
+
+                    if (!graph.GetInitializedTensor(inputName, tensor))
                     {
-                        *isDmlGraphNode = true;
-                        graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
+                        requiredCpuInputsConstant = false;
+                        break;
                     }
+
+                    requiredInitializerMap.insert(inputName);
                 }
-                else
+
+                std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
+                if (requiredCpuInputsConstant &&
+                    TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
+                    !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes, internalRegInfo->requiredConstantCpuInputs) &&
+                    TryGetStaticOutputShapes(node, graphNodeProperty.first->second.outputShapes) &&
+                    !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
+                    (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
                 {
-                    bool requiredCpuInputsConstant = true;
-                    for (uint32_t inputIndex : internalRegInfo->requiredConstantCpuInputs)
-                    {
-                        if (inputIndex >= node.InputDefs().size() || !node.InputDefs()[inputIndex]->Exists())
-                        {
-                            continue;
-                        }
-
-                        const onnx::TensorProto* tensor = nullptr;
-                        const std::string& inputName = node.InputDefs()[inputIndex]->Name();
-
-                        if (!graph.GetInitializedTensor(inputName, tensor))
-                        {
-                            requiredCpuInputsConstant = false;
-                            break;
-                        }
-
-                        requiredInitializerMap.insert(inputName);
-                    }
-
-                    std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
-                    if (requiredCpuInputsConstant &&
-                        TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
-                        !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes, internalRegInfo->requiredConstantCpuInputs) &&
-                        TryGetStaticOutputShapes(node, graphNodeProperty.first->second.outputShapes) &&
-                        !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
-                        (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
-                    {
-                        *isDmlGraphNode = true;
-                        graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
-                    }
+                    *isDmlGraphNode = true;
+                    graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
                 }
             }
         }
@@ -243,15 +209,14 @@ namespace Dml
 
     // Creates a partition for a node which is not a DML graph node, and finalizes partitions
     // which are inputs of the new partition.
-    std::unique_ptr<GraphPartition> CreatePartitionAndFinalizeInputs(
+    std::unique_ptr<GraphPartition> CreateNonGraphNodePartitionAndFinalizeInputs(
         const onnxruntime::Node& node,
         bool isDmlNode,
-        bool isDmlGraphPartitionNode,
         std::unordered_map<std::string, GraphPartition*>& nodeNameToPartitionMap
     )
     {
         std::unique_ptr<GraphPartition> partition = std::make_unique<GraphPartition>();
-        partition->SetIsDmlGraphPartition(isDmlGraphPartitionNode);
+        partition->SetIsDmlGraphPartition(false);
         partition->SetIsDmlPartition(isDmlNode);
         partition->AddNodeIndex(node.Index());
 
@@ -379,8 +344,13 @@ namespace Dml
     // Whether any operator in the model contains a subgraph.  This is true
     // if the graph being partitioned is itself within a subgraph, or contains
     // an operator with a subgraph.
-    bool ContainsSubgraph(const onnxruntime::GraphViewer& graph)
+    bool ModelUsesSubgraph(const onnxruntime::GraphViewer& graph)
     {
+        if (graph.IsSubgraph())
+        {
+            return true;
+        }
+
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
 
         for (size_t nodeIndex : toplogicalOrder)
@@ -413,10 +383,7 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
-        std::unordered_set<std::string>& dynamicCpuInputMap,
-        gsl::span<const onnxruntime::NodeIndex> additionalSplittingNodes,
-        const std::unordered_map<std::string, const onnxruntime::NodeArg*>& implicitInputs,
-        bool allowDmlGraphDynamicShapes)
+        std::function<void(const onnxruntime::Node&)> onNodeUnsupportedInGraph)
     {
         // Nodes are uniquely identified by the name of their first output argument
         std::vector<std::unique_ptr<GraphPartition>> partitions;
@@ -451,9 +418,7 @@ namespace Dml
         }
 
         // Check whether this graph is a subgraph, or contains any node with a subgraph.
-        bool containsSubgraph = ContainsSubgraph(graph);
-
-        uint32_t splittingNodeIndex = 0;
+        bool modelUsesSubgraph = ModelUsesSubgraph(graph);
 
         // Build up partitions while traversing the graph.
         for (size_t nodeIndex : toplogicalOrder)
@@ -479,8 +444,6 @@ namespace Dml
                     &nodeNameToPartitionMap,
                     graphNodePropertyMap,
                     requiredInitializerMap,
-                    dynamicCpuInputMap,
-                    allowDmlGraphDynamicShapes,
                     /*out*/ &isDmlGraphNode
                 );
             }
@@ -488,19 +451,17 @@ namespace Dml
             // Add a unique partition if graph node usage is not supported.
             //
             // Partitioning is disabled in models with subgraphs to work around issues with implicit inputs.
-            // The partitioning algorithm does not currently consider such inputs. Transferring shared initializers
+            // The partitioning algorithm does not currently consider such inputs.  Transfering shared initializers
             // for partitions could also cause problems.  Note, operators with subgraphs are currently not efficient
             // anyhow due to CPU/GPU copies.
-            if (containsSubgraph || !isDmlGraphNode)
+            if (modelUsesSubgraph || !isDmlGraphNode)
             {
-                partitions.push_back(CreatePartitionAndFinalizeInputs(node, isDmlNode, false, nodeNameToPartitionMap));
-                continue;
-            }
+                if (onNodeUnsupportedInGraph)
+                {
+                    onNodeUnsupportedInGraph(node);
+                }
 
-            if (splittingNodeIndex < additionalSplittingNodes.size() && additionalSplittingNodes[splittingNodeIndex] == nodeIndex)
-            {
-                partitions.push_back(CreatePartitionAndFinalizeInputs(node, isDmlNode, isDmlGraphNode, nodeNameToPartitionMap));
-                ++splittingNodeIndex;
+                partitions.push_back(CreateNonGraphNodePartitionAndFinalizeInputs(node, isDmlNode, nodeNameToPartitionMap));
                 continue;
             }
 
@@ -539,7 +500,7 @@ namespace Dml
                             firstNonFinalInputPartition->AddInput(arg->Name());
                         }
 
-                        if (graphInputs.find(arg->Name()) != graphInputs.end() || implicitInputs.find(arg->Name()) != implicitInputs.end())
+                        if (graphInputs.find(arg->Name()) != graphInputs.end())
                         {
                             firstNonFinalInputPartition->AddInput(arg->Name());
                         }

@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include <cstddef>
+#include <stddef.h>
 #include <iostream>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -38,8 +37,7 @@ namespace onnxruntime {
 
 class Tensor final {
  public:
-  // NB! Removing Create() methods returning unique_ptr<Tensor>.
-  // Still available in other EPs that are dynamically linked.
+  // NB! Removing Create() methods returning unique_ptr<Tensor>. Still available in other EPs that are dynamically linked.
   // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
   // Use InitOrtValue() methods to allocate for OrtValue.
 
@@ -47,40 +45,95 @@ class Tensor final {
 
   /**
    * Create tensor with given type, shape, pre-allocated memory and allocator info.
-   * This function does not check if the preallocated buffer(p_data) has enough room for the shape.
-   * \param elt_type Data type of the tensor elements.
+   * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
+   * \param p_type Data type of the tensor
    * \param shape Shape of the tensor
    * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
-   *               Tensor does not own the data and will not delete it
-   * \param location Memory info for location of p_data.
+   *              Tensor does not own the data and will not delete it
+   * \param alloc Where the buffer('p_data') was allocated from
    * \param offset Offset in bytes to start of Tensor within p_data.
    * \param strides Strides span. Can be empty if the tensor is contiguous.
    */
-  Tensor(MLDataType elt_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location,
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
          ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
+  /// <summary>
+  /// Creates an instance of Tensor on the heap using the appropriate __ctor and
+  /// initializes OrtValue with it.
+  /// </summary>
+  /// <param name="p_type"></param>
+  /// <param name="shape"></param>
+  /// <param name="p_data"></param>
+  /// <param name="info"></param>
+  /// <param name="offset"></param>
+  /// <param name="strides"></param>
+  static void InitOrtValue(MLDataType p_type, const TensorShape& shape,
+                           void* p_data, const OrtMemoryInfo& location,
+                           OrtValue& ort_value, ptrdiff_t offset = 0,
+                           gsl::span<const int64_t> strides = {});
+
+  /// <summary>
+  /// Creates an instance of Tensor who own the pre-allocated buffer.
+  /// </summary>
+  /// <param name="p_type"></param>
+  /// <param name="shape"></param>
+  /// <param name="p_data"></param>
+  /// <param name="allocator"></param>
+  /// <param name="offset"></param>
+  /// <param name="strides"></param>
+  static void InitOrtValue(MLDataType p_type, const TensorShape& shape,
+                           void* p_data, std::shared_ptr<IAllocator> allocator,
+                           OrtValue& ort_value, ptrdiff_t offset = 0,
+                           gsl::span<const int64_t> strides = {});
+
+  static size_t CalculateTensorStorageSize(MLDataType p_type,
+                                           const TensorShape& shape,
+                                           gsl::span<const int64_t> strides = {});
+
   /**
-   * Create tensor with given type, shape, pre-allocated memory and allocator which will be used to free the
-   * pre-allocated memory. The Tensor will take over ownership of p_data.
-   * This function does not check if the preallocated buffer(p_data) has enough room for the shape.
-   * \param elt_type Data type of the tensor elements.
+   * Deprecated. The original design is this Tensor class won't do any allocation / release.
+   * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
+   */
+  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
+         gsl::span<const int64_t> strides = {});
+
+  /// <summary>
+  /// Creates an instance of Tensor on the heap using the appropriate __ctor and
+  /// initializes OrtValue with it.
+  /// </summary>
+  /// <param name="elt_type"></param>
+  /// <param name="shape"></param>
+  /// <param name="allocator"></param>
+  /// <param name="ort_value"></param>
+  /// <param name="strides"></param>
+  static void InitOrtValue(MLDataType elt_type,
+                           const TensorShape& shape,
+                           std::shared_ptr<IAllocator> allocator,
+                           OrtValue& ort_value,
+                           gsl::span<const int64_t> strides = {});
+
+  /// <summary>
+  /// Creates an instance of Tensor on the heap using the appropriate __ctor and
+  /// initializes OrtValue with it.
+  /// </summary>
+  /// <param name="tensor"></param>
+  /// <param name="ort_value"></param>
+  static void InitOrtValue(Tensor&& tensor, OrtValue& ort_value);
+
+  /**
+   * Create tensor with given type, shape, pre-allocated memory and allocator which will be used to free the pre-allocated memory.
+   * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
+   * However, this function will de-allocate the buffer upon the tensor getting destructed.
+   * \param p_type Data type of the tensor
    * \param shape Shape of the tensor
    * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
-   *               Tensor will own the memory and will delete it when the tensor instance is destructed.
+   *              Tensor will own the memory and will delete it when the tensor instance is destructed.
    * \param deleter Allocator used to free the pre-allocated memory
    * \param offset Offset in bytes to start of Tensor within p_data.
    * \param strides Strides span. Can be empty if the tensor is contiguous.
    */
-  Tensor(MLDataType elt_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
          ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
-
-  /// <summary>
-  /// Create a Tensor that allocates and owns the buffer required for the specified shape.
-  /// </summary>
-  /// <param name="elt_type">Data type of the tensor elements.</param>
-  /// <param name="shape">Tensor shape.</param>
-  /// <param name="allocator">Allocator to use to create and free buffer.</param>
-  Tensor(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator);
 
   ~Tensor();
 
@@ -88,62 +141,8 @@ class Tensor final {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
 
   Tensor(Tensor&& other) noexcept;
+
   Tensor& operator=(Tensor&& other) noexcept;
-
-  /// <summary>
-  /// Creates an instance of Tensor on the heap and initializes OrtValue with it.
-  /// </summary>
-  /// <param name="elt_type">Data type of the tensor elements.</param>
-  /// <param name="shape">Tensor shape.</param>
-  /// <param name="p_data">Tensor data.</param>
-  /// <param name="location">Memory info for location of p_data.</param>
-  /// <param name="ort_value">OrtValue to populate with Tensor.</param>
-  /// <param name="offset">Optional offset if Tensor refers to a subset of p_data.</param>
-  /// <param name="strides">Optional strides if Tensor refers to a subset of p_data.</param>
-  static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location,
-                           OrtValue& ort_value,
-                           ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
-
-  /// <summary>
-  /// Creates an instance of Tensor on the heap which will take over ownership of the pre-allocated buffer.
-  /// </summary>
-  /// <param name="elt_type">Data type of the tensor elements.</param>
-  /// <param name="shape"Tensor shape.</param>
-  /// <param name="p_data">Tensor data.</param>
-  /// <param name="allocator">Allocator that was used to create p_data and will be used to free it.</param>
-  /// <param name="ort_value">OrtValue to populate with Tensor.</param>
-  /// <param name="offset">Optional offset if Tensor refers to a subset of p_data.</param>
-  /// <param name="strides">Optional strides if Tensor refers to a subset of p_data.</param>
-  static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, void* p_data,
-                           std::shared_ptr<IAllocator> allocator,
-                           OrtValue& ort_value,
-                           ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
-
-  /// <summary>
-  /// Creates an instance of Tensor on the heap and initializes OrtValue with it.
-  /// The Tensor instance will allocate and own the data required for `shape`.
-  /// </summary>
-  /// <param name="elt_type">Data type of the tensor elements.</param>
-  /// <param name="shape">Tensor shape.</param>
-  /// <param name="allocator">Allocator that was used to create p_data and will be used to free it.</param>
-  /// <param name="ort_value">OrtValue to populate with Tensor.</param>
-  static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
-                           OrtValue& ort_value);
-
-  /// <summary>
-  /// Initializes OrtValue with an existing Tensor.
-  /// </summary>
-  /// <param name="tensor">Tensor.</param>
-  /// <param name="ort_value">OrtValue to populate with Tensor.</param>
-  static void InitOrtValue(Tensor&& tensor, OrtValue& ort_value);
-
-  /// <summary>
-  /// Calculate the required storage for the tensor.
-  /// </summary>
-  /// <param name="elt_type">Data type of the tensor elements.</param>
-  /// <param name="shape">Tensor shape.</param>
-  /// <returns>Bytes required.</returns>
-  static size_t CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape);
 
   /**
      Returns the data type.
@@ -295,7 +294,7 @@ class Tensor final {
 
   // More API methods.
  private:
-  void Init(MLDataType elt_type,
+  void Init(MLDataType p_type,
             const TensorShape& shape,
             void* p_raw_data,
             AllocatorPtr deleter,

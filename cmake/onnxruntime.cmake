@@ -18,21 +18,35 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
   set(OUTPUT_STYLE xcode)
 endif()
 
-# Gets the public C/C++ API header files
-function(get_c_cxx_api_headers HEADERS_VAR)
-  set(_headers
+set(ONNXRUNTIME_PUBLIC_HEADERS
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
+)
+
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
+  list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
+  list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
+endif()
+
+# This macro is to get the path of header files for mobile packaging, for iOS and Android
+macro(get_mobile_api_headers _HEADERS)
+  # include both c and cxx api
+  set(${_HEADERS}
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
-    list(APPEND _headers "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
-    list(APPEND _headers "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
-    list(APPEND _headers "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
   endif()
 
   # need to add header files for enabled EPs
@@ -40,13 +54,10 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     file(GLOB _provider_headers CONFIGURE_DEPENDS
       "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
     )
-    list(APPEND _headers ${_provider_headers})
+    list(APPEND ${_HEADERS} "${_provider_headers}")
+    unset(_provider_headers)
   endforeach()
-
-  set(${HEADERS_VAR} ${_headers} PARENT_SCOPE)
-endfunction()
-
-get_c_cxx_api_headers(ONNXRUNTIME_PUBLIC_HEADERS)
+endmacro()
 
 #If you want to verify if there is any extra line in symbols.txt, run
 # nm -C -g --defined libonnxruntime.so |grep -v '\sA\s' | cut -f 3 -d ' ' | sort
@@ -73,9 +84,11 @@ if(WIN32)
     "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
   )
 elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
+  get_mobile_api_headers(APPLE_FRAMEWORK_HEADERS)
+
   # apple framework requires the header file be part of the library
   onnxruntime_add_shared_library(onnxruntime
-    ${ONNXRUNTIME_PUBLIC_HEADERS}
+    ${APPLE_FRAMEWORK_HEADERS}
     "${CMAKE_CURRENT_BINARY_DIR}/generated_source.c"
   )
 
@@ -94,9 +107,10 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   set_target_properties(onnxruntime PROPERTIES
     FRAMEWORK TRUE
     FRAMEWORK_VERSION A
-    MACOSX_FRAMEWORK_INFO_PLIST ${INFO_PLIST_PATH}
-    SOVERSION ${ORT_VERSION}
-    # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
+    PUBLIC_HEADER "${APPLE_FRAMEWORK_HEADERS}"
+    MACOSX_FRAMEWORK_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist
+    VERSION ${ORT_VERSION}
+    SOVERSION  ${ORT_VERSION}
   )
 else()
   onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
@@ -166,10 +180,11 @@ endif()
 
 # we need to copy C/C++ API headers to be packed into Android AAR package
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
+  get_mobile_api_headers(ANDROID_AAR_HEADERS)
   set(ANDROID_HEADERS_DIR ${CMAKE_CURRENT_BINARY_DIR}/android/headers)
   file(MAKE_DIRECTORY ${ANDROID_HEADERS_DIR})
   # copy the header files one by one
-  foreach(h_ ${ONNXRUNTIME_PUBLIC_HEADERS})
+  foreach(h_ ${ANDROID_AAR_HEADERS})
     get_filename_component(HEADER_NAME_ ${h_} NAME)
     add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${h_} ${ANDROID_HEADERS_DIR}/${HEADER_NAME_})
   endforeach()
@@ -217,7 +232,6 @@ if (onnxruntime_USE_EXTENSIONS)
   list(APPEND onnxruntime_INTERNAL_LIBRARIES
     onnxruntime_extensions
     ocos_operators
-    noexcep_operators
   )
 endif()
 
@@ -241,7 +255,7 @@ install(TARGETS onnxruntime
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime
         ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+        RUNTIME   DESTINATION ${CMAKE_INSTALL_LIBDIR}
         FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 
@@ -314,7 +328,7 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   file(MAKE_DIRECTORY ${STATIC_FRAMEWORK_HEADER_DIR})
 
   # copy the header files one by one, and the Info.plist
-  foreach(h_ ${ONNXRUNTIME_PUBLIC_HEADERS})
+  foreach(h_ ${APPLE_FRAMEWORK_HEADERS})
     get_filename_component(HEADER_NAME_ ${h_} NAME)
     add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${h_} ${STATIC_FRAMEWORK_HEADER_DIR}/${HEADER_NAME_})
   endforeach()

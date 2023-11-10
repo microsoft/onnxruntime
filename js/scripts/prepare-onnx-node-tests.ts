@@ -10,7 +10,6 @@ import * as path from 'path';
 import {downloadZip, extractFile} from './utils';
 
 const TEST_DATA_OPSET_VERSIONS = [
-  ['opset19', '1.14.0'],
   ['opset18', '1.13.1'],
   ['opset17', '1.12.1'],
   ['opset16', '1.11.0'],

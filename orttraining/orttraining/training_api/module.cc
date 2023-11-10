@@ -12,6 +12,7 @@
 #include "core/graph/graph_utils.h"
 
 #include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/utils.h"
 
 using namespace onnxruntime;
 
@@ -119,61 +120,6 @@ Status TransformModelInputsForInference(Graph& inference_graph,
 #endif
 }  // namespace
 
-Status Parameter::CopyTo(const DataTransferManager* data_transfer_manager, OrtValue& data) const {
-  ORT_ENFORCE(data.IsAllocated(), "Given parameter data is not allocated. Cannot copy the checkpoint parameter to it.");
-  ORT_ENFORCE(data.IsTensor(), "Parameter data should be of tensor type.");
-  ORT_ENFORCE(data.Get<Tensor>().Shape() == data_.Get<Tensor>().Shape(),
-              "Parameter data shape mismatch. Expected: ", data_.Get<Tensor>().Shape().ToString(),
-              ", Got: ", data.Get<Tensor>().Shape().ToString());
-#ifdef ENABLE_STRIDED_TENSORS
-  auto data_strides = data.Get<Tensor>().Strides();
-  auto param_strides = data_.Get<Tensor>().Strides();
-  ORT_ENFORCE(data_strides.size() == param_strides.size(),
-              "Parameter data stride mismatch. Expected strides of size: ", param_strides.size(),
-              ", Got: ", data_strides.size());
-  ORT_ENFORCE(std::equal(data_strides.begin(), data_strides.end(), param_strides.begin()),
-              "Parameter data stride value mismatch.");
-#endif
-  ORT_ENFORCE(data.Get<Tensor>().DataType() == data_.Get<Tensor>().DataType(),
-              "Parameter data type mismatch. Expected: ", data_.Get<Tensor>().DataType(),
-              ", Got: ", data.Get<Tensor>().DataType());
-  ORT_ENFORCE(data_transfer_manager != nullptr,
-              "Data transfer manager must be provided to copy data to the parameter. "
-              "Please create the TrainingSession before trying to update the parameter.");
-
-  ORT_THROW_IF_ERROR(data_transfer_manager->CopyTensor(data_.Get<Tensor>(), *data.GetMutable<Tensor>()));
-
-  return Status::OK();
-}
-
-Status Parameter::CopyFrom(const DataTransferManager* data_transfer_manager, const OrtValue& data) {
-  ORT_ENFORCE(data_.IsAllocated(),
-              "The checkpoint parameter is not allocated. Cannot copy the given parameter data to it.");
-  ORT_ENFORCE(data.IsTensor(), "Parameter data should be of tensor type.");
-  ORT_ENFORCE(data.Get<Tensor>().Shape() == data_.Get<Tensor>().Shape(),
-              "Parameter data shape mismatch. Expected: ", data_.Get<Tensor>().Shape().ToString(),
-              ", Got: ", data.Get<Tensor>().Shape().ToString());
-#ifdef ENABLE_STRIDED_TENSORS
-  auto data_strides = data.Get<Tensor>().Strides();
-  auto param_strides = data_.Get<Tensor>().Strides();
-  ORT_ENFORCE(data_strides.size() == param_strides.size(),
-              "Parameter data stride mismatch. Expected strides of size: ", param_strides.size(),
-              ", Got: ", data_strides.size());
-  ORT_ENFORCE(std::equal(data_strides.begin(), data_strides.end(), param_strides.begin()),
-              "Parameter data stride value mismatch.");
-#endif
-  ORT_ENFORCE(data.Get<Tensor>().DataType() == data_.Get<Tensor>().DataType(),
-              "Parameter data type mismatch. Expected: ", data_.Get<Tensor>().DataType(),
-              ", Got: ", data.Get<Tensor>().DataType());
-  ORT_ENFORCE(data_transfer_manager != nullptr,
-              "Data transfer manager must be provided to copy data to the parameter. "
-              "Please create the TrainingSession before trying to update the parameter.");
-
-  ORT_THROW_IF_ERROR(data_transfer_manager->CopyTensor(data.Get<Tensor>(), *data_.GetMutable<Tensor>()));
-
-  return Status::OK();
-}
-
 Status Parameter::SetGrad(const std::string& gradient_name, const OrtValue& param_grad) {
   // assert param is allocated
   ORT_ENFORCE(data_.IsAllocated(), "Parameter data should be allocated before allocating gradient.");
@@ -204,11 +150,12 @@ Status Parameter::ResetGrad() {
   return Status::OK();
 }
 
-Module::Module(const ModelIdentifiers& model_identifiers,
+Module::Module(const std::string& train_model_path_or_bytes,
                CheckpointState* state,
                const onnxruntime::SessionOptions& session_options,
                const Environment& env,
                const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
+               const std::optional<std::string>& eval_model_path_or_bytes,
                [[maybe_unused]] gsl::span<OrtCustomOpDomain* const> op_domains)
     : state_{state} {
   // Enforce weight prepacking is disabled
@@ -229,12 +176,7 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   }
 #endif
 
-  // Load the training model
-  ORT_THROW_IF_ERROR(std::holds_alternative<std::string>(model_identifiers.train_model)
-                         ? train_sess_->Load(std::get<std::string>(model_identifiers.train_model))
-                         : train_sess_->Load(std::get<gsl::span<const uint8_t>>(model_identifiers.train_model).data(),
-                                             static_cast<int>(std::get<gsl::span<const uint8_t>>(model_identifiers.train_model).size())));
-
+  ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   for (const auto& provider : providers) {
     ORT_THROW_IF_ERROR(train_sess_->RegisterExecutionProvider(provider));
   }
@@ -297,6 +239,7 @@ Module::Module(const ModelIdentifiers& model_identifiers,
 
     // Copy ortvalue buffer from CPU to target_device for this "param_name" (based on graph partitioning)
     // Only copies data if the target device is not the same as the current device the buffer is placed on
+
     OrtValue& param_data = params_iter->second->Data();
     ORT_ENFORCE(param_data.IsTensor());
     const Tensor& param_data_tensor = param_data.Get<Tensor>();
@@ -335,62 +278,48 @@ Module::Module(const ModelIdentifiers& model_identifiers,
     }
   }
 
-  if (model_identifiers.IsEvalModelAvailable()) {
+  if (eval_model_path_or_bytes.has_value()) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
     if (!op_domains.empty()) {
       ORT_THROW_IF_ERROR(eval_sess_->AddCustomOpDomains(op_domains));
     }
 #endif
-    if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
-      ORT_THROW_IF_ERROR(eval_sess_->Load(std::get<std::optional<std::string>>(model_identifiers.eval_model).value()));
-    } else {
-      auto model_data = std::get<gsl::span<const uint8_t>>(model_identifiers.eval_model);
-      ORT_THROW_IF_ERROR(eval_sess_->Load(model_data.data(), static_cast<int>(model_data.size())));
+
+    ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
+    for (const auto& provider : providers) {
+      ORT_THROW_IF_ERROR(eval_sess_->RegisterExecutionProvider(provider));
     }
-  } else {
-    return;
-  }
+    ORT_THROW_IF_ERROR(eval_sess_->Initialize());
+    utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
 
-  for (const auto& provider : providers) {
-    ORT_THROW_IF_ERROR(eval_sess_->RegisterExecutionProvider(provider));
-  }
-  ORT_THROW_IF_ERROR(eval_sess_->Initialize());
-  utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
-
-  // Eval model validation
-  // We are making certain assumptions: Like the order in which parameters occur will be same between train and eval
-  // graphs, and all the weights present in both graphs match.
-  // TODO(askhade): Add the checks instead of making assumptions??
-  InlinedVector<std::string> eval_user_input_names, eval_param_input_names;
-  for (const auto& input_name : eval_input_names_) {
-    if (state_->module_checkpoint_state.named_parameters.find(input_name) !=
-        state_->module_checkpoint_state.named_parameters.end()) {
-      // it is a parameter
-      eval_param_input_names.emplace_back(input_name);
-      continue;
-    } else {
-      // It is user input. We handle user inputs separately in the eval
-      // because the eval graph might have different user inputs.
-      // Eg if loss is not a part of the eval graph, it won't have
-      // certain inputs like targets
-      eval_user_input_names.emplace_back(input_name);
+    // Eval model validation
+    // We are making certain assumptions: Like the order in which parameters occur will be same between train and eval
+    // graphs, and all the weights present in both graphs match.
+    // TODO: Add the checks instead of making assumptions??
+    InlinedVector<std::string> eval_user_input_names, eval_param_input_names;
+    for (const auto& input_name : eval_input_names_) {
+      if (state_->module_checkpoint_state.named_parameters.find(input_name) !=
+          state_->module_checkpoint_state.named_parameters.end()) {
+        // it is a parameter
+        eval_param_input_names.emplace_back(input_name);
+        continue;
+      } else {
+        // It is user input. We handle user inputs separately in the eval
+        // because the eval graph might have different user inputs.
+        // Eg if loss is not a part of the eval graph, it won't have
+        // certain inputs like targets
+        eval_user_input_names.emplace_back(input_name);
+      }
     }
-  }
-  eval_input_names_ = eval_user_input_names;
-  eval_user_input_count_ = eval_user_input_names.size();
-  eval_input_names_.insert(eval_input_names_.end(), eval_param_input_names.begin(), eval_param_input_names.end());
+    eval_input_names_ = eval_user_input_names;
+    eval_user_input_count_ = eval_user_input_names.size();
+    eval_input_names_.insert(eval_input_names_.end(), eval_param_input_names.begin(), eval_param_input_names.end());
 
-  // Keep a copy of the eval model path to be able to later export the model for inferencing.
-  // The inference model will be reconstructed from the eval model.
-  // TODO(askhade): Find a fix to export model for inference when the eval model is loaded from a buffer.
-  if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
-    eval_model_path_ = std::get<std::optional<std::string>>(model_identifiers.eval_model);
+    // Keep a copy of the eval model path to be able to later export the model for inferencing.
+    // The inference model will be reconstructed from the eval model.
+    eval_model_path_ = eval_model_path_or_bytes.value();
   }
-}
-
-Module::~Module() {
-  state_->module_checkpoint_state.train_session_data_transfer_mgr = nullptr;
 }
 
 size_t Module::GetTrainingModelOutputCount() const noexcept {
@@ -557,14 +486,14 @@ Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValu
 #if !defined(ORT_MINIMAL_BUILD)
 // TODO (baijumeswani): ExportModelForInferencing should work irrespective of whether
 //                      the build is minimal or not. This will require to read the ort_format eval model,
-//                      transform it to an inference model and save it in ort_format.
+//                      trainsform it to an inference model and save it in ort_format.
 Status Module::ExportModelForInferencing(const std::string& inference_model_path,
                                          gsl::span<const std::string> graph_output_names) const {
-  ORT_RETURN_IF(!eval_sess_ || !eval_model_path_.has_value(),
+  ORT_RETURN_IF(!eval_sess_ || eval_model_path_.empty(),
                 "Eval model was not provided. Cannot export a model for inferencing.");
 
   ONNX_NAMESPACE::ModelProto eval_model;
-  ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_.value()), eval_model));
+  ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_), eval_model));
 
   // Clone the eval mode into an inference onnxruntime::Model.
   std::shared_ptr<Model> inference_model;

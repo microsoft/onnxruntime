@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, InferenceSessionHandler, SessionHandler} from 'onnxruntime-common';
+import {Backend, InferenceSession, SessionHandler} from 'onnxruntime-common';
 
 import {Binding, binding} from './binding';
 
-class OnnxruntimeSessionHandler implements InferenceSessionHandler {
+class OnnxruntimeSessionHandler implements SessionHandler {
   #inferenceSession: Binding.InferenceSession;
 
   constructor(pathOrBuffer: string|Uint8Array, options: InferenceSession.SessionOptions) {
@@ -53,8 +53,8 @@ class OnnxruntimeBackend implements Backend {
     return Promise.resolve();
   }
 
-  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler> {
+  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+      Promise<SessionHandler> {
     return new Promise((resolve, reject) => {
       process.nextTick(() => {
         try {
@@ -69,4 +69,3 @@ class OnnxruntimeBackend implements Backend {
 }
 
 export const onnxruntimeBackend = new OnnxruntimeBackend();
-export const listSupportedBackends = binding.listSupportedBackends;

@@ -16,43 +16,47 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Function that builds a QDQ model with an InstanceNormalization operator.
+// Creates the graph:
+//                                  _______________________
+//               input_u8 -> DQ -> |                       | -> Q -> output_u8
+// scale_u8 (initializer) -> DQ -> | InstanceNormalization |
+// bias_u8 (initializer)  -> DQ -> |_______________________|
+//
+// Currently used to test QNN EP.
 template <typename QuantType>
-static GetTestQDQModelFn<QuantType> BuildQDQInstanceNormTestCase(const TestInputDef<float>& input_def,
-                                                                 const TestInputDef<float>& scale_def,
-                                                                 const TestInputDef<float>& bias_def,
-                                                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                                                 bool use_contrib_qdq = false) {
-  return [input_def, scale_def, bias_def, attrs,
-          use_contrib_qdq](ModelTestBuilder& builder,
-                           std::vector<QuantParams<QuantType>>& output_qparams) {
-    // input => Q => DQ =>
-    NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
-    NodeArg* input_qdq = AddQDQNodePair(builder, input, input_qparams.scale, input_qparams.zero_point,
-                                        use_contrib_qdq);
+GetQDQTestCaseFn BuildQDQInstanceNormTestCase(const TestInputDef<QuantType>& input_def,
+                                              const TestInputDef<QuantType>& scale_def,
+                                              const TestInputDef<int32_t>& bias_def,
+                                              const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
+  return [input_def, scale_def, bias_def, attrs](ModelTestBuilder& builder) {
+    const QuantType quant_zero_point = 0;
+    const float quant_scale = 1.0f;
 
-    // scale => Q => DQ =>
-    NodeArg* scale = MakeTestInput(builder, scale_def);
-    QuantParams<QuantType> scale_qparams = GetTestInputQuantParams<QuantType>(scale_def);
-    NodeArg* scale_qdq = AddQDQNodePair(builder, scale, scale_qparams.scale, scale_qparams.zero_point,
-                                        use_contrib_qdq);
+    auto* dq_scale_output = builder.MakeIntermediate();
+    auto* scale = MakeTestInput<QuantType>(builder, scale_def);
+    builder.AddDequantizeLinearNode<QuantType>(scale, quant_scale, quant_zero_point, dq_scale_output);
 
-    // bias (as int32) => DQ =>
-    NodeArg* bias_qdq = MakeTestQDQBiasInput(builder, bias_def, input_qparams.scale * scale_qparams.scale,
-                                             use_contrib_qdq);
+    // Add bias (initializer) -> DQ ->
+    auto* dq_bias_output = builder.MakeIntermediate();
+    auto* bias = MakeTestInput<int32_t>(builder, bias_def);
+    builder.AddDequantizeLinearNode<int32_t>(bias, 1.0f, 0, dq_bias_output);
 
-    // InstanceNormalization operator.
+    // Add input_u8 -> DQ ->
+    auto* input_u8 = MakeTestInput<QuantType>(builder, input_def);
+    auto* dq_input_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_u8, quant_scale, quant_zero_point, dq_input_output);
+
+    // Add dq_input_output -> InstanceNormalization ->
     auto* instance_norm_output = builder.MakeIntermediate();
-    Node& inst_norm_node = builder.AddNode("InstanceNormalization", {input_qdq, scale_qdq, bias_qdq},
+    Node& inst_norm_node = builder.AddNode("InstanceNormalization", {dq_input_output, dq_scale_output, dq_bias_output},
                                            {instance_norm_output});
     for (const auto& attr : attrs) {
       inst_norm_node.AddAttributeProto(attr);
     }
 
     // Add instance_norm_output -> Q -> output_u8
-    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, instance_norm_output, output_qparams[0].scale,
-                                                     output_qparams[0].zero_point, use_contrib_qdq);
+    auto* output_u8 = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<QuantType>(instance_norm_output, quant_scale, quant_zero_point, output_u8);
   };
 }
 
@@ -67,12 +71,11 @@ static GetTestQDQModelFn<QuantType> BuildQDQInstanceNormTestCase(const TestInput
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
  */
 template <typename QuantType = uint8_t>
-static void RunInstanceNormQDQTest(const TestInputDef<float>& input_def,
-                                   const TestInputDef<float>& scale_def,
-                                   const TestInputDef<float>& bias_def,
+static void RunInstanceNormQDQTest(const TestInputDef<QuantType>& input_def,
+                                   const TestInputDef<QuantType>& scale_def,
+                                   const TestInputDef<int32_t>& bias_def,
                                    const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                   ExpectedEPNodeAssignment expected_ep_assignment,
-                                   bool use_contrib_qdq = false) {
+                                   ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -81,108 +84,50 @@ static void RunInstanceNormQDQTest(const TestInputDef<float>& input_def,
 #endif
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
-  TestQDQModelAccuracy(BuildOpTestCase<float>("InstanceNormalization", {input_def, scale_def, bias_def}, {}, attrs),
-                       BuildQDQInstanceNormTestCase<QuantType>(input_def, scale_def, bias_def, attrs, use_contrib_qdq),
-                       provider_options,
-                       18,
-                       expected_ep_assignment);
+  RunQnnModelTest(BuildQDQInstanceNormTestCase<QuantType>(input_def, scale_def, bias_def, attrs),
+                  provider_options,
+                  18,
+                  expected_ep_assignment);
 }
 
 // Check that QNN compiles DQ -> InstanceNormalization -> Q as a single unit.
 // Use an input of rank 4.
-TEST_F(QnnHTPBackendTests, InstanceNormU8) {
-  // fails with QNN 2.15.1 with the following fixed input.
-  std::vector<float> input_data = {3.21289f, -5.9981f, -1.72799f, 6.27263f, 3.36205f, -1.93515f, -5.40113f, 3.75648f, 6.15357f,
-                                   -5.25769f, 2.73637f, -0.901382f, -6.55612f, 1.99497f, -4.79228f, 2.69813f, 8.3064f, 0.0362501f};
-  std::vector<float> scale_data = {-0.148738f, -1.45158f};
-  std::vector<float> bias_data = {-2.2785083772f, 2.3338717017f};
-  RunInstanceNormQDQTest(TestInputDef<float>({1, 2, 3, 3}, false, input_data).OverrideValueRange(-10.0f, 10.0f),
-                         TestInputDef<float>({2}, true, scale_data).OverrideValueRange(-2.0f, 2.0f),
-                         TestInputDef<float>({2}, true, bias_data).OverrideValueRange(-3.0f, 3.0f),
+TEST_F(QnnHTPBackendTests, TestQDQInstanceNormU8) {
+  RunInstanceNormQDQTest(TestInputDef<uint8_t>({1, 2, 3, 3}, false, 0, 255),
+                         TestInputDef<uint8_t>({2}, true, 0, 127),
+                         TestInputDef<int32_t>({2}, true, 0, 10),
                          {},
                          ExpectedEPNodeAssignment::All);
-}
-
-TEST_F(QnnHTPBackendTests, InstanceNormU16) {
-  std::vector<float> input_data = {3.21289f, -5.9981f, -1.72799f, 6.27263f, 3.36205f, -1.93515f, -5.40113f, 3.75648f, 6.15357f,
-                                   -5.25769f, 2.73637f, -0.901382f, -6.55612f, 1.99497f, -4.79228f, 2.69813f, 8.3064f, 0.0362501f};
-  std::vector<float> scale_data = {-0.148738f, -1.45158f};
-  std::vector<float> bias_data = {-2.2785083772f, 2.3338717017f};
-  RunInstanceNormQDQTest<uint16_t>(TestInputDef<float>({1, 2, 3, 3}, false, input_data).OverrideValueRange(-10.0f, 10.0f),
-                                   TestInputDef<float>({2}, true, scale_data).OverrideValueRange(-2.0f, 2.0f),
-                                   TestInputDef<float>({2}, true, bias_data).OverrideValueRange(-3.0f, 3.0f),
-                                   {},
-                                   ExpectedEPNodeAssignment::All,
-                                   true);  // Use contrib Q/DQ ops for 16bit support.
 }
 
 // Check that QNN compiles DQ -> InstanceNormalization -> Q as a single unit.
 // Use an input of rank 3.
-TEST_F(QnnHTPBackendTests, InstanceNormU8Rank3) {
-  RunInstanceNormQDQTest(TestInputDef<float>({1, 2, 3}, false, {6.0f, 4.0f, 2.0f, 6.0f, 8.0f, 2.0f}),
-                         TestInputDef<float>({2}, true, {1.0f, 2.0f}),
-                         TestInputDef<float>({2}, true, {1.0f, 3.0f}),
+TEST_F(QnnHTPBackendTests, TestQDQInstanceNormU8Rank3) {
+  RunInstanceNormQDQTest(TestInputDef<uint8_t>({1, 2, 3}, false, {6, 4, 2, 6, 8, 2}),
+                         TestInputDef<uint8_t>({2}, true, {1, 2}),
+                         TestInputDef<int32_t>({2}, true, {1, 3}),
                          {},
                          ExpectedEPNodeAssignment::All);
 }
 
-// Test 8-bit QDQ InstanceNormalization with an input of rank 3 with N != 1,
-// which requires wrapping the QNN InstanceNorm op with reshapes.
-TEST_F(QnnHTPBackendTests, InstanceNormU8Rank3_BatchSizeNot1) {
-  std::vector<float> input_data = {6.0f, 4.0f, 2.0f, 6.0f, 8.0f, 2.0f,
-                                   -8.0f, -6.0f, 0.0f, 1.0f, 3.0f, 6.0f};
-  RunInstanceNormQDQTest(TestInputDef<float>({2, 2, 3}, false, input_data),
-                         TestInputDef<float>({2}, true, {1.0f, 2.0f}),
-                         TestInputDef<float>({2}, true, {1.0f, 3.0f}),
+// TODO: This test now fails in QNN SDK version 2.12.0 (windows arm64 and linux x86_64).
+// This worked in QNN SDK version 2.10.0. Need to determine the severity of this inaccuracy.
+//
+// Exepcted output: 2 6 2 42 42 0
+// Actual output: 2 6 2 43 43 0
+TEST_F(QnnHTPBackendTests, DISABLED_TestQDQInstanceNormU8Rank3_QnnSdk_2_12_Regression) {
+  RunInstanceNormQDQTest(TestInputDef<uint8_t>({1, 2, 3}, false, {3, 4, 3, 9, 9, 8}),
+                         TestInputDef<uint8_t>({2}, true, {2, 57}),
+                         TestInputDef<int32_t>({2}, true, {3, 2}),
                          {},
                          ExpectedEPNodeAssignment::All);
-}
-
-// Test 16-bit QDQ InstanceNormalization with an input of rank 3 with N != 1,
-// which requires wrapping the QNN InstanceNorm op with reshapes.
-TEST_F(QnnHTPBackendTests, InstanceNormU16Rank3_BatchSizeNot1) {
-  std::vector<float> input_data = {6.0f, 4.0f, 2.0f, 6.0f, 8.0f, 2.0f,
-                                   -8.0f, -6.0f, 0.0f, 1.0f, 3.0f, 6.0f};
-  RunInstanceNormQDQTest<uint16_t>(TestInputDef<float>({2, 2, 3}, false, input_data),
-                                   TestInputDef<float>({2}, true, {1.0f, 2.0f}),
-                                   TestInputDef<float>({2}, true, {1.0f, 3.0f}),
-                                   {},
-                                   ExpectedEPNodeAssignment::All,
-                                   true);  // Use contrib Q/DQ ops for 16bit support.
-}
-
-// Test 8-bit QDQ InstanceNormalization with an input of rank 3 with N != 1,
-// which requires wrapping the QNN InstanceNorm op with reshapes.
-// Input 0 is an initializer.
-TEST_F(QnnHTPBackendTests, InstanceNormU8Rank3_BatchSizeNot1_Initializer) {
-  std::vector<float> input_data = {6.0f, 4.0f, 2.0f, 6.0f, 8.0f, 2.0f,
-                                   -8.0f, -6.0f, 0.0f, 1.0f, 3.0f, 6.0f};
-  RunInstanceNormQDQTest(TestInputDef<float>({2, 2, 3}, true, input_data),
-                         TestInputDef<float>({2}, true, {1.0f, 2.0f}),
-                         TestInputDef<float>({2}, false, {1.0f, 3.0f}),
-                         {},
-                         ExpectedEPNodeAssignment::All);
-}
-
-// Test 16-bit QDQ InstanceNormalization with an input of rank 3 with N != 1,
-// which requires wrapping the QNN InstanceNorm op with reshapes.
-// Input 0 is an initializer.
-TEST_F(QnnHTPBackendTests, InstanceNormU16Rank3_BatchSizeNot1_Initializer) {
-  std::vector<float> input_data = {6.0f, 4.0f, 2.0f, 6.0f, 8.0f, 2.0f,
-                                   -8.0f, -6.0f, 0.0f, 1.0f, 3.0f, 6.0f};
-  RunInstanceNormQDQTest<uint16_t>(TestInputDef<float>({2, 2, 3}, true, input_data),
-                                   TestInputDef<float>({2}, true, {1.0f, 2.0f}),
-                                   TestInputDef<float>({2}, false, {1.0f, 3.0f}),
-                                   {},
-                                   ExpectedEPNodeAssignment::All,
-                                   true);  // Use contrib Q/DQ ops for 16-bit support.
 }
 
 // Check that QNN InstanceNorm operator does not handle inputs with rank > 4.
-TEST_F(QnnHTPBackendTests, InstanceNormU8Rank5) {
-  RunInstanceNormQDQTest(TestInputDef<float>({1, 2, 3, 3, 3}, false, -10.0f, 10.0f),
-                         TestInputDef<float>({2}, true, -2.0f, 2.0f),
-                         TestInputDef<float>({2}, true, -3.0f, 3.0f),
+TEST_F(QnnHTPBackendTests, TestQDQInstanceNormU8Rank5) {
+  RunInstanceNormQDQTest(TestInputDef<uint8_t>({1, 2, 3, 3, 3}, false, 0, 255),
+                         TestInputDef<uint8_t>({2}, true, 0, 127),
+                         TestInputDef<int32_t>({2}, true, 0, 10),
                          {},
                          ExpectedEPNodeAssignment::None);
 }

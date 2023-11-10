@@ -32,16 +32,19 @@ bool IsCILogEnabled();
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
-void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedValue& out_tensor);
+void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::UnownedValue& out_tensor);
 
 template <typename T>
-void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ov::Node> node);
+void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ngraph::Node> node);
 
 Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names,
-                std::shared_ptr<ov::Node> node);
+                std::shared_ptr<ngraph::Node> node);
+
+InferenceEngine::Precision
+ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type);
 
 Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
@@ -58,7 +61,7 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
 
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context,
-              std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
+              std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName);

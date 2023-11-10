@@ -510,13 +510,6 @@ bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
 }
 
-Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
-                                    TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
-                                    TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
-  return g_host_cpu.SliceBase__FlattenOutputDims(
-      input_dimensions, output_dims, starts, ends, steps, p_flattened_input_dims, p_flattened_output_dims);
-}
-
 Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
                                     gsl::span<const int64_t> raw_ends,
                                     gsl::span<const int64_t> raw_axes,
@@ -612,16 +605,6 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                               const SessionState& subgraph_session_state) {
   return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
-
-Status WhisperBeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.WhisperBeamSearch__Compute(this, ctx); }
-
-void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.BeamSearchParameters__ParseFromAttributes(this, info); }
-
-void GreedySearchParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.GreedySearchParameters__ParseFromAttributes(this, info); }
-
-void SamplingParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.SamplingParameters__ParseFromAttributes(this, info); }
-
-void WhisperBeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.WhisperBeamSearchParameters__ParseFromAttributes(this, info); }
 
 void GreedySearch::Init(const OpKernelInfo& info) { g_host_cpu.GreedySearch__Init(this, info); }
 

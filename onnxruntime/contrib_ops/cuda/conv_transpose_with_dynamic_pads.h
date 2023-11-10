@@ -1,5 +1,4 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
 #pragma once
@@ -11,12 +10,12 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-class ConvTransposeWithDynamicPads : public ::onnxruntime::cuda::ConvTranspose<T, false> {
+class ConvTransposeWithDynamicPads : public ::onnxruntime::cuda::ConvTranspose<T> {
  public:
-  ConvTransposeWithDynamicPads(const OpKernelInfo& info) : ::onnxruntime::cuda::ConvTranspose<T, false>(info) {}
+  ConvTransposeWithDynamicPads(const OpKernelInfo& info) : ::onnxruntime::cuda::ConvTranspose<T>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    return ::onnxruntime::cuda::ConvTranspose<T, false>::DoConvTranspose(context, true);
+    return ::onnxruntime::cuda::ConvTranspose<T>::DoConvTranspose(context, true);
   }
 };
 }  // namespace cuda

@@ -116,11 +116,9 @@ stages:
         xcodeDeveloperDir: '/Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer'
         signingOption: 'manual'
         signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
-        provisioningProfileName: 'temporary *'  # temporary name, change it back to the original below later
-        #provisioningProfileName: 'iOS Team Provisioning Profile'
+        provisioningProfileName: 'iOS Team Provisioning Profile'
         args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/ios_package_test/DerivedData'
         workingDirectory: '$(Build.BinariesDirectory)/app_center_test/ios_package_test/'
-        useXcpretty: false  # xcpretty can hide useful error output so we will disable it
       displayName: 'Build App Center iPhone arm64 tests'
 
     - script: |
