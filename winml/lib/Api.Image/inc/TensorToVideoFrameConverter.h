@@ -40,10 +40,7 @@ class TensorToVideoFrameConverter : public ImageConverter {
 
  private:
   GUID _d3d11TextureGUID = {
-    0x14bf1054,
-    0x6ce7,
-    0x4c00,
-    {0xa1, 0x32, 0xb0, 0xf2, 0x11, 0x5D, 0xE0, 0x7f}
+    0x14bf1054, 0x6ce7, 0x4c00, {0xa1, 0x32, 0xb0, 0xf2, 0x11, 0x5D, 0xE0, 0x7f}
   };  // {14BF1054-6CE7-4C00-A132-B0F2115DE07F}
   GUID _handleGUID = {
     0x700148fc, 0xc0cb, 0x4a7e, {0xa7, 0xc0, 0xe7, 0x43, 0xc1, 0x9, 0x9d, 0x62}
@@ -80,7 +77,7 @@ class TensorToVideoFrameConverter : public ImageConverter {
     _Inout_ wm::VideoFrame& unsupported_video_frame
   );
 
-  static D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor(
+  static D3D12_SHADER_RESOURCE_VIEW_DESC CreateSRVDescriptor(
     const UINT32 batch_index, const D3D12_RESOURCE_DESC& resource_description, const ImageTensorDescription& description
   );
 

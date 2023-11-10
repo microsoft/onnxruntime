@@ -1,6 +1,23 @@
 trigger: none
 
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
+
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 variables:
   - name: video
@@ -8,12 +25,106 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 5.5
+    value: 5.7
   - name: BuildConfig
     value: Release
 
 jobs:
-- job: Linux_Build
+- job: Linux_Build_manylinux
+  variables:
+    skipComponentGovernanceDetection: true
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+  workspace:
+    clean: all
+  pool: onnxruntime-Ubuntu2004-AMD-CPU
+  timeoutInMinutes: 120
+
+  steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: >-
+        --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+        --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
+        --build-arg BUILD_UID=$(id -u)
+        --build-arg ROCM_VERSION=$(RocmVersion)
+        --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
+        --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin:
+        --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-manylinux-build
+
+  - task: Cache@2
+    inputs:
+      key: '"manylinux" | "$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      path: $(CCACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
+      restoreKeys: |
+        "manylinux" | "$(TODAY)" | "$(Build.SourceBranch)"
+        "manylinux" | "$(TODAY)" |
+    displayName: Cache Task
+
+  - script: mkdir -p $(CCACHE_DIR)
+    condition: ne(variables.CACHE_RESTORED, 'true')
+    displayName: Create Cache Dir
+
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        export ROCM_HOME=/opt/rocm
+        docker run --rm \
+          --ipc=host \
+          --network=host \
+          --cap-add=SYS_PTRACE \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --user $UID:$(id -g $USER) \
+          -e CC=/opt/rh/gcc-toolset-12/root/usr/bin/cc -e CXX=/opt/rh/gcc-toolset-12/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+          -e CCACHE_DIR=/cache \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(CCACHE_DIR):/cache \
+          --workdir /onnxruntime_src \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-manylinux-build \
+          /bin/bash -c "
+            set -ex; \
+            ccache -s; \
+            /opt/python/cp39-cp39/bin/python3 tools/ci_build/build.py \
+              --config $(BuildConfig) \
+              --enable_training \
+              --mpi_home /opt/ompi \
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \
+                onnxruntime_BUILD_UNIT_TESTS=OFF \
+                FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER \
+              --use_cache \
+              --use_rocm \
+              --rocm_version=$(RocmVersion) \
+              --rocm_home ${ROCM_HOME} \
+              --nccl_home ${ROCM_HOME}\
+              --update \
+              --build_dir /build \
+              --build \
+              --parallel \
+              --build_wheel \
+              --skip_submodule_sync \
+              --skip_tests; \
+            ccache -sv; \
+            ccache -z"
+    displayName: 'Build onnxruntime'
+
+  - template: templates/explicitly-defined-final-tasks.yml
+
+- job: Linux_Build_ubuntu
   variables:
     skipComponentGovernanceDetection: true
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
@@ -36,6 +147,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-build
 
   #- script: |-
@@ -105,13 +217,12 @@ jobs:
 
   - template: templates/explicitly-defined-final-tasks.yml
 
-
-- job: Linux_Test
+- job: Linux_Test_ubuntu
   workspace:
     clean: all
   pool: AMD-GPU
   dependsOn:
-  - Linux_Build
+  - Linux_Build_ubuntu
   timeoutInMinutes: 120
 
   steps:
@@ -130,7 +241,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test
 
   - task: Bash@3
@@ -176,13 +287,14 @@ jobs:
           --user onnxruntimedev \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
+          -e OPENBLAS_NUM_THREADS=1 \
+          -e OPENMP_NUM_THREADS=1 \
+          -e MKL_NUM_THREADS=1 \
+          -e KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig) \
+          -e KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8 \
+          -e KERNEL_EXPLORER_TEST_USE_CUPY=1 \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
-            /bin/bash -c "
-              set -ex; \
-              export KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig); \
-              export KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8; \
-              export KERNEL_EXPLORER_TEST_USE_CUPY=1; \
-              pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 8 --reruns 1 --durations=100"
+            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
     condition: succeededOrFailed()

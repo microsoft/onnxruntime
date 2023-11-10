@@ -13,7 +13,7 @@ namespace rocm {
 
 template <typename T, typename TOut, bool IsLogSoftmax>
 Status SoftMaxComputeHelper(
-    hipStream_t stream,
+    Stream* stream,
     const T* X,
     const TensorShape& input_shape,
     TOut* Y,
@@ -29,20 +29,23 @@ Status SoftMaxComputeHelper(
   auto X_data = reinterpret_cast<const HipT_IN*>(X);
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    return dispatch_warpwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
-        stream, Y_data, X_data, gsl::narrow_cast<int>(D),
-        gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
+    return dispatch_warpwise_softmax_forward<
+        HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
+        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
   }
+
   return dispatch_blockwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
-      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
-      gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
+      gsl::narrow_cast<int>(N), tuning_ctx);
 }
 
-#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                                              \
-  template Status SoftMaxComputeHelper<T, TOut, false>(hipStream_t stream, const T* input, const TensorShape& shape, TOut* Y, \
-                                                       int64_t axis, RocmTuningContext* tuning_ctx);                          \
-  template Status SoftMaxComputeHelper<T, TOut, true>(hipStream_t stream, const T* input, const TensorShape& shape, TOut* Y,  \
-                                                      int64_t axis, RocmTuningContext* tuning_ctx);
+#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                        \
+  template Status SoftMaxComputeHelper<T, TOut, false>(Stream * stream, const T* input,                 \
+                                                       const TensorShape& shape, TOut* Y, int64_t axis, \
+                                                       RocmTuningContext* tuning_ctx);                  \
+  template Status SoftMaxComputeHelper<T, TOut, true>(Stream * stream, const T* input,                  \
+                                                      const TensorShape& shape, TOut* Y, int64_t axis,  \
+                                                      RocmTuningContext* tuning_ctx);
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16, float)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(float, float)
@@ -152,7 +155,7 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
     auto temp_input = Tensor::Create(X->DataType(), TensorShape(transposed_input_dims), alloc);
 
     // Perform the transpose
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(rocm_ep_->GetDeviceProp(),
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(GetDeviceProp(),
                                                Stream(ctx),
                                                GetRocblasHandle(ctx),
                                                permutation, *X, *temp_input));
@@ -178,12 +181,12 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Status status;
   if (log_softmax_) {
-    status = SoftMaxComputeHelper<T, T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data,
+    status = SoftMaxComputeHelper<T, T, true>(ctx->GetComputeStream(), X_data, *compute_input_shape, Y_data,
                                               is_transpose_required ? static_cast<int64_t>(rank) - 1
                                                                     : static_cast<int64_t>(axis),
                                               GetTuningContext());
   } else {
-    status = SoftMaxComputeHelper<T, T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data,
+    status = SoftMaxComputeHelper<T, T, false>(ctx->GetComputeStream(), X_data, *compute_input_shape, Y_data,
                                                is_transpose_required ? static_cast<int64_t>(rank) - 1
                                                                      : static_cast<int64_t>(axis),
                                                GetTuningContext());
@@ -194,7 +197,7 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(rocm_ep_->GetDeviceProp(),
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(GetDeviceProp(),
                                                Stream(ctx),
                                                GetRocblasHandle(ctx),
                                                permutation, *intermediate_output, *Y));

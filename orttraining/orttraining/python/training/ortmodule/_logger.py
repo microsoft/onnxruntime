@@ -21,15 +21,18 @@ from ._utils import get_rank, get_world_size
 
 class LogLevel(IntEnum):
     VERBOSE = 0
-    INFO = 1
-    WARNING = 2
-    ERROR = 3
-    FATAL = 4
+    DEVINFO = 1  # For ORT developers.
+    INFO = 2  # For ORT users.
+    WARNING = 3
+    ERROR = 4
+    FATAL = 5
 
 
 ORTMODULE_LOG_LEVEL_MAP: Dict[LogLevel, List[int]] = {
     LogLevel.VERBOSE: [Severity.VERBOSE, logging.DEBUG],
-    LogLevel.INFO: [Severity.INFO, logging.INFO],
+    LogLevel.DEVINFO: [Severity.INFO, logging.INFO],
+    # ONNX Runtime has too many INFO logs, so we map it to WARNING for a better user experience.
+    LogLevel.INFO: [Severity.WARNING, logging.INFO],
     LogLevel.WARNING: [Severity.WARNING, logging.WARNING],
     LogLevel.ERROR: [Severity.ERROR, logging.ERROR],
     LogLevel.FATAL: [Severity.FATAL, logging.FATAL],
@@ -48,13 +51,13 @@ def configure_ortmodule_logger(log_level: LogLevel) -> logging.Logger:
     """Configure the logger for ortmodule according to following rules.
     1. If multiple processes are used, the rank will be appended
        to the logger name.
-    2. If the log level is greater than info, the logger will be
+    2. If the log level is equal to or greater than INFO, the logger will be
        disabled for non-zero ranks.
     """
     rank_info = f".rank-{get_rank()}" if get_world_size() > 1 else ""
     logger = logging.getLogger(f"orttraining{rank_info}")
-    # Disable the logger for non-zero ranks when level > info
-    logger.disabled = log_level > LogLevel.INFO and get_rank() != 0
+    # Disable the logger for non-zero ranks when level >= INFO
+    logger.disabled = log_level >= LogLevel.INFO and get_rank() != 0
     logger.setLevel(ortmodule_loglevel_to_python_loglevel(log_level))
     return logger
 
@@ -171,6 +174,8 @@ def _suppress_os_stream_output(enable=True, on_exit: Optional[Callable] = None):
     if enable:
         # stdout and stderr is written to a tempfile instead
         with tempfile.TemporaryFile() as fp:
+            old_stdout = None
+            old_stderr = None
             try:
                 # Store original stdout and stderr file no.
                 old_stdout = os.dup(sys.stdout.fileno())
@@ -185,11 +190,18 @@ def _suppress_os_stream_output(enable=True, on_exit: Optional[Callable] = None):
                 sys.stderr.flush()
 
                 # Restore stdout and stderr.
-                os.dup2(old_stdout, sys.stdout.fileno())
-                os.dup2(old_stderr, sys.stderr.fileno())
+                if old_stdout is not None:
+                    os.dup2(old_stdout, sys.stdout.fileno())
+                if old_stderr is not None:
+                    os.dup2(old_stderr, sys.stderr.fileno())
+
+                # Close file descriptors
+                os.close(old_stdout)
+                os.close(old_stderr)
 
                 if on_exit:
                     on_exit(fp)
+
     else:
         yield
 

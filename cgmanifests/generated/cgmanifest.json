@@ -3,86 +3,10 @@
   "Version": 1,
   "Registrations": [
     {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "autoconf",
-          "Version": "2.71",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "automake",
-          "Version": "1.16.5",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.5.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "libtool",
-          "Version": "2.4.7",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/libtool/libtool-2.4.7.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "git",
-          "Version": "2.36.2",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.36.2.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "sqlite_autoconf",
-          "Version": "3390200",
-          "DownloadUrl": "https://www.sqlite.org/2022/sqlite-autoconf-3390200.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "openssl",
-          "Version": "1.1.1q",
-          "DownloadUrl": "https://www.openssl.org/source/openssl-1.1.1q.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "50cf2b6dd4fdf04309445f2eec8de7051d953abf",
-          "repositoryUrl": "https://github.com/besser82/libxcrypt.git"
-        },
-        "comments": "manylinux dependency LIBXCRYPT"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "b113f24842c6e97fe3e352084db09a6e278593ae",
+          "commitHash": "a896e3d066448b3530dbcaa48869fafefd738f57",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -102,7 +26,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a0d77f18516d2da7468a96b0de3b737266f23176",
+          "commitHash": "b86cc54efce19530fb953e4b21f57e6b3888534c",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -112,17 +36,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "81e7799c69044c745239202085eb0a98f102937b",
-          "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
-        },
-        "comments": "git submodule at cmake/external/onnxruntime-extensions"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "8c0b94e793a66495e0b1f34a5eb26bd7dc672db0",
+          "commitHash": "29bf8085f3bf17b84d30e34b3d7ff8248fda404e",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
@@ -142,7 +56,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e7e1482087f58913b80a20b04d5c58d9d6d90155",
+          "commitHash": "6e921e1b1d21e84a5c82416ba7ecd98e33a436d0",
           "repositoryUrl": "https://github.com/HowardHinnant/date.git"
         },
         "comments": "date"
@@ -202,7 +116,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "436617053d0f39a1019a371c3a9aa599b3cb2cea",
+          "commitHash": "13de152c2a1cd73ff4df97bd2c406b6d15d34af3",
           "repositoryUrl": "https://github.com/google/nsync.git"
         },
         "comments": "google_nsync"
@@ -212,7 +126,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "519beb0e52c842729b4b53731d27c0e0c32ab4a2",
+          "commitHash": "f8d7d77c06936315286eb55f8de22cd23c188571",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "googletest"
@@ -222,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "003c580e696a774afdc984996ee909b7c8d8128c",
+          "commitHash": "0da379fc4808f9601faef392352018c741c0f297",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -252,7 +166,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5f4caba4e7a9017816e47becdd918fcc872039ba",
+          "commitHash": "55f373e164d3f092dd6c7a56e3de6f90c4c6f3dc",
           "repositoryUrl": "https://github.com/microsoft/wil.git"
         },
         "comments": "microsoft_wil"
@@ -272,7 +186,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "7bc4e1ae9b36ec8ee635c3629b59ec525bbe82b9",
+          "commitHash": "0a0b5fb001ce0233ae3a6f99d849c0649e5a7361",
           "repositoryUrl": "https://github.com/boostorg/mp11.git"
         },
         "comments": "mp11"
@@ -282,7 +196,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6ba67d3428e05f690145373ca87fb8d32f98df45",
+          "commitHash": "a43ce67187bab219520fd80f21af8bbd4354bc8c",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -312,7 +226,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1787867f6183f056420e532eec640cba25efafea",
+          "commitHash": "4fe0e1e183925bf8cfa6aae24237e724a96479b8",
           "repositoryUrl": "https://github.com/Maratyszcza/pthreadpool.git"
         },
         "comments": "pthreadpool"
@@ -332,7 +246,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
+          "commitHash": "959002f82d7962a473d8bf301845f2af720e0aa4",
           "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
         },
         "comments": "pytorch_cpuinfo"
@@ -352,7 +266,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "ff15c6ada150a5018c5ef2172401cb4529eac9c0",
+          "commitHash": "4cafc9196c4da9c817992b20f5253ef967685bf8",
           "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
         },
         "comments": "safeint"
@@ -382,10 +296,30 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "72c943dea2b9240cd09efde15191e144bc7c7d38",
+          "repositoryUrl": "https://github.com/protocolbuffers/utf8_range.git"
+        },
+        "comments": "utf8_range"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "94142d8391c9791ec71c38336436319a2d4ac7a0",
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
         },
         "comments": "extensions"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d52ec01652b7d620386251db92455968d8d90bdc",
+          "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
+        },
+        "comments": "composable_kernel"
       }
     }
   ]

@@ -1,8 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
+
+#include <limits>
+
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 
@@ -49,14 +53,26 @@ static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& 
   switch (zp_initializer.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       const int8_t zero_point = zp_initializer.data<int8_t>()[0];
-      lower = scale * (-128 - zero_point);
-      upper = scale * (127 - zero_point);
+      lower = scale * (std::numeric_limits<int8_t>::lowest() - zero_point);
+      upper = scale * (std::numeric_limits<int8_t>::max() - zero_point);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       const uint8_t zero_point = zp_initializer.data<uint8_t>()[0];
-      lower = scale * (0 - zero_point);
-      upper = scale * (255 - zero_point);
+      lower = scale * (std::numeric_limits<uint8_t>::lowest() - zero_point);
+      upper = scale * (std::numeric_limits<uint8_t>::max() - zero_point);
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
+      const int16_t zero_point = zp_initializer.data<int16_t>()[0];
+      lower = scale * (std::numeric_limits<int16_t>::lowest() - zero_point);
+      upper = scale * (std::numeric_limits<int16_t>::max() - zero_point);
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
+      const uint16_t zero_point = zp_initializer.data<uint16_t>()[0];
+      lower = scale * (std::numeric_limits<uint16_t>::lowest() - zero_point);
+      upper = scale * (std::numeric_limits<uint16_t>::max() - zero_point);
       break;
     }
     default:
@@ -73,7 +89,7 @@ bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, con
 
   // if Clip is followed by QuantizeLinear, it can be fused into QuantizeLinear potentially
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuantizeLinear", {10, 13, 19})) {
+  if (!QDQ::MatchQNode(next_node)) {
     return false;
   }
 

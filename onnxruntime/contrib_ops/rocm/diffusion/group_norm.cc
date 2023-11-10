@@ -21,7 +21,7 @@ namespace {
 template <typename T>
 struct DispatchGroupNorm {
   Status operator()(RocmTuningContext* tuning_ctx,
-                    hipStream_t stream,
+                    Stream* stream,
                     Tensor* output,
                     const Tensor* input,
                     const Tensor* gamma,
@@ -70,6 +70,12 @@ GroupNorm::GroupNorm(const OpKernelInfo& op_info) : RocmKernel(op_info) {
   use_swish_activation_ = (activation == 1);
 
   channels_last_ = (op_info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(1)) != 0);
+}
+
+Status GroupNorm::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, AllocatorPtr /*alloc*/,
+                          bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
+  is_packed = false;
+  return Status::OK();
 }
 
 Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
@@ -130,7 +136,7 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
   auto workspace = GetScratchBuffer<void>(GetGroupNormWorkspaceSizeInBytes(), context->GetComputeStream());
 
   utils::MLTypeCallDispatcher<GROUP_NORM_TYPES> dispatcher(input->GetElementType());
-  return dispatcher.InvokeRet<Status, DispatchGroupNorm>(GetTuningContext(), Stream(context),
+  return dispatcher.InvokeRet<Status, DispatchGroupNorm>(GetTuningContext(), context->GetComputeStream(),
                                                          output, input, gamma, beta, workspace.get(),
                                                          epsilon_,
                                                          batch_size,

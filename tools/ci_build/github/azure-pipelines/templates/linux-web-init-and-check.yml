@@ -1,0 +1,41 @@
+steps:
+- script: |
+    npm ci
+  workingDirectory: '$(Build.SourcesDirectory)/js'
+  displayName: 'npm ci /js/'
+- script: |
+    npm run lint
+  workingDirectory: '$(Build.SourcesDirectory)/js'
+  displayName: 'run ESLint without TS type populated'
+- script: |
+    npm ci
+  workingDirectory: '$(Build.SourcesDirectory)/js/common'
+  displayName: 'npm ci /js/common/'
+- script: |
+    npm test
+  workingDirectory: '$(Build.SourcesDirectory)/js/common'
+  displayName: 'run onnxruntime-common tests'
+- script: |
+    npm ci
+  workingDirectory: '$(Build.SourcesDirectory)/js/web'
+  displayName: 'npm ci /js/web/'
+- script: |
+    npm run lint
+  workingDirectory: '$(Build.SourcesDirectory)/js'
+  displayName: 'run ESLint'
+- script: |
+    npm run format
+  workingDirectory: '$(Build.SourcesDirectory)/js'
+  displayName: 'Clang-format'
+- script: |
+    node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
+  workingDirectory: '$(Build.SourcesDirectory)/js'
+  displayName: 'Check unformatted files'
+- script: |
+    npm run build:doc
+  workingDirectory: '$(Build.SourcesDirectory)/js/web'
+  displayName: 'Generating documents'
+- script: |
+    node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
+  workingDirectory: '$(Build.SourcesDirectory)/js/web'
+  displayName: 'Check out of dated documents'

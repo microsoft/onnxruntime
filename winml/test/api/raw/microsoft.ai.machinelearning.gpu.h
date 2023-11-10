@@ -49,9 +49,9 @@ struct directx_device : public learning_model_device {
   }
 };
 
-}// namespace gpu
-}// namespace MachineLearning
-}// namespace AI
-} // namespace Microsoft
+}  // namespace gpu
+}  // namespace MachineLearning
+}  // namespace AI
+}  // namespace Microsoft
 
-#endif // MICROSOFT_AI_MACHINELEARNING_GPU_H
+#endif  // MICROSOFT_AI_MACHINELEARNING_GPU_H

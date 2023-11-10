@@ -98,8 +98,6 @@ class MultipleChoiceDataset(Dataset):
         overwrite_cache=False,
         mode: Split = Split.train,
     ):
-        processor = processor
-
         cached_features_file = os.path.join(
             data_dir,
             "cached_{}_{}_{}_{}".format(

@@ -19,18 +19,18 @@
 //
 // modified to fit the needs of the project
 
-export declare type Activation = 'linear' | 'relu' | 'prelu' | 'elu' | 'relu6' | 'leakyrelu' | 'sigmoid';
+export declare type Activation = 'linear' | 'relu' | 'prelu' | 'elu' | 'relu6' | 'leakyrelu' | 'sigmoid' | 'gelu';
 
-export const typeSnippet = (component: number) => {
+export const typeSnippet = (component: number, dataType: string) => {
   switch (component) {
     case 1:
-      return 'f32';
+      return dataType;
     case 2:
-      return 'vec2<f32>';
+      return `vec2<${dataType}>`;
     case 3:
-      return 'vec3<f32>';
+      return `vec3<${dataType}>`;
     case 4:
-      return 'vec4<f32>';
+      return `vec4<${dataType}>`;
     default:
       throw new Error(`${component}-component is not supported.`);
   }
@@ -41,12 +41,12 @@ export const activationFnSnippet =
       if (!activation) {
         return '';
       }
-
       // TODO: add implementations
       return '';
     };
 
 export const biasActivationSnippet = (hasBias: boolean, activation?: Activation): string => `
       ${hasBias ? 'value = value + getBiasByOutputCoords(coords);' : ''}
-      ${activation ? 'value = activation(value, coords);' : ''}
+      // TODO uncomment the following line when activation is supported above.
+      // ${activation ? 'value = activation(value, coords);' : ''}
       `;

@@ -29,49 +29,49 @@ struct NoisyReluOperator : winrt::implements<NoisyReluOperator, IMLOperatorKerne
 
   NoisyReluOperator(float mean, float variance) : m_mean(mean), m_variance(variance) {}
 
-    // Computes the outputs of the kernel.  This may be called multiple times
-    // simultaneously within the same instance of the class.  Implementations
-    // of this method must be thread-safe.
+  // Computes the outputs of the kernel.  This may be called multiple times
+  // simultaneously within the same instance of the class.  Implementations
+  // of this method must be thread-safe.
   STDMETHOD(Compute)(IMLOperatorKernelContext* context) {
     try {
-            // Get the input tensor
+      // Get the input tensor
       winrt::com_ptr<IMLOperatorTensor> inputTensor;
       context->GetInputTensor(0, inputTensor.put());
 
-            // Get the output tensor
+      // Get the output tensor
       winrt::com_ptr<IMLOperatorTensor> outputTensor;
       context->GetOutputTensor(0, outputTensor.put());
 
-            // Get the input and output shape sizes
+      // Get the input and output shape sizes
       uint32_t inputDimsSize = inputTensor->GetDimensionCount();
       uint32_t outputDimsSize = outputTensor->GetDimensionCount();
       if (inputDimsSize != outputDimsSize) {
         return E_UNEXPECTED;
       }
 
-            // Get the input shape
+      // Get the input shape
       std::vector<uint32_t> inputDims(inputDimsSize);
       outputTensor->GetShape(inputDimsSize, inputDims.data());
 
-            // Get the output shape
+      // Get the output shape
       std::vector<uint32_t> outputDims(outputDimsSize);
       outputTensor->GetShape(outputDimsSize, outputDims.data());
 
-            // For the number of total elements in the input and output shapes
+      // For the number of total elements in the input and output shapes
       auto outputDataSize = std::accumulate(outputDims.begin(), outputDims.end(), 1, std::multiplies<uint32_t>());
       auto inputDataSize = std::accumulate(inputDims.begin(), inputDims.end(), 1, std::multiplies<uint32_t>());
       if (outputDataSize != inputDataSize) {
         return E_UNEXPECTED;
       }
 
-            // If the tensor types are both float type
+      // If the tensor types are both float type
       if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float && inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float) {
-                // For cpu data
+        // For cpu data
         if (outputTensor->IsCpuData() && inputTensor->IsCpuData()) {
           ComputeInternal<float>(inputTensor.get(), outputTensor.get(), inputDataSize);
         }
       } else if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Double && inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Double) {
-                // For cpu data
+        // For cpu data
         if (outputTensor->IsCpuData() && inputTensor->IsCpuData()) {
           ComputeInternal<double>(inputTensor.get(), outputTensor.get(), inputDataSize);
         }
@@ -85,7 +85,7 @@ struct NoisyReluOperator : winrt::implements<NoisyReluOperator, IMLOperatorKerne
 
   template <typename T, typename U = T>
   void ComputeInternal(IMLOperatorTensor* pInputTensor, IMLOperatorTensor* pOutputTensor, uint32_t size) {
-        // Create a normal distribution
+    // Create a normal distribution
     std::normal_distribution<> dist{m_mean, m_variance};
     std::random_device rd{};
     std::mt19937 gen{rd()};
@@ -157,7 +157,8 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     std::vector<MLOperatorEdgeDescription> allowedEdges{
       CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
       CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
-      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)
+    };
     typeConstraint.allowedTypes = allowedEdges.data();
     typeConstraint.allowedTypeCount = static_cast<uint32_t>(allowedEdges.size());
 
@@ -194,7 +195,8 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     noisyReluVarianceAttributeValue.floats = defaultVariance;
 
     std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue};
+      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue
+    };
     noisyReluSchema.defaultAttributes = attributeDefaultValues.data();
     noisyReluSchema.defaultAttributeCount = static_cast<uint32_t>(attributeDefaultValues.size());
 
@@ -216,7 +218,8 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     std::vector<MLOperatorEdgeDescription> allowedEdges{
       CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
       CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
-      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)
+    };
     typeConstraint.allowedTypes = allowedEdges.data();
     typeConstraint.allowedTypeCount = static_cast<uint32_t>(allowedEdges.size());
 
@@ -239,7 +242,8 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     noisyReluVarianceAttributeValue.floats = defaultVariance;
 
     std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue};
+      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue
+    };
     kernelDescription.defaultAttributes = attributeDefaultValues.data();
     kernelDescription.defaultAttributeCount = static_cast<uint32_t>(attributeDefaultValues.size());
     kernelDescription.options = MLOperatorKernelOptions::None;

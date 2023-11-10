@@ -90,3 +90,6 @@ unfixable = [
 # Eventually this list should become empty.
 "orttraining/orttraining/test/**" = ["N802"] # Function casing
 "tools/nuget/generate_nuspec_for_native_nuget.py" = ["ISC003"] # Too many errors to fix
+"onnxruntime/test/python/quantization/test_op_gemm.py" = ["N806"]  # use of A for a matrix
+"onnxruntime/test/python/quantization/op_test_utils.py" = ["N806", "PERF203", "RUF012"]  # use of A for a matrix
+"orttraining/orttraining/python/training/ort_triton/kernel/_flash_attn.py" = ["N806", "PLW2901", "ISC001", "E731"]  # Long triton code from other repo.

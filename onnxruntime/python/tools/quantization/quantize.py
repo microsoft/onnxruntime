@@ -7,7 +7,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
+from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import (
@@ -226,8 +226,24 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QUInt8:
         raise ValueError(
             "ONNXRuntime quantization doesn't support data format:"
-            "activation_type=QuantType.QInt8, weight_type = QuantType.QUInt8"
+            "activation_type=QuantType.QInt8, weight_type=QuantType.QUInt8"
         )
+    if activation_type != QuantType.QFLOAT8E4M3FN and weight_type == QuantType.QFLOAT8E4M3FN:
+        raise ValueError(
+            f"ONNXRuntime quantization doesn't support data format: activation_type={activation_type} "
+            f"!=QuantType.QFLOAT8E4M3FN, weight_type=QuantType.QFLOAT8E4M3FN."
+        )
+
+    if activation_type == QuantType.QFLOAT8E4M3FN and weight_type != QuantType.QFLOAT8E4M3FN:
+        raise ValueError(
+            "ONNXRuntime quantization doesn't support data format: activation_type=QuantType.QFLOAT8E4M3FN, "
+            f"weight_type={weight_type}!=QuantType.QFLOAT8E4M3FN"
+        )
+
+    q16_types = [QuantType.QInt16, QuantType.QUInt16]
+
+    if (activation_type in q16_types or weight_type in q16_types) and quant_format != QuantFormat.QDQ:
+        raise ValueError("Only QuantFormat.QDQ supports 16-bit quantization types.")
 
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QInt8 and quant_format != QuantFormat.QDQ:
         logging.warning(
@@ -335,6 +351,10 @@ def quantize_static(
                     Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                     minimum and maximum values. Effective only when the calibration method selected is MinMax and
                     when CalibMovingAverage is set to True.
+                CalibMaxIntermediateOutputs = Optional[int] :
+                    Default is None. If set to an integer, during calculation of the min-max range of the tensors
+                    it will load at max value number of outputs before computing and merging the range. This will
+                    produce the same result as all computing with None, but is more memory efficient.
                 SmoothQuant = True/False :
                     Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
                     fake input channel quantization.
@@ -345,7 +365,21 @@ def quantize_static(
                 SmoothQuantFolding = True/False :
                     Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
                     SmoothQuant will be folded into the previous op if the previous op is foldable.
+                UseQDQContribOps = True/False :
+                    Default is False. If enabled, the inserted QuantizeLinear and DequantizeLinear ops will have the
+                    `com.microsoft` domain, which forces use of ONNX Runtime's QuantizeLinear and DequantizeLinear
+                    contrib op implementations. The contrib op implementations may support features not standardized
+                    into the ONNX specification (e.g., 16-bit quantization types).
+                MinimumRealRange = float|None :
+                    Default is None. If set to a floating-point value, the calculation of the quantization parameters
+                    (i.e., scale and zero point) will enforce a minimum range between rmin and rmax. If (rmax - rmin)
+                    is less than the specified minimum range, rmax will be set to rmin + MinimumRealRange. This is
+                    necessary for EPs like QNN that require a minimum floating-point range when determining
+                    quantization parameters.
     """
+    if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
+        if calibrate_method != CalibrationMethod.Distribution:
+            raise ValueError("Only Distribution calibration method is supported for float quantization.")
 
     extra_options = extra_options or {}
     nodes_to_exclude = nodes_to_exclude or []
@@ -372,6 +406,7 @@ def quantize_static(
         ("CalibTensorRangeSymmetric", "symmetric"),
         ("CalibMovingAverage", "moving_average"),
         ("CalibMovingAverageConstant", "averaging_constant"),
+        ("CalibMaxIntermediateOutputs", "max_intermediate_outputs"),
     ]
     calib_extra_options = {
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
@@ -419,7 +454,11 @@ def quantize_static(
             extra_options=calib_extra_options,
         )
         calibrator.collect_data(calibration_data_reader)
-        tensors_range = calibrator.compute_range()
+        tensors_range = calibrator.compute_data()
+        if not isinstance(tensors_range, TensorsData):
+            raise TypeError(
+                f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
+            )
         del calibrator
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)

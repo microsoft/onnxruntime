@@ -157,7 +157,7 @@ class QLinearConv(QuantOperatorBase):
                 nodes,
             ) = self.quantizer.quantize_activation(node, [0])
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
-                node.input[1], onnx_proto.TensorProto.INT8, 0
+                node.input[1], onnx_proto.TensorProto.INT8, 0  # self.quantizer.weight_qType?
             )
             quantized_input_names.append(quant_weight_tuple[0])
             zero_point_names.append(quant_weight_tuple[1])
@@ -187,6 +187,8 @@ class QLinearConv(QuantOperatorBase):
         quantized_bias_name = ""
         bias_present = False
         if len(node.input) == 3:
+            if self.quantizer.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+                raise RuntimeError("Quantization to FLOAT8E4M3FN for operator Conv is not supported.")
             quantized_bias_name = self.quantizer.quantize_bias_static(node.input[2], node.input[0], node.input[1])
             bias_present = True
 

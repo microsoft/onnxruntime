@@ -43,4 +43,4 @@ winml::TensorFloat LoadInputImageFromGPU(wgi::SoftwareBitmap softwareBitmap, con
 
 bool VerifyHelper(wm::VideoFrame actual, wm::VideoFrame expected);
 
-}// namespace ImageTestHelper
+}  // namespace ImageTestHelper

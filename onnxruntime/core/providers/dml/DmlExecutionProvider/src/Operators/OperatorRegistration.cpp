@@ -21,6 +21,7 @@ using namespace Microsoft::WRL;
 #include "core/providers/cpu/sequence/sequence_ops.h"
 #include "core/providers/cpu/tensor/concatbase.h"
 #include "core/providers/cpu/optional/optional_ops.h"
+#include "core/providers/cpu/controlflow/if.h"
 
 namespace onnxruntime {
 
@@ -35,6 +36,11 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 15, Op
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 15, OptionalGetElement);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 18, OptionalHasElement);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 18, OptionalGetElement);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 7, If);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, If);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 13, If);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 16, If);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 19, If);
 
 }
 
@@ -157,6 +163,63 @@ ONNX_OPERATOR_KERNEL_EX(
         // to make the re-use call.
         .Alias(0, 0),
     OptionalGetElement);
+
+ONNX_OPERATOR_KERNEL_EX(
+    If,
+    kOnnxDomain,
+    7,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+    If);
+
+// output shape rules requiring the output shapes of the 'THEN' and 'ELSE'
+// branches to be the same were relaxed in opset-11
+ONNX_OPERATOR_KERNEL_EX(
+    If,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+    If);
+
+ONNX_OPERATOR_KERNEL_EX(
+    If,
+    kOnnxDomain,
+    13,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+    If);
+
+ONNX_OPERATOR_KERNEL_EX(
+    If,
+    kOnnxDomain,
+    16,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+    If);
+
+ONNX_OPERATOR_KERNEL_EX(
+    If,
+    kOnnxDomain,
+    19,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
+    If);
 }
 
 namespace Dml
@@ -453,6 +516,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(BitwiseAnd);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseOr);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseXor);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseNot);
+DML_OP_EXTERN_CREATION_FUNCTION(RotaryEmbedding);
 
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
@@ -471,6 +535,7 @@ DML_OP_EXTERN_QUERY_FUNCTION(Attention);
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
 constexpr static std::array<const char*, 1> typeNameListDefaultV = {"V"};
 constexpr static std::array<const char*, 2> typeNameListAttention = {"T", "M"};
+constexpr static std::array<const char*, 2> typeNameListRotaryEmbedding = {"T", "M"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
 constexpr static std::array<const char*, 2> typeNameListLayerNorm = { "T", "U" };
 constexpr static std::array<const char*, 2> typeNameListLayerNormContrib = { "T", "V" };
@@ -550,6 +615,7 @@ constexpr static std::array<SupportedTensorDataTypes, 4> supportedTypeListQAtten
 };
 
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListAttention = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32};
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRotaryEmbedding = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListGroupNorm = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListNonZero = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Ints8Bit | SupportedTensorDataTypes::Ints16Bit | SupportedTensorDataTypes::Ints32Bit | SupportedTensorDataTypes::Bool};
 
@@ -986,6 +1052,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  Attention,                          typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryAttention)},
     {REG_INFO_MS(   1,  MultiHeadAttention,                 typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QLinearConcat,                      typeNameListQLinearConcat,      supportedTypeListQLinearConcat,         DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  RotaryEmbedding,                    typeNameListRotaryEmbedding,    supportedTypeListRotaryEmbedding,       DmlGraphSupport::Supported)},
 
     {REG_INFO(     10,  IsInf,                              typeNameListTwo,                supportedTypeListIsInf,                 DmlGraphSupport::Supported)},
     {REG_INFO(     10,  Mod,                                typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
@@ -1045,6 +1112,11 @@ void RegisterCpuOperatorsAsDml(onnxruntime::KernelRegistry* registry)
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 15, OptionalGetElement)>,
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 18, OptionalHasElement)>,
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 18, OptionalGetElement)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 7, If)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, If)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 13, If)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 16, If)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 19, If)>,
     };
 
     for (auto& function_table_entry : function_table) {

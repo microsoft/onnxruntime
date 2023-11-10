@@ -29,7 +29,10 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model) const {
   }
 }
 
-OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
+OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network,
+                                 std::string& hw_target,
+                                 ov::AnyMap& device_config,
+                                 std::string name) {
   ov::CompiledModel obj;
   try {
     obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
@@ -42,8 +45,11 @@ OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std
   }
 }
 
-#if defined(OPENVINO_2023_0)
-OVExeNetwork OVCore::LoadNetwork(const std::string& model, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
+#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
+OVExeNetwork OVCore::LoadNetwork(const std::string& model,
+                                 std::string& hw_target,
+                                 ov::AnyMap& device_config,
+                                 std::string name) {
   ov::CompiledModel obj;
   try {
     obj = oe.compile_model(model, ov::Tensor(), hw_target, device_config);
@@ -75,8 +81,12 @@ OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& model, OVRemoteCont
 #endif
 
 std::vector<std::string> OVCore::GetAvailableDevices() {
-  auto obj = oe.get_available_devices();
-  return obj;
+  auto available_devices = oe.get_available_devices();
+  return available_devices;
+}
+
+void OVCore::SetStreams(const std::string& device_type, int num_streams) {
+  oe.set_property(device_type, {ov::num_streams(num_streams)});
 }
 
 OVInferRequest OVExeNetwork::CreateInferRequest() {
