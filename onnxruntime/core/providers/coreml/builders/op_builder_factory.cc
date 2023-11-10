@@ -126,6 +126,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateSoftmaxOpBuilder("Softmax", op_registrations);
   }
 
+  {  // Split
+    CreateSplitOpBuilder("Split", op_registrations);
+  }
+
   return op_registrations;
 }
 

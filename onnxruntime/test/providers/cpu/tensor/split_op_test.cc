@@ -654,7 +654,8 @@ TEST(SplitOperatorTest, MissingOptionalInputAdded) {
                      {3.f, 4.f,
                       7.f, 8.f}});
 
-  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, -1, false, {}, false);
+  // CoreML EP does not support the case when split_is_input==true but missing providing the split as initializer.
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kCoreMLExecutionProvider}, false, true, -1, false, {}, false);
 }
 
 TEST(SplitOperatorTest, Split18_NumOutputs_EvenSplit) {
