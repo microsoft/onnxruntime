@@ -7,6 +7,7 @@
 </script>
 
 <div class="container mx-auto px-10 my-10">
+	<div class="divider" />
 	<h1 class="text-4xl pb-2">ONNX Runtime Inferencing</h1>
 	<p class="text-xl pb-4">
 		ONNX Runtime powers AI in Microsoft products including Windows, Office, Azure Cognitive Services, and Bing,

@@ -14,7 +14,12 @@
 <div class="container mx-auto px-10 my-10">
 	<h1 class="text-4xl pb-4">Get Started</h1>
 	<h1 class="text-2xl pb-4">Installation Instructions</h1>
-	<Table />
+	<div class="lg:hidden">
+		The installation table is visible on desktop only.
+	</div>
+	<div class="hidden lg:grid">
+		<Table />
+	</div>
 	<p class="pt-4">
 		For more in-depth installation instructions, check out the <a
 			href="https://onnxruntime.ai/docs/tutorials/"
@@ -23,7 +28,7 @@
 	</p>
 </div>
 <div class="container mx-auto px-10 my-10">
-	<div class="grid grid-cols-3">
+	<div class="grid grid-cols-2 lg:grid-cols-3">
 		<div class="col-span-2">
 			<h1 class="text-4xl pb-4">GitHub</h1>
 			If you are interested in joining the ONNX Runtime open source community, you might want to join us on GitHub where you can
@@ -36,12 +41,12 @@
 				>
 			</div>
 		</div>
-		<img src={githublogo} alt="GitHub Logo" />
+		<img class="hidden lg:grid h-48 mx-auto" src={githublogo} alt="GitHub Logo" />
 	</div>
 </div>
 
 <div class="container mx-auto px-10 my-10">
-	<div class="grid grid-cols-3">
+	<div class="grid grid-cols-2 md:grid-cols-3">
 		<div class="col-span-2">
 			<h1 class="text-4xl">Tutorials</h1>
 			<h1 class="text-2xl pb-2">
@@ -52,8 +57,8 @@
 				>ONNX Runtime Tutorials →</a
 			>
 		</div>
-		<div class="col-span-1">
-			<div class="m-auto">
+		<div class="col-span-1 mx-auto">
+			<div class="m-10">
 				<ImageTutorials widthscale={0.5} heightscale={0.5} />
 			</div>
 		</div>
