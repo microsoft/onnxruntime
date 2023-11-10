@@ -419,9 +419,9 @@ namespace Dml
 
     } // namespace FusionHelpers
 
-    uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t dmlDimCount)
+    uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t dmlDimCount, uint32_t firstInputIndex)
     {
-        const std::vector<DimensionType> inputDimensions = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0);
+        const std::vector<DimensionType> inputDimensions = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(firstInputIndex);
         uint32_t onnxDimCount = gsl::narrow_cast<uint32_t>(inputDimensions.size());
         onnxAxis = HandleNegativeAxis(onnxAxis, onnxDimCount);
         return GetDmlAdjustedAxis(onnxAxis, onnxDimCount, dmlDimCount);
