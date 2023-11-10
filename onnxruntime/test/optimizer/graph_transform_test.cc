@@ -1153,6 +1153,29 @@ TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInlining) {
   ASSERT_EQ(op_to_count["If"], 1);
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInliningRebuildEdges) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "transform_nested_ifs_toplogical_sorted_nodes.onnx";
+
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.ConstantFoldingIfConstantInliningRebuildEdges";
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto& graph = session_object.GetModel().MainGraph();
+  auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["pkg.onnxscript.torch_lib._aten_linalg_vector_norm_no_dim_onnx"], 0);
+  ASSERT_EQ(op_to_count["If"], 0);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
+  ASSERT_EQ(op_to_count["Abs"], 1);
+  ASSERT_EQ(op_to_count["Mul"], 1);
+  ASSERT_EQ(op_to_count["ReduceSum"], 1);
+  ASSERT_EQ(op_to_count["Sqrt"], 1);
+  ASSERT_EQ(op_to_count["Cast"], 2);
+}
+
 // Check transformations in the case of a subgraph with constant inputs.
 TEST_F(GraphTransformationTests, SubgraphWithConstantInputs) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "constant-subgraph.onnx";

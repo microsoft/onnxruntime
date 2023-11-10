@@ -4127,7 +4127,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     name_to_nodearg.emplace(graph_output_defs[i]->Name(), node_output_defs[i]);
   }
 
-  // we would like to move the entries that can be potentially big
+  // Move initializers from the subgraph to the destination graph.
   for (int i = 0, limit = graph_to_inline.graph_proto_->initializer_size(); i < limit; ++i) {
     auto* initializer = graph_to_inline.graph_proto_->mutable_initializer(i);
     const std::string src_name = initializer->name();
@@ -4173,9 +4173,42 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
 #endif
   }
 
+  // Look up nodes that would be providing input to our nodes (implicit and explicit)
+  // and any nodes that take the output of our nodes (used to be If output)
+  // Map of NodeArg name to pair of Node* and input index in the destination node
+  using NodeAndIndex = std::pair<Node*, int>;
+  using ArgNameToNodeMap = std::unordered_map<std::string_view, NodeAndIndex>;
+  ArgNameToNodeMap input_args;
+  // Map of NodeArg name to pair of Node* and output index in the source node.
+  ArgNameToNodeMap output_args;
+
+  auto map_defs = [](Node& node, ArgNameToNodeMap& map, bool input) {
+    const auto defs = (input) ? node.InputDefs() : node.OutputDefs();
+    int arg_pos = -1;
+    for (auto* node_arg : defs) {
+      ++arg_pos;
+      if (node_arg->Exists()) {
+        map.emplace(node_arg->Name(), std::make_pair(&node, arg_pos));
+      }
+    }
+  };
+
+  const bool is_this_main_graph = (parent_graph_ == nullptr);
+  // Map the inputs and outputs of the If node to the nodes in the graph to inline.
+  if (!is_this_main_graph) {
+    for (auto& node : Nodes()) {
+      if (node.Index() == if_node.Index()) {
+        continue;
+      }
+      map_defs(node, input_args, true);
+      map_defs(node, output_args, false);
+    }
+  }
+
   // We want to make sure we get nodes in topological order
   // because Constant folding may cause the nodes appear in
   // a different order.
+  InlinedVector<Node*> new_nodes;
   GraphViewer graph(graph_to_inline);
   for (const auto node_idx : graph.GetNodesInTopologicalOrder()) {
     // GraphViewer filters out nullptrs
@@ -4186,7 +4219,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     for (const auto* input_def : node->InputDefs()) {
       if (input_def->Exists()) {
         // Check if this is one of the implicit graph inputs
-        // then leave the name as is and reuse the NodeArg
+        // then leave the name as is and re-use the NodeArg
         const auto& input_name = input_def->Name();
         auto outer_hit = outer_scope_values.find(input_name);
         if (outer_hit != outer_scope_values.cend()) {
@@ -4221,12 +4254,26 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
       }
     }
 
-    const auto new_node_name = GenerateNodeName(make_unique(node->Name()));
+    const auto new_node_name = GenerateNodeName(make_unique(node->OpType()));
     Node& new_node = AddNode(new_node_name, node->OpType(), node->Description(),
                              new_node_input_defs,
                              new_node_output_defs,
                              nullptr,
                              node->Domain());
+
+    if (!is_this_main_graph) {
+      int arg_pos = -1;
+      for (auto* input_def : new_node_input_defs) {
+        ++arg_pos;
+        input_args.insert_or_assign(input_def->Name(), std::make_pair(&new_node, arg_pos));
+      }
+      arg_pos = -1;
+      for (auto* output_def : new_node_output_defs) {
+        ++arg_pos;
+        output_args.insert_or_assign(output_def->Name(), std::make_pair(&new_node, arg_pos));
+      }
+      new_nodes.push_back(&new_node);
+    }
 
     new_node.SetSinceVersion(node->SinceVersion());
     new_node.op_ = node->op_;
@@ -4235,16 +4282,18 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
       auto& subgraphs = node->MutableSubgraphs();
 
       // Check if any of this node implicit inputs of this graph is in the renaming map
-      bool rename_subgraph_names = false;
-      for (const auto* input_def : node->ImplicitInputDefs()) {
-        if (name_to_nodearg.count(input_def->Name()) > 0) {
-          rename_subgraph_names = true;
-          break;
+      int renames_subgraph_names = 0;
+      auto& new_implicit_defs = node->MutableImplicitInputDefs();
+      for (auto& input_def : new_implicit_defs) {
+        auto hit = name_to_nodearg.find(input_def->Name());
+        if (hit != name_to_nodearg.cend()) {
+          input_def = hit->second;
+          ++renames_subgraph_names;
         }
       }
 
       for (auto& subgraph : subgraphs) {
-        if (rename_subgraph_names) {
+        if (renames_subgraph_names > 0) {
           // We need to rename the subgraph node names
           // because they may refer to the implicit inputs
           // that were renamed.
@@ -4256,9 +4305,45 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
 
       new_node.MutableSubgraphs() = std::move(subgraphs);
       new_node.GetMutableMapOfAttributeNameToSubgraph() = std::move(node->GetMutableMapOfAttributeNameToSubgraph());
+      new_node.MutableImplicitInputDefs() = std::move(new_implicit_defs);
     }
 
     new_node.GetMutableAttributes() = std::move(node->GetMutableAttributes());
+  }
+
+  // Let's rebuild local connections, so next time a GraphViewer is able to perform topological sort.
+  // We only need to do so if this graph is not the main graph, because the main graph is going to resolve
+  // and it is not possible to inline the same nodes again.
+  if (!is_this_main_graph) {
+    for (auto* node : new_nodes) {
+      int arg_pos = -1;
+      for (auto* input_def : node->InputDefs()) {
+        ++arg_pos;
+        auto hit = output_args.find(input_def->Name());
+        if (hit != output_args.cend()) {
+          // The input to this node is an output from a previous node in this graph.
+          // Create relationship between this node (node), and the node providing the output (output_node).
+          const auto& producer = hit->second.first;
+          const auto src_idx = hit->second.second;
+          AddEdge(producer->Index(), node->Index(), src_idx, arg_pos);
+        }
+      }
+
+      // Check if any of the outputs for inlined nodes are inputs to other nodes in the graph.
+      // (outputs of If node)
+      arg_pos = -1;
+      for (auto& output_def : node->OutputDefs()) {
+        ++arg_pos;
+        auto hit = input_args.find(output_def->Name());
+        if (hit != input_args.cend()) {
+          // The output of this node is an input to another node in this graph.
+          // Create relationship between this node (node), and the node using the input (input_node).
+          const auto& consumer = hit->second.first;
+          const auto dst_idx = hit->second.second;
+          AddEdge(node->Index(), consumer->Index(), arg_pos, dst_idx);
+        }
+      }
+    }
   }
 
   LOGS(logger, INFO) << "Constant folded (inlined) " << (condition_value ? then_branch : else_branch)
