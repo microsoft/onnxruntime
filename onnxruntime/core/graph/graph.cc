@@ -4177,13 +4177,14 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
   // and any nodes that take the output of our nodes (used to be If output)
   // Map of NodeArg name to pair of Node* and input index in the destination node
   using NodeAndIndex = std::pair<Node*, int>;
-  using ArgNameToNodeMap = std::unordered_map<std::string_view, NodeAndIndex>;
+  using ArgNameToNodeMap = InlinedHashMap<std::string_view, NodeAndIndex>;
   ArgNameToNodeMap input_args;
   // Map of NodeArg name to pair of Node* and output index in the source node.
   ArgNameToNodeMap output_args;
 
   auto map_defs = [](Node& node, ArgNameToNodeMap& map, bool input) {
     const auto defs = (input) ? node.InputDefs() : node.OutputDefs();
+    map.reserve(defs.size());
     int arg_pos = -1;
     for (auto* node_arg : defs) {
       ++arg_pos;
