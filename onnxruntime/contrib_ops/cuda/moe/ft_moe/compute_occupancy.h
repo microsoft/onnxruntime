@@ -17,10 +17,12 @@
 
 #include <cuda_runtime_api.h>
 
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "cutlass/device_kernel.h"
-#include "common.h"
 
-namespace fastertransformer {
+using namespace onnxruntime;
+
+namespace ort_fastertransformer {
 
 template <typename GemmKernel>
 inline int compute_occupancy_for_kernel() {
@@ -36,14 +38,14 @@ inline int compute_occupancy_for_kernel() {
       status = cudaGetLastError();
       return 0;
     }
-    check_cuda_error(status);
+    CUDA_CALL_THROW(status);
   }
 
   int max_active_blocks = -1;
-  check_cuda_error(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+  CUDA_CALL_THROW(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
       &max_active_blocks, cutlass::Kernel<GemmKernel>, GemmKernel::kThreadCount, smem_size));
 
   return max_active_blocks;
 }
 
-}  // namespace fastertransformer
+}  // namespace ort_fastertransformer

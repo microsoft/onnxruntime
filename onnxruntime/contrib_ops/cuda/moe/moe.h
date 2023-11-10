@@ -14,21 +14,21 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 template <typename T>
-class MoEBlock final : public CudaKernel {
+class MoE final : public CudaKernel {
  public:
-  explicit MoEBlock(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+  explicit MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
 
     std::string activation_type_str;
     ORT_ENFORCE(op_kernel_info.GetAttr<std::string>("activation_type", &activation_type_str).IsOK());
     if (activation_type_str == "relu") {
-      activation_type_ = fastertransformer::ActivationType::Relu;
+      activation_type_ = ort_fastertransformer::ActivationType::Relu;
     } else if (activation_type_str == "gelu") {
-      activation_type_ = fastertransformer::ActivationType::Gelu;
+      activation_type_ = ort_fastertransformer::ActivationType::Gelu;
     } else if (activation_type_str == "silu") {
-      activation_type_ = fastertransformer::ActivationType::Silu;
+      activation_type_ = ort_fastertransformer::ActivationType::Silu;
     } else if (activation_type_str == "identity") {
-      activation_type_ = fastertransformer::ActivationType::Identity;
+      activation_type_ = ort_fastertransformer::ActivationType::Identity;
     } else {
       ORT_THROW("Unsupported MoE activation type: ", activation_type_str);
     }
@@ -37,7 +37,7 @@ class MoEBlock final : public CudaKernel {
 
  private:
   int64_t k_;
-  fastertransformer::ActivationType activation_type_;
+  ort_fastertransformer::ActivationType activation_type_;
 };
 
 }  // namespace cuda

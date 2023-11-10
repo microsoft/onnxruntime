@@ -9,9 +9,9 @@
 namespace onnxruntime {
 namespace test {
 
-static void RunMoEBlockTest(
+static void RunMoETest(
     const std::vector<float>& input,
-    const std::vector<float>& gated_output,
+    const std::vector<float>& router_probs,
     const std::vector<float>& fc1_experts_weights,
     const std::vector<float>& fc2_experts_weights,
     const std::vector<float>& fc1_experts_bias,
@@ -27,12 +27,12 @@ static void RunMoEBlockTest(
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
   if (enable_cuda) {
-    OpTester tester("MoEBlock", 1, onnxruntime::kMSDomain);
+    OpTester tester("MoE", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("k", static_cast<int64_t>(1));
     tester.AddAttribute<std::string>("activation_type", activation_type);
 
     std::vector<int64_t> input_dims = {num_rows, hidden_size};
-    std::vector<int64_t> gated_output_dims = {num_rows, num_experts};
+    std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
     std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, inter_size};
     std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};
     std::vector<int64_t> fc1_experts_bias_dims = {num_experts, inter_size};
@@ -41,7 +41,7 @@ static void RunMoEBlockTest(
 
     if (use_float16) {
       tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
-      tester.AddInput<MLFloat16>("gated_output", gated_output_dims, ToFloat16(gated_output));
+      tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
       tester.AddInput<MLFloat16>("fc1_experts_weights", fc1_experts_weights_dims, ToFloat16(fc1_experts_weights));
       tester.AddInput<MLFloat16>("fc2_experts_weights", fc2_experts_weights_dims, ToFloat16(fc2_experts_weights));
       tester.AddInput<MLFloat16>("fc1_experts_bias", fc1_experts_bias_dims, ToFloat16(fc1_experts_bias));
@@ -49,7 +49,7 @@ static void RunMoEBlockTest(
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
     } else {
       tester.AddInput<float>("input", input_dims, input);
-      tester.AddInput<float>("gated_output", gated_output_dims, gated_output);
+      tester.AddInput<float>("router_probs", router_probs_dims, router_probs);
       tester.AddInput<float>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
       tester.AddInput<float>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
       tester.AddInput<float>("fc1_experts_bias", fc1_experts_bias_dims, fc1_experts_bias);
@@ -63,7 +63,7 @@ static void RunMoEBlockTest(
   }
 }
 
-TEST(MoEBlockTest, MoEBlockTest_Gelu) {
+TEST(MoETest, MoETest_Gelu) {
   int num_rows = 4;
   int num_experts = 4;
   int hidden_size = 8;
@@ -74,7 +74,7 @@ TEST(MoEBlockTest, MoEBlockTest_Gelu) {
       0.22222236f, -0.28868636f, 0.6692926f, 1.4944887f, 0.02431708f, -0.49781424f, 0.7378293f, 1.276276f,
       -0.15469065f, -0.28456813f, -0.6296439f, -0.24855971f, 0.80565417f, -1.1018785f, -0.74082595f, 0.82407707f,
       -0.95033455f, 0.659333f, -0.68629056f, -0.2916592f, 1.869919f, -1.1053563f, -0.14417848f, -0.34625578f};
-  const std::vector<float> gated_output = {
+  const std::vector<float> router_probs = {
       -0.84837115f, 0.100507565f, -0.10548311f, 0.40957215f, 1.0159845f, 0.26919764f, 0.021741152f, -0.34184334f,
       -0.71324956f, 0.29018253f, -0.18227568f, 0.31496462f, -0.48426327f, -1.006643f, -0.100081146f, -0.07692295f};
   const std::vector<float> fc1_experts_weights = {
@@ -227,8 +227,8 @@ TEST(MoEBlockTest, MoEBlockTest_Gelu) {
       0.565234f, 0.17098689f, 0.10810414f, 0.43916586f, 0.3535297f, 0.45673048f, 0.3853893f, 0.18613164f,
       1.3354061f, 0.5049282f, 0.72775036f, 0.90331376f, 1.2945517f, 0.9123066f, 1.1995136f, 0.7708638f};
 
-  RunMoEBlockTest(input,
-                  gated_output,
+  RunMoETest(input,
+                  router_probs,
                   fc1_experts_weights,
                   fc2_experts_weights,
                   fc1_experts_bias,
@@ -241,7 +241,7 @@ TEST(MoEBlockTest, MoEBlockTest_Gelu) {
                   "gelu");
 }
 
-TEST(MoEBlockTest, MoEBlockTest_Relu) {
+TEST(MoETest, MoETest_Relu) {
   int num_rows = 4;
   int num_experts = 4;
   int hidden_size = 8;
@@ -252,7 +252,7 @@ TEST(MoEBlockTest, MoEBlockTest_Relu) {
       1.2215378f, -0.31372663f, -0.7234253f, -0.3627346f, 0.44249064f, 0.19418247f, -0.49998695f, -0.55005103f,
       0.023851749f, -1.5203826f, 0.52939993f, -0.39082858f, -1.9291036f, 0.034976702f, -0.48336256f, -1.226073f,
       -0.33963847f, 0.0073261578f, -0.0521804f, 1.16749f, 1.7302082f, 2.0561688f, -0.2347232f, -1.3456243f};
-  const std::vector<float> gated_output = {
+  const std::vector<float> router_probs = {
       -0.08146476f, -0.40439552f, 1.0100367f, -0.7724162f, -0.08113786f, -0.36328858f, 0.3688482f, -0.013465762f,
       -0.32420647f, -0.3815508f, 0.79585606f, 0.14430691f, -0.21869831f, 0.11483674f, -0.11992836f, 0.35216537f};
   const std::vector<float> fc1_experts_weights = {
@@ -405,8 +405,8 @@ TEST(MoEBlockTest, MoEBlockTest_Relu) {
       0.012911659f, 0.045757107f, 0.27884653f, 0.3585817f, 0.116771236f, 0.25755364f, 0.23161705f, 0.2906256f,
       4.8571277f, 5.649453f, 5.485141f, 5.306299f, 4.767025f, 6.9010167f, 5.3520975f, 6.711155f};
 
-  RunMoEBlockTest(input,
-                  gated_output,
+  RunMoETest(input,
+                  router_probs,
                   fc1_experts_weights,
                   fc2_experts_weights,
                   fc1_experts_bias,

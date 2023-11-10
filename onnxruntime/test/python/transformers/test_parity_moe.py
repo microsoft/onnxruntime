@@ -10,6 +10,7 @@
 # license information.
 # -------------------------------------------------------------------------
 
+import pytest
 import unittest
 
 import numpy
@@ -25,6 +26,7 @@ numpy.random.seed(42)
 
 
 ORT_DTYPE = TensorProto.FLOAT16
+THRESHOLD = 3e-2
 
 
 def value_string_of(numpy_array):
@@ -49,17 +51,17 @@ def create_moe_onnx_graph(
 ):
     nodes = [
         helper.make_node(
-            "MoEBlock",
+            "MoE",
             [
                 "input",
-                "gated_output",
+                "router_probs",
                 "fc1_experts_weights",
                 "fc2_experts_weights",
                 "fc1_experts_bias",
                 "fc2_experts_bias",
             ],
             ["output"],
-            "MoEBlock_0",
+            "MoE_0",
             k=1,
             activation_type="gelu",
             domain="com.microsoft",
@@ -69,19 +71,21 @@ def create_moe_onnx_graph(
     fc1_shape = [num_experts, hidden_size, inter_size]
     fc2_shape = [num_experts, inter_size, hidden_size]
 
+    torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
+
     initializers = [
         helper.make_tensor(
             "fc1_experts_weights",
             ORT_DTYPE,
             fc1_shape,
-            fc1_experts_weights.to(torch.float16).flatten().tolist(),
+            fc1_experts_weights.to(torch_type).flatten().tolist(),
             raw=False,
         ),
         helper.make_tensor(
             "fc2_experts_weights",
             ORT_DTYPE,
             fc2_shape,
-            fc2_experts_weights.to(torch.float16).flatten().tolist(),
+            fc2_experts_weights.to(torch_type).flatten().tolist(),
             raw=False,
         ),
     ]
@@ -94,14 +98,14 @@ def create_moe_onnx_graph(
                 "fc1_experts_bias",
                 ORT_DTYPE,
                 fc1_bias_shape,
-                fc1_experts_bias.to(torch.float16).flatten().tolist(),
+                fc1_experts_bias.to(torch_type).flatten().tolist(),
                 raw=False,
             ),
             helper.make_tensor(
                 "fc2_experts_bias",
                 ORT_DTYPE,
                 fc2_bias_shape,
-                fc2_experts_bias.to(torch.float16).flatten().tolist(),
+                fc2_experts_bias.to(torch_type).flatten().tolist(),
                 raw=False,
             ),
         ]
@@ -113,7 +117,7 @@ def create_moe_onnx_graph(
 
     graph_inputs.append(
         helper.make_tensor_value_info(
-            "gated_output",
+            "router_probs",
             ORT_DTYPE,
             [num_rows, num_experts],
         )
@@ -125,7 +129,7 @@ def create_moe_onnx_graph(
 
     graph = helper.make_graph(
         nodes,
-        "MoEBlock_Graph",
+        "MoE_Graph",
         graph_inputs,
         graph_outputs,
         initializers,
@@ -210,7 +214,7 @@ class MoERuntimeExperts(nn.Module):
         return x
 
 
-class MoEBlock(nn.Module):
+class MoE(nn.Module):
     def __init__(
         self,
         batch_size,
@@ -295,7 +299,7 @@ class MoEBlock(nn.Module):
 
         ort_inputs = {
             "input": numpy.ascontiguousarray(y.detach().numpy().astype(np_type)),
-            "gated_output": numpy.ascontiguousarray(logits.detach().numpy().astype(np_type)),
+            "router_probs": numpy.ascontiguousarray(logits.detach().numpy().astype(np_type)),
         }
 
         ort_output = None
@@ -303,7 +307,7 @@ class MoEBlock(nn.Module):
             ort_output = self.ort_sess.run(None, ort_inputs)
 
         # print_tensor("input", ort_inputs["input"])
-        # print_tensor("gated_output", ort_inputs["gated_output"])
+        # print_tensor("router_probs", ort_inputs["router_probs"])
         # print_tensor("fc1_experts_weights", self.moe_experts.weight1.detach().numpy())
         # print_tensor("fc2_experts_weights", self.moe_experts.weight2.detach().numpy())
         # print_tensor("fc1_experts_bias", self.moe_experts.bias1.detach().numpy())
@@ -312,23 +316,45 @@ class MoEBlock(nn.Module):
 
         return ort_output
 
-
-class TestMoEBlock(unittest.TestCase):
-    def test_moe_block(self):
-        rt = MoEBlock(
-            batch_size=2,
-            num_rows=2,
-            num_experts=4,
-            in_features=8,
-            hidden_features=16,
-            out_features=8,
-        )
-
-        torch_out = rt.torch_forward()
-        ort_out = rt.onnx_forward()
+    def parity_check(self):
+        torch_out = self.torch_forward()
+        ort_out = self.onnx_forward()
         if ort_out is not None:
             # print("max diff", numpy.max(numpy.abs(torch_out[0].detach().numpy() - ort_out[0])))
-            assert numpy.allclose(torch_out[0].detach().numpy(), ort_out[0], rtol=3e-2, atol=3e-2)
+            assert numpy.allclose(torch_out[0].detach().numpy(), ort_out[0], rtol=THRESHOLD, atol=THRESHOLD)
+
+
+class TestMoE(unittest.TestCase):
+    @pytest.mark.slow
+    def test_moe_large(self):
+        for batch_size in [1, 8]:
+            for num_rows in [16, 64]:
+                for num_experts in [16, 64]:
+                    for in_features in [256]:
+                        for hidden_features in [512]:
+                            print(
+                                f"batch_size={batch_size}, num_rows={num_rows}, num_experts={num_experts}, in_features={in_features}, hidden_features={hidden_features}"
+                            )
+                            rt = MoE(
+                                batch_size=batch_size,
+                                num_rows=num_rows,
+                                num_experts=num_experts,
+                                in_features=in_features,
+                                hidden_features=hidden_features,
+                                out_features=in_features,
+                            )
+                            rt.parity_check()
+
+    def test_moe_small(self):
+        rt = MoE(
+            batch_size=2,
+            num_rows=8,
+            num_experts=4,
+            in_features=16,
+            hidden_features=32,
+            out_features=16,
+        )
+        rt.parity_check()
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@
 #include "cub/util_type.cuh"
 #endif
 
-namespace fastertransformer {
+namespace ort_fastertransformer {
 
 static constexpr int WARP_SIZE = 32;
 
@@ -1108,4 +1108,4 @@ template void finalize_moe_routing_kernelLauncher(const half*,
                                                   const int,
                                                   cudaStream_t);
 
-}  // namespace fastertransformer
+}  // namespace ort_fastertransformer

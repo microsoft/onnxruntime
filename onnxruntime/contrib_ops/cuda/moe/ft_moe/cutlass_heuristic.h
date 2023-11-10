@@ -22,9 +22,7 @@
 #include <cstdint>
 #include <vector>
 
-// #include "src/fastertransformer/utils/cuda_utils.h"
-
-namespace fastertransformer {
+namespace ort_fastertransformer {
 
 std::vector<CutlassGemmConfig> get_candidate_configs(int sm, const bool is_weight_only, const bool simt_configs_only);
 
@@ -39,4 +37,4 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
                                                         const int multi_processor_count,
                                                         const int is_weight_only);
 
-}  // namespace fastertransformer
+}  // namespace ort_fastertransformer

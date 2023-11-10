@@ -48,7 +48,7 @@
 #include <math.h>
 #include <sstream>
 
-namespace fastertransformer {
+namespace ort_fastertransformer {
 
 inline int getSMVersion() {
   int device{-1};
@@ -855,4 +855,4 @@ void MoeGemmRunner<T, WeightType>::moe_gemm(const T* A,
       A, B, weight_scales, nullptr, C, total_rows_before_expert, total_rows, gemm_n, gemm_k, num_experts, stream);
 }
 
-}  // namespace fastertransformer
+}  // namespace ort_fastertransformer

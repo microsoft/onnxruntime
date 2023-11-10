@@ -16,6 +16,6 @@
 
 #include "moe_gemm_kernels_template.h"
 
-namespace fastertransformer {
+namespace ort_fastertransformer {
 template class MoeGemmRunner<half, half>;
-}  // namespace fastertransformer
+}  // namespace ort_fastertransformer

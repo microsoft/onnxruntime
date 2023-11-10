@@ -20,7 +20,7 @@
 #include <vector>
 #include <stdexcept>
 
-namespace fastertransformer {
+namespace ort_fastertransformer {
 
 struct TileShape {
   int m;
@@ -192,4 +192,4 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
   return best_config;
 }
 
-}  // namespace fastertransformer
+}  // namespace ort_fastertransformer

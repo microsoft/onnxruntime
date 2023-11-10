@@ -19,7 +19,7 @@
 #include "moe_gemm_kernels.h"
 #include <cuda_runtime_api.h>
 
-namespace fastertransformer {
+namespace ort_fastertransformer {
 
 static inline size_t pad_to_multiple_of_16(const size_t& input) {
   static constexpr int ALIGNMENT = 16;
@@ -226,4 +226,4 @@ class CutlassMoeFCRunner<float, WeightType, typename std::enable_if_t<!std::is_s
   }
 };
 
-}  // namespace fastertransformer
+}  // namespace ort_fastertransformer

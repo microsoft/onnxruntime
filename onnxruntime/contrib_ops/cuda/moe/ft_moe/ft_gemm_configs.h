@@ -16,7 +16,7 @@
 
 #pragma once
 
-namespace fastertransformer {
+namespace ort_fastertransformer {
 // Note: The shapes are in the format MxNxK. The K shape of the runtime config MUST match the K shape
 //       in the kernel layout details when doing weight only quantization.
 enum class CutlassTileConfig {
@@ -55,4 +55,4 @@ struct CutlassGemmConfig {
   int stages = -1;
 };
 
-}  // namespace fastertransformer
+}  // namespace ort_fastertransformer

@@ -1,4 +1,19 @@
 /*
+ * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/*
   This file exists so that we use the same weight layout for MoE grouped gemm and regular gemm when the weight is
   quantized. The preprocessing code reads this template to know how to organize the quantized weight matrices
   to be consumed by CUTLASS.
@@ -67,14 +82,12 @@ struct MixedGemmArchTraits<float, float, arch> {
 // ========================= Volta Traits ===========================
 // Volta will always dequantize after the global memory load.
 // This will instantiate any HMMA tensorcore kernels for Volta.
-// Note that volta does not have native bfloat support so weights and activations will be casted to fp16
-// and compute will happen in fp16 then will be converted for bf16 output.
 template <typename TypeA, typename TypeB>
 struct MixedGemmArchTraits<
     TypeA,
     TypeB,
     cutlass::arch::Sm70,
-    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm70>;
 
@@ -94,14 +107,12 @@ struct MixedGemmArchTraits<
 };
 
 // ======================= Turing Traits ==============================
-// Note that turing does not have native bfloat support so weights and activations will be casted to fp16
-// and compute will happen in fp16 then will be converted for bf16 output.
 template <typename TypeA, typename TypeB>
 struct MixedGemmArchTraits<
     TypeA,
     TypeB,
     cutlass::arch::Sm75,
-    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm75>;
 
@@ -126,7 +137,7 @@ struct MixedGemmArchTraits<
     TypeA,
     TypeB,
     cutlass::arch::Sm80,
-    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value || cutlass::platform::is_same<TypeA, cutlass::bfloat16_t>::value>::type> {
+    typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm80>;
 

@@ -155,7 +155,7 @@ class SymbolicShapeInference:
             "MaxPool": self._infer_Pool,
             "Max": self._infer_symbolic_compute_ops,
             "Min": self._infer_symbolic_compute_ops,
-            "MoEBlock": self._pass_on_shape_and_type,
+            "MoE": self._pass_on_shape_and_type,
             "Mul": self._infer_symbolic_compute_ops,
             "NonMaxSuppression": self._infer_NonMaxSuppression,
             "NonZero": self._infer_NonZero,

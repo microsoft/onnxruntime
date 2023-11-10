@@ -19,7 +19,7 @@
 #include <cuda_runtime_api.h>
 #include "ft_gemm_configs.h"
 
-namespace fastertransformer {
+namespace ort_fastertransformer {
 
 enum class ActivationType {
   Gelu,
@@ -96,4 +96,4 @@ class MoeGemmRunner {
   int multi_processor_count_;
 };
 
-}  // namespace fastertransformer
+}  // namespace ort_fastertransformer
