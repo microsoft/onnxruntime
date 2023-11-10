@@ -54,20 +54,22 @@ const getProgramInputTensorInfoDependencyKey =
  * program. if the key is the same, the program shader source should be the same, so we can reuse the program.
  *
  */
-const getProgramInfoUniqueKey = (programInfo: ProgramInfo, inputTensors: readonly TensorView[]): string => {
-  // final key format:
-  // <PROGRAM_NAME>[<PROGRAM_CUSTOM_CACHE_HINT>]:<INPUTS_INFO_0>|<INPUTS_INFO_1>|...
-  let key = programInfo.name;
-  if (programInfo.shaderCache?.hint) {
-    key += '[' + programInfo.shaderCache.hint + ']';
-  }
-  key += `:${
-      getProgramInputTensorInfoDependencyKey(
-          inputTensors,
-          programInfo.shaderCache?.inputDependencies ??
-              new Array<ProgramInputTensorInfoDependency>(inputTensors.length).fill('dims'))}`;
-  return key;
-};
+const getProgramInfoUniqueKey =
+    (programInfo: ProgramInfo, inputTensors: readonly TensorView[], is1DimensionDispatch: boolean): string => {
+      // final key format:
+      // <PROGRAM_NAME>[<PROGRAM_CUSTOM_CACHE_HINT>]:is1DimensionDispatch:<INPUTS_INFO_0>|<INPUTS_INFO_1>|...
+      let key = programInfo.name;
+      if (programInfo.shaderCache?.hint) {
+        key += '[' + programInfo.shaderCache.hint + ']';
+      }
+      key += ':' + is1DimensionDispatch +
+          `:${
+                 getProgramInputTensorInfoDependencyKey(
+                     inputTensors,
+                     programInfo.shaderCache?.inputDependencies ??
+                         new Array<ProgramInputTensorInfoDependency>(inputTensors.length).fill('dims'))}`;
+      return key;
+    };
 
 /**
  * this class is designed to store status and being used as a singleton for JSEP. It will be passed to jsepInit() as
@@ -283,10 +285,6 @@ export class WebGpuBackend {
       inputDatas[i] = gpuData;
     }
 
-    // get program info
-    const key = getProgramInfoUniqueKey(program, inputTensorViews);
-    let artifact = this.programManager.getArtifact(key);
-
     const {outputs, dispatchGroup, programUniforms} = program.getRunData(inputTensorViews);
 
     // check output indices
@@ -404,9 +402,11 @@ export class WebGpuBackend {
       uniformBufferBinding = {offset: 0, size: currentOffset, buffer: uniformBufferData.buffer};
     }
 
-
     const normalizedDispatchGroup = this.programManager.normalizeDispatchGroupSize(dispatchGroup);
-
+    const is1DimensionDispatch = normalizedDispatchGroup[1] === 1 && normalizedDispatchGroup[2] === 1;
+    // get program info
+    const key = getProgramInfoUniqueKey(program, inputTensorViews, is1DimensionDispatch);
+    let artifact = this.programManager.getArtifact(key);
     if (!artifact) {
       artifact = this.programManager.build(program, normalizedDispatchGroup);
       this.programManager.setArtifact(key, artifact);
