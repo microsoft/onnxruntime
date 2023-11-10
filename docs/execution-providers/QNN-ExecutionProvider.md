@@ -80,13 +80,12 @@ The QNN Execution Provider supports a number of configuration options. The `prov
 |'1'|generate the QNN context binary into the ONNX file specified by qnn_context_cache_path (default).|
 
 
-|`provider_options_values` for `provider_options_keys = "qnn_context_priority"`|Description|
+|`provider_options_values` for `provider_options_keys = "qnn_context_priority"`|[Description](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/htp_yielding.html)|
 |---|---|
 |'low'||
 |'normal'|default.|
 |'normal_high'||
 |'high'||
-ref: [HTP Yielding and Pre-Emption](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/htp_yielding.html)
 
 
 |`provider_options_values` for `provider_options_keys = "htp_graph_finalization_optimization_mode"`|Description|
