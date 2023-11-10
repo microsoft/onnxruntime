@@ -18,10 +18,9 @@ class TestInferenceSessionWithCtxNode(unittest.TestCase):
 
     # This test is only for TRT EP to test EPContext node with TRT engine
     @unittest.skipIf(
-        "TensorrtExecutionProvider" not in ort.get_available_providers(),
+        "TensorrtExecutionProvider" not in onnxrt.get_available_providers(),
         reason="Test TRT EP only",
     )
-
     def create_ctx_node(self, ctx_embed_mode=0, cache_path=""):
         if ctx_embed_mode:
             # Get engine buffer from engine cache
