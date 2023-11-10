@@ -335,6 +335,7 @@ if(onnxruntime_USE_CUDA)
     URL ${DEP_URL_microsoft_gsl}
     URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
     PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
+    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
   )
 else()
   FetchContent_Declare(
