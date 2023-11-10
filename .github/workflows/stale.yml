@@ -20,7 +20,8 @@ jobs:
           # Override exempt-all-assignees but only to exempt the issues with an assignee to be marked as stale automatically
           exempt-all-issue-assignees: true
           # Used to ignore the issues and pull requests created before the start date
-          start-date: 20220419
+          # Start date should be April 19, 2022 - corresponds to the day previous stale bot stopped working
+          start-date: '2022-04-19T00:00:00Z'
           # Number of days without activity before the actions/stale action labels an issue
           days-before-issue-stale: 30
           # Number of days without activity before the actions/stale action closes an issue
