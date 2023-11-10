@@ -593,10 +593,10 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                    ORT_TSTR("mul_uint8"),
                                                    ORT_TSTR("div_uint8")};
   static const ORTCHAR_T* tensorrt_disabled_tests[] = {
-      ORT_TSTR("YOLOv3-12"), // needs to run symbolic shape inference shape first
-      ORT_TSTR("SSD-MobilenetV1-12"), // symbolic shape inference shape error
-      ORT_TSTR("SSD"),  // needs to run symbolic shape inference shape first
-      ORT_TSTR("size")  // INVALID_ARGUMENT: Cannot find binding of given name: x
+      ORT_TSTR("YOLOv3-12"),           // needs to run symbolic shape inference shape first
+      ORT_TSTR("SSD-MobilenetV1-12"),  // symbolic shape inference shape error
+      ORT_TSTR("SSD"),                 // needs to run symbolic shape inference shape first
+      ORT_TSTR("size")                 // INVALID_ARGUMENT: Cannot find binding of given name: x
   };
   std::vector<std::basic_string<ORTCHAR_T>> paths;
 
