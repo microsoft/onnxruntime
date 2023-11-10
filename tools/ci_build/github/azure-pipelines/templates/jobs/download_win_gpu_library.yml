@@ -9,6 +9,7 @@ parameters:
     type: string
     default: '12.2'
 
+
 steps:
   ${{ if eq(parameters.DownloadCUDA, true) }}:
     - powershell: |
@@ -24,7 +25,7 @@ steps:
 
   ${{ if eq(parameters.DownloadTRT, true) }}:
     - powershell: |
-        azcopy.exe cp --recursive ${{ variables.tensorrt_url }}, $(Agent.TempDirectory)
+        azcopy.exe cp --recursive ${{ variables.tensorrt_url }} $(Agent.TempDirectory)
       displayName: 'Download ${{ variables.tensorrt_dir }}'
     - powershell: |
         Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ variables.tensorrt_dir }}\lib"
