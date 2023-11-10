@@ -35,7 +35,6 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
           {"Transpose", {}},
           {"MaxPool", {12}},
           {"Resize", {}},
-          {"Split", {}},
           {"Squeeze", {}},
           {"Unsqueeze", {}},
           {"Tile", {}}};
@@ -96,6 +95,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
   return {{"Concat", {}},
           {"Max", {}},
           {"Min", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetSplitOpVersionsMap() {
+  return {{"Split", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
   return {{"Conv", {}}};
@@ -167,6 +169,13 @@ void RegisterVariadicSelectors(Selectors& qdq_selectors) {
   /* register selectors for variadic ops */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<VariadicNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetVariadicOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterSplitSelector(Selectors& qdq_selectors) {
+  /* register selectors for Split op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<SplitNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetSplitOpVersionsMap(),
                                  std::move(selector));
 }
 
@@ -247,6 +256,7 @@ void SelectorManager::CreateSelectors() {
   RegisterUnarySelectors(qdq_selectors_);
   RegisterBinarySelectors(qdq_selectors_);
   RegisterVariadicSelectors(qdq_selectors_);
+  RegisterSplitSelector(qdq_selectors_);
   RegisterConvSelector(qdq_selectors_);
   RegisterConvTransposeSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
