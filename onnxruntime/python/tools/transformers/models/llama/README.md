@@ -340,6 +340,18 @@ CUDA_VISIBLE_DEVICES=4 python3 -m models.llama.benchmark \
     --device cuda
 ```
 
+9. ONNX Runtime, FP16, convert_to_onnx, LLaMA-2 70B shard to 4 GPUs
+```
+CUDA_VISIBLE_DEVICES=4,5,6,7 bash benchmark_70b_model.sh 4 \
+    --benchmark-type ort-convert-to-onnx \
+    --ort-model-path ./llama2-70b-dis/rank_{}_Llama-2-70b-hf_decoder_merged_model_fp16.onnx \
+    --model-name meta-llama/Llama-2-70b-hf \
+    --precision fp16 \
+    --device cuda \
+    --warmup-runs 5 \
+    --num-runs 100
+```
+
 You can profile a variant by adding the `--profile` flag and providing one batch size and sequence length combination.
 
 ### Benchmark All
