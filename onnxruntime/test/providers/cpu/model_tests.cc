@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <iostream>
 #include <iterator>
 #include <gtest/gtest.h>
 
@@ -410,7 +411,7 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // If an EP doesn't have any CI build pipeline, then there is no need to specify any opset.
 #ifdef USE_TENSORRT
   // tensorrt: only enable opset 14 to 17 of onnx tests
-  provider_names[provider_name_tensorrt] = {opset14, opset15, opset16, opset17};
+  provider_names[provider_name_tensorrt] = {opset12, opset14, opset15, opset16, opset17};
 #endif
 #ifdef USE_MIGRAPHX
   provider_names[provider_name_migraphx] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
@@ -608,7 +609,7 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
     }
 
     // Same as the above, except this one is for large models
-#if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE) || defined(USE_TENSORRT)
+#if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32
     ORT_STRING_VIEW model_test_root_path = ORT_TSTR("..\\models");
     // thus, only the root path should be mounted.
@@ -696,6 +697,7 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
           std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
           if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
             test_case_name = test_case_name.substr(5);
+            std::cout << test_case_name << std::endl;
           if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
             return true;
 
