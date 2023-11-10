@@ -68,14 +68,12 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   coreml_splitnd->set_axis(axis);
 
   if (input_defs.size() > 1) {
-    // if "split" is explicitely provided as an input
+    // if "split" is explicitly provided as an input
     const auto& split_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
     Initializer unpacked_tensor(split_tensor);
     auto split_span = unpacked_tensor.DataAsSpan<int64_t>();
     auto split_sizes = split_span.size();
     num_outputs = SafeInt<uint64_t>(split_sizes);
-    // numSplits will be ignored in this case, but setting it here in the coreml layerparam.
-    coreml_splitnd->set_numsplits(num_outputs);
     for (size_t i = 0; i < split_sizes; i++) {
       coreml_splitnd->add_splitsizes(SafeInt<uint64_t>(split_span[i]));
     }
@@ -138,11 +136,14 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
   } else {
     if (node.SinceVersion() >= 18) {
       if (num_outputs < 2) {
-        LOGS(logger, VERBOSE) << "Invalid num_outputs. The value can not be lower than 1. and CoreML SplitND requires at least 2 outputs. num_outputs: " << num_outputs;
+        LOGS(logger, VERBOSE) << "Invalid num_outputs. The value can not be lower than 1.\n"
+                              << "CoreML SplitND requires at least 2 outputs. num_outputs: " << num_outputs;
         return false;
       }
       if (num_outputs != input_shape[HandleNegativeAxis(axis, input_shape.size())]) {
-        LOGS(logger, VERBOSE) << "Invalid num_outputs provided. The value should equal to the size of dimension being split. num_outputs: " << num_outputs;
+        LOGS(logger, VERBOSE) << "Invalid num_outputs provided.\n."
+                              << "The value should equal to the size of dimension being split. num_outputs: "
+                              << num_outputs;
         return false;
       }
     }
