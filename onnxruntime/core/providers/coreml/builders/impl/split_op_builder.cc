@@ -60,7 +60,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   const auto axis = helper.Get("axis", 0);
 
-  // optional attribute introduced since opset 18
+  // attribute introduced since opset 18
   uint64_t num_outputs = 2;
 
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
@@ -68,6 +68,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   coreml_splitnd->set_axis(axis);
 
   if (input_defs.size() > 1) {
+    // if "split" is explicitely provided as an input
     const auto& split_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
     Initializer unpacked_tensor(split_tensor);
     auto split_span = unpacked_tensor.DataAsSpan<int64_t>();
@@ -80,12 +81,22 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
   } else if (node.SinceVersion() < 18) {
     coreml_splitnd->set_numsplits(num_outputs);
-    auto input_dim_value_at_axis = data_shape[HandleNegativeAxis(axis, data_shape.size())];
-    coreml_splitnd->add_splitsizes(SafeInt<uint64_t>(input_dim_value_at_axis - input_dim_value_at_axis / 2));
-    coreml_splitnd->add_splitsizes(SafeInt<uint64_t>(input_dim_value_at_axis / 2));
   } else {
     num_outputs = SafeInt<uint64_t>(helper.Get("num_outputs", -1));
-    coreml_splitnd->set_numsplits(num_outputs);
+    auto split_dim_size = data_shape[HandleNegativeAxis(axis, data_shape.size())];
+    uint64_t chunk_size = narrow<uint64_t>(std::ceil(float(split_dim_size) / num_outputs));
+    uint64_t remainder = split_dim_size % chunk_size;
+    if (remainder) {
+      // uneven
+      auto split_sizes = std::vector<uint64_t>(num_outputs, chunk_size);
+      split_sizes.back() = remainder;
+      for (size_t i = 0; i < split_sizes.size(); i++) {
+        coreml_splitnd->add_splitsizes(SafeInt<uint64_t>(split_sizes[i]));
+      }
+    } else {
+      // even
+      coreml_splitnd->set_numsplits(num_outputs);
+    }
   }
 
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
