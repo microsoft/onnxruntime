@@ -11,7 +11,7 @@ parameters:
 
 
 steps:
-  ${{ if eq(parameters.DownloadCUDA, true) }}:
+  - ${{ if eq(parameters.DownloadCUDA, true) }}:
     - powershell: |
         azcopy.exe cp --recursive ${{ variables.cuda_sdk_url }} $(Agent.TempDirectory)
       displayName: 'Download CUDA SDK v${{ parameters.CUDA_Version }}'
@@ -23,7 +23,7 @@ steps:
           echo %PATH%
       displayName: 'Print PATH'
 
-  ${{ if eq(parameters.DownloadTRT, true) }}:
+  - ${{ if eq(parameters.DownloadTRT, true) }}:
     - powershell: |
         azcopy.exe cp --recursive ${{ variables.tensorrt_url }} $(Agent.TempDirectory)
       displayName: 'Download ${{ variables.tensorrt_dir }}'
