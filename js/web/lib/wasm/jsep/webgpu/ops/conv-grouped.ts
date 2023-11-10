@@ -22,14 +22,13 @@ export const createGroupedConvProgramInfo =
       const wShape = inputs[1].dims;
       const outputChannelsPerGroup = wShape[0] / attributes.group;
 
-      const {activationFunction, applyActivation} = getActivationSnippet(attributes);
-
       const isChannelLast = attributes.format === 'NHWC';
       const outputShape = calculateOutputShape(
           xShape, wShape, attributes.dilations, attributes.pads, attributes.strides, isChannelLast);
       const outputSize = ShapeUtil.size(outputShape);
 
       const output = outputVariable('output', inputs[0].dataType, outputShape);
+      const {activationFunction, applyActivation} = getActivationSnippet(attributes, output.type.value);
       const x = inputVariable('x', inputs[0].dataType, xShape);
       const w = inputVariable('w', inputs[1].dataType, wShape);
       const inputVars = [x, w];
