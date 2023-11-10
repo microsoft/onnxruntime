@@ -12,25 +12,23 @@ parameters:
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
-    - powershell: |
-        azcopy.exe cp --recursive ${{ variables.cuda_sdk_url }} $(Agent.TempDirectory)
-      displayName: 'Download CUDA SDK v${{ parameters.CUDA_Version }}'
-    - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CUDA_Version }}\bin;$(Agent.TempDirectory)\v${{ parameters.CUDA_Version }}\extras\CUPTI\lib64"
-      displayName: 'Append CUDA SDK Directory to PATH'
-    - CmdLine@2:
-        script: |
+      - powershell: |
+          azcopy.exe cp --recursive ${{ variables.cuda_sdk_url }} $(Agent.TempDirectory)
+        displayName: 'Download CUDA SDK v${{ parameters.CUDA_Version }}'
+      - powershell: |
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CUDA_Version }}\bin;$(Agent.TempDirectory)\v${{ parameters.CUDA_Version }}\extras\CUPTI\lib64"
+        displayName: 'Append CUDA SDK Directory to PATH'
+      - CmdLine@2: |
           echo %PATH%
-      displayName: 'Print PATH'
+        displayName: 'Print PATH'
 
   - ${{ if eq(parameters.DownloadTRT, true) }}:
-    - powershell: |
-        azcopy.exe cp --recursive ${{ variables.tensorrt_url }} $(Agent.TempDirectory)
-      displayName: 'Download ${{ variables.tensorrt_dir }}'
-    - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ variables.tensorrt_dir }}\lib"
-      displayName: 'Append CUDA SDK Directory to PATH'
-    - CmdLine@2:
-        script: |
+      - powershell: |
+          azcopy.exe cp --recursive ${{ variables.tensorrt_url }} $(Agent.TempDirectory)
+        displayName: 'Download ${{ variables.tensorrt_dir }}'
+      - powershell: |
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ variables.tensorrt_dir }}\lib"
+        displayName: 'Append CUDA SDK Directory to PATH'
+      - CmdLine@2: |
           echo %PATH%
-      displayName: 'Print PATH'
+        displayName: 'Print PATH'
