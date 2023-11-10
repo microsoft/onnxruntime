@@ -67,8 +67,8 @@ Status ProcessConstantValue(QnnModelWrapper& qnn_model_wrapper,
                             std::vector<std::string>& param_tensor_names,
                             const NodeUnit& node_unit,
                             const NodeUnitIODef& input) {
-  TensorInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
+  OnnxInputInfo input_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(input, input_info));
   std::vector<uint8_t> unpacked_tensor;
   // Already confirmed constant_value input is initializer in ProcessInputs()
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, unpacked_tensor));
