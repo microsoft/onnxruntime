@@ -17,6 +17,8 @@ Abstract:
 
 #include <arm_neon.h>
 
+#include <array>
+
 #include "sqnbitgemm.h"
 
 //
@@ -62,6 +64,43 @@ FoldAccumulators(float32x4_t a0, float32x4_t a1, float32x4_t a2, float32x4_t a3)
     a3 = vreinterpretq_f32_f64(vzip2q_f64(vreinterpretq_f64_f32(b1), vreinterpretq_f64_f32(b3)));
 
     return vaddq_f32(vaddq_f32(a0, a1), vaddq_f32(a2, a3));
+}
+
+template <size_t Capacity>
+MLAS_FORCEINLINE std::array<float32x4_t, Capacity / 4>
+LoadDataAndZeroPad(const float* data, size_t count)
+{
+    static_assert(Capacity % 4 == 0, "Capacity must be divisible by 4.");
+
+    count = std::min(count, Capacity);
+
+    std::array<float32x4_t, Capacity / 4> dst{};
+
+    size_t vi = 0;  // vector index
+
+    // handle 4 values at a time
+    while (count > 3) {
+        dst[vi] = vld1q_f32(data);
+
+        vi += 1;
+        data += 4;
+        count -= 4;
+    }
+
+    // handle remaining values
+    if (count > 0) {
+        dst[vi] = vsetq_lane_f32(data[0], dst[vi], 0);
+    }
+
+    if (count > 1) {
+        dst[vi] = vsetq_lane_f32(data[1], dst[vi], 1);
+    }
+
+    if (count > 2) {
+        dst[vi] = vsetq_lane_f32(data[2], dst[vi], 2);
+    }
+
+    return dst;
 }
 
 template <size_t BlkBitWidth, size_t BlkLen, size_t NCols>
@@ -124,17 +163,8 @@ ComputeDotProducts(
             // load A row vector elements
 
             // load `SubBlkLen` elements from A padding with 0's if there aren't enough
-            float a_segment[SubBlkLen];
-            {
-                const size_t k_subblk_len = std::min(k_blk_len - k_idx_in_blk, SubBlkLen);
-                const float* a_begin = ARowPtr + k + k_idx_in_blk;
-                std::copy(a_begin, a_begin + k_subblk_len, a_segment);
-                std::fill(a_segment + k_subblk_len, a_segment + SubBlkLen, 0.0f);
-            }
-
-            // `SubBlkLen` floats of A
-            float32x4_t av[4];
-            UnrolledLoop<4>([&](size_t i) { av[i] = vld1q_f32(a_segment + i * 4); });
+            const size_t k_subblk_len = std::min(k_blk_len - k_idx_in_blk, SubBlkLen);
+            const auto av = LoadDataAndZeroPad<SubBlkLen>(ARowPtr + k + k_idx_in_blk, k_subblk_len);
 
             // load B column vectors
             uint8x8_t bv_packed[NCols];
@@ -267,15 +297,18 @@ MlasSQNBitGemmKernelNeon(
 
         for (size_t m = 0; m < CountM; ++m) {
             for (size_t n = 0; n < CountN; ++n) {
+                C[m * ldc + n] = 0.0f;
+
                 for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
                     const size_t kblocklen = std::min(CountK - k, BlkLen);
 
                     const float b_s = QuantBScale[n * BlockStrideQuantB + k_blk_idx];
                     const uint8_t b_z = [&]() -> uint8_t {
                         if (QuantBZeroPoint != nullptr) {
-                            const size_t i = n * BlockStrideQuantB + k_blk_idx;
-                            uint8_t zp_packed = QuantBZeroPoint[i / 2];
-                            return ((i & 1) == 1) ? (zp_packed >> 4) : (zp_packed & 0x0F);
+                            const uint8_t* b_z_data =
+                                QuantBZeroPoint + n * MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
+                            uint8_t zp_packed = b_z_data[k_blk_idx / 2];
+                            return ((k_blk_idx & 1) == 1) ? (zp_packed >> 4) : (zp_packed & 0x0F);
                         } else {
                             return 8;
                         }

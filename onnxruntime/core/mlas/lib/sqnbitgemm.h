@@ -168,30 +168,36 @@ MlasSQNBitGemmOperation(
 
     const size_t k_blks = MlasDivRoundup(K, BlkLen);
     const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
+
     const float* A = DataParams->A + RangeStartM * lda;
-    const uint8_t* QuantBData = static_cast<const uint8_t*>(DataParams->QuantBData);
-    const float* QuantBScale = DataParams->QuantBScale;
-    const uint8_t* QuantBZeroPoint = static_cast<const uint8_t*>(DataParams->QuantBZeroPoint);
+
+    const uint8_t* QuantBData = static_cast<const uint8_t*>(DataParams->QuantBData) + RangeStartN * ldb;
+    const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
+    const uint8_t* QuantBZeroPoint =
+        (DataParams->QuantBZeroPoint == nullptr)
+            ? nullptr
+            : static_cast<const uint8_t*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
+
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
-    const float* Bias = DataParams->Bias;
+
+    const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
 
     if (RangeCountM == 1) {
         size_t CountN;
         for (size_t n = 0; n < RangeCountN; n += CountN) {
-            CountN = std::min(RangeCountN - n, (size_t)128);
+            CountN = std::min(RangeCountN - n, size_t{128});
 
             //
             // Step through each slice of matrix A along the M dimension.
             //
-            const float* bias = (Bias == nullptr) ? nullptr : Bias + RangeStartN + n;
-            const uint8_t* b_col = QuantBData + (RangeStartN + n) * ldb;
-            const float* b_col_scale = QuantBScale + (RangeStartN + n) * k_blks;
-            const uint8_t* b_col_zp =
-                (QuantBZeroPoint == nullptr)
-                    ? nullptr
-                    : QuantBZeroPoint + (RangeStartN + n) * MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
-            float* c_blk = C + n;
             const float* a_row = A;
+            const uint8_t* b_col = QuantBData + n * ldb;
+            const float* b_col_scale = QuantBScale + n * k_blks;
+            const uint8_t* b_col_zp =
+                (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+            float* c_blk = C + n;
+            const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
             size_t RowsRemaining = RangeCountM;
             while (RowsRemaining > 0) {
@@ -224,20 +230,18 @@ MlasSQNBitGemmOperation(
 
     size_t CountN;
     for (size_t n = 0; n < RangeCountN; n += CountN) {
-        CountN = std::min(RangeCountN - n, (size_t)StrideN);
+        CountN = std::min(RangeCountN - n, StrideN);
 
         //
         // Step through each slice of matrix A along the M dimension.
         //
-        const float* bias = (Bias == nullptr) ? nullptr : Bias + RangeStartN + n;
-        const uint8_t* b_col = QuantBData + (RangeStartN + n) * ldb;
-        const float* b_col_scale = QuantBScale + (RangeStartN + n) * k_blks;
-        const uint8_t* b_col_zp =
-            (QuantBZeroPoint == nullptr)
-                ? nullptr
-                : QuantBZeroPoint + (RangeStartN + n) * MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
-        float* c_blk = C + n;
         const float* a_row = A;
+        const uint8_t* b_col = QuantBData + n * ldb;
+        const float* b_col_scale = QuantBScale + n * k_blks;
+        const uint8_t* b_col_zp =
+            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+        float* c_blk = C + n;
+        const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
         MlasQNBitBlkDequantBForSgemm<BlkBitWidth, BlkLen, KernelType>(
             dequant_b, b_col, b_col_scale, b_col_zp, CountN, K, k_blks
