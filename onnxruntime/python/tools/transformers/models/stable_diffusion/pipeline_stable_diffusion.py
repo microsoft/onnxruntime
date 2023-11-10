@@ -163,12 +163,9 @@ class StableDiffusionPipeline:
         return self.engine_type == EngineType.TRT
 
     def set_denoising_steps(self, denoising_steps: int):
-        if self.denoising_steps != denoising_steps:
-            assert self.denoising_steps is None  # TODO(tianleiwu): support changing steps in different runs
-            # Pre-compute latent input scales and linear multistep coefficients
-            self.scheduler.set_timesteps(denoising_steps)
-            self.scheduler.configure()
-            self.denoising_steps = denoising_steps
+        self.scheduler.set_timesteps(denoising_steps)
+        self.scheduler.configure()
+        self.denoising_steps = denoising_steps
 
     def load_resources(self, image_height, image_width, batch_size):
         # If engine is built with static input shape, call this only once after engine build.

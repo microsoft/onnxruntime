@@ -26,7 +26,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0c296085f9f65f0f8ef7aec7b9eed55faf37dc40",
+          "commitHash": "b86cc54efce19530fb953e4b21f57e6b3888534c",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -136,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "003c580e696a774afdc984996ee909b7c8d8128c",
+          "commitHash": "0da379fc4808f9601faef392352018c741c0f297",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -196,16 +196,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6a20ba82b439ea1fd650da4d389e96b60a1dd828",
-          "repositoryUrl": "https://github.com/onnx/onnx.git"
-        },
-        "comments": "onnx"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "a43ce67187bab219520fd80f21af8bbd4354bc8c",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
@@ -236,7 +226,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1787867f6183f056420e532eec640cba25efafea",
+          "commitHash": "4fe0e1e183925bf8cfa6aae24237e724a96479b8",
           "repositoryUrl": "https://github.com/Maratyszcza/pthreadpool.git"
         },
         "comments": "pthreadpool"
