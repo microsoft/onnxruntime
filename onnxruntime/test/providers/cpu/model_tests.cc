@@ -697,7 +697,8 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
           std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
           if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
             test_case_name = test_case_name.substr(5);
-            std::cout << test_case_name << std::endl;
+          std::cout << "test_case_name:" << std::endl;
+          std::cout << test_case_name << std::endl;
           if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
             return true;
 
