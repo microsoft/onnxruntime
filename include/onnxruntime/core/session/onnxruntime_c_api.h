@@ -599,9 +599,11 @@ typedef struct OrtTensorRTProviderOptions {
  * \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
  */
 typedef struct OrtMIGraphXProviderOptions {
-  int device_id;             // hip device id.
-  int migraphx_fp16_enable;  // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
-  int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int device_id;                                     // hip device id.
+  int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
+  const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -3604,6 +3606,7 @@ struct OrtApi {
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *   may alter model/EP partitioning. Use only for debugging.
+   *   "qnn_context_priority": QNN context priority, options: "low", "normal", "normal_high", "high". Default to "normal".
    *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend. Available options:
    *     - "0": Default.
    *     - "1": Faster preparation time, less optimal graph.
