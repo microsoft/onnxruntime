@@ -14,10 +14,8 @@ parameters:
       - '11.8'
       - '12.2'
 
-variables:
-  - template: variables/win_gpu_library_variables.yml
-
 steps:
+  - template: variables/win_gpu_library_variables.yml
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
       - powershell: |
           azcopy.exe cp --recursive ${{ variables.cuda_sdk_url }} $(Agent.TempDirectory)
