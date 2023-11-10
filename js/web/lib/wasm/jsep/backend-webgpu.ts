@@ -57,7 +57,7 @@ const getProgramInputTensorInfoDependencyKey =
 const getProgramInfoUniqueKey =
     (programInfo: ProgramInfo, inputTensors: readonly TensorView[], is1DimensionDispatch: boolean): string => {
       // final key format:
-      // <PROGRAM_NAME>[<PROGRAM_CUSTOM_CACHE_HINT>]:<INPUTS_INFO_0>|<INPUTS_INFO_1>|...
+      // <PROGRAM_NAME>[<PROGRAM_CUSTOM_CACHE_HINT>]:is1DimensionDispatch:<INPUTS_INFO_0>|<INPUTS_INFO_1>|...
       let key = programInfo.name;
       if (programInfo.shaderCache?.hint) {
         key += '[' + programInfo.shaderCache.hint + ']';
