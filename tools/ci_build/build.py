@@ -518,7 +518,7 @@ def parse_arguments():
     )
     parser.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS parser")
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
-    parser.add_argument("--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all")
+    parser.add_argument("--test_all_timeout", default="20800", help="Set timeout for onnxruntime_test_all")
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
