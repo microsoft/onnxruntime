@@ -14,19 +14,18 @@ parameters:
       - '11.8'
       - '12.2'
 
-variables:
-  - name: cuda_sdk_url
-    value: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
-  - name: tensorrt_dir
-    ${{ if eq(parameters.CUDA_Version, '11.8') }}:
-      value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
-    ${{ if eq(parameters.CUDA_Version, '12.2') }}:
-      value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
-  - name: tensorrt_url
-    value: https://lotusscus.blob.core.windows.net/models/local/${{ variables.tensorrt_dir }}
-
-
 steps:
+  - variables:
+    - name: cuda_sdk_url
+      value: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
+    - name: tensorrt_dir
+      ${{ if eq(parameters.CUDA_Version, '11.8') }}:
+        value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
+      ${{ if eq(parameters.CUDA_Version, '12.2') }}:
+        value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
+    - name: tensorrt_url
+      value: https://lotusscus.blob.core.windows.net/models/local/${{ variables.tensorrt_dir }}
+
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
       - powershell: |
           azcopy.exe cp --recursive ${{ variables.cuda_sdk_url }} $(Agent.TempDirectory)
