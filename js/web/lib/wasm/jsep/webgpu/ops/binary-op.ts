@@ -120,7 +120,6 @@ const createBinaryOpProgramInfo =
       let vectorize = false;
 
       // TODO: deal with zero-sized tensors (eg. dims=[1,0])
-
       const cacheKeyAux = [isBroadcast];
       if (isBroadcast) {
         const calculatedShape = BroadcastUtil.calcShape(a.dims, b.dims, false);
@@ -158,10 +157,7 @@ const createBinaryOpProgramInfo =
         name,
         shaderCache: {
           hint: cacheKey + cacheKeyAux.map((x) => x.toString()).join('_'),
-          // If the input is scalar then use type instead of dims because useShapesUniforms is false.
-          inputDependencies: useShapesUniforms ?
-              ['rank', 'rank'] :
-              [a.dims.length > 0 ? 'dims' : 'type', b.dims.length > 0 ? 'dims' : 'type'],
+          inputDependencies: useShapesUniforms ? ['rank', 'rank'] : ['dims', 'dims'],
         },
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
             shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, a.dataType, b.dataType,

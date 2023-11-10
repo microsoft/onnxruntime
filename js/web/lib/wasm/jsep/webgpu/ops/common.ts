@@ -258,8 +258,8 @@ export const tensorTypeToWsglValueType = (type: DataType, components: 1|2|3|4 = 
   return typeof mappedType === 'string' ? mappedType : mappedType[1];
 };
 
-export const createTensorShapeVariables = (dims: readonly number[]):
-    ProgramUniform[] => [{type: 'uint32', data: dims}, {type: 'uint32', data: ShapeUtil.computeStrides(dims)}];
+export const createTensorShapeVariables = (dims: readonly number[]): ProgramUniform[] =>
+    dims.length === 0 ? [] : [{type: 'uint32', data: dims}, {type: 'uint32', data: ShapeUtil.computeStrides(dims)}];
 
 /**
  * A helper function to get maximum vector size for specified data length
@@ -732,11 +732,13 @@ class ShaderHelperImpl implements ShaderHelper {
 
   private declareVariable(variable: IndicesHelper, bindingIndex: number): string {
     this.indicesHelpers.push(variable);
-    if (variable.shape.startsWith('uniforms.')) {
-      this.uniforms.push({name: variable.shape.replace('uniforms.', ''), type: variable.type.indices});
-    }
-    if (variable.strides.startsWith('uniforms.')) {
-      this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: variable.type.indices});
+    if (variable.rank !== 0) {
+      if (variable.shape.startsWith('uniforms.')) {
+        this.uniforms.push({name: variable.shape.replace('uniforms.', ''), type: variable.type.indices});
+      }
+      if (variable.strides.startsWith('uniforms.')) {
+        this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: variable.type.indices});
+      }
     }
     const access = variable.usage === 'input' ? 'read' : 'read_write';
     const storageType = variable.type.storage;
@@ -805,4 +807,4 @@ export const getBroadcastDims = (inShape: readonly number[], outShape: readonly 
 };
 
 // TODO: remove this limitation once >4D dims are supported by uniform.
-export const enableShapesUniforms = (rank: number): boolean => rank <= 4 && rank > 0;
+export const enableShapesUniforms = (rank: number): boolean => rank <= 4;
