@@ -117,7 +117,6 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                        const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
 
   NodeAttrHelper helper(node);
   const auto axis = helper.Get("axis", 0);
@@ -131,10 +130,8 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     if (!CheckIsConstantInitializer(*input_defs[1], input_params.graph_viewer, logger, "'split'")) {
       return false;
     }
-    const auto& split_tensor = *initializers.at(input_defs[1]->Name());
-    Initializer unpacked_tensor(split_tensor);
-    auto split_span = unpacked_tensor.DataAsSpan<int64_t>();
-    if (split_span.size() < 2) {
+    const auto split_shape = *input_defs[1]->Shape();
+    if (split_shape.dim_size() < 2) {
       LOGS(logger, VERBOSE) << "CoreML SplitND requires to produce at least 2 outputs.";
       return false;
     }
