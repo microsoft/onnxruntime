@@ -130,7 +130,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
   } else {
     if (node.SinceVersion() >= 18) {
       if (num_outputs < 2) {
-        LOGS(logger, VERBOSE) << "Invalid num_outputs. The value can not be lower than 1. and CoreMl SplitND requires at least 2 outputs. num_outputs: " << num_outputs;
+        LOGS(logger, VERBOSE) << "Invalid num_outputs. The value can not be lower than 1. and CoreML SplitND requires at least 2 outputs. num_outputs: " << num_outputs;
         return false;
       }
       if (num_outputs != input_shape[HandleNegativeAxis(axis, input_shape.size())]) {
