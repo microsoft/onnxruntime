@@ -547,7 +547,7 @@ void GetMemorySavingSymbolicString(const MemoryOptimizationPlanner& memory_opt_p
 namespace {
 
 template <typename T>
-std::string ToFixedLengthString(T value, size_t length) {
+std::string ToFixedLengthString(T value, int length) {
   std::ostringstream oss;
   oss << std::setw(length) << std::left;
   oss << value;
@@ -630,7 +630,6 @@ std::string SerializeMemoryRecords(
                  "| Memory Optimization Opportunities (Clustered by node-level activation patterns)");
   rows.push_back(kTableRowSeparator);
 
-  size_t index = 0;
   for (const auto& p : records_grouped_by_node_cluster_id) {
     const auto& record = p.second;
     rows.push_back("|" + ToFixedLengthString(record.freq, kFirstColumnWidth) +
@@ -647,7 +646,6 @@ std::string SerializeMemoryRecords(
       option_index++;
     }
     rows.push_back(kTableRowSeparator);
-    index++;
   }
 
   rows.push_back(kTableBorder);
