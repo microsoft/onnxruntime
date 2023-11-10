@@ -12,6 +12,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+namespace layernormfusion_internal {
 // LayerNorm supports limited data types.
 static constexpr std::array<std::string_view, 3> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
 // Default epsilon
@@ -31,6 +32,7 @@ static bool IsSupportedDataType(const Node& node, int first_n_inputs = -1) {
   }
   return true;
 }
+}  // namespace layernormfusion_internal
 
 static bool CheckAxesOnReduceMean(std::vector<int64_t>& axes_values, int64_t rank) {
   // axes has be to be consecutive and constains the last dim.
@@ -139,6 +141,7 @@ data are casted to float/double to calculate for precision, so if there is any C
 Such Cast Op can be the input of the sub-graph, or an Cast Op between the Div and Mul nodes.
 */
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  using namespace layernormfusion_internal;
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
@@ -517,6 +520,7 @@ Scale --------|
 */
 Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                             const logging::Logger& logger) const {
+  using namespace layernormfusion_internal;
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;

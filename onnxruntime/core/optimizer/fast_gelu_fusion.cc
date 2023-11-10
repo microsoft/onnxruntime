@@ -12,6 +12,8 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+namespace fastgelufusion_internal {
+
 // FastGelu supports limited data types.
 static constexpr std::array gpu_supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
 static constexpr std::array cpu_supported_data_types{"tensor(float)"};
@@ -31,9 +33,11 @@ static bool CheckNode(Graph& graph, const Node& node,
          (!require_single_output || node.GetOutputEdgesCount() == 1) &&
          !graph.NodeProducesGraphOutput(node);
 }
+}  // namespace fastgelufusion_internal
 
 MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
                                               InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
+  using namespace fastgelufusion_internal;
   MatchResult matchResult{false, nullptr, nullptr};
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul1_node, "Mul", {7, 13, 14}) ||
       !graph_utils::IsSupportedProvider(mul1_node, GetCompatibleExecutionProviders()) ||
@@ -112,6 +116,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
 
 MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
                                                InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
+  using namespace fastgelufusion_internal;
   MatchResult matchResult{false, nullptr, nullptr};
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow1_node, "Pow", {7, 12, 13, 15}) ||
       !graph_utils::IsSupportedProvider(pow1_node, GetCompatibleExecutionProviders()) ||
@@ -199,6 +204,7 @@ X --> Cast --> Pow --> Mul --> Add --> Mul --> Tanh --> Add --> Mul
 
 */
 Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  using namespace fastgelufusion_internal;
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 

@@ -108,6 +108,7 @@ Status ScatterND::ValidateShapes(
   return Status::OK();
 }
 
+namespace scatternd_internal {
 template <typename TData>
 struct Prepare {
   const TData* input_base;
@@ -406,8 +407,10 @@ struct ScatterNDDispatchTarget {
     return Status::OK();
   }
 };
+}  // namespace scatternd_internal
 
 Status ScatterND::Compute(OpKernelContext* context) const {
+  using namespace scatternd_internal;
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
   const auto data_type = context->Input<Tensor>(0)->GetElementType();
   utils::MLTypeCallDispatcherFromTypeList<EnabledScatterNDDataTypes> dispatcher{data_type};

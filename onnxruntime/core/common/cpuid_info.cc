@@ -52,7 +52,6 @@
 #include "core/common/cpuid_uarch.h"
 #endif  // CPUINFO_SUPPORTED
 
-namespace onnxruntime {
 
 #ifdef CPUIDINFO_ARCH_X86
 
@@ -62,6 +61,17 @@ namespace onnxruntime {
 #elif defined(__GNUC__)
 #include <cpuid.h>
 #endif
+#endif
+namespace onnxruntime {
+
+#ifdef CPUIDINFO_ARCH_X86
+
+// #include <memory>
+// #if defined(_MSC_VER)
+// #include <intrin.h>
+// #elif defined(__GNUC__)
+// #include <cpuid.h>
+// #endif
 
 static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 #if defined(_MSC_VER)

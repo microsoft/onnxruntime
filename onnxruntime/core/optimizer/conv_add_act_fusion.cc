@@ -12,7 +12,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-namespace {
+namespace convaddactfusion_internal {
 
 namespace selectors {
 bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
@@ -298,10 +298,10 @@ SelectorActionRegistry CreateSelectorActionRegistry() {
   return registry;
 }
 
-}  // namespace
+}  // namespace convaddactfusion_internal
 ConvAddActivationFusion::ConvAddActivationFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                                  const SatApplyContextVariant& apply_context)
     : SelectorActionTransformer{
-          "ConvAddActivationFusion", CreateSelectorActionRegistry(), apply_context, compatible_execution_providers} {
+          "ConvAddActivationFusion", convaddactfusion_internal::CreateSelectorActionRegistry(), apply_context, compatible_execution_providers} {
 }
 }  // namespace onnxruntime

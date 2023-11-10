@@ -38,7 +38,16 @@
 using namespace ONNX_NAMESPACE::checker;
 #endif
 
-using namespace ONNX_NAMESPACE;
+using ONNX_NAMESPACE::TypeProto;
+using ONNX_NAMESPACE::NodeProto;
+using ONNX_NAMESPACE::GraphProto;
+using ONNX_NAMESPACE::DataType;
+using ONNX_NAMESPACE::TensorShapeProto;
+using ONNX_NAMESPACE::AttributeProto;
+using ONNX_NAMESPACE::TensorProto;
+using ONNX_NAMESPACE::SparseTensorProto;
+using ONNX_NAMESPACE::GraphInferencer;
+using ONNX_NAMESPACE::OpSchema;
 using namespace ONNX_NAMESPACE::Utils;
 using namespace ::onnxruntime::common;
 
@@ -358,6 +367,7 @@ common::Status NodeArg::OverrideTypesHelper(const ONNX_NAMESPACE::TypeProto& inp
                                             int32_t input_tensor_elem_type,
                                             int32_t current_tensor_elem_type,
                                             bool override_types) {
+  using namespace ONNX_NAMESPACE;
   if (input_tensor_elem_type != current_tensor_elem_type) {
     if (override_types) {
       DataType inferred_type = DataTypeUtils::ToType(input_type);
@@ -578,6 +588,7 @@ bool Node::CanBeInlined() const {
 }
 
 bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_proto) const {
+  using namespace ONNX_NAMESPACE;
   if (func_template_) {
     onnx_function_proto = *func_template_->onnx_func_proto_;
     return true;
@@ -633,6 +644,7 @@ void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
 }
 
 void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
+  using namespace ONNX_NAMESPACE;
   proto.set_name(name_);
   proto.set_op_type(op_type_);
 
@@ -770,6 +782,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& gr
 Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
                                const OrtFormatLoadOptions& load_options,
                                const logging::Logger& logger) {
+  using namespace ONNX_NAMESPACE;
   auto LoadNodeArgsFromOrtFormat =
       [&](const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>* fbs_node_arg_names,
           std::vector<NodeArg*>& node_args,
@@ -1168,6 +1181,7 @@ Graph::Graph(const Model& owning_model,
       logger_(logger),
       strict_shape_type_inference_(strict_shape_type_inference),
       is_loaded_from_model_file_(GraphLoadedFromModelFile(graph_proto_)) {
+  using namespace ONNX_NAMESPACE;
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
   const auto& model_path = ModelPath();
@@ -2546,7 +2560,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       {
         auto status = Status::OK();
         ORT_TRY {
-          checker::check_node(node_proto, ctx, lsc);
+          ONNX_NAMESPACE::checker::check_node(node_proto, ctx, lsc);
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
@@ -4091,6 +4105,7 @@ Status Graph::InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_i
 }
 
 Status Graph::InlineFunction(Node& callnode) {
+  using namespace ONNX_NAMESPACE;
   // Remove output edges. Requirement for RemoveNode() below.
   auto output_edges = callnode.GetRelationships().output_edges;  // copy so RemoveEdge doesn't invalidate iterator
   for (const auto& output_edge : output_edges) {

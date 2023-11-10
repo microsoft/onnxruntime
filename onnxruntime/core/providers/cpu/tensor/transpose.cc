@@ -13,25 +13,25 @@
 
 namespace onnxruntime {
 
-namespace {
+namespace transpose_internal  {
 using DefaultDataTypes = element_type_lists::All;
-}  // namespace
+}  // namespace transpose_internal
 
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Transpose, Input, 0,
-    DefaultDataTypes);
+    transpose_internal::DefaultDataTypes);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 // enable all types for layout transformation
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Transpose, Input, 0,
-    DefaultDataTypes);
+    transpose_internal::DefaultDataTypes);
 #endif
 }  // namespace op_kernel_type_control
 
-namespace {
+namespace transpose_internal {
 // reduce the supported types with any global or op specific lists
 using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                         Transpose, Input, 0);
@@ -183,6 +183,7 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 template <class T>
 static bool TypedDoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks,
                                     const gsl::span<const size_t>& stride, const uint8_t* source, uint8_t* target) {
+  using namespace transpose_internal;
   constexpr bool enabled = utils::HasTypeWithSameSize<EnabledDataTypes, T>();
 
   if (enabled) {
@@ -250,6 +251,7 @@ static void DoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
 static Status DoUntypedTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
                                  const TensorShape* input_shape_override = nullptr) {
+  using namespace transpose_internal;
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
   const auto& input_dims = input_shape.GetDims();
   auto rank = input_shape.NumDimensions();
@@ -415,13 +417,13 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     1,
     12,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<transpose_internal::EnabledDataTypes>()),
     Transpose);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Transpose,
     13,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<transpose_internal::EnabledDataTypes>()),
     Transpose);
 
 }  // namespace onnxruntime

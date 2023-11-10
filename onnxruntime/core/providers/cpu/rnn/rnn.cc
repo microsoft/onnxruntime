@@ -14,6 +14,18 @@
 // Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
 #endif
+
+namespace rnn_internal {
+template <typename T>
+T Clip(const T& x, T clip) {
+  if (clip < 0)
+    return x;
+
+  return std::max(std::min(x, clip), -clip);
+}
+
+}  // namespace rnn_internal
+
 namespace onnxruntime {
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     RNN,
@@ -39,13 +51,6 @@ ONNX_CPU_OPERATOR_KERNEL(
 #define DumpMatrix(...) ((void)0)
 #endif
 
-template <typename T>
-T Clip(const T& x, T clip) {
-  if (clip < 0)
-    return x;
-
-  return std::max(std::min(x, clip), -clip);
-}
 
 template <typename T>
 void ApplyActivationToBatches(const Tensor* sequence_lens, const T* h_prev, T* Y_buffer_data_current_frame,
@@ -67,7 +72,7 @@ void ApplyActivationToBatches(const Tensor* sequence_lens, const T* h_prev, T* Y
         Y_buffer_data_current_frame[y_index] = h_prev ? h_prev[batch * hidden_size + feature] : 0.f;
       } else {
         Y_buffer_data_current_frame[y_index] = activation_func(
-            Clip(Y_buffer_data_current_frame[y_index], clip), alpha, beta);
+            rnn_internal::Clip(Y_buffer_data_current_frame[y_index], clip), alpha, beta);
       }
     }
   }

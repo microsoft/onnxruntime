@@ -1708,7 +1708,7 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       Expand_8<TYPE>);
 
-#define REG_EXPAND_KERNEL(TYPE) REG_EXPAND_KERNEL_WITH_TYPE_NAME(TYPE, TYPE)
+//#define REG_EXPAND_KERNEL(TYPE) REG_EXPAND_KERNEL_WITH_TYPE_NAME(TYPE, TYPE)
 
 REG_EXPAND_KERNEL_WITH_TYPE_NAME(std::string, string)
 

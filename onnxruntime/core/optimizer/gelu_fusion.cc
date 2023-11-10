@@ -12,6 +12,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+namespace gelufusion_internal {
 // Gelu supports limited data types.
 static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
 
@@ -24,6 +25,7 @@ static bool IsSupportedDataType(const Node& node) {
   }
   return true;
 }
+}  // namespace gelufusion_internal
 /*
      This function fuses subgraph like the following into one Gelu node.
      Subgraph pattern 1:
@@ -44,6 +46,7 @@ static bool IsSupportedDataType(const Node& node) {
                 [root]--> Gelu ==>
 */
 Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  using namespace gelufusion_internal;
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 

@@ -32,25 +32,25 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Slice, Input, 1, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
-namespace {
+namespace slice_internal {
 using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                         Slice, Input, 0);
 using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                            Slice, Input, 1);
-}  // namespace
+}  // namespace slice_internal
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     1, 9,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<slice_internal::EnabledDataTypes>()),
     Slice1);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     10, 10,
     KernelDefBuilder()
-        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<slice_internal::EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<slice_internal::EnabledIndicesTypes>()),
     Slice10);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -58,16 +58,16 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<slice_internal::EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<slice_internal::EnabledIndicesTypes>()),
     Slice10);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Slice,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<slice_internal::EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<slice_internal::EnabledIndicesTypes>()),
     Slice10);
 
 // Coalesce contiguous non-slice dimensions into a single dimension.
@@ -192,6 +192,7 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
                                        TensorShapeVector& input_ends,
                                        TensorShapeVector& input_axes,
                                        TensorShapeVector& input_steps) {
+  using namespace slice_internal;
   ORT_RETURN_IF_NOT(start_tensor.Shape().NumDimensions() == 1, "Starts must be a 1-D array");
   ORT_RETURN_IF_NOT(ends_tensor.Shape().NumDimensions() == 1, "Ends must be a 1-D array");
   ORT_RETURN_IF_NOT(start_tensor.Shape() == ends_tensor.Shape(), "Starts and ends shape mismatch");
@@ -278,6 +279,7 @@ static inline bool CallSliceImplIfEnabled(OpKernelContext* ctx,
 }
 
 Status SliceBase::Compute(OpKernelContext* ctx) const {
+  using namespace slice_internal;
   const auto* input_tensor_ptr = ctx->Input<Tensor>(0);
   const auto& input_tensor = *input_tensor_ptr;
   const auto input_dimensions = input_tensor.Shape().GetDims();

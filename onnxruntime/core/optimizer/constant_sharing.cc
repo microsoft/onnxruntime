@@ -11,7 +11,7 @@
 
 namespace onnxruntime {
 
-namespace {
+namespace constantsharing_internal  {
 
 // Supports limited data types.
 static constexpr std::array supported_data_types{
@@ -172,10 +172,11 @@ size_t GetOrAddValueInConstantStore(
   return it - data_store.begin();
 }
 
-}  // namespace
+}  // namespace constantsharing_internal
 
 Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                   const logging::Logger& logger) const {
+  using namespace constantsharing_internal;
   int shared_count = 0;
   // Accumulated map from type/value/rank to initializer:
   // > The key is a string representation of initializer's data type, value and rank.

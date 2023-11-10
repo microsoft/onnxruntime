@@ -17,7 +17,7 @@ LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
-namespace {
+namespace layernormimpl_internal {
 template <typename T, typename U>
 Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, bool simplified) {
   // Inputs
@@ -139,6 +139,7 @@ struct SrcDispatcher {
 }  // namespace
 
 Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
+  using namespace layernormimpl_internal;
   const auto elem_type = p_ctx->Input<Tensor>(0)->GetElementType();
 
   using SupportedTypeList = boost::mp11::mp_list<float, double>;

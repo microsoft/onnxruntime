@@ -12,6 +12,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+namespace geluapproximation_internal {
 // FastGelu supports limited data types.
 static constexpr const char* const supported_data_types[] = {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
 
@@ -74,8 +75,11 @@ static bool IsCandidateNode(const Node& node, const InlinedHashSet<std::string_v
   return false;
 }
 
+}  // namespace geluapproximation_internal 
+
 Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                     const logging::Logger& logger) const {
+  using namespace geluapproximation_internal;
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 

@@ -6,7 +6,14 @@
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 
-using namespace ONNX_NAMESPACE;
+using ONNX_NAMESPACE::AttributeProto;
+using ONNX_NAMESPACE::AttributeProto_AttributeType;
+using ONNX_NAMESPACE::TensorProto;
+using ONNX_NAMESPACE::SparseTensorProto;
+using ONNX_NAMESPACE::TypeProto;
+using ONNX_NAMESPACE::NodeProto;
+using ONNX_NAMESPACE::GraphProto;
+
 
 namespace onnxruntime::utils {
 

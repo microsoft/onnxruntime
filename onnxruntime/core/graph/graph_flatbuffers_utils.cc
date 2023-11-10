@@ -12,7 +12,9 @@
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/graph.h"
 
-using namespace ONNX_NAMESPACE;
+using ONNX_NAMESPACE::TensorProto;
+using ONNX_NAMESPACE::AttributeProto;
+using ONNX_NAMESPACE::SparseTensorProto;
 
 namespace onnxruntime::fbs::utils {
 
@@ -262,6 +264,7 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                               onnxruntime::Graph& graph, onnxruntime::Node& node,
                               const OrtFormatLoadOptions& load_options,
                               const logging::Logger& logger) {
+  using namespace ONNX_NAMESPACE;
   attr_proto.Clear();
   LOAD_STR_FROM_ORT_FORMAT(attr_proto, name, fbs_attr.name());
   LOAD_STR_FROM_ORT_FORMAT(attr_proto, doc_string, fbs_attr.doc_string());

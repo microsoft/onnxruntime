@@ -30,7 +30,7 @@ ONNX_CPU_OPERATOR_KERNEL(
             BuildKernelDefConstraintsFromTypeList<EnabledEyeLikeDataTypes>()),
     EyeLike);
 
-namespace {
+namespace eyeLike_internal{
 template <typename T>
 struct ComputeDispatchTarget {
   void operator()(const int64_t k, Tensor& output) {
@@ -52,6 +52,8 @@ struct ComputeDispatchTarget {
 }  // namespace
 
 Status EyeLike::Compute(OpKernelContext* context) const {
+  using namespace eyeLike_internal;
+
   const auto& T1 = context->RequiredInput<Tensor>(0);
 
   const auto& input_shape = T1.Shape();

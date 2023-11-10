@@ -44,16 +44,17 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Concat, Input, 0, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
-namespace {
+namespace concat_internal {
 using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                         Concat, Input, 0);
-}  // namespace
+}  // namespace concat_internal
 
 // this method will be shared between 'Concat' (CPU and GPU) and
 // 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                      const InlinedTensorsVector& input_tensors,
                                      Prepare& p) const {
+  using namespace concat_internal;
   size_t input_count = input_tensors.size();
 
   // Must have atleast one input to concat
@@ -249,6 +250,7 @@ TensorShapeVector StridesForStack(const TensorShapeVector& full_strides, uint64_
 
 // This method computes the output tensor for Concat/ConcatFromSequence ops
 Status ConcatBase::ComputeImpl(Prepare& p, OpKernelContext* ctx) const {
+  using namespace concat_internal;
   int input_count = static_cast<int>(p.inputs.size());
   int64_t initial_output_offset = 0;  // initial offset for each input
 

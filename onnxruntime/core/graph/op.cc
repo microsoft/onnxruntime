@@ -5,11 +5,14 @@
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 
-using namespace ONNX_NAMESPACE;
+using ONNX_NAMESPACE::AttributeProto;
+
+
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 bool TypeUtils::IsValidAttribute(const AttributeProto& attr) {
+  using namespace ONNX_NAMESPACE;
   if (attr.name().empty()) {
     return false;
   }
@@ -36,7 +39,7 @@ bool TypeUtils::IsValidAttribute(const AttributeProto& attr) {
 
 Status TypeUtils::GetType(const AttributeProto& attr, AttrType& type) {
   if (!TypeUtils::IsValidAttribute(attr)) {
-    return Status(ONNXRUNTIME, FAIL, "Invalid AttributeProto.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "Invalid AttributeProto.");
   }
 
   type = attr.type();
@@ -66,7 +69,7 @@ Status TypeUtils::GetType(const AttributeProto& attr, AttrType& type) {
     } else if (attr.sparse_tensors_size()) {
       type = AttrType::AttributeProto_AttributeType_SPARSE_TENSORS;
     } else {
-      return Status(ONNXRUNTIME, FAIL, "Invalid AttributeProto.");
+      return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "Invalid AttributeProto.");
     }
   }
   return Status::OK();

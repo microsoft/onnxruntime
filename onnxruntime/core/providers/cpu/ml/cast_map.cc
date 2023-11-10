@@ -6,7 +6,7 @@
 #include "core/common/gsl.h"
 using namespace ::onnxruntime::common;
 
-namespace {
+namespace castmap_internal {
 template <typename TCastFrom, typename TCastTo>
 TCastTo Cast(const TCastFrom& from);
 
@@ -98,6 +98,7 @@ Status CastMap::Compute(OpKernelContext* context) const {
 
 template <typename TFrom, typename TTo>
 Status CastMap::ComputeImpl(OpKernelContext& context, TTo pad_value) const {
+  using namespace castmap_internal;
   using InputMap = std::map<int64_t, TFrom>;
 
   const auto& X = *context.Input<InputMap>(0);

@@ -33,7 +33,7 @@
 #include <emscripten.h>
 #endif
 
-using namespace ONNX_NAMESPACE;
+using ONNX_NAMESPACE::ModelProto;
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 
@@ -82,6 +82,7 @@ Model::Model(const std::string& graph_name,
              const logging::Logger& logger,
              const ModelOptions& options)
     : model_path_(Path::Parse(model_path)) {
+  using namespace ONNX_NAMESPACE;
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_.mutable_graph()->set_name(graph_name);
   model_metadata_ = model_metadata;
@@ -160,6 +161,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
              const logging::Logger& logger, const ModelOptions& options)
     : model_path_(Path::Parse(model_path)) {
+  using namespace ONNX_NAMESPACE;
   if (!utils::HasGraph(model_proto)) {
     ORT_THROW("ModelProto does not have a graph.");
   }
@@ -391,16 +393,16 @@ ModelProto Model::ToGraphProtoWithExternalInitializers(const std::string& extern
 
 Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!model_istream.good()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid istream object.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT, "Invalid istream object.");
   }
   if (!p_model_proto) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT, "Null model_proto ptr.");
   }
 
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
   const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   if (!result) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
   }
   return Status::OK();
 }
@@ -421,7 +423,7 @@ Status Model::Load(const ModelProto& model_proto,
                    const ModelOptions& options) {
   // we expect a graph to be present
   if (!utils::HasGraph(model_proto)) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT, "No graph was found in the protobuf.");
   }
 
   // need to call private ctor so can't use make_shared
@@ -433,7 +435,7 @@ Status Model::Load(const ModelProto& model_proto,
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+      status = Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
     });
   }
   ORT_RETURN_IF_ERROR(status);
@@ -461,7 +463,7 @@ Status Model::Load(ModelProto&& model_proto,
                    const ModelOptions& options) {
   // we expect a graph to be present
   if (!utils::HasGraph(model_proto)) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT, "No graph was found in the protobuf.");
   }
 
   // need to call private ctor so can't use make_shared
@@ -472,7 +474,7 @@ Status Model::Load(ModelProto&& model_proto,
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
+      status = Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
     });
   }
   ORT_RETURN_IF_ERROR(status);
@@ -507,7 +509,7 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      status = Status(ONNXRUNTIME, FAIL, ex.what());
+      status = Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, ex.what());
     });
   }
 
@@ -581,7 +583,7 @@ static Status SaveModel(Model& model, const T& file_path) {
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      status = Status(ONNXRUNTIME, FAIL, ex.what());
+      status = Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, ex.what());
     });
   }
   if (!status.IsOK()) {
@@ -614,7 +616,7 @@ static Status SaveModelWithExternalInitializers(Model& model,
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      status = Status(ONNXRUNTIME, FAIL, ex.what());
+      status = Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, ex.what());
     });
   }
   if (!status.IsOK()) {
@@ -651,7 +653,7 @@ Status Model::SaveWithExternalInitializers(Model& model, const PathString& file_
 Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
   const bool result = model_proto.ParseFromArray(p_bytes, count);
   if (!result) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 
   return Status::OK();
@@ -688,7 +690,7 @@ using ::google::protobuf::io::ZeroCopyInputStream;
 
 Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   if (fd < 0) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
 
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
@@ -701,7 +703,7 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   FileInputStream input(fd, block_size);
   const bool result = model_proto.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
   if (!result) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 #else
   // CNTK uses ORT as a submodule in order to use its GraphIR code.
@@ -743,7 +745,7 @@ Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>&
 
 Status Model::Save(Model& model, int p_fd) {
   if (p_fd < 0) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> is less than 0.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT, "<p_fd> is less than 0.");
   }
 
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
@@ -754,7 +756,7 @@ Status Model::Save(Model& model, int p_fd) {
   if (result) {
     return Status::OK();
   }
-  return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
+  return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
 
 Status Model::SaveWithExternalInitializers(Model& model,
@@ -763,7 +765,7 @@ Status Model::SaveWithExternalInitializers(Model& model,
                                            const std::string& external_file_name,
                                            size_t initializer_size_threshold) {
   if (fd < 0) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<fd> is less than 0.");
+    return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_ARGUMENT, "<fd> is less than 0.");
   }
 
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
@@ -774,7 +776,7 @@ Status Model::SaveWithExternalInitializers(Model& model,
   if (result) {
     return Status::OK();
   }
-  return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
+  return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
 
 common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
@@ -848,6 +850,7 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
                                         const OrtFormatLoadOptions& load_options,
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
+  using namespace ONNX_NAMESPACE;
   model = std::make_unique<Model>();
 
   // Load the model metadata

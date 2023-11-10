@@ -11,6 +11,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+namespace skiplayernormfusion_internal {
 // LayerNorm supports limited data types.
 static constexpr std::array supported_data_types{
     "tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
@@ -90,6 +91,7 @@ static bool CheckSecondAdd(Graph& graph, Node& add, ProviderType providertype) {
          utils::HasDimValue(add_input2_shape->dim(0)) &&
          add_input1_shape->dim(2).dim_value() == add_input2_shape->dim(0).dim_value();
 }
+}  // namespace skiplayernormfusion_internal
 
 // Add a Cast to convert input from float16/bfloat16 to float when input type is different fromm output type
 static NodeArg* CastToFloat(Graph& graph, NodeArg* input, int32_t output_data_type, ProviderType provider_type) {
@@ -169,6 +171,7 @@ Note: This fusion doesn't consider the following case:
 */
 
 Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  using namespace skiplayernormfusion_internal;
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;

@@ -13,7 +13,6 @@ namespace onnxruntime {
 namespace function_utils {
 
 using string = std::string;
-using namespace ONNX_NAMESPACE;
 
 // Utilify function to get the imported version of domain from opset imports
 // Returns -1 if requested domain is not found in the opset_imports
@@ -81,6 +80,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
                                    std::unique_ptr<ONNX_NAMESPACE::OpSchema>& op_schema,
                                    const InlinedHashMap<std::string, int>& input_name_idx_map,
                                    const InlinedHashMap<std::string, int>& output_name_idx_map) {
+  using namespace ONNX_NAMESPACE;
   std::vector<std::pair<std::string, std::string>> input_types_list(onnx_func_proto.input_size());
   std::vector<std::pair<std::string, std::string>> output_types_list(onnx_func_proto.output_size());
 
@@ -274,6 +274,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
                                                        const SchemaRegistryManager& schema_registry,
                                                        const logging::Logger& logger,
                                                        bool allow_released_opsets_only) {
+  using namespace ONNX_NAMESPACE;
   std::string func_identifier = function_utils::GetFunctionIdentifier(function_domain, function_name);
   auto iter = model_local_functions.find(func_identifier);
   if (iter == model_local_functions.end()) {
@@ -430,7 +431,7 @@ class Inliner {
   }
 
   // Process a node:
-  void transform(NodeProto& n) {
+  void transform(ONNX_NAMESPACE::NodeProto& n) {
     if (!n.name().empty())
       n.set_name(prefix_ + n.name());
 
@@ -469,7 +470,7 @@ class Inliner {
   }
 
   // Process a sub-graph, contained as an attribute in a control-flow op node.
-  void transform(GraphProto& graph) {
+  void transform(ONNX_NAMESPACE::GraphProto& graph) {
     rename_scopes_.emplace_back();
     for (auto& x : *graph.mutable_input())
       make_unique(*x.mutable_name());
@@ -484,8 +485,8 @@ class Inliner {
 
  public:
   // The main specialization method: specialize a FunctionProto for a particular call-site.
-  static void specialize(const NodeProto& callnode, FunctionProto& callee, const onnxruntime::NodeAttributes& attr_map,
-                         const std::string& unique_prefix) {
+  static void specialize(const ONNX_NAMESPACE::NodeProto& callnode, ONNX_NAMESPACE::FunctionProto& callee,
+                         const onnxruntime::NodeAttributes& attr_map, const std::string& unique_prefix) {
     Inliner inliner(unique_prefix, attr_map);
 
     inliner.bind<false>(*callee.mutable_input(), callnode.input());

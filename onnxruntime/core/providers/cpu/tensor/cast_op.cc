@@ -47,7 +47,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     bool, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
-namespace {
+namespace castop_internal {
 using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                        Cast, Input, 0);
 using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
@@ -419,10 +419,10 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     6,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
-        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<castop_internal::EnabledSrcTypes>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<castop_internal::EnabledDstTypes>())
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
-    Cast);
+    castop_internal::Cast);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast,
@@ -438,9 +438,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     Cast,
     19,
     KernelDefBuilder()
-        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
-        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<castop_internal::EnabledSrcTypes>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<castop_internal::EnabledDstTypes>())
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
-    Cast);
+    castop_internal::Cast);
 
 }  // namespace onnxruntime

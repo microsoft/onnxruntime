@@ -106,14 +106,14 @@ inline const void* AdvanceElementPtr(const void* p, size_t elements, size_t elem
 //  counts are scaled by the associated values in the weights attribute.
 
 enum WeightingCriteria {
-  kNone = 0,
+  kNoneWeightCrit = 0,
   kTF = 1,
   kIDF = 2,
   kTFIDF = 3
 };
 
 struct TfIdfVectorizer::Impl {
-  WeightingCriteria weighting_criteria_ = kNone;
+  WeightingCriteria weighting_criteria_ = kNoneWeightCrit;
   int64_t max_gram_length_ = 0;
   int64_t min_gram_length_ = 0;
   int64_t max_skip_count_ = 0;
@@ -163,7 +163,7 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
   } else if (mode == "TFIDF") {
     impl_->weighting_criteria_ = kTFIDF;
   }
-  ORT_ENFORCE(impl_->weighting_criteria_ != kNone, "mode: ", mode, " is unrecognized, acceptable values are TF,IDF,TFIDF");
+  ORT_ENFORCE(impl_->weighting_criteria_ != kNoneWeightCrit, "mode: ", mode, " is unrecognized, acceptable values are TF,IDF,TFIDF");
 
   status = info.GetAttr("min_gram_length", &impl_->min_gram_length_);
   ORT_ENFORCE(status.IsOK(), "min_gram_length is required");
@@ -305,7 +305,7 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
         }
       }
     } break;
-    case kNone:  // fall-through
+    case kNoneWeightCrit:  // fall-through
     default:
       assert(false);
   }
