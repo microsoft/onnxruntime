@@ -383,8 +383,7 @@ Status QnnModelWrapper::GetOnnxInputInfo(const NodeUnitIODef& input,
 
   // Fill in QNN data type.
   input_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, input.node_arg.TypeAsProto(),
-                                            input_info.qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, input.node_arg.TypeAsProto(), input_info.qnn_data_type));
 
   // Fill in shape.
   ORT_RETURN_IF_NOT(GetOnnxShape(input.node_arg, input_info.shape), "Cannot get shape");

@@ -118,7 +118,7 @@ class QnnModelWrapper {
   }
 
   // TODO(hecli) rename to GetTensorInfo
-  Status GetOnnxInputInfo(const NodeUnitIODef& input, OnnxInputInfo& tensor_info) const;
+  Status GetOnnxInputInfo(const NodeUnitIODef& input, OnnxInputInfo& input_info) const;
 
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,
