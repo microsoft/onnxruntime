@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.tools.json",
   "compilerOptions": {
-    "sourceMap": true
+    "sourceMap": true,
+    "noUnusedParameters": false
   }
 }
