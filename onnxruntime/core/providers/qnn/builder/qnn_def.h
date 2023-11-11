@@ -113,8 +113,18 @@ uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor);
 uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);
-bool AreQnnQParamsEqual(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
-                        float scale_epsilon = 0.0f);
+
+/**
+ * Returns true if two sets of quantization parameters are equal. Sets the parameter `max_scale_diff`
+ * to the maximum scale difference (absolute value).
+ *
+ * \param qparam0 The first set of quantization parameters.
+ * \param qparam1 The second set of quantization parameters.
+ * \param max_scale_diff Set to the absolute value of the maximum difference in scale value.
+ * \return True quantization parameters are equal.
+ */
+bool CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
+                           float& max_scale_diff);
 
 // TODO: split out separate files for Wrappers
 class QnnTensorWrapper {

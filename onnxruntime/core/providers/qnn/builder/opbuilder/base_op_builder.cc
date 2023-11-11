@@ -193,17 +193,29 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
   const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[input_index]);
   ORT_RETURN_IF_NOT(input_tensor_wrapper.GetTensorDataType() == qnn_data_type,
                     "Input and output data types do not match");
-
   Qnn_QuantizeParams_t input_quant_param = GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor());
 
-  // If quant params are not exactly equal but they are nearly equal, override them to be equal.
-  if (!AreQnnQParamsEqual(quant_param, input_quant_param, 0.0f /*scale_epsilon*/) &&
-      AreQnnQParamsEqual(quant_param, input_quant_param, 1e-9f /*scale_epsilon*/)) {
-    LOGS(logger, WARNING) << "QNN EP will override the output quantization parameters for " << node_unit.OpType()
-                          << " operators to be equal to the input quantization parameters. Operator name: "
-                          << node_unit.Name() << ", input_index: " << input_index << ", output index: "
-                          << output_index << ".";
-    quant_param = input_quant_param;  // Copy input quantization params to the output.
+  float max_scale_diff = 0.0f;
+  bool quant_params_equal = CompareQnnQuantParams(quant_param, input_quant_param, max_scale_diff);
+  constexpr float NEARLY_EQUAL_THRESHOLD = 1e-9f;
+  constexpr float WARN_THRESHOLD = 1e-6f;
+
+  if (!quant_params_equal) {
+    if (max_scale_diff > 0.0 && max_scale_diff <= NEARLY_EQUAL_THRESHOLD) {
+      // Quantization params are nearly equal, so make them equal. This may allow QNN backends to employ certain graph
+      // optimizations that improve inference latency.
+      LOGS(logger, WARNING) << "QNN EP will override the output quantization parameters for " << node_unit.OpType()
+                            << " operators to be equal to the input quantization parameters. Operator name: "
+                            << node_unit.Name() << ", input_index: " << input_index << ", output index: "
+                            << output_index << ".";
+      quant_param = input_quant_param;  // Copy input quantization params to the output.
+    } else if (max_scale_diff > 0.0f && max_scale_diff <= WARN_THRESHOLD) {
+      // Quantization params are just outside of the "nearly equal" threshold, so warn user of potential latency
+      // degradation.
+      LOGS(logger, WARNING) << "The quantization parameters for the " << node_unit.OpType() << " operator '"
+                            << node_unit.Name() << "' are not equal, which may result in latency degradation. "
+                            << "input_index: " << input_index << ", output index: " << output_index << ".";
+    }
   }
 
   return Status::OK();
