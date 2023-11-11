@@ -1,13 +1,13 @@
-parameters:
-  - name: DownloadCUDA
-    type: boolean
-    default: false
-  - name: DownloadTRT
-    type: boolean
-    default: false
-  - name: CUDA_Version
-    type: string
-    default: '12.2'
+#parameters:
+#  - name: DownloadCUDA
+#    type: boolean
+#    default: false
+#  - name: DownloadTRT
+#    type: boolean
+#    default: false
+#  - name: CUDA_Version
+#    type: string
+#    default: '12.2'
 
 variables:
   cuda_sdk_url: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
