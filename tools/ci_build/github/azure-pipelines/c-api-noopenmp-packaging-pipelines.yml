@@ -720,11 +720,11 @@ stages:
         versionSpec: 6.2.1
 
     - task: PowerShell@2
-      displayName: Install mobile workloads
+      displayName: Install workloads
       inputs:
         targetType: 'inline'
         script: |
-          dotnet workload install android ios
+          dotnet workload install android ios macos
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
