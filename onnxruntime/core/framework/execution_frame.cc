@@ -198,6 +198,18 @@ bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/)
   return false;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  bool IExecutionFrame::TryGetPropagatedTensorPartitionSpec(const std::string& /*name*/, distributed::TensorPartitionSpec& /*spec*/) const {
+    return false;
+  }
+  void IExecutionFrame::SetPropagatedTensorPartitionSpec(const std::string& /*name*/, const distributed::TensorPartitionSpec& /*spec*/) {
+    return;
+  }
+  bool IExecutionFrame::TryGetPlannedTensorPartitionSpec(const std::string& /*name*/, distributed::TensorPartitionSpec& /*spec*/) const {
+    return false;
+  }
+#endif
+
 AllocatorPtr IExecutionFrame::GetAllocator(const OrtDevice& info) const {
   return GetAllocatorImpl(info);
 }
@@ -945,5 +957,26 @@ bool ExecutionFrame::TryGetInferredShape(int index, TensorShape& shape) const {
   // Tell the caller if the search is successful or not.
   return false;
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+bool ExecutionFrame::TryGetPropagatedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const {
+  auto it = propagated_tensor_partition_specs_.find(name);
+  if (it == propagated_tensor_partition_specs_.end()) {
+    return false;
+  } else {
+    spec = it->second;
+    return true;
+  }
+};
+
+void ExecutionFrame::SetPropagatedTensorPartitionSpec(const std::string& name, const distributed::TensorPartitionSpec& spec) {
+  auto result = propagated_tensor_partition_specs_.insert({name, spec});
+  ORT_ENFORCE(result.second, "Tensor partition spec for ", name, " already exists.");
+}
+
+bool ExecutionFrame::TryGetPlannedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const {
+  return session_state_.TryGetPlannedTensorPartitionSpec(name, spec);
+}
+#endif
 
 }  // namespace onnxruntime

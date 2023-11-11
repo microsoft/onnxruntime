@@ -132,6 +132,11 @@ struct SessionOptions {
   InlinedHashMap<std::string, OrtValue> external_initializers;
   Status AddExternalInitializers(gsl::span<const std::string> names, gsl::span<const OrtValue> values);
 #endif
+#if !defined(ORT_MINIMAL_BUILD)
+  // TODO: use InlinedHashMap<std::string, TensorPartitionSpec> tensor_partition_specs;
+  InlinedHashMap<std::string, std::string> tensor_partition_specs;
+  Status AddTensorPartitionSpecs(gsl::span<const std::string> names);
+#endif
 
   // custom function callback to create a thread
   OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;

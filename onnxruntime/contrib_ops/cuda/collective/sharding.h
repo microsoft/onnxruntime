@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "sharding_spec.h"
+#include "core/framework/sharding_spec.h"
 #include "nccl_kernels.h"
+
+using namespace onnxruntime::distributed;
 
 namespace onnxruntime {
 namespace contrib {
@@ -66,7 +68,6 @@ std::unique_ptr<Tensor> ReshardTensor(
     const int64_t device_id,
     const Tensor* src);
 
-class TensorPartitionSpec;
 
 class DistributedKernel : public NcclKernel {
  public:

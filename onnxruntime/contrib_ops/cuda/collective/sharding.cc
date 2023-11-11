@@ -3,7 +3,7 @@
 
 #include "sharding.h"
 #include "mpi_include.h"
-#include "sharding_spec.h"
+#include "core/framework/sharding_spec.h"
 
 #include <vector>
 #include <string>

@@ -10,8 +10,7 @@
 #include <vector>
 
 namespace onnxruntime {
-namespace contrib {
-namespace cuda {
+namespace distributed {
 
 #if defined(ORT_USE_NCCL)
 
@@ -487,6 +486,5 @@ bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec);
 
 #endif
 
-}  // namespace cuda
-}  // namespace contrib
+}  // namespace distributed
 }  // namespace onnxruntime

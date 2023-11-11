@@ -1565,6 +1565,21 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_UNUSED_PARAMETER(ort_values);
             ORT_THROW("External initializers are not supported in this build.");
 #endif
+      })
+      .def("add_tensor_partition_specs", [](PySessionOptions* options, py::list& names) -> void {
+#if !defined(ORT_MINIMAL_BUILD)
+        const auto num_specs = names.size();
+        InlinedVector<std::string> names_ptrs;
+        names_ptrs.reserve(num_specs);
+        for (size_t i = 0; i < num_specs; ++i) {
+          names_ptrs.emplace_back(py::str(names[i]));
+        }
+        ORT_THROW_IF_ERROR(options->value.AddTensorPartitionSpecs(names_ptrs));
+#else
+        ORT_UNUSED_PARAMETER(options);
+        ORT_UNUSED_PARAMETER(names);
+        ORT_THROW("Tensor partition specs are not supported in this build.");
+#endif
       });
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")

@@ -16,6 +16,7 @@
 // std C++.
 #include <iostream>
 
+using namespace onnxruntime::distributed;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {

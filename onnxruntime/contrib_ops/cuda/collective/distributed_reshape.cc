@@ -4,16 +4,18 @@
 // Distributed computation.
 #include "distributed_reshape.h"
 #include "sharding.h"
-#include "sharding_spec.h"
 #include "nccl_kernels.h"
 #include "mpi_include.h"
 
 // ORT system.
+#include "core/framework/sharding_spec.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 
 // std C++.
 #include <iostream>
+
+using namespace onnxruntime::distributed;
 
 namespace onnxruntime {
 namespace contrib {

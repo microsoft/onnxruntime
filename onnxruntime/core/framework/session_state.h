@@ -38,6 +38,7 @@
 #include "core/platform/threadpool.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
+#include "core/framework/sharding_spec.h"
 #endif
 
 #include "core/framework/stream_handles.h"
@@ -354,6 +355,10 @@ class SessionState {
 
   const SessionOptions& GetSessionOptions() const { return sess_options_; }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  bool TryGetPlannedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const;
+#endif
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -560,6 +565,10 @@ class SessionState {
   mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
   // flag to indicate whether current session using any EP that create device stream dynamically.
   bool has_device_stream_enabled_ep_ = false;
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::unordered_map<std::string, distributed::TensorPartitionSpec> planned_tensor_partition_specs_;
 #endif
 };
 

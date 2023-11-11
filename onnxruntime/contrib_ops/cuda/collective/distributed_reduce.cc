@@ -5,11 +5,11 @@
 // Distributed computation.
 #include "distributed_reduce.h"
 #include "sharding.h"
-#include "sharding_spec.h"
 #include "nccl_kernels.h"
 #include "mpi_include.h"
 
 // ORT system.
+#include "core/framework/sharding_spec.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/reduction/reduction_ops.h"
 

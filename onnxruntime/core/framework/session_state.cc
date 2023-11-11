@@ -1612,4 +1612,15 @@ void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCol
 }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+bool SessionState::TryGetPlannedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const {
+  auto iter = planned_tensor_partition_specs_.find(name);
+  if (iter != planned_tensor_partition_specs_.end()) {
+    spec = iter->second;
+    return true;
+  }
+  return false;
+}
+#endif
+
 }  // namespace onnxruntime

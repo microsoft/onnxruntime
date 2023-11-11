@@ -58,6 +58,20 @@ Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> name
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
+#if !defined(ORT_MINIMAL_BUILD)
+Status SessionOptions::AddTensorPartitionSpecs(gsl::span<const std::string> names) {
+  const auto num_specs = names.size();
+  tensor_partition_specs.reserve(num_specs);
+  for (size_t i = 0; i < num_specs; ++i) {
+    auto result = tensor_partition_specs.emplace(names[i], names[i]).second;
+    if (!result) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An spec for this name has already been added: ", names[i]);
+    }
+  }
+  return Status::OK();
+}
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 void SessionOptions::AddCustomOpLibraryHandle(PathString library_name, void* library_handle) {
   if (!this->custom_op_libs) {
