@@ -71,7 +71,7 @@ void SQNBITGEMM(benchmark::State& state) {
 
 static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
   b->ArgNames({"M", "N", "K", "Threads"});
-  ArgsProduct(b, {{1, 1024, 2048}, {4096}, {4096}, {8}});
+  ArgsProduct(b, {{1, 1024, 2048}, {4096, 11008}, {4096, 11008}, {8}});
 }
 
 BENCHMARK(SQNBITGEMM<4, 16, false>)->Apply(GemmSizeProducts)->UseRealTime();
