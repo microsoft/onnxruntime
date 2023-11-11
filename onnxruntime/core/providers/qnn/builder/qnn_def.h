@@ -115,16 +115,18 @@ const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);
 
 /**
- * Returns true if two sets of quantization parameters are equal. Sets the parameter `max_scale_diff`
- * to the maximum scale difference (absolute value).
+ * Compares two sets of quantization parameters. Sets the parameters `scale_diff` and `offset_diff`
+ * to the absolute differences. Returns an error status if the quantization parameters are not
+ * of the same type, or if the type is not supported.
  *
  * \param qparam0 The first set of quantization parameters.
  * \param qparam1 The second set of quantization parameters.
- * \param max_scale_diff Set to the absolute value of the maximum difference in scale value.
- * \return True quantization parameters are equal.
+ * \param scale_diff Set to the absolute value of the difference in scale value.
+ * \param offset_diff Set to the absolute value of the difference in offset value.
+ * \return Status indicating success.
  */
-bool CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
-                           float& max_scale_diff);
+Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
+                             float& max_scale_diff, int32_t& max_offset_diff);
 
 // TODO: split out separate files for Wrappers
 class QnnTensorWrapper {

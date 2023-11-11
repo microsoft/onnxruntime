@@ -195,13 +195,14 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
                     "Input and output data types do not match");
   Qnn_QuantizeParams_t input_quant_param = GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor());
 
-  float max_scale_diff = 0.0f;
-  bool quant_params_equal = CompareQnnQuantParams(quant_param, input_quant_param, max_scale_diff);
+  float scale_diff = 0.0f;
+  int32_t offset_diff = 0;
+  ORT_RETURN_IF_ERROR(CompareQnnQuantParams(quant_param, input_quant_param, scale_diff, offset_diff));
   constexpr float NEARLY_EQUAL_THRESHOLD = 1e-9f;
   constexpr float WARN_THRESHOLD = 1e-6f;
 
-  if (!quant_params_equal) {
-    if (max_scale_diff > 0.0 && max_scale_diff <= NEARLY_EQUAL_THRESHOLD) {
+  if (scale_diff != 0.0f && offset_diff == 0) {
+    if (scale_diff <= NEARLY_EQUAL_THRESHOLD) {
       // Quantization params are nearly equal, so make them equal. This may allow QNN backends to employ certain graph
       // optimizations that improve inference latency.
       LOGS(logger, WARNING) << "QNN EP will override the output quantization parameters for " << node_unit.OpType()
@@ -209,7 +210,7 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
                             << node_unit.Name() << ", input_index: " << input_index << ", output index: "
                             << output_index << ".";
       quant_param = input_quant_param;  // Copy input quantization params to the output.
-    } else if (max_scale_diff > 0.0f && max_scale_diff <= WARN_THRESHOLD) {
+    } else if (scale_diff <= WARN_THRESHOLD) {
       // Quantization params are just outside of the "nearly equal" threshold, so warn user of potential latency
       // degradation.
       LOGS(logger, WARNING) << "The quantization parameters for the " << node_unit.OpType() << " operator '"

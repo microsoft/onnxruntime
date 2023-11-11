@@ -201,77 +201,28 @@ const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor) 
   }
 }
 
-bool CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
-                           float& max_scale_diff) {
-  max_scale_diff = 0.0f;
+Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
+                             float& scale_diff, int32_t& offset_diff) {
+  scale_diff = 0.0f;
+  offset_diff = 0;
 
-  if (qparam0.encodingDefinition != qparam1.encodingDefinition ||
-      qparam0.quantizationEncoding != qparam1.quantizationEncoding) {
-    return false;
-  }
+  ORT_RETURN_IF_NOT((qparam0.encodingDefinition == qparam1.encodingDefinition &&
+                     qparam0.quantizationEncoding == qparam1.quantizationEncoding),
+                    "Expected quantization parameters to be the same type.");
 
   if (qparam0.encodingDefinition == QNN_DEFINITION_DEFINED) {
     switch (qparam0.quantizationEncoding) {
       case QNN_QUANTIZATION_ENCODING_SCALE_OFFSET: {
-        max_scale_diff = std::abs(qparam0.scaleOffsetEncoding.scale - qparam1.scaleOffsetEncoding.scale);
-        return qparam0.scaleOffsetEncoding.offset == qparam1.scaleOffsetEncoding.offset && max_scale_diff == 0.0f;
+        scale_diff = std::abs(qparam0.scaleOffsetEncoding.scale - qparam1.scaleOffsetEncoding.scale);
+        offset_diff = std::abs(qparam0.scaleOffsetEncoding.offset - qparam1.scaleOffsetEncoding.offset);
+        break;
       }
-      case QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET: {
-        const Qnn_AxisScaleOffset_t& vals0 = qparam0.axisScaleOffsetEncoding;
-        const Qnn_AxisScaleOffset_t& vals1 = qparam1.axisScaleOffsetEncoding;
-        bool axis_equal = vals0.axis == vals1.axis;
-        bool offsets_equal = true;
-
-        if (vals0.numScaleOffsets != vals1.numScaleOffsets) {
-          return false;
-        }
-
-        for (uint32_t i = 0; i < vals0.numScaleOffsets; ++i) {
-          if (vals0.scaleOffset[i].offset != vals1.scaleOffset[i].offset) {
-            offsets_equal = false;
-          }
-
-          max_scale_diff = std::max(max_scale_diff, std::abs(vals0.scaleOffset[i].scale - vals1.scaleOffset[i].scale));
-        }
-
-        return axis_equal && offsets_equal && max_scale_diff == 0.0f;
-      }
-      case QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET: {
-        const Qnn_BwScaleOffset_t& vals0 = qparam0.bwScaleOffsetEncoding;
-        const Qnn_BwScaleOffset_t& vals1 = qparam1.bwScaleOffsetEncoding;
-        max_scale_diff = std::abs(vals0.scale - vals1.scale);
-
-        return vals0.bitwidth == vals1.bitwidth && vals0.offset == vals1.offset &&
-               max_scale_diff == 0.0f;
-      }
-      case QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET: {
-        const Qnn_BwAxisScaleOffset_t& vals0 = qparam0.bwAxisScaleOffsetEncoding;
-        const Qnn_BwAxisScaleOffset_t& vals1 = qparam1.bwAxisScaleOffsetEncoding;
-        bool bitwidth_equal = vals0.bitwidth == vals1.bitwidth;
-        bool axis_equal = vals0.axis == vals1.axis;
-
-        if (vals0.numElements != vals1.numElements) {
-          return false;
-        }
-
-        bool offsets_equal = true;
-        for (uint32_t i = 0; i < vals0.numElements; ++i) {
-          if (vals0.offsets[i] != vals1.offsets[i]) {
-            offsets_equal = false;
-          }
-          max_scale_diff = std::max(max_scale_diff, std::abs(vals0.scales[i] - vals1.scales[i]));
-        }
-
-        return bitwidth_equal && axis_equal && offsets_equal && max_scale_diff == 0.0f;
-      }
-      case QNN_QUANTIZATION_ENCODING_UNDEFINED:
-        return true;
       default:
-        return false;
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported quantization encoding: ", qparam0.quantizationEncoding);
     }
   }
 
-  return true;
+  return Status::OK();
 }
 
 bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
