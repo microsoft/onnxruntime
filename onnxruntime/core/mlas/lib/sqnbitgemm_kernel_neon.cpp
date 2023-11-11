@@ -126,7 +126,7 @@ ComputeDotProducts(
 
     const uint8_t* QuantBData = QuantBDataColPtr;
     const float* QuantBScale = QuantBScaleColPtr;
-    size_t QuantBZeroPointIdx = 0;  // track half byte increments with this idx instead of a pointer
+    size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
 
     for (size_t k = 0; k < CountK; k += BlkLen) {
         const size_t k_blk_len = std::min(CountK - k, BlkLen);
@@ -195,7 +195,7 @@ ComputeDotProducts(
             //                                           sign|exponent|partial mantissa
             //                                              +|131: 2^4|~~~~ <- 4 bits go here
 
-            const uint16x8_t float_high_half_template_v = vdupq_n_s16(float_high_half_template);
+            const uint16x8_t float_high_half_template_v = vdupq_n_u16(float_high_half_template);
 
             // shift left 3 and widen to 16 bits
             uint16x8_t bv_u16[NCols][2];
