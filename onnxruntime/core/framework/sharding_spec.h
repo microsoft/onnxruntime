@@ -429,6 +429,9 @@ class TensorPartitionSpec {
   }
 };
 
+// Parse "S[0]R" into {AxisPartitionSpec::CreateShard(0), AxisPartitionSpec::CreateReplica()}.
+std::vector<AxisPartitionSpec> ParseStringAsAxisPartitionVector(const std::string& spec_string);
+
 // Parse "[0, 1, 2, 3]" as std::vector<int64_t>{0, 1, 2, 3}.
 std::vector<int64_t> ParseStringAsInt64Vector(const std::string& str);
 

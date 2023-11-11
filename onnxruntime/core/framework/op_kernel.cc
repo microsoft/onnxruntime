@@ -69,6 +69,20 @@ bool OpKernelContext::TryGetInferredOutputShape(int index, TensorShape& shape) c
   return execution_frame_->TryGetInferredShape(GetOutputArgIndex(index), shape);
 }
 
+bool OpKernelContext::TryGetPropagatedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const {
+  return execution_frame_->TryGetPropagatedTensorPartitionSpec(name, spec);
+}
+
+void OpKernelContext::SetPropagatedTensorPartitionSpec(const std::string& name, const distributed::TensorPartitionSpec& spec) {
+  execution_frame_->SetPropagatedTensorPartitionSpec(name, spec);
+}
+
+bool OpKernelContext::TryGetPlannedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const {
+  // Objects that an user-specified TensorPartitionSpec goes through to be accessed in a kernel:
+  //  SessionOptions -> ExecutionFrame -> OpKernelContext
+  return execution_frame_->TryGetPlannedTensorPartitionSpec(name, spec);
+}
+
 OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   if (index < 0 || index >= OutputCount())
     return nullptr;

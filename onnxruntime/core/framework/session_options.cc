@@ -59,16 +59,18 @@ Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> name
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status SessionOptions::AddTensorPartitionSpecs(gsl::span<const std::string> names) {
-  const auto num_specs = names.size();
-  tensor_partition_specs.reserve(num_specs);
-  for (size_t i = 0; i < num_specs; ++i) {
-    auto result = tensor_partition_specs.emplace(names[i], names[i]).second;
-    if (!result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An spec for this name has already been added: ", names[i]);
+Status SessionOptions::AddTensorPartitionSpec(
+  const std::string& name,
+  const std::string& spec,
+  const std::vector<int64_t>& device_mesh_shape,
+  const std::vector<int64_t>& device_mesh_elements) {
+    auto tensor_partition_spec = distributed::CreateTensorPartitionSpec(spec, device_mesh_shape, device_mesh_elements);
+    auto result = tensor_partition_specs.emplace(name, tensor_partition_spec);
+    if (result.second) {
+      return Status::OK();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An spec for this name has already been added: ", name);
     }
-  }
-  return Status::OK();
 }
 #endif
 

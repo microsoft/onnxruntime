@@ -26,39 +26,7 @@ void ValidateAxisIndex(const int64_t axis, const int64_t rank) {
   ORT_ENFORCE(adjusted_axis >= 0 && adjusted_axis < rank, "axis,", axis, ", should be in [", -rank, ",", rank, ").");
 }
 
-std::vector<int64_t> ParseStringAsInt64Vector(const std::string& str) {
-  if (str.empty() || str.front() != '[' || str.back() != ']') {
-    throw std::invalid_argument("Invalid input string format");
-  }
-  // Parsed vector.
-  // If input is "[0, 1, 2]", result should be {0, 1, 2}.
-  std::vector<int64_t> result;
-  // Skip '[' and ']'
-  std::istringstream iss(str.substr(1, str.size() - 2));
-
-  // Extract integers separated by ',' or whitespaces.
-  int64_t num = -1;
-  while (/* Read one number at a time */ iss >> num) {
-    result.push_back(num);
-    // Skip the comma
-    if (iss.peek() == ',') {
-      iss.ignore();
-    }
-  }
-  return result;
-}
-
-DeviceMesh CreateDeviceMesh(
-    std::vector<int64_t> device_mesh_shape,
-    std::vector<int64_t> device_mesh_elements) {
-  DeviceMesh device_mesh;
-  device_mesh.device_mesh_shape = device_mesh_shape;
-  device_mesh.device_mesh_elements = device_mesh_elements;
-  return device_mesh;
-}
-
-TensorPartitionSpec CreateTensorPartitionSpec(std::string spec_string, std::vector<int64_t> device_mesh_shape, std::vector<int64_t> device_mesh_elements) {
-  // "S[0]R"
+std::vector<AxisPartitionSpec> ParseStringAsAxisPartitionVector(const std::string& spec_string) {
   std::vector<AxisPartitionSpec> axis_specs;
   size_t dim_index = 0;
   size_t token_index = 0;
@@ -98,6 +66,42 @@ TensorPartitionSpec CreateTensorPartitionSpec(std::string spec_string, std::vect
       throw std::invalid_argument("Invalid partition token: " + token);
     }
   }
+  return axis_specs;
+}
+
+std::vector<int64_t> ParseStringAsInt64Vector(const std::string& str) {
+  if (str.empty() || str.front() != '[' || str.back() != ']') {
+    throw std::invalid_argument("Invalid input string format");
+  }
+  // Parsed vector.
+  // If input is "[0, 1, 2]", result should be {0, 1, 2}.
+  std::vector<int64_t> result;
+  // Skip '[' and ']'
+  std::istringstream iss(str.substr(1, str.size() - 2));
+
+  // Extract integers separated by ',' or whitespaces.
+  int64_t num = -1;
+  while (/* Read one number at a time */ iss >> num) {
+    result.push_back(num);
+    // Skip the comma
+    if (iss.peek() == ',') {
+      iss.ignore();
+    }
+  }
+  return result;
+}
+
+DeviceMesh CreateDeviceMesh(
+    std::vector<int64_t> device_mesh_shape,
+    std::vector<int64_t> device_mesh_elements) {
+  DeviceMesh device_mesh;
+  device_mesh.device_mesh_shape = device_mesh_shape;
+  device_mesh.device_mesh_elements = device_mesh_elements;
+  return device_mesh;
+}
+
+TensorPartitionSpec CreateTensorPartitionSpec(std::string spec_string, std::vector<int64_t> device_mesh_shape, std::vector<int64_t> device_mesh_elements) {
+  std::vector<AxisPartitionSpec> axis_specs = ParseStringAsAxisPartitionVector(spec_string);
   DeviceMesh device_mesh = CreateDeviceMesh(device_mesh_shape, device_mesh_elements);
   return TensorPartitionSpec::Create(axis_specs, device_mesh);
 }

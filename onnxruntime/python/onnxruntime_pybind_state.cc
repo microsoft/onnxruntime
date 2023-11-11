@@ -1566,19 +1566,16 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("External initializers are not supported in this build.");
 #endif
       })
-      .def("add_tensor_partition_specs", [](PySessionOptions* options, py::list& names) -> void {
+      .def("add_tensor_partition_spec", [](
+          PySessionOptions* options, std::string& name, std::string& spec, std::vector<int64_t>& device_mesh_shape, std::vector<int64_t>& device_mesh_elements) -> void {
 #if !defined(ORT_MINIMAL_BUILD)
-        const auto num_specs = names.size();
-        InlinedVector<std::string> names_ptrs;
-        names_ptrs.reserve(num_specs);
-        for (size_t i = 0; i < num_specs; ++i) {
-          names_ptrs.emplace_back(py::str(names[i]));
-        }
-        ORT_THROW_IF_ERROR(options->value.AddTensorPartitionSpecs(names_ptrs));
+        ORT_THROW_IF_ERROR(options->value.AddTensorPartitionSpec(name, spec, device_mesh_shape, device_mesh_elements));
 #else
         ORT_UNUSED_PARAMETER(options);
-        ORT_UNUSED_PARAMETER(names);
-        ORT_THROW("Tensor partition specs are not supported in this build.");
+        ORT_UNUSED_PARAMETER(name);
+        ORT_UNUSED_PARAMETER(device_mesh_shape);
+        ORT_UNUSED_PARAMETER(device_mesh_elements);
+        ORT_THROW("Tensor partition spec are not supported in this build.");
 #endif
       });
 

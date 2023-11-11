@@ -107,6 +107,32 @@ class OpKernelContext {
   // false.
   virtual bool TryGetInferredOutputShape(int index, TensorShape& shape) const;
 
+  // Retrieve TensorPartitionSpec computed by distributed op.
+  //
+  // See IExecutionFrame::TryGetPropagatedTensorPartitionSpec for details.
+  // We need the same function here before OpKernelContext is the place to pass
+  // information from ExecutionFrame to kernel.
+  virtual bool TryGetPropagatedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const;
+
+  // Set TensorPartitionSpec computed by  distributed op.
+  //
+  // See IExecutionFrame::SetPropagatedTensorPartitionSpec for details.
+  // We need the same function here before OpKernelContext is the place to pass
+  // information from ExecutionFrame to kernel.
+  //
+  // Live cycle of a propagated tensor partition spec.
+  //  1. Computed by distributed op0.
+  //  2. Assigned to ExecutionFrame via SetPropagatedTensorPartitionSpec.
+  //  3. Retrieved by distributed op1.
+  virtual void SetPropagatedTensorPartitionSpec(const std::string& name, const distributed::TensorPartitionSpec& spec);
+
+  // Retrieve TensorPartitionSpec specified by user (see SessionOptions::AddTensorPartitionSpec).
+  //
+  // See IExecutionFrame::TryGetPlannedTensorPartitionSpec for details.
+  // We need the same function here before OpKernelContext is the place to pass
+  // information from ExecutionFrame to kernel.
+  virtual bool TryGetPlannedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const;
+
   const logging::Logger& Logger() const {
     return *logger_;
   }
