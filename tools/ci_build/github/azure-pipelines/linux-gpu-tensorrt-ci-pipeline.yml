@@ -37,7 +37,7 @@ resources:
 
 jobs:
 - job: Linux_Build
-  timeoutInMinutes: 180
+  timeoutInMinutes: 480
   variables:
     skipComponentGovernanceDetection: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
