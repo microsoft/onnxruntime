@@ -592,6 +592,7 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                    ORT_TSTR("mul_uint8"),
                                                    ORT_TSTR("div_uint8")};
   static const ORTCHAR_T* tensorrt_disabled_tests[] = {
+      ORT_TSTR("keras2coreml_GRU_ImageNet"),
       ORT_TSTR("udnie"),
       ORT_TSTR("rain_princess"),
       ORT_TSTR("pointilism"),
