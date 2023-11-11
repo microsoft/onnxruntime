@@ -18,8 +18,10 @@ steps:
       - powershell: |
           Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CUDA_Version }}\bin;$(Agent.TempDirectory)\v${{ parameters.CUDA_Version }}\extras\CUPTI\lib64"
         displayName: 'Append CUDA SDK Directory to PATH'
-      - CmdLine@2: |
-          echo %PATH%
+      - task: CmdLine@2
+        inputs:
+          script: |
+            echo %PATH%
         displayName: 'Print PATH'
 
   - ${{ if eq(parameters.DownloadTRT, true) }}:
@@ -29,6 +31,8 @@ steps:
       - powershell: |
           Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ variables.tensorrt_dir }}\lib"
         displayName: 'Append CUDA SDK Directory to PATH'
-      - CmdLine@2: |
-          echo %PATH%
+      - task: CmdLine@2
+        inputs:
+          script: |
+            echo %PATH%
         displayName: 'Print PATH'
