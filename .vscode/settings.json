@@ -16,25 +16,6 @@
     },
     // Enable Python linting and Pylance type checking
     "python.analysis.typeCheckingMode": "basic",
-    "python.formatting.provider": "black",
-    "python.formatting.blackArgs": [
-        "--line-length",
-        "120"
-    ],
-    "python.sortImports.args": [
-        "--profile",
-        "black",
-        "--line-length",
-        "120"
-    ],
-    "python.linting.enabled": true,
-    "python.linting.flake8Enabled": true,
-    "python.linting.pylintEnabled": true,
-    "python.linting.pydocstyleEnabled": true,
-    "python.linting.pydocstyleArgs": [
-        "--convention=google"
-    ],
-    "python.linting.banditEnabled": true,
     "cpplint.lineLength": 120,
     "cpplint.filters": [
         "-build/include_subdir",
