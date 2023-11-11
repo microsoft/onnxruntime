@@ -1560,6 +1560,10 @@ def setup_tensorrt_vars(args):
         # Set FP16 flag
         os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
 
+        # timing cache
+        os.environ["ORT_TENSORRT_TIMING_CACHE_ENABLE"] = "1"
+        os.environ["ORT_TENSORRT_GLOBAL_CACHE_PATH"] = args.build_dir
+
     return tensorrt_home
 
 
