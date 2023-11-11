@@ -1,25 +1,17 @@
-#parameters:
-#  - name: DownloadCUDA
-#    type: boolean
-#    default: false
-#  - name: DownloadTRT
-#    type: boolean
-#    default: false
-#  - name: CUDA_Version
-#    type: string
-#    default: '12.2'
+parameters:
+  - name: DownloadCUDA
+    type: boolean
+    default: false
+  - name: DownloadTRT
+    type: boolean
+    default: false
+  - name: CUDA_Version
+    type: string
+    default: '12.2'
 
-variables:
-  cuda_sdk_url: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
-  tensorrt_dir:
-  ${{ if eq(variables.CUDA_Version, '11.8') }}:
-    - value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
-  ${{ if eq(variables.CUDA_Version, '12.2') }}:
-    - value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
-  tensorrt_url: https://lotusscus.blob.core.windows.net/models/local/${{ variables.tensorrt_dir }}
+template: variables/win_gpu_library_variables.yml
 
 steps:
-
 
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
       - powershell: |
