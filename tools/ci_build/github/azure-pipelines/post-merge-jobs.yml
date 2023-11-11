@@ -7,6 +7,8 @@ stages:
       PoolName: 'aiinfra-Win-CPU-2022-web-beta'
       BuildStaticLib: true
       ExtraBuildArgs: ''
+      RunWebGpuTestsForReleaseBuild: true
+      RunWebGpuTestsForDebugBuild: true
 
 # This stage is to test if the combined build works on
 # o Windows ARM64
