@@ -8,8 +8,7 @@ parameters:
   - name: CUDA_Version
     type: string
     default: '12.2'
-variables:
-  template: variables/win_gpu_library_variables.yml
+variables: variables/win_gpu_library_variables.yml
 
 steps:
 
