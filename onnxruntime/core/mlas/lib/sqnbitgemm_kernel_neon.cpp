@@ -298,7 +298,7 @@ MlasSQNBitGemmKernelNeon(
         const float* ARowPtr = A;
         float* CRowPtr = C;
 
-        const size_t BlockCountK = MlasDivRoundup(CountK, BlkLen);
+        const size_t BlockCountK = BlockStrideQuantB;
 
         const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         const size_t StrideQuantBScale = BlockCountK;
