@@ -15,11 +15,13 @@ Abstract:
 
 --*/
 
+#include "sqnbitgemm.h"
+
 #include <arm_neon.h>
 
+#include <algorithm>
 #include <array>
-
-#include "sqnbitgemm.h"
+#include <utility>
 
 //
 // Hardware-specific kernel type.
@@ -226,7 +228,7 @@ ComputeDotProducts(
 
             // subtract float conversion offset (16) and zero point
             UnrolledLoop<NCols>([&](size_t i) {
-                const uint32x4_t offset_v = vdupq_n_f32(offset[i]);
+                const float32x4_t offset_v = vdupq_n_f32(offset[i]);
                 UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
             });
 
