@@ -285,14 +285,6 @@ public:
             queryKeyValueTransposedTensorShape);
         DML_TENSOR_DESC namedQueryKeyValueTransposedOutputTensorDesc = queryKeyValueTransposedOutputTensorDesc.GetDmlDesc();
 
-        std::array<uint32_t, 3> queryKeySliceOffset = {0, 0, 0};
-        std::array<uint32_t, 3> queryKeySliceSize = {batchSize, sequenceLength, hiddenSize + hiddenSize};
-        std::array<int32_t, 3> queryKeySliceStrides = {1, 1, 1};
-
-        std::array<uint32_t, 3> valueSliceOffset = {0, 0, 2 * hiddenSize};
-        std::array<uint32_t, 3> valueSliceSize = {batchSize, sequenceLength, hiddenSize};
-        std::array<int32_t, 3> valueSliceStrides = {1, 1, 1};
-
         // When Q/K/V all have the same hidden size, we just have to transpose it before sending it to MHA
         DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC transposeOperatorDesc = {};
 

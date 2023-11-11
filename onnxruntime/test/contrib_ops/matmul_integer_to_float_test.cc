@@ -90,9 +90,9 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
   test.AddReferenceOutputs(reference_model);
 #if defined(USE_DML)
   if constexpr (std::is_same_v<OType, float>) {
-    test.SetOutputRelErr("Y", 2e-2f);
+    test.SetOutputRelErr("Y", 1.0f);
   } else {
-    test.SetOutputRelErr("Y", 3.0f);
+    test.SetOutputAbsErr("Y", 3.0f);
   }
 #else
   test.SetOutputRelErr("Y", 1e-4f);

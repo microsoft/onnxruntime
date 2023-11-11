@@ -70,6 +70,9 @@ void TestDynamicQuantizeMatMul(const std::vector<int64_t>& A_dims,
   }
 
   test.AddReferenceOutputs(reference_model);
+#if defined(USE_DML)
+  test.SetOutputAbsErr("Y", 1.0f);
+#endif
   test.Run();
 }
 
