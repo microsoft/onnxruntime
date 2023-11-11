@@ -292,48 +292,6 @@ MlasSQNBitGemmKernelNeon(
     const float* Bias
 )
 {
-    [[maybe_unused]] auto impl0_reference = [&]() {
-        static_assert(BlkBitWidth == 4);
-
-        for (size_t m = 0; m < CountM; ++m) {
-            for (size_t n = 0; n < CountN; ++n) {
-                C[m * ldc + n] = 0.0f;
-
-                for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
-                    const size_t kblocklen = std::min(CountK - k, BlkLen);
-
-                    const float b_s = QuantBScale[n * BlockStrideQuantB + k_blk_idx];
-                    const uint8_t b_z = [&]() -> uint8_t {
-                        if (QuantBZeroPoint != nullptr) {
-                            const uint8_t* b_z_data =
-                                QuantBZeroPoint + n * MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
-                            uint8_t zp_packed = b_z_data[k_blk_idx / 2];
-                            return ((k_blk_idx & 1) == 1) ? (zp_packed >> 4) : (zp_packed & 0x0F);
-                        } else {
-                            return 8;
-                        }
-                    }();
-                    const uint8_t* b_data =
-                        QuantBData + (n * BlockStrideQuantB + k_blk_idx) * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-
-                    for (size_t kk = 0; kk < kblocklen; ++kk) {
-                        uint8_t b_packed = b_data[kk / 2];
-                        uint8_t b_byte = ((kk & 1) == 1) ? (b_packed >> 4) : (b_packed & 0x0F);
-                        float b_value = (b_byte - b_z) * b_s;
-
-                        C[m * ldc + n] += A[m * lda + k + kk] * b_value;
-                    }
-                }
-
-                if (Bias) {
-                    C[m * ldc + n] += Bias[n];
-                }
-            }
-        }
-
-        return CountM;
-    };
-
     auto impl1 = [&]() {
         constexpr size_t NCols = 4;
 
@@ -406,7 +364,6 @@ MlasSQNBitGemmKernelNeon(
         return CountM;
     };
 
-    // return impl0_reference();
     return impl1();
 }
 
