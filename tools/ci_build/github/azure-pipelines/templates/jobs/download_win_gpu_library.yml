@@ -8,13 +8,15 @@ parameters:
   - name: CUDA_Version
     type: string
     default: '12.2'
-  - cuda_sdk_url: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
-  - tensorrt_dir:
+  - name: cuda_sdk_url
+    value : https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
+  - name: tensorrt_dir
     ${{ if eq(parameters.CUDA_Version, '11.8') }}:
       - value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
     ${{ if eq(parameters.CUDA_Version, '12.2') }}:
       - value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
-  - tensorrt_url: https://lotusscus.blob.core.windows.net/models/local/${{ parameters.tensorrt_dir }}
+  - name: tensorrt_url
+    value : https://lotusscus.blob.core.windows.net/models/local/${{ parameters.tensorrt_dir }}
 
 #variables:
 #  cuda_sdk_url: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
