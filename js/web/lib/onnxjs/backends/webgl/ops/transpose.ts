@@ -36,7 +36,7 @@ export const parseTransposeAttributes: OperatorInitialization<TransposeAttribute
     (node: Graph.Node): TransposeAttributes => createAttributeWithCacheKey({perm: node.attributes.getInts('perm', [])});
 
 const createTransposeProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, input: Tensor, perm: number[]): ProgramInfo => {
+    (_inferenceHandler: WebGLInferenceHandler, input: Tensor, perm: number[]): ProgramInfo => {
       const inputShape = input.dims;
       perm = getAdjustedPerm(inputShape, perm);
       const unpackedOutputShape = getOutputShape(inputShape, perm);
