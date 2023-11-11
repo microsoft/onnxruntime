@@ -144,7 +144,9 @@ module.exports = {
       'no-unused-expressions': 'off',
     }
   }, {
-    files: ['web/lib/**/*.ts'], rules: {
+    files: ['web/lib/**/*.ts'],
+    excludedFiles: 'web/lib/wasm/proxy-worker/**/*',
+    parserOptions: { 'project': 'web/tsconfig.json' },rules: {
       'no-underscore-dangle': 'off',
     }
   }, {
