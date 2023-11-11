@@ -8,21 +8,27 @@ parameters:
   - name: CUDA_Version
     type: string
     default: '12.2'
+  - cuda_sdk_url: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
+  - tensorrt_dir:
+    ${{ if eq(parameters.CUDA_Version, '11.8') }}:
+      - value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
+    ${{ if eq(parameters.CUDA_Version, '12.2') }}:
+      - value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
+  - tensorrt_url: https://lotusscus.blob.core.windows.net/models/local/${{ parameters.tensorrt_dir }}
 
+#variables:
+#  cuda_sdk_url: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
+#  tensorrt_dir:
+#  ${{ if eq(variables.CUDA_Version, '11.8') }}:
+#    - value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
+#  ${{ if eq(variables.CUDA_Version, '12.2') }}:
+#    - value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
+#  tensorrt_url: https://lotusscus.blob.core.windows.net/models/local/${{ variables.tensorrt_dir }}
 
 steps:
-  - variables:
-    cuda_sdk_url: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }}
-    tensorrt_dir:
-    ${{ if eq(variables.CUDA_Version, '11.8') }}:
-      - value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
-    ${{ if eq(variables.CUDA_Version, '12.2') }}:
-      - value: TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
-    tensorrt_url: https://lotusscus.blob.core.windows.net/models/local/${{ variables.tensorrt_dir }}
-
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
       - powershell: |
-          azcopy.exe cp --recursive ${{ variables.cuda_sdk_url }} $(Agent.TempDirectory)
+          azcopy.exe cp --recursive ${{ parameters.cuda_sdk_url }} $(Agent.TempDirectory)
         displayName: 'Download CUDA SDK v${{ parameters.CUDA_Version }}'
       - powershell: |
           Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CUDA_Version }}\bin;$(Agent.TempDirectory)\v${{ parameters.CUDA_Version }}\extras\CUPTI\lib64"
@@ -35,10 +41,10 @@ steps:
 
   - ${{ if eq(parameters.DownloadTRT, true) }}:
       - powershell: |
-          azcopy.exe cp --recursive ${{ variables.tensorrt_url }} $(Agent.TempDirectory)
-        displayName: 'Download ${{ variables.tensorrt_dir }}'
+          azcopy.exe cp --recursive ${{ parameters.tensorrt_url }} $(Agent.TempDirectory)
+        displayName: 'Download ${{ parameters.tensorrt_dir }}'
       - powershell: |
-          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ variables.tensorrt_dir }}\lib"
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ parameters.tensorrt_dir }}\lib"
         displayName: 'Append CUDA SDK Directory to PATH'
       - task: CmdLine@2
         inputs:
