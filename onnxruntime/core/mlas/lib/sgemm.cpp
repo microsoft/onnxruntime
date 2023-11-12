@@ -20,6 +20,8 @@ Abstract:
 #include "core/framework/allocator.h"
 #include "../../onnxruntime/contrib_ops/cpu/quantization/dequantize_blockwise.h"
 
+#include <smmintrin.h>
+
 #include <mutex>
 
 //
@@ -437,12 +439,177 @@ int64_t G_nbits_;
 size_t G_ldfb;
 size_t G_K;
 
+template<unsigned N>
+inline
+void
+MlasSgemmDequantTransposePackBNx4(
+    float* __restrict__ D,
+    const uint8_t* __restrict__ B,
+    size_t ldb,
+    const float* __restrict__ scales
+    )
+/*++
+
+Routine Description:
+
+    This routine transposes elements from the source matrix to the destination
+    packed buffer.
+
+    4 columns of N rows from the source matrix are transposed to N columns of 4
+    rows in the destination packed buffer.
+
+Arguments:
+
+    D - Supplies the address of the destination packed buffer.
+
+    B - Supplies the address of the source matrix.
+
+    ldb - Supplies the number of elements per row of the source matrix.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_DECLSPEC_ALIGN(float bufferB[4 * 4], 16 * sizeof(float));
+    const int64_t n_blocks_per_col = (G_K + G_block_size_ - 1) / G_block_size_;
+    const int64_t blob_size = G_block_size_ / 8 * G_nbits_;
+
+    for (unsigned n = 0; n < N / 4; n++) {
+#if 0
+        const float scale0 = scales[0];
+        const float scale1 = scales[n_blocks_per_col];
+        const float scale2 = scales[n_blocks_per_col * 2];
+        const float scale3 = scales[n_blocks_per_col * 3];
+
+        bufferB[0] = scale0 * ((B[0] & 0x0F) - 8);
+        bufferB[1] = scale0 * ((B[0] >> 4) - 8);
+        bufferB[2] = scale0 * ((B[1] & 0x0F) - 8);
+        bufferB[3] = scale0 * ((B[1] >> 4) - 8);
+
+        bufferB[4] = scale1 * ((B[n_blocks_per_col * blob_size] & 0x0F) - 8);
+        bufferB[5] = scale1 * ((B[n_blocks_per_col * blob_size] >> 4) - 8);
+        bufferB[6] = scale1 * ((B[n_blocks_per_col * blob_size + 1] & 0x0F) - 8);
+        bufferB[7] = scale1 * ((B[n_blocks_per_col * blob_size + 1] >> 4) - 8);
+        bufferB[8] = scale2 * ((B[n_blocks_per_col * blob_size * 2] & 0x0F) - 8);
+        bufferB[9] = scale2 * ((B[n_blocks_per_col * blob_size * 2] >> 4) - 8);
+        bufferB[10] = scale2 * ((B[n_blocks_per_col * blob_size * 2 + 1] & 0x0F) - 8);
+        bufferB[11] = scale2 * ((B[n_blocks_per_col * blob_size * 2 + 1] >> 4) - 8);
+        bufferB[12] = scale3 * ((B[n_blocks_per_col * blob_size * 3] & 0x0F) - 8);
+        bufferB[13] = scale3 * ((B[n_blocks_per_col * blob_size * 3] >> 4) - 8);
+        bufferB[14] = scale3 * ((B[n_blocks_per_col * blob_size * 3 + 1] & 0x0F) - 8);
+        bufferB[15] = scale3 * ((B[n_blocks_per_col * blob_size * 3 + 1] >> 4) - 8);
+#else
+        const float scale0 = scales[0];
+        const float scale1 = scales[n_blocks_per_col];
+        const float scale2 = scales[n_blocks_per_col * 2];
+        const float scale3 = scales[n_blocks_per_col * 3];
+
+#if 0
+        __m128 value = _mm_set_epi8(
+            (B[0] & 0x0F),
+            (B[0] >> 4),
+            (B[1] & 0x0F),
+            (B[1] >> 4),
+            (B[n_blocks_per_col * blob_size] & 0x0F),
+            (B[n_blocks_per_col * blob_size] >> 4),
+            (B[n_blocks_per_col * blob_size + 1] & 0x0F),
+            (B[n_blocks_per_col * blob_size + 1] >> 4),
+            (B[n_blocks_per_col * blob_size * 2] & 0x0F),
+            (B[n_blocks_per_col * blob_size * 2] >> 4),
+            (B[n_blocks_per_col * blob_size * 2 + 1] & 0x0F),
+            (B[n_blocks_per_col * blob_size * 2 + 1] >> 4),
+            (B[n_blocks_per_col * blob_size * 3] & 0x0F),
+            (B[n_blocks_per_col * blob_size * 3] >> 4),
+            (B[n_blocks_per_col * blob_size * 3 + 1] & 0x0F),
+            (B[n_blocks_per_col * blob_size * 3 + 1] >> 4)
+            );
+#endif
+        __m128i zero_point = _mm_set1_epi32(8);
+
+        __m128i value0 = _mm_set_epi32(
+            (B[1] >> 4),
+            (B[1] & 0x0F),
+            (B[0] >> 4),
+            (B[0] & 0x0F)
+        );
+        __m128i sub0 = _mm_sub_epi32(value0, zero_point);
+        MLAS_FLOAT32X4 t0 = _mm_mul_ps(_mm_cvtepi32_ps(sub0), _mm_set1_ps(scale0));
+
+        __m128i value2 = _mm_set_epi32(
+            (B[n_blocks_per_col * blob_size * 2 + 1] >> 4),
+            (B[n_blocks_per_col * blob_size * 2 + 1] & 0x0F),
+            (B[n_blocks_per_col * blob_size * 2] >> 4),
+            (B[n_blocks_per_col * blob_size * 2] & 0x0F)
+        );
+        __m128i sub2 = _mm_sub_epi32(value2, zero_point);
+        MLAS_FLOAT32X4 t2 = _mm_mul_ps(_mm_cvtepi32_ps(sub2), _mm_set1_ps(scale2));
+
+        __m128i value1 = _mm_set_epi32(
+            (B[n_blocks_per_col * blob_size + 1] >> 4),
+            (B[n_blocks_per_col * blob_size + 1] & 0x0F),
+            (B[n_blocks_per_col * blob_size] >> 4),
+            (B[n_blocks_per_col * blob_size] & 0x0F)
+        );
+        __m128i sub1 = _mm_sub_epi32(value1, zero_point);
+        MLAS_FLOAT32X4 t1 = _mm_mul_ps(_mm_cvtepi32_ps(sub1), _mm_set1_ps(scale1));        
+
+        __m128i value3 = _mm_set_epi32(
+            (B[n_blocks_per_col * blob_size * 3 + 1] >> 4),
+            (B[n_blocks_per_col * blob_size * 3 + 1] & 0x0F),
+            (B[n_blocks_per_col * blob_size * 3] >> 4),
+            (B[n_blocks_per_col * blob_size * 3] & 0x0F)
+        );
+        __m128i sub3 = _mm_sub_epi32(value3, zero_point);
+        MLAS_FLOAT32X4 t3 = _mm_mul_ps(_mm_cvtepi32_ps(sub3), _mm_set1_ps(scale3));
+
+#endif
+
+#if 0
+        MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&bufferB[0]);
+        MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&bufferB[4]);
+        MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&bufferB[8]);
+        MLAS_FLOAT32X4 t3 = MlasLoadFloat32x4(&bufferB[12]);
+#endif
+
+#if defined(MLAS_NEON_INTRINSICS)
+        float32x4x2_t z0 = vzipq_f32(t0, t2);
+        float32x4x2_t z1 = vzipq_f32(t1, t3);
+        float32x4x2_t o0 = vzipq_f32(z0.val[0], z1.val[0]);
+        float32x4x2_t o1 = vzipq_f32(z0.val[1], z1.val[1]);
+        t0 = o0.val[0];
+        t1 = o0.val[1];
+        t2 = o1.val[0];
+        t3 = o1.val[1];
+#else
+        MLAS_FLOAT32X4 z0 = MlasInterleaveLowFloat32x4(t0, t2);
+        MLAS_FLOAT32X4 z1 = MlasInterleaveHighFloat32x4(t0, t2);
+        MLAS_FLOAT32X4 z2 = MlasInterleaveLowFloat32x4(t1, t3);
+        MLAS_FLOAT32X4 z3 = MlasInterleaveHighFloat32x4(t1, t3);
+        t0 = MlasInterleaveLowFloat32x4(z0, z2);
+        t1 = MlasInterleaveHighFloat32x4(z0, z2);
+        t2 = MlasInterleaveLowFloat32x4(z1, z3);
+        t3 = MlasInterleaveHighFloat32x4(z1, z3);
+#endif
+
+        MlasStoreAlignedFloat32x4(&D[0], t0);
+        MlasStoreAlignedFloat32x4(&D[16], t1);
+        MlasStoreAlignedFloat32x4(&D[32], t2);
+        MlasStoreAlignedFloat32x4(&D[48], t3);
+
+        D += 4;
+        B += n_blocks_per_col * blob_size * 4;
+        scales += n_blocks_per_col * 4;
+    }
+}
+
 std::mutex mtx; // Create a mutex
 
 void
 MlasSgemmTransposePackB(
     float* D,
-    const uint8_t* srcB,
+    const uint8_t* B,
     size_t ldb,
     const float* scales,
     size_t CountY,
@@ -477,6 +644,9 @@ Return Value:
 
 --*/
 {
+    const int64_t n_blocks_per_col = (G_K + G_block_size_ - 1) / G_block_size_;
+    const int64_t blob_size = G_block_size_ / 8 * G_nbits_;
+#if 0
     //std::cerr << "MlasSgemmTransposePackB invoked\n";
     //
     // Transpose elements from matrix B into the packed buffer 16 rows at a
@@ -495,8 +665,6 @@ Return Value:
                                                     static_cast<int32_t>(CountX),
                                                     nullptr);
 #else
-    const int64_t n_blocks_per_col = (G_K + G_block_size_ - 1) / G_block_size_;
-    const int64_t blob_size = G_block_size_ / 8 * G_nbits_;
     for (size_t n = 0; n < CountY; ++n) {
         for (size_t k = 0; k < CountX; k += G_block_size_) {
             const float scale = scales[n * n_blocks_per_col + k / G_block_size_];
@@ -526,6 +694,7 @@ Return Value:
 #endif
 
     const float* B = bufferB;
+#endif
 
 #if 0
 {
@@ -543,10 +712,12 @@ Return Value:
 
     while (CountY >= 16) {
 
-        const float* b = B;
+        const uint8_t* b = B;
         size_t x = CountX;
+        const float_t* s = scales;
+        size_t x_idx_in_block = 0;
 
-#if defined(MLAS_TARGET_AMD64)
+#if 0 // defined(MLAS_TARGET_AMD64)
 
         MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* SgemmTransposePackB16x4Routine =
             GetMlasPlatform().TransposePackB16x4Routine;
@@ -564,16 +735,23 @@ Return Value:
 
         while (x >= 4) {
 
-            MlasSgemmTransposePackBNx4<16>(&D[0], &b[0], ldb);
+            MlasSgemmDequantTransposePackBNx4<16>(&D[0], &b[0], ldb, &s[0]);
 
             D += 16 * 4;
-            b += 4;
+            b += 2;
             x -= 4;
+            x_idx_in_block += 4;
+            if (x_idx_in_block >= G_block_size_) {
+                x_idx_in_block = 0;
+                s += 1;
+            }
         }
 
 #endif
 
         while (x > 0) {
+            abort();
+	    // handle B and scales
 
             float t0 = b[0];
             float t1 = b[ldb];
@@ -614,7 +792,8 @@ Return Value:
             x--;
         }
 
-        B += ldb * 16;
+        B += n_blocks_per_col * blob_size * 16;
+        scales += n_blocks_per_col * 16;
         CountY -= 16;
     }
 
@@ -623,6 +802,7 @@ Return Value:
     //
 
     if (CountY > 0) {
+        abort();
 
         MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
 
@@ -635,7 +815,8 @@ Return Value:
         while (x >= 4) {
 
             float* d = D;
-            const float* b = B;
+            abort();
+            const float* b = reinterpret_cast<const float*>(B);
 
             if ((CountY & 8) != 0) {
 
@@ -732,7 +913,8 @@ Return Value:
         while (x > 0) {
 
             float* d = D;
-            const float* b = B;
+            abort();
+            const float* b = reinterpret_cast<const float*>(B);
 
             if ((CountY & 8) != 0) {
 

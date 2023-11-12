@@ -164,7 +164,16 @@ void F32Q4GEMM(benchmark::State& state, MLAS_BLK_DEQUANT_TYPE dqtype) {
 
 static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
   b->ArgNames(f32q4gemm_bench_arg_names);
-  ArgsProduct(b, {{2048}, {4096}, {4096}, {16, 32, 64, 128}, {8}});
+  for (auto M : {/*1,*/ /*2, 4, 16, 64, 100, 256, 1024,*/ 2048}) {
+    for (auto N : {/*128, 256,*/ 4096, 12288}) {
+      for (auto K : {/*128, 256,*/ 4096, 12288}) {
+        for (auto block_size : {16, 32, 64, 128/*, 256*/}) {
+          if (N == 12288 && K == 12288) continue;
+          b->Args({M, N, K, block_size, 8});
+        }
+      }
+    }
+  }
 }
 
 BENCHMARK_CAPTURE(F32Q4GEMM, Before, BeforePacking)->Apply(GemmSizeProducts)->UseRealTime();

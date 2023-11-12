@@ -35,6 +35,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
 )
 
+set_source_files_properties(${MLAS_SRC_DIR}/sgemm.cpp PROPERTIES COMPILE_FLAGS "-mavx2")
+
 if (NOT onnxruntime_ORT_MINIMAL_BUILD)
   target_sources(onnxruntime_mlas PRIVATE
     ${MLAS_SRC_DIR}/q4_dq.cpp

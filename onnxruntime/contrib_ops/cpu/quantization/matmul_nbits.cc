@@ -125,7 +125,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     data[i].alpha = 1.f;
     data[i].beta = 0.0f;
   }
-  const char* env_p = std::getenv("PAR");
+  const char* env_s = std::getenv("SEQ");
 #if 0
   std::cerr << "data[i].B: " << (void*)(data[0].B) << std::endl;
   for (int y = 0; y < N; ++y) {
@@ -136,7 +136,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 #endif
 
   MlasGemmBatch(CblasNoTrans, CblasTrans,
-                M, N, K, data.data(), max_len, env_p ? thread_pool : nullptr);
+                M, N, K, data.data(), max_len, thread_pool);
 
   return Status::OK();
 }
