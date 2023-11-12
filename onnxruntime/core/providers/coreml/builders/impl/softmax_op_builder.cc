@@ -59,7 +59,6 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     // note: if opsets < 13, onnx Softmax coerces the input shape to be 2D based on axis.
     // we need to manually reshape to make sure the rank is >=3 and get the right number of dims.
     const auto num_elements_from_axis = data_shape.size() - axis_nonnegative;
-    std::cout << data_shape.size() << std::endl;
     if (num_elements_from_axis < 3) {
       const auto expand_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "expand_output"));
       {  // Add expand layer
